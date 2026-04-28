@@ -3,7 +3,7 @@ export type ThemeScheme = 'light' | 'dark';
 
 // 📐 Layout constants for consistent spacing across the app
 export const LAYOUT = {
-  TAB_BAR_HEIGHT: 64,
+  TAB_BAR_HEIGHT: 68,
   HEADER_HEIGHT: 100,
   STATUS_BAR_HEIGHT: 44,
   FEED_BOTTOM_PADDING: 80,

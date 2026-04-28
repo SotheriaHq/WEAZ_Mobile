@@ -681,6 +681,7 @@ export default function HomeScreen() {
 
   const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 32, [insets.bottom]);
   const bottomClearance = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 18, [insets.bottom]);
+  const topOverlayOffset = useMemo(() => insets.top + 74, [insets.top]);
 
   const resetMetaImmediately = useCallback(() => {
     setMetaVisible(false);
@@ -1239,66 +1240,79 @@ export default function HomeScreen() {
             style={[
               styles.header,
               {
-                paddingTop: insets.top + tokens.spacing.sm,
-                paddingBottom: tokens.spacing.sm,
+                paddingTop: insets.top + tokens.spacing.xs,
               },
             ]}
             pointerEvents="box-none"
           >
-            <BlurView
-              tint={scheme === 'dark' ? 'dark' : 'light'}
-              intensity={scheme === 'dark' ? GLASS.dark.blur : GLASS.light.blur}
+            <View
               style={[
-                StyleSheet.absoluteFillObject,
-                styles.headerBlur,
+                styles.headerShell,
                 {
-                  backgroundColor: scheme === 'dark' ? GLASS.dark.bg : GLASS.light.bg,
+                  borderColor: theme.colors.border,
                 },
               ]}
-            />
-            <View style={styles.headerRow} pointerEvents="box-none">
-              <View style={styles.headerLeftGroup}>
-                <Pressable
-                  onPress={() => { router.push('/'); }}
-                  style={({ pressed }) => [
-                    styles.headerLogoButton,
-                    pressed && { opacity: 0.82 },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Go to home">
-                  <ThreadlyLogo size={32} style={styles.brandLogo} />
-                </Pressable>
-              </View>
+            >
+              <BlurView
+                tint={scheme === 'dark' ? 'dark' : 'light'}
+                intensity={scheme === 'dark' ? GLASS.dark.blur : GLASS.light.blur}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <View
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  styles.headerGlassFill,
+                  {
+                    backgroundColor:
+                      scheme === 'dark' ? 'rgba(11, 15, 23, 0.72)' : 'rgba(255, 255, 255, 0.78)',
+                    borderColor: theme.colors.border,
+                  },
+                ]}
+              />
+              <View style={styles.headerRow} pointerEvents="box-none">
+                <View style={styles.headerLeftGroup}>
+                  <Pressable
+                    onPress={() => { router.push('/'); }}
+                    style={({ pressed }) => [
+                      styles.headerLogoButton,
+                      pressed && { opacity: 0.82 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Go to home">
+                    <ThreadlyLogo size={30} style={styles.brandLogo} />
+                  </Pressable>
+                </View>
 
-              <View style={styles.headerCenterGroup}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.headerChipsContent}
-                  style={styles.headerChipsScroll}>
-                  {filterChips.map((chip) => (
-                    <Chip
-                      key={chip.id}
-                      label={chip.label}
-                      variant="nav"
-                      selected={chip.id === selectedFilterId}
-                      onPress={() => setSelectedFilterId(chip.id)}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
+                <View style={styles.headerCenterGroup}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.headerChipsContent}
+                    style={styles.headerChipsScroll}>
+                    {filterChips.map((chip) => (
+                      <Chip
+                        key={chip.id}
+                        label={chip.label}
+                        variant="nav"
+                        selected={chip.id === selectedFilterId}
+                        onPress={() => setSelectedFilterId(chip.id)}
+                      />
+                    ))}
+                  </ScrollView>
+                </View>
 
-              <View style={styles.headerRightGroup}>
-                <Pressable
-                  onPress={() => { /* TODO: navigate to search */ }}
-                  style={({ pressed }) => [
-                    styles.headerIconButton,
-                    pressed && { opacity: 0.8 },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Search">
-                  <AppText style={styles.headerEmoji}>🔍</AppText>
-                </Pressable>
+                <View style={styles.headerRightGroup}>
+                  <Pressable
+                    onPress={() => { /* TODO: navigate to search */ }}
+                    style={({ pressed }) => [
+                      styles.headerIconButton,
+                      pressed && { opacity: 0.8 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Search">
+                    <AppText variant="subtitle" style={styles.headerEmoji}>🔍</AppText>
+                  </Pressable>
+                </View>
               </View>
             </View>
           </View>
@@ -1359,6 +1373,7 @@ export default function HomeScreen() {
               backgroundColor: 'transparent',
               borderRadius: 28,
               overflow: 'hidden',
+              paddingTop: topOverlayOffset,
               paddingBottom: Platform.OS === 'android' ? overlayScrollPadding : 0,
             }}
             viewabilityConfig={viewabilityConfigRef.current}
@@ -1568,70 +1583,71 @@ const styles = StyleSheet.create({
   },
   header: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: 12,
+    right: 12,
     top: 0,
     zIndex: 20,
-    paddingBottom: 8,
-    overflow: 'hidden',
   },
-  headerBlur: {
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+  headerShell: {
+    minHeight: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  headerGlassFill: {
+    borderRadius: 28,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   headerLeftGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   headerCenterGroup: {
     flex: 1,
     overflow: 'hidden',
-    paddingHorizontal: tokens.spacing.sm,
+    paddingHorizontal: 4,
   },
   headerRightGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   headerChipsScroll: {
     flexGrow: 0,
   },
   headerChipsContent: {
-    gap: tokens.spacing.sm,
-    paddingHorizontal: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.xs,
     alignItems: 'center',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    minHeight: 56,
+    paddingHorizontal: 8,
   },
   headerLogoButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
   brandLogo: {
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     resizeMode: 'contain',
   },
   headerIconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
   headerEmoji: {
-    fontSize: 20,
-    lineHeight: 22,
     textShadowColor: '#000000',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,

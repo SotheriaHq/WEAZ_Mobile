@@ -47,7 +47,9 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
           {
             backgroundColor: isSwatch
               ? selected ? theme.colors.primarySoft : 'transparent'
-              : isNav ? 'transparent' : selected ? theme.colors.primary : theme.colors.surfaceAlt,
+              : isNav
+                ? selected ? theme.colors.primarySoft : 'transparent'
+                : selected ? theme.colors.primary : theme.colors.surfaceAlt,
             borderColor: isNav ? 'transparent' : selected ? theme.colors.primary : theme.colors.border,
             opacity: disabled ? 0.48 : 1,
           },
@@ -68,22 +70,13 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
         ) : (
           <View style={styles.labelWrap}>
             <AppText
-              variant={isNav ? (selected ? 'bodyStrong' : 'bodyRegular') : 'smallBold'}
-              tone={isNav ? (selected ? 'primary' : 'muted') : selected ? 'inverse' : 'secondary'}
+              variant="smallBold"
+              tone={isNav ? (selected ? 'primary' : 'secondary') : selected ? 'inverse' : 'secondary'}
               numberOfLines={1}
+              ellipsizeMode="tail"
             >
               {label}
             </AppText>
-            {isNav ? (
-              <View
-                style={[
-                  styles.navUnderline,
-                  {
-                    backgroundColor: selected ? theme.colors.primary : 'transparent',
-                  },
-                ]}
-              />
-            ) : null}
           </View>
         )}
       </Pressable>
@@ -95,7 +88,7 @@ const styles = StyleSheet.create({
   base: {
     paddingHorizontal: tokens.spacing.md,
     minHeight: 38,
-    maxWidth: 180,
+    maxWidth: 220,
     borderRadius: tokens.radius.full,
     borderWidth: 1,
     alignItems: 'center',
@@ -107,11 +100,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   navBase: {
-    minHeight: 36,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: 4,
+    minHeight: 34,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: 6,
     borderWidth: 0,
-    borderRadius: 0,
+    borderRadius: tokens.radius.full,
+    flexShrink: 0,
   },
   swatch: {
     width: 32,
@@ -121,11 +115,6 @@ const styles = StyleSheet.create({
   labelWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: tokens.spacing.xs,
-  },
-  navUnderline: {
-    height: 2,
-    minWidth: '100%',
-    borderRadius: tokens.radius.full,
+    gap: 0,
   },
 });

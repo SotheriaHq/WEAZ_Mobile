@@ -3,22 +3,23 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, Sty
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
+import { BlurView } from 'expo-blur';
 
 import { CatalogCardSurface } from '@/components/catalog/CatalogCardSurface';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
-import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { StableImage } from '@/components/ui/StableImage';
 import { AppText } from '@/components/ui/AppText';
 import { Skeleton, SkeletonAvatar, SkeletonText } from '@/components/ui/Skeleton';
 import { getMarketFeed, getMarketFilterChips, type MarketFilterChip } from '@/src/api/MarketApi';
-import { LAYOUT, tokens } from '@/src/styles/tokens';
+import { GLASS, LAYOUT, tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import type { MarketItem } from '@/src/types/market';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
 
 const toCompactCount = (value?: number | null) => {
   const n = typeof value === 'number' ? value : 0;
@@ -255,6 +256,7 @@ export default function DiscoverScreen() {
   const cardBorder = theme.colors.border;
   const pillBg = isDark ? theme.colors.surfaceAlt : theme.colors.surfaceAlt;
   const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom, [insets.bottom]);
+  const topOverlayOffset = useMemo(() => insets.top + 74, [insets.top]);
 
   const renderItem = useCallback(
     ({ item }: { item: MarketItem }) => {
@@ -339,26 +341,7 @@ export default function DiscoverScreen() {
   const keyExtractor = useCallback((item: MarketItem) => item.id, []);
 
   const ListHeader = (
-    <View>
-      <View style={styles.heroBlock}>
-        <AppText variant="title">Market</AppText>
-        <AppText variant="body" tone="muted">
-          Fresh design drops from active brands. Shop any look in a tap.
-        </AppText>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-        {filterChips.map((chip) => (
-          <Chip
-            key={chip.id}
-            label={chip.label}
-                      variant="nav"
-            selected={chip.id === selectedChipId}
-            onPress={() => setSelectedChipId(chip.id)}
-          />
-        ))}
-      </ScrollView>
-
+    <View style={styles.listHeaderState}>
       {!loading && error && networkError ? <NetworkErrorState onRetry={loadFirstPage} /> : null}
       {!loading && error && !networkError ? (
         <View style={[styles.errorCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
@@ -374,9 +357,81 @@ export default function DiscoverScreen() {
   );
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: 'transparent' }]}> 
-      <StatusBar style={isDark ? 'light' : 'dark'} />
-      <BrandHeader />
+    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: 'transparent' }]}> 
+      <StatusBar style={isDark ? 'light' : 'dark'} translucent backgroundColor="transparent" />
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top + tokens.spacing.xs,
+          },
+        ]}
+        pointerEvents="box-none"
+      >
+        <View
+          style={[
+            styles.headerShell,
+            {
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <BlurView
+            tint={scheme === 'dark' ? 'dark' : 'light'}
+            intensity={scheme === 'dark' ? GLASS.dark.blur : GLASS.light.blur}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View
+            style={[
+              StyleSheet.absoluteFillObject,
+              styles.headerGlassFill,
+              {
+                backgroundColor:
+                  scheme === 'dark' ? 'rgba(11, 15, 23, 0.72)' : 'rgba(255, 255, 255, 0.78)',
+                borderColor: theme.colors.border,
+              },
+            ]}
+          />
+          <View style={styles.headerRow}>
+            <Pressable
+              onPress={() => router.push('/')}
+              style={({ pressed }) => [styles.headerLogoButton, pressed && { opacity: 0.82 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Go to home"
+            >
+              <ThreadlyLogo size={30} />
+            </Pressable>
+
+            <View style={styles.headerCenterGroup}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chipRow}
+                style={styles.headerChipsScroll}
+              >
+                {filterChips.map((chip) => (
+                  <Chip
+                    key={chip.id}
+                    label={chip.label}
+                    variant="nav"
+                    selected={chip.id === selectedChipId}
+                    onPress={() => setSelectedChipId(chip.id)}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+
+            <Pressable
+              onPress={() => { /* TODO: navigate to search */ }}
+              style={({ pressed }) => [styles.headerIconButton, pressed && { opacity: 0.8 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Search"
+            >
+              <AppText variant="subtitle" style={styles.headerEmoji}>🔍</AppText>
+            </Pressable>
+          </View>
+        </View>
+      </View>
 
       <FlatList
         data={!loading && !error ? items : []}
@@ -385,7 +440,7 @@ export default function DiscoverScreen() {
         showsVerticalScrollIndicator={false}
         contentInset={{ bottom: overlayScrollPadding }}
         scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
-        contentContainerStyle={[styles.content, { paddingBottom: overlayScrollPadding }]}
+        contentContainerStyle={[styles.content, { paddingTop: topOverlayOffset, paddingBottom: overlayScrollPadding }]}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListHeaderComponent={ListHeader}
         ListFooterComponent={
@@ -420,6 +475,54 @@ export default function DiscoverScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  header: {
+    position: 'absolute',
+    top: 0,
+    left: 12,
+    right: 12,
+    zIndex: 20,
+  },
+  headerShell: {
+    minHeight: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  headerGlassFill: {
+    borderRadius: 28,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  headerRow: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  headerLogoButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCenterGroup: {
+    flex: 1,
+    overflow: 'hidden',
+    paddingHorizontal: 4,
+  },
+  headerChipsScroll: {
+    flexGrow: 0,
+  },
+  headerIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerEmoji: {
+    textAlign: 'center',
+  },
   marketSkeletonOverlay: {
     zIndex: 100,
   },
@@ -466,20 +569,16 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: tokens.spacing['2xl'],
   },
-  heroBlock: {
-    paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.md,
-    gap: tokens.spacing.xs,
-  },
   chipRow: {
-    paddingHorizontal: 14,
-    paddingTop: tokens.spacing.sm,
-    paddingBottom: tokens.spacing.sm,
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.xs,
+    alignItems: 'center',
+  },
+  listHeaderState: {
+    gap: tokens.spacing.md,
   },
   errorCard: {
     marginHorizontal: tokens.spacing.lg,
-    marginTop: tokens.spacing.md,
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
     padding: tokens.spacing.lg,
