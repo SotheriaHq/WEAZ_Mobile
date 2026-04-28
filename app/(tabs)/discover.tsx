@@ -91,7 +91,7 @@ function MarketSkeleton() {
   const { theme } = useTheme();
 
   return (
-    <View style={[styles.marketSkeletonRoot, { backgroundColor: theme.colors.bg }]}>
+    <View style={styles.marketSkeletonRoot}>
       <View style={styles.marketSkeletonHeader}>
         <Skeleton width={96} height={28} borderRadius={8} />
         <View style={styles.marketSkeletonHeaderActions}>

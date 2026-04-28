@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Dimensions, Easing, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -601,16 +601,6 @@ export default function MeScreen() {
   const [profileError, setProfileError] = useState<string | null>(null);
   const tabFade = useRef(new Animated.Value(1)).current;
   const showBlockingLoader = status === 'loading' || (loading && !profile);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      tabBarStyle: showBlockingLoader ? { display: 'none' } : undefined,
-    });
-
-    return () => {
-      navigation.setOptions({ tabBarStyle: undefined });
-    };
-  }, [navigation, showBlockingLoader]);
 
   // Redirect if unauthenticated
   useEffect(() => {

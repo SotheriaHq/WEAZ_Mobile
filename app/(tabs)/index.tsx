@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, FlatList, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -477,7 +477,7 @@ const FeedSkeleton = ({
   bottomClearance: number;
 }) => {
   return (
-    <View style={[styles.feedSkeletonRoot, { backgroundColor: theme.colors.bg }]}>
+    <View style={styles.feedSkeletonRoot}>
       <View style={[styles.feedSkeletonHeader, { paddingTop: topOffset + 8 }]}> 
         <View style={[styles.feedSkeletonLogoWrap, { backgroundColor: theme.colors.surfaceAlt }]}> 
           <ThreadlyLogo size={28} style={{ opacity: 0.92 }} />
@@ -606,16 +606,6 @@ export default function HomeScreen() {
       skeletonOpacity.setValue(1);
     }
   }, [showBlockingLoader, skeletonOpacity]);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      tabBarStyle: (showBlockingLoader || isSkeletonFadingOut) ? { display: 'none' } : undefined,
-    });
-
-    return () => {
-      navigation.setOptions({ tabBarStyle: undefined });
-    };
-  }, [navigation, showBlockingLoader, isSkeletonFadingOut]);
 
   const loadPatchedBrands = useCallback(async () => {
     if (status !== 'authenticated' || !user?.id || user?.type === 'BRAND') {
@@ -1322,11 +1312,11 @@ export default function HomeScreen() {
       ) : null}
 
       {error && isNetworkError && !showBlockingLoader ? (
-        <View style={[styles.loadingWrap, { backgroundColor: theme.colors.bg }]}>
+        <View style={styles.loadingWrap}>
           <NetworkErrorState onRetry={loadFirstPage} />
         </View>
       ) : error && !showBlockingLoader ? (
-        <View style={[styles.loadingWrap, { backgroundColor: theme.colors.bg, paddingHorizontal: 20, gap: 12 }]}>
+        <View style={[styles.loadingWrap, { paddingHorizontal: 20, gap: 12 }]}>
           <AppText style={{ color: theme.colors.text, fontSize: 18, fontWeight: '800', textAlign: 'center' }}>Unable to load feed</AppText>
           <AppText style={{ color: theme.colors.textMuted, textAlign: 'center' }}>{error}</AppText>
           <Button title="Retry" variant="primary" onPress={loadFirstPage} fullWidth />
@@ -1334,7 +1324,7 @@ export default function HomeScreen() {
       ) : items.length === 0 && !showBlockingLoader ? (
         <ScrollView
           contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
-          contentContainerStyle={{ flexGrow: 1, backgroundColor: theme.colors.bg, paddingBottom: Platform.OS === 'android' ? overlayScrollPadding : 0 }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: Platform.OS === 'android' ? overlayScrollPadding : 0 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}>
           <FeedEmptyState onStartExploring={() => setSelectedFilterId(filterChips[1]?.id ?? 'all')} />
         </ScrollView>
