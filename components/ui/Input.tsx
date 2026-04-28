@@ -7,6 +7,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 
 type Props = Omit<TextInputProps, 'style'> & {
   label: string;
+  hideLabel?: boolean;
   error?: string;
   helperText?: string;
   leading?: React.ReactNode;
@@ -16,6 +17,7 @@ type Props = Omit<TextInputProps, 'style'> & {
 
 export function Input({
   label,
+  hideLabel = false,
   error,
   helperText,
   leading,
@@ -29,9 +31,11 @@ export function Input({
 
   return (
     <View style={containerStyle}>
-      <AppText variant="caption" tone="secondary" style={styles.label}>
-        {label}
-      </AppText>
+      {!hideLabel ? (
+        <AppText variant="caption" tone="secondary" style={styles.label}>
+          {label}
+        </AppText>
+      ) : null}
       <View
         style={[
           styles.field,

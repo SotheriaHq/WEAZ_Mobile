@@ -274,7 +274,6 @@ export default function DiscoverScreen() {
 
       return (
         <CatalogCardSurface
-          onPress={() => openDesignDetail(item)}
           mediaSrc={item.media?.url ?? item.media?.previewUrl}
           mediaFileId={item.media?.fileId}
           mediaAspectRatio={item.media?.aspectRatio ?? null}
@@ -374,7 +373,7 @@ export default function DiscoverScreen() {
         ]}
         pointerEvents="box-none"
       >
-        <View style={styles.headerRow}>
+        <View style={styles.headerRow} pointerEvents="box-none">
             <Pressable
               onPress={() => router.push('/')}
               style={({ pressed }) => [
@@ -408,7 +407,7 @@ export default function DiscoverScreen() {
             </View>
 
             <Pressable
-              onPress={() => { /* TODO: navigate to search */ }}
+              onPress={() => router.push('/search' as any)}
               style={({ pressed }) => [
                 styles.headerIconButton,
                 { backgroundColor: headerControlSurface, borderColor: 'transparent', borderWidth: 0 },

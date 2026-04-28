@@ -1,3 +1,4 @@
+import { Image } from 'react-native';
 import { useEffect, useState } from 'react';
 
 import { brandApi } from '@/src/api/BrandApi';
@@ -57,7 +58,7 @@ const setMissingUri = (key: string) => {
   resolvedUriMissingCache.set(key, Date.now() + MISSING_URI_TTL_MS);
 };
 
-const resolveImageUri = async ({
+export const resolveImageUri = async ({
   src,
   fileId,
 }: {
@@ -118,6 +119,22 @@ const resolveImageUri = async ({
 
   pendingResolutions.set(cacheKey, promise);
   return promise;
+};
+
+export const prefetchResolvedImageAsset = async ({
+  src,
+  fileId,
+}: UseResolvedImageUriArgs) => {
+  const uri = await resolveImageUri({ src, fileId });
+  if (!uri) {
+    return false;
+  }
+
+  try {
+    return await Image.prefetch(uri);
+  } catch {
+    return false;
+  }
 };
 
 export function useResolvedImageUri({

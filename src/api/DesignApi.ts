@@ -88,6 +88,8 @@ export type DesignDetail = {
   sizingMode: 'NONE' | 'RTW' | 'CUSTOM' | 'RTW_PLUS_FITTINGS';
   customOrderEnabled: boolean;
   customMeasurementKeys: string[];
+  fitPreference?: 'SLIM' | 'REGULAR' | 'LOOSE' | 'OVERSIZED' | null;
+  targetAgeGroup?: 'ADULT' | 'CHILD' | null;
   draftVersion?: number;
   coverMediaId?: string | null;
   metadataEditedAt?: string | null;
@@ -114,6 +116,8 @@ export type DesignSavePayload = {
   sizingMode?: 'NONE' | 'RTW' | 'CUSTOM' | 'RTW_PLUS_FITTINGS';
   customOrderEnabled?: boolean;
   customMeasurementKeys?: string[];
+  fitPreference?: 'SLIM' | 'REGULAR' | 'LOOSE' | 'OVERSIZED';
+  targetAgeGroup?: 'ADULT' | 'CHILD';
   filterValueIds?: string[];
   assets: DesignEditorAsset[];
   action: 'draft' | 'publish';
@@ -184,6 +188,25 @@ const normalizeSizingMode = (value: unknown): DesignDetail['sizingMode'] => {
   return 'RTW_PLUS_FITTINGS';
 };
 
+const normalizeFitPreference = (value: unknown): DesignDetail['fitPreference'] => {
+  const raw = String(value ?? '').toUpperCase();
+  if (raw === 'SLIM' || raw === 'REGULAR' || raw === 'LOOSE' || raw === 'OVERSIZED') {
+    return raw;
+  }
+  return null;
+};
+
+const normalizeTargetAgeGroup = (value: unknown): DesignDetail['targetAgeGroup'] => {
+  const raw = String(value ?? '').toUpperCase();
+  if (raw === 'CHILD') {
+    return 'CHILD';
+  }
+  if (raw === 'ADULT') {
+    return 'ADULT';
+  }
+  return null;
+};
+
 const mapFilterSelection = (raw: unknown): DesignFilterSelection => {
   if (!Array.isArray(raw)) return {};
   return raw.reduce<DesignFilterSelection>((acc, entry) => {
@@ -227,6 +250,8 @@ const normalizeDetail = (payload: unknown): DesignDetail => {
     sizingMode: normalizeSizingMode(source.sizingMode),
     customOrderEnabled: Boolean(source.customOrderEnabled),
     customMeasurementKeys: asStringList(source.customMeasurementKeys),
+    fitPreference: normalizeFitPreference(source.fitPreference),
+    targetAgeGroup: normalizeTargetAgeGroup(source.targetAgeGroup),
     draftVersion: asNumber(source.draftVersion),
     coverMediaId: asString(source.coverMediaId),
     metadataEditedAt: asString(source.metadataEditedAt),
@@ -263,6 +288,8 @@ const buildMetadata = (payload: DesignSavePayload) => ({
   sizingMode: payload.sizingMode,
   customOrderEnabled: payload.customOrderEnabled,
   customMeasurementKeys: payload.customMeasurementKeys,
+  fitPreference: payload.fitPreference,
+  targetAgeGroup: payload.targetAgeGroup,
 });
 
 async function uploadDesignAsset(

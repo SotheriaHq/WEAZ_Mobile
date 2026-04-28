@@ -18,6 +18,7 @@ import {
 import { toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { useDiscreteTapGesture } from '@/src/hooks/useDiscreteTapGesture';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
@@ -166,9 +167,12 @@ function LoopCarousel({
 }) {
   const { width } = useWindowDimensions();
   const carouselRef = useRef<FlatList<CarouselMedia>>(null);
-  const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasMultipleItems = mediaItems.length > 1;
   const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
+  const tapHandlers = useDiscreteTapGesture({
+    onTap,
+    onDoubleTap,
+  });
 
   const carouselItems = useMemo<CarouselMedia[]>(() => {
     if (!hasMultipleItems) {
@@ -198,44 +202,16 @@ function LoopCarousel({
     });
   }, [carouselItems.length, internalIndex, width]);
 
-  useEffect(() => {
-    return () => {
-      if (tapTimeoutRef.current) {
-        clearTimeout(tapTimeoutRef.current);
-        tapTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  const handleTap = useCallback(() => {
-    if (!onDoubleTap) {
-      onTap();
-      return;
-    }
-
-    if (tapTimeoutRef.current) {
-      clearTimeout(tapTimeoutRef.current);
-      tapTimeoutRef.current = null;
-      onDoubleTap();
-      return;
-    }
-
-    tapTimeoutRef.current = setTimeout(() => {
-      tapTimeoutRef.current = null;
-      onTap();
-    }, 220);
-  }, [onDoubleTap, onTap]);
-
   if (!mediaItems.length) {
     return (
-      <Pressable style={StyleSheet.absoluteFillObject} onPress={handleTap}>
+      <View style={StyleSheet.absoluteFillObject} {...tapHandlers}>
         <ViewerMediaSlide media={null} />
-      </Pressable>
+      </View>
     );
   }
 
   return (
-    <View style={StyleSheet.absoluteFillObject}>
+    <View style={StyleSheet.absoluteFillObject} {...tapHandlers}>
       <FlatList
         ref={carouselRef}
         data={carouselItems}
@@ -295,9 +271,9 @@ function LoopCarousel({
           onActiveIndexChange(rawIndex - 1);
         }}
         renderItem={({ item }) => (
-          <Pressable style={{ width }} onPress={handleTap}>
+          <View style={{ width }}>
             <ViewerMediaSlide media={item} />
-          </Pressable>
+          </View>
         )}
       />
 

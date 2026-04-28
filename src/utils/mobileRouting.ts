@@ -1,0 +1,249 @@
+import type { Href } from 'expo-router';
+
+import type { MobileNotification } from '@/src/api/NotificationsApi';
+import type { SearchItem } from '@/src/types/search';
+
+type RouterTarget = Href;
+
+function parseHrefId(href: string, pattern: RegExp): string | null {
+  const match = href.match(pattern);
+  return match?.[1] ?? null;
+}
+
+function parseTargetUrlPath(targetUrl: string) {
+  try {
+    return new URL(targetUrl, 'https://threadly.mobile').pathname;
+  } catch {
+    return targetUrl.split('?')[0] || targetUrl;
+  }
+}
+
+export function routeForSearchItem(item: SearchItem): RouterTarget {
+  const metadata = (item.metadata ?? {}) as Record<string, unknown>;
+  const ownerId = typeof metadata.ownerId === 'string' ? metadata.ownerId : null;
+  const brandId = typeof metadata.brandId === 'string' ? metadata.brandId : null;
+  const brandOwnerId = typeof metadata.brandOwnerId === 'string' ? metadata.brandOwnerId : null;
+
+  switch (item.type) {
+    case 'brand': {
+      const routeBrandId = ownerId ?? item.id ?? parseHrefId(item.href, /\/profile\/([^/?#]+)/);
+      if (routeBrandId) {
+        return { pathname: '/catalog/[brandId]', params: { brandId: routeBrandId } } as Href;
+      }
+      break;
+    }
+    case 'product': {
+      const routeBrandId = brandId ?? brandOwnerId;
+      if (routeBrandId) {
+        return {
+          pathname: '/catalog/[brandId]',
+          params: { brandId: routeBrandId, tab: 'Shop', productId: item.id },
+        } as Href;
+      }
+      return { pathname: '/products/[productId]', params: { productId: item.id } } as Href;
+    }
+    case 'collection':
+      return {
+        pathname: '/catalog/view/[collectionId]',
+        params: { collectionId: item.id, scope: 'store' },
+      } as Href;
+    case 'design':
+      return {
+        pathname: '/catalog/view/[collectionId]',
+        params: { collectionId: item.id, scope: 'design' },
+      } as Href;
+    case 'tag':
+      return {
+        pathname: '/search',
+        params: { q: item.title, type: 'tag', autoSubmit: '1' },
+      } as Href;
+    default:
+      break;
+  }
+
+  return '/search' as Href;
+}
+
+function routeForCollectionTarget(
+  targetId: string,
+  scope: 'design' | 'store',
+  openComments?: boolean,
+): RouterTarget {
+  return {
+    pathname: '/catalog/view/[collectionId]',
+    params: {
+      collectionId: targetId,
+      scope,
+      ...(openComments ? { openComments: '1' } : null),
+    },
+  } as Href;
+}
+
+function routeForProductTarget(notification: MobileNotification): RouterTarget {
+  const payload = (notification.payload ?? {}) as Record<string, unknown>;
+  const brandId =
+    (typeof payload.brandId === 'string' ? payload.brandId : null) ??
+    (typeof payload.brandOwnerId === 'string' ? payload.brandOwnerId : null);
+
+  if (brandId) {
+    return {
+      pathname: '/catalog/[brandId]',
+      params: {
+        brandId,
+        tab: 'Shop',
+        productId: notification.target?.id ?? (typeof payload.productId === 'string' ? payload.productId : ''),
+      },
+    } as Href;
+  }
+
+  const productId =
+    notification.target?.id ??
+    (typeof payload.productId === 'string' ? payload.productId : null);
+
+  if (productId) {
+    return { pathname: '/products/[productId]', params: { productId } } as Href;
+  }
+
+  return '/(tabs)/discover' as Href;
+}
+
+export function routeForNotification(notification: MobileNotification): RouterTarget {
+  const type = notification.type.toUpperCase();
+  const payload = (notification.payload ?? {}) as Record<string, unknown>;
+  const target = notification.target;
+  const targetType = target?.type;
+  const targetId = target?.id ?? null;
+  const actorId = notification.actor?.id ?? null;
+  const commentId =
+    notification.subTargetId ??
+    (typeof payload.commentId === 'string' ? payload.commentId : null);
+
+  if (targetType === 'COLLECTION_MEDIA') {
+    const collectionId = typeof payload.collectionId === 'string' ? payload.collectionId : null;
+    if (collectionId) {
+      return routeForCollectionTarget(collectionId, 'design', true);
+    }
+  }
+
+  if (targetType === 'COLLECTION' && targetId) {
+    return routeForCollectionTarget(targetId, 'design', Boolean(commentId));
+  }
+
+  if (targetType === 'PRODUCT') {
+    return routeForProductTarget(notification);
+  }
+
+  if (targetType === 'USER' && targetId) {
+    return { pathname: '/catalog/[brandId]', params: { brandId: targetId } } as Href;
+  }
+
+  if (type.includes('MESSAGE')) {
+    return '/(tabs)/inbox' as Href;
+  }
+
+  if (type === 'TAG_MENTION') {
+    if (actorId) {
+      return { pathname: '/catalog/[brandId]', params: { brandId: actorId } } as Href;
+    }
+  }
+
+  if (
+    type === 'PRIVATE_ACCESS_REQUESTED' ||
+    type === 'PRIVATE_ACCESS_APPROVED' ||
+    type === 'PRIVATE_ACCESS_REJECTED' ||
+    type === 'PRIVATE_ACCESS_REVOKED' ||
+    type === 'CONTRIBUTION_REQUEST' ||
+    type === 'CONTRIBUTION_ACCEPTED' ||
+    type === 'CONTRIBUTION_REJECTED' ||
+    type === 'COLLECTION_UPLOAD'
+  ) {
+    if (typeof payload.collectionId === 'string') {
+      return routeForCollectionTarget(payload.collectionId, 'design', Boolean(commentId));
+    }
+  }
+
+  if (type.startsWith('ORDER_') || type.startsWith('CUSTOM_ORDER_')) {
+    return { pathname: '/(tabs)/me', params: { tab: 'Orders' } } as Href;
+  }
+
+  if (type.startsWith('SIZE_FIT_')) {
+    return '/(tabs)/me' as Href;
+  }
+
+  if (type.startsWith('BRAND_PATCH_') || type === 'PATCH') {
+    return { pathname: '/(tabs)/me', params: { tab: 'Patches' } } as Href;
+  }
+
+  if (type === 'FOLLOW' && actorId) {
+    return { pathname: '/catalog/[brandId]', params: { brandId: actorId } } as Href;
+  }
+
+  if (type === 'PRODUCT_UPLOAD') {
+    return routeForProductTarget(notification);
+  }
+
+  if (type === 'WISHLIST_PRODUCT_AVAILABLE' || type === 'WISHLIST_PRODUCT_UNAVAILABLE') {
+    return routeForProductTarget(notification);
+  }
+
+  if (type === 'COLLECTION_DELETED') {
+    return {
+      pathname: '/catalog',
+      params: { tab: 'Collections', visibility: 'Drafts' },
+    } as Href;
+  }
+
+  if (type === 'LOGIN' || type === 'LOGOUT' || type === 'LOGOUT_ALL' || type === 'SIGNUP') {
+    return '/(tabs)/me' as Href;
+  }
+
+  if (type.startsWith('VERIFICATION_')) {
+    return '/catalog' as Href;
+  }
+
+  if (typeof notification.targetUrl === 'string' && notification.targetUrl.trim().length > 0) {
+    const targetUrl = notification.targetUrl.trim();
+    const path = parseTargetUrlPath(targetUrl);
+    const collectionId = parseHrefId(targetUrl, /\/collections\/([^/?#]+)/);
+    const productId = parseHrefId(targetUrl, /\/products\/([^/?#]+)/);
+    const profileId = parseHrefId(targetUrl, /\/profile\/([^/?#]+)/);
+    const draftId = parseHrefId(targetUrl, /\/studio\/drafts\/([^/?#]+)/);
+
+    if (collectionId) {
+      return routeForCollectionTarget(collectionId, 'design', Boolean(commentId));
+    }
+    if (productId) {
+      return { pathname: '/products/[productId]', params: { productId } } as Href;
+    }
+    if (profileId) {
+      return { pathname: '/catalog/[brandId]', params: { brandId: profileId } } as Href;
+    }
+    if (draftId) {
+      return { pathname: '/catalog/create-design', params: { designId: draftId } } as Href;
+    }
+    if (path === '/profile') {
+      return '/(tabs)/me' as Href;
+    }
+    if (path.startsWith('/orders')) {
+      return { pathname: '/(tabs)/me', params: { tab: 'Orders' } } as Href;
+    }
+    if (path.startsWith('/messages')) {
+      return '/(tabs)/inbox' as Href;
+    }
+    if (path.startsWith('/settings')) {
+      const tabMatch = targetUrl.match(/[?&]tab=([^&#]+)/i);
+      const normalizedTab = tabMatch?.[1]?.toLowerCase();
+      if (normalizedTab === 'patches') {
+        return { pathname: '/(tabs)/me', params: { tab: 'Patches' } } as Href;
+      }
+      if (normalizedTab === 'notifications' || normalizedTab === 'orders') {
+        return normalizedTab === 'orders'
+          ? ({ pathname: '/(tabs)/me', params: { tab: 'Orders' } } as Href)
+          : ('/notifications' as Href);
+      }
+      return '/(tabs)/me' as Href;
+    }
+  }
+
+  return '/notifications' as Href;
+}

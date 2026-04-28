@@ -31,6 +31,8 @@ import { useToast } from '@/src/toast/ToastContext';
 type Visibility = 'PUBLIC' | 'PRIVATE';
 type Audience = 'MALE' | 'FEMALE' | 'EVERYBODY';
 type SizingMode = 'NONE' | 'RTW' | 'CUSTOM' | 'RTW_PLUS_FITTINGS';
+type FitPreference = 'SLIM' | 'REGULAR' | 'LOOSE' | 'OVERSIZED';
+type TargetAgeGroup = 'ADULT' | 'CHILD';
 
 type FormState = {
   title: string;
@@ -44,6 +46,8 @@ type FormState = {
   maxPrice: string;
   sizingMode: SizingMode;
   customOrderEnabled: boolean;
+  fitPreference: FitPreference;
+  targetAgeGroup: TargetAgeGroup;
 };
 
 type SaveAction = 'draft' | 'publish';
@@ -77,7 +81,7 @@ type ContextValue = {
   setFilterSelection: React.Dispatch<React.SetStateAction<DesignFilterSelection>>;
   toggleFilterValue: (dimensionId: string, valueId: string, isMulti: boolean) => void;
   toggleMeasurementKey: (key: string) => void;
-  pickMedia: () => Promise<void>;
+  pickMedia: (source?: 'camera' | 'library') => Promise<boolean>;
   moveAsset: (assetId: string, direction: 'left' | 'right') => void;
   removeAsset: (assetId: string) => void;
   save: (action: SaveAction) => Promise<void>;
@@ -98,6 +102,8 @@ const INITIAL_FORM: FormState = {
   maxPrice: '',
   sizingMode: 'RTW_PLUS_FITTINGS',
   customOrderEnabled: false,
+  fitPreference: 'REGULAR',
+  targetAgeGroup: 'ADULT',
 };
 
 const MAX_MEDIA = 20;
@@ -125,6 +131,8 @@ function syncFormFromDetail(detail: DesignDetail): FormState {
     maxPrice: typeof detail.maxPrice === 'number' ? String(detail.maxPrice) : '',
     sizingMode: detail.sizingMode,
     customOrderEnabled: detail.customOrderEnabled,
+    fitPreference: detail.fitPreference ?? 'REGULAR',
+    targetAgeGroup: detail.targetAgeGroup ?? 'ADULT',
   };
 }
 
@@ -333,28 +341,42 @@ export function DesignEditorProvider({
     );
   }, []);
 
-  const pickMedia = useCallback(async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      toast.error('Allow photo access to add design media.');
-      return;
-    }
-
+  const pickMedia = useCallback(async (source: 'camera' | 'library' = 'library') => {
     const remainingSlots = Math.max(0, MAX_MEDIA - assets.length);
     if (remainingSlots === 0) {
       toast.error(`You can upload up to ${MAX_MEDIA} design assets.`);
-      return;
+      return false;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      allowsMultipleSelection: true,
-      quality: 0.9,
-      selectionLimit: remainingSlots,
-    });
+    if (source === 'camera') {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        toast.error('Allow camera access to capture design media.');
+        return false;
+      }
+    } else {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        toast.error('Allow photo access to add design media.');
+        return false;
+      }
+    }
+
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images', 'videos'],
+            quality: 0.9,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images', 'videos'],
+            allowsMultipleSelection: true,
+            quality: 0.9,
+            selectionLimit: remainingSlots,
+          });
 
     if (result.canceled || !result.assets?.length) {
-      return;
+      return false;
     }
 
     setAssets((prev) => {
@@ -374,6 +396,7 @@ export function DesignEditorProvider({
       }));
       return [...prev, ...mapped].slice(0, MAX_MEDIA);
     });
+    return true;
   }, [assets.length, toast]);
 
   const moveAsset = useCallback((assetId: string, direction: 'left' | 'right') => {
@@ -430,6 +453,8 @@ export function DesignEditorProvider({
             sizingMode: form.sizingMode,
             customOrderEnabled: form.customOrderEnabled,
             customMeasurementKeys,
+            fitPreference: form.fitPreference,
+            targetAgeGroup: form.targetAgeGroup,
             filterValueIds,
             assets,
             action,

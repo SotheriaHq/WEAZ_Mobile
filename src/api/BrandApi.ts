@@ -736,7 +736,13 @@ export const brandApi = {
         averageRating: data?.averageRating ?? 0,
         totalCount: data?.totalCount ?? data?.items?.length ?? 0,
       };
-    } catch (error) {
+    } catch (error: any) {
+      if (
+        error?.response?.status === 403 &&
+        error?.response?.data?.message === 'REVIEW_FEATURE_DISABLED'
+      ) {
+        return { items: [], averageRating: 0, totalCount: 0 };
+      }
       console.error('Error fetching reviews:', error);
       return { items: [], averageRating: 0, totalCount: 0 };
     }

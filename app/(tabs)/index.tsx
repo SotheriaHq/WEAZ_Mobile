@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, FlatList, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Animated, Easing, FlatList, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
+import { BlurView } from 'expo-blur';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { useAuth } from '@/src/auth/AuthContext';
@@ -24,7 +25,8 @@ import { getMarketFeed, getMarketFilterChips, type MarketFilterChip, toggleColle
 import type { MarketItem } from '@/src/types/market';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
-import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { useDiscreteTapGesture } from '@/src/hooks/useDiscreteTapGesture';
+import { prefetchResolvedImageAsset, resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 
@@ -74,23 +76,8 @@ const toFeedMediaType = (rawType?: string | null): 'image' | 'video' => {
   return normalized.includes('video') ? 'video' : 'image';
 };
 
-const isS3LikeUrl = (value?: string | null) => {
-  const normalized = String(value ?? '').toLowerCase();
-  return normalized.includes('.s3.') || normalized.includes('amazonaws.com');
-};
-
 const resolvePreferredRemoteUrl = async (directUrl?: string | null, fileId?: string | null) => {
-  const normalizedDirectUrl = typeof directUrl === 'string' ? directUrl.trim() : '';
-  const normalizedFileId = typeof fileId === 'string' ? fileId.trim() : '';
-
-  if (normalizedFileId && (!normalizedDirectUrl || isS3LikeUrl(normalizedDirectUrl))) {
-    const signedUrl = await brandApi.getSignedFileUrl(normalizedFileId);
-    if (signedUrl) {
-      return signedUrl;
-    }
-  }
-
-  return normalizedDirectUrl || null;
+  return resolveImageUri({ src: directUrl, fileId });
 };
 
 const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
@@ -219,17 +206,14 @@ function FeedMediaCarousel({
   activeIndex,
   onActiveIndexChange,
   onTap,
-  onDoubleTap,
 }: {
   mediaItems: FeedViewerMedia[];
   activeIndex: number;
   onActiveIndexChange: (nextIndex: number) => void;
   onTap: () => void;
-  onDoubleTap?: () => void;
 }) {
   const { width } = useWindowDimensions();
   const carouselRef = useRef<ScrollView>(null);
-  const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasMultipleItems = mediaItems.length > 1;
   const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
   const stableMediaItems = useMemo(
@@ -262,6 +246,7 @@ function FeedMediaCarousel({
     ];
   }, [hasMultipleItems, stableMediaItems]);
   const internalIndex = hasMultipleItems ? safeActiveIndex + 1 : safeActiveIndex;
+  const tapHandlers = useDiscreteTapGesture({ onTap });
 
   useEffect(() => {
     if (!carouselRef.current || !carouselItems.length) {
@@ -275,39 +260,11 @@ function FeedMediaCarousel({
     });
   }, [carouselItems.length, internalIndex, width]);
 
-  useEffect(() => {
-    return () => {
-      if (tapTimeoutRef.current) {
-        clearTimeout(tapTimeoutRef.current);
-        tapTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  const handleMediaTap = useCallback(() => {
-    if (!onDoubleTap) {
-      onTap();
-      return;
-    }
-
-    if (tapTimeoutRef.current) {
-      clearTimeout(tapTimeoutRef.current);
-      tapTimeoutRef.current = null;
-      onDoubleTap();
-      return;
-    }
-
-    tapTimeoutRef.current = setTimeout(() => {
-      tapTimeoutRef.current = null;
-      onTap();
-    }, 220);
-  }, [onDoubleTap, onTap]);
-
   if (!mediaItems.length) {
     return (
-      <Pressable style={StyleSheet.absoluteFillObject} onPress={handleMediaTap}>
+      <View style={StyleSheet.absoluteFillObject}>
         <FeedMediaSlide media={null} imageIndex={0} />
-      </Pressable>
+      </View>
     );
   }
 
@@ -367,14 +324,15 @@ function FeedMediaCarousel({
   };
 
   return (
-    <View style={StyleSheet.absoluteFillObject}>
+    <View style={StyleSheet.absoluteFillObject} {...tapHandlers}>
       <ScrollView
         ref={carouselRef}
         key={`${stableMediaItems.length}-${width}`}
         horizontal
         pagingEnabled
+        disableScrollViewPanResponder
         directionalLockEnabled
-        nestedScrollEnabled
+        nestedScrollEnabled={false}
         bounces={false}
         decelerationRate="fast"
         overScrollMode="never"
@@ -383,9 +341,9 @@ function FeedMediaCarousel({
         onMomentumScrollEnd={handleMomentumEnd}
       >
         {carouselItems.map((item, index) => (
-          <Pressable key={item.virtualKey} style={{ width }} onPress={handleMediaTap}>
+          <View key={item.virtualKey} style={{ width }}>
             <FeedMediaSlide media={item} imageIndex={toRealImageIndex(index)} />
-          </Pressable>
+          </View>
         ))}
       </ScrollView>
 
@@ -559,16 +517,16 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const feedListRef = useRef<FlatList<FeedListEntry> | null>(null);
-  const [reelHeight, setReelHeight] = useState<number | null>(null);
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>([{ id: 'all', label: 'All', tag: null }]);
   const [selectedFilterId, setSelectedFilterId] = useState('all');
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [metaVisible, setMetaVisible] = useState(false);
   const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
   const metaOpacity = useRef(new Animated.Value(0)).current;
-  const metaTranslateY = useRef(new Animated.Value(16)).current;
+  const metaTranslateY = useRef(new Animated.Value(12)).current;
   const pendingCollectionIdsRef = useRef(new Set<string>());
   const prefetchedImageUrisRef = useRef(new Set<string>());
+  const feedTeleportingRef = useRef(false);
 
   const [items, setItems] = useState<MarketItem[]>([]);
   const [collectionMediaMap, setCollectionMediaMap] = useState<Record<string, FeedViewerMedia[]>>({});
@@ -636,7 +594,7 @@ export default function HomeScreen() {
     } as any);
   }, []);
 
-  const pageHeight = useMemo(() => Math.max(1, Math.round(reelHeight ?? windowHeight)), [reelHeight, windowHeight]);
+  const pageHeight = useMemo(() => Math.max(1, Math.round(windowHeight)), [windowHeight]);
 
   const activeFilter = useMemo(
     () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? { id: 'all', label: 'All', tag: null },
@@ -708,7 +666,7 @@ export default function HomeScreen() {
   const resetMetaImmediately = useCallback(() => {
     setMetaVisible(false);
     metaOpacity.setValue(0);
-    metaTranslateY.setValue(16);
+    metaTranslateY.setValue(12);
   }, [metaOpacity, metaTranslateY]);
 
   useEffect(() => {
@@ -871,20 +829,8 @@ export default function HomeScreen() {
   // Reset meta instantly when swiping to a new page
   const hideMeta = useCallback(() => {
     setMetaVisible(false);
-    Animated.parallel([
-      Animated.timing(metaOpacity, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.in(Easing.ease),
-        useNativeDriver: true,
-      }),
-      Animated.timing(metaTranslateY, {
-        toValue: 16,
-        duration: 180,
-        easing: Easing.in(Easing.ease),
-        useNativeDriver: true,
-      }),
-    ]).start();
+    metaOpacity.setValue(0);
+    metaTranslateY.setValue(12);
   }, [metaOpacity, metaTranslateY]);
 
   const prefetchMediaItems = useCallback((mediaItems: FeedViewerMedia[], options?: { includeFirstImage?: boolean }) => {
@@ -894,11 +840,16 @@ export default function HomeScreen() {
       if (index === 0 && !includeFirstImage) return;
 
       const uri = normalizeStableUri(media.url);
-      if (!uri || prefetchedImageUrisRef.current.has(uri)) return;
+      const cacheKey = normalizeStableUri(media.fileId) ?? uri;
+      if (!cacheKey || prefetchedImageUrisRef.current.has(cacheKey)) return;
 
-      prefetchedImageUrisRef.current.add(uri);
-      void Image.prefetch(uri).catch(() => {
-        prefetchedImageUrisRef.current.delete(uri);
+      prefetchedImageUrisRef.current.add(cacheKey);
+      void prefetchResolvedImageAsset({ src: uri, fileId: media.fileId }).then((prefetched) => {
+        if (!prefetched) {
+          prefetchedImageUrisRef.current.delete(cacheKey);
+        }
+      }).catch(() => {
+        prefetchedImageUrisRef.current.delete(cacheKey);
       });
     });
   }, []);
@@ -996,10 +947,8 @@ export default function HomeScreen() {
         const realIndex = entry?.realIndex ?? items.findIndex((candidate) => candidate.collectionId === collectionId);
         if (realIndex < 0) return;
 
-        void hydrateCollectionMedia(items[realIndex], { includeFirstImageInPrefetch: false });
-
-        for (let offset = 1; offset <= 2; offset += 1) {
-          const nextIndex = feedLoopEnabled ? (realIndex + offset) % items.length : realIndex + offset;
+        for (let offset = -1; offset <= 2; offset += 1) {
+          const nextIndex = feedLoopEnabled ? (realIndex + offset + items.length) % items.length : realIndex + offset;
           if (nextIndex < 0 || nextIndex >= items.length) continue;
           void hydrateCollectionMedia(items[nextIndex], { includeFirstImageInPrefetch: true });
         }
@@ -1016,16 +965,32 @@ export default function HomeScreen() {
         const realIndex = entry?.realIndex ?? items.findIndex((candidate) => candidate.collectionId === collectionId);
         if (realIndex < 0) return;
 
-        void hydrateCollectionMedia(items[realIndex], { includeFirstImageInPrefetch: false });
-
-        for (let offset = 1; offset <= 2; offset += 1) {
-          const nextIndex = feedLoopEnabled ? (realIndex + offset) % items.length : realIndex + offset;
+        for (let offset = -1; offset <= 2; offset += 1) {
+          const nextIndex = feedLoopEnabled ? (realIndex + offset + items.length) % items.length : realIndex + offset;
           if (nextIndex < 0 || nextIndex >= items.length) continue;
           void hydrateCollectionMedia(items[nextIndex], { includeFirstImageInPrefetch: true });
         }
       });
     };
   }, [feedLoopEnabled, hydrateCollectionMedia, items]);
+
+  useEffect(() => {
+    if (!items.length) return;
+
+    for (let offset = -1; offset <= 2; offset += 1) {
+      const nextIndex = feedLoopEnabled
+        ? (activePageIndex + offset + items.length) % items.length
+        : activePageIndex + offset;
+      if (nextIndex < 0 || nextIndex >= items.length) continue;
+
+      const item = items[nextIndex];
+      const fallbackMediaItems = fallbackMediaByCollection[item.collectionId] ?? [];
+      prefetchMediaItems(collectionMediaMapRef.current[item.collectionId] ?? fallbackMediaItems, {
+        includeFirstImage: true,
+      });
+      void hydrateCollectionMedia(item, { includeFirstImageInPrefetch: true });
+    }
+  }, [activePageIndex, fallbackMediaByCollection, feedLoopEnabled, hydrateCollectionMedia, items, prefetchMediaItems]);
 
   const openCommentsSheet = useCallback((item: MarketItem) => {
     if (!item.collectionId) return;
@@ -1260,13 +1225,8 @@ export default function HomeScreen() {
     }, [loadPatchedBrands]),
   );
 
-  const onReelLayout = useCallback((e: LayoutChangeEvent) => {
-    const h = Math.floor(e.nativeEvent.layout.height);
-    if (h > 0) setReelHeight(h);
-  }, []);
-
   return (
-    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: 'transparent', borderRadius: 28, overflow: 'hidden' }]}>
+    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: 'transparent' }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} translucent backgroundColor="transparent" />
 
       {!loading ? (
@@ -1315,7 +1275,7 @@ export default function HomeScreen() {
 
                 <View style={styles.headerRightGroup}>
                 <Pressable
-                  onPress={() => { /* TODO: navigate to search */ }}
+                  onPress={() => { router.push('/search' as any); }}
                   style={({ pressed }) => [
                     styles.headerIconButton,
                     { backgroundColor: headerControlSurface, borderColor: 'transparent', borderWidth: 0 },
@@ -1355,7 +1315,7 @@ export default function HomeScreen() {
           <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? 'all')} />
         </ScrollView>
       ) : (
-        <View style={styles.reelWrap} onLayout={onReelLayout}>
+        <View style={styles.reelWrap}>
           <FlatList
             ref={feedListRef}
             key={`market-feed-${pageHeight}-${feedLoopEnabled ? 'loop' : 'linear'}`}
@@ -1369,7 +1329,7 @@ export default function HomeScreen() {
             getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
             decelerationRate="fast"
             directionalLockEnabled
-            nestedScrollEnabled
+            nestedScrollEnabled={false}
             scrollEventThrottle={16}
             bounces={false}
             overScrollMode="never"
@@ -1380,7 +1340,7 @@ export default function HomeScreen() {
             scrollEnabled={!commentsTarget}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            style={{ backgroundColor: 'transparent', borderRadius: 28, overflow: 'hidden' }}
+            style={{ backgroundColor: 'transparent' }}
             viewabilityConfig={viewabilityConfigRef.current}
             onViewableItemsChanged={onViewableItemsChanged.current}
             onMomentumScrollEnd={(e) => {
@@ -1389,14 +1349,23 @@ export default function HomeScreen() {
                 Math.min(feedItems.length - 1, Math.round(e.nativeEvent.contentOffset.y / pageHeight)),
               );
 
+              if (feedTeleportingRef.current) {
+                feedTeleportingRef.current = false;
+                return;
+              }
+
               if (feedLoopEnabled) {
                 // Landed on tail ghost (last item in list) — teleport to real first
                 if (rawIndex === feedItems.length - 1) {
                   // Real first item is at index 1 (after head ghost)
                   const targetOffset = feedLoopHeadOffset * pageHeight;
+                  feedTeleportingRef.current = true;
                   feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
                   setActivePageIndex(0);
                   hideMeta();
+                  requestAnimationFrame(() => {
+                    feedTeleportingRef.current = false;
+                  });
                   return;
                 }
 
@@ -1404,9 +1373,13 @@ export default function HomeScreen() {
                 if (rawIndex === 0) {
                   const realLastIndex = items.length; // items.length because head ghost shifts by 1
                   const targetOffset = realLastIndex * pageHeight;
+                  feedTeleportingRef.current = true;
                   feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
                   setActivePageIndex(items.length - 1);
                   hideMeta();
+                  requestAnimationFrame(() => {
+                    feedTeleportingRef.current = false;
+                  });
                   return;
                 }
 
@@ -1464,6 +1437,7 @@ export default function HomeScreen() {
                   <FeedMediaCarousel
                     mediaItems={mediaItems}
                     activeIndex={activeMediaIndex}
+                    onTap={toggleMeta}
                     onActiveIndexChange={(nextIndex) => {
                       setActiveMediaIndexByCollection((prev) => {
                         if (prev[item.collectionId] === nextIndex) return prev;
@@ -1472,10 +1446,6 @@ export default function HomeScreen() {
                           [item.collectionId]: nextIndex,
                         };
                       });
-                    }}
-                    onTap={toggleMeta}
-                    onDoubleTap={() => {
-                      void handleThreadPress(currentMediaId, item.collectionId, isThreaded, threadCountRaw);
                     }}
                   />
 
@@ -1533,8 +1503,28 @@ export default function HomeScreen() {
                   </View>
 
                   {/* Meta card — hidden by default, tap anywhere to reveal */}
-                  <Animated.View style={[styles.meta, { bottom: bottomClearance, opacity: metaOpacity }]} pointerEvents={metaVisible ? 'box-none' : 'none'}>
-                    <View style={styles.metaCard}>
+                  <Animated.View
+                    style={[
+                      styles.meta,
+                      {
+                        bottom: bottomClearance,
+                        opacity: metaOpacity,
+                        transform: [{ translateY: metaTranslateY }],
+                      },
+                    ]}
+                    pointerEvents={metaVisible ? 'box-none' : 'none'}
+                  >
+                    <BlurView
+                      tint={scheme === 'dark' ? 'dark' : 'light'}
+                      intensity={24}
+                      style={[
+                        styles.metaCard,
+                        {
+                          backgroundColor: scheme === 'dark' ? 'rgba(18, 24, 38, 0.72)' : 'rgba(255, 255, 255, 0.72)',
+                          borderColor: scheme === 'dark' ? 'rgba(255,255,255,0.16)' : 'rgba(15,23,42,0.14)',
+                        },
+                      ]}
+                    >
                       <View style={styles.brandLine}>
                         <View style={styles.brandTextWrap}>
                           <View style={styles.brandNameRow}>
@@ -1564,7 +1554,7 @@ export default function HomeScreen() {
                           Original Audio
                         </AppText>
                       </View>
-                    </View>
+                    </BlurView>
                   </Animated.View>
                 </View>
               );
@@ -1701,8 +1691,6 @@ const styles = StyleSheet.create({
   },
   reelWrap: {
     flex: 1,
-    borderRadius: 28,
-    overflow: 'hidden',
   },
   page: {
     width: '100%',
@@ -2000,12 +1988,11 @@ const styles = StyleSheet.create({
     right: 80,
   },
   metaCard: {
-    backgroundColor: '#121826',
-    padding: 14,
+    padding: 12,
     borderRadius: tokens.radius.lg,
-    gap: 10,
+    gap: 8,
     borderWidth: 1,
-    borderColor: '#273244',
+    overflow: 'hidden',
   },
   brandLine: {
     flexDirection: 'row',

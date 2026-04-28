@@ -44,6 +44,8 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
           styles.base,
           isSwatch && styles.swatchBase,
           isNav && styles.navBase,
+          isNav && selected && styles.navSelected,
+          isNav && !selected && styles.navInactive,
           {
             backgroundColor: isSwatch
               ? selected ? theme.colors.primarySoft : 'transparent'
@@ -70,10 +72,9 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
         ) : (
           <View style={styles.labelWrap}>
             <AppText
-              variant="smallBold"
-              tone={isNav ? (selected ? 'primary' : 'secondary') : selected ? 'inverse' : 'secondary'}
+              variant={isNav ? (selected ? 'captionBold' : 'captionRegular') : 'smallBold'}
+              tone={isNav ? (selected ? 'primary' : 'default') : selected ? 'inverse' : 'secondary'}
               numberOfLines={1}
-              ellipsizeMode="tail"
             >
               {label}
             </AppText>
@@ -100,12 +101,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   navBase: {
-    minHeight: 32,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    minHeight: 28,
+    paddingHorizontal: 6,
+    paddingVertical: 0,
     borderWidth: 0,
     borderRadius: tokens.radius.full,
     flexShrink: 0,
+  },
+  navSelected: {
+    minHeight: 30,
+    paddingHorizontal: 8,
+  },
+  navInactive: {
+    backgroundColor: 'transparent',
   },
   swatch: {
     width: 32,

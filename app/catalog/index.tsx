@@ -73,10 +73,11 @@ const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => 
 // ─────────────────────────────────────────────────────────────
 
 export default function CatalogScreen() {
-  const { brandId: routeBrandId, tab: routeTabParam, visibility: routeVisibilityParam } = useLocalSearchParams<{
+  const { brandId: routeBrandId, tab: routeTabParam, visibility: routeVisibilityParam, productId: routeProductIdParam } = useLocalSearchParams<{
     brandId?: string;
     tab?: string | string[];
     visibility?: string | string[];
+    productId?: string | string[];
   }>();
   const { theme, scheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -86,6 +87,7 @@ export default function CatalogScreen() {
 
   const routeTab = Array.isArray(routeTabParam) ? routeTabParam[0] : routeTabParam;
   const routeVisibility = Array.isArray(routeVisibilityParam) ? routeVisibilityParam[0] : routeVisibilityParam;
+  const routeProductId = Array.isArray(routeProductIdParam) ? routeProductIdParam[0] : routeProductIdParam;
   const normalizeTab = (value?: string): TabType => {
     const key = String(value ?? '').trim().toLowerCase();
     if (key === 'shop' || key === 'store') return 'Shop';
@@ -216,6 +218,12 @@ export default function CatalogScreen() {
   useEffect(() => {
     setActiveTab(normalizeTab(routeTab));
   }, [routeTab]);
+
+  useEffect(() => {
+    if (routeProductId) {
+      setActiveTab('Shop');
+    }
+  }, [routeProductId]);
 
   useEffect(() => {
     if (!routeVisibility) return;
@@ -530,6 +538,7 @@ export default function CatalogScreen() {
                 brandId={targetBrandId}
                 isOwner={isOwner}
                 containerWidth={containerWidth}
+                initialProductId={routeProductId ?? null}
               />
             ) : (
               <View style={styles.tabContent} />
@@ -560,7 +569,7 @@ export default function CatalogScreen() {
             icon: '🗂️',
             title: 'New Design',
             description: 'Upload media, configure details, preview, then publish.',
-            onPress: () => router.push('/catalog/create-design/media'),
+            onPress: () => router.push('/catalog/create-design'),
           },
         ]}
       />

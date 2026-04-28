@@ -18,7 +18,7 @@ import {
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
 
-const TAB_BAR_HEIGHT = 62;
+const TAB_BAR_HEIGHT = 64;
 const TAB_BAR_RADIUS = TAB_BAR_HEIGHT / 2;
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
@@ -38,7 +38,12 @@ function TabIcon({
     styles.tabChip,
     focused
       ? {
-          backgroundColor: theme.colors.primarySoft,
+          backgroundColor: theme.colors.primary,
+          shadowColor: theme.colors.primary,
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.26,
+          shadowRadius: 14,
+          elevation: 8,
         }
       : styles.tabChipInactive,
   ];
@@ -55,9 +60,8 @@ function TabIcon({
             <View style={styles.tabLabelWrap}>
               <AppText
                 variant="captionBold"
-                tone={focused ? 'primary' : 'secondary'}
+                tone={focused ? 'inverse' : 'secondary'}
                 numberOfLines={1}
-                ellipsizeMode="clip"
                 style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
               >
                 {label}
@@ -96,7 +100,8 @@ export default function TabLayout() {
   const active = theme.colors.primary;
   const inactive = theme.colors.textMuted;
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
-  const tabBarBottomOffset = Math.max(insets.bottom - 6, 5);
+  const tabBarBottomOffset = Math.max(insets.bottom, 10);
+  const tabBarSideOffset = isBrand ? 20 : 28;
   const isRootTabPath =
     pathname === '/' ||
     pathname === '/discover' ||
@@ -234,7 +239,7 @@ export default function TabLayout() {
                   styles.tabBarGlassFill,
                   {
                     backgroundColor:
-                      scheme === 'dark' ? 'rgba(11, 15, 23, 0.82)' : 'rgba(255, 255, 255, 0.86)',
+                      scheme === 'dark' ? 'rgba(11, 15, 23, 0.88)' : 'rgba(255, 255, 255, 0.9)',
                     borderColor: theme.colors.border,
                     borderRadius: TAB_BAR_RADIUS,
                   },
@@ -244,9 +249,11 @@ export default function TabLayout() {
           ),
           tabBarStyle: {
             position: 'absolute',
-            left: 38,
-            right: 38,
+            left: tabBarSideOffset,
+            right: tabBarSideOffset,
             bottom: tabBarBottomOffset,
+            maxWidth: isBrand ? 360 : 420,
+            alignSelf: 'center',
             backgroundColor: 'transparent',
             borderTopWidth: 0,
             elevation: 10,
@@ -257,14 +264,15 @@ export default function TabLayout() {
             height: TAB_BAR_HEIGHT,
             paddingTop: 0,
             paddingBottom: 0,
-            paddingHorizontal: 6,
-            overflow: 'hidden',
+            paddingHorizontal: isBrand ? 6 : 10,
+            overflow: 'visible',
             borderRadius: TAB_BAR_RADIUS,
             zIndex: 100,
           },
           tabBarItemStyle: {
             flex: 1,
-            paddingHorizontal: 1,
+            minWidth: isBrand ? 60 : 70,
+            paddingHorizontal: 0,
             paddingVertical: 0,
             alignItems: 'center',
             justifyContent: 'center',
@@ -389,16 +397,16 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 0,
+    minWidth: 60,
   },
   tabChip: {
     width: 'auto',
     maxWidth: '100%',
-    minWidth: 0,
-    height: 38,
-    borderRadius: 19,
+    minWidth: 60,
+    height: 44,
+    borderRadius: 22,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
@@ -416,12 +424,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
     height: '100%',
-    minWidth: 0,
+    minWidth: 58,
   },
   tabGlyphStack: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 0,
+    gap: 1,
   },
   tabEmojiWrap: {
     height: 20,
@@ -429,7 +437,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabLabelInactive: {
-    opacity: 1,
+    opacity: 0.9,
     textAlign: 'center',
     flexShrink: 0,
   },
@@ -442,7 +450,7 @@ const styles = StyleSheet.create({
     minHeight: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
+    minWidth: 48,
   },
   badgeWrap: {
     position: 'absolute',

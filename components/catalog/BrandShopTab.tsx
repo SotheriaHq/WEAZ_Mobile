@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -256,9 +256,10 @@ interface BrandShopTabProps {
   brandId?: string;
   isOwner?: boolean;
   containerWidth: number;
+  initialProductId?: string | null;
 }
 
-export function BrandShopTab({ brandId, isOwner = false, containerWidth }: BrandShopTabProps) {
+export function BrandShopTab({ brandId, isOwner = false, containerWidth, initialProductId }: BrandShopTabProps) {
   const { scheme, theme } = useTheme();
   const { status, user } = useAuth();
   const requireAuth = useAuthAction();
@@ -291,6 +292,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth }: Brand
 
   const [measurementPrompt, setMeasurementPrompt] = useState<MeasurementPromptState | null>(null);
   const [customSubmitBusy, setCustomSubmitBusy] = useState(false);
+  const openedInitialProductIdRef = useRef<string | null>(null);
 
   const CARD_GAP = 10;
   const SIDE_PADDING = 16;
@@ -580,6 +582,41 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth }: Brand
     setSelectedSize(null);
     setSelectedColor(null);
   }, []);
+
+  useEffect(() => {
+    if (!initialProductId || openedInitialProductIdRef.current === initialProductId) {
+      return;
+    }
+
+    const matchingProduct = products.find((product) => product.id === initialProductId);
+    if (matchingProduct) {
+      openedInitialProductIdRef.current = initialProductId;
+      void openProductDetail(matchingProduct);
+      return;
+    }
+
+    if (!brandId || loading) {
+      return;
+    }
+
+    let cancelled = false;
+    openedInitialProductIdRef.current = initialProductId;
+
+    void MobileStoreApi.getProductById(initialProductId)
+      .then((product) => {
+        if (cancelled) return;
+        void openProductDetail(product);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          openedInitialProductIdRef.current = null;
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [brandId, initialProductId, loading, openProductDetail, products]);
 
   const ensureAuth = useCallback(
     (action: () => Promise<void>, message: string) => {

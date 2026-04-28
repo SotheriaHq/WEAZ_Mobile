@@ -11,9 +11,8 @@ export default function CreateDesignFlowLayout() {
     <DesignEditorProvider designId={designId}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="media" />
-        <Stack.Screen name="details" />
-        <Stack.Screen name="review" />
+        <Stack.Screen name="composer" />
+        <Stack.Screen name="preview" />
       </Stack>
     </DesignEditorProvider>
   );

@@ -53,6 +53,7 @@ export function CatalogCardSurface({
     enabled: Boolean(mediaSrc || mediaFileId),
   });
   const aspectRatio = useMediaAspectRatio(resolvedUri, mediaAspectRatio);
+  const isInteractive = Boolean(onPress) && !disabled;
 
   const animateTo = useCallback(
     (value: number) => {
@@ -76,46 +77,81 @@ export function CatalogCardSurface({
         },
       ]}
     >
-      <Pressable
-        disabled={disabled}
-        onPress={onPress}
-        onPressIn={() => {
-          if (!disabled && onPress) {
-            animateTo(0.985);
-          }
-        }}
-        onPressOut={() => animateTo(1)}
-        style={[
-          styles.card,
-          {
-            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.colors.surface,
-            borderColor: theme.colors.border,
-          },
-          style,
-        ]}
-      >
-        <View style={styles.mediaClip}>
-          <View style={[styles.mediaWrap, { aspectRatio }]}>
-            {resolvedUri ? (
-              <StableImage
-                uri={resolvedUri}
-                resizeMode={mediaResizeMode}
-                containerStyle={styles.mediaFill}
-                imageStyle={styles.mediaFill}
-                fadeDuration={150}
-              />
-            ) : (
-              fallback
-            )}
-            {topOverlay ? (
-              <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-                {topOverlay}
-              </View>
-            ) : null}
+      {isInteractive ? (
+        <Pressable
+          disabled={disabled}
+          onPress={onPress}
+          onPressIn={() => {
+            if (!disabled && onPress) {
+              animateTo(0.985);
+            }
+          }}
+          onPressOut={() => animateTo(1)}
+          style={[
+            styles.card,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.colors.surface,
+              borderColor: theme.colors.border,
+            },
+            style,
+          ]}
+        >
+          <View style={styles.mediaClip}>
+            <View style={[styles.mediaWrap, { aspectRatio }]}>
+              {resolvedUri ? (
+                <StableImage
+                  uri={resolvedUri}
+                  resizeMode={mediaResizeMode}
+                  containerStyle={styles.mediaFill}
+                  imageStyle={styles.mediaFill}
+                  fadeDuration={150}
+                />
+              ) : (
+                fallback
+              )}
+              {topOverlay ? (
+                <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+                  {topOverlay}
+                </View>
+              ) : null}
+            </View>
           </View>
+          <View style={[styles.body, bodyStyle]}>{children}</View>
+        </Pressable>
+      ) : (
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.colors.surface,
+              borderColor: theme.colors.border,
+            },
+            style,
+          ]}
+        >
+          <View style={styles.mediaClip}>
+            <View style={[styles.mediaWrap, { aspectRatio }]}>
+              {resolvedUri ? (
+                <StableImage
+                  uri={resolvedUri}
+                  resizeMode={mediaResizeMode}
+                  containerStyle={styles.mediaFill}
+                  imageStyle={styles.mediaFill}
+                  fadeDuration={150}
+                />
+              ) : (
+                fallback
+              )}
+              {topOverlay ? (
+                <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+                  {topOverlay}
+                </View>
+              ) : null}
+            </View>
+          </View>
+          <View style={[styles.body, bodyStyle]}>{children}</View>
         </View>
-        <View style={[styles.body, bodyStyle]}>{children}</View>
-      </Pressable>
+      )}
     </Animated.View>
   );
 }

@@ -30,6 +30,7 @@ type Props = {
   subtitle?: string;
   children: React.ReactNode;
   onClose: () => void;
+  showCloseButton?: boolean;
   onDone?: () => void;
   doneLabel?: string;
   doneDisabled?: boolean;
@@ -45,6 +46,7 @@ export function AppBottomSheet({
   subtitle,
   children,
   onClose,
+  showCloseButton = false,
   onDone,
   doneLabel = 'Done',
   doneDisabled,
@@ -118,17 +120,24 @@ export function AppBottomSheet({
                   {title ? <AppText variant="title">{title}</AppText> : null}
                   {subtitle ? <AppText variant="body" tone="muted">{subtitle}</AppText> : null}
                 </View>
-                {onDone ? (
-                  <Button
-                    title={doneLabel}
-                    size="sm"
-                    variant="secondary"
-                    onPress={onDone}
-                    disabled={doneDisabled}
-                    loading={loading}
-                    style={styles.doneButton}
-                  />
-                ) : null}
+                <View style={styles.headerActions}>
+                  {onDone ? (
+                    <Button
+                      title={doneLabel}
+                      size="sm"
+                      variant="secondary"
+                      onPress={onDone}
+                      disabled={doneDisabled}
+                      loading={loading}
+                      style={styles.doneButton}
+                    />
+                  ) : null}
+                  {showCloseButton ? (
+                    <Pressable onPress={onClose} style={({ pressed }) => [styles.closeButton, pressed ? styles.pressed : null]}>
+                      <AppText variant="subtitle" tone="muted">✕</AppText>
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
             ) : null}
 
@@ -176,8 +185,23 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: tokens.spacing.xs,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
   doneButton: {
     minWidth: 78,
+  },
+  closeButton: {
+    width: 38,
+    height: 38,
+    borderRadius: tokens.radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.72,
   },
   bodyContent: {
     gap: tokens.spacing.md,
