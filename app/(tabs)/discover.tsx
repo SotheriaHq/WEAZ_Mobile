@@ -261,7 +261,7 @@ export default function DiscoverScreen() {
   const cardBg = isDark ? theme.colors.surfaceAlt : theme.colors.surface;
   const cardBorder = theme.colors.border;
   const pillBg = isDark ? theme.colors.surfaceAlt : theme.colors.surfaceAlt;
-  const headerControlSurface = scheme === 'dark' ? 'rgba(0, 0, 0, 0.16)' : 'rgba(255, 255, 255, 0.12)';
+  const headerControlSurface = scheme === 'dark' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.06)';
   const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom, [insets.bottom]);
 
   const renderItem = useCallback(
@@ -472,15 +472,15 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   headerRow: {
-    minHeight: 44,
+    minHeight: 36,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   headerLogoButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
@@ -488,15 +488,15 @@ const styles = StyleSheet.create({
   headerCenterGroup: {
     flex: 1,
     overflow: 'hidden',
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
   },
   headerChipsScroll: {
     flexGrow: 0,
   },
   headerIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,

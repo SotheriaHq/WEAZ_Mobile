@@ -8,7 +8,7 @@ import { AppText } from '@/components/ui/AppText';
 import { ProfileMenuDropup } from '@/components/navigation/ProfileMenuDropup';
 import { useAuth } from '@/src/auth/AuthContext';
 import { NotificationsApi } from '@/src/api/NotificationsApi';
-import { GLASS, LAYOUT, tokens } from '@/src/styles/tokens';
+import { GLASS } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import {
@@ -18,7 +18,8 @@ import {
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
 
-const TAB_BAR_HEIGHT = LAYOUT.TAB_BAR_HEIGHT;
+const TAB_BAR_HEIGHT = 62;
+const TAB_BAR_RADIUS = TAB_BAR_HEIGHT / 2;
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
 function TabIcon({
@@ -95,7 +96,7 @@ export default function TabLayout() {
   const active = theme.colors.primary;
   const inactive = theme.colors.textMuted;
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
-  const tabBarBottomOffset = Math.max(insets.bottom - 4, 6);
+  const tabBarBottomOffset = Math.max(insets.bottom - 6, 5);
   const isRootTabPath =
     pathname === '/' ||
     pathname === '/discover' ||
@@ -235,6 +236,7 @@ export default function TabLayout() {
                     backgroundColor:
                       scheme === 'dark' ? 'rgba(11, 15, 23, 0.82)' : 'rgba(255, 255, 255, 0.86)',
                     borderColor: theme.colors.border,
+                    borderRadius: TAB_BAR_RADIUS,
                   },
                 ]}
               />
@@ -242,8 +244,8 @@ export default function TabLayout() {
           ),
           tabBarStyle: {
             position: 'absolute',
-            left: 26,
-            right: 26,
+            left: 38,
+            right: 38,
             bottom: tabBarBottomOffset,
             backgroundColor: 'transparent',
             borderTopWidth: 0,
@@ -255,14 +257,14 @@ export default function TabLayout() {
             height: TAB_BAR_HEIGHT,
             paddingTop: 0,
             paddingBottom: 0,
-            paddingHorizontal: 4,
+            paddingHorizontal: 6,
             overflow: 'hidden',
-            borderRadius: 34,
+            borderRadius: TAB_BAR_RADIUS,
             zIndex: 100,
           },
           tabBarItemStyle: {
             flex: 1,
-            paddingHorizontal: 0,
+            paddingHorizontal: 1,
             paddingVertical: 0,
             alignItems: 'center',
             justifyContent: 'center',
@@ -375,11 +377,11 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   tabBarBg: {
     flex: 1,
-    borderRadius: 34,
+    borderRadius: TAB_BAR_RADIUS,
     overflow: 'hidden',
   },
   tabBarGlassFill: {
-    borderRadius: 34,
+    borderRadius: TAB_BAR_RADIUS,
     borderWidth: StyleSheet.hairlineWidth,
   },
   tabIconWrap: {
@@ -391,12 +393,12 @@ const styles = StyleSheet.create({
   },
   tabChip: {
     width: 'auto',
-    maxWidth: 60,
-    minWidth: 56,
-    minHeight: 42,
-    borderRadius: 26,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    maxWidth: '100%',
+    minWidth: 0,
+    height: 38,
+    borderRadius: 19,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
@@ -405,7 +407,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   tabEmoji: {
-    lineHeight: 22,
+    lineHeight: 20,
     textAlign: 'center',
   },
   tabGlyphWrap: {
@@ -419,10 +421,10 @@ const styles = StyleSheet.create({
   tabGlyphStack: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 1,
+    gap: 0,
   },
   tabEmojiWrap: {
-    height: 22,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -437,7 +439,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   tabLabelWrap: {
-    minHeight: 14,
+    minHeight: 12,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',

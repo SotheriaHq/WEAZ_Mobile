@@ -101,8 +101,8 @@ const styles = StyleSheet.create({
   },
   navBase: {
     minHeight: 32,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderWidth: 0,
     borderRadius: tokens.radius.full,
     flexShrink: 0,

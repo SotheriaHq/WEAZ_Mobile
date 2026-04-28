@@ -62,6 +62,13 @@ type FeedCarouselMedia = FeedViewerMedia & {
   virtualKey: string;
 };
 
+type FeedListEntry = {
+  item: MarketItem;
+  listKey: string;
+  realIndex: number;
+  isGhost: boolean;
+};
+
 const toFeedMediaType = (rawType?: string | null): 'image' | 'video' => {
   const normalized = String(rawType ?? '').toLowerCase();
   return normalized.includes('video') ? 'video' : 'image';
@@ -551,7 +558,7 @@ export default function HomeScreen() {
   const requireAuth = useAuthAction();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
-  const feedListRef = useRef<FlatList<MarketItem> | null>(null);
+  const feedListRef = useRef<FlatList<FeedListEntry> | null>(null);
   const [reelHeight, setReelHeight] = useState<number | null>(null);
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>([{ id: 'all', label: 'All', tag: null }]);
   const [selectedFilterId, setSelectedFilterId] = useState('all');
@@ -637,7 +644,7 @@ export default function HomeScreen() {
   );
   const visibleFilterChips = useMemo(() => filterChips.filter((chip) => chip.id !== 'all'), [filterChips]);
   const activeTag = activeFilter?.tag ?? null;
-  const feedLoopEnabled = false;
+  const feedLoopEnabled = !hasNextPage && items.length > 1;
   const fallbackMediaByCollection = useMemo(() => {
     const next: Record<string, FeedViewerMedia[]> = {};
     items.forEach((item) => {
@@ -663,18 +670,59 @@ export default function HomeScreen() {
    */
   const canPatchBrands = user?.type !== 'BRAND';
 
-  const feedItems = items;
-  const feedLoopHeadOffset = 0;
+  const feedItems = useMemo<FeedListEntry[]>(() => {
+    const realEntries = items.map((item, realIndex) => ({
+      item,
+      realIndex,
+      listKey: `real-${item.id}-${realIndex}`,
+      isGhost: false,
+    }));
+
+    if (!feedLoopEnabled || realEntries.length < 2) {
+      return realEntries;
+    }
+
+    const firstEntry = realEntries[0];
+    const lastEntry = realEntries[realEntries.length - 1];
+
+    return [
+      {
+        ...lastEntry,
+        listKey: `ghost-head-${lastEntry.item.id}-${lastEntry.realIndex}`,
+        isGhost: true,
+      },
+      ...realEntries,
+      {
+        ...firstEntry,
+        listKey: `ghost-tail-${firstEntry.item.id}-${firstEntry.realIndex}`,
+        isGhost: true,
+      },
+    ];
+  }, [feedLoopEnabled, items]);
+  const feedLoopHeadOffset = feedLoopEnabled ? 1 : 0;
   const overlayScrollPadding = 0;
   const bottomClearance = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 18, [insets.bottom]);
   const topOverlayOffset = 0;
-  const headerControlSurface = scheme === 'dark' ? 'rgba(0, 0, 0, 0.16)' : 'rgba(255, 255, 255, 0.12)';
+  const headerControlSurface = scheme === 'dark' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.06)';
 
   const resetMetaImmediately = useCallback(() => {
     setMetaVisible(false);
     metaOpacity.setValue(0);
     metaTranslateY.setValue(16);
   }, [metaOpacity, metaTranslateY]);
+
+  useEffect(() => {
+    if (!feedLoopEnabled || pageHeight <= 1 || feedItems.length < 3) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      feedListRef.current?.scrollToOffset({
+        offset: feedLoopHeadOffset * pageHeight,
+        animated: false,
+      });
+    });
+  }, [feedItems.length, feedLoopEnabled, feedLoopHeadOffset, pageHeight, activeTag]);
 
   useEffect(() => {
     collectionMediaMapRef.current = collectionMediaMap;
@@ -940,18 +988,18 @@ export default function HomeScreen() {
   });
 
   const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: Array<{ item: MarketItem | null }> }) => {
-      viewableItems.forEach(({ item }) => {
-        const collectionId = item?.collectionId?.trim();
+    ({ viewableItems }: { viewableItems: Array<{ item: FeedListEntry | null }> }) => {
+      viewableItems.forEach(({ item: entry }) => {
+        const collectionId = entry?.item.collectionId?.trim();
         if (!collectionId) return;
 
-        const realIndex = items.findIndex((entry) => entry.collectionId === collectionId);
+        const realIndex = entry?.realIndex ?? items.findIndex((candidate) => candidate.collectionId === collectionId);
         if (realIndex < 0) return;
 
         void hydrateCollectionMedia(items[realIndex], { includeFirstImageInPrefetch: false });
 
         for (let offset = 1; offset <= 2; offset += 1) {
-          const nextIndex = realIndex + offset;
+          const nextIndex = feedLoopEnabled ? (realIndex + offset) % items.length : realIndex + offset;
           if (nextIndex < 0 || nextIndex >= items.length) continue;
           void hydrateCollectionMedia(items[nextIndex], { includeFirstImageInPrefetch: true });
         }
@@ -960,24 +1008,24 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    onViewableItemsChanged.current = ({ viewableItems }: { viewableItems: Array<{ item: MarketItem | null }> }) => {
-      viewableItems.forEach(({ item }) => {
-        const collectionId = item?.collectionId?.trim();
+    onViewableItemsChanged.current = ({ viewableItems }: { viewableItems: Array<{ item: FeedListEntry | null }> }) => {
+      viewableItems.forEach(({ item: entry }) => {
+        const collectionId = entry?.item.collectionId?.trim();
         if (!collectionId) return;
 
-        const realIndex = items.findIndex((entry) => entry.collectionId === collectionId);
+        const realIndex = entry?.realIndex ?? items.findIndex((candidate) => candidate.collectionId === collectionId);
         if (realIndex < 0) return;
 
         void hydrateCollectionMedia(items[realIndex], { includeFirstImageInPrefetch: false });
 
         for (let offset = 1; offset <= 2; offset += 1) {
-          const nextIndex = realIndex + offset;
+          const nextIndex = feedLoopEnabled ? (realIndex + offset) % items.length : realIndex + offset;
           if (nextIndex < 0 || nextIndex >= items.length) continue;
           void hydrateCollectionMedia(items[nextIndex], { includeFirstImageInPrefetch: true });
         }
       });
     };
-  }, [hydrateCollectionMedia, items]);
+  }, [feedLoopEnabled, hydrateCollectionMedia, items]);
 
   const openCommentsSheet = useCallback((item: MarketItem) => {
     if (!item.collectionId) return;
@@ -1310,9 +1358,10 @@ export default function HomeScreen() {
         <View style={styles.reelWrap} onLayout={onReelLayout}>
           <FlatList
             ref={feedListRef}
-            key={`market-feed-${pageHeight}`}
-            data={items}
-            keyExtractor={(item) => item.id}
+            key={`market-feed-${pageHeight}-${feedLoopEnabled ? 'loop' : 'linear'}`}
+            data={feedItems}
+            keyExtractor={(entry) => entry.listKey}
+            initialScrollIndex={feedLoopHeadOffset}
             pagingEnabled
             snapToInterval={pageHeight}
             snapToAlignment="start"
@@ -1324,7 +1373,7 @@ export default function HomeScreen() {
             scrollEventThrottle={16}
             bounces={false}
             overScrollMode="never"
-            removeClippedSubviews
+            removeClippedSubviews={false}
             initialNumToRender={3}
             maxToRenderPerBatch={4}
             windowSize={5}
@@ -1337,7 +1386,7 @@ export default function HomeScreen() {
             onMomentumScrollEnd={(e) => {
               const rawIndex = Math.max(
                 0,
-                Math.min(items.length - 1, Math.round(e.nativeEvent.contentOffset.y / pageHeight)),
+                Math.min(feedItems.length - 1, Math.round(e.nativeEvent.contentOffset.y / pageHeight)),
               );
 
               if (feedLoopEnabled) {
@@ -1362,14 +1411,14 @@ export default function HomeScreen() {
                 }
 
                 // Normal item — rawIndex 1..N maps to real item 0..N-1
-                const realIndex = rawIndex - feedLoopHeadOffset;
+                const realIndex = feedItems[rawIndex]?.realIndex ?? 0;
                 setActivePageIndex(Math.min(realIndex, items.length - 1));
                 hideMeta();
                 return;
               }
 
               // Loop disabled (paginating or single item)
-              setActivePageIndex(rawIndex);
+              setActivePageIndex(feedItems[rawIndex]?.realIndex ?? rawIndex);
               hideMeta();
               if (rawIndex >= items.length - 1 && hasNextPage) {
                 void loadMore();
@@ -1382,7 +1431,8 @@ export default function HomeScreen() {
               }
             }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
-            renderItem={({ item }) => {
+            renderItem={({ item: entry }) => {
+              const item = entry.item;
               const brandName = item.brandName ?? item.username ?? 'Brand';
               const handle = item.username ? `@${item.username}` : '';
               const fallbackMediaItems = fallbackMediaByCollection[item.collectionId] ?? [];
@@ -1551,7 +1601,7 @@ const styles = StyleSheet.create({
   headerCenterGroup: {
     flex: 1,
     overflow: 'hidden',
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
   },
   headerRightGroup: {
     flexDirection: 'row',
@@ -1569,13 +1619,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 44,
-    gap: 8,
+    minHeight: 36,
+    gap: 6,
   },
   headerLogoButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
@@ -1586,9 +1636,9 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
   headerIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
