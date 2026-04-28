@@ -4,11 +4,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { BlurView } from 'expo-blur';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { GLASS, LAYOUT, tokens, type AppTheme } from '@/src/styles/tokens';
+import { LAYOUT, tokens, type AppTheme } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
 import { Chip } from '@/components/ui/Chip';
@@ -630,15 +629,14 @@ export default function HomeScreen() {
     } as any);
   }, []);
 
-  const fallbackPageHeight = useMemo(() => Math.max(500, Math.floor(windowHeight)), [windowHeight]);
-  const pageHeight = reelHeight ?? fallbackPageHeight;
+  const pageHeight = useMemo(() => Math.max(1, Math.round(reelHeight ?? windowHeight)), [reelHeight, windowHeight]);
 
   const activeFilter = useMemo(
     () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? { id: 'all', label: 'All', tag: null },
     [filterChips, selectedFilterId],
   );
   const activeTag = activeFilter?.tag ?? null;
-  const feedLoopEnabled = !hasNextPage && items.length > 1;
+  const feedLoopEnabled = false;
   const fallbackMediaByCollection = useMemo(() => {
     const next: Record<string, FeedViewerMedia[]> = {};
     items.forEach((item) => {
@@ -662,26 +660,13 @@ export default function HomeScreen() {
    * The teleport uses scrollToOffset({ animated: false }) SYNCHRONOUSLY inside
   * the same onMomentumScrollEnd handler — no RAF gap, no frame flash.
    */
-  const feedItems = useMemo(() => {
-    if (!feedLoopEnabled) {
-      return items;
-    }
-    const last = items[items.length - 1];
-    const first = items[0];
-    return [
-      { ...last, id: `${last.id}__ghost-head` },
-      ...items,
-      { ...first, id: `${first.id}__ghost-tail` },
-    ];
-  }, [feedLoopEnabled, items]);
-
-  // When loop is enabled, real items start at index 1 (after head ghost).
-  const feedLoopHeadOffset = feedLoopEnabled ? 1 : 0;
   const canPatchBrands = user?.type !== 'BRAND';
 
-  const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 32, [insets.bottom]);
+  const feedItems = items;
+  const feedLoopHeadOffset = 0;
+  const overlayScrollPadding = 0;
   const bottomClearance = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 18, [insets.bottom]);
-  const topOverlayOffset = useMemo(() => insets.top + 74, [insets.top]);
+  const topOverlayOffset = 0;
 
   const resetMetaImmediately = useCallback(() => {
     setMetaVisible(false);
@@ -958,10 +943,7 @@ export default function HomeScreen() {
         void hydrateCollectionMedia(items[realIndex], { includeFirstImageInPrefetch: false });
 
         for (let offset = 1; offset <= 2; offset += 1) {
-          const nextIndex = feedLoopEnabled
-            ? (realIndex + offset) % items.length
-            : realIndex + offset;
-
+          const nextIndex = realIndex + offset;
           if (nextIndex < 0 || nextIndex >= items.length) continue;
           void hydrateCollectionMedia(items[nextIndex], { includeFirstImageInPrefetch: true });
         }
@@ -981,16 +963,13 @@ export default function HomeScreen() {
         void hydrateCollectionMedia(items[realIndex], { includeFirstImageInPrefetch: false });
 
         for (let offset = 1; offset <= 2; offset += 1) {
-          const nextIndex = feedLoopEnabled
-            ? (realIndex + offset) % items.length
-            : realIndex + offset;
-
+          const nextIndex = realIndex + offset;
           if (nextIndex < 0 || nextIndex >= items.length) continue;
           void hydrateCollectionMedia(items[nextIndex], { includeFirstImageInPrefetch: true });
         }
       });
     };
-  }, [feedLoopEnabled, hydrateCollectionMedia, items]);
+  }, [hydrateCollectionMedia, items]);
 
   const openCommentsSheet = useCallback((item: MarketItem) => {
     if (!item.collectionId) return;
@@ -1245,38 +1224,15 @@ export default function HomeScreen() {
             ]}
             pointerEvents="box-none"
           >
-            <View
-              style={[
-                styles.headerShell,
-                {
-                  borderColor: theme.colors.border,
-                },
-              ]}
-            >
-              <BlurView
-                tint={scheme === 'dark' ? 'dark' : 'light'}
-                intensity={scheme === 'dark' ? GLASS.dark.blur : GLASS.light.blur}
-                style={StyleSheet.absoluteFillObject}
-              />
-              <View
-                style={[
-                  StyleSheet.absoluteFillObject,
-                  styles.headerGlassFill,
-                  {
-                    backgroundColor:
-                      scheme === 'dark' ? 'rgba(11, 15, 23, 0.72)' : 'rgba(255, 255, 255, 0.78)',
-                    borderColor: theme.colors.border,
-                  },
-                ]}
-              />
-              <View style={styles.headerRow} pointerEvents="box-none">
+            <View style={styles.headerRow} pointerEvents="box-none">
                 <View style={styles.headerLeftGroup}>
-                  <Pressable
-                    onPress={() => { router.push('/'); }}
-                    style={({ pressed }) => [
-                      styles.headerLogoButton,
-                      pressed && { opacity: 0.82 },
-                    ]}
+                <Pressable
+                  onPress={() => { router.push('/'); }}
+                  style={({ pressed }) => [
+                    styles.headerLogoButton,
+                    { backgroundColor: theme.colors.overlay, borderColor: theme.colors.border },
+                    pressed && { opacity: 0.82 },
+                  ]}
                     accessibilityRole="button"
                     accessibilityLabel="Go to home">
                     <ThreadlyLogo size={30} style={styles.brandLogo} />
@@ -1302,18 +1258,18 @@ export default function HomeScreen() {
                 </View>
 
                 <View style={styles.headerRightGroup}>
-                  <Pressable
-                    onPress={() => { /* TODO: navigate to search */ }}
-                    style={({ pressed }) => [
-                      styles.headerIconButton,
-                      pressed && { opacity: 0.8 },
-                    ]}
+                <Pressable
+                  onPress={() => { /* TODO: navigate to search */ }}
+                  style={({ pressed }) => [
+                    styles.headerIconButton,
+                    { backgroundColor: theme.colors.overlay, borderColor: theme.colors.border },
+                    pressed && { opacity: 0.8 },
+                  ]}
                     accessibilityRole="button"
                     accessibilityLabel="Search">
                     <AppText variant="subtitle" style={styles.headerEmoji}>🔍</AppText>
                   </Pressable>
                 </View>
-              </View>
             </View>
           </View>
         </>
@@ -1347,11 +1303,12 @@ export default function HomeScreen() {
           <FlatList
             ref={feedListRef}
             key={`market-feed-${pageHeight}`}
-            data={feedItems}
+            data={items}
             keyExtractor={(item) => item.id}
-            initialScrollIndex={feedLoopHeadOffset}
             pagingEnabled
             snapToInterval={pageHeight}
+            snapToAlignment="start"
+            disableIntervalMomentum
             getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
             decelerationRate="fast"
             directionalLockEnabled
@@ -1367,21 +1324,12 @@ export default function HomeScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             style={{ backgroundColor: 'transparent', borderRadius: 28, overflow: 'hidden' }}
-            contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
-            scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
-            contentContainerStyle={{
-              backgroundColor: 'transparent',
-              borderRadius: 28,
-              overflow: 'hidden',
-              paddingTop: topOverlayOffset,
-              paddingBottom: Platform.OS === 'android' ? overlayScrollPadding : 0,
-            }}
             viewabilityConfig={viewabilityConfigRef.current}
             onViewableItemsChanged={onViewableItemsChanged.current}
             onMomentumScrollEnd={(e) => {
               const rawIndex = Math.max(
                 0,
-                Math.min(feedItems.length - 1, Math.round(e.nativeEvent.contentOffset.y / pageHeight)),
+                Math.min(items.length - 1, Math.round(e.nativeEvent.contentOffset.y / pageHeight)),
               );
 
               if (feedLoopEnabled) {
@@ -1588,16 +1536,6 @@ const styles = StyleSheet.create({
     top: 0,
     zIndex: 20,
   },
-  headerShell: {
-    minHeight: 56,
-    borderRadius: 28,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  headerGlassFill: {
-    borderRadius: 28,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
   headerLeftGroup: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1623,8 +1561,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 56,
-    paddingHorizontal: 8,
+    minHeight: 44,
+    gap: 8,
   },
   headerLogoButton: {
     width: 40,
@@ -1632,7 +1570,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   brandLogo: {
     width: 30,
@@ -1645,7 +1583,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   headerEmoji: {
     textShadowColor: '#000000',

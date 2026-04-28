@@ -3,7 +3,6 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, Sty
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
-import { BlurView } from 'expo-blur';
 
 import { CatalogCardSurface } from '@/components/catalog/CatalogCardSurface';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
@@ -14,7 +13,7 @@ import { StableImage } from '@/components/ui/StableImage';
 import { AppText } from '@/components/ui/AppText';
 import { Skeleton, SkeletonAvatar, SkeletonText } from '@/components/ui/Skeleton';
 import { getMarketFeed, getMarketFilterChips, type MarketFilterChip } from '@/src/api/MarketApi';
-import { GLASS, LAYOUT, tokens } from '@/src/styles/tokens';
+import { LAYOUT, tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import type { MarketItem } from '@/src/types/market';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
@@ -256,7 +255,6 @@ export default function DiscoverScreen() {
   const cardBorder = theme.colors.border;
   const pillBg = isDark ? theme.colors.surfaceAlt : theme.colors.surfaceAlt;
   const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom, [insets.bottom]);
-  const topOverlayOffset = useMemo(() => insets.top + 74, [insets.top]);
 
   const renderItem = useCallback(
     ({ item }: { item: MarketItem }) => {
@@ -368,34 +366,14 @@ export default function DiscoverScreen() {
         ]}
         pointerEvents="box-none"
       >
-        <View
-          style={[
-            styles.headerShell,
-            {
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <BlurView
-            tint={scheme === 'dark' ? 'dark' : 'light'}
-            intensity={scheme === 'dark' ? GLASS.dark.blur : GLASS.light.blur}
-            style={StyleSheet.absoluteFillObject}
-          />
-          <View
-            style={[
-              StyleSheet.absoluteFillObject,
-              styles.headerGlassFill,
-              {
-                backgroundColor:
-                  scheme === 'dark' ? 'rgba(11, 15, 23, 0.72)' : 'rgba(255, 255, 255, 0.78)',
-                borderColor: theme.colors.border,
-              },
-            ]}
-          />
-          <View style={styles.headerRow}>
+        <View style={styles.headerRow}>
             <Pressable
               onPress={() => router.push('/')}
-              style={({ pressed }) => [styles.headerLogoButton, pressed && { opacity: 0.82 }]}
+              style={({ pressed }) => [
+                styles.headerLogoButton,
+                { backgroundColor: theme.colors.overlay, borderColor: theme.colors.border },
+                pressed && { opacity: 0.82 },
+              ]}
               accessibilityRole="button"
               accessibilityLabel="Go to home"
             >
@@ -423,13 +401,16 @@ export default function DiscoverScreen() {
 
             <Pressable
               onPress={() => { /* TODO: navigate to search */ }}
-              style={({ pressed }) => [styles.headerIconButton, pressed && { opacity: 0.8 }]}
+              style={({ pressed }) => [
+                styles.headerIconButton,
+                { backgroundColor: theme.colors.overlay, borderColor: theme.colors.border },
+                pressed && { opacity: 0.8 },
+              ]}
               accessibilityRole="button"
               accessibilityLabel="Search"
             >
               <AppText variant="subtitle" style={styles.headerEmoji}>🔍</AppText>
             </Pressable>
-          </View>
         </View>
       </View>
 
@@ -440,7 +421,7 @@ export default function DiscoverScreen() {
         showsVerticalScrollIndicator={false}
         contentInset={{ bottom: overlayScrollPadding }}
         scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
-        contentContainerStyle={[styles.content, { paddingTop: topOverlayOffset, paddingBottom: overlayScrollPadding }]}
+        contentContainerStyle={[styles.content, { paddingBottom: overlayScrollPadding }]}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListHeaderComponent={ListHeader}
         ListFooterComponent={
@@ -482,21 +463,11 @@ const styles = StyleSheet.create({
     right: 12,
     zIndex: 20,
   },
-  headerShell: {
-    minHeight: 56,
-    borderRadius: 28,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  headerGlassFill: {
-    borderRadius: 28,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
   headerRow: {
-    minHeight: 56,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    gap: 8,
   },
   headerLogoButton: {
     width: 40,
@@ -504,6 +475,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   headerCenterGroup: {
     flex: 1,
@@ -519,6 +491,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   headerEmoji: {
     textAlign: 'center',

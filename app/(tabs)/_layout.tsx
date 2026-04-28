@@ -38,7 +38,6 @@ function TabIcon({
     focused
       ? {
           backgroundColor: theme.colors.primarySoft,
-          borderColor: theme.colors.focusRing,
         }
       : styles.tabChipInactive,
   ];
@@ -50,10 +49,10 @@ function TabIcon({
             {emoji}
           </Text>
           <AppText
-            variant={focused ? 'smallBold' : 'captionBold'}
+            variant="captionBold"
             tone={focused ? 'primary' : 'secondary'}
             numberOfLines={1}
-            ellipsizeMode="tail"
+            ellipsizeMode="clip"
             style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
           >
             {label}
@@ -247,15 +246,17 @@ export default function TabLayout() {
             shadowOpacity: scheme === 'dark' ? 0.24 : 0.12,
             shadowRadius: 18,
             height: TAB_BAR_HEIGHT,
-            paddingTop: 6,
-            paddingBottom: 8,
+            paddingTop: 0,
+            paddingBottom: 0,
             overflow: 'hidden',
             borderRadius: 34,
             zIndex: 100,
           },
           tabBarItemStyle: {
             flex: 1,
-            paddingHorizontal: 2,
+            paddingHorizontal: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
           },
         }}
       >
@@ -373,45 +374,49 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   tabIconWrap: {
-    width: '100%',
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 64,
+    minWidth: 0,
   },
   tabChip: {
-    width: '100%',
-    minWidth: 64,
-    minHeight: 52,
+    width: 'auto',
+    maxWidth: '100%',
+    minWidth: 52,
+    minHeight: 48,
     borderRadius: 26,
-    paddingHorizontal: 6,
-    paddingVertical: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    gap: 1,
+    alignSelf: 'center',
   },
   tabChipInactive: {
     backgroundColor: 'transparent',
   },
   tabEmoji: {
-    lineHeight: 24,
+    lineHeight: 22,
+    textAlign: 'center',
   },
   tabGlyphWrap: {
     position: 'relative',
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    minHeight: 52,
-    minWidth: 64,
+    minHeight: 48,
+    minWidth: 0,
   },
   tabLabelInactive: {
     opacity: 1,
     textAlign: 'center',
+    flexShrink: 0,
   },
   tabLabelActive: {
     opacity: 1,
     textAlign: 'center',
+    flexShrink: 0,
   },
   badgeWrap: {
     position: 'absolute',

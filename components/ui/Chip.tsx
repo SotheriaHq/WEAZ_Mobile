@@ -48,7 +48,7 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
             backgroundColor: isSwatch
               ? selected ? theme.colors.primarySoft : 'transparent'
               : isNav
-                ? selected ? theme.colors.primarySoft : 'transparent'
+                ? selected ? theme.colors.primarySoft : theme.colors.overlay
                 : selected ? theme.colors.primary : theme.colors.surfaceAlt,
             borderColor: isNav ? 'transparent' : selected ? theme.colors.primary : theme.colors.border,
             opacity: disabled ? 0.48 : 1,
@@ -116,5 +116,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 0,
+    flexShrink: 0,
   },
 });
