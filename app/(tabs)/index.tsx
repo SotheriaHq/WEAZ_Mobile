@@ -1,0 +1,2056 @@
+﻿import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, FlatList, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { router } from 'expo-router';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { BlurView } from 'expo-blur';
+
+import { useAuth } from '@/src/auth/AuthContext';
+import { useTheme } from '@/src/theme/ThemeProvider';
+import { GLASS, LAYOUT, tokens, type AppTheme } from '@/src/styles/tokens';
+import { useToast } from '@/src/toast/ToastContext';
+import { useAuthAction } from '@/src/hooks/useAuthAction';
+import { Chip } from '@/components/ui/Chip';
+import { IconButton } from '@/components/ui/IconButton';
+import { Button } from '@/components/ui/Button';
+import { Skeleton, SkeletonAvatar, SkeletonText } from '@/components/ui/Skeleton';
+import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
+import ThreadlyLogoLoader from '@/components/ui/ThreadlyLogoLoader';
+import ThreadRailAction from '@/components/catalog/ThreadRailAction';
+import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
+import { brandApi, type CollectionDetailMediaDto } from '@/src/api/BrandApi';
+import { ProfileApi } from '@/src/api/ProfileApi';
+import { getMarketFeed, getMarketFilterChips, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
+import type { MarketItem } from '@/src/types/market';
+import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
+import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { getAvatarFallback } from '@/src/utils/profileImage';
+import { AppText } from '@/components/ui/AppText';
+
+/**
+ * Module-level feed cache — stale-while-revalidate.
+ * Persists across component remounts within the same app session.
+ * Key: tag (null = 'all'), Value: last successful page 1 response.
+ */
+type FeedCacheEntry = {
+  items: MarketItem[];
+  nextCursor: string | null;
+  hasNextPage: boolean;
+  cachedAt: number;
+};
+const feedPageCache = new Map<string | null, FeedCacheEntry>();
+const FEED_CACHE_TTL_MS = 5 * 60_000; // 5 minutes
+
+const toCompactCount = (value: number | null | undefined) => {
+  const n = typeof value === 'number' ? value : 0;
+  if (n < 1000) return String(n);
+  if (n < 1000000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
+  return `${(n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1)}m`;
+};
+
+type FeedViewerMedia = {
+  id: string;
+  url: string;
+  fileId: string | null;
+  type: 'image' | 'video';
+  label: string;
+  threadsCount: number;
+};
+
+type FeedCarouselMedia = FeedViewerMedia & {
+  virtualKey: string;
+};
+
+const toFeedMediaType = (rawType?: string | null): 'image' | 'video' => {
+  const normalized = String(rawType ?? '').toLowerCase();
+  return normalized.includes('video') ? 'video' : 'image';
+};
+
+const isS3LikeUrl = (value?: string | null) => {
+  const normalized = String(value ?? '').toLowerCase();
+  return normalized.includes('.s3.') || normalized.includes('amazonaws.com');
+};
+
+const resolvePreferredRemoteUrl = async (directUrl?: string | null, fileId?: string | null) => {
+  const normalizedDirectUrl = typeof directUrl === 'string' ? directUrl.trim() : '';
+  const normalizedFileId = typeof fileId === 'string' ? fileId.trim() : '';
+
+  if (normalizedFileId && (!normalizedDirectUrl || isS3LikeUrl(normalizedDirectUrl))) {
+    const signedUrl = await brandApi.getSignedFileUrl(normalizedFileId);
+    if (signedUrl) {
+      return signedUrl;
+    }
+  }
+
+  return normalizedDirectUrl || null;
+};
+
+const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
+  const directUrl = item.media?.url ?? item.media?.previewUrl ?? '';
+  return directUrl
+    ? [
+        {
+          id: item.id,
+          url: directUrl,
+          fileId: item.media?.fileId ?? null,
+          type: toFeedMediaType(item.media?.type ?? null),
+          label: item.collectionTitle,
+          threadsCount: typeof item.threadsCount === 'number' ? item.threadsCount : 0,
+        },
+      ]
+    : [];
+};
+
+const normalizeStableUri = (value?: string | null) => {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized.length > 0 ? normalized : null;
+};
+
+function ImageWarmPlaceholder() {
+  const { theme } = useTheme();
+  const shimmer = useRef(new Animated.Value(0.35)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, {
+          toValue: 0.72,
+          duration: 550,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmer, {
+          toValue: 0.35,
+          duration: 550,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    animation.start();
+    return () => animation.stop();
+  }, [shimmer]);
+
+  return (
+    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.surfaceAlt }]}>
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFillObject,
+          {
+            opacity: shimmer,
+            backgroundColor: theme.colors.surface,
+          },
+        ]}
+      />
+    </View>
+  );
+}
+
+function FeedMediaSlide({ media, imageIndex }: { media: FeedViewerMedia | null; imageIndex: number }) {
+  const { theme } = useTheme();
+  const { uri: resolvedUri, loading } = useResolvedImageAsset({
+    src: media?.url,
+    fileId: media?.fileId,
+    enabled: Boolean(media),
+  });
+
+  if (!media) {
+    return (
+      <View style={[StyleSheet.absoluteFillObject, styles.feedEmptySlide]}>
+        <AppText style={styles.feedEmptySlideEmoji}>🖼️</AppText>
+        <AppText style={styles.feedEmptySlideTitle}>No views yet</AppText>
+        <AppText style={styles.feedEmptySlideText}>This design does not have any media to browse.</AppText>
+      </View>
+    );
+  }
+
+  if (media.type === 'video') {
+    return (
+      <View style={[StyleSheet.absoluteFillObject, styles.feedVideoSlide]}>
+        <AppText style={styles.feedVideoEmoji}>🎬</AppText>
+        <AppText style={styles.feedVideoTitle}>Video view</AppText>
+        <AppText style={styles.feedVideoCaption} numberOfLines={2}>
+          {media.label || 'Swipe to another view'}
+        </AppText>
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View
+        style={[
+          StyleSheet.absoluteFillObject,
+          styles.feedMediaLoadingSlide,
+          { backgroundColor: theme.colors.surfaceAlt },
+        ]}
+      >
+        {imageIndex === 0 ? <ImageWarmPlaceholder /> : null}
+      </View>
+    );
+  }
+
+  if (!resolvedUri) {
+    return (
+      <View style={[StyleSheet.absoluteFillObject, styles.feedBrokenSlide]}>
+        <AppText style={styles.feedBrokenEmoji}>🖼️</AppText>
+        <AppText style={styles.feedBrokenTitle}>No image available</AppText>
+        <AppText style={styles.feedBrokenCaption} numberOfLines={2}>
+          {media.label || 'Swipe to another view'}
+        </AppText>
+      </View>
+    );
+  }
+
+  return <Image source={{ uri: resolvedUri }} style={styles.pageImage} resizeMode="cover" />;
+}
+
+function FeedMediaCarousel({
+  mediaItems,
+  activeIndex,
+  onActiveIndexChange,
+  onTap,
+  onDoubleTap,
+}: {
+  mediaItems: FeedViewerMedia[];
+  activeIndex: number;
+  onActiveIndexChange: (nextIndex: number) => void;
+  onTap: () => void;
+  onDoubleTap?: () => void;
+}) {
+  const { width } = useWindowDimensions();
+  const carouselRef = useRef<ScrollView>(null);
+  const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasMultipleItems = mediaItems.length > 1;
+  const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
+  const stableMediaItems = useMemo(
+    () =>
+      mediaItems.map((item) => ({
+        ...item,
+        url: normalizeStableUri(item.url) ?? item.url,
+        fileId: normalizeStableUri(item.fileId),
+      })),
+    [mediaItems],
+  );
+  const carouselItems = useMemo<FeedCarouselMedia[]>(() => {
+    if (!hasMultipleItems) {
+      return stableMediaItems.map((item, index) => ({
+        ...item,
+        virtualKey: `real-${item.id}-${index}`,
+      }));
+    }
+
+    const last = stableMediaItems[stableMediaItems.length - 1];
+    const first = stableMediaItems[0];
+
+    return [
+      { ...last, virtualKey: `loop-last-${last.id}` },
+      ...stableMediaItems.map((item, index) => ({
+        ...item,
+        virtualKey: `real-${item.id}-${index}`,
+      })),
+      { ...first, virtualKey: `loop-first-${first.id}` },
+    ];
+  }, [hasMultipleItems, stableMediaItems]);
+  const internalIndex = hasMultipleItems ? safeActiveIndex + 1 : safeActiveIndex;
+
+  useEffect(() => {
+    if (!carouselRef.current || !carouselItems.length) {
+      return;
+    }
+
+    carouselRef.current.scrollTo({
+      x: internalIndex * width,
+      y: 0,
+      animated: false,
+    });
+  }, [carouselItems.length, internalIndex, width]);
+
+  useEffect(() => {
+    return () => {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+        tapTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleMediaTap = useCallback(() => {
+    if (!onDoubleTap) {
+      onTap();
+      return;
+    }
+
+    if (tapTimeoutRef.current) {
+      clearTimeout(tapTimeoutRef.current);
+      tapTimeoutRef.current = null;
+      onDoubleTap();
+      return;
+    }
+
+    tapTimeoutRef.current = setTimeout(() => {
+      tapTimeoutRef.current = null;
+      onTap();
+    }, 220);
+  }, [onDoubleTap, onTap]);
+
+  if (!mediaItems.length) {
+    return (
+      <Pressable style={StyleSheet.absoluteFillObject} onPress={handleMediaTap}>
+        <FeedMediaSlide media={null} imageIndex={0} />
+      </Pressable>
+    );
+  }
+
+  const handleMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const rawIndex = Math.max(
+      0,
+      Math.min(
+        carouselItems.length - 1,
+        Math.round(event.nativeEvent.contentOffset.x / width),
+      ),
+    );
+
+    if (!hasMultipleItems) {
+      onActiveIndexChange(rawIndex);
+      return;
+    }
+
+    if (rawIndex === 0) {
+      const loopIndex = stableMediaItems.length - 1;
+      onActiveIndexChange(loopIndex);
+      requestAnimationFrame(() => {
+        carouselRef.current?.scrollTo({
+          x: stableMediaItems.length * width,
+          y: 0,
+          animated: false,
+        });
+      });
+      return;
+    }
+
+    if (rawIndex === carouselItems.length - 1) {
+      onActiveIndexChange(0);
+      requestAnimationFrame(() => {
+        carouselRef.current?.scrollTo({
+          x: width,
+          y: 0,
+          animated: false,
+        });
+      });
+      return;
+    }
+
+    onActiveIndexChange(rawIndex - 1);
+  };
+
+  const toRealImageIndex = (index: number) => {
+    if (!hasMultipleItems) {
+      return index;
+    }
+    if (index === 0) {
+      return stableMediaItems.length - 1;
+    }
+    if (index === carouselItems.length - 1) {
+      return 0;
+    }
+    return index - 1;
+  };
+
+  return (
+    <View style={StyleSheet.absoluteFillObject}>
+      <ScrollView
+        ref={carouselRef}
+        key={`${stableMediaItems.length}-${width}`}
+        horizontal
+        pagingEnabled
+        directionalLockEnabled
+        nestedScrollEnabled
+        bounces={false}
+        decelerationRate="fast"
+        overScrollMode="never"
+        showsHorizontalScrollIndicator={false}
+        scrollEnabled={hasMultipleItems}
+        onMomentumScrollEnd={handleMomentumEnd}
+      >
+        {carouselItems.map((item, index) => (
+          <Pressable key={item.virtualKey} style={{ width }} onPress={handleMediaTap}>
+            <FeedMediaSlide media={item} imageIndex={toRealImageIndex(index)} />
+          </Pressable>
+        ))}
+      </ScrollView>
+
+      {hasMultipleItems ? (
+        <View style={styles.feedDotRow} pointerEvents="none">
+          {stableMediaItems.map((_, index) => (
+            <View
+              key={`${stableMediaItems[index]?.id ?? index}-${index}`}
+              style={[styles.feedDot, index === safeActiveIndex && styles.feedDotActive]}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function FeedBrandAvatar({
+  brandId,
+  brandName,
+  brandLogo,
+  brandLogoFileId,
+  canPatch,
+  isPatched,
+  patchBusy,
+  onPatchPress,
+  onPress,
+}: {
+  brandId?: string | null;
+  brandName?: string | null;
+  brandLogo?: string | null;
+  brandLogoFileId?: string | null;
+  canPatch: boolean;
+  isPatched: boolean;
+  patchBusy: boolean;
+  onPatchPress: () => void;
+  onPress: () => void;
+}) {
+  const { uri, loading } = useResolvedImageAsset({
+    src: brandLogo,
+    fileId: brandLogoFileId,
+    enabled: Boolean(brandId || brandLogo || brandLogoFileId),
+  });
+  const initials = getAvatarFallback(brandName, brandName);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.ownerAvatarWrap, pressed && { opacity: 0.82, transform: [{ scale: 0.96 }] }]}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${brandName ?? 'brand'} profile`}
+    >
+      <View style={styles.ownerAvatarCircle}>
+        {uri ? (
+          <Image source={{ uri }} style={styles.ownerAvatarImage} resizeMode="cover" />
+        ) : loading ? (
+          <ThreadlyLogoLoader size={26} />
+        ) : (
+          <AppText style={styles.ownerAvatarInitials}>{initials}</AppText>
+        )}
+      </View>
+      {brandId && canPatch ? (
+        <Pressable
+          onPress={(event) => {
+            event.stopPropagation();
+            onPatchPress();
+          }}
+          disabled={patchBusy}
+          style={({ pressed }) => [
+            styles.ownerPatchBadge,
+            isPatched && styles.ownerPatchBadgeActive,
+            patchBusy && styles.ownerPatchBadgeBusy,
+            pressed && styles.ownerPatchBadgePressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={`${isPatched ? 'Unpatch' : 'Patch'} ${brandName ?? 'brand'}`}
+        >
+          <AppText style={styles.ownerPatchBadgeEmoji}>🪡</AppText>
+        </Pressable>
+      ) : null}
+    </Pressable>
+  );
+}
+
+// Feed Skeleton Component for loading state
+const FeedSkeleton = ({
+  theme,
+  pageHeight,
+  topOffset,
+  bottomClearance,
+}: {
+  theme: AppTheme;
+  pageHeight: number;
+  topOffset: number;
+  bottomClearance: number;
+}) => {
+  return (
+    <View style={[styles.feedSkeletonRoot, { backgroundColor: theme.colors.bg }]}>
+      <View style={[styles.feedSkeletonHeader, { paddingTop: topOffset + 8 }]}> 
+        <View style={[styles.feedSkeletonLogoWrap, { backgroundColor: theme.colors.surfaceAlt }]}> 
+          <ThreadlyLogo size={28} style={{ opacity: 0.92 }} />
+        </View>
+        <View style={styles.feedSkeletonHeaderActions}>
+          <Skeleton width={40} height={40} borderRadius={20} />
+          <Skeleton width={40} height={40} borderRadius={20} />
+        </View>
+      </View>
+
+      <View style={[styles.feedSkeletonChips, { top: topOffset + 56 }]}> 
+        <Skeleton width={68} height={34} borderRadius={999} />
+        <Skeleton width={88} height={34} borderRadius={999} />
+        <Skeleton width={76} height={34} borderRadius={999} />
+        <Skeleton width={92} height={34} borderRadius={999} />
+      </View>
+
+      <View style={{ height: pageHeight, width: '100%', position: 'relative' }}>
+        {/* Main image skeleton */}
+        <Skeleton width="100%" height="100%" borderRadius={0} />
+
+        {/* Right rail skeleton (action buttons) */}
+        <View style={{ position: 'absolute', right: 12, bottom: bottomClearance + 44, alignItems: 'center', gap: 20 }}>
+          {/* Avatar skeleton */}
+          <View style={{ marginBottom: 8 }}>
+            <SkeletonAvatar size={44} />
+          </View>
+
+          {/* Like button skeleton */}
+          <View style={{ alignItems: 'center', gap: 4 }}>
+            <Skeleton width={30} height={30} borderRadius={15} />
+            <Skeleton width={24} height={12} borderRadius={4} />
+          </View>
+
+          {/* Comment button skeleton */}
+          <View style={{ alignItems: 'center', gap: 4 }}>
+            <Skeleton width={30} height={30} borderRadius={15} />
+            <Skeleton width={24} height={12} borderRadius={4} />
+          </View>
+
+          {/* Share button skeleton */}
+          <View style={{ alignItems: 'center', gap: 4 }}>
+            <Skeleton width={30} height={30} borderRadius={15} />
+            <Skeleton width={24} height={12} borderRadius={4} />
+          </View>
+
+          {/* Save button skeleton */}
+          <View style={{ alignItems: 'center', gap: 4 }}>
+            <Skeleton width={30} height={30} borderRadius={15} />
+          </View>
+        </View>
+
+        {/* Bottom info skeleton */}
+        <View style={{ position: 'absolute', left: 16, right: 88, bottom: bottomClearance, gap: 8 }}>
+          {/* Brand name skeleton */}
+          <Skeleton width={120} height={18} borderRadius={4} />
+          {/* Price skeleton */}
+          <Skeleton width={80} height={22} borderRadius={4} />
+          {/* Description skeleton */}
+          <SkeletonText lines={2} lineHeight={14} spacing={8} lastLineWidth="70%" />
+        </View>
+      </View>
+    </View>
+  );
+};
+
+export default function HomeScreen() {
+  const navigation = useNavigation<any>();
+  const { scheme, theme } = useTheme();
+  const { status, user } = useAuth();
+  const toast = useToast();
+  const requireAuth = useAuthAction();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const feedListRef = useRef<FlatList<MarketItem> | null>(null);
+  const [reelHeight, setReelHeight] = useState<number | null>(null);
+  const [filterChips, setFilterChips] = useState<MarketFilterChip[]>([{ id: 'all', label: 'All', tag: null }]);
+  const [selectedFilterId, setSelectedFilterId] = useState('all');
+  const [activePageIndex, setActivePageIndex] = useState(0);
+  const [metaVisible, setMetaVisible] = useState(false);
+  const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
+  const metaOpacity = useRef(new Animated.Value(0)).current;
+  const metaTranslateY = useRef(new Animated.Value(16)).current;
+  const pendingCollectionIdsRef = useRef(new Set<string>());
+  const prefetchedImageUrisRef = useRef(new Set<string>());
+
+  const [items, setItems] = useState<MarketItem[]>([]);
+  const [collectionMediaMap, setCollectionMediaMap] = useState<Record<string, FeedViewerMedia[]>>({});
+  const collectionMediaMapRef = useRef<Record<string, FeedViewerMedia[]>>({});
+  const [activeMediaIndexByCollection, setActiveMediaIndexByCollection] = useState<Record<string, number>>({});
+  const [threadStateByMedia, setThreadStateByMedia] = useState<Record<string, { threaded: boolean; count: number }>>({});
+  const [threadingMediaById, setThreadingMediaById] = useState<Record<string, boolean>>({});
+  const threadStateByMediaRef = useRef<Record<string, { threaded: boolean; count: number }>>({});
+  const threadingMediaByIdRef = useRef<Record<string, boolean>>({});
+  const queuedThreadIntentByMediaRef = useRef<Record<string, boolean>>({});
+  const [patchedBrandIds, setPatchedBrandIds] = useState<Set<string>>(new Set());
+  const [patchingBrandIds, setPatchingBrandIds] = useState<Record<string, boolean>>({});
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isNetworkError, setIsNetworkError] = useState(false);
+
+  // Staleness guards — prevent refetch on every tab focus
+  const lastPatchFetchRef = useRef<number>(0);
+  const STALE_THRESHOLD_MS = 60_000; // 60 seconds
+
+  const showBlockingLoader = loading && items.length === 0;
+
+  const skeletonOpacity = useRef(new Animated.Value(1)).current;
+  const [isSkeletonFadingOut, setIsSkeletonFadingOut] = useState(false);
+
+  useEffect(() => {
+    if (!showBlockingLoader) {
+      setIsSkeletonFadingOut(true);
+      Animated.timing(skeletonOpacity, {
+        toValue: 0,
+        duration: 350,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start(() => {
+        setIsSkeletonFadingOut(false);
+      });
+    } else {
+      skeletonOpacity.setValue(1);
+    }
+  }, [showBlockingLoader, skeletonOpacity]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: (showBlockingLoader || isSkeletonFadingOut) ? { display: 'none' } : undefined,
+    });
+
+    return () => {
+      navigation.setOptions({ tabBarStyle: undefined });
+    };
+  }, [navigation, showBlockingLoader, isSkeletonFadingOut]);
+
+  const loadPatchedBrands = useCallback(async () => {
+    if (status !== 'authenticated' || !user?.id || user?.type === 'BRAND') {
+      setPatchedBrandIds(new Set());
+      return;
+    }
+
+    try {
+      const items = await ProfileApi.getPatches(user.id);
+      setPatchedBrandIds(new Set(items.map((brand) => brand.id).filter(Boolean)));
+      lastPatchFetchRef.current = Date.now();
+    } catch (error) {
+      console.warn('Failed to load patched brands', error);
+      setPatchedBrandIds(new Set());
+    }
+  }, [status, user?.id, user?.type]);
+
+  const handleOpenSavedItems = useCallback(() => {
+    router.push({
+      pathname: '/(tabs)/me',
+      params: { tab: 'Saved' },
+    } as any);
+  }, []);
+
+  const fallbackPageHeight = useMemo(() => Math.max(500, Math.floor(windowHeight)), [windowHeight]);
+  const pageHeight = reelHeight ?? fallbackPageHeight;
+
+  const activeFilter = useMemo(
+    () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? { id: 'all', label: 'All', tag: null },
+    [filterChips, selectedFilterId],
+  );
+  const activeTag = activeFilter?.tag ?? null;
+  const feedLoopEnabled = !hasNextPage && items.length > 1;
+  const fallbackMediaByCollection = useMemo(() => {
+    const next: Record<string, FeedViewerMedia[]> = {};
+    items.forEach((item) => {
+      next[item.collectionId] = buildFallbackMediaItems(item).map((media) => ({
+        ...media,
+        url: normalizeStableUri(media.url) ?? media.url,
+        fileId: normalizeStableUri(media.fileId),
+      }));
+    });
+    return next;
+  }, [items]);
+
+  /**
+   * Circular buffer: [ghost(last)] [item0...itemN] [ghost(first)]
+   *
+   * When user scrolls to ghost(first) at index N+2, we silently teleport to
+  * item0 at index 1 — same content, zero visual difference.
+   * When user scrolls to ghost(last) at index 0, we teleport to itemN at
+  * index N+1 — same content, zero visual difference.
+   *
+   * The teleport uses scrollToOffset({ animated: false }) SYNCHRONOUSLY inside
+  * the same onMomentumScrollEnd handler — no RAF gap, no frame flash.
+   */
+  const feedItems = useMemo(() => {
+    if (!feedLoopEnabled) {
+      return items;
+    }
+    const last = items[items.length - 1];
+    const first = items[0];
+    return [
+      { ...last, id: `${last.id}__ghost-head` },
+      ...items,
+      { ...first, id: `${first.id}__ghost-tail` },
+    ];
+  }, [feedLoopEnabled, items]);
+
+  // When loop is enabled, real items start at index 1 (after head ghost).
+  const feedLoopHeadOffset = feedLoopEnabled ? 1 : 0;
+  const canPatchBrands = user?.type !== 'BRAND';
+
+  const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom, [insets.bottom]);
+  const bottomClearance = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 18, [insets.bottom]);
+
+  const resetMetaImmediately = useCallback(() => {
+    setMetaVisible(false);
+    metaOpacity.setValue(0);
+    metaTranslateY.setValue(16);
+  }, [metaOpacity, metaTranslateY]);
+
+  useEffect(() => {
+    collectionMediaMapRef.current = collectionMediaMap;
+  }, [collectionMediaMap]);
+
+  useEffect(() => {
+    threadStateByMediaRef.current = threadStateByMedia;
+  }, [threadStateByMedia]);
+
+  useEffect(() => {
+    threadingMediaByIdRef.current = threadingMediaById;
+  }, [threadingMediaById]);
+
+  useEffect(() => {
+    void loadPatchedBrands();
+  }, [loadPatchedBrands]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    void getMarketFilterChips().then((chips) => {
+      if (!mounted || !chips.length) return;
+      setFilterChips(chips);
+      setSelectedFilterId((current) => (chips.some((chip) => chip.id === current) ? current : chips[0].id));
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setActivePageIndex(0);
+    setCommentsTarget(null);
+    resetMetaImmediately();
+    setCollectionMediaMap({});
+    collectionMediaMapRef.current = {};
+    setActiveMediaIndexByCollection({});
+    setThreadStateByMedia({});
+    setThreadingMediaById({});
+    threadStateByMediaRef.current = {};
+    threadingMediaByIdRef.current = {};
+    queuedThreadIntentByMediaRef.current = {};
+    pendingCollectionIdsRef.current.clear();
+  }, [activeTag, resetMetaImmediately]);
+
+  const toErrorMessage = (err: unknown) => (err instanceof Error ? err.message : 'Something went wrong');
+  const isLikelyNetworkError = (msg: string) => /network|timeout|failed to fetch|connection/i.test(msg);
+
+  const loadFirstPage = useCallback(async () => {
+    setError(null);
+    setIsNetworkError(false);
+    setActivePageIndex(0);
+    setCommentsTarget(null);
+    resetMetaImmediately();
+
+    // Stale-while-revalidate: serve cached data immediately, skip the loading spinner
+    const cached = feedPageCache.get(activeTag);
+    const isCacheFresh = cached && Date.now() - cached.cachedAt < FEED_CACHE_TTL_MS;
+    if (cached) {
+      setItems(cached.items);
+      setNextCursor(cached.nextCursor);
+      setHasNextPage(cached.hasNextPage);
+      if (isCacheFresh) {
+        // Cache is fresh — no need to revalidate
+        setLoading(false);
+        return;
+      }
+      // Stale cache — show content immediately but revalidate silently
+      setLoading(false);
+    } else {
+      // No cache — show skeleton on first load
+      setLoading(true);
+    }
+
+    try {
+      const res = await getMarketFeed({ cursor: null, tag: activeTag, counts: 'combined' });
+      feedPageCache.set(activeTag, {
+        items: res.items,
+        nextCursor: res.nextCursor ?? null,
+        hasNextPage: res.hasNextPage,
+        cachedAt: Date.now(),
+      });
+      setItems(res.items);
+      setNextCursor(res.nextCursor ?? null);
+      setHasNextPage(res.hasNextPage);
+    } catch (err) {
+      // If we already have cached content, don't overwrite with an error state
+      if (!cached) {
+        const message = toErrorMessage(err);
+        setError(message);
+        setIsNetworkError(isLikelyNetworkError(message));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTag, resetMetaImmediately]);
+
+  // Toggle meta card — fade + slide up on reveal, fade + slide down on hide
+  const toggleMeta = useCallback(() => {
+    const next = !metaVisible;
+    setMetaVisible(next);
+
+    if (next) {
+      // Reveal: reset position then fade+rise in
+      metaTranslateY.setValue(20);
+      Animated.parallel([
+        Animated.timing(metaOpacity, {
+          toValue: 1,
+          duration: 340,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(metaTranslateY, {
+          toValue: 0,
+          duration: 340,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // Dismiss: fade + drop down gently
+      Animated.parallel([
+        Animated.timing(metaOpacity, {
+          toValue: 0,
+          duration: 220,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(metaTranslateY, {
+          toValue: 12,
+          duration: 220,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [metaVisible, metaOpacity, metaTranslateY]);
+
+  // Reset meta instantly when swiping to a new page
+  const hideMeta = useCallback(() => {
+    setMetaVisible(false);
+    Animated.parallel([
+      Animated.timing(metaOpacity, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(metaTranslateY, {
+        toValue: 16,
+        duration: 180,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [metaOpacity, metaTranslateY]);
+
+  const prefetchMediaItems = useCallback((mediaItems: FeedViewerMedia[], options?: { includeFirstImage?: boolean }) => {
+    const includeFirstImage = options?.includeFirstImage ?? false;
+    mediaItems.forEach((media, index) => {
+      if (media.type !== 'image') return;
+      if (index === 0 && !includeFirstImage) return;
+
+      const uri = normalizeStableUri(media.url);
+      if (!uri || prefetchedImageUrisRef.current.has(uri)) return;
+
+      prefetchedImageUrisRef.current.add(uri);
+      void Image.prefetch(uri).catch(() => {
+        prefetchedImageUrisRef.current.delete(uri);
+      });
+    });
+  }, []);
+
+  const hydrateCollectionMedia = useCallback(async (
+    item: MarketItem | null | undefined,
+    options?: { includeFirstImageInPrefetch?: boolean },
+  ) => {
+    const collectionId = item?.collectionId?.trim();
+    if (!collectionId) return;
+    if (collectionMediaMapRef.current[collectionId]?.length) {
+      prefetchMediaItems(collectionMediaMapRef.current[collectionId], {
+        includeFirstImage: options?.includeFirstImageInPrefetch,
+      });
+      return;
+    }
+    if (pendingCollectionIdsRef.current.has(collectionId)) return;
+
+    pendingCollectionIdsRef.current.add(collectionId);
+    try {
+      const detail = await brandApi.getCollectionDetail(collectionId, { scope: 'design' });
+      if (!detail) return;
+
+      const medias = Array.isArray(detail.medias) ? detail.medias : [];
+      const nextMediaItems = await Promise.all(
+        medias.map(async (media: CollectionDetailMediaDto, index) => {
+          const directUrl = media.file?.s3Url ?? media.file?.url ?? null;
+          const url = (await resolvePreferredRemoteUrl(directUrl, media.file?.id ?? null)) ?? '';
+          return {
+            id: media.id || media.file?.id || `${collectionId}-${index}`,
+            url,
+            fileId: media.file?.id ?? null,
+            type: toFeedMediaType(media.mediaType ?? null),
+            label: media.caption ?? detail.title ?? item?.collectionTitle ?? 'Design view',
+            threadsCount:
+              typeof media.threadsCount === 'number'
+                ? media.threadsCount
+                : media.id === item?.id && typeof item?.threadsCount === 'number'
+                  ? item.threadsCount
+                  : 0,
+          } satisfies FeedViewerMedia;
+        }),
+      );
+
+      const normalizedMediaItems = nextMediaItems
+        .filter((media) => Boolean(media.id))
+        .map((media) => ({
+          ...media,
+          url: normalizeStableUri(media.url) ?? media.url,
+          fileId: normalizeStableUri(media.fileId),
+        }));
+      if (!normalizedMediaItems.length) return;
+
+      prefetchMediaItems(normalizedMediaItems, {
+        includeFirstImage: options?.includeFirstImageInPrefetch,
+      });
+
+      setCollectionMediaMap((prev) => {
+        if (prev[collectionId]?.length) return prev;
+        return {
+          ...prev,
+          [collectionId]: normalizedMediaItems,
+        };
+      });
+      setThreadStateByMedia((prev) => {
+        const next = { ...prev };
+        normalizedMediaItems.forEach((media) => {
+          if (!next[media.id]) {
+            next[media.id] = {
+              threaded: media.id === item?.id ? Boolean(item?.isThreaded) : false,
+              count: media.threadsCount,
+            };
+          }
+        });
+        return next;
+      });
+    } catch {
+      // Keep the feed on its current fallback media if hydration fails.
+    } finally {
+      pendingCollectionIdsRef.current.delete(collectionId);
+    }
+  }, [prefetchMediaItems]);
+
+  const viewabilityConfigRef = useRef({
+    itemVisiblePercentThreshold: 60,
+    minimumViewTime: 120,
+  });
+
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: Array<{ item: MarketItem | null }> }) => {
+      viewableItems.forEach(({ item }) => {
+        const collectionId = item?.collectionId?.trim();
+        if (!collectionId) return;
+
+        const realIndex = items.findIndex((entry) => entry.collectionId === collectionId);
+        if (realIndex < 0) return;
+
+        void hydrateCollectionMedia(items[realIndex], { includeFirstImageInPrefetch: false });
+
+        for (let offset = 1; offset <= 2; offset += 1) {
+          const nextIndex = feedLoopEnabled
+            ? (realIndex + offset) % items.length
+            : realIndex + offset;
+
+          if (nextIndex < 0 || nextIndex >= items.length) continue;
+          void hydrateCollectionMedia(items[nextIndex], { includeFirstImageInPrefetch: true });
+        }
+      });
+    },
+  );
+
+  useEffect(() => {
+    onViewableItemsChanged.current = ({ viewableItems }: { viewableItems: Array<{ item: MarketItem | null }> }) => {
+      viewableItems.forEach(({ item }) => {
+        const collectionId = item?.collectionId?.trim();
+        if (!collectionId) return;
+
+        const realIndex = items.findIndex((entry) => entry.collectionId === collectionId);
+        if (realIndex < 0) return;
+
+        void hydrateCollectionMedia(items[realIndex], { includeFirstImageInPrefetch: false });
+
+        for (let offset = 1; offset <= 2; offset += 1) {
+          const nextIndex = feedLoopEnabled
+            ? (realIndex + offset) % items.length
+            : realIndex + offset;
+
+          if (nextIndex < 0 || nextIndex >= items.length) continue;
+          void hydrateCollectionMedia(items[nextIndex], { includeFirstImageInPrefetch: true });
+        }
+      });
+    };
+  }, [feedLoopEnabled, hydrateCollectionMedia, items]);
+
+  const openCommentsSheet = useCallback((item: MarketItem) => {
+    if (!item.collectionId) return;
+    resetMetaImmediately();
+    setCommentsTarget({
+      collectionId: item.collectionId,
+      title: item.collectionTitle,
+    });
+    void hydrateCollectionMedia(item);
+  }, [hydrateCollectionMedia, resetMetaImmediately]);
+
+  const closeCommentsSheet = useCallback(() => {
+    setCommentsTarget(null);
+  }, []);
+
+  const executeThreadIntent = useCallback(
+    async (
+      mediaId: string,
+      collectionId: string | null,
+      nextThreaded: boolean,
+      baselineState?: { threaded: boolean; count: number },
+    ) => {
+      const previousState =
+        baselineState ??
+        threadStateByMediaRef.current[mediaId] ?? {
+          threaded: false,
+          count: 0,
+        };
+      const optimisticCount = Math.max(0, previousState.count + (nextThreaded ? 1 : -1));
+
+      const optimisticState = {
+        threaded: nextThreaded,
+        count: optimisticCount,
+      };
+
+      threadStateByMediaRef.current = {
+        ...threadStateByMediaRef.current,
+        [mediaId]: optimisticState,
+      };
+
+      setThreadStateByMedia((prev) => ({
+        ...prev,
+        [mediaId]: optimisticState,
+      }));
+
+      threadingMediaByIdRef.current = {
+        ...threadingMediaByIdRef.current,
+        [mediaId]: true,
+      };
+      setThreadingMediaById((prev) => ({ ...prev, [mediaId]: true }));
+
+      let finalState = previousState;
+
+      try {
+        const result = await toggleCollectionMediaThread(mediaId);
+        finalState = {
+          threaded: result.threaded,
+          count: result.threads,
+        };
+
+        threadStateByMediaRef.current = {
+          ...threadStateByMediaRef.current,
+          [mediaId]: finalState,
+        };
+
+        setThreadStateByMedia((prev) => ({
+          ...prev,
+          [mediaId]: finalState,
+        }));
+
+      } catch {
+        finalState = previousState;
+
+        threadStateByMediaRef.current = {
+          ...threadStateByMediaRef.current,
+          [mediaId]: previousState,
+        };
+
+        setThreadStateByMedia((prev) => ({
+          ...prev,
+          [mediaId]: previousState,
+        }));
+      } finally {
+        const nextBusy = { ...threadingMediaByIdRef.current };
+        delete nextBusy[mediaId];
+        threadingMediaByIdRef.current = nextBusy;
+
+        setThreadingMediaById((prev) => {
+          const next = { ...prev };
+          delete next[mediaId];
+          return next;
+        });
+
+        const queuedIntent = queuedThreadIntentByMediaRef.current[mediaId];
+        delete queuedThreadIntentByMediaRef.current[mediaId];
+
+        if (typeof queuedIntent === 'boolean' && queuedIntent !== finalState.threaded) {
+          void executeThreadIntent(mediaId, collectionId, queuedIntent, finalState);
+        }
+      }
+    },
+    [],
+  );
+
+  const handleThreadPress = useCallback(
+    (
+      mediaId: string | null | undefined,
+      collectionId?: string | null,
+      fallbackThreaded = false,
+      fallbackCount = 0,
+    ) => {
+      const normalizedMediaId = typeof mediaId === 'string' ? mediaId.trim() : '';
+      if (!normalizedMediaId) return;
+      if (status !== 'authenticated') return;
+
+      const normalizedCollectionId = typeof collectionId === 'string' ? collectionId.trim() : '';
+      const currentState =
+        threadStateByMediaRef.current[normalizedMediaId] ?? {
+          threaded: fallbackThreaded,
+          count: fallbackCount,
+        };
+
+      if (!threadStateByMediaRef.current[normalizedMediaId]) {
+        threadStateByMediaRef.current = {
+          ...threadStateByMediaRef.current,
+          [normalizedMediaId]: currentState,
+        };
+      }
+
+      const nextThreaded = !currentState.threaded;
+
+      if (threadingMediaByIdRef.current[normalizedMediaId]) {
+        queuedThreadIntentByMediaRef.current[normalizedMediaId] = nextThreaded;
+        return;
+      }
+
+      void executeThreadIntent(normalizedMediaId, normalizedCollectionId || null, nextThreaded, currentState);
+    },
+    [executeThreadIntent, status],
+  );
+
+  const handlePatchBrand = useCallback(
+    (brandId?: string | null, brandName?: string | null) => {
+      const normalizedBrandId = typeof brandId === 'string' ? brandId.trim() : '';
+      if (!normalizedBrandId) return;
+
+      requireAuth(
+        async () => {
+          const isPatched = patchedBrandIds.has(normalizedBrandId);
+          setPatchingBrandIds((prev) => ({ ...prev, [normalizedBrandId]: true }));
+
+          try {
+            if (isPatched) {
+              await brandApi.unpatchBrand(normalizedBrandId);
+              setPatchedBrandIds((prev) => {
+                const next = new Set(prev);
+                next.delete(normalizedBrandId);
+                return next;
+              });
+              toast.success(`Unpatched ${brandName ?? 'brand'}`);
+            } else {
+              await brandApi.patchBrand(normalizedBrandId);
+              setPatchedBrandIds((prev) => {
+                const next = new Set(prev);
+                next.add(normalizedBrandId);
+                return next;
+              });
+              toast.success(`Patched ${brandName ?? 'brand'}`);
+            }
+          } catch (error) {
+            toast.error(`Failed to ${isPatched ? 'unpatch' : 'patch'} ${brandName ?? 'brand'}`);
+          } finally {
+            setPatchingBrandIds((prev) => {
+              const next = { ...prev };
+              delete next[normalizedBrandId];
+              return next;
+            });
+          }
+        },
+        { message: 'Sign in to patch brands' },
+      );
+    },
+    [patchedBrandIds, requireAuth, toast],
+  );
+
+  const loadMore = useCallback(async () => {
+    if (!hasNextPage || !nextCursor || loading || refreshing) return;
+
+    try {
+      const res = await getMarketFeed({ cursor: nextCursor, tag: activeTag, counts: 'combined' });
+      setItems((prev) => [...prev, ...res.items]);
+      setNextCursor(res.nextCursor ?? null);
+      setHasNextPage(res.hasNextPage);
+    } catch {
+      // Best-effort pagination; keep current items.
+    }
+  }, [activeTag, hasNextPage, loading, nextCursor, refreshing]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setError(null);
+    setIsNetworkError(false);
+    setActivePageIndex(0);
+    setCommentsTarget(null);
+    hideMeta();
+
+    try {
+      const res = await getMarketFeed({ cursor: null, tag: activeTag, counts: 'combined' });
+      setItems(res.items);
+      setNextCursor(res.nextCursor ?? null);
+      setHasNextPage(res.hasNextPage);
+    } catch (err) {
+      const message = toErrorMessage(err);
+      setError(message);
+      setIsNetworkError(isLikelyNetworkError(message));
+    } finally {
+      setRefreshing(false);
+    }
+  }, [activeTag, hideMeta]);
+
+  useEffect(() => {
+    loadFirstPage();
+  }, [loadFirstPage]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const now = Date.now();
+      // Only refetch if data is stale (> 60s old) — prevents redundant calls on every tab visit
+      if (now - lastPatchFetchRef.current > STALE_THRESHOLD_MS) {
+        void loadPatchedBrands();
+      }
+    }, [loadPatchedBrands]),
+  );
+
+  const onReelLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = Math.floor(e.nativeEvent.layout.height);
+    if (h > 0) setReelHeight(h);
+  }, []);
+
+  return (
+    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg }]}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} translucent backgroundColor="transparent" />
+
+      {!loading ? (
+        <>
+          <View
+            style={[
+              styles.header,
+              {
+                paddingTop: insets.top + tokens.spacing.sm,
+                paddingBottom: tokens.spacing.sm,
+              },
+            ]}
+            pointerEvents="box-none"
+          >
+            <BlurView
+              tint={scheme === 'dark' ? 'dark' : 'light'}
+              intensity={scheme === 'dark' ? GLASS.dark.blur : GLASS.light.blur}
+              style={[
+                StyleSheet.absoluteFillObject,
+                styles.headerBlur,
+                {
+                  backgroundColor: scheme === 'dark' ? GLASS.dark.bg : GLASS.light.bg,
+                },
+              ]}
+            />
+            <View style={styles.headerRow} pointerEvents="box-none">
+              <View style={styles.headerLeftGroup}>
+                <Pressable
+                  onPress={() => { router.push('/'); }}
+                  style={({ pressed }) => [
+                    styles.headerLogoButton,
+                    pressed && { opacity: 0.82 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go to home">
+                  <ThreadlyLogo size={32} style={styles.brandLogo} />
+                </Pressable>
+              </View>
+
+              <View style={styles.headerCenterGroup}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.headerChipsContent}
+                  style={styles.headerChipsScroll}>
+                  {filterChips.map((chip) => (
+                    <Chip
+                      key={chip.id}
+                      label={chip.label}
+                      variant="nav"
+                      selected={chip.id === selectedFilterId}
+                      onPress={() => setSelectedFilterId(chip.id)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.headerRightGroup}>
+                <Pressable
+                  onPress={() => { /* TODO: navigate to search */ }}
+                  style={({ pressed }) => [
+                    styles.headerIconButton,
+                    pressed && { opacity: 0.8 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Search">
+                  <AppText style={styles.headerEmoji}>🔍</AppText>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </>
+      ) : null}
+
+      {(showBlockingLoader || isSkeletonFadingOut) ? (
+        <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 100, opacity: skeletonOpacity }]} pointerEvents={showBlockingLoader ? 'auto' : 'none'}>
+          <FeedSkeleton theme={theme} pageHeight={pageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
+        </Animated.View>
+      ) : null}
+
+      {error && isNetworkError && !showBlockingLoader ? (
+        <View style={[styles.loadingWrap, { backgroundColor: theme.colors.bg }]}>
+          <NetworkErrorState onRetry={loadFirstPage} />
+        </View>
+      ) : error && !showBlockingLoader ? (
+        <View style={[styles.loadingWrap, { backgroundColor: theme.colors.bg, paddingHorizontal: 20, gap: 12 }]}>
+          <AppText style={{ color: theme.colors.text, fontSize: 18, fontWeight: '800', textAlign: 'center' }}>Unable to load feed</AppText>
+          <AppText style={{ color: theme.colors.textMuted, textAlign: 'center' }}>{error}</AppText>
+          <Button title="Retry" variant="primary" onPress={loadFirstPage} fullWidth />
+        </View>
+      ) : items.length === 0 && !showBlockingLoader ? (
+        <ScrollView
+          contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
+          contentContainerStyle={{ flexGrow: 1, backgroundColor: theme.colors.bg, paddingBottom: Platform.OS === 'android' ? overlayScrollPadding : 0 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}>
+          <FeedEmptyState onStartExploring={() => setSelectedFilterId(filterChips[1]?.id ?? 'all')} />
+        </ScrollView>
+      ) : (
+        <View style={styles.reelWrap} onLayout={onReelLayout}>
+          <FlatList
+            ref={feedListRef}
+            key={`market-feed-${pageHeight}`}
+            data={feedItems}
+            keyExtractor={(item) => item.id}
+            initialScrollIndex={feedLoopHeadOffset}
+            pagingEnabled
+            snapToInterval={pageHeight}
+            getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
+            decelerationRate="fast"
+            directionalLockEnabled
+            nestedScrollEnabled
+            scrollEventThrottle={16}
+            bounces={false}
+            overScrollMode="never"
+            removeClippedSubviews
+            initialNumToRender={3}
+            maxToRenderPerBatch={4}
+            windowSize={5}
+            scrollEnabled={!commentsTarget}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
+            scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
+            contentContainerStyle={{
+              backgroundColor: '#000',
+              paddingBottom: Platform.OS === 'android' ? overlayScrollPadding : 0,
+            }}
+            viewabilityConfig={viewabilityConfigRef.current}
+            onViewableItemsChanged={onViewableItemsChanged.current}
+            onMomentumScrollEnd={(e) => {
+              const rawIndex = Math.max(
+                0,
+                Math.min(feedItems.length - 1, Math.round(e.nativeEvent.contentOffset.y / pageHeight)),
+              );
+
+              if (feedLoopEnabled) {
+                // Landed on tail ghost (last item in list) — teleport to real first
+                if (rawIndex === feedItems.length - 1) {
+                  // Real first item is at index 1 (after head ghost)
+                  const targetOffset = feedLoopHeadOffset * pageHeight;
+                  feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
+                  setActivePageIndex(0);
+                  hideMeta();
+                  return;
+                }
+
+                // Landed on head ghost (index 0) — teleport to real last
+                if (rawIndex === 0) {
+                  const realLastIndex = items.length; // items.length because head ghost shifts by 1
+                  const targetOffset = realLastIndex * pageHeight;
+                  feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
+                  setActivePageIndex(items.length - 1);
+                  hideMeta();
+                  return;
+                }
+
+                // Normal item — rawIndex 1..N maps to real item 0..N-1
+                const realIndex = rawIndex - feedLoopHeadOffset;
+                setActivePageIndex(Math.min(realIndex, items.length - 1));
+                hideMeta();
+                return;
+              }
+
+              // Loop disabled (paginating or single item)
+              setActivePageIndex(rawIndex);
+              hideMeta();
+              if (rawIndex >= items.length - 1 && hasNextPage) {
+                void loadMore();
+              }
+            }}
+            onEndReachedThreshold={0.35}
+            onEndReached={() => {
+              if (hasNextPage) {
+                void loadMore();
+              }
+            }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
+            renderItem={({ item }) => {
+              const brandName = item.brandName ?? item.username ?? 'Brand';
+              const handle = item.username ? `@${item.username}` : '';
+              const fallbackMediaItems = fallbackMediaByCollection[item.collectionId] ?? [];
+              const mediaItems = collectionMediaMap[item.collectionId]?.length
+                ? collectionMediaMap[item.collectionId]
+                : fallbackMediaItems;
+              const activeMediaIndex = mediaItems.length
+                ? Math.min(activeMediaIndexByCollection[item.collectionId] ?? 0, mediaItems.length - 1)
+                : 0;
+              const currentMedia = mediaItems[activeMediaIndex] ?? fallbackMediaItems[0] ?? null;
+              const currentMediaId = currentMedia?.id ?? item.id;
+              const currentMediaThreadState = currentMedia ? threadStateByMedia[currentMedia.id] : undefined;
+              const isThreaded = currentMedia
+                ? currentMediaThreadState?.threaded ?? (currentMedia.id === item.id ? Boolean(item.isThreaded) : false)
+                : Boolean(item.isThreaded);
+              const isThreading = Boolean(threadingMediaById[currentMediaId]);
+              const likes = toCompactCount(item.likesCount ?? 0);
+              const comments = toCompactCount(item.combinedCommentsCount ?? item.commentsCount ?? 0);
+              const threadCountRaw =
+                currentMediaThreadState?.count ??
+                currentMedia?.threadsCount ??
+                item.threadsCount ??
+                0;
+              const threads = toCompactCount(threadCountRaw);
+              const isCommentsOpen = commentsTarget?.collectionId === item.collectionId;
+
+              return (
+                <View style={[styles.page, { height: pageHeight }]}> 
+                  <FeedMediaCarousel
+                    mediaItems={mediaItems}
+                    activeIndex={activeMediaIndex}
+                    onActiveIndexChange={(nextIndex) => {
+                      setActiveMediaIndexByCollection((prev) => {
+                        if (prev[item.collectionId] === nextIndex) return prev;
+                        return {
+                          ...prev,
+                          [item.collectionId]: nextIndex,
+                        };
+                      });
+                    }}
+                    onTap={toggleMeta}
+                    onDoubleTap={() => {
+                      void handleThreadPress(currentMediaId, item.collectionId, isThreaded, threadCountRaw);
+                    }}
+                  />
+
+                  {/* Right action rail */}
+                  <View style={[styles.rail, { bottom: bottomClearance + 24 }]}>
+                    <FeedBrandAvatar
+                      brandId={item.brandId}
+                      brandName={brandName}
+                      brandLogo={item.brandLogo}
+                      brandLogoFileId={item.brandLogoFileId}
+                      canPatch={canPatchBrands}
+                      isPatched={Boolean(item.brandId && patchedBrandIds.has(item.brandId))}
+                      patchBusy={Boolean(item.brandId && patchingBrandIds[item.brandId])}
+                      onPatchPress={() => {
+                        handlePatchBrand(item.brandId, brandName);
+                      }}
+                      onPress={() => {
+                        if (!item.brandId) return;
+                        router.push({ pathname: '/catalog/[brandId]', params: { brandId: item.brandId } } as any);
+                      }}
+                    />
+
+                    <ThreadRailAction
+                      threaded={isThreaded}
+                      count={threads}
+                      busy={isThreading}
+                      onPress={() => {
+                        void handleThreadPress(currentMediaId, item.collectionId, isThreaded, threadCountRaw);
+                      }}
+                    />
+
+                    <View style={styles.railItem}>
+                      <IconButton
+                        size={40}
+                        onPress={() => {
+                          if (isCommentsOpen) {
+                            closeCommentsSheet();
+                            return;
+                          }
+                          openCommentsSheet(item);
+                        }}
+                      >
+                        <AppText style={styles.railEmoji}>💬</AppText>
+                      </IconButton>
+                      <AppText style={styles.railCount}>{comments}</AppText>
+                    </View>
+
+                    <View style={styles.railItem}>
+                      <IconButton size={40}>
+                        <AppText style={styles.railEmoji}>{item.isThreaded ? '🧵' : '🪡'}</AppText>
+                      </IconButton>
+                      <AppText style={styles.railCount}>{likes}</AppText>
+                    </View>
+
+                  </View>
+
+                  {/* Meta card — hidden by default, tap anywhere to reveal */}
+                  <Animated.View style={[styles.meta, { bottom: bottomClearance, opacity: metaOpacity }]} pointerEvents={metaVisible ? 'box-none' : 'none'}>
+                    <View style={styles.metaCard}>
+                      <View style={styles.brandLine}>
+                        <View style={styles.brandTextWrap}>
+                          <View style={styles.brandNameRow}>
+                            <AppText style={styles.brandName}>{brandName}</AppText>
+                          </View>
+                          {handle ? <AppText style={styles.handle}>{handle}</AppText> : null}
+                        </View>
+
+                        <Button
+                          title="Comments"
+                          size="sm"
+                          variant="outline"
+                          onPress={() => openCommentsSheet(item)}
+                        />
+                      </View>
+
+                      <AppText style={styles.title}>{item.collectionTitle}</AppText>
+                      {item.collectionDescription ? (
+                        <AppText style={styles.desc} numberOfLines={2}>
+                          {item.collectionDescription}
+                        </AppText>
+                      ) : null}
+
+                      <View style={styles.audioRow}>
+                        <AppText style={styles.audioEmoji}>🎵</AppText>
+                        <AppText style={styles.audioText} numberOfLines={1}>
+                          Original Audio
+                        </AppText>
+                      </View>
+                    </View>
+                  </Animated.View>
+                </View>
+              );
+            }}
+          />
+        </View>
+      )}
+
+      <CollectionCommentsSheet
+        visible={Boolean(commentsTarget)}
+        collectionId={commentsTarget?.collectionId ?? null}
+        collectionTitle={commentsTarget?.title ?? null}
+        onClose={closeCommentsSheet}
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  header: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    zIndex: 20,
+    paddingBottom: 8,
+    overflow: 'hidden',
+  },
+  headerBlur: {
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  headerLeftGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerCenterGroup: {
+    flex: 1,
+    overflow: 'hidden',
+    paddingHorizontal: tokens.spacing.sm,
+  },
+  headerRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerChipsScroll: {
+    flexGrow: 0,
+  },
+  headerChipsContent: {
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.sm,
+    alignItems: 'center',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  headerLogoButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  brandLogo: {
+    width: 32,
+    height: 32,
+    resizeMode: 'contain',
+  },
+  headerIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  headerEmoji: {
+    fontSize: 20,
+    lineHeight: 22,
+    textShadowColor: '#000000',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  feedSkeletonWrap: {
+    flex: 1,
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
+  },
+  feedSkeletonRoot: {
+    flex: 1,
+    position: 'relative',
+  },
+  feedSkeletonHeader: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 8,
+    paddingHorizontal: 16,
+  },
+  feedSkeletonHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  feedSkeletonLogoWrap: {
+    width: 64,
+    height: 40,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  feedSkeletonChips: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 15,
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  reelWrap: {
+    flex: 1,
+  },
+  page: {
+    width: '100%',
+    backgroundColor: '#000',
+    position: 'relative',
+  },
+  pageImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: undefined,
+    height: undefined,
+  },
+  feedMediaLoadingSlide: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#06060b',
+  },
+  feedBrokenSlide: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: '#0b0b12',
+  },
+  feedBrokenEmoji: {
+    fontSize: 36,
+    marginBottom: 8,
+    color: '#fff',
+  },
+  feedBrokenTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  feedBrokenCaption: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+    color: '#94A3B8',
+  },
+  feedVideoSlide: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    backgroundColor: '#111',
+  },
+  feedVideoEmoji: {
+    fontSize: 34,
+    marginBottom: 8,
+    color: '#fff',
+  },
+  feedVideoTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+    color: '#fff',
+  },
+  feedVideoCaption: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 18,
+    color: '#CBD5E1',
+  },
+  feedEmptySlide: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: '#111',
+  },
+  feedEmptySlideEmoji: {
+    fontSize: 36,
+    marginBottom: 8,
+    color: '#fff',
+  },
+  feedEmptySlideTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  feedEmptySlideText: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+    color: '#94A3B8',
+  },
+  feedDotRow: {
+    position: 'absolute',
+    bottom: 114,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    zIndex: 6,
+  },
+  feedDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#64748B',
+  },
+  feedDotActive: {
+    width: 18,
+    backgroundColor: '#fff',
+  },
+  rail: {
+    position: 'absolute',
+    right: 12,
+    alignItems: 'center',
+    gap: 18,
+  },
+  ownerAvatarWrap: {
+    position: 'relative',
+    marginBottom: 2,
+  },
+  ownerAvatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#9333EA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#C084FC',
+    overflow: 'hidden',
+  },
+  ownerPatchBadge: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#121826',
+    borderWidth: 1,
+    borderColor: '#273244',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  ownerPatchBadgeActive: {
+    backgroundColor: '#16A34A',
+    borderColor: '#86EFAC',
+  },
+  ownerPatchBadgeBusy: {
+    opacity: 0.75,
+  },
+  ownerPatchBadgePressed: {
+    transform: [{ scale: 0.95 }],
+  },
+  ownerPatchBadgeEmoji: {
+    fontSize: 13,
+    lineHeight: 15,
+  },
+  ownerAvatarImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  ownerAvatarInitials: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  avatarWrap: {
+    marginBottom: 8,
+  },
+  userAvatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#9333EA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#C084FC',
+    overflow: 'hidden',
+  },
+  userAvatarImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  userAvatarInitials: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  profileMenuWrap: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 100,
+  },
+  profileMenu: {
+    borderWidth: 1,
+    borderRadius: 22,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.35,
+    shadowRadius: 32,
+    elevation: 28,
+  },
+  profileMenuIdentity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  profileMenuAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    overflow: 'hidden',
+  },
+  profileMenuAvatarImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  profileMenuAvatarText: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  profileMenuChevron: {
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  profileMenuTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  profileMenuSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  profileMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#273244',
+  },
+  profileMenuItemLast: {
+    borderBottomWidth: 0,
+  },
+  profileMenuEmoji: {
+    fontSize: 18,
+    width: 24,
+    textAlign: 'center',
+  },
+  profileMenuTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileMenuItemTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  profileMenuItemSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 15,
+  },
+  railItem: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  railEmoji: {
+    fontSize: 20,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  railCount: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  meta: {
+    position: 'absolute',
+    left: 16,
+    right: 80,
+  },
+  metaCard: {
+    backgroundColor: '#121826',
+    padding: 14,
+    borderRadius: tokens.radius.lg,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#273244',
+  },
+  brandLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  brandTextWrap: {
+    flex: 1,
+  },
+  brandNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  brandName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  handle: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  title: {
+    color: '#fff',
+    fontSize: 26,
+    fontWeight: '900',
+    lineHeight: 30,
+    letterSpacing: 0.2,
+  },
+  desc: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '500',
+  },
+  audioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    opacity: 0.95,
+  },
+  audioEmoji: {
+    fontSize: 12,
+    lineHeight: 14,
+  },
+  audioText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    maxWidth: 220,
+  },
+});

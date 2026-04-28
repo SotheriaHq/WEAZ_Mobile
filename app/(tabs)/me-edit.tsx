@@ -1,0 +1,443 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import { useNavigation } from '@react-navigation/native';
+
+import { ProfileApi, type UserProfile } from '@/src/api/ProfileApi';
+import { useAuth } from '@/src/auth/AuthContext';
+import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { useTheme } from '@/src/theme/ThemeProvider';
+import { useToast } from '@/src/toast/ToastContext';
+import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
+import { AppLoaderScreen } from '@/components/ui/AppLoader';
+import { AppText } from '@/components/ui/AppText';
+import { Card } from '@/components/ui/Card';
+import { Input } from '@/components/ui/Input';
+import { StableImage } from '@/components/ui/StableImage';
+import { tokens } from '@/src/styles/tokens';
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+type ProfileFormState = {
+  firstName: string;
+  lastName: string;
+  address: string;
+};
+
+function toForm(profile: UserProfile): ProfileFormState {
+  return {
+    firstName: profile.firstName ?? '',
+    lastName: profile.lastName ?? '',
+    address: profile.location ?? profile.address ?? '',
+  };
+}
+
+function normalized(value: string): string {
+  return value.trim();
+}
+
+function formsEqual(a: ProfileFormState, b: ProfileFormState): boolean {
+  return (
+    normalized(a.firstName) === normalized(b.firstName) &&
+    normalized(a.lastName) === normalized(b.lastName) &&
+    normalized(a.address) === normalized(b.address)
+  );
+}
+
+function statusLabel(state: SaveState, savedAt: Date | null): string {
+  if (state === 'saving') return 'Saving changes...';
+  if (state === 'error') return 'Could not save changes. Fix the issue before leaving.';
+  if (state === 'saved' && savedAt) {
+    return `Saved ${savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  return 'Changes save when you leave';
+}
+
+export default function MeEditScreen() {
+  const { user, updateUser } = useAuth();
+  const { theme, scheme } = useTheme();
+  const toast = useToast();
+  const navigation = useNavigation();
+  const isDark = scheme === 'dark';
+
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [form, setForm] = useState<ProfileFormState | null>(null);
+  const [baseline, setBaseline] = useState<ProfileFormState | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+  const latestFormRef = useRef<ProfileFormState | null>(null);
+  const pendingChangesRef = useRef(false);
+  const isNavigatingAwayRef = useRef(false);
+
+  const hasPendingChanges = useMemo(() => {
+    if (!form || !baseline) return false;
+    return !formsEqual(form, baseline);
+  }, [baseline, form]);
+
+  useEffect(() => {
+    latestFormRef.current = form;
+  }, [form]);
+
+  useEffect(() => {
+    pendingChangesRef.current = hasPendingChanges;
+  }, [hasPendingChanges]);
+
+  const loadProfile = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await ProfileApi.getMe();
+      if (!data) {
+        toast.error('Could not load your profile.');
+        setLoading(false);
+        return;
+      }
+      const nextForm = toForm(data);
+      setProfile(data);
+      setForm(nextForm);
+      setBaseline(nextForm);
+      setSaveState('idle');
+    } catch {
+      toast.error('Failed to load your profile.');
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  const persistDraft = useCallback(
+    async (draft: ProfileFormState) => {
+      if (!profile) return true;
+      if (!baseline || formsEqual(draft, baseline)) return true;
+
+      const resolvedFirstName = draft.firstName.trim() || baseline.firstName.trim() || profile.firstName.trim();
+      const resolvedLastName = draft.lastName.trim() || baseline.lastName.trim() || profile.lastName.trim();
+
+      if (!resolvedFirstName || !resolvedLastName) {
+        setSaveState('error');
+        toast.error('First and last name are required.');
+        return false;
+      }
+
+      const resolvedDraft: ProfileFormState = {
+        ...draft,
+        firstName: resolvedFirstName,
+        lastName: resolvedLastName,
+      };
+
+      setSaveState('saving');
+      try {
+        const updated = await ProfileApi.updateProfile(profile.id, {
+          firstName: resolvedFirstName,
+          lastName: resolvedLastName,
+          username: profile.username,
+          address: draft.address.trim() || undefined,
+        });
+        if (updated) {
+          setProfile(updated);
+          setBaseline(resolvedDraft);
+          setSaveState('saved');
+          setLastSavedAt(new Date());
+          updateUser({
+            firstName: updated.firstName,
+            lastName: updated.lastName,
+            username: updated.username,
+            profileImage: updated.profileImage,
+            profileImageId: updated.profileImageId,
+            profileImageFile: updated.profileImageFile,
+          });
+        }
+        return true;
+      } catch {
+        setSaveState('error');
+        toast.error('Failed to save your profile changes.');
+        return false;
+      }
+    },
+    [baseline, profile, toast, updateUser],
+  );
+
+  const persistOnExit = useCallback(async () => {
+    if (!pendingChangesRef.current || !latestFormRef.current) {
+      return true;
+    }
+    setSaveState('saving');
+    return persistDraft(latestFormRef.current);
+  }, [persistDraft]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (event) => {
+      if (isNavigatingAwayRef.current) {
+        return;
+      }
+      if (!pendingChangesRef.current || !latestFormRef.current) {
+        return;
+      }
+
+      event.preventDefault();
+      isNavigatingAwayRef.current = true;
+
+      void persistOnExit().then((didSave) => {
+        if (didSave) {
+          navigation.dispatch(event.data.action);
+          return;
+        }
+        isNavigatingAwayRef.current = false;
+      });
+    });
+
+    return unsubscribe;
+  }, [navigation, persistOnExit]);
+
+  const handleBack = useCallback(async () => {
+    if (isNavigatingAwayRef.current) {
+      return;
+    }
+
+    isNavigatingAwayRef.current = true;
+    const didSave = await persistOnExit();
+    if (!didSave) {
+      isNavigatingAwayRef.current = false;
+      return;
+    }
+    router.back();
+  }, [persistOnExit]);
+
+  const handlePickAvatar = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      toast.error('Allow photo access to update your profile image.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+
+    if (result.canceled || !result.assets?.[0]) {
+      return;
+    }
+
+    const asset = result.assets[0];
+    const formData = new FormData();
+    formData.append('file', {
+      uri: asset.uri,
+      name: asset.fileName ?? 'profile.jpg',
+      type: asset.mimeType ?? 'image/jpeg',
+    } as any);
+
+    setSaveState('saving');
+    try {
+      const uploaded = await ProfileApi.uploadProfileImage(formData);
+      if (!uploaded) {
+        throw new Error('Upload failed');
+      }
+
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              profileImage: uploaded.url,
+              profileImageId: uploaded.id,
+              profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
+            }
+          : prev,
+      );
+      updateUser({
+        profileImage: uploaded.url,
+        profileImageId: uploaded.id,
+        profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
+      });
+      setSaveState('saved');
+      setLastSavedAt(new Date());
+      toast.success('Profile image updated.');
+    } catch {
+      setSaveState('error');
+      toast.error('Failed to update your profile image.');
+    }
+  }, [toast, updateUser]);
+
+  const avatar = resolveProfileImageSource(profile ?? user ?? null);
+  const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: Boolean(profile || user) });
+  const avatarFallback = getAvatarFallback(
+    [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || user?.firstName || null,
+    profile?.username ?? user?.username ?? null,
+  );
+  const statusTone =
+    saveState === 'error' ? 'danger' : saveState === 'saving' ? 'warning' : 'muted';
+
+  if (loading || !form) {
+    return <AppLoaderScreen message="Loading editor" />;
+  }
+
+  return (
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+      <View
+        style={[
+          styles.header,
+          { borderBottomColor: theme.colors.border },
+        ]}
+      >
+        <Pressable onPress={handleBack} style={styles.backButton}>
+          <AppText variant="bodyBold">Back</AppText>
+        </Pressable>
+        <View style={styles.headerTextWrap}>
+          <AppText variant="bodyBold">Edit Profile</AppText>
+          <AppText variant="caption" tone={statusTone} style={styles.status}>
+            {statusLabel(saveState, lastSavedAt)}
+          </AppText>
+        </View>
+      </View>
+
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Card
+            variant="surface"
+            style={[
+              styles.avatarCard,
+              {
+                backgroundColor: theme.colors.surfaceAlt,
+              },
+            ]}
+          >
+            <Pressable onPress={handlePickAvatar} style={styles.avatarButton}>
+              {avatarUri ? (
+                <StableImage uri={avatarUri} containerStyle={styles.avatarImage} imageStyle={styles.avatarImage} />
+              ) : (
+                <View style={[styles.avatarFallback, { backgroundColor: theme.colors.primary + '1f' }]}>
+                  <AppText variant="title" tone="primary">{avatarFallback}</AppText>
+                </View>
+              )}
+            </Pressable>
+            <View style={styles.avatarTextWrap}>
+              <AppText variant="bodyBold">Tap profile image to update</AppText>
+              <AppText variant="body" tone="muted">
+                Email and password stay in account settings. This screen only edits profile details.
+              </AppText>
+            </View>
+          </Card>
+
+          <View style={styles.group}>
+            <Input
+              label="First Name"
+              value={form.firstName}
+              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, firstName: value } : prev))}
+              placeholder="First name"
+              containerStyle={styles.group}
+            />
+          </View>
+
+          <View style={styles.group}>
+            <Input
+              label="Last Name"
+              value={form.lastName}
+              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, lastName: value } : prev))}
+              placeholder="Last name"
+              containerStyle={styles.group}
+            />
+          </View>
+
+          <View style={styles.group}>
+            <Input
+              label="Location"
+              value={form.address}
+              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, address: value } : prev))}
+              placeholder="City, State"
+              containerStyle={styles.group}
+            />
+          </View>
+
+          <View style={styles.helperStack}>
+            <AppText variant="caption" tone="muted">Changes save automatically when you leave this screen.</AppText>
+            <AppText variant="caption" tone="muted">Signed in as {user?.email ?? 'your account'}.</AppText>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  flex: { flex: 1 },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 24,
+  },
+  loadingText: {
+    fontSize: tokens.typography.caption.size,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: tokens.spacing.md,
+  },
+  backButton: {
+  },
+  headerTextWrap: {
+    flex: 1,
+  },
+  status: {
+    marginTop: tokens.spacing.xs,
+  },
+  content: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.lg,
+    paddingBottom: tokens.spacing['4xl'],
+    gap: tokens.spacing.md,
+  },
+  avatarCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.lg,
+  },
+  avatarButton: {
+    width: 84,
+    height: 84,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
+  },
+  avatarFallback: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarTextWrap: {
+    flex: 1,
+    gap: tokens.spacing.xs,
+  },
+  group: {
+    gap: tokens.spacing.sm,
+  },
+  helperStack: {
+    gap: tokens.spacing.xs,
+    paddingTop: tokens.spacing.xs,
+  },
+});

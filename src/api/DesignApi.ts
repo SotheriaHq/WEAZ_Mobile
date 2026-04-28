@@ -1,0 +1,623 @@
+import { apiClient } from '@/src/api/httpClient';
+
+export type MobileDesignAsset = {
+  id: string;
+  uri: string;
+  mimeType: string;
+  fileName: string;
+  fileSize: number;
+  mediaKind: 'image' | 'video';
+};
+
+export type DesignEditorAsset = MobileDesignAsset & {
+  existingMediaId?: string;
+  remoteFileId?: string | null;
+  remoteUrl?: string | null;
+  aspectRatio?: number | null;
+};
+
+export type DesignCategoryOption = {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  subCategories: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    description?: string | null;
+  }>;
+};
+
+export type FilterValueOption = {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  order?: number;
+};
+
+export type FilterDimensionOption = {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  isMulti: boolean;
+  appliesTo: string[];
+  values: FilterValueOption[];
+};
+
+export type MeasurementPointOption = {
+  id: string;
+  key: string;
+  label: string;
+  category?: string | null;
+  gender?: 'MEN' | 'WOMEN' | 'UNISEX' | null;
+  description?: string | null;
+};
+
+export type DesignFilterSelection = Record<string, string[]>;
+
+export type DraftSessionResponse = {
+  collectionId: string;
+  sessionToken: string;
+  hasConflict: boolean;
+  conflictDetails?: {
+    existingSessionToken?: string;
+    deviceName?: string;
+    deviceType?: 'desktop' | 'tablet' | 'mobile';
+    startedAt: string;
+    userId?: string;
+  };
+};
+
+export type DesignDetail = {
+  id: string;
+  title: string;
+  description: string;
+  visibility: 'PUBLIC' | 'PRIVATE';
+  type: 'MALE' | 'FEMALE' | 'EVERYBODY';
+  status: 'DRAFT' | 'PUBLISHED';
+  categoryId: string;
+  subCategoryId: string;
+  filterSelection: DesignFilterSelection;
+  filterValueIds: string[];
+  tags: string[];
+  minPrice?: number;
+  maxPrice?: number;
+  sizingMode: 'NONE' | 'RTW' | 'CUSTOM' | 'RTW_PLUS_FITTINGS';
+  customOrderEnabled: boolean;
+  customMeasurementKeys: string[];
+  draftVersion?: number;
+  coverMediaId?: string | null;
+  metadataEditedAt?: string | null;
+  medias: Array<{
+    id: string;
+    fileId?: string | null;
+    url?: string | null;
+    previewUrl?: string | null;
+    aspectRatio?: number | null;
+    mediaType: 'image' | 'video';
+  }>;
+};
+
+export type DesignSavePayload = {
+  title: string;
+  description?: string;
+  visibility: 'PUBLIC' | 'PRIVATE';
+  categoryId?: string;
+  subCategoryId?: string;
+  type: 'MALE' | 'FEMALE' | 'EVERYBODY';
+  tags: string[];
+  minPrice?: number;
+  maxPrice?: number;
+  sizingMode?: 'NONE' | 'RTW' | 'CUSTOM' | 'RTW_PLUS_FITTINGS';
+  customOrderEnabled?: boolean;
+  customMeasurementKeys?: string[];
+  filterValueIds?: string[];
+  assets: DesignEditorAsset[];
+  action: 'draft' | 'publish';
+  designId?: string;
+  originalMediaIds?: string[];
+  draftSessionToken?: string;
+  draftVersion?: number;
+};
+
+type PresignedUpload = {
+  fileId: string;
+  expectedKey: string;
+  uploadUrl: string;
+  uploadFields?: Record<string, string> | null;
+  method: 'POST' | 'PUT';
+};
+
+type InitializeDesignResponse = {
+  collectionId: string;
+  uploads: PresignedUpload[];
+};
+
+type UploadCompletion = {
+  fileId: string;
+  s3Key: string;
+  actualSize: number;
+  actualMimeType: string;
+};
+
+const MAX_DESIGN_MEDIA = 20;
+
+const createIdempotencyKey = () =>
+  `mob_design_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
+const unwrapData = <T>(payload: unknown): T => {
+  if (payload && typeof payload === 'object' && 'data' in (payload as Record<string, unknown>)) {
+    return (payload as Record<string, unknown>).data as T;
+  }
+  return payload as T;
+};
+
+const asRecord = (value: unknown): Record<string, any> =>
+  value && typeof value === 'object' ? (value as Record<string, any>) : {};
+
+const asString = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const asNumber = (value: unknown): number | undefined => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const asStringList = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value
+        .map((entry) => asString(entry))
+        .filter((entry): entry is string => Boolean(entry))
+    : [];
+
+const normalizeSizingMode = (value: unknown): DesignDetail['sizingMode'] => {
+  const raw = String(value ?? '').toUpperCase();
+  if (raw === 'NONE' || raw === 'RTW' || raw === 'CUSTOM') {
+    return raw;
+  }
+  return 'RTW_PLUS_FITTINGS';
+};
+
+const mapFilterSelection = (raw: unknown): DesignFilterSelection => {
+  if (!Array.isArray(raw)) return {};
+  return raw.reduce<DesignFilterSelection>((acc, entry) => {
+    const item = asRecord(entry);
+    const dimensionId = asString(item.dimensionId);
+    const valueId = asString(item.valueId);
+    if (!dimensionId || !valueId) return acc;
+    if (!Array.isArray(acc[dimensionId])) {
+      acc[dimensionId] = [];
+    }
+    if (!acc[dimensionId].includes(valueId)) {
+      acc[dimensionId].push(valueId);
+    }
+    return acc;
+  }, {});
+};
+
+const normalizeDetail = (payload: unknown): DesignDetail => {
+  const source = asRecord(unwrapData(payload));
+  const medias = Array.isArray(source.medias) ? source.medias : [];
+
+  return {
+    id: String(source.id ?? ''),
+    title: asString(source.title) ?? 'Untitled design',
+    description: asString(source.description) ?? '',
+    visibility: String(source.visibility ?? '').toUpperCase() === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC',
+    type:
+      String(source.type ?? '').toUpperCase() === 'MALE'
+        ? 'MALE'
+        : String(source.type ?? '').toUpperCase() === 'FEMALE'
+          ? 'FEMALE'
+          : 'EVERYBODY',
+    status: String(source.status ?? '').toUpperCase() === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT',
+    categoryId: asString(source.categoryId) ?? '',
+    subCategoryId: asString(source.subCategoryId) ?? asString(source.categoryTypeId) ?? '',
+    filterSelection: mapFilterSelection(source.filters),
+    filterValueIds: asStringList(source.filterValueIds),
+    tags: asStringList(source.tags),
+    minPrice: asNumber(source.minPrice),
+    maxPrice: asNumber(source.maxPrice),
+    sizingMode: normalizeSizingMode(source.sizingMode),
+    customOrderEnabled: Boolean(source.customOrderEnabled),
+    customMeasurementKeys: asStringList(source.customMeasurementKeys),
+    draftVersion: asNumber(source.draftVersion),
+    coverMediaId: asString(source.coverMediaId),
+    metadataEditedAt: asString(source.metadataEditedAt),
+    medias: medias.map((entry) => {
+      const item = asRecord(entry);
+      const file = asRecord(item.file);
+      return {
+        id: String(item.id ?? ''),
+        fileId: asString(file.id) ?? asString(item.fileId),
+        url: asString(file.s3Url) ?? asString(file.url) ?? asString(item.url),
+        previewUrl:
+          asString(item.previewUrl) ??
+          asString(file.s3Url) ??
+          asString(file.url) ??
+          asString(item.url),
+        aspectRatio: asNumber(item.aspectRatio),
+        mediaType:
+          String(item.type ?? item.mediaType ?? '').toUpperCase().includes('VIDEO') ? 'video' : 'image',
+      };
+    }),
+  };
+};
+
+const buildMetadata = (payload: DesignSavePayload) => ({
+  title: payload.title.trim() || 'Untitled design',
+  description: payload.description?.trim() || undefined,
+  visibility: payload.visibility,
+  type: payload.type,
+  categoryId: payload.categoryId,
+  subCategoryId: payload.subCategoryId,
+  categoryTypeId: payload.subCategoryId,
+  tags: payload.tags,
+  filterValueIds: payload.filterValueIds,
+  sizingMode: payload.sizingMode,
+  customOrderEnabled: payload.customOrderEnabled,
+  customMeasurementKeys: payload.customMeasurementKeys,
+});
+
+async function uploadDesignAsset(
+  upload: PresignedUpload,
+  asset: MobileDesignAsset,
+): Promise<UploadCompletion> {
+  if (upload.method === 'POST') {
+    const formData = new FormData();
+    for (const [key, value] of Object.entries(upload.uploadFields ?? {})) {
+      formData.append(key, value);
+    }
+    formData.append('file', {
+      uri: asset.uri,
+      type: asset.mimeType,
+      name: asset.fileName,
+    } as any);
+
+    const response = await fetch(upload.uploadUrl, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Upload failed with status ${response.status}`);
+    }
+  } else {
+    const fileResponse = await fetch(asset.uri);
+    const blob = await fileResponse.blob();
+    const response = await fetch(upload.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': asset.mimeType },
+      body: blob,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Upload failed with status ${response.status}`);
+    }
+  }
+
+  return {
+    fileId: upload.fileId,
+    s3Key: upload.expectedKey,
+    actualSize: asset.fileSize,
+    actualMimeType: asset.mimeType,
+  };
+}
+
+async function initializeNewDesignUploads(payload: DesignSavePayload): Promise<InitializeDesignResponse> {
+  const response = await apiClient.post('/designs/initialize', {
+    ...buildMetadata(payload),
+    minPrice: payload.minPrice,
+    maxPrice: payload.maxPrice,
+    files: payload.assets.map((asset) => ({
+      name: asset.fileName,
+      type: asset.mimeType,
+      size: asset.fileSize,
+    })),
+    isAvailableInStore: false,
+    draftOnly: payload.action === 'draft',
+  });
+
+  return unwrapData<InitializeDesignResponse>(response.data);
+}
+
+export async function getDesignCategories(): Promise<DesignCategoryOption[]> {
+  const response = await apiClient.get('/categories');
+  const payload = unwrapData<unknown>(response.data);
+  const items = Array.isArray(payload)
+    ? payload
+    : Array.isArray(asRecord(payload).items)
+      ? asRecord(payload).items
+      : [];
+
+  return items.map((entry: any) => ({
+    id: String(entry?.id ?? ''),
+    slug: String(entry?.slug ?? ''),
+    name: String(entry?.name ?? ''),
+    description: typeof entry?.description === 'string' ? entry.description : null,
+    subCategories: Array.isArray(entry?.subCategories)
+      ? entry.subCategories.map((item: any) => ({
+          id: String(item?.id ?? ''),
+          slug: String(item?.slug ?? ''),
+          name: String(item?.name ?? ''),
+          description: typeof item?.description === 'string' ? item.description : null,
+        }))
+      : [],
+  }));
+}
+
+export async function getDesignFilterDimensions(): Promise<FilterDimensionOption[]> {
+  const response = await apiClient.get('/categories/filters');
+  const payload = unwrapData<unknown>(response.data);
+  const items = Array.isArray(payload)
+    ? payload
+    : Array.isArray(asRecord(payload).items)
+      ? asRecord(payload).items
+      : [];
+
+  return items
+    .map((entry: any) => ({
+      id: String(entry?.id ?? ''),
+      slug: String(entry?.slug ?? ''),
+      name: String(entry?.name ?? ''),
+      description: typeof entry?.description === 'string' ? entry.description : null,
+      isMulti: entry?.isMulti !== false,
+      appliesTo: Array.isArray(entry?.appliesTo) ? entry.appliesTo.map(String) : [],
+      values: Array.isArray(entry?.values)
+        ? entry.values.map((value: any) => ({
+            id: String(value?.id ?? ''),
+            slug: String(value?.slug ?? ''),
+            name: String(value?.name ?? ''),
+            description: typeof value?.description === 'string' ? value.description : null,
+            order: typeof value?.order === 'number' ? value.order : undefined,
+          }))
+        : [],
+    }))
+    .filter((dimension: FilterDimensionOption) => dimension.id.length > 0);
+}
+
+export async function getMeasurementPoints(params?: {
+  gender?: 'MEN' | 'WOMEN' | 'UNISEX';
+}): Promise<MeasurementPointOption[]> {
+  const response = await apiClient.get('/measurement-points', { params });
+  const payload = unwrapData<unknown>(response.data);
+  const items = Array.isArray(payload)
+    ? payload
+    : Array.isArray(asRecord(payload).items)
+      ? asRecord(payload).items
+      : [];
+
+  return items.map((entry: any) => ({
+    id: String(entry?.id ?? ''),
+    key: String(entry?.key ?? ''),
+    label: String(entry?.label ?? ''),
+    category: typeof entry?.category === 'string' ? entry.category : null,
+    gender:
+      entry?.gender === 'MEN' || entry?.gender === 'WOMEN' || entry?.gender === 'UNISEX'
+        ? entry.gender
+        : null,
+    description: typeof entry?.description === 'string' ? entry.description : null,
+  }));
+}
+
+export async function getDesignDetail(designId: string): Promise<DesignDetail> {
+  const response = await apiClient.get(`/designs/${designId}`, {
+    params: { _cb: Date.now() },
+    headers: {
+      'Cache-Control': 'no-store',
+      Pragma: 'no-cache',
+    },
+  });
+  return normalizeDetail(response.data);
+}
+
+export async function startDesignDraftSession(
+  designId: string,
+  options?: {
+    deviceName?: string;
+    forceNew?: boolean;
+    existingToken?: string;
+  },
+): Promise<DraftSessionResponse> {
+  const response = await apiClient.post(`/designs/${designId}/draft-session`, {
+    deviceName: options?.deviceName ?? 'Threadly mobile',
+    forceNew: options?.forceNew ?? false,
+    existingToken: options?.existingToken,
+  });
+  return unwrapData<DraftSessionResponse>(response.data);
+}
+
+export async function updateDesign(
+  designId: string,
+  payload: Omit<DesignSavePayload, 'assets' | 'action' | 'designId'>,
+) {
+  const response = await apiClient.patch(`/designs/${designId}`, {
+    ...buildMetadata({
+      ...payload,
+      assets: [],
+      action: 'draft',
+    }),
+    minPrice: payload.minPrice,
+    maxPrice: payload.maxPrice,
+    draftSessionToken: payload.draftSessionToken,
+    draftVersion: payload.draftVersion,
+  });
+  return unwrapData<unknown>(response.data);
+}
+
+export async function initializeExistingDesignMediaUploads(
+  designId: string,
+  assets: MobileDesignAsset[],
+): Promise<InitializeDesignResponse> {
+  const response = await apiClient.post(`/designs/${designId}/media/initialize`, {
+    files: assets.map((asset) => ({
+      name: asset.fileName,
+      type: asset.mimeType,
+      size: asset.fileSize,
+    })),
+  });
+  return unwrapData<InitializeDesignResponse>(response.data);
+}
+
+export async function finalizeExistingDesign(
+  designId: string,
+  payload: Omit<DesignSavePayload, 'designId'>,
+  completions: UploadCompletion[],
+) {
+  const response = await apiClient.post(
+    `/designs/${designId}/finalize`,
+    {
+      completions,
+      shouldPublish: payload.action === 'publish',
+      action: payload.action,
+      collectionMetadata: buildMetadata(payload),
+      coverMediaId: undefined,
+      coverIndex: 0,
+      draftSessionToken: payload.draftSessionToken,
+      draftVersion: payload.draftVersion,
+    },
+    {
+      headers: { 'Idempotency-Key': createIdempotencyKey() },
+    },
+  );
+
+  return unwrapData<unknown>(response.data);
+}
+
+export async function reorderDesignMedia(designId: string, mediaIds: string[]) {
+  const response = await apiClient.patch(`/designs/${designId}/reorder-media`, {
+    items: mediaIds.map((mediaId, orderIndex) => ({
+      mediaId,
+      orderIndex,
+    })),
+  });
+  return unwrapData<unknown>(response.data);
+}
+
+export async function deleteDesignMedia(designId: string, mediaId: string) {
+  await apiClient.delete(`/designs/${designId}/media/${mediaId}`);
+}
+
+export async function saveDesignEditor(
+  payload: DesignSavePayload,
+  onProgress?: (value: number, message: string) => void,
+): Promise<{ id: string; detail: DesignDetail }> {
+  const trimmedTitle = payload.title.trim() || 'Untitled design';
+  const filteredAssets = payload.assets.slice(0, MAX_DESIGN_MEDIA);
+  const localAssets = filteredAssets.filter((asset) => !asset.existingMediaId);
+  const existingMediaIds = filteredAssets
+    .map((asset) => asset.existingMediaId)
+    .filter((asset): asset is string => Boolean(asset));
+
+  if (!payload.designId) {
+    onProgress?.(0.1, 'Creating design draft...');
+    const initialized = await initializeNewDesignUploads({
+      ...payload,
+      title: trimmedTitle,
+      assets: filteredAssets,
+    });
+    const designId = asString(initialized?.collectionId);
+
+    if (!designId) {
+      throw new Error('The design draft could not be created.');
+    }
+
+    const uploads = Array.isArray(initialized.uploads) ? initialized.uploads : [];
+    const completions: UploadCompletion[] = [];
+
+    for (let index = 0; index < uploads.length; index += 1) {
+      const upload = uploads[index];
+      const asset = filteredAssets[index];
+      if (!asset) continue;
+      onProgress?.(
+        0.2 + ((index + 1) / Math.max(uploads.length, 1)) * 0.55,
+        uploads.length > 1 ? `Uploading media ${index + 1} of ${uploads.length}...` : 'Uploading media...',
+      );
+      completions.push(await uploadDesignAsset(upload, asset));
+    }
+
+    onProgress?.(0.82, payload.action === 'publish' ? 'Publishing design...' : 'Saving draft...');
+    await finalizeExistingDesign(
+      designId,
+      {
+        ...payload,
+        title: trimmedTitle,
+        assets: filteredAssets,
+      },
+      completions,
+    );
+
+    const detail = await getDesignDetail(designId);
+    onProgress?.(1, payload.action === 'publish' ? 'Design published.' : 'Draft saved.');
+    return { id: designId, detail };
+  }
+
+  onProgress?.(0.12, 'Saving design metadata...');
+  await updateDesign(payload.designId, {
+    ...payload,
+    title: trimmedTitle,
+  });
+
+  const removedExistingMediaIds = (payload.originalMediaIds ?? []).filter(
+    (mediaId) => !existingMediaIds.includes(mediaId),
+  );
+  if (removedExistingMediaIds.length > 0) {
+    onProgress?.(0.2, 'Removing deleted media...');
+    await Promise.all(
+      removedExistingMediaIds.map((mediaId) => deleteDesignMedia(payload.designId!, mediaId)),
+    );
+  }
+
+  const initialized =
+    localAssets.length > 0
+      ? await initializeExistingDesignMediaUploads(payload.designId, localAssets)
+      : { collectionId: payload.designId, uploads: [] };
+
+  const uploads = Array.isArray(initialized.uploads) ? initialized.uploads : [];
+  const completions: UploadCompletion[] = [];
+
+  for (let index = 0; index < uploads.length; index += 1) {
+    const upload = uploads[index];
+    const asset = localAssets[index];
+    if (!asset) continue;
+    onProgress?.(
+      0.24 + ((index + 1) / Math.max(uploads.length, 1)) * 0.36,
+      uploads.length > 1 ? `Uploading media ${index + 1} of ${uploads.length}...` : 'Uploading media...',
+    );
+    completions.push(await uploadDesignAsset(upload, asset));
+  }
+
+  onProgress?.(0.7, payload.action === 'publish' ? 'Finalizing design...' : 'Saving draft...');
+  await finalizeExistingDesign(
+    payload.designId,
+    {
+      ...payload,
+      title: trimmedTitle,
+    },
+    completions,
+  );
+
+  const detail = await getDesignDetail(payload.designId);
+  const finalMediaIds = detail.medias.map((media) => media.id);
+  const orderedExistingMediaIds = filteredAssets
+    .map((asset) => asset.existingMediaId)
+    .filter((mediaId): mediaId is string => Boolean(mediaId && finalMediaIds.includes(mediaId)));
+  const appendedMediaIds = finalMediaIds.filter((mediaId) => !orderedExistingMediaIds.includes(mediaId));
+  const nextOrder = [...orderedExistingMediaIds, ...appendedMediaIds];
+
+  if (nextOrder.length > 0 && nextOrder.length === finalMediaIds.length) {
+    const hasSameOrder = nextOrder.every((mediaId, index) => mediaId === finalMediaIds[index]);
+    if (!hasSameOrder) {
+      await reorderDesignMedia(payload.designId, nextOrder);
+    }
+  }
+
+  onProgress?.(1, payload.action === 'publish' ? 'Design published.' : 'Draft saved.');
+  return { id: payload.designId, detail: await getDesignDetail(payload.designId) };
+}

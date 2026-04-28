@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Threadly",
+    "slug": "threadly",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/threadly-mark.png",
+    "scheme": "threadlymobile",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/threadly-mark.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0b0710"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/threadly-mark.png",
+        "backgroundColor": "#0b0710"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/threadly-mark.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
