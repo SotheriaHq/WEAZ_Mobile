@@ -167,6 +167,7 @@ export default function DiscoverScreen() {
     () => filterChips.find((chip) => chip.id === selectedChipId)?.tag ?? null,
     [filterChips, selectedChipId],
   );
+  const visibleFilterChips = useMemo(() => filterChips.filter((chip) => chip.id !== 'all'), [filterChips]);
 
   const loadFirstPage = useCallback(async () => {
     setLoading(true);
@@ -219,7 +220,13 @@ export default function DiscoverScreen() {
     void getMarketFilterChips().then((chips) => {
       if (!mounted || chips.length === 0) return;
       setFilterChips(chips);
-      setSelectedChipId((current) => (chips.some((chip) => chip.id === current) ? current : chips[0].id));
+      const firstVisibleChipId = chips.find((chip) => chip.id !== 'all')?.id ?? chips[0].id;
+      setSelectedChipId((current) => {
+        if (current !== 'all' && chips.some((chip) => chip.id === current && chip.id !== 'all')) {
+          return current;
+        }
+        return firstVisibleChipId;
+      });
     });
 
     return () => {
@@ -254,6 +261,7 @@ export default function DiscoverScreen() {
   const cardBg = isDark ? theme.colors.surfaceAlt : theme.colors.surface;
   const cardBorder = theme.colors.border;
   const pillBg = isDark ? theme.colors.surfaceAlt : theme.colors.surfaceAlt;
+  const headerControlSurface = scheme === 'dark' ? 'rgba(0, 0, 0, 0.16)' : 'rgba(255, 255, 255, 0.12)';
   const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom, [insets.bottom]);
 
   const renderItem = useCallback(
@@ -349,7 +357,7 @@ export default function DiscoverScreen() {
         </View>
       ) : null}
       {!loading && !error && items.length === 0 ? (
-        <FeedEmptyState onStartExploring={() => setSelectedChipId(filterChips[1]?.id ?? 'all')} />
+        <FeedEmptyState onStartExploring={() => setSelectedChipId(visibleFilterChips[0]?.id ?? 'all')} />
       ) : null}
     </View>
   );
@@ -371,7 +379,7 @@ export default function DiscoverScreen() {
               onPress={() => router.push('/')}
               style={({ pressed }) => [
                 styles.headerLogoButton,
-                { backgroundColor: theme.colors.overlay, borderColor: theme.colors.border },
+                { backgroundColor: headerControlSurface, borderColor: 'transparent', borderWidth: 0 },
                 pressed && { opacity: 0.82 },
               ]}
               accessibilityRole="button"
@@ -387,7 +395,7 @@ export default function DiscoverScreen() {
                 contentContainerStyle={styles.chipRow}
                 style={styles.headerChipsScroll}
               >
-                {filterChips.map((chip) => (
+                {visibleFilterChips.map((chip) => (
                   <Chip
                     key={chip.id}
                     label={chip.label}
@@ -403,7 +411,7 @@ export default function DiscoverScreen() {
               onPress={() => { /* TODO: navigate to search */ }}
               style={({ pressed }) => [
                 styles.headerIconButton,
-                { backgroundColor: theme.colors.overlay, borderColor: theme.colors.border },
+                { backgroundColor: headerControlSurface, borderColor: 'transparent', borderWidth: 0 },
                 pressed && { opacity: 0.8 },
               ]}
               accessibilityRole="button"

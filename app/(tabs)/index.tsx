@@ -635,6 +635,7 @@ export default function HomeScreen() {
     () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? { id: 'all', label: 'All', tag: null },
     [filterChips, selectedFilterId],
   );
+  const visibleFilterChips = useMemo(() => filterChips.filter((chip) => chip.id !== 'all'), [filterChips]);
   const activeTag = activeFilter?.tag ?? null;
   const feedLoopEnabled = false;
   const fallbackMediaByCollection = useMemo(() => {
@@ -667,6 +668,7 @@ export default function HomeScreen() {
   const overlayScrollPadding = 0;
   const bottomClearance = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 18, [insets.bottom]);
   const topOverlayOffset = 0;
+  const headerControlSurface = scheme === 'dark' ? 'rgba(0, 0, 0, 0.16)' : 'rgba(255, 255, 255, 0.12)';
 
   const resetMetaImmediately = useCallback(() => {
     setMetaVisible(false);
@@ -696,7 +698,13 @@ export default function HomeScreen() {
     void getMarketFilterChips().then((chips) => {
       if (!mounted || !chips.length) return;
       setFilterChips(chips);
-      setSelectedFilterId((current) => (chips.some((chip) => chip.id === current) ? current : chips[0].id));
+      const firstVisibleChipId = chips.find((chip) => chip.id !== 'all')?.id ?? chips[0].id;
+      setSelectedFilterId((current) => {
+        if (current !== 'all' && chips.some((chip) => chip.id === current && chip.id !== 'all')) {
+          return current;
+        }
+        return firstVisibleChipId;
+      });
     });
 
     return () => {
@@ -1230,7 +1238,7 @@ export default function HomeScreen() {
                   onPress={() => { router.push('/'); }}
                   style={({ pressed }) => [
                     styles.headerLogoButton,
-                    { backgroundColor: theme.colors.overlay, borderColor: theme.colors.border },
+                    { backgroundColor: headerControlSurface, borderColor: 'transparent', borderWidth: 0 },
                     pressed && { opacity: 0.82 },
                   ]}
                     accessibilityRole="button"
@@ -1245,7 +1253,7 @@ export default function HomeScreen() {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.headerChipsContent}
                     style={styles.headerChipsScroll}>
-                    {filterChips.map((chip) => (
+                    {visibleFilterChips.map((chip) => (
                       <Chip
                         key={chip.id}
                         label={chip.label}
@@ -1262,7 +1270,7 @@ export default function HomeScreen() {
                   onPress={() => { /* TODO: navigate to search */ }}
                   style={({ pressed }) => [
                     styles.headerIconButton,
-                    { backgroundColor: theme.colors.overlay, borderColor: theme.colors.border },
+                    { backgroundColor: headerControlSurface, borderColor: 'transparent', borderWidth: 0 },
                     pressed && { opacity: 0.8 },
                   ]}
                     accessibilityRole="button"
@@ -1296,7 +1304,7 @@ export default function HomeScreen() {
           contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
           contentContainerStyle={{ flexGrow: 1, paddingBottom: Platform.OS === 'android' ? overlayScrollPadding : 0 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}>
-          <FeedEmptyState onStartExploring={() => setSelectedFilterId(filterChips[1]?.id ?? 'all')} />
+          <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? 'all')} />
         </ScrollView>
       ) : (
         <View style={styles.reelWrap} onLayout={onReelLayout}>

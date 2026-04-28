@@ -45,18 +45,24 @@ function TabIcon({
     <View style={styles.tabIconWrap}>
       <View style={styles.tabGlyphWrap}>
         <View style={chipStyle}>
-          <Text style={[styles.tabEmoji, { fontSize: focused ? 22 : 20, opacity: focused ? 1 : 0.72 }]}>
-            {emoji}
-          </Text>
-          <AppText
-            variant="captionBold"
-            tone={focused ? 'primary' : 'secondary'}
-            numberOfLines={1}
-            ellipsizeMode="clip"
-            style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
-          >
-            {label}
-          </AppText>
+          <View style={styles.tabGlyphStack}>
+            <View style={styles.tabEmojiWrap}>
+              <Text style={[styles.tabEmoji, { fontSize: focused ? 22 : 20, opacity: focused ? 1 : 0.72 }]}>
+                {emoji}
+              </Text>
+            </View>
+            <View style={styles.tabLabelWrap}>
+              <AppText
+                variant="captionBold"
+                tone={focused ? 'primary' : 'secondary'}
+                numberOfLines={1}
+                ellipsizeMode="clip"
+                style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
+              >
+                {label}
+              </AppText>
+            </View>
+          </View>
         </View>
         {typeof badge === 'number' && badge > 0 ? (
           <View style={styles.badgeWrap} pointerEvents="none">
@@ -89,6 +95,7 @@ export default function TabLayout() {
   const active = theme.colors.primary;
   const inactive = theme.colors.textMuted;
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
+  const tabBarBottomOffset = Math.max(insets.bottom - 4, 6);
   const isRootTabPath =
     pathname === '/' ||
     pathname === '/discover' ||
@@ -235,9 +242,9 @@ export default function TabLayout() {
           ),
           tabBarStyle: {
             position: 'absolute',
-            left: 16,
-            right: 16,
-            bottom: Math.max(insets.bottom, 10),
+            left: 26,
+            right: 26,
+            bottom: tabBarBottomOffset,
             backgroundColor: 'transparent',
             borderTopWidth: 0,
             elevation: 10,
@@ -248,6 +255,7 @@ export default function TabLayout() {
             height: TAB_BAR_HEIGHT,
             paddingTop: 0,
             paddingBottom: 0,
+            paddingHorizontal: 4,
             overflow: 'hidden',
             borderRadius: 34,
             zIndex: 100,
@@ -255,6 +263,7 @@ export default function TabLayout() {
           tabBarItemStyle: {
             flex: 1,
             paddingHorizontal: 0,
+            paddingVertical: 0,
             alignItems: 'center',
             justifyContent: 'center',
           },
@@ -356,7 +365,7 @@ export default function TabLayout() {
         }}
         scheme={scheme}
         theme={theme}
-        bottomOffset={TAB_BAR_HEIGHT + insets.bottom + 4}
+        bottomOffset={TAB_BAR_HEIGHT + tabBarBottomOffset + 4}
         user={user}
       />
     </>
@@ -374,22 +383,22 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   tabIconWrap: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 0,
   },
   tabChip: {
     width: 'auto',
-    maxWidth: '100%',
-    minWidth: 52,
-    minHeight: 48,
+    maxWidth: 60,
+    minWidth: 56,
+    minHeight: 42,
     borderRadius: 26,
-    paddingHorizontal: 4,
-    paddingVertical: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 1,
     alignSelf: 'center',
   },
   tabChipInactive: {
@@ -401,12 +410,21 @@ const styles = StyleSheet.create({
   },
   tabGlyphWrap: {
     position: 'relative',
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    minHeight: 48,
+    height: '100%',
     minWidth: 0,
+  },
+  tabGlyphStack: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 1,
+  },
+  tabEmojiWrap: {
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tabLabelInactive: {
     opacity: 1,
@@ -417,6 +435,12 @@ const styles = StyleSheet.create({
     opacity: 1,
     textAlign: 'center',
     flexShrink: 0,
+  },
+  tabLabelWrap: {
+    minHeight: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
   },
   badgeWrap: {
     position: 'absolute',
