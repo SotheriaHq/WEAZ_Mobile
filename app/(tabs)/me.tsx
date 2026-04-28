@@ -791,7 +791,7 @@ export default function MeScreen() {
   if (status === 'unauthenticated' || !profile) {
     if (!profile && !loading && profileError) {
       return (
-        <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}> 
+        <SafeAreaView style={[styles.root, { backgroundColor: 'transparent' }]}> 
           <View style={styles.loadingCenter}>
             <AppText variant="display">😕</AppText>
             <AppText variant="bodyBold">Profile unavailable</AppText>
@@ -818,7 +818,7 @@ export default function MeScreen() {
 
   // ── Render
   return (
-    <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>
+    <View style={[styles.root, { backgroundColor: 'transparent' }]}> 
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + LAYOUT.TAB_BAR_HEIGHT + 24 }]}

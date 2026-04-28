@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, FlatList, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -689,7 +689,7 @@ export default function HomeScreen() {
   const feedLoopHeadOffset = feedLoopEnabled ? 1 : 0;
   const canPatchBrands = user?.type !== 'BRAND';
 
-  const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom, [insets.bottom]);
+  const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 32, [insets.bottom]);
   const bottomClearance = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 18, [insets.bottom]);
 
   const resetMetaImmediately = useCallback(() => {
@@ -1240,7 +1240,7 @@ export default function HomeScreen() {
   }, []);
 
   return (
-    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg }]}>
+    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: 'transparent', borderRadius: 28, overflow: 'hidden' }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} translucent backgroundColor="transparent" />
 
       {!loading ? (
@@ -1362,10 +1362,13 @@ export default function HomeScreen() {
             scrollEnabled={!commentsTarget}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            style={{ backgroundColor: 'transparent', borderRadius: 28, overflow: 'hidden' }}
             contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
             scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
             contentContainerStyle={{
-              backgroundColor: '#000',
+              backgroundColor: 'transparent',
+              borderRadius: 28,
+              overflow: 'hidden',
               paddingBottom: Platform.OS === 'android' ? overlayScrollPadding : 0,
             }}
             viewabilityConfig={viewabilityConfigRef.current}
@@ -1696,10 +1699,12 @@ const styles = StyleSheet.create({
   },
   reelWrap: {
     flex: 1,
+    borderRadius: 28,
+    overflow: 'hidden',
   },
   page: {
     width: '100%',
-    backgroundColor: '#000',
+    backgroundColor: 'transparent',
     position: 'relative',
   },
   pageImage: {

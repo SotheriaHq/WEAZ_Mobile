@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Platform, StyleSheet, View } from 'react-native';
+import { BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import { Tabs, router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -25,22 +23,32 @@ const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
 function TabIcon({
   label,
-  iconName,
+  emoji,
   focused,
-  color,
   badge,
 }: {
   label: string;
-  iconName: keyof typeof Ionicons.glyphMap;
+  emoji: string;
   focused: boolean;
-  color: string;
   badge?: number;
 }) {
   const { theme } = useTheme();
+  const chipStyle = focused ? [styles.tabChip, { backgroundColor: theme.colors.primarySoft }] : styles.tabChip;
   return (
     <View style={styles.tabIconWrap}>
       <View style={styles.tabGlyphWrap}>
-        <Ionicons name={iconName} size={26} color={color} />
+        <View style={chipStyle}>
+          <Text style={[styles.tabEmoji, { fontSize: focused ? 22 : 20, opacity: focused ? 1 : 0.5 }]}>
+            {emoji}
+          </Text>
+          <AppText
+            variant={focused ? 'captionBold' : 'captionRegular'}
+            tone={focused ? 'primary' : 'muted'}
+            style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
+          >
+            {label}
+          </AppText>
+        </View>
         {typeof badge === 'number' && badge > 0 ? (
           <View style={styles.badgeWrap} pointerEvents="none">
             <View style={[styles.badge, { backgroundColor: theme.colors.badgeRed }]}>
@@ -51,13 +59,6 @@ function TabIcon({
           </View>
         ) : null}
       </View>
-      <AppText
-        variant={focused ? 'captionBold' : 'captionRegular'}
-        tone={focused ? 'primary' : 'muted'}
-        style={!focused ? styles.tabLabelInactive : undefined}
-      >
-        {label}
-      </AppText>
     </View>
   );
 }
@@ -212,32 +213,30 @@ export default function TabLayout() {
                   StyleSheet.absoluteFillObject,
                   {
                     backgroundColor: glass.bg,
+                    borderRadius: 28,
+                    overflow: 'hidden',
                   },
                 ]}
-              />
-              <LinearGradient
-                pointerEvents="none"
-                colors={['transparent', 'rgba(0,0,0,0.3)']}
-                style={styles.tabBarTopFade}
               />
             </View>
           ),
           tabBarStyle: {
             position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
+            left: 16,
+            right: 16,
+            bottom: 16,
             backgroundColor: 'transparent',
             borderTopWidth: 0,
-            elevation: 0,
+            elevation: 8,
             shadowColor: '#000',
-            shadowOffset: { width: 0, height: -6 },
-            shadowOpacity: scheme === 'dark' ? 0.16 : 0.08,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.15,
             shadowRadius: 12,
             height: TAB_BAR_HEIGHT + insets.bottom,
             paddingTop: tokens.spacing.sm,
             paddingBottom: Math.max(insets.bottom, tokens.spacing.sm),
-            overflow: 'visible',
+            overflow: 'hidden',
+            borderRadius: 28,
             zIndex: 100,
           },
           tabBarItemStyle: {
@@ -249,8 +248,8 @@ export default function TabLayout() {
           name="index"
           options={{
             title: 'Designs',
-            tabBarIcon: ({ focused, color }) => (
-              <TabIcon label="Designs" iconName="shirt-outline" focused={focused} color={color} />
+            tabBarIcon: ({ focused }) => (
+              <TabIcon label="Designs" emoji="🎨" focused={focused} />
             ),
           }}
         />
@@ -259,8 +258,8 @@ export default function TabLayout() {
           name="discover"
           options={{
             title: 'Market',
-            tabBarIcon: ({ focused, color }) => (
-              <TabIcon label="Market" iconName="compass-outline" focused={focused} color={color} />
+            tabBarIcon: ({ focused }) => (
+              <TabIcon label="Market" emoji="🧭" focused={focused} />
             ),
           }}
         />
@@ -270,8 +269,8 @@ export default function TabLayout() {
           options={{
             title: 'Store',
             href: isBrand ? undefined : null,
-            tabBarIcon: ({ focused, color }) => (
-              <TabIcon label="Store" iconName="bag-handle-outline" focused={focused} color={color} />
+            tabBarIcon: ({ focused }) => (
+              <TabIcon label="Store" emoji="🛍️" focused={focused} />
             ),
           }}
         />
@@ -288,8 +287,8 @@ export default function TabLayout() {
           name="inbox"
           options={{
             title: 'Inbox',
-            tabBarIcon: ({ focused, color }) => (
-              <TabIcon label="Inbox" iconName="mail-outline" focused={focused} color={color} />
+            tabBarIcon: ({ focused }) => (
+              <TabIcon label="Inbox" emoji="✉️" focused={focused} />
             ),
           }}
         />
@@ -301,8 +300,8 @@ export default function TabLayout() {
           }}
           options={{
             title: 'You',
-            tabBarIcon: ({ focused, color }) => (
-              <TabIcon label="You" iconName="person-outline" focused={focused || profileMenuVisible} color={color} badge={inboxBadgeCount} />
+            tabBarIcon: ({ focused }) => (
+              <TabIcon label="You" emoji="👤" focused={focused || profileMenuVisible} badge={inboxBadgeCount} />
             ),
           }}
         />
@@ -351,20 +350,27 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   tabBarBg: {
     flex: 1,
-    overflow: 'visible',
-  },
-  tabBarTopFade: {
-    position: 'absolute',
-    top: -24,
-    left: 0,
-    right: 0,
-    height: 24,
+    borderRadius: 28,
+    overflow: 'hidden',
   },
   tabIconWrap: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
     minWidth: 54,
+  },
+  tabChip: {
+    minWidth: 54,
+    minHeight: 48,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  tabEmoji: {
+    lineHeight: 24,
   },
   tabGlyphWrap: {
     position: 'relative',
@@ -375,6 +381,9 @@ const styles = StyleSheet.create({
   },
   tabLabelInactive: {
     opacity: 0.6,
+  },
+  tabLabelActive: {
+    opacity: 1,
   },
   badgeWrap: {
     position: 'absolute',

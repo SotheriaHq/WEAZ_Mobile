@@ -19,7 +19,7 @@ export default function StoreTabScreen() {
 
   if (!isBrand) {
     return (
-      <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
+      <SafeAreaView style={[styles.root, { backgroundColor: 'transparent' }]}> 
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <BrandHeader />
         <View style={styles.guestWrap}>
@@ -37,7 +37,7 @@ export default function StoreTabScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
+    <SafeAreaView style={[styles.root, { backgroundColor: 'transparent' }]}> 
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <BrandHeader />
 

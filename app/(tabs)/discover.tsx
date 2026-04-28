@@ -352,6 +352,7 @@ export default function DiscoverScreen() {
           <Chip
             key={chip.id}
             label={chip.label}
+                      variant="nav"
             selected={chip.id === selectedChipId}
             onPress={() => setSelectedChipId(chip.id)}
           />
@@ -373,7 +374,7 @@ export default function DiscoverScreen() {
   );
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
+    <SafeAreaView style={[styles.root, { backgroundColor: 'transparent' }]}> 
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <BrandHeader />
 
@@ -467,13 +468,13 @@ const styles = StyleSheet.create({
   },
   heroBlock: {
     paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.lg,
-    gap: tokens.spacing.sm,
+    paddingTop: tokens.spacing.md,
+    gap: tokens.spacing.xs,
   },
   chipRow: {
     paddingHorizontal: 14,
-    paddingTop: tokens.spacing.md,
-    paddingBottom: tokens.spacing.md,
+    paddingTop: tokens.spacing.sm,
+    paddingBottom: tokens.spacing.sm,
     gap: tokens.spacing.sm,
   },
   errorCard: {
