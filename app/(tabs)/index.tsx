@@ -4,7 +4,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { BlurView } from 'expo-blur';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -25,7 +25,6 @@ import { getMarketFeed, getMarketFilterChips, type MarketFilterChip, toggleColle
 import type { MarketItem } from '@/src/types/market';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
-import { useDiscreteTapGesture } from '@/src/hooks/useDiscreteTapGesture';
 import { prefetchResolvedImageAsset, resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
@@ -153,9 +152,11 @@ function FeedMediaSlide({ media, imageIndex }: { media: FeedViewerMedia | null; 
   if (!media) {
     return (
       <View style={[StyleSheet.absoluteFillObject, styles.feedEmptySlide]}>
-        <AppText style={styles.feedEmptySlideEmoji}>🖼️</AppText>
-        <AppText style={styles.feedEmptySlideTitle}>No views yet</AppText>
-        <AppText style={styles.feedEmptySlideText}>This design does not have any media to browse.</AppText>
+        <AppText variant="display">🖼️</AppText>
+        <AppText variant="subtitle" tone="inverse">No views yet</AppText>
+        <AppText variant="body" tone="secondary" style={styles.feedSlideBody}>
+          This design does not have any media to browse.
+        </AppText>
       </View>
     );
   }
@@ -163,9 +164,9 @@ function FeedMediaSlide({ media, imageIndex }: { media: FeedViewerMedia | null; 
   if (media.type === 'video') {
     return (
       <View style={[StyleSheet.absoluteFillObject, styles.feedVideoSlide]}>
-        <AppText style={styles.feedVideoEmoji}>🎬</AppText>
-        <AppText style={styles.feedVideoTitle}>Video view</AppText>
-        <AppText style={styles.feedVideoCaption} numberOfLines={2}>
+        <AppText variant="display">🎬</AppText>
+        <AppText variant="subtitle" tone="inverse">Video view</AppText>
+        <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.feedSlideBody}>
           {media.label || 'Swipe to another view'}
         </AppText>
       </View>
@@ -189,9 +190,9 @@ function FeedMediaSlide({ media, imageIndex }: { media: FeedViewerMedia | null; 
   if (!resolvedUri) {
     return (
       <View style={[StyleSheet.absoluteFillObject, styles.feedBrokenSlide]}>
-        <AppText style={styles.feedBrokenEmoji}>🖼️</AppText>
-        <AppText style={styles.feedBrokenTitle}>No image available</AppText>
-        <AppText style={styles.feedBrokenCaption} numberOfLines={2}>
+        <AppText variant="display">🖼️</AppText>
+        <AppText variant="subtitle" tone="inverse">No image available</AppText>
+        <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.feedSlideBody}>
           {media.label || 'Swipe to another view'}
         </AppText>
       </View>
@@ -205,12 +206,10 @@ function FeedMediaCarousel({
   mediaItems,
   activeIndex,
   onActiveIndexChange,
-  onTap,
 }: {
   mediaItems: FeedViewerMedia[];
   activeIndex: number;
   onActiveIndexChange: (nextIndex: number) => void;
-  onTap: () => void;
 }) {
   const { width } = useWindowDimensions();
   const carouselRef = useRef<ScrollView>(null);
@@ -246,7 +245,6 @@ function FeedMediaCarousel({
     ];
   }, [hasMultipleItems, stableMediaItems]);
   const internalIndex = hasMultipleItems ? safeActiveIndex + 1 : safeActiveIndex;
-  const tapHandlers = useDiscreteTapGesture({ onTap });
 
   useEffect(() => {
     if (!carouselRef.current || !carouselItems.length) {
@@ -324,7 +322,7 @@ function FeedMediaCarousel({
   };
 
   return (
-    <View style={StyleSheet.absoluteFillObject} {...tapHandlers}>
+    <View style={StyleSheet.absoluteFillObject}>
       <ScrollView
         ref={carouselRef}
         key={`${stableMediaItems.length}-${width}`}
@@ -402,7 +400,7 @@ function FeedBrandAvatar({
         ) : loading ? (
           <ThreadlyLogoLoader size={26} />
         ) : (
-          <AppText style={styles.ownerAvatarInitials}>{initials}</AppText>
+          <AppText variant="captionBold" tone="inverse">{initials}</AppText>
         )}
       </View>
       {brandId && canPatch ? (
@@ -421,7 +419,7 @@ function FeedBrandAvatar({
           accessibilityRole="button"
           accessibilityLabel={`${isPatched ? 'Unpatch' : 'Patch'} ${brandName ?? 'brand'}`}
         >
-          <AppText style={styles.ownerPatchBadgeEmoji}>🪡</AppText>
+          <AppText variant="captionBold">🪡</AppText>
         </Pressable>
       ) : null}
     </Pressable>
@@ -509,7 +507,6 @@ const FeedSkeleton = ({
 };
 
 export default function HomeScreen() {
-  const navigation = useNavigation<any>();
   const { scheme, theme } = useTheme();
   const { status, user } = useAuth();
   const toast = useToast();
@@ -520,10 +517,7 @@ export default function HomeScreen() {
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>([{ id: 'all', label: 'All', tag: null }]);
   const [selectedFilterId, setSelectedFilterId] = useState('all');
   const [activePageIndex, setActivePageIndex] = useState(0);
-  const [metaVisible, setMetaVisible] = useState(false);
   const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
-  const metaOpacity = useRef(new Animated.Value(0)).current;
-  const metaTranslateY = useRef(new Animated.Value(12)).current;
   const pendingCollectionIdsRef = useRef(new Set<string>());
   const prefetchedImageUrisRef = useRef(new Set<string>());
   const feedTeleportingRef = useRef(false);
@@ -587,13 +581,6 @@ export default function HomeScreen() {
     }
   }, [status, user?.id, user?.type]);
 
-  const handleOpenSavedItems = useCallback(() => {
-    router.push({
-      pathname: '/(tabs)/me',
-      params: { tab: 'Saved' },
-    } as any);
-  }, []);
-
   const pageHeight = useMemo(() => Math.max(1, Math.round(windowHeight)), [windowHeight]);
 
   const activeFilter = useMemo(
@@ -614,6 +601,10 @@ export default function HomeScreen() {
     });
     return next;
   }, [items]);
+  const feedListKey = useMemo(
+    () => `market-feed-${pageHeight}-${feedLoopEnabled ? 'loop' : 'linear'}-${activeTag ?? 'all'}`,
+    [activeTag, feedLoopEnabled, pageHeight],
+  );
 
   /**
    * Circular buffer: [ghost(last)] [item0...itemN] [ghost(first)]
@@ -658,16 +649,9 @@ export default function HomeScreen() {
     ];
   }, [feedLoopEnabled, items]);
   const feedLoopHeadOffset = feedLoopEnabled ? 1 : 0;
-  const overlayScrollPadding = 0;
   const bottomClearance = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 18, [insets.bottom]);
-  const topOverlayOffset = 0;
+  const overlayScrollPadding = bottomClearance;
   const headerControlSurface = scheme === 'dark' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.06)';
-
-  const resetMetaImmediately = useCallback(() => {
-    setMetaVisible(false);
-    metaOpacity.setValue(0);
-    metaTranslateY.setValue(12);
-  }, [metaOpacity, metaTranslateY]);
 
   useEffect(() => {
     if (!feedLoopEnabled || pageHeight <= 1 || feedItems.length < 3) {
@@ -721,7 +705,6 @@ export default function HomeScreen() {
   useEffect(() => {
     setActivePageIndex(0);
     setCommentsTarget(null);
-    resetMetaImmediately();
     setCollectionMediaMap({});
     collectionMediaMapRef.current = {};
     setActiveMediaIndexByCollection({});
@@ -731,7 +714,7 @@ export default function HomeScreen() {
     threadingMediaByIdRef.current = {};
     queuedThreadIntentByMediaRef.current = {};
     pendingCollectionIdsRef.current.clear();
-  }, [activeTag, resetMetaImmediately]);
+  }, [activeTag]);
 
   const toErrorMessage = (err: unknown) => (err instanceof Error ? err.message : 'Something went wrong');
   const isLikelyNetworkError = (msg: string) => /network|timeout|failed to fetch|connection/i.test(msg);
@@ -741,7 +724,6 @@ export default function HomeScreen() {
     setIsNetworkError(false);
     setActivePageIndex(0);
     setCommentsTarget(null);
-    resetMetaImmediately();
 
     // Stale-while-revalidate: serve cached data immediately, skip the loading spinner
     const cached = feedPageCache.get(activeTag);
@@ -783,55 +765,7 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  }, [activeTag, resetMetaImmediately]);
-
-  // Toggle meta card — fade + slide up on reveal, fade + slide down on hide
-  const toggleMeta = useCallback(() => {
-    const next = !metaVisible;
-    setMetaVisible(next);
-
-    if (next) {
-      // Reveal: reset position then fade+rise in
-      metaTranslateY.setValue(20);
-      Animated.parallel([
-        Animated.timing(metaOpacity, {
-          toValue: 1,
-          duration: 340,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(metaTranslateY, {
-          toValue: 0,
-          duration: 340,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      // Dismiss: fade + drop down gently
-      Animated.parallel([
-        Animated.timing(metaOpacity, {
-          toValue: 0,
-          duration: 220,
-          easing: Easing.in(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(metaTranslateY, {
-          toValue: 12,
-          duration: 220,
-          easing: Easing.in(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [metaVisible, metaOpacity, metaTranslateY]);
-
-  // Reset meta instantly when swiping to a new page
-  const hideMeta = useCallback(() => {
-    setMetaVisible(false);
-    metaOpacity.setValue(0);
-    metaTranslateY.setValue(12);
-  }, [metaOpacity, metaTranslateY]);
+  }, [activeTag]);
 
   const prefetchMediaItems = useCallback((mediaItems: FeedViewerMedia[], options?: { includeFirstImage?: boolean }) => {
     const includeFirstImage = options?.includeFirstImage ?? false;
@@ -994,13 +928,12 @@ export default function HomeScreen() {
 
   const openCommentsSheet = useCallback((item: MarketItem) => {
     if (!item.collectionId) return;
-    resetMetaImmediately();
     setCommentsTarget({
       collectionId: item.collectionId,
       title: item.collectionTitle,
     });
     void hydrateCollectionMedia(item);
-  }, [hydrateCollectionMedia, resetMetaImmediately]);
+  }, [hydrateCollectionMedia]);
 
   const closeCommentsSheet = useCallback(() => {
     setCommentsTarget(null);
@@ -1181,7 +1114,11 @@ export default function HomeScreen() {
 
     try {
       const res = await getMarketFeed({ cursor: nextCursor, tag: activeTag, counts: 'combined' });
-      setItems((prev) => [...prev, ...res.items]);
+      setItems((prev) => {
+        const seenCollectionIds = new Set(prev.map((item) => item.collectionId));
+        const nextItems = res.items.filter((item) => !seenCollectionIds.has(item.collectionId));
+        return [...prev, ...nextItems];
+      });
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
     } catch {
@@ -1195,10 +1132,15 @@ export default function HomeScreen() {
     setIsNetworkError(false);
     setActivePageIndex(0);
     setCommentsTarget(null);
-    hideMeta();
 
     try {
       const res = await getMarketFeed({ cursor: null, tag: activeTag, counts: 'combined' });
+      feedPageCache.set(activeTag, {
+        items: res.items,
+        nextCursor: res.nextCursor ?? null,
+        hasNextPage: res.hasNextPage,
+        cachedAt: Date.now(),
+      });
       setItems(res.items);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
@@ -1209,7 +1151,7 @@ export default function HomeScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [activeTag, hideMeta]);
+  }, [activeTag]);
 
   useEffect(() => {
     loadFirstPage();
@@ -1303,8 +1245,8 @@ export default function HomeScreen() {
         </View>
       ) : error && !showBlockingLoader ? (
         <View style={[styles.loadingWrap, { paddingHorizontal: 20, gap: 12 }]}>
-          <AppText style={{ color: theme.colors.text, fontSize: 18, fontWeight: '800', textAlign: 'center' }}>Unable to load feed</AppText>
-          <AppText style={{ color: theme.colors.textMuted, textAlign: 'center' }}>{error}</AppText>
+          <AppText variant="subtitle" style={{ textAlign: 'center' }}>Unable to load feed</AppText>
+          <AppText variant="body" tone="muted" style={{ textAlign: 'center' }}>{error}</AppText>
           <Button title="Retry" variant="primary" onPress={loadFirstPage} fullWidth />
         </View>
       ) : items.length === 0 && !showBlockingLoader ? (
@@ -1318,14 +1260,13 @@ export default function HomeScreen() {
         <View style={styles.reelWrap}>
           <FlatList
             ref={feedListRef}
-            key={`market-feed-${pageHeight}-${feedLoopEnabled ? 'loop' : 'linear'}`}
+            key={feedListKey}
             data={feedItems}
             keyExtractor={(entry) => entry.listKey}
             initialScrollIndex={feedLoopHeadOffset}
             pagingEnabled
             snapToInterval={pageHeight}
             snapToAlignment="start"
-            disableIntervalMomentum
             getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
             decelerationRate="fast"
             directionalLockEnabled
@@ -1343,6 +1284,14 @@ export default function HomeScreen() {
             style={{ backgroundColor: 'transparent' }}
             viewabilityConfig={viewabilityConfigRef.current}
             onViewableItemsChanged={onViewableItemsChanged.current}
+            onScrollToIndexFailed={({ index }) => {
+              requestAnimationFrame(() => {
+                feedListRef.current?.scrollToOffset({
+                  offset: index * pageHeight,
+                  animated: false,
+                });
+              });
+            }}
             onMomentumScrollEnd={(e) => {
               const rawIndex = Math.max(
                 0,
@@ -1362,7 +1311,6 @@ export default function HomeScreen() {
                   feedTeleportingRef.current = true;
                   feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
                   setActivePageIndex(0);
-                  hideMeta();
                   requestAnimationFrame(() => {
                     feedTeleportingRef.current = false;
                   });
@@ -1376,7 +1324,6 @@ export default function HomeScreen() {
                   feedTeleportingRef.current = true;
                   feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
                   setActivePageIndex(items.length - 1);
-                  hideMeta();
                   requestAnimationFrame(() => {
                     feedTeleportingRef.current = false;
                   });
@@ -1386,13 +1333,11 @@ export default function HomeScreen() {
                 // Normal item — rawIndex 1..N maps to real item 0..N-1
                 const realIndex = feedItems[rawIndex]?.realIndex ?? 0;
                 setActivePageIndex(Math.min(realIndex, items.length - 1));
-                hideMeta();
                 return;
               }
 
               // Loop disabled (paginating or single item)
               setActivePageIndex(feedItems[rawIndex]?.realIndex ?? rawIndex);
-              hideMeta();
               if (rawIndex >= items.length - 1 && hasNextPage) {
                 void loadMore();
               }
@@ -1437,7 +1382,6 @@ export default function HomeScreen() {
                   <FeedMediaCarousel
                     mediaItems={mediaItems}
                     activeIndex={activeMediaIndex}
-                    onTap={toggleMeta}
                     onActiveIndexChange={(nextIndex) => {
                       setActiveMediaIndexByCollection((prev) => {
                         if (prev[item.collectionId] === nextIndex) return prev;
@@ -1488,39 +1432,36 @@ export default function HomeScreen() {
                           openCommentsSheet(item);
                         }}
                       >
-                        <AppText style={styles.railEmoji}>💬</AppText>
+                        <AppText variant="subtitle">💬</AppText>
                       </IconButton>
-                      <AppText style={styles.railCount}>{comments}</AppText>
+                      <AppText variant="captionBold" tone="inverse">{comments}</AppText>
                     </View>
 
                     <View style={styles.railItem}>
                       <IconButton size={40}>
-                        <AppText style={styles.railEmoji}>{item.isThreaded ? '🧵' : '🪡'}</AppText>
+                        <AppText variant="subtitle">{item.isLiked ? '❤️' : '🤍'}</AppText>
                       </IconButton>
-                      <AppText style={styles.railCount}>{likes}</AppText>
+                      <AppText variant="captionBold" tone="inverse">{likes}</AppText>
                     </View>
 
                   </View>
 
-                  {/* Meta card — hidden by default, tap anywhere to reveal */}
-                  <Animated.View
+                  {/* Compact metadata overlay */}
+                  <View
                     style={[
                       styles.meta,
                       {
                         bottom: bottomClearance,
-                        opacity: metaOpacity,
-                        transform: [{ translateY: metaTranslateY }],
                       },
                     ]}
-                    pointerEvents={metaVisible ? 'box-none' : 'none'}
                   >
                     <BlurView
                       tint={scheme === 'dark' ? 'dark' : 'light'}
-                      intensity={24}
+                      intensity={20}
                       style={[
                         styles.metaCard,
                         {
-                          backgroundColor: scheme === 'dark' ? 'rgba(18, 24, 38, 0.72)' : 'rgba(255, 255, 255, 0.72)',
+                          backgroundColor: scheme === 'dark' ? 'rgba(18, 24, 38, 0.56)' : 'rgba(255, 255, 255, 0.66)',
                           borderColor: scheme === 'dark' ? 'rgba(255,255,255,0.16)' : 'rgba(15,23,42,0.14)',
                         },
                       ]}
@@ -1528,9 +1469,9 @@ export default function HomeScreen() {
                       <View style={styles.brandLine}>
                         <View style={styles.brandTextWrap}>
                           <View style={styles.brandNameRow}>
-                            <AppText style={styles.brandName}>{brandName}</AppText>
+                            <AppText variant="bodyBold" tone="inverse">{brandName}</AppText>
                           </View>
-                          {handle ? <AppText style={styles.handle}>{handle}</AppText> : null}
+                          {handle ? <AppText variant="captionRegular" tone="secondary">{handle}</AppText> : null}
                         </View>
 
                         <Button
@@ -1541,21 +1482,23 @@ export default function HomeScreen() {
                         />
                       </View>
 
-                      <AppText style={styles.title}>{item.collectionTitle}</AppText>
+                      <AppText variant="subtitle" tone="inverse" numberOfLines={2}>
+                        {item.collectionTitle}
+                      </AppText>
                       {item.collectionDescription ? (
-                        <AppText style={styles.desc} numberOfLines={2}>
+                        <AppText variant="body" tone="secondary" numberOfLines={2}>
                           {item.collectionDescription}
                         </AppText>
                       ) : null}
 
                       <View style={styles.audioRow}>
-                        <AppText style={styles.audioEmoji}>🎵</AppText>
-                        <AppText style={styles.audioText} numberOfLines={1}>
+                        <AppText variant="captionBold">🎵</AppText>
+                        <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
                           Original Audio
                         </AppText>
                       </View>
                     </BlurView>
-                  </Animated.View>
+                  </View>
                 </View>
               );
             }}
@@ -1713,22 +1656,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     backgroundColor: '#0b0b12',
   },
-  feedBrokenEmoji: {
-    fontSize: 36,
-    marginBottom: 8,
-    color: '#fff',
-  },
-  feedBrokenTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  feedBrokenCaption: {
+  feedSlideBody: {
     marginTop: 6,
-    fontSize: 13,
-    lineHeight: 18,
     textAlign: 'center',
-    color: '#94A3B8',
   },
   feedVideoSlide: {
     ...StyleSheet.absoluteFillObject,
@@ -1737,47 +1667,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     backgroundColor: '#111',
   },
-  feedVideoEmoji: {
-    fontSize: 34,
-    marginBottom: 8,
-    color: '#fff',
-  },
-  feedVideoTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    textAlign: 'center',
-    color: '#fff',
-  },
-  feedVideoCaption: {
-    marginTop: 6,
-    fontSize: 13,
-    fontWeight: '500',
-    textAlign: 'center',
-    lineHeight: 18,
-    color: '#CBD5E1',
-  },
   feedEmptySlide: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
     backgroundColor: '#111',
-  },
-  feedEmptySlideEmoji: {
-    fontSize: 36,
-    marginBottom: 8,
-    color: '#fff',
-  },
-  feedEmptySlideTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  feedEmptySlideText: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: 'center',
-    color: '#94A3B8',
   },
   feedDotRow: {
     position: 'absolute',
@@ -1848,18 +1742,8 @@ const styles = StyleSheet.create({
   ownerPatchBadgePressed: {
     transform: [{ scale: 0.95 }],
   },
-  ownerPatchBadgeEmoji: {
-    fontSize: 13,
-    lineHeight: 15,
-  },
   ownerAvatarImage: {
     ...StyleSheet.absoluteFillObject,
-  },
-  ownerAvatarInitials: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0.4,
   },
   avatarWrap: {
     marginBottom: 8,
@@ -1972,16 +1856,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  railEmoji: {
-    fontSize: 20,
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-  railCount: {
-    color: '#CBD5E1',
-    fontSize: 12,
-    fontWeight: '600',
-  },
   meta: {
     position: 'absolute',
     left: 16,
@@ -2007,44 +1881,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  brandName: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  handle: {
-    color: '#CBD5E1',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  title: {
-    color: '#fff',
-    fontSize: 26,
-    fontWeight: '900',
-    lineHeight: 30,
-    letterSpacing: 0.2,
-  },
-  desc: {
-    color: '#F8FAFC',
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: '500',
-  },
   audioRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     opacity: 0.95,
-  },
-  audioEmoji: {
-    fontSize: 12,
-    lineHeight: 14,
-  },
-  audioText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-    maxWidth: 220,
   },
 });

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Tabs, router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,12 +38,12 @@ function TabIcon({
     styles.tabChip,
     focused
       ? {
-          backgroundColor: theme.colors.primary,
+          backgroundColor: theme.colors.primarySoft,
           shadowColor: theme.colors.primary,
           shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.26,
-          shadowRadius: 14,
-          elevation: 8,
+          shadowOpacity: 0.16,
+          shadowRadius: 12,
+          elevation: 5,
         }
       : styles.tabChipInactive,
   ];
@@ -60,8 +60,10 @@ function TabIcon({
             <View style={styles.tabLabelWrap}>
               <AppText
                 variant="captionBold"
-                tone={focused ? 'inverse' : 'secondary'}
+                tone={focused ? 'primary' : 'secondary'}
                 numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.84}
                 style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
               >
                 {label}
@@ -89,6 +91,7 @@ export default function TabLayout() {
   const toast = useToast();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const inboxBadgeCount = useUnreadNotificationCount();
   const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -101,7 +104,7 @@ export default function TabLayout() {
   const inactive = theme.colors.textMuted;
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
   const tabBarBottomOffset = Math.max(insets.bottom, 10);
-  const tabBarSideOffset = isBrand ? 20 : 28;
+  const tabBarSideOffset = Math.max(18, Math.min(isBrand ? 24 : 22, Math.round(windowWidth * 0.055)));
   const isRootTabPath =
     pathname === '/' ||
     pathname === '/discover' ||
@@ -252,7 +255,6 @@ export default function TabLayout() {
             left: tabBarSideOffset,
             right: tabBarSideOffset,
             bottom: tabBarBottomOffset,
-            maxWidth: isBrand ? 360 : 420,
             alignSelf: 'center',
             backgroundColor: 'transparent',
             borderTopWidth: 0,
@@ -264,14 +266,13 @@ export default function TabLayout() {
             height: TAB_BAR_HEIGHT,
             paddingTop: 0,
             paddingBottom: 0,
-            paddingHorizontal: isBrand ? 6 : 10,
+            paddingHorizontal: isBrand ? 4 : 6,
             overflow: 'visible',
             borderRadius: TAB_BAR_RADIUS,
             zIndex: 100,
           },
           tabBarItemStyle: {
             flex: 1,
-            minWidth: isBrand ? 60 : 70,
             paddingHorizontal: 0,
             paddingVertical: 0,
             alignItems: 'center',
@@ -397,16 +398,16 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 60,
+    minWidth: 0,
   },
   tabChip: {
     width: 'auto',
     maxWidth: '100%',
-    minWidth: 60,
-    height: 44,
-    borderRadius: 22,
+    minWidth: 0,
+    height: 40,
+    borderRadius: 20,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 2,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
@@ -424,12 +425,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
     height: '100%',
-    minWidth: 58,
+    minWidth: 0,
   },
   tabGlyphStack: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 1,
+    minWidth: 0,
   },
   tabEmojiWrap: {
     height: 20,
@@ -439,18 +441,20 @@ const styles = StyleSheet.create({
   tabLabelInactive: {
     opacity: 0.9,
     textAlign: 'center',
-    flexShrink: 0,
+    flexShrink: 1,
   },
   tabLabelActive: {
     opacity: 1,
     textAlign: 'center',
-    flexShrink: 0,
+    flexShrink: 1,
   },
   tabLabelWrap: {
     minHeight: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 48,
+    minWidth: 0,
+    width: '100%',
+    paddingHorizontal: 2,
   },
   badgeWrap: {
     position: 'absolute',

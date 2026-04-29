@@ -75,6 +75,8 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
               variant={isNav ? (selected ? 'captionBold' : 'captionRegular') : 'smallBold'}
               tone={isNav ? (selected ? 'primary' : 'default') : selected ? 'inverse' : 'secondary'}
               numberOfLines={1}
+              adjustsFontSizeToFit={isNav}
+              minimumFontScale={0.88}
             >
               {label}
             </AppText>
@@ -101,8 +103,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   navBase: {
-    minHeight: 28,
-    paddingHorizontal: 6,
+    minHeight: 30,
+    paddingHorizontal: 4,
     paddingVertical: 0,
     borderWidth: 0,
     borderRadius: tokens.radius.full,
@@ -110,7 +112,7 @@ const styles = StyleSheet.create({
   },
   navSelected: {
     minHeight: 30,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
   },
   navInactive: {
     backgroundColor: 'transparent',
@@ -124,6 +126,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 0,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
   },
 });
