@@ -68,6 +68,8 @@ export interface CustomBagState {
 
 export interface ProductBagStatus {
   productId: string;
+  canBag: boolean;
+  bagMode: 'STANDARD' | 'CUSTOM' | 'STANDARD_OR_CUSTOM' | 'UNAVAILABLE';
   baggable: boolean;
   reason: string | null;
   modes: {
@@ -97,6 +99,28 @@ export interface ProductBagStatus {
     requiredFreeformPointIds: string[];
     fittingsComplete: boolean;
     missingMeasurementKeys: string[];
+  };
+  custom: {
+    available: boolean;
+    alreadyBagged: boolean;
+    checkoutSessionId: string | null;
+    checkoutIntentId: string | null;
+    configurationId: string | null;
+    requiredMeasurementKeys: string[];
+    requiredFreeformPointIds: string[];
+    fittingState: 'COMPLETE' | 'PARTIAL' | 'MISSING' | 'NOT_REQUIRED';
+    missingMeasurementKeys: string[];
+  };
+  stockState: 'IN_STOCK' | 'OUT_OF_STOCK' | 'CUSTOM_ONLY' | 'UNAVAILABLE';
+  userState: {
+    authenticated: boolean;
+    isOwner: boolean;
+    hasPreviouslyBaggedOrOrdered: boolean;
+  };
+  ui: {
+    heartbeatState: 'not_bagged' | 'previously_bagged' | 'currently_bagged' | 'bagging' | 'disabled';
+    defaultAction: 'ADD_STANDARD' | 'OPEN_SELECTOR' | 'OPEN_CUSTOM_FLOW' | 'OPEN_FITTINGS' | 'DISABLED';
+    disabledReason: string | null;
   };
 }
 
@@ -228,19 +252,63 @@ const normalizeBagStatus = (payload: unknown, fallbackProductId: string): Produc
   const data = unwrapData<Record<string, unknown>>(payload);
   const modes = asRecord(data?.modes);
   const standard = asRecord(data?.standard);
+  const custom = asRecord(data?.custom);
   const customOrder = asRecord(data?.customOrder);
+  const standardAvailable = Boolean(standard.available ?? standard.enabled);
+  const standardBagged = Boolean(standard.alreadyBagged ?? standard.inBag);
+  const customAvailable = Boolean(custom.available ?? customOrder.enabled);
+  const customBagged = Boolean(custom.alreadyBagged ?? customOrder.inBag);
+  const customSessionId = asString(custom.checkoutSessionId) ?? asString(customOrder.sessionId);
+  const customIntentId = asString(custom.checkoutIntentId) ?? asString(customOrder.checkoutIntentId);
+  const customConfigurationId = asString(custom.configurationId) ?? asString(customOrder.configurationId);
+  const customRequiredKeys = asStringList(
+    Array.isArray(custom.requiredMeasurementKeys)
+      ? custom.requiredMeasurementKeys
+      : customOrder.requiredMeasurementKeys,
+  );
+  const customFreeformIds = asStringList(
+    Array.isArray(custom.requiredFreeformPointIds)
+      ? custom.requiredFreeformPointIds
+      : customOrder.requiredFreeformPointIds,
+  );
+  const customMissingKeys = asStringList(
+    Array.isArray(custom.missingMeasurementKeys)
+      ? custom.missingMeasurementKeys
+      : customOrder.missingMeasurementKeys,
+  );
+  const fittingState =
+    asString(custom.fittingState) ??
+    (customRequiredKeys.length === 0
+      ? 'NOT_REQUIRED'
+      : customMissingKeys.length === 0 || customOrder.fittingsComplete !== false
+        ? 'COMPLETE'
+        : customMissingKeys.length === customRequiredKeys.length
+          ? 'MISSING'
+          : 'PARTIAL');
+  const canBag = Boolean(data?.canBag ?? data?.baggable);
+  const disabledReason = asString(asRecord(data?.ui).disabledReason) ?? asString(data?.reason);
 
   return {
     productId: asString(data?.productId) ?? fallbackProductId,
-    baggable: Boolean(data?.baggable),
-    reason: asString(data?.reason),
+    canBag,
+    bagMode: (asString(data?.bagMode) as ProductBagStatus['bagMode']) ?? (
+      standardAvailable && customAvailable
+        ? 'STANDARD_OR_CUSTOM'
+        : standardAvailable
+          ? 'STANDARD'
+          : customAvailable
+            ? 'CUSTOM'
+            : 'UNAVAILABLE'
+    ),
+    baggable: canBag,
+    reason: disabledReason,
     modes: {
-      standard: Boolean(modes.standard),
-      customOrder: Boolean(modes.customOrder),
+      standard: Boolean(modes.standard ?? standardAvailable),
+      customOrder: Boolean(modes.customOrder ?? customAvailable),
     },
     standard: {
-      enabled: Boolean(standard.enabled),
-      inBag: Boolean(standard.inBag),
+      enabled: standardAvailable,
+      inBag: standardBagged,
       cartItemId: asString(standard.cartItemId),
       selectedSize: asString(standard.selectedSize),
       selectedColor: asString(standard.selectedColor),
@@ -252,15 +320,59 @@ const normalizeBagStatus = (payload: unknown, fallbackProductId: string): Produc
       stock: asNumber(standard.stock),
     },
     customOrder: {
-      enabled: Boolean(customOrder.enabled),
-      inBag: Boolean(customOrder.inBag),
-      sessionId: asString(customOrder.sessionId),
-      checkoutIntentId: asString(customOrder.checkoutIntentId),
-      configurationId: asString(customOrder.configurationId),
-      requiredMeasurementKeys: asStringList(customOrder.requiredMeasurementKeys),
-      requiredFreeformPointIds: asStringList(customOrder.requiredFreeformPointIds),
-      fittingsComplete: customOrder.fittingsComplete !== false,
-      missingMeasurementKeys: asStringList(customOrder.missingMeasurementKeys),
+      enabled: customAvailable,
+      inBag: customBagged,
+      sessionId: customSessionId,
+      checkoutIntentId: customIntentId,
+      configurationId: customConfigurationId,
+      requiredMeasurementKeys: customRequiredKeys,
+      requiredFreeformPointIds: customFreeformIds,
+      fittingsComplete: fittingState === 'COMPLETE' || fittingState === 'NOT_REQUIRED',
+      missingMeasurementKeys: customMissingKeys,
+    },
+    custom: {
+      available: customAvailable,
+      alreadyBagged: customBagged,
+      checkoutSessionId: customSessionId,
+      checkoutIntentId: customIntentId,
+      configurationId: customConfigurationId,
+      requiredMeasurementKeys: customRequiredKeys,
+      requiredFreeformPointIds: customFreeformIds,
+      fittingState: fittingState as ProductBagStatus['custom']['fittingState'],
+      missingMeasurementKeys: customMissingKeys,
+    },
+    stockState: (asString(data?.stockState) as ProductBagStatus['stockState']) ?? (
+      standardAvailable
+        ? 'IN_STOCK'
+        : customAvailable
+          ? 'CUSTOM_ONLY'
+          : 'UNAVAILABLE'
+    ),
+    userState: {
+      authenticated: Boolean(asRecord(data?.userState).authenticated),
+      isOwner: Boolean(asRecord(data?.userState).isOwner),
+      hasPreviouslyBaggedOrOrdered: Boolean(asRecord(data?.userState).hasPreviouslyBaggedOrOrdered),
+    },
+    ui: {
+      heartbeatState: (asString(asRecord(data?.ui).heartbeatState) as ProductBagStatus['ui']['heartbeatState']) ?? (
+        !canBag
+          ? 'disabled'
+          : standardBagged || customBagged
+            ? 'currently_bagged'
+            : 'not_bagged'
+      ),
+      defaultAction: (asString(asRecord(data?.ui).defaultAction) as ProductBagStatus['ui']['defaultAction']) ?? (
+        !canBag
+          ? 'DISABLED'
+          : standardAvailable && (Boolean(standard.requiresSize) || Boolean(standard.requiresColor))
+            ? 'OPEN_SELECTOR'
+            : standardAvailable
+              ? 'ADD_STANDARD'
+              : fittingState === 'MISSING' || fittingState === 'PARTIAL'
+                ? 'OPEN_FITTINGS'
+                : 'OPEN_CUSTOM_FLOW'
+      ),
+      disabledReason,
     },
   };
 };
@@ -324,14 +436,20 @@ export const MobileStoreApi = {
       const inStock = product.stock > 0 || product.variants.some((variant) => variant.stock > 0);
       const requiresSize = product.variants.some((variant) => Boolean(variant.size)) || product.sizes.length > 0;
       const requiresColor = product.variants.some((variant) => Boolean(variant.color)) || product.colors.length > 0;
+      const customAvailable = Boolean(product.customOrderEnabled && customConfig?.isActive);
+      const canBag = inStock || customAvailable;
+      const missingKeys = customConfig?.requiredMeasurementKeys ?? [];
+      const fittingState = missingKeys.length > 0 ? 'MISSING' : 'NOT_REQUIRED';
 
       return {
         productId,
-        baggable: inStock || Boolean(product.customOrderEnabled && customConfig?.isActive),
+        canBag,
+        bagMode: inStock && customAvailable ? 'STANDARD_OR_CUSTOM' : inStock ? 'STANDARD' : customAvailable ? 'CUSTOM' : 'UNAVAILABLE',
+        baggable: canBag,
         reason: null,
         modes: {
           standard: inStock,
-          customOrder: Boolean(product.customOrderEnabled && customConfig?.isActive),
+          customOrder: customAvailable,
         },
         standard: {
           enabled: inStock,
@@ -347,15 +465,49 @@ export const MobileStoreApi = {
           stock: product.stock,
         },
         customOrder: {
-          enabled: Boolean(product.customOrderEnabled && customConfig?.isActive),
+          enabled: customAvailable,
           inBag: Boolean(customBagLine),
           sessionId: customBagLine?.sessionId ?? null,
           checkoutIntentId: null,
           configurationId: customConfig?.id ?? null,
-          requiredMeasurementKeys: customConfig?.requiredMeasurementKeys ?? [],
+          requiredMeasurementKeys: missingKeys,
           requiredFreeformPointIds: [],
           fittingsComplete: false,
-          missingMeasurementKeys: customConfig?.requiredMeasurementKeys ?? [],
+          missingMeasurementKeys: missingKeys,
+        },
+        custom: {
+          available: customAvailable,
+          alreadyBagged: Boolean(customBagLine),
+          checkoutSessionId: customBagLine?.sessionId ?? null,
+          checkoutIntentId: null,
+          configurationId: customConfig?.id ?? null,
+          requiredMeasurementKeys: missingKeys,
+          requiredFreeformPointIds: [],
+          fittingState,
+          missingMeasurementKeys: missingKeys,
+        },
+        stockState: inStock ? 'IN_STOCK' : customAvailable ? 'CUSTOM_ONLY' : 'OUT_OF_STOCK',
+        userState: {
+          authenticated: true,
+          isOwner: false,
+          hasPreviouslyBaggedOrOrdered: Boolean(cartItem || customBagLine),
+        },
+        ui: {
+          heartbeatState: !canBag
+            ? 'disabled'
+            : cartItem || customBagLine
+              ? 'currently_bagged'
+              : 'not_bagged',
+          defaultAction: !canBag
+            ? 'DISABLED'
+            : inStock && (requiresSize || requiresColor)
+              ? 'OPEN_SELECTOR'
+              : inStock
+                ? 'ADD_STANDARD'
+                : fittingState === 'MISSING'
+                  ? 'OPEN_FITTINGS'
+                  : 'OPEN_CUSTOM_FLOW',
+          disabledReason: null,
         },
       };
     }

@@ -12,7 +12,7 @@ export type BagPulseStatus =
   | 'bagging'
   | 'disabled';
 
-export type BagPulseContext = 'single' | 'multi';
+export type BagPulseContext = 'single' | 'multi' | 'multi_card' | 'rail' | 'detail';
 
 type Props = {
   status: BagPulseStatus;
@@ -25,7 +25,7 @@ type Props = {
 const resolveScale = (status: BagPulseStatus, context: BagPulseContext) => {
   if (status === 'disabled') return 1.01;
   if (status === 'bagging') return context === 'single' ? 1.16 : 1.08;
-  if (context === 'multi') {
+  if (context === 'multi' || context === 'multi_card') {
     if (status === 'not_bagged') return 1.06;
     if (status === 'previously_bagged') return 1.04;
     return 1.025;
@@ -52,13 +52,13 @@ export function BagPulseIcon({
       Animated.sequence([
         Animated.timing(pulse, {
           toValue: 1,
-          duration: status === 'bagging' ? 360 : 720,
+          duration: status === 'bagging' ? 360 : context === 'multi' || context === 'multi_card' ? 980 : 720,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
         Animated.timing(pulse, {
           toValue: 0,
-          duration: status === 'bagging' ? 360 : 820,
+          duration: status === 'bagging' ? 360 : context === 'multi' || context === 'multi_card' ? 1280 : 820,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
@@ -79,7 +79,7 @@ export function BagPulseIcon({
   });
   const ringScale = pulse.interpolate({
     inputRange: [0, 1],
-    outputRange: [1, context === 'single' ? 1.46 : 1.24],
+    outputRange: [1, context === 'multi' || context === 'multi_card' ? 1.24 : 1.46],
   });
 
   const active = status === 'currently_bagged' || status === 'bagging';
