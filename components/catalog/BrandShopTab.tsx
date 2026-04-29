@@ -230,9 +230,18 @@ interface BrandShopTabProps {
   isOwner?: boolean;
   containerWidth: number;
   initialProductId?: string | null;
+  headerComponent?: React.ReactNode;
+  scrollEnabled?: boolean;
 }
 
-export function BrandShopTab({ brandId, isOwner = false, containerWidth, initialProductId }: BrandShopTabProps) {
+export function BrandShopTab({
+  brandId,
+  isOwner = false,
+  containerWidth,
+  initialProductId,
+  headerComponent,
+  scrollEnabled = false,
+}: BrandShopTabProps) {
   const { scheme, theme } = useTheme();
   const { status, user } = useAuth();
   const requireAuth = useAuthAction();
@@ -677,8 +686,9 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
     );
   }
 
-  return (
-    <View>
+  const listHeader = (
+    <>
+      {headerComponent}
       <View style={styles.controlPanel}>
         <Input
           label="Search products or categories"
@@ -737,6 +747,12 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
           })}
         </ScrollView>
       </View>
+    </>
+  );
+
+  return (
+    <View style={styles.shopRoot}>
+      {filteredProducts.length === 0 ? listHeader : null}
 
       {filteredProducts.length === 0 ? (
         <View style={styles.emptyState}>
@@ -749,10 +765,13 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
           data={filteredProducts}
           keyExtractor={(item) => item.id}
           numColumns={2}
-          scrollEnabled={false}
+          scrollEnabled={scrollEnabled}
+          ListHeaderComponent={listHeader}
           columnWrapperStyle={{ gap: CARD_GAP }}
-          contentContainerStyle={[styles.gridContainer, { paddingHorizontal: SIDE_PADDING, paddingBottom: 90 }]}
+          contentContainerStyle={[styles.gridContainer, { paddingHorizontal: SIDE_PADDING, paddingBottom: 110 }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primary} />}
+          showsVerticalScrollIndicator={false}
+          removeClippedSubviews={false}
           renderItem={({ item }) => (
             <ProductCard
               product={item}
@@ -967,6 +986,9 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
 }
 
 const styles = StyleSheet.create({
+  shopRoot: {
+    flex: 1,
+  },
   shopSkeleton: {
     paddingHorizontal: tokens.spacing.lg,
     paddingTop: tokens.spacing.lg,

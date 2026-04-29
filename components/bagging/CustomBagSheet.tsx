@@ -60,31 +60,38 @@ const buildCustomerName = (profile: UserProfile | null) => {
   const legalName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ').trim();
   if (legalName.length >= 3) return legalName;
   if (profile?.username && profile.username.length >= 3) return profile.username;
-  return 'Threadly User';
+  return '';
 };
 
-const buildShippingAddress = (profile: UserProfile | null) => {
+const buildLocationFields = (profile: UserProfile | null) => {
   const locationParts = String(profile?.location ?? '')
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
 
   return {
-    street: profile?.address ?? profile?.location ?? 'Provided at checkout',
-    city: locationParts[0] ?? 'Unknown city',
-    state: locationParts[1] ?? 'Unknown state',
+    city: locationParts[0] ?? '',
+    state: locationParts[1] ?? '',
     country: locationParts[2] ?? 'Nigeria',
   };
 };
 
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
 export default function CustomBagSheet({ visible, product, status, onClose, onCompleted }: Props) {
   const toast = useToast();
   const { addCustomOrder, prepareBag } = useMobileBagging();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [customerName, setCustomerName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [city, setCity] = useState('');
+  const [stateName, setStateName] = useState('');
+  const [country, setCountry] = useState('Nigeria');
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [manualQuoteRequired, setManualQuoteRequired] = useState(false);
 
   const requiredKeys = useMemo(
     () => status?.custom.requiredMeasurementKeys ?? [],
@@ -96,12 +103,19 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
 
     let active = true;
     setError(null);
+    setManualQuoteRequired(false);
     setLoadingProfile(true);
 
     void Promise.all([ProfileApi.getMe(), ProfileApi.getSizeFit()])
       .then(([nextProfile, sizeFit]) => {
         if (!active) return;
-        setProfile(nextProfile);
+        const location = buildLocationFields(nextProfile);
+        setCustomerName(buildCustomerName(nextProfile));
+        setEmail(nextProfile?.email ?? '');
+        setPhone('');
+        setCity(location.city);
+        setStateName(location.state);
+        setCountry(location.country);
         const measurements = extractNumericMeasurements(sizeFit);
         setValues(
           requiredKeys.reduce<Record<string, string>>((acc, key) => {
@@ -140,48 +154,80 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
     [measurementValues, requiredKeys],
   );
 
+  const trimmedCustomerName = customerName.trim();
+  const trimmedEmail = email.trim();
+  const trimmedPhone = phone.trim();
+  const trimmedCity = city.trim();
+  const trimmedState = stateName.trim();
+  const trimmedCountry = country.trim();
+  const missingContactFields = useMemo(() => {
+    const missing: string[] = [];
+    if (trimmedCustomerName.length < 3) missing.push('name');
+    if (!isValidEmail(trimmedEmail)) missing.push('valid email');
+    if (trimmedPhone.length < 6) missing.push('phone');
+    if (!trimmedCity) missing.push('city');
+    if (!trimmedState) missing.push('state');
+    if (!trimmedCountry) missing.push('country');
+    return missing;
+  }, [trimmedCity, trimmedCountry, trimmedCustomerName, trimmedEmail, trimmedPhone, trimmedState]);
+
   const canSubmit =
     Boolean(product && status?.custom.configurationId) &&
     !loadingProfile &&
     !submitting &&
-    missingKeys.length === 0;
+    (manualQuoteRequired || (missingKeys.length === 0 && missingContactFields.length === 0));
 
   const handleSubmit = async () => {
+    if (manualQuoteRequired) {
+      onClose();
+      return;
+    }
     if (!product || !status?.custom.configurationId) return;
     if (missingKeys.length > 0) {
       setError(`Add ${missingKeys.length} missing measurement${missingKeys.length === 1 ? '' : 's'} to continue.`);
+      return;
+    }
+    if (missingContactFields.length > 0) {
+      setError(`Add ${missingContactFields.join(', ')} before adding this custom request.`);
       return;
     }
 
     setSubmitting(true);
     setError(null);
     try {
+      const shippingAddress = {
+        city: trimmedCity,
+        state: trimmedState,
+        country: trimmedCountry,
+      };
       const preview = await MobileStoreApi.previewCustomPrice({
         configurationId: status.custom.configurationId,
         measurementValues,
         rushSelected: false,
+        shippingAddress,
       });
 
+      if (preview.quoteStatus === 'MANUAL_QUOTE_REQUIRED') {
+        setManualQuoteRequired(true);
+        toast.info('This custom request needs brand review before it can be added to your bag.');
+        return;
+      }
       if (!preview.checkoutIntentId) {
         throw new Error('Could not create a custom bag intent for this product.');
       }
-      if (preview.quoteStatus === 'MANUAL_QUOTE_REQUIRED') {
-        throw new Error('This custom order needs manual quote review before it can be added to the bag.');
-      }
 
-      const customerName = buildCustomerName(profile);
       await addCustomOrder(product.id, {
         checkoutIntentId: preview.checkoutIntentId,
         configurationId: status.custom.configurationId,
         configurationVersionId: preview.configurationVersionId,
         measurementValues,
-        shippingAddress: buildShippingAddress(profile),
+        shippingAddress,
         contactInfo: {
-          email: profile?.email ?? '',
-          phone: '',
-          customerName,
+          email: trimmedEmail,
+          phone: trimmedPhone,
+          customerName: trimmedCustomerName,
         },
-        customerName,
+        customerName: trimmedCustomerName,
         noDirectMatchAcknowledged: true,
       });
 
@@ -205,7 +251,7 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
       onClose={onClose}
       showCloseButton
       onDone={handleSubmit}
-      doneLabel="Add custom"
+      doneLabel={manualQuoteRequired ? 'Close' : 'Add custom'}
       doneDisabled={!canSubmit}
       loading={submitting}
       scrollable
@@ -217,6 +263,35 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
             <AppText variant="body" tone="muted">Loading fittings...</AppText>
           </View>
         ) : null}
+
+        <View style={styles.group}>
+          <Input
+            label="Customer name"
+            value={customerName}
+            onChangeText={setCustomerName}
+            placeholder="Full name"
+            error={trimmedCustomerName.length > 0 && trimmedCustomerName.length < 3 ? 'Use at least 3 characters' : undefined}
+          />
+          <Input
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            placeholder="name@example.com"
+            error={trimmedEmail.length > 0 && !isValidEmail(trimmedEmail) ? 'Enter a valid email' : undefined}
+          />
+          <Input
+            label="Phone"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            placeholder="Phone number"
+            error={trimmedPhone.length > 0 && trimmedPhone.length < 6 ? 'Enter a reachable phone number' : undefined}
+          />
+          <Input label="City" value={city} onChangeText={setCity} placeholder="City" />
+          <Input label="State" value={stateName} onChangeText={setStateName} placeholder="State" />
+          <Input label="Country" value={country} onChangeText={setCountry} placeholder="Country" />
+        </View>
 
         {requiredKeys.length > 0 ? (
           <View style={styles.group}>
@@ -240,11 +315,15 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
           </AppText>
         )}
 
-        {error ? (
+        {manualQuoteRequired ? (
+          <AppText variant="body" tone="muted">
+            This custom request needs brand review before it can be added to your bag.
+          </AppText>
+        ) : error ? (
           <AppText variant="caption" tone="danger">{error}</AppText>
         ) : (
           <AppText variant="caption" tone="muted">
-            The custom request will be saved in your bag for unified checkout.
+            Contact and delivery details are saved with this custom bag request for unified checkout.
           </AppText>
         )}
       </View>

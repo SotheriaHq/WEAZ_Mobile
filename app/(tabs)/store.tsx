@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutChangeEvent, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
@@ -41,21 +41,27 @@ export default function StoreTabScreen() {
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <BrandHeader />
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+      <View
+        style={styles.shopHost}
         onLayout={(event: LayoutChangeEvent) => setContainerWidth(event.nativeEvent.layout.width)}
       >
-        <View style={styles.heroBlock}>
-          <AppText style={[styles.heroTitle, { color: theme.colors.text }]}>Brand Store</AppText>
-          <AppText style={[styles.heroBody, { color: theme.colors.textMuted }]}>Owner storefront workspace with buyer-grade interactions for save, bag, and custom bag flows.</AppText>
-        </View>
-
         {containerWidth > 0 ? (
-          <BrandShopTab brandId={user?.id} isOwner containerWidth={containerWidth} />
+          <BrandShopTab
+            brandId={user?.id}
+            isOwner
+            containerWidth={containerWidth}
+            scrollEnabled
+            headerComponent={
+              <View style={styles.heroBlock}>
+                <AppText variant="title">Brand Store</AppText>
+                <AppText variant="body" tone="muted">
+                  Owner storefront workspace with buyer-grade interactions for save, bag, and custom bag flows.
+                </AppText>
+              </View>
+            }
+          />
         ) : null}
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -64,25 +70,14 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
-  scroll: {
+  shopHost: {
     flex: 1,
-  },
-  content: {
-    paddingBottom: 110,
   },
   heroBlock: {
     paddingHorizontal: 16,
     paddingTop: 12,
+    paddingBottom: 8,
     gap: 6,
-  },
-  heroTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  heroBody: {
-    fontSize: 13,
-    lineHeight: 19,
   },
   guestWrap: {
     flex: 1,

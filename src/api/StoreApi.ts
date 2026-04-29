@@ -614,11 +614,13 @@ export const MobileStoreApi = {
     configurationId: string;
     measurementValues: Record<string, number>;
     rushSelected?: boolean;
+    shippingAddress?: Record<string, unknown>;
   }): Promise<CustomPricePreview> {
     const response = await apiClient.post('/custom-orders/price-preview', {
       configurationId: payload.configurationId,
       measurementValues: payload.measurementValues,
       rushSelected: Boolean(payload.rushSelected),
+      shippingAddress: payload.shippingAddress,
       idempotencyKey: toIdempotencyKey(),
     });
 

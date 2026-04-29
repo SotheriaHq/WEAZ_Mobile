@@ -347,7 +347,6 @@ function FeedMediaCarousel({
         key={`${stableMediaItems.length}-${width}`}
         horizontal
         pagingEnabled
-        disableScrollViewPanResponder
         directionalLockEnabled
         nestedScrollEnabled={false}
         bounces={false}
@@ -539,9 +538,11 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const feedListRef = useRef<FlatList<FeedListEntry> | null>(null);
+  const initializedLoopKeyRef = useRef<string | null>(null);
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>([{ id: 'all', label: 'All', tag: null }]);
   const [selectedFilterId, setSelectedFilterId] = useState('all');
   const [activePageIndex, setActivePageIndex] = useState(0);
+  const [feedViewportHeight, setFeedViewportHeight] = useState(0);
   const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
   const pendingCollectionIdsRef = useRef(new Set<string>());
   const prefetchedImageUrisRef = useRef(new Set<string>());
@@ -606,7 +607,10 @@ export default function HomeScreen() {
     }
   }, [status, user?.id, user?.type]);
 
-  const pageHeight = useMemo(() => Math.max(1, Math.round(windowHeight)), [windowHeight]);
+  const pageHeight = useMemo(() => {
+    if (feedViewportHeight > 0) return Math.max(1, Math.round(feedViewportHeight));
+    return Math.max(1, Math.round(windowHeight - insets.top - LAYOUT.TAB_BAR_HEIGHT - insets.bottom));
+  }, [feedViewportHeight, insets.bottom, insets.top, windowHeight]);
 
   const activeFilter = useMemo(
     () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? { id: 'all', label: 'All', tag: null },
@@ -627,8 +631,8 @@ export default function HomeScreen() {
     return next;
   }, [items]);
   const feedListKey = useMemo(
-    () => `market-feed-${pageHeight}-${feedLoopEnabled ? 'loop' : 'linear'}-${activeTag ?? 'all'}`,
-    [activeTag, feedLoopEnabled, pageHeight],
+    () => `market-feed-${feedLoopEnabled ? 'loop' : 'linear'}-${activeTag ?? 'all'}`,
+    [activeTag, feedLoopEnabled],
   );
 
   /**
@@ -674,23 +678,31 @@ export default function HomeScreen() {
     ];
   }, [feedLoopEnabled, items]);
   const feedLoopHeadOffset = feedLoopEnabled ? 1 : 0;
+  const currentLoopKey = useMemo(
+    () => `${activeTag ?? 'all'}-${items.map((item) => item.id).join('|')}-${pageHeight}`,
+    [activeTag, items, pageHeight],
+  );
   const bottomClearance = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 18, [insets.bottom]);
   const overlayScrollPadding = bottomClearance;
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
   const headerControlSurface = glass.bg;
 
   useEffect(() => {
-    if (!feedLoopEnabled || pageHeight <= 1 || feedItems.length < 3) {
+    if (!feedLoopEnabled || feedViewportHeight <= 0 || pageHeight <= 1 || feedItems.length < 3) {
+      return;
+    }
+    if (initializedLoopKeyRef.current === currentLoopKey) {
       return;
     }
 
+    initializedLoopKeyRef.current = currentLoopKey;
     requestAnimationFrame(() => {
       feedListRef.current?.scrollToOffset({
         offset: feedLoopHeadOffset * pageHeight,
         animated: false,
       });
     });
-  }, [feedItems.length, feedLoopEnabled, feedLoopHeadOffset, pageHeight, activeTag]);
+  }, [currentLoopKey, feedItems.length, feedLoopEnabled, feedLoopHeadOffset, feedViewportHeight, pageHeight]);
 
   useEffect(() => {
     collectionMediaMapRef.current = collectionMediaMap;
@@ -730,6 +742,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     setActivePageIndex(0);
+    initializedLoopKeyRef.current = null;
     setCommentsTarget(null);
     setCollectionMediaMap({});
     collectionMediaMapRef.current = {};
@@ -748,7 +761,6 @@ export default function HomeScreen() {
   const loadFirstPage = useCallback(async () => {
     setError(null);
     setIsNetworkError(false);
-    setActivePageIndex(0);
     setCommentsTarget(null);
 
     // Stale-while-revalidate: serve cached data immediately, skip the loading spinner
@@ -1283,13 +1295,20 @@ export default function HomeScreen() {
           <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? 'all')} />
         </ScrollView>
       ) : (
-        <View style={styles.reelWrap}>
+        <View
+          style={styles.feedListContainer}
+          onLayout={(event) => {
+            const nextHeight = Math.round(event.nativeEvent.layout.height);
+            if (nextHeight > 0 && nextHeight !== feedViewportHeight) {
+              setFeedViewportHeight(nextHeight);
+            }
+          }}
+        >
           <FlatList
             ref={feedListRef}
             key={feedListKey}
             data={feedItems}
             keyExtractor={(entry) => entry.listKey}
-            initialScrollIndex={feedLoopHeadOffset}
             pagingEnabled
             snapToInterval={pageHeight}
             snapToAlignment="start"
@@ -1325,7 +1344,6 @@ export default function HomeScreen() {
               );
 
               if (feedTeleportingRef.current) {
-                feedTeleportingRef.current = false;
                 return;
               }
 
@@ -1337,9 +1355,9 @@ export default function HomeScreen() {
                   feedTeleportingRef.current = true;
                   feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
                   setActivePageIndex(0);
-                  requestAnimationFrame(() => {
+                  setTimeout(() => {
                     feedTeleportingRef.current = false;
-                  });
+                  }, 80);
                   return;
                 }
 
@@ -1350,9 +1368,9 @@ export default function HomeScreen() {
                   feedTeleportingRef.current = true;
                   feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
                   setActivePageIndex(items.length - 1);
-                  requestAnimationFrame(() => {
+                  setTimeout(() => {
                     feedTeleportingRef.current = false;
-                  });
+                  }, 80);
                   return;
                 }
 
@@ -1651,7 +1669,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
   },
-  reelWrap: {
+  feedListContainer: {
     flex: 1,
   },
   page: {
