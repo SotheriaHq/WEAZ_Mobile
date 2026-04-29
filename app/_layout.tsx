@@ -70,7 +70,7 @@ function RootBootstrap({
 }: {
   fontsLoaded: boolean;
 }) {
-  const { ready: themeReady } = useTheme();
+  const { ready: themeReady, theme } = useTheme();
   const { status } = useAuth();
   const bootReady = fontsLoaded && themeReady && status !== 'loading';
 
@@ -79,7 +79,7 @@ function RootBootstrap({
   }
 
   return (
-    <View style={styles.appRoot} onLayout={() => void SplashScreen.hideAsync()}>
+    <View style={[styles.appRoot, { backgroundColor: theme.colors.bg }]} onLayout={() => void SplashScreen.hideAsync()}>
       <RootStack />
     </View>
   );

@@ -66,6 +66,40 @@ export interface CustomBagState {
   total: number;
 }
 
+export interface ProductBagStatus {
+  productId: string;
+  baggable: boolean;
+  reason: string | null;
+  modes: {
+    standard: boolean;
+    customOrder: boolean;
+  };
+  standard: {
+    enabled: boolean;
+    inBag: boolean;
+    cartItemId: string | null;
+    selectedSize: string | null;
+    selectedColor: string | null;
+    quantity: number;
+    requiresSize: boolean;
+    requiresColor: boolean;
+    sizes: string[];
+    colors: string[];
+    stock: number;
+  };
+  customOrder: {
+    enabled: boolean;
+    inBag: boolean;
+    sessionId: string | null;
+    checkoutIntentId: string | null;
+    configurationId: string | null;
+    requiredMeasurementKeys: string[];
+    requiredFreeformPointIds: string[];
+    fittingsComplete: boolean;
+    missingMeasurementKeys: string[];
+  };
+}
+
 const unwrapData = <T>(payload: unknown): T => {
   if (payload && typeof payload === 'object' && 'data' in (payload as Record<string, unknown>)) {
     return (payload as { data: T }).data;
@@ -190,6 +224,47 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
   };
 };
 
+const normalizeBagStatus = (payload: unknown, fallbackProductId: string): ProductBagStatus => {
+  const data = unwrapData<Record<string, unknown>>(payload);
+  const modes = asRecord(data?.modes);
+  const standard = asRecord(data?.standard);
+  const customOrder = asRecord(data?.customOrder);
+
+  return {
+    productId: asString(data?.productId) ?? fallbackProductId,
+    baggable: Boolean(data?.baggable),
+    reason: asString(data?.reason),
+    modes: {
+      standard: Boolean(modes.standard),
+      customOrder: Boolean(modes.customOrder),
+    },
+    standard: {
+      enabled: Boolean(standard.enabled),
+      inBag: Boolean(standard.inBag),
+      cartItemId: asString(standard.cartItemId),
+      selectedSize: asString(standard.selectedSize),
+      selectedColor: asString(standard.selectedColor),
+      quantity: asNumber(standard.quantity),
+      requiresSize: Boolean(standard.requiresSize),
+      requiresColor: Boolean(standard.requiresColor),
+      sizes: asStringList(standard.sizes),
+      colors: asStringList(standard.colors),
+      stock: asNumber(standard.stock),
+    },
+    customOrder: {
+      enabled: Boolean(customOrder.enabled),
+      inBag: Boolean(customOrder.inBag),
+      sessionId: asString(customOrder.sessionId),
+      checkoutIntentId: asString(customOrder.checkoutIntentId),
+      configurationId: asString(customOrder.configurationId),
+      requiredMeasurementKeys: asStringList(customOrder.requiredMeasurementKeys),
+      requiredFreeformPointIds: asStringList(customOrder.requiredFreeformPointIds),
+      fittingsComplete: customOrder.fittingsComplete !== false,
+      missingMeasurementKeys: asStringList(customOrder.missingMeasurementKeys),
+    },
+  };
+};
+
 export const MobileStoreApi = {
   async getBrandProducts(brandId: string, limit = 60): Promise<StoreProduct[]> {
     const response = await apiClient.get('/products/market', {
@@ -215,6 +290,75 @@ export const MobileStoreApi = {
       throw new Error('Product unavailable');
     }
     return product;
+  },
+
+  async getProductBagStatus(productId: string): Promise<ProductBagStatus> {
+    try {
+      const response = await apiClient.get(`/store/products/${productId}/bag-status`);
+      return normalizeBagStatus(response.data, productId);
+    } catch (error: any) {
+      if (Number(error?.response?.status) !== 404) {
+        throw error;
+      }
+
+      const [productRes, cartRes, customConfigRes, customBagRes] = await Promise.allSettled([
+        MobileStoreApi.getProductById(productId),
+        MobileStoreApi.getCart(),
+        MobileStoreApi.getActiveCustomConfiguration(productId),
+        MobileStoreApi.listCustomBag(),
+      ]);
+      if (productRes.status !== 'fulfilled') {
+        throw error;
+      }
+
+      const product = productRes.value;
+      const cartItem =
+        cartRes.status === 'fulfilled'
+          ? cartRes.value.items.find((item) => item.productId === productId) ?? null
+          : null;
+      const customConfig = customConfigRes.status === 'fulfilled' ? customConfigRes.value : null;
+      const customBagLine =
+        customBagRes.status === 'fulfilled'
+          ? customBagRes.value.items.find((item) => item.sourceType === 'PRODUCT' && item.sourceId === productId) ?? null
+          : null;
+      const inStock = product.stock > 0 || product.variants.some((variant) => variant.stock > 0);
+      const requiresSize = product.variants.some((variant) => Boolean(variant.size)) || product.sizes.length > 0;
+      const requiresColor = product.variants.some((variant) => Boolean(variant.color)) || product.colors.length > 0;
+
+      return {
+        productId,
+        baggable: inStock || Boolean(product.customOrderEnabled && customConfig?.isActive),
+        reason: null,
+        modes: {
+          standard: inStock,
+          customOrder: Boolean(product.customOrderEnabled && customConfig?.isActive),
+        },
+        standard: {
+          enabled: inStock,
+          inBag: Boolean(cartItem),
+          cartItemId: cartItem?.id ?? null,
+          selectedSize: null,
+          selectedColor: null,
+          quantity: cartItem ? 1 : 0,
+          requiresSize,
+          requiresColor,
+          sizes: product.sizes,
+          colors: product.colors,
+          stock: product.stock,
+        },
+        customOrder: {
+          enabled: Boolean(product.customOrderEnabled && customConfig?.isActive),
+          inBag: Boolean(customBagLine),
+          sessionId: customBagLine?.sessionId ?? null,
+          checkoutIntentId: null,
+          configurationId: customConfig?.id ?? null,
+          requiredMeasurementKeys: customConfig?.requiredMeasurementKeys ?? [],
+          requiredFreeformPointIds: [],
+          fittingsComplete: false,
+          missingMeasurementKeys: customConfig?.requiredMeasurementKeys ?? [],
+        },
+      };
+    }
   },
 
   async getCart(): Promise<CartState> {

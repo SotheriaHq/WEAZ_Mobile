@@ -31,7 +31,7 @@ export function IconButton({
     variant === 'solid' ? theme.colors.surfaceAlt : 'transparent';
 
   const borderColor =
-    variant === 'solid' ? theme.colors.border : theme.colors.border;
+    variant === 'solid' ? theme.colors.border : 'transparent';
 
   return (
     <Pressable
@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   inner: {

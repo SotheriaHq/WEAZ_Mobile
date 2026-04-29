@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
@@ -19,8 +19,12 @@ import { Chip } from '@/components/ui/Chip';
 import { CatalogCardSurface } from '@/components/catalog/CatalogCardSurface';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
 import { AppSelectSheet } from '@/components/ui/AppSelectSheet';
+import { BagPulseIcon, type BagPulseStatus } from '@/components/ui/BagPulseIcon';
+import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { useProductBagging } from '@/src/hooks/useProductBagging';
+import { baggingService } from '@/src/services/bagging';
 
 type SortKey = 'newest' | 'price_low_high' | 'price_high_low';
 type FilterKey = 'all' | 'in_stock' | 'custom_only' | 'bagged' | 'saved';
@@ -156,23 +160,35 @@ const formatPrice = (amount: number, currency = 'NGN'): string => {
   }
 };
 
+const getBagPulseStatus = (args: {
+  busy?: boolean;
+  disabled?: boolean;
+  standardBagged?: boolean;
+  customBagged?: boolean;
+}): BagPulseStatus => {
+  if (args.disabled) return 'disabled';
+  if (args.busy) return 'bagging';
+  if (args.standardBagged || args.customBagged) return 'currently_bagged';
+  return 'not_bagged';
+};
+
 function ProductCard({
   product,
   width,
-  isDark,
   primary,
   wishlisted,
   standardBagged,
   customBagged,
+  busy,
   onPress,
 }: {
   product: StoreProduct;
   width: number;
-  isDark: boolean;
   primary: string;
   wishlisted: boolean;
   standardBagged: boolean;
   customBagged: boolean;
+  busy: boolean;
   onPress: () => void;
 }) {
   const { theme } = useTheme();
@@ -180,6 +196,12 @@ function ProductCard({
   const isOutOfStock = stock <= 0;
   const hasDiscount =
     typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
+  const bagStatus = getBagPulseStatus({
+    busy,
+    disabled: isOutOfStock && !product.customOrderEnabled,
+    standardBagged,
+    customBagged,
+  });
 
   return (
     <CatalogCardSurface
@@ -206,52 +228,62 @@ function ProductCard({
         </View>
       }
       topOverlay={
-        <View style={styles.topBadgeRow}>
-          {isOutOfStock ? (
-            <View style={styles.outOfStockBadge}>
-              <AppText style={styles.outOfStockText}>Out of stock</AppText>
-            </View>
-          ) : null}
+        <View style={styles.cardTopOverlay}>
+          <View style={styles.topBadgeRow}>
+            {isOutOfStock ? (
+              <View style={[styles.outOfStockBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
+                <AppText variant="captionBold" tone="danger">Out of stock</AppText>
+              </View>
+            ) : null}
 
-          {hasDiscount ? (
-            <View style={[styles.saleBadge, { backgroundColor: primary }]}>
-              <AppText style={styles.saleBadgeText}>
-                -
-                {Math.round(
-                  (1 - product.price / Number(product.compareAtPrice || product.price || 1)) * 100,
-                )}
-                %
-              </AppText>
-            </View>
-          ) : null}
+            {hasDiscount ? (
+              <View style={[styles.saleBadge, { backgroundColor: primary }]}>
+                <AppText variant="captionBold" tone="inverse">
+                  -
+                  {Math.round(
+                    (1 - product.price / Number(product.compareAtPrice || product.price || 1)) * 100,
+                  )}
+                  %
+                </AppText>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.cardBagAffordance}>
+            <BagPulseIcon
+              status={bagStatus}
+              context="multi"
+              mode={customBagged && !standardBagged ? 'custom' : 'standard'}
+              size={36}
+            />
+          </View>
         </View>
       }
     >
-      <AppText style={[styles.productName, { color: theme.colors.text }]} numberOfLines={2}>
+      <AppText variant="captionBold" numberOfLines={2}>
         {product.name}
       </AppText>
 
       <View style={styles.priceRow}>
-        <AppText style={[styles.productPrice, { color: primary }]}>
+        <AppText variant="captionBold" tone="primary">
           {formatPrice(product.price, product.currency)}
         </AppText>
         {hasDiscount ? (
-          <AppText style={[styles.comparePrice, { color: theme.colors.textMuted }]}>
+          <AppText variant="caption" tone="muted" style={styles.comparePrice}>
             {formatPrice(Number(product.compareAtPrice), product.currency)}
           </AppText>
         ) : null}
       </View>
 
       <View style={styles.statusRow}>
-        {wishlisted ? <AppText style={styles.statusText}>🧵 Saved</AppText> : null}
-        {standardBagged ? <AppText style={styles.statusText}>🛍️ In bag</AppText> : null}
-        {customBagged ? <AppText style={styles.statusText}>✂️ Custom bagged</AppText> : null}
-        {product.customOrderEnabled ? <AppText style={styles.statusText}>✂️ Custom-ready</AppText> : null}
+        {wishlisted ? <AppText variant="captionBold" tone="muted">🧵 Saved</AppText> : null}
+        {standardBagged ? <AppText variant="captionBold" tone="muted">🛍️ In bag</AppText> : null}
+        {customBagged ? <AppText variant="captionBold" tone="muted">✂️ Custom bagged</AppText> : null}
+        {product.customOrderEnabled ? <AppText variant="captionBold" tone="muted">✂️ Custom-ready</AppText> : null}
       </View>
     </CatalogCardSurface>
   );
 }
-
 interface BrandShopTabProps {
   brandId?: string;
   isOwner?: boolean;
@@ -264,7 +296,6 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
   const { status, user } = useAuth();
   const requireAuth = useAuthAction();
   const toast = useToast();
-  const isDark = scheme === 'dark';
 
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -281,6 +312,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
   const [cartByProductId, setCartByProductId] = useState<Record<string, string>>({});
   const [customBagByProductId, setCustomBagByProductId] = useState<Record<string, string>>({});
   const [busyByProductId, setBusyByProductId] = useState<Record<string, boolean>>({});
+  const { prepareBag, loadingByProductId } = useProductBagging();
 
   const [profileSnapshot, setProfileSnapshot] = useState<Awaited<ReturnType<typeof ProfileApi.getMe>>>(null);
 
@@ -548,7 +580,10 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
       setActiveProduct(product);
 
       try {
-        const detail = await MobileStoreApi.getProductById(product.id);
+        const [detail] = await Promise.all([
+          MobileStoreApi.getProductById(product.id),
+          status === 'authenticated' && !isOwner ? prepareBag(product.id).catch(() => null) : Promise.resolve(null),
+        ]);
         setActiveProduct(detail);
       } catch {
         // Keep card payload as fallback.
@@ -556,7 +591,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
         setDetailLoading(false);
       }
     },
-    [],
+    [isOwner, prepareBag, status],
   );
 
   useEffect(() => {
@@ -686,11 +721,11 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
           return;
         }
 
-        await MobileStoreApi.addToCart({
+        await baggingService.addStandard({
           productId,
-          quantity: 1,
-          selectedSize: selectedSize || undefined,
-          selectedColor: selectedColor || undefined,
+          qty: 1,
+          size: selectedSize || undefined,
+          color: selectedColor || undefined,
         });
 
         toast.success('Item bagged.');
@@ -767,7 +802,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
         customerName,
       };
 
-      await MobileStoreApi.addCustomOrderToBag({
+      await baggingService.addCustomOrder({
         checkoutIntentId: preview.checkoutIntentId,
         configurationId: configuration.id,
         configurationVersionId: preview.configurationVersionId,
@@ -905,7 +940,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
   if (error) {
     return (
       <View style={styles.emptyState}>
-        <AppText style={styles.emptyEmoji}>⚠️</AppText>
+        <AppText variant="display">⚠️</AppText>
         <AppText variant="subtitle" style={styles.emptyTitle}>Could not load products</AppText>
         <AppText variant="body" tone="muted" style={styles.emptyBody}>{error}</AppText>
         <Pressable
@@ -924,16 +959,14 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
   return (
     <View>
       <View style={styles.controlPanel}>
-        <View style={[styles.searchBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}> 
-          <AppText style={styles.searchEmoji}>🔍</AppText>
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search products or categories"
-            placeholderTextColor={theme.colors.textMuted}
-            style={[styles.searchInput, { color: theme.colors.text }]}
-          />
-        </View>
+        <Input
+          label="Search products or categories"
+          hideLabel
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search products or categories"
+          leading={<AppText variant="caption">🔍</AppText>}
+        />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           <Chip
@@ -986,7 +1019,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
 
       {filteredProducts.length === 0 ? (
         <View style={styles.emptyState}>
-          <AppText style={styles.emptyEmoji}>🧵</AppText>
+          <AppText variant="display">🧵</AppText>
           <AppText style={[styles.emptyTitle, { color: theme.colors.text }]}>No products match this view</AppText>
           <AppText style={[styles.emptyBody, { color: theme.colors.textMuted }]}>Try a different filter or search phrase.</AppText>
         </View>
@@ -1003,11 +1036,11 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
             <ProductCard
               product={item}
               width={cardWidth}
-              isDark={isDark}
               primary={theme.colors.primary}
               wishlisted={Boolean(wishlistByProductId[item.id])}
               standardBagged={Boolean(cartByProductId[item.id])}
               customBagged={Boolean(customBagByProductId[item.id])}
+              busy={Boolean(busyByProductId[item.id] || loadingByProductId[item.id])}
               onPress={() => {
                 void openProductDetail(item);
               }}
@@ -1024,9 +1057,9 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
         onRequestClose={closeProductDetail}
       >
         <View style={styles.modalRoot}>
-          <Pressable style={styles.modalBackdrop} onPress={closeProductDetail} />
+          <Pressable style={[styles.modalBackdrop, { backgroundColor: theme.colors.overlay }]} onPress={closeProductDetail} />
           <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
-            <View style={styles.modalHandle} />
+            <View style={[styles.modalHandle, { backgroundColor: theme.colors.border }]} />
 
             {detailLoading || !activeProduct ? (
               <LoaderBlock message="Loading product options" minHeight={240} style={styles.modalLoadingWrap} />
@@ -1134,7 +1167,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
                         },
                       ]}
                     >
-                      <AppText style={[styles.actionButtonText, { color: theme.colors.text }]}> 
+                      <AppText variant="bodyBold" tone="secondary" style={styles.actionButtonText}>
                         {wishlistByProductId[activeProduct.id] ? '🧵 Saved • Tap to unsave' : '🧵 Save to wishlist'}
                       </AppText>
                     </Pressable>
@@ -1151,7 +1184,16 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
                         },
                       ]}
                     >
-                      <AppText style={[styles.actionButtonText, { color: theme.colors.primary }]}> 
+                      <BagPulseIcon
+                        status={getBagPulseStatus({
+                          busy: Boolean(busyByProductId[activeProduct.id]),
+                          disabled: activeStock <= 0,
+                          standardBagged: Boolean(cartByProductId[activeProduct.id]),
+                        })}
+                        context="single"
+                        size={34}
+                      />
+                      <AppText variant="bodyBold" tone="primary" style={styles.actionButtonText}>
                         {cartByProductId[activeProduct.id] ? '🛍️ In bag • Tap to unbag' : '🛍️ Bag this item'}
                       </AppText>
                     </Pressable>
@@ -1169,7 +1211,16 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
                           },
                         ]}
                       >
-                        <AppText style={[styles.actionButtonText, { color: theme.colors.primaryDark }]}> 
+                        <BagPulseIcon
+                          status={getBagPulseStatus({
+                            busy: Boolean(busyByProductId[activeProduct.id]),
+                            customBagged: Boolean(customBagByProductId[activeProduct.id]),
+                          })}
+                          context="single"
+                          mode="custom"
+                          size={34}
+                        />
+                        <AppText variant="bodyBold" tone="primary" style={styles.actionButtonText}>
                           {customBagByProductId[activeProduct.id]
                             ? '✂️ Custom bagged • Tap to remove'
                             : '✂️ Bag as custom request'}
@@ -1194,21 +1245,19 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
           }
         }}
       >
-        <View style={styles.measurementModalRoot}>
-          <View style={[styles.measurementCard, { backgroundColor: isDark ? '#090b12' : '#ffffff', borderColor: theme.colors.border }]}> 
-            <AppText style={[styles.measurementTitle, { color: theme.colors.text }]}>Required measurements</AppText>
-            <AppText style={[styles.measurementSubtitle, { color: theme.colors.textMuted }]}> 
+        <View style={[styles.measurementModalRoot, { backgroundColor: theme.colors.overlay }]}>
+          <View style={[styles.measurementCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <AppText variant="subtitle">Required measurements</AppText>
+            <AppText variant="body" tone="muted">
               Add the missing values to bag this custom request.
             </AppText>
 
             <ScrollView style={styles.measurementFieldsWrap} contentContainerStyle={{ gap: 10 }}>
               {measurementPrompt
                 ? measurementPrompt.configuration.requiredMeasurementKeys.map((key) => (
-                    <View key={key}>
-                      <AppText style={[styles.measurementLabel, { color: theme.colors.text }]}> 
-                        {toTitleCase(key)} (cm)
-                      </AppText>
-                      <TextInput
+                    <Input
+                      key={key}
+                      label={`${toTitleCase(key)} (cm)`}
                         value={measurementPrompt.values[key] ?? ''}
                         onChangeText={(value) => {
                           setMeasurementPrompt((prev) => {
@@ -1224,17 +1273,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
                         }}
                         keyboardType="decimal-pad"
                         placeholder="0"
-                        placeholderTextColor={theme.colors.textMuted}
-                        style={[
-                          styles.measurementInput,
-                          {
-                            color: theme.colors.text,
-                            borderColor: theme.colors.border,
-                            backgroundColor: theme.colors.surfaceAlt,
-                          },
-                        ]}
                       />
-                    </View>
                   ))
                 : null}
             </ScrollView>
@@ -1331,14 +1370,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  searchEmoji: {
-    fontSize: 14,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    paddingVertical: 0,
-  },
   chipRow: {
     gap: tokens.spacing.sm,
     paddingRight: 4,
@@ -1350,7 +1381,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     overflow: 'hidden',
-    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
@@ -1366,41 +1396,34 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   topBadgeRow: {
+    gap: 5,
+  },
+  cardTopOverlay: {
     position: 'absolute',
     top: 8,
     left: 8,
-    gap: 5,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  cardBagAffordance: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   outOfStockBadge: {
-    backgroundColor: '#0B0F17',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
-  },
-  outOfStockText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.2,
   },
   saleBadge: {
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  saleBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '800',
-  },
   productInfo: {
     padding: 10,
     gap: 6,
-  },
-  productName: {
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 18,
   },
   priceRow: {
     flexDirection: 'row',
@@ -1408,24 +1431,13 @@ const styles = StyleSheet.create({
     gap: 6,
     flexWrap: 'wrap',
   },
-  productPrice: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
   comparePrice: {
-    fontSize: 12,
-    fontWeight: '600',
     textDecorationLine: 'line-through',
   },
   statusRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748B',
   },
   loadingWrap: {
     paddingVertical: 80,
@@ -1441,10 +1453,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     paddingVertical: 56,
     alignItems: 'center',
-  },
-  emptyEmoji: {
-    fontSize: 46,
-    marginBottom: 10,
   },
   emptyTitle: {
     fontSize: 18,
@@ -1463,18 +1471,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  retryText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
   modalRoot: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000000',
   },
   modalCard: {
     maxHeight: '86%',
@@ -1489,7 +1491,6 @@ const styles = StyleSheet.create({
     height: 5,
     borderRadius: 999,
     alignSelf: 'center',
-    backgroundColor: '#64748B',
     marginBottom: 8,
   },
   modalLoadingWrap: {
@@ -1577,15 +1578,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
   },
   actionButtonText: {
-    fontSize: 13,
-    fontWeight: '800',
     textAlign: 'center',
   },
   measurementModalRoot: {
     flex: 1,
-    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
@@ -1598,29 +1598,8 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 10,
   },
-  measurementTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  measurementSubtitle: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
   measurementFieldsWrap: {
     maxHeight: 300,
-  },
-  measurementLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  measurementInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    fontSize: 13,
-    fontWeight: '600',
   },
   measurementActions: {
     flexDirection: 'row',

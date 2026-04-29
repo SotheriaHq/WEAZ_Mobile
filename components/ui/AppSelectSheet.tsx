@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
 import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/src/styles/tokens';
+import { useTheme } from '@/src/theme/ThemeProvider';
 
 export type SelectSheetOption = {
   value: string;
@@ -47,22 +48,52 @@ export function AppSelectSheet({
   errorMessage,
   emptyMessage = 'No options available.',
 }: SingleProps) {
+  const { theme } = useTheme();
+
   return (
     <AppBottomSheet visible={visible} title={title} subtitle={subtitle} onClose={onClose}>
       <SelectSheetState loading={loading} errorMessage={errorMessage} empty={options.length === 0} emptyMessage={emptyMessage} />
       <View style={styles.optionWrap}>
         {options.map((option) => (
-          <Chip
-            key={option.value}
-            label={option.label}
-            selected={option.value === value}
-            disabled={option.disabled}
-            onPress={() => {
-              if (option.disabled) return;
-              onChange(option.value);
-              onClose();
-            }}
-          />
+          option.description ? (
+            <Pressable
+              key={option.value}
+              disabled={option.disabled}
+              onPress={() => {
+                if (option.disabled) return;
+                onChange(option.value);
+                onClose();
+              }}
+              style={({ pressed }) => [
+                styles.optionCard,
+                {
+                  backgroundColor: theme.colors.surfaceAlt,
+                  borderColor: option.value === value ? theme.colors.primary : theme.colors.border,
+                },
+                option.disabled && styles.optionDisabled,
+                pressed && !option.disabled && styles.optionPressed,
+              ]}
+            >
+              <AppText variant="bodyBold" tone={option.value === value ? 'primary' : 'default'}>
+                {option.label}
+              </AppText>
+              <AppText variant="captionRegular" tone="muted">
+                {option.description}
+              </AppText>
+            </Pressable>
+          ) : (
+            <Chip
+              key={option.value}
+              label={option.label}
+              selected={option.value === value}
+              disabled={option.disabled}
+              onPress={() => {
+                if (option.disabled) return;
+                onChange(option.value);
+                onClose();
+              }}
+            />
+          )
         ))}
       </View>
     </AppBottomSheet>
@@ -160,6 +191,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: tokens.spacing.sm,
+  },
+  optionCard: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: 'transparent',
+    borderRadius: tokens.radius.md,
+    gap: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  optionDisabled: {
+    opacity: 0.5,
+  },
+  optionPressed: {
+    opacity: 0.78,
   },
 });
 

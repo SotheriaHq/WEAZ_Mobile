@@ -116,6 +116,7 @@ export type DesignSavePayload = {
   sizingMode?: 'NONE' | 'RTW' | 'CUSTOM' | 'RTW_PLUS_FITTINGS';
   customOrderEnabled?: boolean;
   customMeasurementKeys?: string[];
+  customOrderConfigurationTemplateId?: string;
   fitPreference?: 'SLIM' | 'REGULAR' | 'LOOSE' | 'OVERSIZED';
   targetAgeGroup?: 'ADULT' | 'CHILD';
   filterValueIds?: string[];
@@ -125,6 +126,45 @@ export type DesignSavePayload = {
   originalMediaIds?: string[];
   draftSessionToken?: string;
   draftVersion?: number;
+};
+
+export type DesignCustomOrderConfiguration = {
+  id: string;
+  title: string;
+  sourceType: 'PRODUCT' | 'DESIGN';
+  sourceId: string;
+  isActive: boolean;
+  buyerInstructionText?: string | null;
+  requiredMeasurementKeys: string[];
+  requiredFreeformPointIds: string[];
+  resolvedRequiredMeasurementKeys: string[];
+  requiredMeasurementPoints: Array<{
+    id: string;
+    key: string;
+    label: string;
+    description?: string | null;
+  }>;
+  fabricRuleBasisId?: string | null;
+  baseProductionCharge: string;
+  fabricCostPerYard: string;
+  rushEnabled: boolean;
+  rushFee?: string | null;
+  rushProductionLeadDays?: number | null;
+  productionLeadDays: number;
+  deliveryMinDays: number;
+  deliveryMaxDays: number;
+  deliveryScope: string;
+  revisionPolicy: string;
+  returnPolicy: string;
+  defectPolicy: string;
+  fabricSourcingMode: string;
+  notes?: string | null;
+  rules: Array<{
+    priority: number;
+    conditionsJson: Record<string, unknown>;
+    outputYards: string;
+    isFallback?: boolean;
+  }>;
 };
 
 type PresignedUpload = {
@@ -205,6 +245,89 @@ const normalizeTargetAgeGroup = (value: unknown): DesignDetail['targetAgeGroup']
     return 'ADULT';
   }
   return null;
+};
+
+const normalizeCustomOrderConfiguration = (raw: unknown): DesignCustomOrderConfiguration | null => {
+  const source = asRecord(unwrapData(raw));
+  const id = asString(source.id);
+  if (!id) return null;
+
+  const fabricRuleBasis = asRecord(source.fabricRuleBasis);
+  const requiredMeasurementPoints: DesignCustomOrderConfiguration['requiredMeasurementPoints'] = Array.isArray(source.requiredMeasurementPoints)
+    ? source.requiredMeasurementPoints
+        .reduce<DesignCustomOrderConfiguration['requiredMeasurementPoints']>((acc, entry) => {
+          const point = asRecord(entry);
+          const pointId = asString(point.id);
+          const key = asString(point.key);
+          if (!pointId || !key) return acc;
+          acc.push({
+            id: pointId,
+            key,
+            label: asString(point.label) ?? key,
+            description: asString(point.description),
+          });
+          return acc;
+        }, [])
+    : [];
+
+  const rules: DesignCustomOrderConfiguration['rules'] = Array.isArray(source.rules)
+    ? source.rules
+        .reduce<DesignCustomOrderConfiguration['rules']>((acc, entry) => {
+          const rule = asRecord(entry);
+          const priority = asNumber(rule.priority) ?? 1;
+          const outputYards = asString(rule.outputYards) ?? String(rule.outputYards ?? '');
+          if (!outputYards) return acc;
+          acc.push({
+            priority,
+            conditionsJson: asRecord(rule.conditionsJson ?? rule.conditions),
+            outputYards,
+            isFallback: Boolean(rule.isFallback),
+          });
+          return acc;
+        }, [])
+    : [];
+
+  const requiredMeasurementKeys = asStringList(source.requiredMeasurementKeys);
+  const resolvedRequiredMeasurementKeys = asStringList(source.resolvedRequiredMeasurementKeys);
+
+  return {
+    id,
+    title: asString(source.title) ?? 'Custom order configuration',
+    sourceType: String(source.sourceType ?? '').toUpperCase() === 'PRODUCT' ? 'PRODUCT' : 'DESIGN',
+    sourceId: asString(source.sourceId) ?? '',
+    isActive: source.isActive !== false,
+    buyerInstructionText: asString(source.buyerInstructionText),
+    requiredMeasurementKeys,
+    requiredFreeformPointIds: asStringList(source.requiredFreeformPointIds),
+    resolvedRequiredMeasurementKeys: resolvedRequiredMeasurementKeys.length
+      ? resolvedRequiredMeasurementKeys
+      : requiredMeasurementKeys,
+    requiredMeasurementPoints,
+    fabricRuleBasisId: asString(source.fabricRuleBasisId) ?? asString(fabricRuleBasis.id),
+    baseProductionCharge: asString(source.baseProductionCharge) ?? String(source.baseProductionCharge ?? ''),
+    fabricCostPerYard: asString(source.fabricCostPerYard) ?? String(source.fabricCostPerYard ?? ''),
+    rushEnabled: Boolean(source.rushEnabled),
+    rushFee: asString(source.rushFee),
+    rushProductionLeadDays: asNumber(source.rushProductionLeadDays) ?? null,
+    productionLeadDays: asNumber(source.productionLeadDays) ?? 7,
+    deliveryMinDays: asNumber(source.deliveryMinDays) ?? 2,
+    deliveryMaxDays: asNumber(source.deliveryMaxDays) ?? 7,
+    deliveryScope: asString(source.deliveryScope) ?? 'Local delivery',
+    revisionPolicy: asString(source.revisionPolicy) ?? 'Revision policy applies.',
+    returnPolicy: asString(source.returnPolicy) ?? 'Return policy applies.',
+    defectPolicy: asString(source.defectPolicy) ?? 'Defect policy applies.',
+    fabricSourcingMode: asString(source.fabricSourcingMode) ?? 'BUYER_SUPPLIED',
+    notes: asString(source.notes),
+    rules,
+  };
+};
+
+const unwrapItems = (payload: unknown): unknown[] => {
+  const unwrapped = unwrapData<unknown>(payload);
+  const record = asRecord(unwrapped);
+  if (Array.isArray(unwrapped)) return unwrapped;
+  if (Array.isArray(record.items)) return record.items;
+  return [];
 };
 
 const mapFilterSelection = (raw: unknown): DesignFilterSelection => {
@@ -433,6 +556,137 @@ export async function getMeasurementPoints(params?: {
   }));
 }
 
+export async function getVisibleCustomOrderConfigurations(limit = 50): Promise<DesignCustomOrderConfiguration[]> {
+  const response = await apiClient.get('/custom-order-configurations', {
+    params: { page: 1, limit, isActive: true },
+  });
+  return unwrapItems(response.data)
+    .map((entry) => normalizeCustomOrderConfiguration(entry))
+    .filter((entry): entry is DesignCustomOrderConfiguration => Boolean(entry));
+}
+
+export async function getCustomOrderConfigurationById(
+  configurationId: string,
+): Promise<DesignCustomOrderConfiguration | null> {
+  try {
+    const response = await apiClient.get(`/custom-order-configurations/${configurationId}`);
+    return normalizeCustomOrderConfiguration(response.data);
+  } catch (error: any) {
+    if (Number(error?.response?.status) === 404) return null;
+    throw error;
+  }
+}
+
+export async function getActiveDesignCustomConfiguration(
+  designId: string,
+): Promise<DesignCustomOrderConfiguration | null> {
+  try {
+    const response = await apiClient.get(`/designs/${designId}/custom-order-configuration`);
+    return normalizeCustomOrderConfiguration(response.data);
+  } catch (error: any) {
+    if (Number(error?.response?.status) === 404) return null;
+    throw error;
+  }
+}
+
+function buildConfigurationCreatePayload(
+  template: DesignCustomOrderConfiguration,
+  designId: string,
+  requiredMeasurementKeys: string[],
+) {
+  if (!template.baseProductionCharge || !template.fabricCostPerYard || template.rules.length === 0) {
+    throw new Error('Selected custom-order configuration is incomplete.');
+  }
+
+  return {
+    sourceType: 'DESIGN',
+    sourceId: designId,
+    title: template.title,
+    buyerInstructionText: template.buyerInstructionText ?? undefined,
+    requiredMeasurementKeys,
+    requiredFreeformPointIds: [],
+    baseProductionCharge: template.baseProductionCharge,
+    fabricCostPerYard: template.fabricCostPerYard,
+    rushEnabled: template.rushEnabled,
+    rushFee: template.rushFee ?? undefined,
+    rushProductionLeadDays: template.rushProductionLeadDays ?? undefined,
+    productionLeadDays: template.productionLeadDays,
+    deliveryMinDays: template.deliveryMinDays,
+    deliveryMaxDays: template.deliveryMaxDays,
+    deliveryScope: template.deliveryScope,
+    revisionPolicy: template.revisionPolicy,
+    returnPolicy: template.returnPolicy,
+    defectPolicy: template.defectPolicy,
+    fabricSourcingMode: template.fabricSourcingMode,
+    notes: template.notes ?? undefined,
+    rules: template.rules,
+  };
+}
+
+async function createDesignCustomOrderConfigurationFromTemplate(args: {
+  designId: string;
+  templateId: string;
+  requiredMeasurementKeys: string[];
+}): Promise<DesignCustomOrderConfiguration> {
+  const template = await getCustomOrderConfigurationById(args.templateId);
+  if (!template) {
+    throw new Error('Selected custom-order configuration could not be found.');
+  }
+
+  const keys = args.requiredMeasurementKeys.length
+    ? args.requiredMeasurementKeys
+    : template.resolvedRequiredMeasurementKeys;
+  const response = await apiClient.post(
+    '/custom-order-configurations',
+    buildConfigurationCreatePayload(template, args.designId, keys),
+  );
+  const configuration = normalizeCustomOrderConfiguration(response.data);
+  if (!configuration) {
+    throw new Error('Custom-order configuration could not be created for this design.');
+  }
+  return configuration;
+}
+
+async function updateDesignCustomOrderConfigurationFields(
+  configurationId: string,
+  requiredMeasurementKeys: string[],
+): Promise<DesignCustomOrderConfiguration> {
+  const response = await apiClient.patch(`/custom-order-configurations/${configurationId}`, {
+    requiredMeasurementKeys,
+  });
+  const configuration = normalizeCustomOrderConfiguration(response.data);
+  if (!configuration) {
+    throw new Error('Custom-order configuration could not be updated.');
+  }
+  return configuration;
+}
+
+async function ensureDesignCustomOrderConfiguration(
+  designId: string,
+  payload: DesignSavePayload,
+): Promise<DesignCustomOrderConfiguration | null> {
+  if (!payload.customOrderEnabled) return null;
+
+  const active = await getActiveDesignCustomConfiguration(designId);
+  const keys = payload.customMeasurementKeys ?? [];
+  if (active) {
+    if (keys.length > 0 && keys.join('|') !== active.resolvedRequiredMeasurementKeys.join('|')) {
+      return updateDesignCustomOrderConfigurationFields(active.id, keys);
+    }
+    return active;
+  }
+
+  if (!payload.customOrderConfigurationTemplateId) {
+    throw new Error('Select a custom-order configuration before publishing custom orders.');
+  }
+
+  return createDesignCustomOrderConfigurationFromTemplate({
+    designId,
+    templateId: payload.customOrderConfigurationTemplateId,
+    requiredMeasurementKeys: keys,
+  });
+}
+
 export async function getDesignDetail(designId: string): Promise<DesignDetail> {
   const response = await apiClient.get(`/designs/${designId}`, {
     params: { _cb: Date.now() },
@@ -569,6 +823,11 @@ export async function saveDesignEditor(
       completions.push(await uploadDesignAsset(upload, asset));
     }
 
+    if (payload.action === 'publish' && payload.customOrderEnabled) {
+      onProgress?.(0.78, 'Preparing custom orders...');
+      await ensureDesignCustomOrderConfiguration(designId, payload);
+    }
+
     onProgress?.(0.82, payload.action === 'publish' ? 'Publishing design...' : 'Saving draft...');
     await finalizeExistingDesign(
       designId,
@@ -618,6 +877,11 @@ export async function saveDesignEditor(
       uploads.length > 1 ? `Uploading media ${index + 1} of ${uploads.length}...` : 'Uploading media...',
     );
     completions.push(await uploadDesignAsset(upload, asset));
+  }
+
+  if (payload.action === 'publish' && payload.customOrderEnabled) {
+    onProgress?.(0.66, 'Preparing custom orders...');
+    await ensureDesignCustomOrderConfiguration(payload.designId, payload);
   }
 
   onProgress?.(0.7, payload.action === 'publish' ? 'Finalizing design...' : 'Saving draft...');

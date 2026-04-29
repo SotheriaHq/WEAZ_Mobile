@@ -7,8 +7,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "audit:design-system": "node ../../scripts/audit-mobile-design-system.js",
-    "ci:design-system": "npm exec tsc -- --noEmit && node ../../scripts/audit-mobile-design-system.js"
+    "audit:design-system": "node ../scripts/audit-mobile-design-system.js",
+    "ci:design-system": "npm exec tsc -- --noEmit && node ../scripts/audit-mobile-design-system.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

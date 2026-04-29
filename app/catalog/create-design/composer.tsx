@@ -1,21 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppActionSheet } from '@/components/ui/AppActionSheet';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
-import { AppSelectSheet } from '@/components/ui/AppSelectSheet';
+import { AppMultiSelectSheet, AppSelectSheet } from '@/components/ui/AppSelectSheet';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
+import { ComposerSection } from '@/components/ui/ComposerSection';
 import { Input } from '@/components/ui/Input';
 import { OptionRow } from '@/components/ui/OptionRow';
-import TagsApi from '@/src/api/TagsApi';
+import { RequiredFieldLabel } from '@/components/ui/RequiredFieldLabel';
 import { StableImage } from '@/components/ui/StableImage';
+import TagsApi from '@/src/api/TagsApi';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -51,9 +53,9 @@ const SIZING_LABELS: Record<'NONE' | 'RTW' | 'CUSTOM' | 'RTW_PLUS_FITTINGS', str
 };
 
 function formatPriceSummary(minPrice: string, maxPrice: string) {
-  if (minPrice && maxPrice) return `₦${minPrice} - ₦${maxPrice}`;
-  if (minPrice) return `From ₦${minPrice}`;
-  if (maxPrice) return `Up to ₦${maxPrice}`;
+  if (minPrice && maxPrice) return `NGN ${minPrice} - NGN ${maxPrice}`;
+  if (minPrice) return `From NGN ${minPrice}`;
+  if (maxPrice) return `Up to NGN ${maxPrice}`;
   return 'Not set';
 }
 
@@ -80,91 +82,166 @@ function mergeMentions(description: string, mentions: string[]) {
 }
 
 export default function CreateDesignComposerScreen() {
+  const { source: routeSourceParam } = useLocalSearchParams<{ source?: string | string[] }>();
   const {
     booting,
     assets,
     form,
     categories,
     selectedCategory,
-    subCategories,
     filterDimensions,
     filterSelection,
     measurementPoints,
+    customOrderConfigurations,
+    selectedCustomOrderConfigurationId,
     customMeasurementKeys,
+    permissionIssue,
     updateField,
     toggleFilterValue,
-    toggleMeasurementKey,
+    selectCustomOrderConfiguration,
     moveAsset,
     removeAsset,
     pickMedia,
+    clearPermissionIssue,
+    openMediaPermissionSettings,
   } = useDesignEditor();
   const { theme } = useTheme();
+  const autoLaunchRef = useRef(false);
 
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
-  const [subCategoryOpen, setSubCategoryOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
-  const [hashtagsOpen, setHashtagsOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
   const [mentionsOpen, setMentionsOpen] = useState(false);
   const [priceOpen, setPriceOpen] = useState(false);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
+  const [customOrdersOpen, setCustomOrdersOpen] = useState(false);
+  const [customOrderConfigOpen, setCustomOrderConfigOpen] = useState(false);
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [mentionsDraft, setMentionsDraft] = useState('');
   const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
 
+  const routeSource = Array.isArray(routeSourceParam) ? routeSourceParam[0] : routeSourceParam;
+  const normalizedSource = routeSource === 'camera' || routeSource === 'library' ? routeSource : null;
   const audienceLabel = AUDIENCE_LABELS[form.audience];
   const sizingLabel = SIZING_LABELS[form.sizingMode];
   const fitPreferenceLabel = FIT_PREFERENCE_LABELS[form.fitPreference];
   const targetAgeLabel = TARGET_AGE_LABELS[form.targetAgeGroup];
-  const selectedSubCategory = subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
-  const shouldShowMeasurementKeys =
-    form.sizingMode === 'CUSTOM' || form.sizingMode === 'RTW_PLUS_FITTINGS' || form.customOrderEnabled;
+  const selectedSubCategory =
+    selectedCategory?.subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
+  const selectedCategoryValue = form.categoryId && form.subCategoryId ? `${form.categoryId}:${form.subCategoryId}` : '';
+  const selectedCategoryLabel =
+    selectedCategory && selectedSubCategory ? `${selectedCategory.name} / ${selectedSubCategory.name}` : 'Select';
+  const selectedCustomOrderConfiguration =
+    customOrderConfigurations.find((entry) => entry.id === selectedCustomOrderConfigurationId) ?? null;
+  const hasCustomOrderConfigurations = customOrderConfigurations.length > 0;
+
+  const combinedCategoryOptions = useMemo(
+    () =>
+      categories.flatMap((category) =>
+        category.subCategories.map((subCategory) => ({
+          value: `${category.id}:${subCategory.id}`,
+          label: `${category.name} / ${subCategory.name}`,
+        })),
+      ),
+    [categories],
+  );
+
   const locationDimension = filterDimensions.find((dimension) => dimension.slug === 'designer-location') ?? null;
   const locationValueIds = locationDimension ? filterSelection[locationDimension.id] ?? [] : [];
   const selectedLocation = locationDimension?.values.find((value) => locationValueIds.includes(value.id)) ?? null;
   const discoveryDimensions = filterDimensions.filter((dimension) => dimension.id !== locationDimension?.id);
   const selectedDiscoveryFilterCount = Object.entries(filterSelection).reduce((sum, [dimensionId, values]) => {
-    if (locationDimension?.id === dimensionId) {
-      return sum;
-    }
+    if (locationDimension?.id === dimensionId) return sum;
     return sum + values.length;
   }, 0);
 
-  const hashtagCount = useMemo(
-    () => form.tagsInput.split(',').map((value) => value.trim()).filter(Boolean).length,
+  const selectedTags = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          form.tagsInput
+            .split(',')
+            .map((value) => value.trim().replace(/^#/, ''))
+            .filter(Boolean),
+        ),
+      ),
     [form.tagsInput],
   );
-  useEffect(() => {
-    if (!hashtagsOpen) {
-      return;
-    }
+  const tagOptions = useMemo(
+    () =>
+      Array.from(new Set([...tagSuggestions, ...selectedTags]))
+        .filter(Boolean)
+        .map((tag) => ({ value: tag, label: `#${tag}` })),
+    [selectedTags, tagSuggestions],
+  );
+  const missingRequiredFields = useMemo(() => {
+    const missing: string[] = [];
+    if (assets.length === 0) missing.push('Media');
+    if (form.title.trim().length === 0) missing.push('Title');
+    if (!form.categoryId || !form.subCategoryId) missing.push('Category');
+    if (selectedTags.length === 0) missing.push('Tags');
+    if (form.customOrderEnabled && !selectedCustomOrderConfigurationId) missing.push('Custom order configuration');
+    if (form.customOrderEnabled && customMeasurementKeys.length === 0) missing.push('Custom order fields');
+    return missing;
+  }, [
+    assets.length,
+    customMeasurementKeys.length,
+    form.categoryId,
+    form.customOrderEnabled,
+    form.subCategoryId,
+    form.title,
+    selectedCustomOrderConfigurationId,
+    selectedTags.length,
+  ]);
+  const canPreview = missingRequiredFields.length === 0;
 
+  const customOrderFieldOptions = useMemo(() => {
+    const pointByKey = new Map(measurementPoints.map((point) => [point.key, point]));
+    return customMeasurementKeys.map((key) => {
+      const point = pointByKey.get(key);
+      return {
+        key,
+        label:
+          point?.label ??
+          key
+            .replace(/_/g, ' ')
+            .toLowerCase()
+            .replace(/\b\w/g, (char) => char.toUpperCase()),
+      };
+    });
+  }, [customMeasurementKeys, measurementPoints]);
+
+  const handlePickMedia = useCallback(
+    async (source: 'camera' | 'library') => {
+      await pickMedia(source);
+    },
+    [pickMedia],
+  );
+
+  useEffect(() => {
+    if (!tagsOpen) return;
     let isActive = true;
 
-    void TagsApi.getSuggestions(12)
+    void TagsApi.getSuggestions(24)
       .then((items) => {
-        if (isActive) {
-          setTagSuggestions(items);
-        }
+        if (isActive) setTagSuggestions(items);
       })
       .catch(() => {
-        if (isActive) {
-          setTagSuggestions([]);
-        }
+        if (isActive) setTagSuggestions([]);
       });
 
     return () => {
       isActive = false;
     };
-  }, [hashtagsOpen]);
+  }, [tagsOpen]);
 
-  const canPreview =
-    assets.length > 0 &&
-    form.title.trim().length > 0 &&
-    Boolean(form.categoryId) &&
-    Boolean(form.subCategoryId) &&
-    hashtagCount > 0;
+  useEffect(() => {
+    if (booting || !normalizedSource || autoLaunchRef.current || assets.length > 0) return;
+    autoLaunchRef.current = true;
+    void pickMedia(normalizedSource);
+  }, [assets.length, booting, normalizedSource, pickMedia]);
 
   if (booting) {
     return <AppLoaderScreen message="Loading composer" />;
@@ -173,146 +250,183 @@ export default function CreateDesignComposerScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <View style={styles.header}>
-        <AppBackButton fallbackHref="/catalog/create-design" />
+        <AppBackButton fallbackHref="/catalog" />
         <View style={styles.headerCopy}>
           <AppText variant="title">Create design</AppText>
           <AppText variant="captionRegular" tone="muted">
-            Edit the design details, then preview when the required fields are ready.
+            Edit the required fields, then preview.
           </AppText>
         </View>
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.mediaSection}>
-          <View style={styles.sectionTopRow}>
-            <View style={styles.sectionTopCopy}>
-              <AppText variant="bodyBold">Selected media</AppText>
-              <AppText variant="captionRegular" tone="muted">
-                The first item becomes the lead preview.
-              </AppText>
-            </View>
-            <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
-          </View>
+          <ComposerSection
+            title={assets.length > 0 ? 'Selected media' : 'Start with media'}
+            subtitle={assets.length > 0 ? 'The first item becomes the lead preview.' : 'Capture a new design or select media from your device.'}
+          >
+            {assets.length > 0 ? (
+              <>
+                <View style={styles.sectionTopRow}>
+                  <AppText variant="captionRegular" tone="muted">
+                    {assets.length} selected asset{assets.length === 1 ? '' : 's'}
+                  </AppText>
+                  <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaStrip}>
+                  {assets.map((asset, index) => (
+                    <View key={asset.id} style={styles.assetCard}>
+                      <StableImage uri={asset.remoteUrl ?? asset.uri} containerStyle={styles.assetPreview} imageStyle={styles.assetPreview} />
+                      <View style={[styles.assetBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
+                        <AppText variant="captionBold">{index === 0 ? 'Cover' : `#${index + 1}`}</AppText>
+                      </View>
+                      <View style={styles.assetActionRow}>
+                        <Pressable onPress={() => moveAsset(asset.id, 'left')} disabled={index === 0}>
+                          <AppText variant="captionBold" tone={index === 0 ? 'muted' : 'primary'}>Left</AppText>
+                        </Pressable>
+                        <Pressable onPress={() => moveAsset(asset.id, 'right')} disabled={index === assets.length - 1}>
+                          <AppText variant="captionBold" tone={index === assets.length - 1 ? 'muted' : 'primary'}>Right</AppText>
+                        </Pressable>
+                        <Pressable onPress={() => removeAsset(asset.id)}>
+                          <AppText variant="captionBold" tone="danger">Remove</AppText>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              </>
+            ) : (
+              <View style={styles.emptyStage}>
+                <View style={[styles.emptyStageIcon, { backgroundColor: theme.colors.primarySoft }]}>
+                  <AppText variant="title" tone="primary">+</AppText>
+                </View>
+                <AppText variant="bodyBold">No media selected yet</AppText>
+                <AppText variant="body" tone="muted" style={styles.centerText}>
+                  Add media first so the composer and preview use a real design asset.
+                </AppText>
+                <View style={styles.emptyStageActions}>
+                  <Button title="Camera" variant="secondary" onPress={() => void handlePickMedia('camera')} />
+                  <Button title="Select from library" onPress={() => void handlePickMedia('library')} />
+                </View>
+              </View>
+            )}
+          </ComposerSection>
 
           {assets.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaStrip}>
-              {assets.map((asset, index) => (
-                <View key={asset.id} style={styles.assetCard}>
-                  <StableImage uri={asset.remoteUrl ?? asset.uri} containerStyle={styles.assetPreview} imageStyle={styles.assetPreview} />
-                  <View style={[styles.assetBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
-                    <AppText variant="captionBold">{index === 0 ? 'Cover' : `#${index + 1}`}</AppText>
-                  </View>
-                  <View style={styles.assetActionRow}>
-                    <Pressable onPress={() => moveAsset(asset.id, 'left')} disabled={index === 0}>
-                      <AppText variant="captionBold" tone={index === 0 ? 'muted' : 'primary'}>←</AppText>
-                    </Pressable>
-                    <Pressable onPress={() => moveAsset(asset.id, 'right')} disabled={index === assets.length - 1}>
-                      <AppText variant="captionBold" tone={index === assets.length - 1 ? 'muted' : 'primary'}>→</AppText>
-                    </Pressable>
-                    <Pressable onPress={() => removeAsset(asset.id)}>
-                      <AppText variant="captionBold" tone="danger">Remove</AppText>
-                    </Pressable>
-                  </View>
+            <>
+              <View style={styles.copyBlock}>
+                <RequiredFieldLabel required>Title</RequiredFieldLabel>
+                <Input
+                  label="Title"
+                  hideLabel
+                  variant="bare"
+                  value={form.title}
+                  onChangeText={(value) => updateField('title', value)}
+                  placeholder="Title"
+                  containerStyle={styles.copyField}
+                />
+                <View style={[styles.copyDivider, { backgroundColor: theme.colors.border }]} />
+                <RequiredFieldLabel>Description</RequiredFieldLabel>
+                <Input
+                  label="Description"
+                  hideLabel
+                  variant="bare"
+                  value={form.description}
+                  onChangeText={(value) => updateField('description', value)}
+                  placeholder="Description"
+                  multiline
+                  containerStyle={styles.copyField}
+                />
+                <View style={styles.quickChipRow}>
+                  <Button
+                    title={`# Tags${selectedTags.length > 0 ? ` (${selectedTags.length})` : ' (Required)'}`}
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => setTagsOpen(true)}
+                  />
+                  <Button
+                    title="@ Mention"
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => {
+                      setMentionsDraft('');
+                      setMentionsOpen(true);
+                    }}
+                  />
                 </View>
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={styles.emptyMedia}>
-              <AppText variant="title">🖼️</AppText>
-              <AppText variant="bodyBold">No media selected yet</AppText>
-              <AppText variant="body" tone="muted" style={styles.centerText}>
-                Add a photo or video first so the preview screen has something real to publish.
-              </AppText>
-            </View>
-          )}
-          </View>
+              </View>
 
-        <View style={styles.copyBlock}>
-          <Input
-            label="Title"
-            hideLabel
-            variant="bare"
-            value={form.title}
-            onChangeText={(value) => updateField('title', value)}
-            placeholder="Title"
-            containerStyle={styles.copyField}
-          />
-          <View style={[styles.copyDivider, { backgroundColor: theme.colors.border }]} />
-          <Input
-            label="Description"
-            hideLabel
-            variant="bare"
-            value={form.description}
-            onChangeText={(value) => updateField('description', value)}
-            placeholder="Description"
-            multiline
-            containerStyle={styles.copyField}
-          />
-          <View style={styles.quickChipRow}>
-            <Button title={`# Hashtags${hashtagCount > 0 ? ` (${hashtagCount})` : ''}`} size="sm" variant="ghost" onPress={() => setHashtagsOpen(true)} />
-            <Button title="@ Mention" size="sm" variant="ghost" onPress={() => {
-              setMentionsDraft('');
-              setMentionsOpen(true);
-            }} />
-          </View>
-        </View>
+              <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
+                <OptionRow
+                  leading="🌍"
+                  title="Privacy"
+                  value={PRIVACY_OPTIONS.find((entry) => entry.value === form.visibility)?.label ?? 'Everyone'}
+                  onPress={() => setPrivacyOpen(true)}
+                />
+                <OptionRow
+                  leading="🏷️"
+                  title="Category"
+                  subtitle="Choose category and sub-category together."
+                  value={selectedCategoryLabel}
+                  onPress={() => setCategoryOpen(true)}
+                />
+                <OptionRow
+                  leading="📍"
+                  title="Location"
+                  subtitle={locationDimension ? 'Control where this design shows geographically.' : 'Designer location filters are not available yet.'}
+                  value={selectedLocation?.name ?? (locationDimension ? 'Select' : 'Unavailable')}
+                  disabled={!locationDimension}
+                  onPress={locationDimension ? () => setLocationOpen(true) : undefined}
+                />
+                <OptionRow
+                  leading="💸"
+                  title="Price"
+                  value={formatPriceSummary(form.minPrice, form.maxPrice)}
+                  onPress={() => setPriceOpen(true)}
+                />
+                <OptionRow
+                  leading="📦"
+                  title="Availability"
+                  subtitle={`${sizingLabel} · ${fitPreferenceLabel} · ${targetAgeLabel}`}
+                  value="Open"
+                  onPress={() => setAvailabilityOpen(true)}
+                />
+                <OptionRow
+                  leading="🧵"
+                  title="Custom orders"
+                  subtitle={
+                    form.customOrderEnabled
+                      ? selectedCustomOrderConfiguration
+                        ? `${selectedCustomOrderConfiguration.title} · ${customMeasurementKeys.length} field${customMeasurementKeys.length === 1 ? '' : 's'}`
+                        : 'Configuration required'
+                      : 'Off'
+                  }
+                  value={form.customOrderEnabled ? 'Enabled' : 'Disabled'}
+                  onPress={() => setCustomOrdersOpen(true)}
+                />
+                <OptionRow
+                  leading="⚙️"
+                  title="More options"
+                  subtitle={`${audienceLabel} audience · ${selectedDiscoveryFilterCount} discovery filter${selectedDiscoveryFilterCount === 1 ? '' : 's'}`}
+                  value="Open"
+                  divider={false}
+                  onPress={() => setMoreOptionsOpen(true)}
+                />
+              </Card>
 
-        <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
-          <OptionRow
-            leading="🌍"
-            title="Privacy"
-            value={PRIVACY_OPTIONS.find((entry) => entry.value === form.visibility)?.label ?? 'Everyone'}
-            onPress={() => setPrivacyOpen(true)}
-          />
-          <OptionRow
-            leading="🏷️"
-            title="Category"
-            value={selectedCategory?.name ?? 'Select'}
-            onPress={() => setCategoryOpen(true)}
-          />
-          <OptionRow
-            leading="🧵"
-            title="Sub-category"
-            value={selectedSubCategory?.name ?? 'Select'}
-            onPress={() => setSubCategoryOpen(true)}
-          />
-          <OptionRow
-            leading="📍"
-            title="Location"
-            subtitle={locationDimension ? 'Control where this design shows up geographically.' : 'Designer location filters are not available yet.'}
-            value={selectedLocation?.name ?? (locationDimension ? 'Select' : 'Unavailable')}
-            disabled={!locationDimension}
-            onPress={locationDimension ? () => setLocationOpen(true) : undefined}
-          />
-          <OptionRow
-            leading="💸"
-            title="Price"
-            value={formatPriceSummary(form.minPrice, form.maxPrice)}
-            onPress={() => setPriceOpen(true)}
-          />
-          <OptionRow
-            leading="📦"
-            title="Availability"
-            subtitle={`${sizingLabel} · ${fitPreferenceLabel} · ${targetAgeLabel}`}
-            value={form.customOrderEnabled ? 'Custom-ready' : 'Standard only'}
-            onPress={() => setAvailabilityOpen(true)}
-          />
-          <OptionRow
-            leading="⚙️"
-            title="More options"
-            subtitle={`${audienceLabel} audience · ${selectedDiscoveryFilterCount} discovery filter${selectedDiscoveryFilterCount === 1 ? '' : 's'}`}
-            value="Open"
-            divider={false}
-            onPress={() => setMoreOptionsOpen(true)}
-          />
-        </Card>
+              {missingRequiredFields.length > 0 ? (
+                <Card padding="md" style={[styles.requiredCard, { borderColor: theme.colors.border }]}>
+                  <AppText variant="bodyBold">Required before preview</AppText>
+                  <AppText variant="captionRegular" tone="muted">
+                    Missing: {missingRequiredFields.join(', ')}
+                  </AppText>
+                </Card>
+              ) : null}
 
-        <Button title="Continue to preview" disabled={!canPreview} onPress={() => router.push('/catalog/create-design/preview' as any)} />
-      </ScrollView>
+              <Button title="Preview" disabled={!canPreview} onPress={() => router.push('/catalog/create-design/preview' as any)} />
+            </>
+          ) : null}
+        </ScrollView>
       </KeyboardAvoidingView>
 
       <AppSelectSheet
@@ -328,11 +442,16 @@ export default function CreateDesignComposerScreen() {
       <AppSelectSheet
         visible={categoryOpen}
         title="Category"
-        subtitle="Pick the broad category first."
-        options={categories.map((category) => ({ value: category.id, label: category.name }))}
-        value={form.categoryId}
-        onChange={(value) => updateField('categoryId', value)}
+        subtitle="Pick the category and sub-category together."
+        options={combinedCategoryOptions}
+        value={selectedCategoryValue}
+        onChange={(value) => {
+          const [categoryId, subCategoryId] = value.split(':');
+          updateField('categoryId', categoryId);
+          updateField('subCategoryId', subCategoryId);
+        }}
         onClose={() => setCategoryOpen(false)}
+        emptyMessage="No categories are configured yet."
       />
 
       <AppSelectSheet
@@ -343,69 +462,29 @@ export default function CreateDesignComposerScreen() {
         value={locationValueIds[0] ?? ''}
         onChange={(value) => {
           if (!locationDimension) return;
-          setLocationOpen(false);
           const currentValue = locationValueIds[0] ?? null;
           if (currentValue === value) {
             toggleFilterValue(locationDimension.id, value, false);
             return;
           }
-          if (currentValue) {
-            toggleFilterValue(locationDimension.id, currentValue, false);
-          }
+          if (currentValue) toggleFilterValue(locationDimension.id, currentValue, false);
           toggleFilterValue(locationDimension.id, value, false);
         }}
         onClose={() => setLocationOpen(false)}
         emptyMessage="No location filters configured yet."
       />
 
-      <AppSelectSheet
-        visible={subCategoryOpen}
-        title="Sub-category"
-        subtitle="Refine where this design belongs."
-        options={subCategories.map((category) => ({ value: category.id, label: category.name }))}
-        value={form.subCategoryId}
-        onChange={(value) => updateField('subCategoryId', value)}
-        onClose={() => setSubCategoryOpen(false)}
-        emptyMessage="Choose a category first."
+      <AppMultiSelectSheet
+        visible={tagsOpen}
+        title="Tags"
+        subtitle="Choose seeded system tags for search and discovery."
+        options={tagOptions}
+        values={selectedTags}
+        onChange={(values) => updateField('tagsInput', values.join(', '))}
+        onClose={() => setTagsOpen(false)}
+        emptyMessage="No system tags are available yet."
+        maxSelected={10}
       />
-
-      <AppBottomSheet
-        visible={hashtagsOpen}
-        title="Hashtags"
-        subtitle="Separate tags with commas so they stay searchable."
-        onClose={() => setHashtagsOpen(false)}
-        showCloseButton
-      >
-        {tagSuggestions.length > 0 ? (
-          <View style={styles.suggestionWrap}>
-            {tagSuggestions.map((tag) => {
-              const hasTag = form.tagsInput
-                .split(',')
-                .map((value) => value.trim().toLowerCase())
-                .includes(tag.toLowerCase());
-              const nextTags = hasTag
-                ? form.tagsInput
-                : [form.tagsInput.trim(), tag].filter(Boolean).join(', ');
-
-              return (
-                <Chip
-                  key={tag}
-                  label={tag}
-                  variant="default"
-                  onPress={() => updateField('tagsInput', nextTags)}
-                />
-              );
-            })}
-          </View>
-        ) : null}
-        <Input
-          label="Tags"
-          value={form.tagsInput}
-          onChangeText={(value) => updateField('tagsInput', value)}
-          placeholder="bridal, asoebi, streetwear"
-          multiline
-        />
-      </AppBottomSheet>
 
       <AppBottomSheet
         visible={mentionsOpen}
@@ -458,30 +537,15 @@ export default function CreateDesignComposerScreen() {
       <AppBottomSheet
         visible={availabilityOpen}
         title="Availability"
-        subtitle="Keep custom-order readiness and fit expectations together."
+        subtitle="Set sizing and fit expectations."
         onClose={() => setAvailabilityOpen(false)}
         showCloseButton
       >
-        <View style={styles.switchRow}>
-          <View style={styles.switchCopy}>
-            <AppText variant="bodyBold">Enable custom orders</AppText>
-            <AppText variant="captionRegular" tone="muted">
-              Turn this on when the design can be requested as a custom job.
-            </AppText>
-          </View>
-          <Switch value={form.customOrderEnabled} onValueChange={(value) => updateField('customOrderEnabled', value)} />
-        </View>
-
         <View style={styles.sheetSection}>
           <AppText variant="bodyBold">Sizing mode</AppText>
           <View style={styles.sheetChipWrap}>
             {(['RTW_PLUS_FITTINGS', 'RTW', 'CUSTOM', 'NONE'] as const).map((value) => (
-              <Chip
-                key={value}
-                label={SIZING_LABELS[value]}
-                selected={form.sizingMode === value}
-                onPress={() => updateField('sizingMode', value)}
-              />
+              <Chip key={value} label={SIZING_LABELS[value]} selected={form.sizingMode === value} onPress={() => updateField('sizingMode', value)} />
             ))}
           </View>
         </View>
@@ -490,12 +554,7 @@ export default function CreateDesignComposerScreen() {
           <AppText variant="bodyBold">Fit preference</AppText>
           <View style={styles.sheetChipWrap}>
             {(['SLIM', 'REGULAR', 'LOOSE', 'OVERSIZED'] as const).map((value) => (
-              <Chip
-                key={value}
-                label={FIT_PREFERENCE_LABELS[value]}
-                selected={form.fitPreference === value}
-                onPress={() => updateField('fitPreference', value)}
-              />
+              <Chip key={value} label={FIT_PREFERENCE_LABELS[value]} selected={form.fitPreference === value} onPress={() => updateField('fitPreference', value)} />
             ))}
           </View>
         </View>
@@ -504,32 +563,100 @@ export default function CreateDesignComposerScreen() {
           <AppText variant="bodyBold">Target age group</AppText>
           <View style={styles.sheetChipWrap}>
             {(['ADULT', 'CHILD'] as const).map((value) => (
-              <Chip
-                key={value}
-                label={TARGET_AGE_LABELS[value]}
-                selected={form.targetAgeGroup === value}
-                onPress={() => updateField('targetAgeGroup', value)}
-              />
+              <Chip key={value} label={TARGET_AGE_LABELS[value]} selected={form.targetAgeGroup === value} onPress={() => updateField('targetAgeGroup', value)} />
             ))}
           </View>
         </View>
+      </AppBottomSheet>
 
-        {shouldShowMeasurementKeys ? (
+      <AppBottomSheet
+        visible={customOrdersOpen}
+        title="Custom orders"
+        subtitle="Expose every required field buyers must provide."
+        onClose={() => setCustomOrdersOpen(false)}
+        showCloseButton
+      >
+        <View style={styles.switchRow}>
+          <View style={styles.switchCopy}>
+            <AppText variant="bodyBold">Accept custom orders</AppText>
+            <AppText variant="captionRegular" tone="muted">
+              Buyers can request this design as a custom job.
+            </AppText>
+          </View>
+          <Switch
+            value={form.customOrderEnabled && hasCustomOrderConfigurations}
+            disabled={!hasCustomOrderConfigurations}
+            onValueChange={(value) => {
+              if (!hasCustomOrderConfigurations) {
+                updateField('customOrderEnabled', false);
+                return;
+              }
+              updateField('customOrderEnabled', value);
+              if (value && !selectedCustomOrderConfigurationId && customOrderConfigurations[0]) {
+                selectCustomOrderConfiguration(customOrderConfigurations[0].id);
+              }
+            }}
+          />
+        </View>
+
+        {!hasCustomOrderConfigurations ? (
+          <Card padding="md" style={[styles.requiredCard, { borderColor: theme.colors.border }]}>
+            <AppText variant="bodyBold">Custom-order configuration required</AppText>
+            <AppText variant="captionRegular" tone="muted">
+              Create or activate a backend custom-order configuration before enabling custom orders for this design.
+            </AppText>
+          </Card>
+        ) : null}
+
+        {form.customOrderEnabled && hasCustomOrderConfigurations ? (
           <View style={styles.sheetSection}>
-            <AppText variant="bodyBold">Required measurement points</AppText>
+            <OptionRow
+              title="Configuration"
+              subtitle={
+                hasCustomOrderConfigurations
+                  ? 'Select a real backend custom-order configuration.'
+                  : 'No active configurations are available.'
+              }
+              value={selectedCustomOrderConfiguration?.title ?? 'Select'}
+              disabled={!hasCustomOrderConfigurations}
+              onPress={hasCustomOrderConfigurations ? () => setCustomOrderConfigOpen(true) : undefined}
+            />
+            <RequiredFieldLabel required>Required custom-order fields</RequiredFieldLabel>
+            <AppText variant="captionRegular" tone="muted">
+              These fields come from the selected custom-order configuration.
+            </AppText>
             <View style={styles.sheetChipWrap}>
-              {measurementPoints.map((point) => (
+              {customOrderFieldOptions.length > 0 ? customOrderFieldOptions.map((point) => (
                 <Chip
-                  key={point.id}
+                  key={point.key}
                   label={point.label}
-                  selected={customMeasurementKeys.includes(point.key)}
-                  onPress={() => toggleMeasurementKey(point.key)}
+                  selected
+                  disabled
                 />
-              ))}
+              )) : (
+                <AppText variant="body" tone="muted">
+                  Select a configuration to load its required fields.
+                </AppText>
+              )}
             </View>
           </View>
         ) : null}
       </AppBottomSheet>
+
+      <AppSelectSheet
+        visible={customOrderConfigOpen}
+        title="Custom-order configuration"
+        subtitle="Choose the active backend configuration this design will use."
+        options={customOrderConfigurations.map((configuration) => ({
+          value: configuration.id,
+          label: configuration.title,
+          description: `${configuration.sourceType.toLowerCase()} · ${configuration.resolvedRequiredMeasurementKeys.length} field${configuration.resolvedRequiredMeasurementKeys.length === 1 ? '' : 's'}`,
+        }))}
+        value={selectedCustomOrderConfigurationId}
+        onChange={(value) => selectCustomOrderConfiguration(value)}
+        onClose={() => setCustomOrderConfigOpen(false)}
+        emptyMessage="No active custom-order configurations are available."
+      />
 
       <AppBottomSheet
         visible={moreOptionsOpen}
@@ -542,12 +669,7 @@ export default function CreateDesignComposerScreen() {
           <AppText variant="bodyBold">Audience</AppText>
           <View style={styles.sheetChipWrap}>
             {(['EVERYBODY', 'FEMALE', 'MALE'] as const).map((value) => (
-              <Chip
-                key={value}
-                label={AUDIENCE_LABELS[value]}
-                selected={form.audience === value}
-                onPress={() => updateField('audience', value)}
-              />
+              <Chip key={value} label={AUDIENCE_LABELS[value]} selected={form.audience === value} onPress={() => updateField('audience', value)} />
             ))}
           </View>
         </View>
@@ -579,24 +701,50 @@ export default function CreateDesignComposerScreen() {
             icon: '📷',
             title: 'Camera',
             description: 'Capture a new photo or video.',
-            onPress: () => void pickMedia('camera'),
+            onPress: () => void handlePickMedia('camera'),
           },
           {
             key: 'media',
             icon: '🖼️',
             title: 'Media',
             description: 'Pick images or videos from your library.',
-            onPress: () => void pickMedia('library'),
+            onPress: () => void handlePickMedia('library'),
           },
           {
             key: 'attachment',
             icon: '📎',
             title: 'Attachment',
             description: 'Attach an existing photo or video from your device.',
-            onPress: () => void pickMedia('library'),
+            onPress: () => void handlePickMedia('library'),
           },
         ]}
       />
+
+      <AppBottomSheet
+        visible={Boolean(permissionIssue)}
+        title={permissionIssue?.title}
+        subtitle={permissionIssue?.message}
+        onClose={clearPermissionIssue}
+        showCloseButton
+        footer={
+          <View style={styles.permissionActions}>
+            <Button
+              title="Try again"
+              variant="secondary"
+              onPress={() => {
+                const source = permissionIssue?.source;
+                clearPermissionIssue();
+                if (source) void handlePickMedia(source);
+              }}
+            />
+            <Button title="Open settings" onPress={() => void openMediaPermissionSettings()} />
+          </View>
+        }
+      >
+        <AppText variant="body" tone="muted">
+          You can close this sheet and tap Camera or Select from library again at any time.
+        </AppText>
+      </AppBottomSheet>
     </SafeAreaView>
   );
 }
@@ -625,20 +773,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.lg,
     paddingBottom: tokens.spacing.xl,
   },
-  mediaSection: {
-    gap: tokens.spacing.md,
-  },
   sectionTopRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: tokens.spacing.md,
-  },
-  sectionTopCopy: {
-    flex: 1,
-    gap: tokens.spacing.xs,
-  },
-  mediaActions: {
-    gap: tokens.spacing.sm,
   },
   mediaStrip: {
     gap: tokens.spacing.sm,
@@ -665,10 +804,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: tokens.spacing.sm,
   },
-  emptyMedia: {
+  emptyStage: {
     alignItems: 'center',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.md,
     paddingVertical: tokens.spacing.lg,
+  },
+  emptyStageIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: tokens.radius.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStageActions: {
+    alignSelf: 'stretch',
+    gap: tokens.spacing.sm,
   },
   formCard: {
     gap: tokens.spacing.md,
@@ -693,6 +843,10 @@ const styles = StyleSheet.create({
   centerText: {
     textAlign: 'center',
   },
+  requiredCard: {
+    gap: tokens.spacing.xs,
+    borderWidth: 1,
+  },
   priceRow: {
     flexDirection: 'row',
     gap: tokens.spacing.md,
@@ -702,12 +856,6 @@ const styles = StyleSheet.create({
   },
   sheetSection: {
     gap: tokens.spacing.sm,
-  },
-  suggestionWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
-    marginBottom: tokens.spacing.sm,
   },
   sheetChipWrap: {
     flexDirection: 'row',
@@ -722,5 +870,8 @@ const styles = StyleSheet.create({
   switchCopy: {
     flex: 1,
     gap: tokens.spacing.xs,
+  },
+  permissionActions: {
+    gap: tokens.spacing.sm,
   },
 });

@@ -53,6 +53,8 @@ export default function CreateDesignPreviewScreen() {
   const [deletePhrase, setDeletePhrase] = React.useState('');
 
   const subCategory = subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
+  const categorySummary =
+    selectedCategory && subCategory ? `${selectedCategory.name} / ${subCategory.name}` : 'Not selected';
   const selectedFilterCount = Object.values(filterSelection).reduce((sum, values) => sum + values.length, 0);
   const locationDimension = filterDimensions.find((dimension) => dimension.slug === 'designer-location') ?? null;
   const selectedLocationId = locationDimension ? (filterSelection[locationDimension.id] ?? [])[0] : null;
@@ -107,18 +109,17 @@ export default function CreateDesignPreviewScreen() {
 
         <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
           <SummaryRow label="Privacy" value={form.visibility === 'PRIVATE' ? 'Only me' : 'Everyone'} />
-          <SummaryRow label="Category" value={selectedCategory?.name ?? 'Not selected'} />
-          <SummaryRow label="Sub-category" value={subCategory?.name ?? 'Not selected'} />
+          <SummaryRow label="Category" value={categorySummary} />
           <SummaryRow label="Audience" value={toPrettyLabel(form.audience)} />
           <SummaryRow label="Sizing" value={toPrettyLabel(form.sizingMode)} />
           <SummaryRow label="Fit" value={toPrettyLabel(form.fitPreference)} />
           <SummaryRow label="Age group" value={toPrettyLabel(form.targetAgeGroup)} />
           <SummaryRow label="Custom orders" value={form.customOrderEnabled ? 'Enabled' : 'Disabled'} />
           <SummaryRow label="Location" value={selectedLocation?.name ?? 'Not selected'} />
-          <SummaryRow label="Price" value={form.minPrice || form.maxPrice ? `₦${form.minPrice || '0'} - ₦${form.maxPrice || '0'}` : 'Not set'} />
+          <SummaryRow label="Price" value={form.minPrice || form.maxPrice ? `NGN ${form.minPrice || '0'} - NGN ${form.maxPrice || '0'}` : 'Not set'} />
           <SummaryRow label="Assets" value={String(assets.length)} />
-          <SummaryRow label="Hashtags" value={tags.length > 0 ? tags.join(', ') : 'None'} />
-          <SummaryRow label="Measurements" value={customMeasurementKeys.length > 0 ? customMeasurementKeys.join(', ') : 'None'} />
+          <SummaryRow label="Tags" value={tags.length > 0 ? tags.join(', ') : 'None'} />
+          <SummaryRow label="Custom fields" value={customMeasurementKeys.length > 0 ? customMeasurementKeys.join(', ') : 'None'} />
           <SummaryRow label="Discovery filters" value={selectedFilterCount > 0 ? `${selectedFilterCount} selected` : 'None'} />
         </Card>
 
@@ -155,7 +156,7 @@ export default function CreateDesignPreviewScreen() {
       </ScrollView>
 
       <Modal transparent visible={deleteOpen} animationType="fade" onRequestClose={() => setDeleteOpen(false)}>
-        <View style={styles.modalRoot}>
+        <View style={[styles.modalRoot, { backgroundColor: theme.colors.overlay }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setDeleteOpen(false)} />
           <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <AppText variant="subtitle">Delete draft?</AppText>
@@ -244,7 +245,6 @@ const styles = StyleSheet.create({
   modalRoot: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   modalCard: {
     borderTopLeftRadius: tokens.radius.xl,

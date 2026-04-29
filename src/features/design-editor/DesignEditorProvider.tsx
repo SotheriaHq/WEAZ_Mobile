@@ -8,15 +8,19 @@ import React, {
   useState,
 } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import { Linking } from 'react-native';
 import { router } from 'expo-router';
 
 import {
   getDesignCategories,
   getDesignDetail,
   getDesignFilterDimensions,
+  getActiveDesignCustomConfiguration,
+  getVisibleCustomOrderConfigurations,
   getMeasurementPoints,
   saveDesignEditor,
   startDesignDraftSession,
+  type DesignCustomOrderConfiguration,
   type DesignCategoryOption,
   type DesignDetail,
   type DesignEditorAsset,
@@ -51,6 +55,12 @@ type FormState = {
 };
 
 type SaveAction = 'draft' | 'publish';
+type MediaPermissionIssue = {
+  source: 'camera' | 'library';
+  title: string;
+  message: string;
+  canAskAgain: boolean;
+};
 
 type ContextValue = {
   booting: boolean;
@@ -59,6 +69,8 @@ type ContextValue = {
   categories: DesignCategoryOption[];
   filterDimensions: FilterDimensionOption[];
   measurementPoints: MeasurementPointOption[];
+  customOrderConfigurations: DesignCustomOrderConfiguration[];
+  selectedCustomOrderConfigurationId: string;
   form: FormState;
   assets: DesignEditorAsset[];
   filterSelection: DesignFilterSelection;
@@ -72,6 +84,7 @@ type ContextValue = {
     progress: number;
     message: string;
   };
+  permissionIssue: MediaPermissionIssue | null;
   selectedCategory: DesignCategoryOption | null;
   subCategories: DesignCategoryOption['subCategories'];
   tags: string[];
@@ -81,7 +94,10 @@ type ContextValue = {
   setFilterSelection: React.Dispatch<React.SetStateAction<DesignFilterSelection>>;
   toggleFilterValue: (dimensionId: string, valueId: string, isMulti: boolean) => void;
   toggleMeasurementKey: (key: string) => void;
+  selectCustomOrderConfiguration: (configurationId: string) => void;
   pickMedia: (source?: 'camera' | 'library') => Promise<boolean>;
+  clearPermissionIssue: () => void;
+  openMediaPermissionSettings: () => Promise<void>;
   moveAsset: (assetId: string, direction: 'left' | 'right') => void;
   removeAsset: (assetId: string) => void;
   save: (action: SaveAction) => Promise<void>;
@@ -171,6 +187,8 @@ export function DesignEditorProvider({
   const [categories, setCategories] = useState<DesignCategoryOption[]>([]);
   const [filterDimensions, setFilterDimensions] = useState<FilterDimensionOption[]>([]);
   const [measurementPoints, setMeasurementPoints] = useState<MeasurementPointOption[]>([]);
+  const [customOrderConfigurations, setCustomOrderConfigurations] = useState<DesignCustomOrderConfiguration[]>([]);
+  const [selectedCustomOrderConfigurationId, setSelectedCustomOrderConfigurationId] = useState('');
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [assets, setAssets] = useState<DesignEditorAsset[]>([]);
   const [filterSelection, setFilterSelection] = useState<DesignFilterSelection>({});
@@ -183,6 +201,7 @@ export function DesignEditorProvider({
   const [saveAction, setSaveAction] = useState<SaveAction | null>(null);
   const [saveProgress, setSaveProgress] = useState(0);
   const [saveMessage, setSaveMessage] = useState('');
+  const [permissionIssue, setPermissionIssue] = useState<MediaPermissionIssue | null>(null);
 
   const bootstrappedRef = useRef(false);
 
@@ -212,18 +231,36 @@ export function DesignEditorProvider({
       setBooting(true);
       setLoadingError(null);
       try {
-        const [nextCategories, nextFilters] = await Promise.all([
+        const [nextCategories, nextFilters, nextCustomOrderConfigurations] = await Promise.all([
           getDesignCategories(),
           getDesignFilterDimensions(),
+          getVisibleCustomOrderConfigurations().catch(() => []),
         ]);
         setCategories(nextCategories);
         setFilterDimensions(
           nextFilters.filter((dimension) => dimension.appliesTo.includes('COLLECTION')),
         );
+        setCustomOrderConfigurations(nextCustomOrderConfigurations);
 
         if (activeDesignId) {
           const detail = await getDesignDetail(activeDesignId);
           hydrateFromDetail(detail);
+          const activeCustomConfiguration = detail.customOrderEnabled
+            ? await getActiveDesignCustomConfiguration(detail.id).catch(() => null)
+            : null;
+          if (activeCustomConfiguration) {
+            setSelectedCustomOrderConfigurationId(activeCustomConfiguration.id);
+            setCustomMeasurementKeys(activeCustomConfiguration.resolvedRequiredMeasurementKeys);
+            setCustomOrderConfigurations((prev) => {
+              if (prev.some((entry) => entry.id === activeCustomConfiguration.id)) return prev;
+              return [activeCustomConfiguration, ...prev];
+            });
+          } else {
+            setSelectedCustomOrderConfigurationId('');
+            if (detail.customOrderEnabled && nextCustomOrderConfigurations.length === 0) {
+              setForm((prev) => ({ ...prev, customOrderEnabled: false }));
+            }
+          }
 
           if (detail.status === 'DRAFT') {
             const session = await startDesignDraftSession(activeDesignId, {
@@ -241,16 +278,6 @@ export function DesignEditorProvider({
 
           await loadMeasurementPoints(detail.type);
         } else {
-          setForm((prev) => {
-            const categoryId = prev.categoryId || nextCategories[0]?.id || '';
-            const selectedCategory = nextCategories.find((entry) => entry.id === categoryId) ?? nextCategories[0];
-            const subCategoryId = prev.subCategoryId || selectedCategory?.subCategories[0]?.id || '';
-            return {
-              ...prev,
-              categoryId,
-              subCategoryId,
-            };
-          });
           await loadMeasurementPoints(INITIAL_FORM.audience);
         }
 
@@ -296,7 +323,9 @@ export function DesignEditorProvider({
     assets.length > 0 &&
     form.title.trim().length > 0 &&
     Boolean(form.categoryId) &&
-    Boolean(form.subCategoryId);
+    Boolean(form.subCategoryId) &&
+    tags.length > 0 &&
+    (!form.customOrderEnabled || (Boolean(selectedCustomOrderConfigurationId) && customMeasurementKeys.length > 0));
 
   useEffect(() => {
     if (!selectedCategory) return;
@@ -341,6 +370,14 @@ export function DesignEditorProvider({
     );
   }, []);
 
+  const selectCustomOrderConfiguration = useCallback((configurationId: string) => {
+    const selected = customOrderConfigurations.find((entry) => entry.id === configurationId);
+    setSelectedCustomOrderConfigurationId(configurationId);
+    if (selected) {
+      setCustomMeasurementKeys(selected.resolvedRequiredMeasurementKeys);
+    }
+  }, [customOrderConfigurations]);
+
   const pickMedia = useCallback(async (source: 'camera' | 'library' = 'library') => {
     const remainingSlots = Math.max(0, MAX_MEDIA - assets.length);
     if (remainingSlots === 0) {
@@ -348,16 +385,32 @@ export function DesignEditorProvider({
       return false;
     }
 
+    setPermissionIssue(null);
+
     if (source === 'camera') {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        toast.error('Allow camera access to capture design media.');
+        setPermissionIssue({
+          source,
+          title: 'Camera permission needed',
+          message: permission.canAskAgain
+            ? 'Allow camera access to capture a photo or video for this design.'
+            : 'Camera access is blocked. Open settings to allow Threadly to use your camera.',
+          canAskAgain: Boolean(permission.canAskAgain),
+        });
         return false;
       }
     } else {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        toast.error('Allow photo access to add design media.');
+        setPermissionIssue({
+          source,
+          title: 'Photo library permission needed',
+          message: permission.canAskAgain
+            ? 'Allow photo library access to select design media from your device.'
+            : 'Photo library access is blocked. Open settings to allow Threadly to use your media.',
+          canAskAgain: Boolean(permission.canAskAgain),
+        });
         return false;
       }
     }
@@ -399,6 +452,18 @@ export function DesignEditorProvider({
     return true;
   }, [assets.length, toast]);
 
+  const clearPermissionIssue = useCallback(() => {
+    setPermissionIssue(null);
+  }, []);
+
+  const openMediaPermissionSettings = useCallback(async () => {
+    try {
+      await Linking.openSettings();
+    } catch {
+      toast.error('Could not open settings on this device.');
+    }
+  }, [toast]);
+
   const moveAsset = useCallback((assetId: string, direction: 'left' | 'right') => {
     setAssets((prev) => {
       const index = prev.findIndex((asset) => asset.id === assetId);
@@ -425,7 +490,7 @@ export function DesignEditorProvider({
         return;
       }
       if (action === 'publish' && !canPublish) {
-        toast.error('Add media, title, category, and sub-category before publishing.');
+        toast.error('Add media, title, category, and tags before publishing.');
         return;
       }
       if (!canSaveDraft) {
@@ -453,6 +518,7 @@ export function DesignEditorProvider({
             sizingMode: form.sizingMode,
             customOrderEnabled: form.customOrderEnabled,
             customMeasurementKeys,
+            customOrderConfigurationTemplateId: selectedCustomOrderConfigurationId || undefined,
             fitPreference: form.fitPreference,
             targetAgeGroup: form.targetAgeGroup,
             filterValueIds,
@@ -517,6 +583,7 @@ export function DesignEditorProvider({
       form,
       hydrateFromDetail,
       originalMediaIds,
+      selectedCustomOrderConfigurationId,
       tags,
       toast,
     ],
@@ -569,6 +636,8 @@ export function DesignEditorProvider({
       draftConflict,
       categories,
       filterDimensions,
+      customOrderConfigurations,
+      selectedCustomOrderConfigurationId,
       measurementPoints,
       form,
       assets,
@@ -583,6 +652,7 @@ export function DesignEditorProvider({
         progress: saveProgress,
         message: saveMessage,
       },
+      permissionIssue,
       selectedCategory,
       subCategories,
       tags,
@@ -592,7 +662,10 @@ export function DesignEditorProvider({
       setFilterSelection,
       toggleFilterValue,
       toggleMeasurementKey,
+      selectCustomOrderConfiguration,
       pickMedia,
+      clearPermissionIssue,
+      openMediaPermissionSettings,
       moveAsset,
       removeAsset,
       save,
@@ -608,6 +681,8 @@ export function DesignEditorProvider({
       canPublish,
       canSaveDraft,
       categories,
+      clearPermissionIssue,
+      customOrderConfigurations,
       customMeasurementKeys,
       draftConflict,
       filterDimensions,
@@ -617,6 +692,8 @@ export function DesignEditorProvider({
       measurementPoints,
       moveAsset,
       originalMediaIds,
+      openMediaPermissionSettings,
+      permissionIssue,
       pickMedia,
       removeAsset,
       retryBootstrap,
@@ -626,6 +703,8 @@ export function DesignEditorProvider({
       saveMessage,
       saveProgress,
       selectedCategory,
+      selectedCustomOrderConfigurationId,
+      selectCustomOrderConfiguration,
       subCategories,
       tags,
       takeOverDraftConflict,

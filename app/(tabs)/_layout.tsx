@@ -18,7 +18,7 @@ import {
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
 
-const TAB_BAR_HEIGHT = 64;
+const TAB_BAR_HEIGHT = 62;
 const TAB_BAR_RADIUS = TAB_BAR_HEIGHT / 2;
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
@@ -104,7 +104,7 @@ export default function TabLayout() {
   const inactive = theme.colors.textMuted;
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
   const tabBarBottomOffset = Math.max(insets.bottom, 10);
-  const tabBarSideOffset = Math.max(18, Math.min(isBrand ? 24 : 22, Math.round(windowWidth * 0.055)));
+  const tabBarSideOffset = Math.max(24, Math.min(28, Math.round(windowWidth * 0.07)));
   const isRootTabPath =
     pathname === '/' ||
     pathname === '/discover' ||
@@ -241,8 +241,7 @@ export default function TabLayout() {
                   StyleSheet.absoluteFillObject,
                   styles.tabBarGlassFill,
                   {
-                    backgroundColor:
-                      scheme === 'dark' ? 'rgba(11, 15, 23, 0.88)' : 'rgba(255, 255, 255, 0.9)',
+                    backgroundColor: glass.bgStrong,
                     borderColor: theme.colors.border,
                     borderRadius: TAB_BAR_RADIUS,
                   },
@@ -259,14 +258,14 @@ export default function TabLayout() {
             backgroundColor: 'transparent',
             borderTopWidth: 0,
             elevation: 10,
-            shadowColor: '#000',
+            shadowColor: theme.colors.bg,
             shadowOffset: { width: 0, height: 8 },
             shadowOpacity: scheme === 'dark' ? 0.24 : 0.12,
             shadowRadius: 18,
             height: TAB_BAR_HEIGHT,
             paddingTop: 0,
             paddingBottom: 0,
-            paddingHorizontal: isBrand ? 4 : 6,
+            paddingHorizontal: 4,
             overflow: 'visible',
             borderRadius: TAB_BAR_RADIUS,
             zIndex: 100,
@@ -403,10 +402,10 @@ const styles = StyleSheet.create({
   tabChip: {
     width: 'auto',
     maxWidth: '100%',
-    minWidth: 0,
+    minWidth: 56,
     height: 40,
     borderRadius: 20,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -468,6 +467,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ef4444',
   },
 });

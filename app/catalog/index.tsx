@@ -10,7 +10,6 @@ import { BackHandler, LayoutChangeEvent, Platform, Pressable, RefreshControl, Sc
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -113,7 +112,6 @@ export default function CatalogScreen() {
 
   const [activeTab, setActiveTab] = useState<TabType>(() => normalizeTab(routeTab));
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityType>(() => normalizeVisibility(routeVisibility));
-  const [searchQuery, setSearchQuery] = useState('');
   const [draftDeleteTarget, setDraftDeleteTarget] = useState<CollectionDto | null>(null);
   const [draftDeletePhrase, setDraftDeletePhrase] = useState('');
   const [draftDeleteBusy, setDraftDeleteBusy] = useState(false);
@@ -185,7 +183,6 @@ export default function CatalogScreen() {
           brandId: targetBrandId,
           visibility,
           status: statusFilter,
-          search: searchQuery || undefined,
         });
         setCollections(items);
       }
@@ -193,7 +190,7 @@ export default function CatalogScreen() {
       console.error('Error fetching collections:', error);
       // Collections error will show empty state
     }
-  }, [targetBrandId, visibilityFilter, searchQuery, isOwner]);
+  }, [targetBrandId, visibilityFilter, isOwner]);
 
   // Initial load
   useEffect(() => {
@@ -387,7 +384,7 @@ export default function CatalogScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
       {showInitialSkeleton ? (
@@ -479,14 +476,12 @@ export default function CatalogScreen() {
         >
           {/* Collections Tab */}
           <View style={{ width: containerWidth || '100%' }}>
-            {/* Search & Filter */}
-            <View style={styles.searchRow}>
-              <Input
-                label="Search"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder="Search collections..."
-                containerStyle={[styles.searchBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+            <View style={styles.catalogControls}>
+              <VisibilityFilter
+                selected={visibilityFilter}
+                onChange={setVisibilityFilter}
+                showDrafts={isOwner}
+                draftsCount={drafts.length}
               />
 
               {isOwner && (
@@ -498,20 +493,12 @@ export default function CatalogScreen() {
                   ]}
                   accessibilityLabel="Create menu"
                 >
-                  <LinearGradient colors={['#9333EA', '#7e22ce']} style={styles.addButtonGradient}>
+                  <View style={[styles.addButtonSolid, { backgroundColor: theme.colors.primary }]}>
                     <AppText variant="subtitle" tone="inverse">+</AppText>
-                  </LinearGradient>
+                  </View>
                 </Pressable>
               )}
             </View>
-
-            {/* Visibility Filter */}
-            <VisibilityFilter
-              selected={visibilityFilter}
-              onChange={setVisibilityFilter}
-              showDrafts={isOwner}
-              draftsCount={drafts.length}
-            />
 
             {/* Collections Grid */}
               <CollectionsGrid
@@ -641,11 +628,12 @@ const styles = StyleSheet.create({
   tabsWrapper: {
     borderBottomWidth: 0,
   },
-  searchRow: {
+  catalogControls: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 10,
     gap: 10,
   },
   searchBox: {
@@ -670,6 +658,13 @@ const styles = StyleSheet.create({
   addButtonGradient: {
     width: 44,
     height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButtonSolid: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -705,18 +700,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
-  emptyButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  emptyButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
 
   // About tab
   aboutContent: {
@@ -728,23 +711,6 @@ const styles = StyleSheet.create({
     padding: 16,
     position: 'relative',
     overflow: 'hidden',
-  },
-  aboutCardAccent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    backgroundColor: '#9333EA',
-  },
-  aboutCardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  aboutCardText: {
-    fontSize: 14,
-    lineHeight: 22,
   },
   infoGrid: {
     flexDirection: 'row',

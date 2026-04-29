@@ -8,7 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { LAYOUT, tokens, type AppTheme } from '@/src/styles/tokens';
+import { GLASS, LAYOUT, tokens, type AppTheme } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
 import { Chip } from '@/components/ui/Chip';
@@ -143,15 +143,22 @@ function ImageWarmPlaceholder() {
 
 function FeedMediaSlide({ media, imageIndex }: { media: FeedViewerMedia | null; imageIndex: number }) {
   const { theme } = useTheme();
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const { uri: resolvedUri, loading } = useResolvedImageAsset({
     src: media?.url,
     fileId: media?.fileId,
     enabled: Boolean(media),
   });
 
+  useEffect(() => {
+    setImageLoaded(false);
+    setImageFailed(false);
+  }, [resolvedUri]);
+
   if (!media) {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.feedEmptySlide]}>
+      <View style={[StyleSheet.absoluteFillObject, styles.feedEmptySlide, { backgroundColor: theme.colors.surfaceAlt }]}>
         <AppText variant="display">🖼️</AppText>
         <AppText variant="subtitle" tone="inverse">No views yet</AppText>
         <AppText variant="body" tone="secondary" style={styles.feedSlideBody}>
@@ -163,7 +170,7 @@ function FeedMediaSlide({ media, imageIndex }: { media: FeedViewerMedia | null; 
 
   if (media.type === 'video') {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.feedVideoSlide]}>
+      <View style={[StyleSheet.absoluteFillObject, styles.feedVideoSlide, { backgroundColor: theme.colors.surfaceAlt }]}>
         <AppText variant="display">🎬</AppText>
         <AppText variant="subtitle" tone="inverse">Video view</AppText>
         <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.feedSlideBody}>
@@ -187,11 +194,11 @@ function FeedMediaSlide({ media, imageIndex }: { media: FeedViewerMedia | null; 
     );
   }
 
-  if (!resolvedUri) {
+  if (!resolvedUri || imageFailed) {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.feedBrokenSlide]}>
+      <View style={[StyleSheet.absoluteFillObject, styles.feedBrokenSlide, { backgroundColor: theme.colors.surfaceAlt }]}>
         <AppText variant="display">🖼️</AppText>
-        <AppText variant="subtitle" tone="inverse">No image available</AppText>
+        <AppText variant="subtitle">Image unavailable</AppText>
         <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.feedSlideBody}>
           {media.label || 'Swipe to another view'}
         </AppText>
@@ -199,7 +206,18 @@ function FeedMediaSlide({ media, imageIndex }: { media: FeedViewerMedia | null; 
     );
   }
 
-  return <Image source={{ uri: resolvedUri }} style={styles.pageImage} resizeMode="cover" />;
+  return (
+    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.surfaceAlt }]}>
+      {!imageLoaded ? <ImageWarmPlaceholder /> : null}
+      <Image
+        source={{ uri: resolvedUri }}
+        style={[styles.pageImage, { opacity: imageLoaded ? 1 : 0 }]}
+        resizeMode="cover"
+        onLoad={() => setImageLoaded(true)}
+        onError={() => setImageFailed(true)}
+      />
+    </View>
+  );
 }
 
 function FeedMediaCarousel({
@@ -211,6 +229,7 @@ function FeedMediaCarousel({
   activeIndex: number;
   onActiveIndexChange: (nextIndex: number) => void;
 }) {
+  const { theme } = useTheme();
   const { width } = useWindowDimensions();
   const carouselRef = useRef<ScrollView>(null);
   const hasMultipleItems = mediaItems.length > 1;
@@ -350,7 +369,11 @@ function FeedMediaCarousel({
           {stableMediaItems.map((_, index) => (
             <View
               key={`${stableMediaItems[index]?.id ?? index}-${index}`}
-              style={[styles.feedDot, index === safeActiveIndex && styles.feedDotActive]}
+              style={[
+                styles.feedDot,
+                { backgroundColor: theme.colors.textMuted },
+                index === safeActiveIndex && [styles.feedDotActive, { backgroundColor: theme.colors.textInverse }],
+              ]}
             />
           ))}
         </View>
@@ -380,6 +403,7 @@ function FeedBrandAvatar({
   onPatchPress: () => void;
   onPress: () => void;
 }) {
+  const { theme } = useTheme();
   const { uri, loading } = useResolvedImageAsset({
     src: brandLogo,
     fileId: brandLogoFileId,
@@ -394,7 +418,7 @@ function FeedBrandAvatar({
       accessibilityRole="button"
       accessibilityLabel={`Open ${brandName ?? 'brand'} profile`}
     >
-      <View style={styles.ownerAvatarCircle}>
+      <View style={[styles.ownerAvatarCircle, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primarySoft }]}>
         {uri ? (
           <Image source={{ uri }} style={styles.ownerAvatarImage} resizeMode="cover" />
         ) : loading ? (
@@ -412,7 +436,8 @@ function FeedBrandAvatar({
           disabled={patchBusy}
           style={({ pressed }) => [
             styles.ownerPatchBadge,
-            isPatched && styles.ownerPatchBadgeActive,
+            { backgroundColor: theme.colors.surfaceOverlay, borderColor: theme.colors.border },
+            isPatched && { backgroundColor: theme.colors.success, borderColor: theme.colors.success },
             patchBusy && styles.ownerPatchBadgeBusy,
             pressed && styles.ownerPatchBadgePressed,
           ]}
@@ -651,7 +676,8 @@ export default function HomeScreen() {
   const feedLoopHeadOffset = feedLoopEnabled ? 1 : 0;
   const bottomClearance = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 18, [insets.bottom]);
   const overlayScrollPadding = bottomClearance;
-  const headerControlSurface = scheme === 'dark' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.06)';
+  const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
+  const headerControlSurface = glass.bg;
 
   useEffect(() => {
     if (!feedLoopEnabled || pageHeight <= 1 || feedItems.length < 3) {
@@ -1168,7 +1194,7 @@ export default function HomeScreen() {
   );
 
   return (
-    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: 'transparent' }]}>
+    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} translucent backgroundColor="transparent" />
 
       {!loading ? (
@@ -1461,8 +1487,8 @@ export default function HomeScreen() {
                       style={[
                         styles.metaCard,
                         {
-                          backgroundColor: scheme === 'dark' ? 'rgba(18, 24, 38, 0.56)' : 'rgba(255, 255, 255, 0.66)',
-                          borderColor: scheme === 'dark' ? 'rgba(255,255,255,0.16)' : 'rgba(15,23,42,0.14)',
+                          backgroundColor: glass.bg,
+                          borderColor: glass.border,
                         },
                       ]}
                     >
@@ -1474,12 +1500,6 @@ export default function HomeScreen() {
                           {handle ? <AppText variant="captionRegular" tone="secondary">{handle}</AppText> : null}
                         </View>
 
-                        <Button
-                          title="Comments"
-                          size="sm"
-                          variant="outline"
-                          onPress={() => openCommentsSheet(item)}
-                        />
                       </View>
 
                       <AppText variant="subtitle" tone="inverse" numberOfLines={2}>
@@ -1577,7 +1597,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   headerEmoji: {
-    textShadowColor: '#000000',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
   },
@@ -1648,13 +1667,11 @@ const styles = StyleSheet.create({
   feedMediaLoadingSlide: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#06060b',
   },
   feedBrokenSlide: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-    backgroundColor: '#0b0b12',
   },
   feedSlideBody: {
     marginTop: 6,
@@ -1665,13 +1682,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
-    backgroundColor: '#111',
   },
   feedEmptySlide: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-    backgroundColor: '#111',
   },
   feedDotRow: {
     position: 'absolute',
@@ -1687,11 +1702,9 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#64748B',
   },
   feedDotActive: {
     width: 18,
-    backgroundColor: '#fff',
   },
   rail: {
     position: 'absolute',
@@ -1707,11 +1720,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: '#9333EA',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#C084FC',
     overflow: 'hidden',
   },
   ownerPatchBadge: {
@@ -1721,20 +1732,13 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#121826',
     borderWidth: 1,
-    borderColor: '#273244',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.2,
     shadowRadius: 10,
     elevation: 4,
-  },
-  ownerPatchBadgeActive: {
-    backgroundColor: '#16A34A',
-    borderColor: '#86EFAC',
   },
   ownerPatchBadgeBusy: {
     opacity: 0.75,
@@ -1752,21 +1756,13 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: '#9333EA',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#C084FC',
     overflow: 'hidden',
   },
   userAvatarImage: {
     ...StyleSheet.absoluteFillObject,
-  },
-  userAvatarInitials: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0.5,
   },
   profileMenuWrap: {
     position: 'absolute',
@@ -1778,7 +1774,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 22,
     overflow: 'hidden',
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 18 },
     shadowOpacity: 0.35,
     shadowRadius: 32,
@@ -1828,7 +1823,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#273244',
   },
   profileMenuItemLast: {
     borderBottomWidth: 0,

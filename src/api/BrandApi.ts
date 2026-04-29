@@ -405,7 +405,9 @@ function resolveCollectionCover(item: Record<string, any>): {
 
   const coverFileId =
     asString(item.coverFileId) ??
+    asString(mediaFile.fileId) ??
     asString(mediaFile.id) ??
+    asString(previewFile.id) ??
     asString(previewFile.fileId);
 
   return { coverImage, coverFileId };
