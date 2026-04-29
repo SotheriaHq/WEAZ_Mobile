@@ -180,6 +180,7 @@ function ProductCard({
   standardBagged,
   customBagged,
   busy,
+  pulseStatus,
   onPress,
 }: {
   product: StoreProduct;
@@ -189,6 +190,7 @@ function ProductCard({
   standardBagged: boolean;
   customBagged: boolean;
   busy: boolean;
+  pulseStatus: BagPulseStatus;
   onPress: () => void;
 }) {
   const { theme } = useTheme();
@@ -196,12 +198,6 @@ function ProductCard({
   const isOutOfStock = stock <= 0;
   const hasDiscount =
     typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
-  const bagStatus = getBagPulseStatus({
-    busy,
-    disabled: isOutOfStock && !product.customOrderEnabled,
-    standardBagged,
-    customBagged,
-  });
 
   return (
     <CatalogCardSurface
@@ -251,7 +247,7 @@ function ProductCard({
 
           <View style={styles.cardBagAffordance}>
             <BagPulseIcon
-              status={bagStatus}
+              status={pulseStatus}
               context="multi"
               mode={customBagged && !standardBagged ? 'custom' : 'standard'}
               size={36}
@@ -312,7 +308,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
   const [cartByProductId, setCartByProductId] = useState<Record<string, string>>({});
   const [customBagByProductId, setCustomBagByProductId] = useState<Record<string, string>>({});
   const [busyByProductId, setBusyByProductId] = useState<Record<string, boolean>>({});
-  const { prepareBag, loadingByProductId } = useProductBagging();
+  const { prepareBag, loadingByProductId, getPulseStatus } = useProductBagging();
 
   const [profileSnapshot, setProfileSnapshot] = useState<Awaited<ReturnType<typeof ProfileApi.getMe>>>(null);
 
@@ -1041,6 +1037,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
               standardBagged={Boolean(cartByProductId[item.id])}
               customBagged={Boolean(customBagByProductId[item.id])}
               busy={Boolean(busyByProductId[item.id] || loadingByProductId[item.id])}
+              pulseStatus={getPulseStatus(item.id, getTotalStock(item) <= 0 && !item.customOrderEnabled)}
               onPress={() => {
                 void openProductDetail(item);
               }}
@@ -1185,11 +1182,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
                       ]}
                     >
                       <BagPulseIcon
-                        status={getBagPulseStatus({
-                          busy: Boolean(busyByProductId[activeProduct.id]),
-                          disabled: activeStock <= 0,
-                          standardBagged: Boolean(cartByProductId[activeProduct.id]),
-                        })}
+                        status={getPulseStatus(activeProduct.id, activeStock <= 0)}
                         context="single"
                         size={34}
                       />
@@ -1212,10 +1205,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
                         ]}
                       >
                         <BagPulseIcon
-                          status={getBagPulseStatus({
-                            busy: Boolean(busyByProductId[activeProduct.id]),
-                            customBagged: Boolean(customBagByProductId[activeProduct.id]),
-                          })}
+                          status={getPulseStatus(activeProduct.id, false)}
                           context="single"
                           mode="custom"
                           size={34}
