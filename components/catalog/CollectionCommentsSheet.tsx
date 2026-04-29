@@ -34,6 +34,7 @@ type CollectionCommentsSheetProps = {
   visible: boolean;
   collectionId: string | null;
   collectionTitle?: string | null;
+  initialCommentId?: string | null;
   onClose: () => void;
 };
 const normalizeDisplayName = (user?: BackendCommentUser | null) => {
@@ -100,6 +101,7 @@ const commentsApi = {
 function CommentItem({
   comment,
   colors,
+  highlighted,
 }: {
   comment: Comment;
   colors: {
@@ -109,6 +111,7 @@ function CommentItem({
     textSecondary: string;
     textMuted: string;
   };
+  highlighted?: boolean;
 }) {
   const authorName = comment.author?.displayName || comment.author?.username || 'User';
   const time = (() => {
@@ -125,7 +128,20 @@ function CommentItem({
   })();
 
   return (
-    <View style={styles.commentItem}>
+    <View
+      style={[
+        styles.commentItem,
+        highlighted
+          ? {
+              borderColor: colors.border,
+              backgroundColor: colors.surfaceAlt,
+              borderWidth: 1,
+              borderRadius: 16,
+              padding: 10,
+            }
+          : null,
+      ]}
+    >
       <View
         style={[
           styles.commentAvatar,
@@ -155,6 +171,7 @@ export default function CollectionCommentsSheet({
   visible,
   collectionId,
   collectionTitle,
+  initialCommentId = null,
   onClose,
 }: CollectionCommentsSheetProps) {
   const { theme, scheme } = useTheme();
@@ -167,6 +184,7 @@ export default function CollectionCommentsSheet({
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [sendingComment, setSendingComment] = useState(false);
+  const commentsListRef = useRef<FlatList<Comment> | null>(null);
 
   const loadComments = useMemo(
     () => async (targetCollectionId: string) => {
@@ -214,6 +232,18 @@ export default function CollectionCommentsSheet({
       }),
     ]).start();
   }, [collectionId, loadComments, opacity, translateY, visible]);
+
+  useEffect(() => {
+    if (!initialCommentId || comments.length === 0) return;
+    const targetIndex = comments.findIndex((comment) => comment.id === initialCommentId);
+    if (targetIndex < 0) return;
+
+    const timer = window.setTimeout(() => {
+      commentsListRef.current?.scrollToIndex({ index: targetIndex, animated: true, viewPosition: 0.15 });
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [comments, initialCommentId]);
 
   const sendComment = useMemo(
     () => async () => {
@@ -297,11 +327,13 @@ export default function CollectionCommentsSheet({
             </View>
           ) : (
             <FlatList
+              ref={commentsListRef}
               data={comments}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <CommentItem
                   comment={item}
+                  highlighted={initialCommentId === item.id}
                   colors={{
                     surfaceAlt: theme.colors.surfaceAlt,
                     border: theme.colors.border,
@@ -313,6 +345,12 @@ export default function CollectionCommentsSheet({
               )}
               contentContainerStyle={styles.commentsList}
               showsVerticalScrollIndicator={false}
+              onScrollToIndexFailed={({ index }) => {
+                if (index < 0 || index >= comments.length) return;
+                requestAnimationFrame(() => {
+                  commentsListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.15 });
+                });
+              }}
               ListEmptyComponent={
                 <View style={styles.commentsEmpty}>
                   <AppText style={styles.commentsEmptyEmoji}>💬</AppText>

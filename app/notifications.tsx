@@ -151,6 +151,7 @@ function NotificationRow({
 }) {
   const { theme } = useTheme();
   const unread = !item.isRead;
+  const previewUri = item.target?.preview ?? (typeof item.payload?.preview === 'string' ? item.payload.preview : null);
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [pressed ? styles.pressed : null]}>
@@ -159,8 +160,9 @@ function NotificationRow({
         style={[
           styles.rowCard,
           {
-            backgroundColor: unread ? theme.colors.primarySoft : theme.colors.surface,
-            borderColor: unread ? theme.colors.primary : theme.colors.border,
+            backgroundColor: unread ? theme.colors.surfaceAlt : theme.colors.surface,
+            borderColor: 'transparent',
+            borderWidth: 0,
           },
         ]}
       >
@@ -179,6 +181,9 @@ function NotificationRow({
               {describeNotification(item)}
             </AppText>
           </View>
+          {previewUri ? (
+            <StableImage uri={previewUri} containerStyle={styles.previewThumb} imageStyle={styles.previewThumb} />
+          ) : null}
           {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} /> : null}
         </View>
       </Card>
@@ -291,11 +296,11 @@ export default function NotificationsScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: insets.bottom + LAYOUT.TAB_BAR_HEIGHT + tokens.spacing.xl },
+            { paddingBottom: insets.bottom + LAYOUT.TAB_BAR_HEIGHT + tokens.spacing.lg },
           ]}
         >
           {groups.map((group) => (
-            <View key={group.title} style={[styles.group, { backgroundColor: theme.colors.surfaceAlt }]}>
+            <View key={group.title} style={styles.group}>
               <View style={styles.groupHeader}>
                 <AppText variant="bodyBold">{group.title}</AppText>
                 <View style={[styles.groupDivider, { backgroundColor: theme.colors.border }]} />
@@ -332,7 +337,7 @@ const styles = StyleSheet.create({
   },
   content: {
     gap: tokens.spacing.lg,
-    paddingHorizontal: tokens.spacing.lg,
+    paddingHorizontal: tokens.spacing.md,
     paddingTop: tokens.spacing.md,
   },
   stateWrap: {
@@ -344,8 +349,7 @@ const styles = StyleSheet.create({
   },
   group: {
     gap: tokens.spacing.sm,
-    borderRadius: tokens.radius.xl,
-    padding: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
   },
   groupHeader: {
     flexDirection: 'row',
@@ -378,6 +382,11 @@ const styles = StyleSheet.create({
   copyWrap: {
     flex: 1,
     gap: tokens.spacing.xs,
+  },
+  previewThumb: {
+    width: 48,
+    height: 64,
+    borderRadius: tokens.radius.md,
   },
   rowMeta: {
     flexDirection: 'row',

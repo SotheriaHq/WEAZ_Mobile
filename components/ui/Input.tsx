@@ -13,6 +13,7 @@ type Props = Omit<TextInputProps, 'style'> & {
   leading?: React.ReactNode;
   trailing?: React.ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
+  variant?: 'default' | 'bare';
 };
 
 export function Input({
@@ -23,11 +24,13 @@ export function Input({
   leading,
   trailing,
   containerStyle,
+  variant = 'default',
   multiline,
   ...rest
 }: Props) {
   const { theme } = useTheme();
   const hasError = Boolean(error);
+  const isBare = variant === 'bare';
 
   return (
     <View style={containerStyle}>
@@ -41,8 +44,9 @@ export function Input({
           styles.field,
           {
             minHeight: multiline ? 104 : 52,
-            backgroundColor: theme.colors.surface,
-            borderColor: hasError ? theme.colors.danger : theme.colors.border,
+            backgroundColor: isBare ? 'transparent' : theme.colors.surface,
+            borderColor: isBare ? 'transparent' : hasError ? theme.colors.danger : theme.colors.border,
+            borderWidth: isBare ? 0 : 1,
           },
         ]}
       >
@@ -54,8 +58,8 @@ export function Input({
             styles.input,
             {
               color: theme.colors.text,
-              paddingLeft: leading ? tokens.spacing.xl2 : tokens.spacing.lg,
-              paddingRight: trailing ? 44 : tokens.spacing.lg,
+              paddingLeft: isBare ? 0 : leading ? tokens.spacing.xl2 : tokens.spacing.lg,
+              paddingRight: isBare ? 0 : trailing ? 44 : tokens.spacing.lg,
               paddingTop: multiline ? tokens.spacing.lg : 0,
               paddingBottom: multiline ? tokens.spacing.lg : 0,
               textAlignVertical: multiline ? 'top' : 'center',
@@ -93,7 +97,6 @@ const styles = StyleSheet.create({
   },
   field: {
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
     justifyContent: 'center',
     overflow: 'hidden',
   },

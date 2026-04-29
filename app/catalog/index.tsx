@@ -561,15 +561,29 @@ export default function CatalogScreen() {
       <AppActionSheet
         visible={createSheetOpen}
         title="Create"
-        subtitle="Choose the action for this catalog view."
+        subtitle="Choose a media source for this design."
         onClose={() => setCreateSheetOpen(false)}
         options={[
           {
-            key: 'design',
-            icon: '🗂️',
-            title: 'New Design',
-            description: 'Upload media, configure details, preview, then publish.',
-            onPress: () => router.push('/catalog/create-design'),
+            key: 'camera',
+            icon: '📷',
+            title: 'Camera',
+            description: 'Capture a new photo or video.',
+            onPress: () => router.push({ pathname: '/catalog/create-design', params: { source: 'camera' } } as any),
+          },
+          {
+            key: 'media',
+            icon: '🖼️',
+            title: 'Media',
+            description: 'Pick images or videos from your library.',
+            onPress: () => router.push({ pathname: '/catalog/create-design', params: { source: 'library' } } as any),
+          },
+          {
+            key: 'attachment',
+            icon: '📎',
+            title: 'Attachment',
+            description: 'Attach an existing photo or video from your device.',
+            onPress: () => router.push({ pathname: '/catalog/create-design', params: { source: 'library' } } as any),
           },
         ]}
       />

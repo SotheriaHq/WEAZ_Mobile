@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
+import { AppActionSheet } from '@/components/ui/AppActionSheet';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { AppSelectSheet } from '@/components/ui/AppSelectSheet';
@@ -13,6 +14,7 @@ import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { Input } from '@/components/ui/Input';
 import { OptionRow } from '@/components/ui/OptionRow';
+import TagsApi from '@/src/api/TagsApi';
 import { StableImage } from '@/components/ui/StableImage';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
 import { tokens } from '@/src/styles/tokens';
@@ -107,7 +109,9 @@ export default function CreateDesignComposerScreen() {
   const [priceOpen, setPriceOpen] = useState(false);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+  const [mediaOpen, setMediaOpen] = useState(false);
   const [mentionsDraft, setMentionsDraft] = useState('');
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
 
   const audienceLabel = AUDIENCE_LABELS[form.audience];
   const sizingLabel = SIZING_LABELS[form.sizingMode];
@@ -131,6 +135,36 @@ export default function CreateDesignComposerScreen() {
     () => form.tagsInput.split(',').map((value) => value.trim()).filter(Boolean).length,
     [form.tagsInput],
   );
+  useEffect(() => {
+    if (!hashtagsOpen) {
+      return;
+    }
+
+    let isActive = true;
+
+    void TagsApi.getSuggestions(12)
+      .then((items) => {
+        if (isActive) {
+          setTagSuggestions(items);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setTagSuggestions([]);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [hashtagsOpen]);
+
+  const canPreview =
+    assets.length > 0 &&
+    form.title.trim().length > 0 &&
+    Boolean(form.categoryId) &&
+    Boolean(form.subCategoryId) &&
+    hashtagCount > 0;
 
   if (booting) {
     return <AppLoaderScreen message="Loading composer" />;
@@ -141,16 +175,19 @@ export default function CreateDesignComposerScreen() {
       <View style={styles.header}>
         <AppBackButton fallbackHref="/catalog/create-design" />
         <View style={styles.headerCopy}>
-          <AppText variant="title">Composer</AppText>
+          <AppText variant="title">Create design</AppText>
           <AppText variant="captionRegular" tone="muted">
-            Edit everything from one screen, then preview before publishing.
+            Edit the design details, then preview when the required fields are ready.
           </AppText>
         </View>
-        <Button title="Preview" size="sm" onPress={() => router.push('/catalog/create-design/preview' as any)} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <Card padding="lg" style={[styles.mediaCard, { backgroundColor: theme.colors.surfaceAlt }]}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.mediaSection}>
           <View style={styles.sectionTopRow}>
             <View style={styles.sectionTopCopy}>
               <AppText variant="bodyBold">Selected media</AppText>
@@ -158,10 +195,7 @@ export default function CreateDesignComposerScreen() {
                 The first item becomes the lead preview.
               </AppText>
             </View>
-            <View style={styles.mediaActions}>
-              <Button title="Camera" size="sm" variant="ghost" onPress={() => void pickMedia('camera')} />
-              <Button title="Library" size="sm" variant="ghost" onPress={() => void pickMedia('library')} />
-            </View>
+            <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
           </View>
 
           {assets.length > 0 ? (
@@ -195,21 +229,28 @@ export default function CreateDesignComposerScreen() {
               </AppText>
             </View>
           )}
-        </Card>
+          </View>
 
-        <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
+        <View style={styles.copyBlock}>
           <Input
             label="Title"
+            hideLabel
+            variant="bare"
             value={form.title}
             onChangeText={(value) => updateField('title', value)}
-            placeholder="Name the design"
+            placeholder="Title"
+            containerStyle={styles.copyField}
           />
+          <View style={[styles.copyDivider, { backgroundColor: theme.colors.border }]} />
           <Input
             label="Description"
+            hideLabel
+            variant="bare"
             value={form.description}
             onChangeText={(value) => updateField('description', value)}
-            placeholder="Add description, styling notes, and post copy"
+            placeholder="Description"
             multiline
+            containerStyle={styles.copyField}
           />
           <View style={styles.quickChipRow}>
             <Button title={`# Hashtags${hashtagCount > 0 ? ` (${hashtagCount})` : ''}`} size="sm" variant="ghost" onPress={() => setHashtagsOpen(true)} />
@@ -218,7 +259,7 @@ export default function CreateDesignComposerScreen() {
               setMentionsOpen(true);
             }} />
           </View>
-        </Card>
+        </View>
 
         <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
           <OptionRow
@@ -270,8 +311,9 @@ export default function CreateDesignComposerScreen() {
           />
         </Card>
 
-        <Button title="Continue to preview" onPress={() => router.push('/catalog/create-design/preview' as any)} />
+        <Button title="Continue to preview" disabled={!canPreview} onPress={() => router.push('/catalog/create-design/preview' as any)} />
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <AppSelectSheet
         visible={privacyOpen}
@@ -334,6 +376,28 @@ export default function CreateDesignComposerScreen() {
         onClose={() => setHashtagsOpen(false)}
         showCloseButton
       >
+        {tagSuggestions.length > 0 ? (
+          <View style={styles.suggestionWrap}>
+            {tagSuggestions.map((tag) => {
+              const hasTag = form.tagsInput
+                .split(',')
+                .map((value) => value.trim().toLowerCase())
+                .includes(tag.toLowerCase());
+              const nextTags = hasTag
+                ? form.tagsInput
+                : [form.tagsInput.trim(), tag].filter(Boolean).join(', ');
+
+              return (
+                <Chip
+                  key={tag}
+                  label={tag}
+                  variant="default"
+                  onPress={() => updateField('tagsInput', nextTags)}
+                />
+              );
+            })}
+          </View>
+        ) : null}
         <Input
           label="Tags"
           value={form.tagsInput}
@@ -503,12 +567,45 @@ export default function CreateDesignComposerScreen() {
           </View>
         ))}
       </AppBottomSheet>
+
+      <AppActionSheet
+        visible={mediaOpen}
+        title="Add media"
+        subtitle="Choose how to attach the next asset."
+        onClose={() => setMediaOpen(false)}
+        options={[
+          {
+            key: 'camera',
+            icon: '📷',
+            title: 'Camera',
+            description: 'Capture a new photo or video.',
+            onPress: () => void pickMedia('camera'),
+          },
+          {
+            key: 'media',
+            icon: '🖼️',
+            title: 'Media',
+            description: 'Pick images or videos from your library.',
+            onPress: () => void pickMedia('library'),
+          },
+          {
+            key: 'attachment',
+            icon: '📎',
+            title: 'Attachment',
+            description: 'Attach an existing photo or video from your device.',
+            onPress: () => void pickMedia('library'),
+          },
+        ]}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
+    flex: 1,
+  },
+  flex: {
     flex: 1,
   },
   header: {
@@ -528,7 +625,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.lg,
     paddingBottom: tokens.spacing.xl,
   },
-  mediaCard: {
+  mediaSection: {
     gap: tokens.spacing.md,
   },
   sectionTopRow: {
@@ -577,6 +674,18 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
     borderWidth: 1,
   },
+  copyBlock: {
+    gap: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
+  },
+  copyField: {
+    paddingVertical: tokens.spacing.xs,
+  },
+  copyDivider: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
+  },
   quickChipRow: {
     flexDirection: 'row',
     gap: tokens.spacing.sm,
@@ -593,6 +702,12 @@ const styles = StyleSheet.create({
   },
   sheetSection: {
     gap: tokens.spacing.sm,
+  },
+  suggestionWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+    marginBottom: tokens.spacing.sm,
   },
   sheetChipWrap: {
     flexDirection: 'row',

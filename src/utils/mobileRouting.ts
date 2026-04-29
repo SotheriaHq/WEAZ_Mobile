@@ -68,6 +68,7 @@ function routeForCollectionTarget(
   targetId: string,
   scope: 'design' | 'store',
   openComments?: boolean,
+  commentId?: string | null,
 ): RouterTarget {
   return {
     pathname: '/catalog/view/[collectionId]',
@@ -75,6 +76,7 @@ function routeForCollectionTarget(
       collectionId: targetId,
       scope,
       ...(openComments ? { openComments: '1' } : null),
+      ...(commentId ? { commentId } : null),
     },
   } as Href;
 }
@@ -121,16 +123,20 @@ export function routeForNotification(notification: MobileNotification): RouterTa
   if (targetType === 'COLLECTION_MEDIA') {
     const collectionId = typeof payload.collectionId === 'string' ? payload.collectionId : null;
     if (collectionId) {
-      return routeForCollectionTarget(collectionId, 'design', true);
+      return routeForCollectionTarget(collectionId, 'design', true, commentId);
     }
   }
 
   if (targetType === 'COLLECTION' && targetId) {
-    return routeForCollectionTarget(targetId, 'design', Boolean(commentId));
+    return routeForCollectionTarget(targetId, 'design', Boolean(commentId), commentId);
   }
 
   if (targetType === 'PRODUCT') {
     return routeForProductTarget(notification);
+  }
+
+  if (targetType === 'POST' && targetId) {
+    return { pathname: '/posts/[postId]', params: { postId: targetId, ...(commentId ? { commentId } : null) } } as unknown as Href;
   }
 
   if (targetType === 'USER' && targetId) {
@@ -210,7 +216,7 @@ export function routeForNotification(notification: MobileNotification): RouterTa
     const draftId = parseHrefId(targetUrl, /\/studio\/drafts\/([^/?#]+)/);
 
     if (collectionId) {
-      return routeForCollectionTarget(collectionId, 'design', Boolean(commentId));
+      return routeForCollectionTarget(collectionId, 'design', Boolean(commentId), commentId);
     }
     if (productId) {
       return { pathname: '/products/[productId]', params: { productId } } as Href;

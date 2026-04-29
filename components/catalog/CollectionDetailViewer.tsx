@@ -295,10 +295,12 @@ export function CollectionDetailViewer({
   collectionId,
   scope,
   autoOpenComments = false,
+  initialCommentId = null,
 }: {
   collectionId: string;
   scope?: string;
   autoOpenComments?: boolean;
+  initialCommentId?: string | null;
 }) {
   const { theme } = useTheme();
   const { status } = useAuth();
@@ -811,6 +813,7 @@ export function CollectionDetailViewer({
         visible={commentsOpen}
         collectionId={collectionId}
         collectionTitle={detail.title}
+        initialCommentId={initialCommentId}
         onClose={() => setCommentsOpen(false)}
       />
     </View>

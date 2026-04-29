@@ -132,20 +132,22 @@ export default function CreateDesignPreviewScreen() {
 
         <View style={styles.footerActions}>
           <Button title="Back to edit" variant="outline" onPress={() => router.replace('/catalog/create-design/composer' as any)} fullWidth />
-          <Button
-            title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
-            variant="secondary"
-            loading={saveState.action === 'draft'}
-            onPress={() => void save('draft')}
-            fullWidth
-          />
-          <Button
-            title={saveState.action === 'publish' ? 'Publishing...' : 'Publish'}
-            loading={saveState.action === 'publish'}
-            disabled={!canPublish}
-            onPress={() => void save('publish')}
-            fullWidth
-          />
+          <View style={styles.actionRow}>
+            <Button
+              title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
+              variant="secondary"
+              loading={saveState.action === 'draft'}
+              onPress={() => void save('draft')}
+              fullWidth
+            />
+            <Button
+              title={saveState.action === 'publish' ? 'Publishing...' : 'Publish'}
+              loading={saveState.action === 'publish'}
+              disabled={!canPublish}
+              onPress={() => void save('publish')}
+              fullWidth
+            />
+          </View>
           {activeDesignId && isDraft ? (
             <Button title="Delete draft" variant="danger" onPress={() => setDeleteOpen(true)} fullWidth />
           ) : null}
@@ -233,6 +235,10 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   footerActions: {
+    gap: tokens.spacing.md,
+  },
+  actionRow: {
+    flexDirection: 'row',
     gap: tokens.spacing.md,
   },
   modalRoot: {

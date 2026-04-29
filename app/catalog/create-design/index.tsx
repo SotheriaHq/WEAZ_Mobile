@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
@@ -39,6 +39,7 @@ function EntryCard({
 }
 
 export default function CreateDesignEntryScreen() {
+  const { source: routeSourceParam } = useLocalSearchParams<{ source?: string | string[] }>();
   const {
     booting,
     loadingError,
@@ -52,6 +53,10 @@ export default function CreateDesignEntryScreen() {
     pickMedia,
   } = useDesignEditor();
   const { theme } = useTheme();
+  const autoLaunchRef = useRef(false);
+
+  const routeSource = Array.isArray(routeSourceParam) ? routeSourceParam[0] : routeSourceParam;
+  const normalizedSource = routeSource === 'camera' || routeSource === 'library' ? routeSource : null;
 
   const openComposerAfterPick = React.useCallback(
     async (source: 'camera' | 'library') => {
@@ -62,6 +67,24 @@ export default function CreateDesignEntryScreen() {
     },
     [pickMedia],
   );
+
+  useEffect(() => {
+    if (booting || loadingError || draftConflict?.hasConflict || !normalizedSource || autoLaunchRef.current) {
+      return;
+    }
+
+    autoLaunchRef.current = true;
+
+    void (async () => {
+      const didAddMedia = await pickMedia(normalizedSource);
+      if (didAddMedia) {
+        router.replace('/catalog/create-design/composer' as any);
+        return;
+      }
+      router.replace('/catalog/create-design' as any);
+      autoLaunchRef.current = false;
+    })();
+  }, [booting, draftConflict?.hasConflict, loadingError, normalizedSource, pickMedia]);
 
   if (booting) {
     return <AppLoaderScreen message="Loading design studio" />;
