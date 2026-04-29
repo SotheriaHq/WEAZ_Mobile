@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import type { ProductBagStatus } from '@/src/api/StoreApi';
+import { MobileStoreApi, type ProductBagStatus, type StoreProductVariant } from '@/src/api/StoreApi';
+import { useToast } from '@/src/toast/ToastContext';
 
 type BagProductInput = {
   id: string;
@@ -23,38 +24,104 @@ type Props = {
 
 export default function ProductBagSelectorSheet({ visible, product, status, onClose }: Props) {
   const { theme } = useTheme();
+  const toast = useToast();
   const { addStandard, loadingByProductId } = useMobileBagging();
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [variants, setVariants] = useState<StoreProductVariant[]>([]);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     setSelectedSize(status?.standard.selectedSize ?? null);
     setSelectedColor(status?.standard.selectedColor ?? null);
     setQuantity(1);
+    setSelectionError(null);
   }, [status, visible]);
+
+  useEffect(() => {
+    if (!visible || !product) {
+      setVariants([]);
+      return;
+    }
+
+    let active = true;
+    void MobileStoreApi.getProductById(product.id)
+      .then((detail) => {
+        if (active) setVariants(Array.isArray(detail.variants) ? detail.variants : []);
+      })
+      .catch(() => {
+        if (active) setVariants([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [product, visible]);
 
   const isLoading = Boolean(product && loadingByProductId[product.id]);
   const requiresSize = Boolean(status?.standard.requiresSize);
   const requiresColor = Boolean(status?.standard.requiresColor);
 
+  const hasVariantMatrix = variants.length > 0;
+
+  const variantIsAvailable = (variant: StoreProductVariant, size: string | null, color: string | null) => {
+    if (Number(variant.stock ?? 0) <= 0) return false;
+    if (size && variant.size && variant.size !== size) return false;
+    if (color && variant.color && variant.color !== color) return false;
+    return true;
+  };
+
+  const sizeIsDisabled = (size: string) =>
+    hasVariantMatrix && !variants.some((variant) => variantIsAvailable(variant, size, selectedColor));
+
+  const colorIsDisabled = (color: string) =>
+    hasVariantMatrix && !variants.some((variant) => variantIsAvailable(variant, selectedSize, color));
+
+  const selectedVariantValid = useMemo(() => {
+    if (!hasVariantMatrix) return true;
+    return variants.some((variant) => variantIsAvailable(variant, selectedSize, selectedColor));
+  }, [hasVariantMatrix, selectedColor, selectedSize, variants]);
+
   const canSubmit = useMemo(() => {
     if (!product || !status) return false;
     if (requiresSize && !selectedSize) return false;
     if (requiresColor && !selectedColor) return false;
+    if (!selectedVariantValid) return false;
     return !isLoading;
-  }, [isLoading, product, requiresColor, requiresSize, selectedColor, selectedSize, status]);
+  }, [isLoading, product, requiresColor, requiresSize, selectedColor, selectedSize, selectedVariantValid, status]);
 
   const handleSubmit = async () => {
     if (!product || !status) return;
-    await addStandard({
-      productId: product.id,
-      qty: quantity,
-      size: selectedSize ?? undefined,
-      color: selectedColor ?? undefined,
-    });
-    onClose();
+    if (requiresSize && !selectedSize) {
+      setSelectionError('Select a size to continue.');
+      return;
+    }
+    if (requiresColor && !selectedColor) {
+      setSelectionError('Select a color to continue.');
+      return;
+    }
+    if (!selectedVariantValid) {
+      setSelectionError('This size and color combination is unavailable.');
+      return;
+    }
+
+    try {
+      await addStandard({
+        productId: product.id,
+        qty: quantity,
+        size: selectedSize ?? undefined,
+        color: selectedColor ?? undefined,
+      });
+      onClose();
+    } catch (error) {
+      const message = error instanceof Error && error.message.trim()
+        ? error.message
+        : 'Unable to add this item with the selected options.';
+      setSelectionError(message);
+      toast.error(message);
+    }
   };
 
   return (
@@ -77,15 +144,21 @@ export default function ProductBagSelectorSheet({ visible, product, status, onCl
               {status?.standard.sizes.length ? (
                 status.standard.sizes.map((size) => {
                   const selected = selectedSize === size;
+                  const disabled = sizeIsDisabled(size);
                   return (
                     <Pressable
                       key={size}
-                      onPress={() => setSelectedSize(size)}
+                      disabled={disabled}
+                      onPress={() => {
+                        setSelectionError(null);
+                        setSelectedSize(size);
+                      }}
                       style={[
                         styles.chip,
                         {
                           borderColor: selected ? theme.colors.primary : theme.colors.border,
                           backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
+                          opacity: disabled ? 0.4 : 1,
                         },
                       ]}
                     >
@@ -109,15 +182,21 @@ export default function ProductBagSelectorSheet({ visible, product, status, onCl
               {status?.standard.colors.length ? (
                 status.standard.colors.map((color) => {
                   const selected = selectedColor === color;
+                  const disabled = colorIsDisabled(color);
                   return (
                     <Pressable
                       key={color}
-                      onPress={() => setSelectedColor(color)}
+                      disabled={disabled}
+                      onPress={() => {
+                        setSelectionError(null);
+                        setSelectedColor(color);
+                      }}
                       style={[
                         styles.chip,
                         {
                           borderColor: selected ? theme.colors.primary : theme.colors.border,
                           backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
+                          opacity: disabled ? 0.4 : 1,
                         },
                       ]}
                     >
@@ -142,6 +221,12 @@ export default function ProductBagSelectorSheet({ visible, product, status, onCl
             <Button title="+" size="sm" variant="secondary" onPress={() => setQuantity((current) => Math.min(10, current + 1))} />
           </View>
         </View>
+
+        {selectionError ? (
+          <AppText variant="caption" tone="danger">{selectionError}</AppText>
+        ) : !selectedVariantValid ? (
+          <AppText variant="caption" tone="danger">This size and color combination is unavailable.</AppText>
+        ) : null}
       </View>
     </AppBottomSheet>
   );

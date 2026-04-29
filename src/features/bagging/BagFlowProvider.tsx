@@ -8,6 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { router, usePathname } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/src/auth/AuthContext';
@@ -19,6 +20,8 @@ import { Button } from '@/components/ui/Button';
 import ProductBagSelectorSheet from '@/components/bagging/ProductBagSelectorSheet';
 import BagFittingsSheet from '@/components/bagging/BagFittingsSheet';
 import BagSummarySheet from '@/components/bagging/BagSummarySheet';
+import CustomBagSheet from '@/components/bagging/CustomBagSheet';
+import { baggingService } from '@/src/services/bagging';
 
 type BagProductInput = {
   id: string;
@@ -33,10 +36,20 @@ type BagFlowTarget = {
 type PendingAuthResume = {
   product: BagProductInput;
   action: BagDefaultAction;
+  returnPath: string;
   resume?: () => void | Promise<void>;
 };
 
 type BagDefaultAction = ProductBagStatus['ui']['defaultAction'];
+
+type PendingBagAction = {
+  productId: string;
+  productName?: string;
+  intendedAction: BagDefaultAction;
+  returnPath: string;
+};
+
+const PENDING_BAG_ACTION_KEY = 'threadly.pendingBagAction.v1';
 
 type BagFlowContextValue = {
   openSelector: (product: BagProductInput, status: ProductBagStatus) => void;
@@ -70,27 +83,101 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
 
   const pendingResumeRef = useRef<PendingAuthResume | null>(null);
 
-  useEffect(() => {
-    pendingResumeRef.current = pendingAuth;
-  }, [pendingAuth]);
-
-  useEffect(() => {
-    if (authStatus !== 'authenticated') return;
-    const resume = pendingResumeRef.current;
-    if (!resume?.resume) return;
-
-    pendingResumeRef.current = null;
-    setPendingAuth(null);
-    void Promise.resolve(resume.resume()).catch(() => undefined);
-  }, [authStatus]);
-
   const closeActiveFlow = useCallback(() => {
     setSelectorTarget(null);
     setCustomTarget(null);
     setFittingsTarget(null);
     setSummaryTarget(null);
     setPendingAuth(null);
+    pendingResumeRef.current = null;
+    void SecureStore.deleteItemAsync(PENDING_BAG_ACTION_KEY).catch(() => undefined);
   }, []);
+
+  const routeResolvedStatus = useCallback(
+    async (
+      product: BagProductInput,
+      status: ProductBagStatus,
+      intendedAction?: BagDefaultAction,
+    ) => {
+      setPendingAuth(null);
+      setSelectorTarget(null);
+      setCustomTarget(null);
+      setFittingsTarget(null);
+      setSummaryTarget(null);
+
+      if (status.standard.inBag || status.custom.alreadyBagged) {
+        setSummaryTarget({ product, status });
+        return;
+      }
+
+      const action = intendedAction && intendedAction !== 'DISABLED'
+        ? intendedAction
+        : status.ui.defaultAction;
+
+      if (!status.canBag || action === 'DISABLED') {
+        toast.error(status.ui.disabledReason || 'This product cannot be bagged.');
+        return;
+      }
+
+      if (action === 'ADD_STANDARD') {
+        await baggingService.addStandard({ productId: product.id, qty: 1 });
+        const nextStatus = await baggingService.prepareBag(product.id);
+        toast.success('Bagged.');
+        setSummaryTarget({ product, status: nextStatus });
+        return;
+      }
+
+      if (action === 'OPEN_SELECTOR') {
+        setSelectorTarget({ product, status });
+        return;
+      }
+
+      if (action === 'OPEN_FITTINGS') {
+        setFittingsTarget({ product, status });
+        return;
+      }
+
+      if (action === 'OPEN_CUSTOM_FLOW') {
+        if (!status.custom.available || !status.custom.configurationId) {
+          toast.error(status.ui.disabledReason || 'This product is not configured for custom bagging yet.');
+          return;
+        }
+        if (status.custom.fittingState === 'MISSING' || status.custom.fittingState === 'PARTIAL') {
+          setFittingsTarget({ product, status });
+          return;
+        }
+        setCustomTarget({ product, status });
+      }
+    },
+    [toast],
+  );
+
+  const resumePersistedBagAction = useCallback(async () => {
+    const serialized = await SecureStore.getItemAsync(PENDING_BAG_ACTION_KEY);
+    if (!serialized) return false;
+
+    let pending: PendingBagAction | null = null;
+    try {
+      pending = JSON.parse(serialized) as PendingBagAction;
+    } catch {
+      await SecureStore.deleteItemAsync(PENDING_BAG_ACTION_KEY);
+      return false;
+    }
+
+    if (!pending?.productId) {
+      await SecureStore.deleteItemAsync(PENDING_BAG_ACTION_KEY);
+      return false;
+    }
+
+    await SecureStore.deleteItemAsync(PENDING_BAG_ACTION_KEY);
+    const product = {
+      id: pending.productId,
+      name: pending.productName,
+    };
+    const status = await baggingService.prepareBag(pending.productId);
+    await routeResolvedStatus(product, status, pending.intendedAction);
+    return true;
+  }, [routeResolvedStatus]);
 
   const openSelector = useCallback((product: BagProductInput, status: ProductBagStatus) => {
     setPendingAuth(null);
@@ -106,14 +193,17 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setFittingsTarget(null);
     setSummaryTarget(null);
 
-    if (!status.custom.configurationId) {
+    if (!status.custom.available || !status.custom.configurationId) {
       toast.error(status.ui.disabledReason || 'This product is not configured for custom bagging yet.');
+      return;
+    }
+    if (status.custom.fittingState === 'MISSING' || status.custom.fittingState === 'PARTIAL') {
+      setFittingsTarget({ product, status });
       return;
     }
 
     setCustomTarget({ product, status });
-    router.push({ pathname: '/products/[productId]', params: { productId: product.id } });
-  }, []);
+  }, [toast]);
 
   const openFittings = useCallback((product: BagProductInput, status: ProductBagStatus) => {
     setPendingAuth(null);
@@ -129,7 +219,16 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
       setCustomTarget(null);
       setFittingsTarget(null);
       setSummaryTarget(null);
-      setPendingAuth({ product, action, resume });
+      const nextPending = { product, action, returnPath: pathname, resume };
+      setPendingAuth(nextPending);
+      pendingResumeRef.current = nextPending;
+      const serialized: PendingBagAction = {
+        productId: product.id,
+        productName: product.name,
+        intendedAction: action,
+        returnPath: pathname,
+      };
+      void SecureStore.setItemAsync(PENDING_BAG_ACTION_KEY, JSON.stringify(serialized)).catch(() => undefined);
       toast.info('Please sign in to bag items.');
     },
     [pathname, toast],
@@ -143,6 +242,27 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSummaryTarget({ product, status });
   }, []);
 
+  useEffect(() => {
+    pendingResumeRef.current = pendingAuth;
+  }, [pendingAuth]);
+
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return;
+
+    const resume = pendingResumeRef.current;
+    pendingResumeRef.current = null;
+    setPendingAuth(null);
+
+    void resumePersistedBagAction()
+      .then((handled) => {
+        if (!handled && resume?.resume) {
+          return Promise.resolve(resume.resume());
+        }
+        return undefined;
+      })
+      .catch(() => undefined);
+  }, [authStatus, resumePersistedBagAction]);
+
   const value = useMemo(
     () => ({
       openSelector,
@@ -154,8 +274,6 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     }),
     [closeActiveFlow, openAuthPrompt, openCustomFlow, openExistingBag, openFittings, openSelector],
   );
-
-  const customSheetTarget = customTarget?.status.custom.configurationId ? customTarget : null;
 
   return (
     <BagFlowContext.Provider value={value}>
@@ -173,9 +291,21 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
         product={fittingsTarget?.product ?? null}
         status={fittingsTarget?.status ?? null}
         onClose={closeActiveFlow}
-        onContinue={() => {
+        onResolved={(nextStatus) => {
           if (!fittingsTarget) return;
-          openCustomFlow(fittingsTarget.product, fittingsTarget.status);
+          void routeResolvedStatus(fittingsTarget.product, nextStatus, 'OPEN_CUSTOM_FLOW');
+        }}
+      />
+
+      <CustomBagSheet
+        visible={Boolean(customTarget)}
+        product={customTarget?.product ?? null}
+        status={customTarget?.status ?? null}
+        onClose={closeActiveFlow}
+        onCompleted={(nextStatus) => {
+          if (!customTarget) return;
+          setCustomTarget(null);
+          setSummaryTarget({ product: customTarget.product, status: nextStatus });
         }}
       />
 
