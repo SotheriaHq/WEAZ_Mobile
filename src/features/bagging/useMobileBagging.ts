@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
+import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
 import { MobileStoreApi, type CartState, type CustomBagState, type ProductBagStatus } from '@/src/api/StoreApi';
 import { baggingService, type AddCustomOrderBagPayload, type AddStandardBagPayload } from '@/src/services/bagging';
 
@@ -18,9 +19,14 @@ type BagInteractionCallbacks = {
   onOpenExistingBag?: (status: ProductBagStatus, product: BagProductInput) => void;
 };
 
+type BagFlowBagOptions = {
+  suppressAuthPrompt?: boolean;
+};
+
 export function useMobileBagging() {
   const { status: authStatus } = useAuth();
   const toast = useToast();
+  const bagFlow = useBagFlow();
   const [standardCart, setStandardCart] = useState<CartState | null>(null);
   const [customBag, setCustomBag] = useState<CustomBagState | null>(null);
   const [statusByProductId, setStatusByProductId] = useState<Record<string, ProductBagStatus>>({});
@@ -137,46 +143,86 @@ export function useMobileBagging() {
   const beginSelectorFlow = useCallback(
     async (product: BagProductInput, callbacks: BagInteractionCallbacks = {}) => {
       const status = await prepareBag(product.id);
-      callbacks.onOpenSelector?.(status, product);
+      if (bagFlow) {
+        bagFlow.openSelector(product, status);
+      } else {
+        callbacks.onOpenSelector?.(status, product);
+      }
       return status;
     },
-    [prepareBag],
+    [bagFlow, prepareBag],
   );
 
   const beginCustomFlow = useCallback(
     async (product: BagProductInput, callbacks: BagInteractionCallbacks = {}) => {
+      if (authStatus !== 'authenticated') {
+        if (bagFlow) {
+          const resume = () => {
+            void beginCustomFlow(product, callbacks);
+          };
+          bagFlow.openAuthPrompt(product, 'OPEN_CUSTOM_FLOW', resume);
+        } else {
+          callbacks.onRequireAuth?.(product, 'OPEN_CUSTOM_FLOW');
+        }
+        toast.info('Please sign in to bag items.');
+        return null;
+      }
       const status = await prepareBag(product.id);
       if (status.custom.alreadyBagged) {
-        callbacks.onOpenExistingBag?.(status, product);
-        return status;
-      }
-      if (status.custom.fittingState === 'MISSING' || status.custom.fittingState === 'PARTIAL') {
-        callbacks.onOpenFittings?.(status, product);
+        if (bagFlow) {
+          bagFlow.openExistingBag(product, status);
+        } else {
+          callbacks.onOpenExistingBag?.(status, product);
+        }
         return status;
       }
       if (!status.custom.available) {
-        callbacks.onOpenFittings?.(status, product);
+        toast.error(status.ui.disabledReason || 'This product is not configured for custom bagging yet.');
         return status;
       }
-      callbacks.onOpenCustomFlow?.(status, product);
+      if (status.custom.fittingState === 'MISSING' || status.custom.fittingState === 'PARTIAL') {
+        if (bagFlow) {
+          bagFlow.openFittings(product, status);
+        } else {
+          callbacks.onOpenFittings?.(status, product);
+        }
+        return status;
+      }
+      if (bagFlow) {
+        bagFlow.openCustomFlow(product, status);
+      } else {
+        callbacks.onOpenCustomFlow?.(status, product);
+      }
       return status;
     },
-    [prepareBag],
+    [authStatus, bagFlow, prepareBag, toast],
   );
 
   const beginFittingsFlow = useCallback(
     async (product: BagProductInput, callbacks: BagInteractionCallbacks = {}) => {
       const status = await prepareBag(product.id);
-      callbacks.onOpenFittings?.(status, product);
+      if (bagFlow) {
+        bagFlow.openFittings(product, status);
+      } else {
+        callbacks.onOpenFittings?.(status, product);
+      }
       return status;
     },
-    [prepareBag],
+    [bagFlow, prepareBag],
   );
 
   const bagProduct = useCallback(
-    async (product: BagProductInput, callbacks: BagInteractionCallbacks = {}) => {
+    async (product: BagProductInput, callbacks: BagInteractionCallbacks & BagFlowBagOptions = {}) => {
       if (authStatus !== 'authenticated') {
-        callbacks.onRequireAuth?.(product, 'DISABLED');
+        if (callbacks.suppressAuthPrompt) return null;
+        if (bagFlow) {
+          const resume = () => {
+            void bagProduct(product, { ...callbacks, suppressAuthPrompt: true });
+          };
+          bagFlow.openAuthPrompt(product, 'DISABLED', resume);
+        } else {
+          callbacks.onRequireAuth?.(product, 'DISABLED');
+        }
         toast.info('Please sign in to bag items.');
         return null;
       }
@@ -185,11 +231,20 @@ export function useMobileBagging() {
 
       if (!status.canBag || status.ui.defaultAction === 'DISABLED') {
         toast.error(status.ui.disabledReason || 'This product cannot be bagged.');
+        if (bagFlow) {
+          bagFlow.openExistingBag(product, status);
+        } else {
+          callbacks.onOpenExistingBag?.(status, product);
+        }
         return { action: 'DISABLED' as const, status };
       }
 
       if (status.standard.inBag || status.custom.alreadyBagged) {
-        callbacks.onOpenExistingBag?.(status, product);
+        if (bagFlow) {
+          bagFlow.openExistingBag(product, status);
+        } else {
+          callbacks.onOpenExistingBag?.(status, product);
+        }
         return { action: status.ui.defaultAction, status };
       }
 
@@ -199,19 +254,36 @@ export function useMobileBagging() {
       }
 
       if (status.ui.defaultAction === 'OPEN_SELECTOR') {
-        callbacks.onOpenSelector?.(status, product);
+        if (bagFlow) {
+          bagFlow.openSelector(product, status);
+        } else {
+          callbacks.onOpenSelector?.(status, product);
+        }
         return { action: 'OPEN_SELECTOR' as const, status };
       }
 
       if (status.ui.defaultAction === 'OPEN_FITTINGS') {
-        callbacks.onOpenFittings?.(status, product);
+        if (bagFlow) {
+          bagFlow.openFittings(product, status);
+        } else {
+          callbacks.onOpenFittings?.(status, product);
+        }
         return { action: 'OPEN_FITTINGS' as const, status };
       }
 
-      callbacks.onOpenCustomFlow?.(status, product);
+      if (!status.custom.available) {
+        toast.error(status.ui.disabledReason || 'This product is not configured for custom bagging yet.');
+        return { action: 'DISABLED' as const, status };
+      }
+
+      if (bagFlow) {
+        bagFlow.openCustomFlow(product, status);
+      } else {
+        callbacks.onOpenCustomFlow?.(status, product);
+      }
       return { action: 'OPEN_CUSTOM_FLOW' as const, status };
     },
-    [addStandard, authStatus, prepareBag, toast],
+    [addStandard, authStatus, bagFlow, prepareBag, toast],
   );
 
   const clearBagStatus = useCallback((productId: string) => {

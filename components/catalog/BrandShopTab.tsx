@@ -1,15 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
 import { useToast } from '@/src/toast/ToastContext';
-import { ProfileApi } from '@/src/api/ProfileApi';
 import {
   MobileStoreApi,
-  type ActiveCustomConfiguration,
   type StoreProduct,
   type StoreProductVariant,
 } from '@/src/api/StoreApi';
@@ -24,16 +22,9 @@ import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useProductBagging } from '@/src/hooks/useProductBagging';
-import { baggingService } from '@/src/services/bagging';
 
 type SortKey = 'newest' | 'price_low_high' | 'price_high_low';
 type FilterKey = 'all' | 'in_stock' | 'custom_only' | 'bagged' | 'saved';
-
-type MeasurementPromptState = {
-  product: StoreProduct;
-  configuration: ActiveCustomConfiguration;
-  values: Record<string, string>;
-};
 
 const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: 'newest', label: 'Newest' },
@@ -80,52 +71,6 @@ const toApiErrorMessage = (error: unknown, fallback: string) => {
   }
 
   return fallback;
-};
-
-const toTitleCase = (value: string) =>
-  value
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .map((part) =>
-      part.length > 0 ? `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}` : part,
-    )
-    .join(' ');
-
-const parseMeasurementValue = (raw: unknown): number | null => {
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
-    return raw;
-  }
-
-  if (typeof raw === 'string') {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-
-  if (raw && typeof raw === 'object' && 'value' in (raw as Record<string, unknown>)) {
-    const parsed = Number((raw as Record<string, unknown>).value);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-
-  return null;
-};
-
-const extractMeasurementValues = (raw: unknown): Record<string, number> => {
-  if (!raw || typeof raw !== 'object') return {};
-
-  const entries = Object.entries(raw as Record<string, unknown>);
-  return entries.reduce<Record<string, number>>((acc, [key, value]) => {
-    const parsed = parseMeasurementValue(value);
-    if (parsed && parsed > 0) {
-      acc[key] = parsed;
-    }
-    return acc;
-  }, {});
 };
 
 const getTotalStock = (product: Pick<StoreProduct, 'stock' | 'variants'>) => {
@@ -308,9 +253,7 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
   const [cartByProductId, setCartByProductId] = useState<Record<string, string>>({});
   const [customBagByProductId, setCustomBagByProductId] = useState<Record<string, string>>({});
   const [busyByProductId, setBusyByProductId] = useState<Record<string, boolean>>({});
-  const { prepareBag, loadingByProductId, getPulseStatus } = useProductBagging();
-
-  const [profileSnapshot, setProfileSnapshot] = useState<Awaited<ReturnType<typeof ProfileApi.getMe>>>(null);
+  const { prepareBag, loadingByProductId, getPulseStatus, bagProduct, beginCustomFlow } = useProductBagging();
 
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -318,8 +261,6 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
 
-  const [measurementPrompt, setMeasurementPrompt] = useState<MeasurementPromptState | null>(null);
-  const [customSubmitBusy, setCustomSubmitBusy] = useState(false);
   const openedInitialProductIdRef = useRef<string | null>(null);
 
   const CARD_GAP = 10;
@@ -346,11 +287,10 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
       return;
     }
 
-    const [wishlistRes, cartRes, customBagRes, meRes] = await Promise.allSettled([
+    const [wishlistRes, cartRes, customBagRes] = await Promise.allSettled([
       MobileStoreApi.getWishlist(),
       MobileStoreApi.getCart(),
       MobileStoreApi.listCustomBag(),
-      ProfileApi.getMe(),
     ]);
 
     if (wishlistRes.status === 'fulfilled') {
@@ -377,10 +317,6 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
         return acc;
       }, {});
       setCustomBagByProductId(next);
-    }
-
-    if (meRes.status === 'fulfilled') {
-      setProfileSnapshot(meRes.value);
     }
   }, [isOwner, status]);
 
@@ -526,49 +462,6 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
     }
   }, [availableColors, selectedColor]);
 
-  const validateStandardBagSelection = useCallback(
-    (product: StoreProduct, size: string | null, color: string | null) => {
-      if (product.variants.length > 0) {
-        const inStockVariants = product.variants.filter((variant) => Number(variant.stock || 0) > 0);
-        const requiresSize = inStockVariants.some((variant) => Boolean(variant.size));
-        const requiresColor = inStockVariants.some((variant) => Boolean(variant.color));
-
-        if (requiresSize && !size) {
-          return 'Select a size to bag this item.';
-        }
-
-        if (requiresColor && !color) {
-          return 'Select a color to bag this item.';
-        }
-
-        if (requiresSize || requiresColor) {
-          const match = inStockVariants.find((variant) => {
-            const sizeMatch = !variant.size || variant.size === size;
-            const colorMatch = !variant.color || variant.color === color;
-            return sizeMatch && colorMatch;
-          });
-
-          if (!match) {
-            return 'Selected size/color combination is unavailable.';
-          }
-        }
-
-        return null;
-      }
-
-      if (product.sizes.length > 0 && !size) {
-        return 'Select a size to bag this item.';
-      }
-
-      if (product.colors.length > 0 && !color) {
-        return 'Select a color to bag this item.';
-      }
-
-      return null;
-    },
-    [],
-  );
-
   const openProductDetail = useCallback(
     async (product: StoreProduct) => {
       setDetailVisible(true);
@@ -693,127 +586,30 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
       return;
     }
 
-    ensureAuth(async () => {
-      const productId = activeProduct.id;
-      const existingCartItemId = cartByProductId[productId];
-      setBusy(productId, true);
+    const productId = activeProduct.id;
+    setBusy(productId, true);
 
+    void (async () => {
       try {
-        if (existingCartItemId) {
-          await MobileStoreApi.removeCartItem(existingCartItemId);
-          toast.success('Removed from bag.');
-          await refreshCommerceState();
-          return;
-        }
-
-        if (activeStock <= 0) {
-          toast.error('This item is out of stock.');
-          return;
-        }
-
-        const selectionError = validateStandardBagSelection(activeProduct, selectedSize, selectedColor);
-        if (selectionError) {
-          toast.warning(selectionError);
-          return;
-        }
-
-        await baggingService.addStandard({
-          productId,
-          qty: 1,
-          size: selectedSize || undefined,
-          color: selectedColor || undefined,
+        await bagProduct({
+          id: productId,
+          name: activeProduct.name,
         });
-
-        toast.success('Item bagged.');
         await refreshCommerceState();
       } catch (error) {
         toast.error(toApiErrorMessage(error, 'Unable to update bag right now.'));
       } finally {
         setBusy(productId, false);
       }
-    }, 'Sign in to bag this item.');
+    })();
   }, [
     activeProduct,
-    activeStock,
-    cartByProductId,
-    ensureAuth,
+    bagProduct,
     isOwner,
     refreshCommerceState,
-    selectedColor,
-    selectedSize,
     setBusy,
     toast,
-    validateStandardBagSelection,
   ]);
-
-  const submitCustomBag = useCallback(
-    async (
-      product: StoreProduct,
-      configuration: ActiveCustomConfiguration,
-      measurementValues: Record<string, number>,
-    ) => {
-      const preview = await MobileStoreApi.previewCustomPrice({
-        configurationId: configuration.id,
-        measurementValues,
-        rushSelected: false,
-      });
-
-      if (!preview.checkoutIntentId) {
-        throw new Error('Could not create custom bag intent for this product.');
-      }
-
-      if (preview.quoteStatus === 'MANUAL_QUOTE_REQUIRED') {
-        throw new Error('This custom order requires manual quote review before bagging.');
-      }
-
-      let me = profileSnapshot;
-      if (!me) {
-        me = await ProfileApi.getMe();
-        setProfileSnapshot(me);
-      }
-
-      const nameSource = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
-      const customerName =
-        nameSource.length >= 3
-          ? nameSource
-          : user?.username && user.username.length >= 3
-            ? user.username
-            : 'Threadly User';
-
-      const locationParts = String(me?.location ?? '')
-        .split(',')
-        .map((part) => part.trim())
-        .filter(Boolean);
-
-      const shippingAddress = {
-        street: me?.address ?? me?.location ?? 'Provided at checkout',
-        city: locationParts[0] ?? 'Unknown city',
-        state: locationParts[1] ?? 'Unknown state',
-        country: locationParts[2] ?? 'Nigeria',
-      };
-
-      const contactInfo = {
-        email: user?.email ?? me?.email ?? '',
-        phone: '',
-        customerName,
-      };
-
-      await baggingService.addCustomOrder({
-        checkoutIntentId: preview.checkoutIntentId,
-        configurationId: configuration.id,
-        configurationVersionId: preview.configurationVersionId,
-        measurementValues,
-        shippingAddress,
-        contactInfo,
-        customerName,
-        noDirectMatchAcknowledged: true,
-      });
-
-      toast.success('Custom request added to bag.');
-      await refreshCommerceState();
-    },
-    [profileSnapshot, refreshCommerceState, toast, user?.email, user?.firstName, user?.lastName, user?.username],
-  );
 
   const toggleCustomBag = useCallback(() => {
     if (!activeProduct) return;
@@ -822,98 +618,27 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
       return;
     }
 
-    ensureAuth(async () => {
-      const productId = activeProduct.id;
-      const existingSessionId = customBagByProductId[productId];
-      setBusy(productId, true);
+    const productId = activeProduct.id;
+    setBusy(productId, true);
 
+    void (async () => {
       try {
-        if (existingSessionId) {
-          await MobileStoreApi.removeCustomBagLine(existingSessionId);
-          toast.success('Removed custom bag line.');
-          await refreshCommerceState();
-          return;
-        }
-
-        const configuration = await MobileStoreApi.getActiveCustomConfiguration(productId);
-        if (!configuration || !configuration.isActive) {
-          toast.error('Custom bag is not configured for this product yet.');
-          return;
-        }
-
-        const sizeFit = await ProfileApi.getSizeFit();
-        const baseMeasurements = extractMeasurementValues(sizeFit?.measurements ?? {});
-        const requiredKeys = configuration.requiredMeasurementKeys;
-        const missingKeys = requiredKeys.filter((key) => !baseMeasurements[key]);
-
-        if (missingKeys.length > 0) {
-          const draft = requiredKeys.reduce<Record<string, string>>((acc, key) => {
-            acc[key] = baseMeasurements[key] ? String(baseMeasurements[key]) : '';
-            return acc;
-          }, {});
-
-          setMeasurementPrompt({
-            product: activeProduct,
-            configuration,
-            values: draft,
-          });
-          toast.info('Add required measurements to continue custom bagging.');
-          return;
-        }
-
-        await submitCustomBag(activeProduct, configuration, baseMeasurements);
+        await beginCustomFlow({ id: productId, name: activeProduct.name });
+        await refreshCommerceState();
       } catch (error) {
-        const message = toApiErrorMessage(error, 'Unable to update custom bag right now.');
-        if (message.includes('CUSTOM_ORDER_DUPLICATE_IN_BAG')) {
-          toast.info('This custom request is already in your bag.');
-          await refreshCommerceState();
-        } else {
-          toast.error(message);
-        }
+        toast.error(toApiErrorMessage(error, 'Unable to update custom bag right now.'));
       } finally {
         setBusy(productId, false);
       }
-    }, 'Sign in to start a custom bag request.');
+    })();
   }, [
     activeProduct,
-    customBagByProductId,
-    ensureAuth,
+    beginCustomFlow,
     isOwner,
     refreshCommerceState,
     setBusy,
-    submitCustomBag,
     toast,
   ]);
-
-  const submitMeasurementPrompt = useCallback(async () => {
-    if (!measurementPrompt) return;
-
-    const parsed = Object.entries(measurementPrompt.values).reduce<Record<string, number>>((acc, [key, value]) => {
-      const numeric = Number(value);
-      if (Number.isFinite(numeric) && numeric > 0) {
-        acc[key] = numeric;
-      }
-      return acc;
-    }, {});
-
-    const missing = measurementPrompt.configuration.requiredMeasurementKeys.filter((key) => !parsed[key]);
-    if (missing.length > 0) {
-      toast.warning(`Add ${missing.length} missing measurement${missing.length === 1 ? '' : 's'} to continue.`);
-      return;
-    }
-
-    setCustomSubmitBusy(true);
-    setBusy(measurementPrompt.product.id, true);
-    try {
-      await submitCustomBag(measurementPrompt.product, measurementPrompt.configuration, parsed);
-      setMeasurementPrompt(null);
-    } catch (error) {
-      toast.error(toApiErrorMessage(error, 'Unable to add custom bag line right now.'));
-    } finally {
-      setBusy(measurementPrompt.product.id, false);
-      setCustomSubmitBusy(false);
-    }
-  }, [measurementPrompt, setBusy, submitCustomBag, toast]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1225,90 +950,6 @@ export function BrandShopTab({ brandId, isOwner = false, containerWidth, initial
         </View>
       </Modal>
 
-      <Modal
-        visible={Boolean(measurementPrompt)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          if (!customSubmitBusy) {
-            setMeasurementPrompt(null);
-          }
-        }}
-      >
-        <View style={[styles.measurementModalRoot, { backgroundColor: theme.colors.overlay }]}>
-          <View style={[styles.measurementCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <AppText variant="subtitle">Required measurements</AppText>
-            <AppText variant="body" tone="muted">
-              Add the missing values to bag this custom request.
-            </AppText>
-
-            <ScrollView style={styles.measurementFieldsWrap} contentContainerStyle={{ gap: 10 }}>
-              {measurementPrompt
-                ? measurementPrompt.configuration.requiredMeasurementKeys.map((key) => (
-                    <Input
-                      key={key}
-                      label={`${toTitleCase(key)} (cm)`}
-                        value={measurementPrompt.values[key] ?? ''}
-                        onChangeText={(value) => {
-                          setMeasurementPrompt((prev) => {
-                            if (!prev) return prev;
-                            return {
-                              ...prev,
-                              values: {
-                                ...prev.values,
-                                [key]: value,
-                              },
-                            };
-                          });
-                        }}
-                        keyboardType="decimal-pad"
-                        placeholder="0"
-                      />
-                  ))
-                : null}
-            </ScrollView>
-
-            <View style={styles.measurementActions}>
-              <Pressable
-                onPress={() => setMeasurementPrompt(null)}
-                disabled={customSubmitBusy}
-                style={[
-                  styles.measurementActionBtn,
-                  {
-                    borderColor: theme.colors.border,
-                    backgroundColor: theme.colors.surfaceAlt,
-                    opacity: customSubmitBusy ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <AppText style={[styles.measurementActionText, { color: theme.colors.textMuted }]}>Cancel</AppText>
-              </Pressable>
-
-              <Pressable
-                onPress={() => {
-                  void submitMeasurementPrompt();
-                }}
-                disabled={customSubmitBusy}
-                style={[
-                  styles.measurementActionBtn,
-                  {
-                    borderColor: theme.colors.primary,
-                    backgroundColor: theme.colors.primarySoft,
-                    opacity: customSubmitBusy ? 0.7 : 1,
-                  },
-                ]}
-              >
-                {customSubmitBusy ? (
-                  <ActivityIndicator size="small" color={theme.colors.primary} />
-                ) : (
-                  <AppText style={[styles.measurementActionText, { color: theme.colors.primary }]}>Bag custom item</AppText>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
       <AppSelectSheet
         visible={categorySheetOpen}
         title="Categories"
@@ -1573,40 +1214,6 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     textAlign: 'center',
-  },
-  measurementModalRoot: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
-  measurementCard: {
-    width: '100%',
-    maxWidth: 460,
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    gap: 10,
-  },
-  measurementFieldsWrap: {
-    maxHeight: 300,
-  },
-  measurementActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  measurementActionBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 10,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  measurementActionText: {
-    fontSize: 13,
-    fontWeight: '800',
   },
 });
 

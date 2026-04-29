@@ -18,6 +18,7 @@ import { AuthProvider } from '@/src/auth/AuthContext';
 
 import { ToastProvider } from '@/src/toast/ToastContext';
 import { useAuth } from '@/src/auth/AuthContext';
+import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
 import { FallbackLoaderScreen } from '@/components/ui/AppLoader';
 
 
@@ -142,7 +143,9 @@ function RootLayoutNav({
     <ThemeProvider initialMode={initialThemeMode} bootstrapped>
       <ToastProvider>
         <AuthProvider>
-          <RootBootstrap fontsLoaded={fontsLoaded} />
+          <BagFlowProvider>
+            <RootBootstrap fontsLoaded={fontsLoaded} />
+          </BagFlowProvider>
         </AuthProvider>
       </ToastProvider>
     </ThemeProvider>

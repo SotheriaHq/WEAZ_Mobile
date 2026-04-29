@@ -23,7 +23,7 @@ type Props = {
 };
 
 const resolveScale = (status: BagPulseStatus, context: BagPulseContext) => {
-  if (status === 'disabled') return 1.01;
+  if (status === 'disabled') return 1;
   if (status === 'bagging') return context === 'single' ? 1.16 : 1.08;
   if (context === 'multi' || context === 'multi_card') {
     if (status === 'not_bagged') return 1.06;
@@ -48,6 +48,11 @@ export function BagPulseIcon({
   const icon = mode === 'custom' ? '✂️' : '🛍️';
 
   useEffect(() => {
+    if (status === 'disabled') {
+      pulse.setValue(0);
+      return undefined;
+    }
+
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, {
@@ -110,7 +115,6 @@ export function BagPulseIcon({
               : previouslyBagged
                 ? theme.colors.primarySoft
                 : theme.colors.surfaceOverlay,
-            borderColor: active ? theme.colors.primary : theme.colors.border,
             opacity: status === 'disabled' ? 0.52 : 1,
             transform: [{ scale }],
           },
@@ -135,7 +139,10 @@ const styles = StyleSheet.create({
   iconWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    elevation: 3,
   },
 });
 
