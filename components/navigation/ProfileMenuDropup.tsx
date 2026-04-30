@@ -24,6 +24,7 @@ type ProfileMenuDropupProps = {
   onClose: () => void;
   onOpenProfile: () => void;
   onOpenNotifications: () => void;
+  onOpenStudio?: () => void;
   onToggleTheme: () => void;
   scheme: 'light' | 'dark';
   theme: AppTheme;
@@ -36,6 +37,7 @@ export function ProfileMenuDropup({
   onClose,
   onOpenProfile,
   onOpenNotifications,
+  onOpenStudio,
   onToggleTheme,
   scheme,
   theme,
@@ -218,6 +220,21 @@ export function ProfileMenuDropup({
                   ›
                 </AppText>
               </Pressable>
+
+              {user?.type === 'BRAND' && onOpenStudio ? (
+                <Pressable
+                  onPress={onOpenStudio}
+                  style={({ pressed }) => [styles.item, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
+                >
+                  <AppText variant="subtitle">🧵</AppText>
+                  <View style={styles.textWrap}>
+                    <AppText variant="bodyBold">Studio</AppText>
+                  </View>
+                  <AppText variant="subtitle" tone="muted">
+                    ›
+                  </AppText>
+                </Pressable>
+              ) : null}
 
               <Pressable
                 onPress={onOpenProfile}

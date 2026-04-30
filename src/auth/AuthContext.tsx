@@ -51,6 +51,8 @@ export type AuthUser = {
     s3Url?: string | null;
     url?: string | null;
   } | null;
+  verificationStatus?: string | null;
+  isVerifiedBrand?: boolean | null;
   updatedAt?: string | null;
 };
 
@@ -239,6 +241,8 @@ function normalizeAuthUser(raw: unknown): AuthUser | null {
     bannerImage: source.bannerImage ?? nestedUser?.bannerImage ?? null,
     bannerImageId: source.bannerImageId ?? nestedUser?.bannerImageId ?? null,
     bannerImageFile: normalizeAuthBannerFile(source),
+    verificationStatus: source.verificationStatus ?? nestedUser?.verificationStatus ?? null,
+    isVerifiedBrand: source.isVerifiedBrand ?? nestedUser?.isVerifiedBrand ?? null,
     updatedAt: source.updatedAt ?? nestedUser?.updatedAt ?? null,
   };
 }

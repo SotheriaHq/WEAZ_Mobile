@@ -370,6 +370,12 @@ export default function TabLayout() {
           lastProfileTabPressAtRef.current = 0;
           router.push('/notifications' as any);
         }}
+        onOpenStudio={() => {
+          setProfileMenuVisible(false);
+          clearProfileTabTimer();
+          lastProfileTabPressAtRef.current = 0;
+          router.push('/studio' as any);
+        }}
         onToggleTheme={() => {
           setMode(scheme === 'dark' ? 'light' : 'dark');
         }}

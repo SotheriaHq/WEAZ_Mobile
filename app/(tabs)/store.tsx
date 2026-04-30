@@ -9,6 +9,7 @@ import { BrandShopTab } from '@/components/catalog/BrandShopTab';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { AppText } from '@/components/ui/AppText';
+import { Button } from '@/components/ui/Button';
 
 export default function StoreTabScreen() {
   const { user } = useAuth();
@@ -57,6 +58,7 @@ export default function StoreTabScreen() {
                 <AppText variant="body" tone="muted">
                   Owner storefront workspace with buyer-grade interactions for save, bag, and custom bag flows.
                 </AppText>
+                <Button title="Open Studio" onPress={() => router.push('/studio' as any)} />
               </View>
             }
           />

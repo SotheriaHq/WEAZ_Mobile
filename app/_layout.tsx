@@ -167,6 +167,7 @@ function RootStack() {
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
       <Stack.Screen name="search" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="products" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="studio" options={{ headerShown: false, animation: 'slide_from_right' }} />
     </Stack>
   );
 }
