@@ -166,21 +166,6 @@ export const STUDIO_ROUTES: Record<StudioRouteKey, StudioRouteConfig> = {
   },
 };
 
-export const STUDIO_HOME_ACTIONS: StudioRouteKey[] = [
-  'createProduct',
-  'store',
-  'verification',
-  'verificationApply',
-  'createCollection',
-  'customOrders',
-  'messages',
-  'setup',
-  'essentials',
-  'orders',
-  'analytics',
-  'finance',
-];
-
 export function buildStudioPath(routeKey: StudioRouteKey, params?: StudioRouteParams): string {
   const route = STUDIO_ROUTES[routeKey];
   let path = route.path;

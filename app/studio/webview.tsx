@@ -96,9 +96,13 @@ export default function StudioWebViewScreen() {
   const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
   const isBrand = user?.type === 'BRAND';
 
-  const closeToHome = useCallback(() => {
-    router.replace('/studio' as any);
-  }, []);
+  const closeStudio = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace((isBrand ? '/(tabs)/store' : '/(tabs)/me') as any);
+  }, [isBrand]);
 
   const retry = useCallback(() => {
     setWebUrl(null);
@@ -185,12 +189,12 @@ export default function StudioWebViewScreen() {
         webViewRef.current.goBack();
         return true;
       }
-      closeToHome();
+      closeStudio();
       return true;
     });
 
     return () => subscription.remove();
-  }, [canGoBack, closeToHome]);
+  }, [canGoBack, closeStudio]);
 
   const handleNavigationStateChange = useCallback((navState: WebViewNavigation) => {
     setCanGoBack(Boolean(navState.canGoBack));
@@ -238,7 +242,7 @@ export default function StudioWebViewScreen() {
           break;
         case 'AUTH_REQUIRED':
         case 'HANDOFF_FAILED':
-          setErrorMessage('Your Studio session expired. Return and open Studio again.');
+          setErrorMessage('Your Studio session expired. Close Studio and open it again.');
           setLoadState('error');
           break;
         case 'PROFILE_SETUP_REQUIRED':
@@ -253,7 +257,7 @@ export default function StudioWebViewScreen() {
           }
           break;
         case 'CLOSE':
-          closeToHome();
+          closeStudio();
           break;
         case 'ACTION_COMPLETE':
         case 'ROUTE_CHANGED':
@@ -261,7 +265,7 @@ export default function StudioWebViewScreen() {
           break;
       }
     },
-    [closeToHome, toast],
+    [closeStudio, toast],
   );
 
   return (
@@ -280,11 +284,11 @@ export default function StudioWebViewScreen() {
                 webViewRef.current.goBack();
                 return;
               }
-              closeToHome();
+              closeStudio();
             }}
           />
         }
-        right={<Button title="Close" variant="ghost" size="sm" onPress={closeToHome} />}
+        right={<Button title="Close" variant="ghost" size="sm" onPress={closeStudio} />}
       />
 
       <View style={styles.webHost}>
@@ -344,7 +348,7 @@ export default function StudioWebViewScreen() {
               </AppText>
               <View style={styles.errorActions}>
                 <Button title="Retry" onPress={retry} />
-                <Button title="Back to Studio" variant="secondary" onPress={closeToHome} />
+                <Button title="Close" variant="secondary" onPress={closeStudio} />
               </View>
             </View>
           </View>
