@@ -228,5 +228,5 @@ export function getTrustedStudioOrigins(): Set<string> {
 }
 
 export function getStudioOriginWhitelist(): string[] {
-  return Array.from(getTrustedStudioOrigins()).map((origin) => `${origin}/*`);
+  return Array.from(getTrustedStudioOrigins());
 }

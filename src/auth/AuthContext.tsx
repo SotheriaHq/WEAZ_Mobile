@@ -431,9 +431,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error: any) {
       if (error?.response?.status === 401) {
-        throw new Error(
-          `Invalid email or password. Confirm the exact login identifier spelling: ${normalizedIdentifier}`,
-        );
+        throw new Error('Invalid email or password. Check your details and try again.');
       }
       throw error;
     }
