@@ -30,7 +30,14 @@ type NativeMessage =
   | { type: 'READY' }
   | { type: 'ROUTE_CHANGED'; path?: string }
   | { type: 'AUTH_REQUIRED'; reason?: string }
-  | { type: 'HANDOFF_FAILED'; reason?: string }
+  | {
+      type: 'HANDOFF_FAILED';
+      reason?: string;
+      stage?: string;
+      status?: number;
+      message?: string;
+      apiBaseUrl?: string;
+    }
   | { type: 'PROFILE_SETUP_REQUIRED'; path?: string }
   | { type: 'ACTION_COMPLETE'; action?: string; path?: string }
   | { type: 'OPEN_EXTERNAL'; url?: string }
@@ -59,6 +66,17 @@ function sanitizeUrlForTelemetry(url: string): string {
     return `${parsed.origin}${parsed.pathname}`;
   } catch {
     return 'invalid-url';
+  }
+}
+
+function sanitizePathForTelemetry(path: string | undefined): string | undefined {
+  if (!path) return undefined;
+  try {
+    const parsed = new URL(path, 'https://threadly.local');
+    parsed.searchParams.delete('handoffCode');
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return 'invalid-path';
   }
 }
 
@@ -92,6 +110,8 @@ export default function StudioWebViewScreen() {
   const invalidRouteKey = Boolean(routeKey && !isStudioRouteKey(routeKey));
   const resolvedRouteKey = isStudioRouteKey(routeKey) ? routeKey : 'overview';
   const route = STUDIO_ROUTES[resolvedRouteKey];
+  const headerTitle = resolvedRouteKey === 'overview' ? 'Studio' : route.title;
+  const headerSubtitle = resolvedRouteKey === 'overview' ? undefined : 'Studio';
   const trustedOrigins = useMemo(() => getTrustedStudioOrigins(), []);
   const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
   const isBrand = user?.type === 'BRAND';
@@ -234,7 +254,22 @@ export default function StudioWebViewScreen() {
         return;
       }
 
-      trackStudioWebViewEvent('native-message-received', { type: message?.type });
+      const messageLog = message as Partial<{
+        type: string;
+        reason: string;
+        stage: string;
+        status: number;
+        apiBaseUrl: string;
+        path: string;
+      }>;
+      trackStudioWebViewEvent('native-message-received', {
+        type: messageLog.type,
+        reason: messageLog.reason,
+        stage: messageLog.stage,
+        status: messageLog.status,
+        apiBaseUrl: messageLog.apiBaseUrl,
+        path: sanitizePathForTelemetry(messageLog.path),
+      });
 
       switch (message?.type) {
         case 'READY':
@@ -242,7 +277,13 @@ export default function StudioWebViewScreen() {
           break;
         case 'AUTH_REQUIRED':
         case 'HANDOFF_FAILED':
-          setErrorMessage('Your Studio session expired. Close Studio and open it again.');
+          setErrorMessage(
+            message.type === 'HANDOFF_FAILED' && message.status
+              ? `Studio handoff failed during ${message.stage ?? 'exchange'} with HTTP ${message.status}.`
+              : message.type === 'HANDOFF_FAILED' && message.reason === 'network_or_cors_error'
+                ? `Studio handoff could not reach the API from the web view. API: ${message.apiBaseUrl ?? 'unknown'}`
+                : 'Your Studio session expired. Close Studio and open it again.',
+          );
           setLoadState('error');
           break;
         case 'PROFILE_SETUP_REQUIRED':
@@ -272,8 +313,8 @@ export default function StudioWebViewScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Header
-        title={route.title}
-        subtitle="Studio"
+        title={headerTitle}
+        subtitle={headerSubtitle}
         left={
           <Button
             title="‹"
