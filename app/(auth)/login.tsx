@@ -30,22 +30,9 @@ import { AppText } from '@/components/ui/AppText';
 // ─── Invisible-character sanitizer (logic unchanged from original) ─────────────
 const INVISIBLE_AUTH_SPACING_REGEX =
   /[\u00A0\u1680\u180E\u2000-\u200D\u202F\u205F\u2060\u3000\uFEFF]/g;
-const CONTROL_CHAR_REGEX = /[\u0000-\u001F\u007F]/;
 
 function stripInvisibleAuthSpacing(value: string): string {
   return String(value ?? '').normalize('NFKC').replace(INVISIBLE_AUTH_SPACING_REGEX, '');
-}
-
-function loginFieldMeta(value: string) {
-  INVISIBLE_AUTH_SPACING_REGEX.lastIndex = 0;
-  return {
-    length: value.length,
-    leadingWhitespace: /^\s/.test(value),
-    trailingWhitespace: /\s$/.test(value),
-    hasControlChars: CONTROL_CHAR_REGEX.test(value),
-    hasInvisibleSpacing: INVISIBLE_AUTH_SPACING_REGEX.test(value),
-    codePoints: Array.from(value).map((char) => char.codePointAt(0)),
-  };
 }
 // ──────────────────────────────────────────────────────────────────────────────
 

@@ -115,13 +115,23 @@ function summarizeSecret(value: string) {
     trailingWhitespace: /\s$/.test(value),
     hasInvisibleSpacing: containsInvisibleSpacing(value),
     hasControlChars: CONTROL_CHAR_REGEX.test(value),
-    codePoints: Array.from(value).map((char) => char.codePointAt(0)),
   };
 }
 
 function maskSecret(value: string): string {
   if (!value) return '(empty)';
   return '*'.repeat(value.length);
+}
+
+function summarizeIdentifier(value: string) {
+  return {
+    length: value.length,
+    hasAtSign: value.includes('@'),
+    leadingWhitespace: /^\s/.test(value),
+    trailingWhitespace: /\s$/.test(value),
+    hasInvisibleSpacing: containsInvisibleSpacing(value),
+    hasControlChars: CONTROL_CHAR_REGEX.test(value),
+  };
 }
 
 function sanitizeLoginIdentifier(value: string): string {
@@ -330,14 +340,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (__DEV__) {
       console.log('[auth] login submit diagnostics', {
-        rawIdentifier,
-        normalizedIdentifier,
-        rawIdentifierLength: rawIdentifier.length,
-        normalizedIdentifierLength: normalizedIdentifier.length,
+        rawIdentifierMeta: summarizeIdentifier(rawIdentifier),
+        normalizedIdentifierMeta: summarizeIdentifier(normalizedIdentifier),
         identifierChanged: rawIdentifier !== normalizedIdentifier,
         looksLikeEmail,
-        rawPassword: maskSecret(rawPassword),
-        sanitizedPassword: maskSecret(sanitizedPassword),
         rawPasswordMeta: summarizeSecret(rawPassword),
         sanitizedPasswordMeta: summarizeSecret(sanitizedPassword),
       });
@@ -355,7 +361,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('[auth] /auth/login payload', {
           attempt: label,
           payload: {
-            ...candidatePayload,
+            field: 'email' in candidatePayload ? 'email' : 'identifier',
+            identifierMeta: summarizeIdentifier(
+              'email' in candidatePayload ? candidatePayload.email : candidatePayload.identifier,
+            ),
             password: maskSecret(candidatePayload.password),
           },
           passwordMeta: summarizeSecret(candidatePayload.password),

@@ -339,12 +339,14 @@ function summarizeLoginPayload(payload: Record<string, unknown> | null) {
   return {
     hasEmailField: typeof payload.email === 'string',
     hasIdentifierField: typeof payload.identifier === 'string',
-    identifier: identifierValue,
     identifierLength: identifierValue.length,
-    identifierCodePoints: Array.from(identifierValue).map((char) => char.codePointAt(0)),
+    identifierHasAtSign: identifierValue.includes('@'),
+    identifierLeadingWhitespace: /^\s/.test(identifierValue),
+    identifierTrailingWhitespace: /\s$/.test(identifierValue),
     passwordMasked: passwordValue ? '*'.repeat(passwordValue.length) : '(empty)',
     passwordLength: passwordValue.length,
-    passwordCodePoints: Array.from(passwordValue).map((char) => char.codePointAt(0)),
+    passwordLeadingWhitespace: /^\s/.test(passwordValue),
+    passwordTrailingWhitespace: /\s$/.test(passwordValue),
   };
 }
 

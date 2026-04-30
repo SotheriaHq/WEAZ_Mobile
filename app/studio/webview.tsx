@@ -15,6 +15,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import {
   buildStudioPath,
   buildStudioWebUrl,
+  getStudioOriginWhitelist,
   getTrustedStudioOrigins,
   STUDIO_ROUTES,
   type StudioRouteKey,
@@ -41,6 +42,34 @@ const asString = (value: string | string[] | undefined): string | undefined =>
 const isStudioRouteKey = (value: string | undefined): value is StudioRouteKey =>
   Boolean(value && value in STUDIO_ROUTES);
 
+const READY_TIMEOUT_MS = 20_000;
+
+type StudioWebViewEventName =
+  | 'route-open'
+  | 'handoff-failed'
+  | 'load-failed'
+  | 'external-link-opened'
+  | 'external-link-blocked'
+  | 'native-message-received'
+  | 'ready-timeout';
+
+function sanitizeUrlForTelemetry(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return 'invalid-url';
+  }
+}
+
+function trackStudioWebViewEvent(
+  name: StudioWebViewEventName,
+  properties?: Record<string, string | number | boolean | null | undefined>,
+) {
+  if (!__DEV__) return;
+  console.info('[studio-webview]', name, properties);
+}
+
 export default function StudioWebViewScreen() {
   const params = useLocalSearchParams<{
     routeKey?: string;
@@ -60,9 +89,11 @@ export default function StudioWebViewScreen() {
   const routeKey = asString(params.routeKey);
   const productId = asString(params.productId);
   const orderId = asString(params.orderId);
+  const invalidRouteKey = Boolean(routeKey && !isStudioRouteKey(routeKey));
   const resolvedRouteKey = isStudioRouteKey(routeKey) ? routeKey : 'overview';
   const route = STUDIO_ROUTES[resolvedRouteKey];
   const trustedOrigins = useMemo(() => getTrustedStudioOrigins(), []);
+  const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
   const isBrand = user?.type === 'BRAND';
 
   const closeToHome = useCallback(() => {
@@ -80,6 +111,11 @@ export default function StudioWebViewScreen() {
 
     const run = async () => {
       if (status === 'loading') return;
+      if (invalidRouteKey) {
+        setErrorMessage('Invalid Studio route.');
+        setLoadState('error');
+        return;
+      }
       if (status !== 'authenticated') {
         setErrorMessage('Sign in again to open Studio.');
         setLoadState('error');
@@ -102,10 +138,22 @@ export default function StudioWebViewScreen() {
             handoffCode: handoff.code,
           }),
         );
+        trackStudioWebViewEvent('route-open', { routeKey: resolvedRouteKey });
         setLoadState('loading');
-      } catch {
+      } catch (error) {
         if (!mounted) return;
-        setErrorMessage('Studio session could not be prepared. Check your connection and try again.');
+        const message = error instanceof Error ? error.message : '';
+        if (message.includes('Missing productId')) {
+          setErrorMessage('Missing product id for this Studio route.');
+        } else if (message.includes('Missing orderId')) {
+          setErrorMessage('Missing order id for this Studio route.');
+        } else {
+          setErrorMessage('Studio session could not be prepared. Check your connection and try again.');
+        }
+        trackStudioWebViewEvent('handoff-failed', {
+          routeKey: resolvedRouteKey,
+          reason: message || 'unknown',
+        });
         setLoadState('error');
       }
     };
@@ -115,7 +163,19 @@ export default function StudioWebViewScreen() {
     return () => {
       mounted = false;
     };
-  }, [isBrand, orderId, productId, resolvedRouteKey, retryKey, status]);
+  }, [invalidRouteKey, isBrand, orderId, productId, resolvedRouteKey, retryKey, status]);
+
+  useEffect(() => {
+    if (!webUrl || loadState !== 'loading') return;
+
+    const timeout = setTimeout(() => {
+      trackStudioWebViewEvent('ready-timeout', { routeKey: resolvedRouteKey });
+      setErrorMessage('Studio took too long to confirm the secure session. Try again.');
+      setLoadState('error');
+    }, READY_TIMEOUT_MS);
+
+    return () => clearTimeout(timeout);
+  }, [loadState, resolvedRouteKey, webUrl]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -140,16 +200,21 @@ export default function StudioWebViewScreen() {
     (request: any) => {
       const url = typeof request?.url === 'string' ? request.url : '';
       if (!url || url === 'about:blank') return true;
+      if (request?.isTopFrame === false) return true;
 
       try {
         const parsed = new URL(url);
         if (trustedOrigins.has(parsed.origin)) {
           return true;
         }
+        trackStudioWebViewEvent('external-link-opened', {
+          url: sanitizeUrlForTelemetry(url),
+        });
         void WebBrowser.openBrowserAsync(url).catch(() => undefined);
         toast.info('Opened outside Studio');
         return false;
       } catch {
+        trackStudioWebViewEvent('external-link-blocked', { url: 'invalid-url' });
         return false;
       }
     },
@@ -165,6 +230,8 @@ export default function StudioWebViewScreen() {
         return;
       }
 
+      trackStudioWebViewEvent('native-message-received', { type: message?.type });
+
       switch (message?.type) {
         case 'READY':
           setLoadState('ready');
@@ -179,6 +246,9 @@ export default function StudioWebViewScreen() {
           break;
         case 'OPEN_EXTERNAL':
           if (message.url) {
+            trackStudioWebViewEvent('external-link-opened', {
+              url: sanitizeUrlForTelemetry(message.url),
+            });
             void WebBrowser.openBrowserAsync(message.url).catch(() => undefined);
           }
           break;
@@ -223,19 +293,23 @@ export default function StudioWebViewScreen() {
             ref={webViewRef}
             key={`${webUrl}:${retryKey}`}
             source={{ uri: webUrl }}
-            originWhitelist={['https://*', 'http://*']}
+            originWhitelist={originWhitelist}
             onNavigationStateChange={handleNavigationStateChange}
             onShouldStartLoadWithRequest={handleShouldStartLoad}
             onMessage={handleMessage}
             onLoadStart={() => setLoadState((current) => (current === 'ready' ? current : 'loading'))}
-            onLoadEnd={() => setLoadState((current) => (current === 'loading' ? 'ready' : current))}
             onError={() => {
               setErrorMessage('Studio could not load. Check your connection and try again.');
+              trackStudioWebViewEvent('load-failed', { routeKey: resolvedRouteKey, reason: 'webview-error' });
               setLoadState('error');
             }}
             onHttpError={(event) => {
               if (event.nativeEvent.statusCode >= 500) {
                 setErrorMessage('Studio is temporarily unavailable. Try again shortly.');
+                trackStudioWebViewEvent('load-failed', {
+                  routeKey: resolvedRouteKey,
+                  statusCode: event.nativeEvent.statusCode,
+                });
                 setLoadState('error');
               }
             }}

@@ -1,6 +1,7 @@
 type EnvKey =
   | 'EXPO_PUBLIC_API_BASE_URL'
   | 'EXPO_PUBLIC_WEB_APP_URL'
+  | 'EXPO_PUBLIC_TRUSTED_WEB_ORIGINS'
   | 'EXPO_PUBLIC_API_WITH_CREDENTIALS'
   | 'EXPO_PUBLIC_TOKEN_STORAGE_KEY'
   | 'EXPO_PUBLIC_USER_STORAGE_KEY'
@@ -23,6 +24,7 @@ const parseBoolean = (value: string): boolean => value.trim().toLowerCase() === 
 
 const apiBaseUrl = getEnvVar('EXPO_PUBLIC_API_BASE_URL', 'http://localhost:3040');
 const webAppUrl = getEnvVar('EXPO_PUBLIC_WEB_APP_URL', 'http://localhost:5173');
+const trustedWebOriginsRaw = getEnvVar('EXPO_PUBLIC_TRUSTED_WEB_ORIGINS', '');
 const apiWithCredentials = parseBoolean(getEnvVar('EXPO_PUBLIC_API_WITH_CREDENTIALS', 'true'));
 const tokenStorageKey = getEnvVar('EXPO_PUBLIC_TOKEN_STORAGE_KEY', 'THREADLY_ACCESS_TOKEN');
 const refreshTokenStorageKey = getEnvVar(
@@ -34,6 +36,10 @@ const userStorageKey = getEnvVar('EXPO_PUBLIC_USER_STORAGE_KEY', 'THREADLY_USER'
 export const env = {
   apiBaseUrl,
   webAppUrl,
+  trustedWebOrigins: trustedWebOriginsRaw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
   api: {
     withCredentials: apiWithCredentials,
     defaultConfig: {

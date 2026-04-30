@@ -211,5 +211,22 @@ export function buildStudioWebUrl(args: {
 }
 
 export function getTrustedStudioOrigins(): Set<string> {
-  return new Set([new URL(env.webAppUrl).origin]);
+  const origins = new Set<string>();
+
+  const addOrigin = (value: string) => {
+    try {
+      origins.add(new URL(value).origin);
+    } catch {
+      // Ignore malformed optional environment entries.
+    }
+  };
+
+  addOrigin(env.webAppUrl);
+  env.trustedWebOrigins.forEach(addOrigin);
+
+  return origins;
+}
+
+export function getStudioOriginWhitelist(): string[] {
+  return Array.from(getTrustedStudioOrigins()).map((origin) => `${origin}/*`);
 }
