@@ -159,7 +159,6 @@ export function useResolvedImageUri({
   const normalizedFileId = trim(fileId);
   const cacheKey = normalizedFileId ?? directSrc;
   const [resolvedUri, setResolvedUri] = useState<string | null>(() => {
-    if (!enabled) return null;
     if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc)) {
       return directSrc;
     }
@@ -170,7 +169,6 @@ export function useResolvedImageUri({
     let mounted = true;
 
     if (!enabled) {
-      setResolvedUri(null);
       return () => {
         mounted = false;
       };
@@ -192,7 +190,7 @@ export function useResolvedImageUri({
 
     void resolveImageUri({ src: directSrc, fileId: normalizedFileId }).then((nextUri) => {
       if (mounted) {
-        setResolvedUri(nextUri);
+        setResolvedUri((current) => nextUri ?? current);
       }
     });
 
@@ -211,7 +209,7 @@ export function useResolvedImageUri({
     const delay = Math.max(1_000, cached.expiresAt - Date.now() - SIGNED_URI_REFRESH_SKEW_MS);
     const timeout = setTimeout(() => {
       void resolveImageUri({ src: directSrc, fileId: normalizedFileId, forceRefresh: true }).then((nextUri) => {
-        setResolvedUri(nextUri);
+        setResolvedUri((current) => nextUri ?? current);
       });
     }, delay);
 

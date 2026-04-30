@@ -8,10 +8,13 @@ import { WebView } from 'react-native-webview';
 import type { WebViewMessageEvent, WebViewNavigation } from 'react-native-webview';
 
 import { AppText } from '@/components/ui/AppText';
+import { AppBackButton } from '@/components/ui/AppBackButton';
+import { LoaderBlock } from '@/components/ui/AppLoader';
 import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
 import StudioApi from '@/src/api/StudioApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
 import {
   buildStudioPath,
   buildStudioWebUrl,
@@ -41,6 +44,7 @@ type NativeMessage =
   | { type: 'PROFILE_SETUP_REQUIRED'; path?: string }
   | { type: 'ACTION_COMPLETE'; action?: string; path?: string }
   | { type: 'OPEN_EXTERNAL'; url?: string }
+  | { type: 'OPEN_NATIVE_ROUTE'; path?: string }
   | { type: 'CLOSE' };
 
 const asString = (value: string | string[] | undefined): string | undefined =>
@@ -57,6 +61,8 @@ type StudioWebViewEventName =
   | 'load-failed'
   | 'external-link-opened'
   | 'external-link-blocked'
+  | 'native-route-opened'
+  | 'native-route-blocked'
   | 'native-message-received'
   | 'ready-timeout';
 
@@ -220,29 +226,53 @@ export default function StudioWebViewScreen() {
     setCanGoBack(Boolean(navState.canGoBack));
   }, []);
 
+  const openNavigationTarget = useCallback(
+    (target: string, source: 'navigation' | 'message') => {
+      const classification = classifyStudioWebUrl(target, trustedOrigins);
+
+      if (classification.type === 'studio') {
+        return true;
+      }
+
+      if (classification.type === 'native') {
+        trackStudioWebViewEvent('native-route-opened', {
+          source,
+          path: sanitizePathForTelemetry(classification.path),
+        });
+        router.replace(classification.nativeRoute as any);
+        return false;
+      }
+
+      if (classification.type === 'external') {
+        trackStudioWebViewEvent('external-link-opened', {
+          source,
+          url: sanitizeUrlForTelemetry(classification.url),
+        });
+        void WebBrowser.openBrowserAsync(classification.url).catch(() => undefined);
+        toast.info('Opened outside Studio');
+        return false;
+      }
+
+      trackStudioWebViewEvent('native-route-blocked', {
+        source,
+        reason: classification.reason,
+        path: sanitizePathForTelemetry(classification.path),
+      });
+      toast.info('Open this from the Threadly app');
+      return false;
+    },
+    [toast, trustedOrigins],
+  );
+
   const handleShouldStartLoad = useCallback(
     (request: any) => {
       const url = typeof request?.url === 'string' ? request.url : '';
       if (!url || url === 'about:blank') return true;
       if (request?.isTopFrame === false) return true;
 
-      try {
-        const parsed = new URL(url);
-        if (trustedOrigins.has(parsed.origin)) {
-          return true;
-        }
-        trackStudioWebViewEvent('external-link-opened', {
-          url: sanitizeUrlForTelemetry(url),
-        });
-        void WebBrowser.openBrowserAsync(url).catch(() => undefined);
-        toast.info('Opened outside Studio');
-        return false;
-      } catch {
-        trackStudioWebViewEvent('external-link-blocked', { url: 'invalid-url' });
-        return false;
-      }
+      return openNavigationTarget(url, 'navigation');
     },
-    [toast, trustedOrigins],
+    [openNavigationTarget],
   );
 
   const handleMessage = useCallback(
@@ -291,22 +321,28 @@ export default function StudioWebViewScreen() {
           break;
         case 'OPEN_EXTERNAL':
           if (message.url) {
-            trackStudioWebViewEvent('external-link-opened', {
-              url: sanitizeUrlForTelemetry(message.url),
-            });
-            void WebBrowser.openBrowserAsync(message.url).catch(() => undefined);
+            openNavigationTarget(message.url, 'message');
+          }
+          break;
+        case 'OPEN_NATIVE_ROUTE':
+          if (message.path) {
+            openNavigationTarget(message.path, 'message');
+          }
+          break;
+        case 'ROUTE_CHANGED':
+          if (message.path) {
+            openNavigationTarget(message.path, 'message');
           }
           break;
         case 'CLOSE':
           closeStudio();
           break;
         case 'ACTION_COMPLETE':
-        case 'ROUTE_CHANGED':
         default:
           break;
       }
     },
-    [closeStudio, toast],
+    [closeStudio, openNavigationTarget, toast],
   );
 
   return (
@@ -316,10 +352,7 @@ export default function StudioWebViewScreen() {
         title={headerTitle}
         subtitle={headerSubtitle}
         left={
-          <Button
-            title="‹"
-            variant="ghost"
-            size="sm"
+          <AppBackButton
             onPress={() => {
               if (canGoBack && webViewRef.current) {
                 webViewRef.current.goBack();
@@ -370,13 +403,12 @@ export default function StudioWebViewScreen() {
 
         {loadState === 'booting' || loadState === 'loading' ? (
           <View style={[styles.overlay, { backgroundColor: theme.colors.bg }]}>
-            <View style={[styles.loaderBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
-              <View style={[styles.loaderGlyph, { backgroundColor: theme.colors.primarySoft }]} />
-              <AppText variant="bodyBold">Opening Studio</AppText>
-              <AppText variant="small" tone="muted" style={styles.centerText}>
-                Preparing a secure brand session.
-              </AppText>
-            </View>
+            <LoaderBlock
+              title="Studio"
+              message="Preparing secure brand session"
+              minHeight={220}
+              style={[styles.loaderBlock, { borderColor: theme.colors.border }]}
+            />
           </View>
         ) : null}
 
@@ -425,11 +457,6 @@ const styles = StyleSheet.create({
     padding: tokens.spacing.xl,
     alignItems: 'center',
     gap: tokens.spacing.md,
-  },
-  loaderGlyph: {
-    width: 48,
-    height: 48,
-    borderRadius: tokens.radius.lg,
   },
   centerText: {
     textAlign: 'center',
