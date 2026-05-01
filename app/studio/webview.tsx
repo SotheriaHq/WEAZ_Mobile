@@ -196,7 +196,8 @@ function StudioProfileMenu({
   const avatar = resolveProfileImageSource(user);
   const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: visible && Boolean(user) });
   const initials = getAvatarFallback(displayName, user?.username);
-  const menuWidth = Math.min(Math.max(260, width - tokens.spacing.lg * 2), 320);
+  const availableMenuWidth = Math.max(180, width - tokens.spacing.lg * 2);
+  const menuWidth = Math.min(Math.max(196, Math.round(width * 0.52)), Math.min(208, availableMenuWidth));
   const maxHeight = Math.max(260, height - topOffset - tokens.spacing.lg);
 
   const items: StudioMenuItem[] = [
@@ -292,11 +293,11 @@ function StudioProfileMenu({
                 )}
               </View>
               <View style={styles.menuIdentityText}>
-                <AppText variant="bodyBold" numberOfLines={2}>
+                <AppText variant="bodyBold" numberOfLines={2} ellipsizeMode="tail">
                   {displayName}
                 </AppText>
                 {handle ? (
-                  <AppText variant="caption" tone="muted" numberOfLines={1}>
+                  <AppText variant="caption" tone="muted" numberOfLines={1} ellipsizeMode="tail">
                     {handle}
                   </AppText>
                 ) : null}
@@ -328,11 +329,16 @@ function StudioProfileMenu({
                 >
                   <AppText variant="subtitle">{item.emoji}</AppText>
                   <View style={styles.menuItemText}>
-                    <AppText variant="bodyBold" tone={item.tone === 'danger' ? 'danger' : 'default'}>
+                    <AppText
+                      variant="bodyBold"
+                      tone={item.tone === 'danger' ? 'danger' : 'default'}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
                       {item.label}
                     </AppText>
                     {item.description ? (
-                      <AppText variant="caption" tone="muted">
+                      <AppText variant="caption" tone="muted" numberOfLines={2} ellipsizeMode="tail">
                         {item.description}
                       </AppText>
                     ) : null}

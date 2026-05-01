@@ -76,7 +76,8 @@ export function ProfileMenuDropup({
   const initials = getAvatarFallback(displayName, user?.username);
   const availableMenuHeight = Math.max(264, height - bottomOffset - tokens.spacing.xl);
   const menuHeight = Math.min(availableMenuHeight, 340);
-  const menuWidth = Math.min(Math.max(112, Math.round(width * 0.26)), Math.max(112, width - tokens.spacing.sm * 2));
+  const availableMenuWidth = Math.max(112, width - tokens.spacing.sm * 2);
+  const menuWidth = Math.min(Math.max(134, Math.round(width * 0.38)), Math.min(188, availableMenuWidth));
 
   const runCloseAnimation = React.useCallback(
     (onDone?: () => void) => {
@@ -299,7 +300,7 @@ const styles = StyleSheet.create({
   },
   menu: {
     minWidth: 112,
-    maxWidth: 156,
+    maxWidth: 188,
     borderRadius: tokens.radius.xl,
     borderWidth: 1,
     overflow: 'hidden',
