@@ -52,6 +52,8 @@ const toCompactCount = (value: number | null | undefined) => {
 
 type FeedViewerMedia = {
   id: string;
+  collectionId: string;
+  mediaIndex: number;
   url: string;
   fileId: string | null;
   type: 'image' | 'video';
@@ -75,16 +77,14 @@ const toFeedMediaType = (rawType?: string | null): 'image' | 'video' => {
   return normalized.includes('video') ? 'video' : 'image';
 };
 
-const resolvePreferredRemoteUrl = async (directUrl?: string | null, fileId?: string | null) => {
-  return resolveImageUri({ src: directUrl, fileId });
-};
-
 const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
   const directUrl = item.media?.url ?? item.media?.previewUrl ?? '';
   return directUrl
     ? [
         {
           id: item.id,
+          collectionId: item.collectionId,
+          mediaIndex: 0,
           url: directUrl,
           fileId: item.media?.fileId ?? null,
           type: toFeedMediaType(item.media?.type ?? null),
@@ -99,6 +99,22 @@ const normalizeStableUri = (value?: string | null) => {
   const normalized = typeof value === 'string' ? value.trim() : '';
   return normalized.length > 0 ? normalized : null;
 };
+
+const getCollectionMediaDirectUrl = (media: CollectionDetailMediaDto) =>
+  normalizeStableUri(media.url) ??
+  normalizeStableUri(media.secureUrl) ??
+  normalizeStableUri(media.s3Url) ??
+  normalizeStableUri(media.previewUrl) ??
+  normalizeStableUri(media.file?.secureUrl) ??
+  normalizeStableUri(media.file?.s3Url) ??
+  normalizeStableUri(media.file?.url);
+
+const getCollectionMediaFileId = (media: CollectionDetailMediaDto) =>
+  normalizeStableUri(media.fileId) ??
+  normalizeStableUri(media.fileUploadId) ??
+  normalizeStableUri(media.uploadFileId) ??
+  normalizeStableUri(media.file?.fileId) ??
+  normalizeStableUri(media.file?.id);
 
 function ImageWarmPlaceholder() {
   const { theme } = useTheme();
@@ -141,15 +157,52 @@ function ImageWarmPlaceholder() {
   );
 }
 
-function FeedMediaSlide({ media, imageIndex }: { media: FeedViewerMedia | null; imageIndex: number }) {
+function FeedMediaSlide({
+  media,
+  imageIndex,
+  fallbackMedia,
+}: {
+  media: FeedViewerMedia | null;
+  imageIndex: number;
+  fallbackMedia?: FeedViewerMedia | null;
+}) {
   const { theme } = useTheme();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
-  const { uri: resolvedUri, loading } = useResolvedImageAsset({
+  const primaryDebugContext = useMemo(
+    () => ({
+      designId: media?.collectionId ?? null,
+      mediaIndex: imageIndex,
+      fileId: media?.fileId ?? null,
+      sourceField: media?.fileId ? 'collection.media.fileId' : 'collection.media.url',
+    }),
+    [imageIndex, media?.collectionId, media?.fileId],
+  );
+  const fallbackDebugContext = useMemo(
+    () => ({
+      designId: fallbackMedia?.collectionId ?? media?.collectionId ?? null,
+      mediaIndex: 0,
+      fileId: fallbackMedia?.fileId ?? null,
+      sourceField: fallbackMedia?.fileId ? 'collection.cover.fileId' : 'collection.cover.url',
+    }),
+    [fallbackMedia?.collectionId, fallbackMedia?.fileId, media?.collectionId],
+  );
+  const { uri: primaryUri, loading: primaryLoading } = useResolvedImageAsset({
     src: media?.url,
     fileId: media?.fileId,
     enabled: Boolean(media),
+    debugContext: primaryDebugContext,
   });
+  const fallbackCandidate = fallbackMedia && fallbackMedia.id !== media?.id ? fallbackMedia : null;
+  const shouldUseFallback = Boolean(fallbackCandidate && !primaryLoading && (!primaryUri || imageFailed));
+  const { uri: fallbackUri, loading: fallbackLoading } = useResolvedImageAsset({
+    src: fallbackCandidate?.url,
+    fileId: fallbackCandidate?.fileId,
+    enabled: shouldUseFallback,
+    debugContext: fallbackDebugContext,
+  });
+  const resolvedUri = imageFailed ? fallbackUri : primaryUri ?? fallbackUri;
+  const loading = primaryLoading || (shouldUseFallback && fallbackLoading);
 
   useEffect(() => {
     setImageLoaded(false);
@@ -358,7 +411,11 @@ function FeedMediaCarousel({
       >
         {carouselItems.map((item, index) => (
           <View key={item.virtualKey} style={{ width }}>
-            <FeedMediaSlide media={item} imageIndex={toRealImageIndex(index)} />
+            <FeedMediaSlide
+              media={item}
+              imageIndex={toRealImageIndex(index)}
+              fallbackMedia={stableMediaItems.find((candidate) => candidate.type === 'image' && Boolean(candidate.url || candidate.fileId)) ?? null}
+            />
           </View>
         ))}
       </ScrollView>
@@ -816,7 +873,16 @@ export default function HomeScreen() {
       if (!cacheKey || prefetchedImageUrisRef.current.has(cacheKey)) return;
 
       prefetchedImageUrisRef.current.add(cacheKey);
-      void prefetchResolvedImageAsset({ src: uri, fileId: media.fileId }).then((prefetched) => {
+      void prefetchResolvedImageAsset({
+        src: uri,
+        fileId: media.fileId,
+        debugContext: {
+          designId: media.collectionId,
+          mediaIndex: index,
+          fileId: media.fileId,
+          sourceField: media.fileId ? 'collection.media.fileId' : 'collection.media.url',
+        },
+      }).then((prefetched) => {
         if (!prefetched) {
           prefetchedImageUrisRef.current.delete(cacheKey);
         }
@@ -848,12 +914,24 @@ export default function HomeScreen() {
       const medias = Array.isArray(detail.medias) ? detail.medias : [];
       const nextMediaItems = await Promise.all(
         medias.map(async (media: CollectionDetailMediaDto, index) => {
-          const directUrl = media.file?.s3Url ?? media.file?.url ?? null;
-          const url = (await resolvePreferredRemoteUrl(directUrl, media.file?.id ?? null)) ?? '';
+          const directUrl = getCollectionMediaDirectUrl(media);
+          const fileId = getCollectionMediaFileId(media);
+          const url = (await resolveImageUri({
+            src: directUrl,
+            fileId,
+            debugContext: {
+              designId: collectionId,
+              mediaIndex: index,
+              fileId,
+              sourceField: fileId ? 'collection.media.fileId' : 'collection.media.url',
+            },
+          })) ?? '';
           return {
             id: media.id || media.file?.id || `${collectionId}-${index}`,
+            collectionId,
+            mediaIndex: index,
             url,
-            fileId: media.file?.id ?? null,
+            fileId,
             type: toFeedMediaType(media.mediaType ?? null),
             label: media.caption ?? detail.title ?? item?.collectionTitle ?? 'Design view',
             threadsCount:

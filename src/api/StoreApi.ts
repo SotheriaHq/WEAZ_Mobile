@@ -152,6 +152,15 @@ const asStringList = (value: unknown): string[] => {
     .filter((entry): entry is string => Boolean(entry));
 };
 
+const isFileLikeRecord = (value: Record<string, unknown>) =>
+  Boolean(
+    asString(value.key) ||
+      asString(value.fileName) ||
+      asString(value.originalName) ||
+      asString(value.mimeType) ||
+      asString(value.fileType),
+  );
+
 const toIdempotencyKey = () => `mob_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
 const normalizeProduct = (raw: unknown): StoreProduct | null => {
@@ -175,15 +184,20 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
       const file = asRecord(media.file);
       const url =
         asString(media.url) ??
+        asString(media.secureUrl) ??
         asString(media.s3Url) ??
+        asString(media.previewUrl) ??
+        asString(file.secureUrl) ??
         asString(file.s3Url) ??
         asString(file.url) ??
         null;
       const fileId =
         asString(media.fileId) ??
-        asString(media.id) ??
-        asString(file.id) ??
+        asString(media.fileUploadId) ??
+        asString(media.uploadFileId) ??
         asString(file.fileId) ??
+        asString(file.id) ??
+        (isFileLikeRecord(media) ? asString(media.id) : null) ??
         null;
       if (!url && !fileId) return null;
       return { url, fileId };
@@ -229,7 +243,9 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
       asString(item.coverImageId) ??
       asString(item.thumbnailFileId) ??
       asString(rawImage.fileId) ??
-      asString(rawImage.id) ??
+      asString(rawImage.fileUploadId) ??
+      asString(rawImage.uploadFileId) ??
+      (isFileLikeRecord(rawImage) ? asString(rawImage.id) : null) ??
       images[0]?.fileId ??
       null,
     images,

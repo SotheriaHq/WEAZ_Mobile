@@ -19,6 +19,24 @@ export type MarketFilterChip = {
 
 type RawMarketItem = Record<string, unknown>;
 
+const asString = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+const isFileLikeRecord = (value: Record<string, unknown>) =>
+  Boolean(
+    asString(value.key) ||
+      asString(value.fileName) ||
+      asString(value.originalName) ||
+      asString(value.mimeType) ||
+      asString(value.fileType),
+  );
+
 const unwrapPayload = <T,>(payload: unknown): T | unknown => {
   if (!payload || typeof payload !== 'object') return payload;
   const obj = payload as Record<string, unknown>;
@@ -41,9 +59,10 @@ const toFilterLabel = (value: string) =>
     .join(' ');
 
 const toMarketItem = (raw: RawMarketItem): MarketItem => {
-  const collection = (raw.collection as Record<string, unknown>) ?? {};
-  const owner = (collection.owner as Record<string, unknown>) ?? {};
-  const media = ((raw.media ?? raw.file ?? raw) as Record<string, unknown>) ?? {};
+  const collection = asRecord(raw.collection);
+  const owner = asRecord(collection.owner);
+  const media = asRecord(raw.media ?? raw.file ?? raw);
+  const mediaFile = asRecord(media.file);
 
   const rawTags = Array.isArray(raw.tags)
     ? (raw.tags as unknown[]).map((tag) => (typeof tag === 'string' ? tag : '')).filter(Boolean)
@@ -56,20 +75,27 @@ const toMarketItem = (raw: RawMarketItem): MarketItem => {
   const tags = collectionTags.length ? collectionTags : rawTags;
 
   const mediaFileId =
-    typeof media.fileId === 'string'
-      ? (media.fileId as string)
-      : typeof raw.mediaFileId === 'string'
-        ? (raw.mediaFileId as string)
-        : (raw.fileUploadId as string);
+    asString(media.fileId) ??
+    asString(media.fileUploadId) ??
+    asString(media.uploadFileId) ??
+    asString(mediaFile.fileId) ??
+    asString(mediaFile.id) ??
+    asString(raw.mediaFileId) ??
+    asString(raw.fileUploadId) ??
+    asString(raw.uploadFileId) ??
+    (isFileLikeRecord(media) ? asString(media.id) : null) ??
+    '';
 
   const mediaUrl =
-    typeof media.url === 'string'
-      ? (media.url as string)
-      : typeof (media as any).s3Url === 'string'
-        ? ((media as any).s3Url as string)
-        : typeof raw.mediaUrl === 'string'
-          ? (raw.mediaUrl as string)
-          : undefined;
+    asString(media.url) ??
+    asString((media as any).secureUrl) ??
+    asString((media as any).s3Url) ??
+    asString(media.previewUrl) ??
+    asString(mediaFile.url) ??
+    asString(mediaFile.secureUrl) ??
+    asString(mediaFile.s3Url) ??
+    asString(raw.mediaUrl) ??
+    undefined;
 
   const mediaType =
     (raw.mediaType as MarketMediaType) ??
@@ -155,11 +181,9 @@ const toMarketItem = (raw: RawMarketItem): MarketItem => {
       fileId: mediaFileId || '',
       url: mediaUrl,
       previewUrl:
-        typeof (media as any).previewUrl === 'string'
-          ? ((media as any).previewUrl as string)
-          : typeof (raw as any).previewUrl === 'string'
-            ? ((raw as any).previewUrl as string)
-            : mediaUrl,
+        asString((media as any).previewUrl) ??
+        asString((raw as any).previewUrl) ??
+        mediaUrl,
       type: mediaType,
       aspectRatio:
         typeof (media as any).aspectRatio === 'number'

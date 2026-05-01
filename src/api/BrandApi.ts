@@ -96,7 +96,9 @@ const getCollectionBasePath = (scope?: CollectionScope) =>
 
 export interface CollectionDetailFileDto {
   id: string;
+  fileId?: string | null;
   s3Url?: string | null;
+  secureUrl?: string | null;
   url?: string | null;
   fileName?: string | null;
   originalName?: string | null;
@@ -106,6 +108,13 @@ export interface CollectionDetailFileDto {
 
 export interface CollectionDetailMediaDto {
   id: string;
+  fileId?: string | null;
+  fileUploadId?: string | null;
+  uploadFileId?: string | null;
+  url?: string | null;
+  s3Url?: string | null;
+  secureUrl?: string | null;
+  previewUrl?: string | null;
   mediaType?: string | null;
   caption?: string | null;
   orderIndex?: number;
@@ -202,6 +211,13 @@ const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 const signedUrlPending = new Map<string, Promise<string | null>>();
 const signedUrlMissingCache = new Map<string, number>();
 
+export type SignedFileUrlDebugContext = {
+  designId?: string | null;
+  mediaIndex?: number | null;
+  fileId?: string | null;
+  sourceField?: string | null;
+};
+
 const categoriesCache: {
   items: CategoryDto[];
   lastFetched: number;
@@ -230,6 +246,31 @@ function asString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function isFileLikeRecord(value: Record<string, any>): boolean {
+  return Boolean(
+    asString(value.key) ||
+      asString(value.fileName) ||
+      asString(value.originalName) ||
+      asString(value.mimeType) ||
+      asString(value.fileType),
+  );
+}
+
+function logSignedFileUrlFailure(
+  fileId: string,
+  status: number | string,
+  context?: SignedFileUrlDebugContext,
+) {
+  if (process.env.NODE_ENV === 'production') return;
+  console.warn('[media-resolution] signed URL failed', {
+    designId: context?.designId ?? null,
+    mediaIndex: context?.mediaIndex ?? null,
+    fileId: context?.fileId ?? fileId,
+    sourceField: context?.sourceField ?? null,
+    status,
+  });
 }
 
 function asNumber(value: unknown, fallback = 0): number {
@@ -399,16 +440,21 @@ function resolveCollectionCover(item: Record<string, any>): {
   const coverImage =
     asString(item.coverImage) ??
     asString(item.coverImageUrl) ??
+    asString(mediaFile.secureUrl) ??
     asString(mediaFile.s3Url) ??
     asString(mediaFile.url) ??
+    asString(previewFile.secureUrl) ??
+    asString(previewFile.s3Url) ??
     asString(previewFile.url);
 
   const coverFileId =
     asString(item.coverFileId) ??
+    asString(item.coverImageId) ??
     asString(mediaFile.fileId) ??
     asString(mediaFile.id) ??
-    asString(previewFile.id) ??
-    asString(previewFile.fileId);
+    asString(previewFile.fileId) ??
+    asString(previewFile.fileUploadId) ??
+    (isFileLikeRecord(previewFile) ? asString(previewFile.id) : null);
 
   return { coverImage, coverFileId };
 }
@@ -753,7 +799,19 @@ export const brandApi = {
   /**
    * Get signed URL for a file
    */
-  async getSignedFileUrl(fileId: string): Promise<string | null> {
+  async getSignedFileUrl(fileId: string, context?: SignedFileUrlDebugContext): Promise<string | null> {
+    const normalizedFileId = asString(fileId);
+    if (!normalizedFileId) {
+      return null;
+    }
+
+    if (/[/?#\\]/.test(normalizedFileId) || /^https?:\/\//i.test(normalizedFileId)) {
+      signedUrlMissingCache.set(normalizedFileId, Date.now() + MISSING_SIGNED_URL_TTL_MS);
+      logSignedFileUrlFailure(normalizedFileId, 'invalid-file-id', context);
+      return null;
+    }
+
+    fileId = normalizedFileId;
     const missingCachedUntil = signedUrlMissingCache.get(fileId);
     if (missingCachedUntil && missingCachedUntil > Date.now()) {
       return null;
@@ -800,6 +858,7 @@ export const brandApi = {
               publicError?.response?.status === 404
             ) {
               signedUrlMissingCache.set(fileId, Date.now() + MISSING_SIGNED_URL_TTL_MS);
+              logSignedFileUrlFailure(fileId, publicError.response.status, context);
               return null;
             }
             console.error('Error getting public URL fallback:', publicError);
@@ -808,6 +867,7 @@ export const brandApi = {
         }
         if (error?.response?.status === 400 || error?.response?.status === 404) {
           signedUrlMissingCache.set(fileId, Date.now() + MISSING_SIGNED_URL_TTL_MS);
+          logSignedFileUrlFailure(fileId, error.response.status, context);
           return null;
         }
         console.error('Error getting signed URL:', error);

@@ -1,12 +1,13 @@
 import { Image } from 'react-native';
 import { useEffect, useState } from 'react';
 
-import { brandApi } from '@/src/api/BrandApi';
+import { brandApi, type SignedFileUrlDebugContext } from '@/src/api/BrandApi';
 
 type UseResolvedImageUriArgs = {
   src?: string | null;
   fileId?: string | null;
   enabled?: boolean;
+  debugContext?: SignedFileUrlDebugContext;
 };
 
 const SIGNED_URI_TTL_MS = 4 * 60 * 1000;
@@ -26,6 +27,15 @@ const isHttpUrl = (value: string) => /^https?:\/\//i.test(value);
 const isS3LikeUrl = (value: string) => {
   const lower = value.toLowerCase();
   return lower.includes('.s3.') || lower.includes('amazonaws.com');
+};
+
+const isPotentialFileId = (value: string) => !isHttpUrl(value) && !/[/?#\\]/.test(value);
+
+const getResolutionCacheKey = (directSrc: string | null, normalizedFileId: string | null) => {
+  if (normalizedFileId && directSrc) return `file:${normalizedFileId}|src:${directSrc}`;
+  if (normalizedFileId) return `file:${normalizedFileId}`;
+  if (directSrc) return `src:${directSrc}`;
+  return null;
 };
 
 const getCachedUriEntry = (key: string) => {
@@ -69,10 +79,12 @@ export const resolveImageUri = async ({
   src,
   fileId,
   forceRefresh = false,
+  debugContext,
 }: {
   src?: string | null;
   fileId?: string | null;
   forceRefresh?: boolean;
+  debugContext?: SignedFileUrlDebugContext;
 }) => {
   const directSrc = trim(src);
   const normalizedFileId = trim(fileId);
@@ -85,7 +97,10 @@ export const resolveImageUri = async ({
     return directSrc;
   }
 
-  const cacheKey = normalizedFileId ?? directSrc!;
+  const cacheKey = getResolutionCacheKey(directSrc, normalizedFileId);
+  if (!cacheKey) {
+    return null;
+  }
   if (forceRefresh) {
     resolvedUriCache.delete(cacheKey);
     resolvedUriMissingCache.delete(cacheKey);
@@ -105,8 +120,11 @@ export const resolveImageUri = async ({
 
   const promise = (async () => {
     try {
-      if (normalizedFileId) {
-        const signed = await brandApi.getSignedFileUrl(normalizedFileId);
+      if (normalizedFileId && isPotentialFileId(normalizedFileId)) {
+        const signed = await brandApi.getSignedFileUrl(normalizedFileId, {
+          ...debugContext,
+          fileId: debugContext?.fileId ?? normalizedFileId,
+        });
         if (signed) {
           setCachedUri(cacheKey, signed);
           return signed;
@@ -137,8 +155,9 @@ export const resolveImageUri = async ({
 export const prefetchResolvedImageAsset = async ({
   src,
   fileId,
+  debugContext,
 }: UseResolvedImageUriArgs) => {
-  const uri = await resolveImageUri({ src, fileId });
+  const uri = await resolveImageUri({ src, fileId, debugContext });
   if (!uri) {
     return false;
   }
@@ -154,10 +173,11 @@ export function useResolvedImageUri({
   src,
   fileId,
   enabled = true,
+  debugContext,
 }: UseResolvedImageUriArgs) {
   const directSrc = trim(src);
   const normalizedFileId = trim(fileId);
-  const cacheKey = normalizedFileId ?? directSrc;
+  const cacheKey = getResolutionCacheKey(directSrc, normalizedFileId);
   const [resolvedUri, setResolvedUri] = useState<string | null>(() => {
     if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc)) {
       return directSrc;
@@ -188,7 +208,7 @@ export function useResolvedImageUri({
       };
     }
 
-    void resolveImageUri({ src: directSrc, fileId: normalizedFileId }).then((nextUri) => {
+    void resolveImageUri({ src: directSrc, fileId: normalizedFileId, debugContext }).then((nextUri) => {
       if (mounted) {
         setResolvedUri((current) => nextUri ?? current);
       }
@@ -197,7 +217,7 @@ export function useResolvedImageUri({
     return () => {
       mounted = false;
     };
-  }, [directSrc, enabled, normalizedFileId]);
+  }, [debugContext, directSrc, enabled, normalizedFileId]);
 
   useEffect(() => {
     if (!enabled || !cacheKey || !resolvedUri) return;
@@ -208,13 +228,13 @@ export function useResolvedImageUri({
 
     const delay = Math.max(1_000, cached.expiresAt - Date.now() - SIGNED_URI_REFRESH_SKEW_MS);
     const timeout = setTimeout(() => {
-      void resolveImageUri({ src: directSrc, fileId: normalizedFileId, forceRefresh: true }).then((nextUri) => {
+      void resolveImageUri({ src: directSrc, fileId: normalizedFileId, forceRefresh: true, debugContext }).then((nextUri) => {
         setResolvedUri((current) => nextUri ?? current);
       });
     }, delay);
 
     return () => clearTimeout(timeout);
-  }, [cacheKey, directSrc, enabled, normalizedFileId, resolvedUri]);
+  }, [cacheKey, debugContext, directSrc, enabled, normalizedFileId, resolvedUri]);
 
   return resolvedUri;
 }
@@ -243,8 +263,27 @@ export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {
       return;
     }
 
-    setLoading(uri == null);
-  }, [directSrc, enabled, normalizedFileId, uri]);
+    if (uri) {
+      setLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setLoading(true);
+    void resolveImageUri({
+      src: directSrc,
+      fileId: normalizedFileId,
+      debugContext: args.debugContext,
+    }).finally(() => {
+      if (mounted) {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [args.debugContext, directSrc, enabled, normalizedFileId, uri]);
 
   return {
     uri,

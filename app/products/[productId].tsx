@@ -11,11 +11,18 @@ import { Card } from '@/components/ui/Card';
 import { StableImage } from '@/components/ui/StableImage';
 import { MobileStoreApi, type ProductBagStatus, type StoreProduct } from '@/src/api/StoreApi';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 
 const LAYOUT_FALLBACK_BOTTOM = 120;
+
+type ProductMediaEntry = {
+  url: string | null;
+  fileId: string | null;
+  sourceField: string;
+};
 
 function formatPrice(amount: number, currency = 'NGN') {
   try {
@@ -34,6 +41,86 @@ function getTotalStock(product: Pick<StoreProduct, 'stock' | 'variants'>) {
     return product.variants.reduce((sum, variant) => sum + Number(variant.stock || 0), 0);
   }
   return Number(product.stock || 0);
+}
+
+function ProductMediaSlide({
+  item,
+  index,
+  width,
+  productId,
+  fallbackItem,
+}: {
+  item: ProductMediaEntry;
+  index: number;
+  width: number;
+  productId: string;
+  fallbackItem?: ProductMediaEntry | null;
+}) {
+  const { theme } = useTheme();
+  const [imageFailed, setImageFailed] = useState(false);
+  const primaryDebugContext = useMemo(
+    () => ({
+      designId: productId,
+      mediaIndex: index,
+      fileId: item.fileId,
+      sourceField: item.sourceField,
+    }),
+    [index, item.fileId, item.sourceField, productId],
+  );
+  const fallbackDebugContext = useMemo(
+    () => ({
+      designId: productId,
+      mediaIndex: 0,
+      fileId: fallbackItem?.fileId ?? null,
+      sourceField: fallbackItem?.sourceField ?? 'product.coverImage',
+    }),
+    [fallbackItem?.fileId, fallbackItem?.sourceField, productId],
+  );
+  const { uri: primaryUri, loading: primaryLoading } = useResolvedImageAsset({
+    src: item.url,
+    fileId: item.fileId,
+    enabled: Boolean(item.url || item.fileId),
+    debugContext: primaryDebugContext,
+  });
+  const fallbackCandidate = fallbackItem && (fallbackItem.url !== item.url || fallbackItem.fileId !== item.fileId)
+    ? fallbackItem
+    : null;
+  const shouldUseFallback = Boolean(fallbackCandidate && !primaryLoading && (!primaryUri || imageFailed));
+  const { uri: fallbackUri, loading: fallbackLoading } = useResolvedImageAsset({
+    src: fallbackCandidate?.url,
+    fileId: fallbackCandidate?.fileId,
+    enabled: shouldUseFallback,
+    debugContext: fallbackDebugContext,
+  });
+  const uri = imageFailed ? fallbackUri : primaryUri ?? fallbackUri;
+  const loading = primaryLoading || (shouldUseFallback && fallbackLoading);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [uri]);
+
+  return (
+    <View style={[styles.mediaPage, { width }]}>
+      {loading && !uri ? (
+        <View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+        </View>
+      ) : uri ? (
+        <StableImage
+          uri={uri}
+          containerStyle={styles.heroImage}
+          imageStyle={styles.heroImage}
+          resizeMode="contain"
+          onError={() => setImageFailed(true)}
+          fallback={<View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceAlt }]} />}
+        />
+      ) : (
+        <View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
+          <AppText variant="subtitle">Image unavailable</AppText>
+        </View>
+      )}
+    </View>
+  );
 }
 
 export default function ProductRouteScreen() {
@@ -78,9 +165,13 @@ export default function ProductRouteScreen() {
 
   const media = useMemo(() => {
     if (!product) return [];
-    const entries = [
-      { url: product.coverImage ?? null, fileId: product.coverImageId ?? null },
-      ...product.images,
+    const entries: ProductMediaEntry[] = [
+      { url: product.coverImage ?? null, fileId: product.coverImageId ?? null, sourceField: 'product.coverImage' },
+      ...product.images.map((image) => ({
+        url: image.url,
+        fileId: image.fileId,
+        sourceField: image.fileId ? 'product.images.fileId' : 'product.images.url',
+      })),
     ];
     const seen = new Set<string>();
     return entries.filter((entry) => {
@@ -90,6 +181,7 @@ export default function ProductRouteScreen() {
       return true;
     });
   }, [product]);
+  const fallbackMedia = media[0] ?? null;
 
   const stock = product ? getTotalStock(product) : 0;
   const isBusy = Boolean(product && loadingByProductId[product.id]);
@@ -147,15 +239,14 @@ export default function ProductRouteScreen() {
               style={styles.mediaRail}
             >
               {media.map((item, index) => (
-                <View key={`${item.url ?? item.fileId}-${index}`} style={[styles.mediaPage, { width: width - tokens.spacing.lg * 2 }]}>
-                  {item.url ? (
-                    <StableImage uri={item.url} containerStyle={styles.heroImage} imageStyle={styles.heroImage} resizeMode="contain" />
-                  ) : (
-                    <View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
-                      <AppText variant="display">Image</AppText>
-                    </View>
-                  )}
-                </View>
+                <ProductMediaSlide
+                  key={`${item.url ?? item.fileId}-${index}`}
+                  item={item}
+                  index={index}
+                  width={width - tokens.spacing.lg * 2}
+                  productId={product.id}
+                  fallbackItem={fallbackMedia}
+                />
               ))}
             </ScrollView>
           ) : (

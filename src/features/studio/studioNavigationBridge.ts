@@ -11,6 +11,19 @@ export type StudioWebNavigationClassification =
 
 const STUDIO_TAB_VALUES = new Set(['orders', 'customers', 'analytics', 'finance']);
 const UUID_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const STATIC_STUDIO_PATHS = new Set([
+  '/studio',
+  '/studio/store',
+  '/studio/store/products/new',
+  '/studio/store/collections/new',
+  '/studio/verification',
+  '/studio/verification/apply',
+  '/studio/verification/submitted',
+  '/studio/custom-orders',
+  '/studio/messages',
+  '/studio/store/setup',
+  '/studio/store/essentials',
+]);
 
 function normalizeAppUrl(value: string): URL | null {
   try {
@@ -37,34 +50,15 @@ function singleSegmentAfter(pathname: string, prefix: string): string | null {
 
 function isAllowedStudioRoute(url: URL): boolean {
   const pathname = url.pathname.replace(/\/+$/g, '') || '/';
-  if (pathname === '/dashboard') return true;
   if (pathname === '/studio') {
     const tab = url.searchParams.get('tab');
     return !tab || STUDIO_TAB_VALUES.has(tab);
   }
 
-  if (pathname === '/studio/store') return true;
-  if (pathname === '/studio/store/setup') return true;
-  if (pathname === '/studio/store/essentials') return true;
-  if (pathname === '/studio/store/collections') return true;
-  if (pathname === '/studio/store/collections/new') return true;
-  if (pathname === '/studio/store/custom-orders') return true;
-  if (pathname === '/studio/store/products/new') return true;
+  if (STATIC_STUDIO_PATHS.has(pathname)) return true;
   if (/^\/studio\/store\/products\/[^/]+$/.test(pathname)) return true;
   if (/^\/studio\/store\/products\/[^/]+\/edit$/.test(pathname)) return true;
-
-  if (pathname === '/studio/verification') return true;
-  if (pathname === '/studio/verification/apply') return true;
-  if (pathname === '/studio/verification/submitted') return true;
-  if (pathname === '/studio/custom-orders') return true;
   if (/^\/studio\/custom-orders\/[^/]+$/.test(pathname)) return true;
-  if (pathname === '/studio/messages') return true;
-
-  if (pathname === '/studio/shop/setup') return true;
-  if (pathname === '/studio/shop/essentials') return true;
-  if (pathname === '/studio/products') return true;
-  if (pathname === '/studio/products/create') return true;
-  if (/^\/studio\/products\/edit\/[^/]+$/.test(pathname)) return true;
 
   return false;
 }
@@ -106,6 +100,12 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
       path,
       nativeRoute: { pathname: '/(tabs)/me', params: { tab: 'orders' } } as Href,
     };
+  }
+
+  const orderId = singleSegmentAfter(pathname, '/orders/');
+  const customOrderId = singleSegmentAfter(pathname, '/custom-orders/');
+  if (orderId || customOrderId) {
+    return { type: 'blocked', path, reason: 'order_detail_native_route_missing' };
   }
 
   if (pathname === '/profile') {

@@ -17,7 +17,7 @@ import {
 } from '@/src/api/BrandApi';
 import { toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import { useAuth } from '@/src/auth/AuthContext';
-import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { useDiscreteTapGesture } from '@/src/hooks/useDiscreteTapGesture';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { getAvatarFallback } from '@/src/utils/profileImage';
@@ -25,6 +25,8 @@ import { AppText } from '@/components/ui/AppText';
 
 type ViewerMedia = {
   id: string;
+  collectionId: string;
+  mediaIndex: number;
   url: string;
   fileId: string | null;
   type: 'image' | 'video';
@@ -51,31 +53,67 @@ const getMediaType = (media: CollectionDetailMediaDto): 'image' | 'video' => {
   return rawType.includes('video') ? 'video' : 'image';
 };
 
-const isS3LikeUrl = (value?: string | null) => {
-  const normalized = String(value ?? '').toLowerCase();
-  return normalized.includes('.s3.') || normalized.includes('amazonaws.com');
+const normalizeStableUri = (value?: string | null) => {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized.length > 0 ? normalized : null;
 };
 
-const resolvePreferredRemoteUrl = async (directUrl?: string | null, fileId?: string | null) => {
-  const normalizedDirectUrl = typeof directUrl === 'string' ? directUrl.trim() : '';
-  const normalizedFileId = typeof fileId === 'string' ? fileId.trim() : '';
+const getCollectionMediaDirectUrl = (media: CollectionDetailMediaDto) =>
+  normalizeStableUri(media.url) ??
+  normalizeStableUri(media.secureUrl) ??
+  normalizeStableUri(media.s3Url) ??
+  normalizeStableUri(media.previewUrl) ??
+  normalizeStableUri(media.file?.secureUrl) ??
+  normalizeStableUri(media.file?.s3Url) ??
+  normalizeStableUri(media.file?.url);
 
-  if (normalizedFileId && (!normalizedDirectUrl || isS3LikeUrl(normalizedDirectUrl))) {
-    const signedUrl = await brandApi.getSignedFileUrl(normalizedFileId);
-    if (signedUrl) {
-      return signedUrl;
-    }
-  }
+const getCollectionMediaFileId = (media: CollectionDetailMediaDto) =>
+  normalizeStableUri(media.fileId) ??
+  normalizeStableUri(media.fileUploadId) ??
+  normalizeStableUri(media.uploadFileId) ??
+  normalizeStableUri(media.file?.fileId) ??
+  normalizeStableUri(media.file?.id);
 
-  return normalizedDirectUrl || null;
-};
-
-function ViewerMediaSlide({ media }: { media: ViewerMedia | null }) {
-  const { uri, loading } = useResolvedImageAsset({
+function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null; fallbackMedia?: ViewerMedia | null }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const primaryDebugContext = useMemo(
+    () => ({
+      designId: media?.collectionId ?? null,
+      mediaIndex: media?.mediaIndex ?? null,
+      fileId: media?.fileId ?? null,
+      sourceField: media?.fileId ? 'collection.media.fileId' : 'collection.media.url',
+    }),
+    [media?.collectionId, media?.fileId, media?.mediaIndex],
+  );
+  const fallbackDebugContext = useMemo(
+    () => ({
+      designId: fallbackMedia?.collectionId ?? media?.collectionId ?? null,
+      mediaIndex: 0,
+      fileId: fallbackMedia?.fileId ?? null,
+      sourceField: fallbackMedia?.fileId ? 'collection.cover.fileId' : 'collection.cover.url',
+    }),
+    [fallbackMedia?.collectionId, fallbackMedia?.fileId, media?.collectionId],
+  );
+  const { uri: primaryUri, loading: primaryLoading } = useResolvedImageAsset({
     src: media?.url,
     fileId: media?.fileId,
     enabled: Boolean(media),
+    debugContext: primaryDebugContext,
   });
+  const fallbackCandidate = fallbackMedia && fallbackMedia.id !== media?.id ? fallbackMedia : null;
+  const shouldUseFallback = Boolean(fallbackCandidate && !primaryLoading && (!primaryUri || imageFailed));
+  const { uri: fallbackUri, loading: fallbackLoading } = useResolvedImageAsset({
+    src: fallbackCandidate?.url,
+    fileId: fallbackCandidate?.fileId,
+    enabled: shouldUseFallback,
+    debugContext: fallbackDebugContext,
+  });
+  const uri = imageFailed ? fallbackUri : primaryUri ?? fallbackUri;
+  const loading = primaryLoading || (shouldUseFallback && fallbackLoading);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [uri]);
 
   if (!media) {
     return (
@@ -117,7 +155,7 @@ function ViewerMediaSlide({ media }: { media: ViewerMedia | null }) {
     );
   }
 
-  return <Image source={{ uri }} style={styles.slideImage} resizeMode="cover" />;
+  return <Image source={{ uri }} style={styles.slideImage} resizeMode="cover" onError={() => setImageFailed(true)} />;
 }
 
 function OwnerAvatar({
@@ -188,6 +226,10 @@ function LoopCarousel({
       { ...first, virtualKey: `loop-first-${first.id}` },
     ];
   }, [hasMultipleItems, mediaItems]);
+  const fallbackMedia = useMemo(
+    () => mediaItems.find((item) => item.type === 'image' && Boolean(item.url || item.fileId)) ?? null,
+    [mediaItems],
+  );
 
   const internalIndex = hasMultipleItems ? safeActiveIndex + 1 : safeActiveIndex;
 
@@ -272,7 +314,7 @@ function LoopCarousel({
         }}
         renderItem={({ item }) => (
           <View style={{ width }}>
-            <ViewerMediaSlide media={item} />
+            <ViewerMediaSlide media={item} fallbackMedia={fallbackMedia} />
           </View>
         )}
       />
@@ -386,12 +428,24 @@ export function CollectionDetailViewer({
         const medias = Array.isArray(response.medias) ? response.medias : [];
         const nextItems = await Promise.all(
           medias.map(async (media, index) => {
-            const directUrl = media.file?.s3Url ?? media.file?.url ?? null;
-            const url = (await resolvePreferredRemoteUrl(directUrl, media.file?.id ?? null)) ?? '';
+            const directUrl = getCollectionMediaDirectUrl(media);
+            const fileId = getCollectionMediaFileId(media);
+            const url = (await resolveImageUri({
+              src: directUrl,
+              fileId,
+              debugContext: {
+                designId: collectionId,
+                mediaIndex: index,
+                fileId,
+                sourceField: fileId ? 'collection.media.fileId' : 'collection.media.url',
+              },
+            })) ?? '';
             return {
               id: media.id || media.file?.id || `${collectionId}-${index}`,
+              collectionId,
+              mediaIndex: index,
               url,
-              fileId: media.file?.id ?? null,
+              fileId,
               type: getMediaType(media),
               label: media.caption ?? media.file?.originalName ?? response.title,
               threadsCount: typeof media.threadsCount === 'number' ? media.threadsCount : 0,
