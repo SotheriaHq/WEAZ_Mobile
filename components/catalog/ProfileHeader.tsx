@@ -224,7 +224,7 @@ export const ProfileHeader = React.memo(function ProfileHeader({
               ]}
               accessibilityLabel="Go back"
             >
-              <View style={[styles.navBlurButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <View style={styles.navBlurButton}>
                 <AppText style={styles.backButtonEmoji}>←</AppText>
               </View>
             </Pressable>
@@ -235,7 +235,7 @@ export const ProfileHeader = React.memo(function ProfileHeader({
 
         {/* QR Code - Top Right */}
         <View style={styles.qrContainer}>
-          <View style={[styles.qrBox, { backgroundColor: isDark ? '#111' : '#fff' }]}>
+          <View style={styles.qrBox}>
             <AppText style={styles.qrEmoji}>▦</AppText>
           </View>
         </View>
@@ -479,11 +479,6 @@ const styles = StyleSheet.create({
   navButtonWrapper: {
     borderRadius: 20,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
   },
   navBlurButton: {
     flexDirection: 'row',
@@ -492,13 +487,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 44,
     minWidth: 44,
-    borderWidth: 1,
     borderRadius: 20,
   },
   backButtonEmoji: {
     fontSize: 16,
     color: '#F8FAFC',
     fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   editBannerText: {
     color: '#1f2937',
@@ -517,15 +514,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 5,
   },
   qrEmoji: {
     fontSize: 30,
     lineHeight: 34,
+    color: '#F8FAFC',
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
 
   // Overlay section - overlaps banner

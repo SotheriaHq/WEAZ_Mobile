@@ -261,7 +261,6 @@ export default function DiscoverScreen() {
   const cardBg = isDark ? theme.colors.surfaceAlt : theme.colors.surface;
   const cardBorder = theme.colors.border;
   const pillBg = isDark ? theme.colors.surfaceAlt : theme.colors.surfaceAlt;
-  const headerControlSurface = scheme === 'dark' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.06)';
   const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom, [insets.bottom]);
 
   const renderItem = useCallback(
@@ -376,10 +375,10 @@ export default function DiscoverScreen() {
         <View style={styles.headerRow} pointerEvents="box-none">
             <Pressable
               onPress={() => router.push('/')}
+              hitSlop={10}
               style={({ pressed }) => [
                 styles.headerLogoButton,
-                { backgroundColor: headerControlSurface, borderColor: 'transparent', borderWidth: 0 },
-                pressed && { opacity: 0.82 },
+                pressed && { backgroundColor: theme.colors.surfaceOverlay, opacity: 0.82 },
               ]}
               accessibilityRole="button"
               accessibilityLabel="Go to home"
@@ -408,10 +407,10 @@ export default function DiscoverScreen() {
 
             <Pressable
               onPress={() => router.push('/search' as any)}
+              hitSlop={10}
               style={({ pressed }) => [
                 styles.headerIconButton,
-                { backgroundColor: headerControlSurface, borderColor: 'transparent', borderWidth: 0 },
-                pressed && { opacity: 0.8 },
+                pressed && { backgroundColor: theme.colors.surfaceOverlay, opacity: 0.8 },
               ]}
               accessibilityRole="button"
               accessibilityLabel="Search"
@@ -482,7 +481,6 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
   },
   headerCenterGroup: {
     flex: 1,
@@ -498,7 +496,6 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
   },
   headerEmoji: {
     textAlign: 'center',

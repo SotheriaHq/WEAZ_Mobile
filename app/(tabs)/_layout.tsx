@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AppState, BackHandler, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Tabs, router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppText } from '@/components/ui/AppText';
+import {
+  getNativeIslandLayout,
+  NativeIslandTabIcon,
+  NATIVE_ISLAND_NAV,
+} from '@/components/navigation/NativeIslandBottomNav';
 import { ProfileMenuDropup } from '@/components/navigation/ProfileMenuDropup';
 import { useAuth } from '@/src/auth/AuthContext';
 import { NotificationsApi } from '@/src/api/NotificationsApi';
@@ -18,72 +22,9 @@ import {
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
 
-const TAB_BAR_HEIGHT = 62;
-const TAB_BAR_RADIUS = TAB_BAR_HEIGHT / 2;
+const TAB_BAR_HEIGHT = NATIVE_ISLAND_NAV.height;
+const TAB_BAR_RADIUS = NATIVE_ISLAND_NAV.radius;
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
-
-function TabIcon({
-  label,
-  emoji,
-  focused,
-  badge,
-}: {
-  label: string;
-  emoji: string;
-  focused: boolean;
-  badge?: number;
-}) {
-  const { theme } = useTheme();
-  const chipStyle = [
-    styles.tabChip,
-    focused
-      ? {
-          backgroundColor: theme.colors.primarySoft,
-          shadowColor: theme.colors.primary,
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.16,
-          shadowRadius: 12,
-          elevation: 5,
-        }
-      : styles.tabChipInactive,
-  ];
-  return (
-    <View style={styles.tabIconWrap}>
-      <View style={styles.tabGlyphWrap}>
-        <View style={chipStyle}>
-          <View style={styles.tabGlyphStack}>
-            <View style={styles.tabEmojiWrap}>
-              <Text style={[styles.tabEmoji, { fontSize: focused ? 22 : 20, opacity: focused ? 1 : 0.72 }]}>
-                {emoji}
-              </Text>
-            </View>
-            <View style={styles.tabLabelWrap}>
-              <AppText
-                variant="captionBold"
-                tone={focused ? 'primary' : 'secondary'}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.84}
-                style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
-              >
-                {label}
-              </AppText>
-            </View>
-          </View>
-        </View>
-        {typeof badge === 'number' && badge > 0 ? (
-          <View style={styles.badgeWrap} pointerEvents="none">
-            <View style={[styles.badge, { backgroundColor: theme.colors.badgeRed }]}>
-              <AppText variant="captionBold" tone="inverse">
-                {badge > 99 ? '99+' : badge}
-              </AppText>
-            </View>
-          </View>
-        ) : null}
-      </View>
-    </View>
-  );
-}
 
 export default function TabLayout() {
   const { scheme, theme, setMode } = useTheme();
@@ -104,8 +45,10 @@ export default function TabLayout() {
   const active = theme.colors.primary;
   const inactive = theme.colors.textMuted;
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
-  const tabBarBottomOffset = Math.max(insets.bottom, 10);
-  const tabBarSideOffset = Math.max(14, Math.min(17, Math.round(windowWidth * 0.042)));
+  const { bottomOffset: tabBarBottomOffset, sideOffset: tabBarSideOffset } = getNativeIslandLayout(
+    windowWidth,
+    insets.bottom,
+  );
   const isRootTabPath =
     pathname === '/' ||
     pathname === '/discover' ||
@@ -310,7 +253,7 @@ export default function TabLayout() {
           options={{
             title: 'Designs',
             tabBarIcon: ({ focused }) => (
-              <TabIcon label="Designs" emoji="🎨" focused={focused} />
+              <NativeIslandTabIcon label="Designs" emoji="🎨" focused={focused} />
             ),
           }}
         />
@@ -320,7 +263,7 @@ export default function TabLayout() {
           options={{
             title: 'Market',
             tabBarIcon: ({ focused }) => (
-              <TabIcon label="Market" emoji="🧭" focused={focused} />
+              <NativeIslandTabIcon label="Market" emoji="🧭" focused={focused} />
             ),
           }}
         />
@@ -331,7 +274,7 @@ export default function TabLayout() {
             title: 'Store',
             href: isBrand ? undefined : null,
             tabBarIcon: ({ focused }) => (
-              <TabIcon label="Store" emoji="🛍️" focused={focused} />
+              <NativeIslandTabIcon label="Store" emoji="🛍️" focused={focused} />
             ),
           }}
         />
@@ -349,7 +292,7 @@ export default function TabLayout() {
           options={{
             title: 'Inbox',
             tabBarIcon: ({ focused }) => (
-              <TabIcon label="Inbox" emoji="✉️" focused={focused} />
+              <NativeIslandTabIcon label="Inbox" emoji="✉️" focused={focused} />
             ),
           }}
         />
@@ -362,7 +305,7 @@ export default function TabLayout() {
           options={{
             title: 'Profile',
             tabBarIcon: ({ focused }) => (
-              <TabIcon
+              <NativeIslandTabIcon
                 label="Profile"
                 emoji="👤"
                 focused={focused || profileMenuVisible}
@@ -428,81 +371,5 @@ const styles = StyleSheet.create({
   tabBarGlassFill: {
     borderRadius: TAB_BAR_RADIUS,
     borderWidth: StyleSheet.hairlineWidth,
-  },
-  tabIconWrap: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 0,
-  },
-  tabChip: {
-    width: 'auto',
-    maxWidth: '100%',
-    minWidth: 56,
-    height: 40,
-    borderRadius: 20,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-  },
-  tabChipInactive: {
-    backgroundColor: 'transparent',
-  },
-  tabEmoji: {
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  tabGlyphWrap: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    height: '100%',
-    minWidth: 0,
-  },
-  tabGlyphStack: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 1,
-    minWidth: 0,
-  },
-  tabEmojiWrap: {
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabLabelInactive: {
-    opacity: 0.9,
-    textAlign: 'center',
-    flexShrink: 1,
-  },
-  tabLabelActive: {
-    opacity: 1,
-    textAlign: 'center',
-    flexShrink: 1,
-  },
-  tabLabelWrap: {
-    minHeight: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 0,
-    width: '100%',
-    paddingHorizontal: 2,
-  },
-  badgeWrap: {
-    position: 'absolute',
-    top: -6,
-    right: -12,
-  },
-  badge: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

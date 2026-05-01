@@ -756,7 +756,6 @@ export default function HomeScreen() {
   const bottomClearance = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 18, [insets.bottom]);
   const overlayScrollPadding = bottomClearance;
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
-  const headerControlSurface = glass.bg;
 
   useEffect(() => {
     if (!feedLoopEnabled || feedViewportHeight <= 0 || pageHeight <= 1 || feedItems.length < 3) {
@@ -1316,10 +1315,10 @@ export default function HomeScreen() {
                 <View style={styles.headerLeftGroup}>
                 <Pressable
                   onPress={() => { router.push('/'); }}
+                  hitSlop={10}
                   style={({ pressed }) => [
                     styles.headerLogoButton,
-                    { backgroundColor: headerControlSurface, borderColor: 'transparent', borderWidth: 0 },
-                    pressed && { opacity: 0.82 },
+                    pressed && { backgroundColor: theme.colors.surfaceOverlay, opacity: 0.82 },
                   ]}
                     accessibilityRole="button"
                     accessibilityLabel="Go to home">
@@ -1348,10 +1347,10 @@ export default function HomeScreen() {
                 <View style={styles.headerRightGroup}>
                 <Pressable
                   onPress={() => { router.push('/search' as any); }}
+                  hitSlop={10}
                   style={({ pressed }) => [
                     styles.headerIconButton,
-                    { backgroundColor: headerControlSurface, borderColor: 'transparent', borderWidth: 0 },
-                    pressed && { opacity: 0.8 },
+                    pressed && { backgroundColor: theme.colors.surfaceOverlay, opacity: 0.8 },
                   ]}
                     accessibilityRole="button"
                     accessibilityLabel="Search">
@@ -1691,7 +1690,6 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
   },
   brandLogo: {
     width: 30,
@@ -1704,7 +1702,6 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
   },
   headerEmoji: {
     textShadowOffset: { width: 0, height: 1 },

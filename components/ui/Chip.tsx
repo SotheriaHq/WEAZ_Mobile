@@ -50,9 +50,10 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
             backgroundColor: isSwatch
               ? selected ? theme.colors.primarySoft : 'transparent'
               : isNav
-                ? selected ? theme.colors.primarySoft : 'transparent'
+                ? 'transparent'
                 : selected ? theme.colors.primary : theme.colors.surfaceAlt,
             borderColor: isNav ? 'transparent' : selected ? theme.colors.primary : theme.colors.border,
+            borderBottomColor: isNav && selected ? theme.colors.primary : 'transparent',
             opacity: disabled ? 0.48 : 1,
           },
           style,
@@ -104,15 +105,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   navBase: {
-    minHeight: 28,
+    minHeight: 32,
     paddingHorizontal: 4,
-    paddingVertical: 0,
+    paddingTop: 3,
+    paddingBottom: 5,
     borderWidth: 0,
-    borderRadius: tokens.radius.full,
+    borderBottomWidth: 2,
+    borderRadius: 0,
     flexShrink: 0,
   },
   navSelected: {
-    minHeight: 28,
     paddingHorizontal: 9,
   },
   navInactive: {

@@ -225,6 +225,36 @@ function ProductCard({
     </CatalogCardSurface>
   );
 }
+
+function RailChip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { theme } = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.railChip,
+        { borderBottomColor: selected ? theme.colors.primary : 'transparent' },
+        pressed && { opacity: 0.72 },
+      ]}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+    >
+      <AppText variant={selected ? 'captionBold' : 'captionRegular'} tone={selected ? 'primary' : 'secondary'} numberOfLines={1}>
+        {label}
+      </AppText>
+    </Pressable>
+  );
+}
+
 interface BrandShopTabProps {
   brandId?: string;
   isOwner?: boolean;
@@ -700,7 +730,7 @@ export function BrandShopTab({
         />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          <Chip
+          <RailChip
             label={selectedCategory === 'all' ? 'All categories' : selectedCategory}
             selected={selectedCategory !== 'all'}
             onPress={() => setCategorySheetOpen(true)}
@@ -709,7 +739,7 @@ export function BrandShopTab({
             const selected = selectedCategory === category;
             const label = category === 'all' ? 'All' : category;
             return (
-              <Chip
+              <RailChip
                 key={`cat-${category}`}
                 label={label}
                 selected={selected}
@@ -723,7 +753,7 @@ export function BrandShopTab({
           {SORT_OPTIONS.map((option) => {
             const selected = selectedSort === option.key;
             return (
-              <Chip
+              <RailChip
                 key={option.key}
                 label={option.label}
                 selected={selected}
@@ -737,7 +767,7 @@ export function BrandShopTab({
           {FILTER_OPTIONS.map((option) => {
             const selected = selectedFilter === option.key;
             return (
-              <Chip
+              <RailChip
                 key={option.key}
                 label={option.label}
                 selected={selected}
@@ -1024,8 +1054,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chipRow: {
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.md,
     paddingRight: 4,
+  },
+  railChip: {
+    minHeight: 34,
+    maxWidth: 180,
+    paddingHorizontal: tokens.spacing.xs,
+    paddingTop: tokens.spacing.xs,
+    paddingBottom: tokens.spacing.sm,
+    borderBottomWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   gridContainer: {
     paddingTop: 14,

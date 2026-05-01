@@ -9,7 +9,7 @@ import type { WebViewMessageEvent, WebViewNavigation } from 'react-native-webvie
 
 import { AppText } from '@/components/ui/AppText';
 import { AppBackButton } from '@/components/ui/AppBackButton';
-import { AppLoaderScreen } from '@/components/ui/AppLoader';
+import { LoaderBlock } from '@/components/ui/AppLoader';
 import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
 import { IconButton } from '@/components/ui/IconButton';
@@ -141,7 +141,7 @@ function StudioHeaderActions({
         accessibilityLabel="Open profile menu"
         style={({ pressed }) => [
           styles.headerAvatarButton,
-          { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+          pressed ? { backgroundColor: theme.colors.surfaceOverlay } : null,
           pressed ? styles.pressed : null,
         ]}
         testID="studio-header-profile"
@@ -658,8 +658,7 @@ export default function StudioWebViewScreen() {
     });
   }, [signOut]);
 
-  const headerIsLoading = loadState === 'booting' || loadState === 'loading';
-  const studioShellBackground = scheme === 'light' ? theme.colors.surface : theme.colors.bg;
+  const studioShellBackground = theme.colors.bg;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: studioShellBackground }]}>
@@ -669,7 +668,7 @@ export default function StudioWebViewScreen() {
         subtitle={headerSubtitle}
         style={{
           backgroundColor: studioShellBackground,
-          borderBottomColor: headerIsLoading ? studioShellBackground : theme.colors.border,
+          borderBottomColor: studioShellBackground,
         }}
         left={
           <AppBackButton
@@ -731,12 +730,14 @@ export default function StudioWebViewScreen() {
         ) : null}
 
         {loadState === 'booting' || loadState === 'loading' ? (
-          <View style={styles.loadingOverlay}>
-            <AppLoaderScreen
+          <View style={[styles.loadingOverlay, { backgroundColor: studioShellBackground }]}>
+            <LoaderBlock
               title="Studio"
               message="Preparing secure brand session"
-              includeSafeArea={false}
-              themeOverride={{ background: theme.colors.bg }}
+              size={72}
+              minHeight={220}
+              themeOverride={{ background: studioShellBackground }}
+              style={styles.loadingBlock}
             />
           </View>
         ) : null}
@@ -796,7 +797,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -807,6 +807,15 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.xl,
+    paddingBottom: tokens.spacing.xl,
+  },
+  loadingBlock: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: tokens.radius.xl,
   },
   menuBackdrop: {
     ...StyleSheet.absoluteFillObject,

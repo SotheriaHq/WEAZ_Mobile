@@ -59,18 +59,18 @@ const FilterChip = ({ label, icon, isActive, onPress, badge }: FilterChipProps) 
         style={[
           styles.chip,
           {
-            backgroundColor: isActive ? theme.colors.primary : theme.colors.surfaceAlt,
+            borderBottomColor: isActive ? theme.colors.primary : 'transparent',
           },
         ]}
         accessibilityRole="button"
         accessibilityState={{ selected: isActive }}
       >
-        <AppText variant={isActive ? 'captionBold' : 'captionRegular'} tone={isActive ? 'inverse' : 'muted'}>
+        <AppText variant={isActive ? 'captionBold' : 'captionRegular'} tone={isActive ? 'primary' : 'muted'}>
           {icon} {label}
         </AppText>
         {typeof badge === 'number' && badge > 0 && (
-          <View style={[styles.badge, { backgroundColor: isActive ? theme.colors.onPrimary : theme.colors.primary }]}>
-            <AppText variant="captionBold" tone={isActive ? 'primary' : 'inverse'}>
+          <View style={[styles.badge, { backgroundColor: isActive ? theme.colors.primarySoft : theme.colors.surfaceAlt }]}>
+            <AppText variant="captionBold" tone={isActive ? 'primary' : 'secondary'}>
               {badge}
             </AppText>
           </View>
@@ -137,8 +137,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.xs,
     minHeight: 36,
-    paddingHorizontal: tokens.spacing.lg,
-    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.md,
+    paddingTop: tokens.spacing.xs,
+    paddingBottom: tokens.spacing.sm,
+    borderBottomWidth: 2,
     overflow: 'hidden',
   },
   badge: {

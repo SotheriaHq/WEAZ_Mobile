@@ -35,7 +35,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AppActionSheet } from '@/components/ui/AppActionSheet';
 import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
-import { LAYOUT } from '@/src/styles/tokens';
+import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -385,7 +385,10 @@ export default function CatalogScreen() {
 
   const currentCollections = visibilityFilter === 'Drafts' ? drafts : collections;
   const showInitialSkeleton = isLoading && !profile && collections.length === 0 && drafts.length === 0;
-  const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom, [insets.bottom]);
+  const overlayScrollPadding = useMemo(
+    () => NATIVE_ISLAND_NAV.contentClearance + insets.bottom,
+    [insets.bottom],
+  );
 
   // Tab configuration
   const tabs = [
