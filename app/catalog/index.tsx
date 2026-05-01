@@ -11,6 +11,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import Reanimated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAuthSession } from '@/src/auth/AuthContext';
@@ -117,6 +118,7 @@ export default function CatalogScreen() {
   const [draftDeleteBusy, setDraftDeleteBusy] = useState(false);
   const [createSheetOpen, setCreateSheetOpen] = useState(false);
   const horizontalScrollRef = useRef<ScrollView>(null);
+  const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
 
   // Determine if owner view
   const isOwner = Boolean(userType === 'BRAND' && (!routeBrandId || routeBrandId === userId));
@@ -260,10 +262,23 @@ export default function CatalogScreen() {
 
   useEffect(() => {
     const idx = TAB_ORDER.indexOf(activeTab);
+    if (idx >= 0 && containerWidth <= 0) {
+      tabSwipeProgress.value = idx;
+    }
     if (idx >= 0 && horizontalScrollRef.current && containerWidth > 0) {
       horizontalScrollRef.current.scrollTo({ x: idx * containerWidth, animated: true });
     }
-  }, [activeTab, containerWidth]);
+  }, [activeTab, containerWidth, tabSwipeProgress]);
+
+  const handleHorizontalScroll = useAnimatedScrollHandler(
+    {
+      onScroll: (event) => {
+        if (containerWidth <= 0) return;
+        tabSwipeProgress.value = event.contentOffset.x / containerWidth;
+      },
+    },
+    [containerWidth],
+  );
 
   const handleHorizontalScrollEnd = useCallback((e: any) => {
     if (containerWidth <= 0) return;
@@ -459,17 +474,19 @@ export default function CatalogScreen() {
             onTabChange={(key) => {
               setActiveTab(key as TabType);
             }}
+            swipeProgress={tabSwipeProgress}
           />
         </View>
 
 
 
         {/* Tab Content inside Horizontal ScrollView */}
-        <ScrollView
-          ref={horizontalScrollRef}
+        <Reanimated.ScrollView
+          ref={horizontalScrollRef as any}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
+          onScroll={handleHorizontalScroll}
           onMomentumScrollEnd={handleHorizontalScrollEnd}
           onScrollEndDrag={handleHorizontalScrollEnd}
           scrollEventThrottle={16}
@@ -536,7 +553,7 @@ export default function CatalogScreen() {
           <View style={{ width: containerWidth || '100%' }}>
             {targetBrandId ? <BrandReviewsTab brandId={targetBrandId} /> : <View style={styles.tabContent} />}
           </View>
-        </ScrollView>
+        </Reanimated.ScrollView>
       </ScrollView>
 
       <MobileProfileImageModal

@@ -1,5 +1,5 @@
 import { Image } from 'react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { brandApi, type SignedFileUrlDebugContext } from '@/src/api/BrandApi';
 
@@ -38,6 +38,51 @@ const getResolutionCacheKey = (directSrc: string | null, normalizedFileId: strin
   return null;
 };
 
+const parseCompactAmzDate = (value: string) => {
+  const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(value);
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute, second] = match;
+  const timestamp = Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
+
+  return Number.isFinite(timestamp) ? timestamp : null;
+};
+
+const getSignedUriExpiresAt = (uri: string) => {
+  try {
+    const parsed = new URL(uri);
+    const explicitExpiresAt = parsed.searchParams.get('expiresAt') ?? parsed.searchParams.get('ExpiresAt');
+    if (explicitExpiresAt) {
+      const timestamp = Date.parse(explicitExpiresAt);
+      if (Number.isFinite(timestamp)) return timestamp;
+    }
+
+    const unixExpires = parsed.searchParams.get('Expires') ?? parsed.searchParams.get('expires');
+    if (unixExpires) {
+      const timestamp = Number(unixExpires) * 1000;
+      if (Number.isFinite(timestamp)) return timestamp;
+    }
+
+    const amzDate = parsed.searchParams.get('X-Amz-Date');
+    const amzExpires = Number(parsed.searchParams.get('X-Amz-Expires'));
+    const amzStartedAt = amzDate ? parseCompactAmzDate(amzDate) : null;
+    if (amzStartedAt && Number.isFinite(amzExpires)) {
+      return amzStartedAt + amzExpires * 1000;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
 const getCachedUriEntry = (key: string) => {
   const missingCachedUntil = resolvedUriMissingCache.get(key);
   if (missingCachedUntil && missingCachedUntil > Date.now()) {
@@ -64,10 +109,11 @@ const getCachedUri = (key: string) => {
 };
 
 const setCachedUri = (key: string, uri: string) => {
+  const expiresAt = getSignedUriExpiresAt(uri) ?? Date.now() + SIGNED_URI_TTL_MS;
   resolvedUriMissingCache.delete(key);
   resolvedUriCache.set(key, {
     uri,
-    expiresAt: Date.now() + SIGNED_URI_TTL_MS,
+    expiresAt,
   });
 };
 
@@ -178,13 +224,53 @@ export function useResolvedImageUri({
   const directSrc = trim(src);
   const normalizedFileId = trim(fileId);
   const cacheKey = getResolutionCacheKey(directSrc, normalizedFileId);
+  const activeKey = cacheKey ?? (directSrc ? `direct:${directSrc}` : null);
+  const previousKeyRef = useRef<string | null>(activeKey);
+  const resolvedKeyRef = useRef<string | null>(null);
+  const lastSuccessfulRef = useRef<{ key: string; uri: string } | null>(null);
   const [resolvedUri, setResolvedUri] = useState<string | null>(() => {
     if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc)) {
+      const key = `direct:${directSrc}`;
+      resolvedKeyRef.current = key;
+      lastSuccessfulRef.current = { key, uri: directSrc };
       return directSrc;
     }
-    const cached = cacheKey ? getCachedUri(cacheKey) : null;
-    return cached === '__missing__' ? null : cached;
+    const cachedKey = cacheKey;
+    const cached = cachedKey ? getCachedUri(cachedKey) : null;
+    if (cachedKey && cached && cached !== '__missing__') {
+      resolvedKeyRef.current = cachedKey;
+      lastSuccessfulRef.current = { key: cachedKey, uri: cached };
+      return cached;
+    }
+    return null;
   });
+
+  useEffect(() => {
+    if (activeKey === previousKeyRef.current) return;
+    previousKeyRef.current = activeKey;
+
+    if (!activeKey) {
+      resolvedKeyRef.current = null;
+      lastSuccessfulRef.current = null;
+      setResolvedUri(null);
+      return;
+    }
+
+    if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc)) {
+      resolvedKeyRef.current = activeKey;
+      lastSuccessfulRef.current = { key: activeKey, uri: directSrc };
+      setResolvedUri(directSrc);
+      return;
+    }
+
+    const cached = cacheKey ? getCachedUri(cacheKey) : null;
+    if (cached && cached !== '__missing__') {
+      resolvedKeyRef.current = activeKey;
+      lastSuccessfulRef.current = { key: activeKey, uri: cached };
+      setResolvedUri(cached);
+    }
+  }, [activeKey, cacheKey, directSrc]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -195,6 +281,8 @@ export function useResolvedImageUri({
     }
 
     if (!directSrc && !normalizedFileId) {
+      resolvedKeyRef.current = null;
+      lastSuccessfulRef.current = null;
       setResolvedUri(null);
       return () => {
         mounted = false;
@@ -202,6 +290,8 @@ export function useResolvedImageUri({
     }
 
     if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc)) {
+      resolvedKeyRef.current = activeKey ?? `direct:${directSrc}`;
+      lastSuccessfulRef.current = { key: activeKey ?? `direct:${directSrc}`, uri: directSrc };
       setResolvedUri(directSrc);
       return () => {
         mounted = false;
@@ -210,14 +300,27 @@ export function useResolvedImageUri({
 
     void resolveImageUri({ src: directSrc, fileId: normalizedFileId, debugContext }).then((nextUri) => {
       if (mounted) {
-        setResolvedUri((current) => nextUri ?? current);
+        if (nextUri) {
+          if (activeKey) {
+            resolvedKeyRef.current = activeKey;
+            lastSuccessfulRef.current = { key: activeKey, uri: nextUri };
+          }
+          setResolvedUri(nextUri);
+          return;
+        }
+
+        setResolvedUri((current) => {
+          if (current && resolvedKeyRef.current === activeKey) return current;
+          const lastSuccessful = lastSuccessfulRef.current;
+          return lastSuccessful?.key === activeKey ? lastSuccessful.uri : null;
+        });
       }
     });
 
     return () => {
       mounted = false;
     };
-  }, [debugContext, directSrc, enabled, normalizedFileId]);
+  }, [activeKey, debugContext, directSrc, enabled, normalizedFileId]);
 
   useEffect(() => {
     if (!enabled || !cacheKey || !resolvedUri) return;
@@ -229,12 +332,24 @@ export function useResolvedImageUri({
     const delay = Math.max(1_000, cached.expiresAt - Date.now() - SIGNED_URI_REFRESH_SKEW_MS);
     const timeout = setTimeout(() => {
       void resolveImageUri({ src: directSrc, fileId: normalizedFileId, forceRefresh: true, debugContext }).then((nextUri) => {
-        setResolvedUri((current) => nextUri ?? current);
+        if (nextUri) {
+          if (activeKey) {
+            resolvedKeyRef.current = activeKey;
+            lastSuccessfulRef.current = { key: activeKey, uri: nextUri };
+          }
+          setResolvedUri(nextUri);
+          return;
+        }
+
+        setResolvedUri((current) => {
+          if (current && resolvedKeyRef.current === activeKey) return current;
+          return lastSuccessfulRef.current?.key === activeKey ? lastSuccessfulRef.current.uri : null;
+        });
       });
     }, delay);
 
     return () => clearTimeout(timeout);
-  }, [cacheKey, debugContext, directSrc, enabled, normalizedFileId, resolvedUri]);
+  }, [activeKey, cacheKey, debugContext, directSrc, enabled, normalizedFileId, resolvedUri]);
 
   return resolvedUri;
 }

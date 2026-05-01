@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Platform, StyleSheet, View } from 'react-native';
+import { BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
 import { WebView } from 'react-native-webview';
@@ -9,13 +9,17 @@ import type { WebViewMessageEvent, WebViewNavigation } from 'react-native-webvie
 
 import { AppText } from '@/components/ui/AppText';
 import { AppBackButton } from '@/components/ui/AppBackButton';
-import { LoaderBlock } from '@/components/ui/AppLoader';
+import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
+import { IconButton } from '@/components/ui/IconButton';
+import { StableImage } from '@/components/ui/StableImage';
 import StudioApi from '@/src/api/StudioApi';
-import { useAuth } from '@/src/auth/AuthContext';
+import { env } from '@/src/config/env';
+import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
 import {
+  appendStudioEmbeddedParams,
   buildStudioPath,
   buildStudioWebUrl,
   getStudioOriginWhitelist,
@@ -23,9 +27,11 @@ import {
   STUDIO_ROUTES,
   type StudioRouteKey,
 } from '@/src/features/studio/studioRoutes';
+import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 
 type LoadState = 'booting' | 'loading' | 'ready' | 'error';
 
@@ -94,21 +100,275 @@ function trackStudioWebViewEvent(
   console.info('[studio-webview]', name, properties);
 }
 
+function getDisplayName(user: AuthUser | null) {
+  if (!user) return 'Profile';
+
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  return (
+    (user.type === 'BRAND' ? user.brandFullName?.trim() : fullName) ||
+    (user.type === 'BRAND' ? fullName : user.brandFullName?.trim()) ||
+    user.username?.trim() ||
+    user.email?.split('@')[0]?.trim() ||
+    'Profile'
+  );
+}
+
+function StudioHeaderActions({
+  user,
+  onSearchPress,
+  onProfilePress,
+}: {
+  user: AuthUser | null;
+  onSearchPress: () => void;
+  onProfilePress: () => void;
+}) {
+  const { theme } = useTheme();
+  const displayName = getDisplayName(user);
+  const avatar = resolveProfileImageSource(user);
+  const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: Boolean(user) });
+  const initials = getAvatarFallback(displayName, user?.username);
+
+  return (
+    <View style={styles.headerActions}>
+      <IconButton size={40} onPress={onSearchPress} variant="ghost" testID="studio-header-search">
+        <AppText variant="subtitle" accessibilityLabel="Open search">
+          🔎
+        </AppText>
+      </IconButton>
+      <Pressable
+        onPress={onProfilePress}
+        accessibilityRole="button"
+        accessibilityLabel="Open profile menu"
+        style={({ pressed }) => [
+          styles.headerAvatarButton,
+          { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+          pressed ? styles.pressed : null,
+        ]}
+        testID="studio-header-profile"
+      >
+        {avatarUri ? (
+          <StableImage uri={avatarUri} containerStyle={styles.headerAvatarImage} imageStyle={styles.headerAvatarImage} />
+        ) : (
+          <AppText variant="captionBold" tone="primary">
+            {initials}
+          </AppText>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+type StudioMenuItem = {
+  key: string;
+  emoji: string;
+  label: string;
+  description?: string;
+  tone?: 'default' | 'danger';
+  disabled?: boolean;
+  onPress: () => void;
+};
+
+function StudioProfileMenu({
+  visible,
+  user,
+  topOffset,
+  onClose,
+  onOpenStudio,
+  onOpenNativePath,
+  onOpenHelp,
+  onUnavailable,
+  onSignOut,
+}: {
+  visible: boolean;
+  user: AuthUser | null;
+  topOffset: number;
+  onClose: () => void;
+  onOpenStudio: () => void;
+  onOpenNativePath: (path: string) => void;
+  onOpenHelp: () => void;
+  onUnavailable: (message: string) => void;
+  onSignOut: () => void;
+}) {
+  const { theme } = useTheme();
+  const { height, width } = useWindowDimensions();
+  const displayName = getDisplayName(user);
+  const handle = user?.username ? `@${user.username}` : null;
+  const avatar = resolveProfileImageSource(user);
+  const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: visible && Boolean(user) });
+  const initials = getAvatarFallback(displayName, user?.username);
+  const menuWidth = Math.min(Math.max(260, width - tokens.spacing.lg * 2), 320);
+  const maxHeight = Math.max(260, height - topOffset - tokens.spacing.lg);
+
+  const items: StudioMenuItem[] = [
+    {
+      key: 'studio',
+      emoji: '🧵',
+      label: 'Studio',
+      onPress: onOpenStudio,
+    },
+    {
+      key: 'profile',
+      emoji: '👤',
+      label: 'Profile',
+      onPress: () => onOpenNativePath('/profile'),
+    },
+    ...(user?.type === 'BRAND'
+      ? [
+          {
+            key: 'view-store',
+            emoji: '🏬',
+            label: 'View Store',
+            onPress: () => onOpenNativePath('/profile?tab=Store'),
+          },
+        ]
+      : []),
+    {
+      key: 'settings',
+      emoji: '⚙️',
+      label: 'Settings',
+      description: 'Open from the main app settings.',
+      disabled: true,
+      onPress: () => onUnavailable('Settings is not available inside Studio yet.'),
+    },
+    {
+      key: 'language',
+      emoji: '🌍',
+      label: 'Language',
+      description: 'Open from the main app settings.',
+      disabled: true,
+      onPress: () => onUnavailable('Language settings are not available inside Studio yet.'),
+    },
+    {
+      key: 'location',
+      emoji: '📍',
+      label: 'Share Location',
+      description: 'Use the main app profile menu.',
+      disabled: true,
+      onPress: () => onUnavailable('Location sharing is available from the main app.'),
+    },
+    {
+      key: 'help',
+      emoji: '🆘',
+      label: 'Help',
+      onPress: onOpenHelp,
+    },
+    {
+      key: 'orders',
+      emoji: '📦',
+      label: 'My Orders',
+      onPress: () => onOpenNativePath('/profile?tab=orders'),
+    },
+    {
+      key: 'saved',
+      emoji: '🤍',
+      label: 'Saved',
+      onPress: () => onOpenNativePath('/profile?tab=saved'),
+    },
+    {
+      key: 'sign-out',
+      emoji: '↩️',
+      label: 'Sign out',
+      tone: 'danger',
+      onPress: onSignOut,
+    },
+  ];
+
+  return (
+    <Modal transparent visible={visible} animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+          <View style={styles.menuBackdrop} />
+        </Pressable>
+        <View style={[styles.menuWrap, { top: topOffset, width: menuWidth }]} pointerEvents="box-none">
+          <View style={[styles.menuPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.menuIdentity, { borderBottomColor: theme.colors.border }]}>
+              <View style={[styles.menuAvatar, { backgroundColor: theme.colors.primarySoft }]}>
+                {avatarUri ? (
+                  <StableImage uri={avatarUri} containerStyle={styles.menuAvatarImage} imageStyle={styles.menuAvatarImage} />
+                ) : (
+                  <AppText variant="subtitle" tone="primary">
+                    {initials}
+                  </AppText>
+                )}
+              </View>
+              <View style={styles.menuIdentityText}>
+                <AppText variant="bodyBold" numberOfLines={2}>
+                  {displayName}
+                </AppText>
+                {handle ? (
+                  <AppText variant="caption" tone="muted" numberOfLines={1}>
+                    {handle}
+                  </AppText>
+                ) : null}
+              </View>
+            </View>
+            <ScrollView
+              style={{ maxHeight }}
+              bounces={false}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.menuContent}
+            >
+              {items.map((item) => (
+                <Pressable
+                  key={item.key}
+                  onPress={() => {
+                    item.onPress();
+                    if (!item.disabled) {
+                      onClose();
+                    }
+                  }}
+                  accessibilityRole="button"
+                  disabled={false}
+                  style={({ pressed }) => [
+                    styles.menuItem,
+                    { borderBottomColor: theme.colors.border },
+                    item.disabled ? styles.menuItemDisabled : null,
+                    pressed ? styles.pressed : null,
+                  ]}
+                >
+                  <AppText variant="subtitle">{item.emoji}</AppText>
+                  <View style={styles.menuItemText}>
+                    <AppText variant="bodyBold" tone={item.tone === 'danger' ? 'danger' : 'default'}>
+                      {item.label}
+                    </AppText>
+                    {item.description ? (
+                      <AppText variant="caption" tone="muted">
+                        {item.description}
+                      </AppText>
+                    ) : null}
+                  </View>
+                  {!item.disabled && item.key !== 'sign-out' ? (
+                    <AppText variant="subtitle" tone="muted">
+                      ›
+                    </AppText>
+                  ) : null}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function StudioWebViewScreen() {
   const params = useLocalSearchParams<{
     routeKey?: string;
     productId?: string;
     orderId?: string;
   }>();
-  const { status, user } = useAuth();
+  const { status, user, signOut } = useAuth();
   const { scheme, theme } = useTheme();
   const toast = useToast();
+  const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>('booting');
   const [webUrl, setWebUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('Studio could not load.');
   const [retryKey, setRetryKey] = useState(0);
+  const [profileMenuVisible, setProfileMenuVisible] = useState(false);
 
   const routeKey = asString(params.routeKey);
   const productId = asString(params.productId);
@@ -166,6 +426,7 @@ export default function StudioWebViewScreen() {
             routeKey: resolvedRouteKey,
             params: { productId, orderId },
             handoffCode: handoff.code,
+            theme: scheme,
           }),
         );
         trackStudioWebViewEvent('route-open', { routeKey: resolvedRouteKey });
@@ -193,7 +454,7 @@ export default function StudioWebViewScreen() {
     return () => {
       mounted = false;
     };
-  }, [invalidRouteKey, isBrand, orderId, productId, resolvedRouteKey, retryKey, status]);
+  }, [invalidRouteKey, isBrand, orderId, productId, resolvedRouteKey, retryKey, scheme, status]);
 
   useEffect(() => {
     if (!webUrl || loadState !== 'loading') return;
@@ -345,14 +606,68 @@ export default function StudioWebViewScreen() {
     [closeStudio, openNavigationTarget, toast],
   );
 
+  const openStudioPathInWebView = useCallback(
+    (path: string) => {
+      const nextPath = appendStudioEmbeddedParams(path, scheme);
+      webViewRef.current?.injectJavaScript(`
+        window.location.assign(${JSON.stringify(nextPath)});
+        true;
+      `);
+    },
+    [scheme],
+  );
+
+  const openSearch = useCallback(() => {
+    if (loadState === 'ready' && webViewRef.current) {
+      webViewRef.current.injectJavaScript(`
+        window.dispatchEvent(new CustomEvent('threadly:native-search-open'));
+        true;
+      `);
+      return;
+    }
+    openNavigationTarget('/search', 'message');
+  }, [loadState, openNavigationTarget]);
+
+  const openProfileMenuPath = useCallback(
+    (path: string) => {
+      setProfileMenuVisible(false);
+      openNavigationTarget(path, 'message');
+    },
+    [openNavigationTarget],
+  );
+
+  const openHelp = useCallback(() => {
+    setProfileMenuVisible(false);
+    void WebBrowser.openBrowserAsync(new URL('/help/verified-badge', env.webAppUrl).toString()).catch(() => undefined);
+  }, []);
+
+  const showUnavailable = useCallback((message: string) => {
+    toast.info(message);
+  }, [toast]);
+
+  const handleStudioSignOut = useCallback(() => {
+    setProfileMenuVisible(false);
+    void signOut().finally(() => {
+      router.replace('/(auth)/login' as any);
+    });
+  }, [signOut]);
+
+  const headerIsLoading = loadState === 'booting' || loadState === 'loading';
+  const studioShellBackground = scheme === 'light' ? theme.colors.surface : theme.colors.bg;
+
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
+    <SafeAreaView style={[styles.root, { backgroundColor: studioShellBackground }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Header
         title={headerTitle}
         subtitle={headerSubtitle}
+        style={{
+          backgroundColor: studioShellBackground,
+          borderBottomColor: headerIsLoading ? studioShellBackground : theme.colors.border,
+        }}
         left={
           <AppBackButton
+            emoji={'\u{1F448}'}
             onPress={() => {
               if (canGoBack && webViewRef.current) {
                 webViewRef.current.goBack();
@@ -362,10 +677,18 @@ export default function StudioWebViewScreen() {
             }}
           />
         }
-        right={<Button title="Close" variant="ghost" size="sm" onPress={closeStudio} />}
+        right={
+          loadState === 'ready' ? (
+            <StudioHeaderActions
+              user={user}
+              onSearchPress={openSearch}
+              onProfilePress={() => setProfileMenuVisible(true)}
+            />
+          ) : undefined
+        }
       />
 
-      <View style={styles.webHost}>
+      <View style={[styles.webHost, { backgroundColor: studioShellBackground }]}>
         {webUrl ? (
           <WebView
             ref={webViewRef}
@@ -402,12 +725,12 @@ export default function StudioWebViewScreen() {
         ) : null}
 
         {loadState === 'booting' || loadState === 'loading' ? (
-          <View style={[styles.overlay, { backgroundColor: theme.colors.bg }]}>
-            <LoaderBlock
+          <View style={styles.loadingOverlay}>
+            <AppLoaderScreen
               title="Studio"
               message="Preparing secure brand session"
-              minHeight={220}
-              style={[styles.loaderBlock, { borderColor: theme.colors.border }]}
+              includeSafeArea={false}
+              themeOverride={{ background: theme.colors.bg }}
             />
           </View>
         ) : null}
@@ -427,6 +750,21 @@ export default function StudioWebViewScreen() {
           </View>
         ) : null}
       </View>
+
+      <StudioProfileMenu
+        visible={profileMenuVisible}
+        user={user}
+        topOffset={insets.top + 68}
+        onClose={() => setProfileMenuVisible(false)}
+        onOpenStudio={() => {
+          setProfileMenuVisible(false);
+          openStudioPathInWebView('/studio');
+        }}
+        onOpenNativePath={openProfileMenuPath}
+        onOpenHelp={openHelp}
+        onUnavailable={showUnavailable}
+        onSignOut={handleStudioSignOut}
+      />
     </SafeAreaView>
   );
 }
@@ -442,6 +780,91 @@ const styles = StyleSheet.create({
   webView: {
     flex: 1,
     backgroundColor: 'transparent',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  headerAvatarButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  headerAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.16)',
+  },
+  menuWrap: {
+    position: 'absolute',
+    right: tokens.spacing.lg,
+    alignItems: 'stretch',
+  },
+  menuPanel: {
+    borderRadius: tokens.radius.xl,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: tokens.colors.dark,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  menuIdentity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+    padding: tokens.spacing.md,
+    borderBottomWidth: 1,
+  },
+  menuAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  menuAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  menuIdentityText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  menuContent: {
+    paddingVertical: tokens.spacing.xs,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  menuItemText: {
+    flex: 1,
+    minWidth: 0,
+    gap: tokens.spacing.xs,
+  },
+  menuItemDisabled: {
+    opacity: 0.62,
+  },
+  pressed: {
+    opacity: 0.78,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,

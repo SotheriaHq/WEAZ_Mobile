@@ -184,15 +184,29 @@ export function buildStudioWebUrl(args: {
   routeKey: StudioRouteKey;
   params?: StudioRouteParams;
   handoffCode?: string | null;
+  theme?: 'light' | 'dark';
 }): string {
   const base = env.webAppUrl.replace(/\/$/, '');
   const path = buildStudioPath(args.routeKey, args.params);
   const url = new URL(path, base);
   url.searchParams.set('surface', 'mobile-app');
+  if (args.theme) {
+    url.searchParams.set('theme', args.theme);
+  }
   if (args.handoffCode) {
     url.searchParams.set('handoffCode', args.handoffCode);
   }
   return url.toString();
+}
+
+export function appendStudioEmbeddedParams(path: string, theme: 'light' | 'dark'): string {
+  const [pathWithSearch, hash = ''] = path.split('#');
+  const [pathname, search = ''] = pathWithSearch.split('?');
+  const params = new URLSearchParams(search);
+  params.set('surface', 'mobile-app');
+  params.set('theme', theme);
+  const query = params.toString();
+  return `${pathname}${query ? `?${query}` : ''}${hash ? `#${hash}` : ''}`;
 }
 
 export function getTrustedStudioOrigins(): Set<string> {

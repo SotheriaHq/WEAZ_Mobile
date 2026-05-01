@@ -206,6 +206,7 @@ export interface UploadAssetDto {
 // ─────────────────────────────────────────────────────────────
 
 const SIGNED_URL_TTL_MS = 4 * 60 * 1000;
+const SIGNED_URL_REFRESH_SKEW_MS = 30 * 1000;
 const MISSING_SIGNED_URL_TTL_MS = 2 * 60 * 1000;
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 const signedUrlPending = new Map<string, Promise<string | null>>();
@@ -246,6 +247,51 @@ function asString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseCompactAmzDate(value: string): number | null {
+  const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(value);
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute, second] = match;
+  const timestamp = Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
+
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function getSignedUrlCacheExpiresAt(url: string): number {
+  try {
+    const parsed = new URL(url);
+    const explicitExpiresAt = parsed.searchParams.get('expiresAt') ?? parsed.searchParams.get('ExpiresAt');
+    if (explicitExpiresAt) {
+      const timestamp = Date.parse(explicitExpiresAt);
+      if (Number.isFinite(timestamp)) return Math.max(Date.now(), timestamp - SIGNED_URL_REFRESH_SKEW_MS);
+    }
+
+    const unixExpires = parsed.searchParams.get('Expires') ?? parsed.searchParams.get('expires');
+    if (unixExpires) {
+      const timestamp = Number(unixExpires) * 1000;
+      if (Number.isFinite(timestamp)) return Math.max(Date.now(), timestamp - SIGNED_URL_REFRESH_SKEW_MS);
+    }
+
+    const amzDate = parsed.searchParams.get('X-Amz-Date');
+    const amzExpires = Number(parsed.searchParams.get('X-Amz-Expires'));
+    const amzStartedAt = amzDate ? parseCompactAmzDate(amzDate) : null;
+    if (amzStartedAt && Number.isFinite(amzExpires)) {
+      return Math.max(Date.now(), amzStartedAt + amzExpires * 1000 - SIGNED_URL_REFRESH_SKEW_MS);
+    }
+  } catch {
+    return Date.now() + SIGNED_URL_TTL_MS;
+  }
+
+  return Date.now() + SIGNED_URL_TTL_MS;
 }
 
 function isFileLikeRecord(value: Record<string, any>): boolean {
@@ -839,7 +885,7 @@ export const brandApi = {
         const url = unwrapData<any>(response.data)?.url ?? null;
         if (url) {
           signedUrlMissingCache.delete(fileId);
-          signedUrlCache.set(fileId, { url, expiresAt: Date.now() + SIGNED_URL_TTL_MS });
+          signedUrlCache.set(fileId, { url, expiresAt: getSignedUrlCacheExpiresAt(url) });
         }
         return url;
       } catch (error: any) {
@@ -849,7 +895,7 @@ export const brandApi = {
             const url = unwrapData<any>(response.data)?.url ?? null;
             if (url) {
               signedUrlMissingCache.delete(fileId);
-              signedUrlCache.set(fileId, { url, expiresAt: Date.now() + SIGNED_URL_TTL_MS });
+              signedUrlCache.set(fileId, { url, expiresAt: getSignedUrlCacheExpiresAt(url) });
             }
             return url;
           } catch (publicError: any) {

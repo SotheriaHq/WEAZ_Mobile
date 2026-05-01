@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AppState, BackHandler, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Tabs, router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -93,7 +93,8 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
-  const inboxBadgeCount = useUnreadNotificationCount();
+  const unreadNotificationCount = useUnreadNotificationCount();
+  const [notificationCountReady, setNotificationCountReady] = useState(false);
   const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProfileTabPressAtRef = useRef(0);
   const lastBackPressAtRef = useRef(0);
@@ -104,7 +105,7 @@ export default function TabLayout() {
   const inactive = theme.colors.textMuted;
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
   const tabBarBottomOffset = Math.max(insets.bottom, 10);
-  const tabBarSideOffset = Math.max(24, Math.min(28, Math.round(windowWidth * 0.07)));
+  const tabBarSideOffset = Math.max(14, Math.min(17, Math.round(windowWidth * 0.042)));
   const isRootTabPath =
     pathname === '/' ||
     pathname === '/discover' ||
@@ -112,6 +113,23 @@ export default function TabLayout() {
     pathname === '/inbox' ||
     pathname === '/me' ||
     pathname === '/(tabs)';
+
+  const refreshUnreadNotificationCount = useCallback(async () => {
+    if (status !== 'authenticated') {
+      resetUnreadNotificationCount();
+      setNotificationCountReady(false);
+      return;
+    }
+
+    try {
+      const { count } = await NotificationsApi.getUnreadCount();
+      replaceUnreadNotificationCount(count);
+      setNotificationCountReady(true);
+    } catch {
+      resetUnreadNotificationCount();
+      setNotificationCountReady(false);
+    }
+  }, [status]);
 
   const clearProfileTabTimer = useCallback(() => {
     if (profileTabTimerRef.current) {
@@ -172,19 +190,27 @@ export default function TabLayout() {
   }, [clearProfileTabTimer]);
 
   useEffect(() => {
-    if (status !== 'authenticated') {
-      resetUnreadNotificationCount();
-      return;
-    }
+    setNotificationCountReady(false);
+    void refreshUnreadNotificationCount();
+  }, [refreshUnreadNotificationCount, user?.id]);
 
-    void NotificationsApi.getUnreadCount()
-      .then(({ count }) => {
-        replaceUnreadNotificationCount(count);
-      })
-      .catch(() => {
-        replaceUnreadNotificationCount(0);
-      });
-  }, [status, user?.id]);
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void refreshUnreadNotificationCount();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [refreshUnreadNotificationCount, status]);
+
+  useEffect(() => {
+    if (profileMenuVisible) {
+      void refreshUnreadNotificationCount();
+    }
+  }, [profileMenuVisible, refreshUnreadNotificationCount]);
 
   useNotificationRealtimeChannel({
     enabled: status === 'authenticated' && Boolean(user?.id),
@@ -334,9 +360,14 @@ export default function TabLayout() {
             tabPress: handleProfileTabPress,
           }}
           options={{
-            title: 'You',
+            title: 'Profile',
             tabBarIcon: ({ focused }) => (
-              <TabIcon label="You" emoji="👤" focused={focused || profileMenuVisible} badge={inboxBadgeCount} />
+              <TabIcon
+                label="Profile"
+                emoji="👤"
+                focused={focused || profileMenuVisible}
+                badge={notificationCountReady ? unreadNotificationCount : undefined}
+              />
             ),
           }}
         />

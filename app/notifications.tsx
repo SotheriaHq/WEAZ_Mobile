@@ -11,8 +11,10 @@ import { StableImage } from '@/components/ui/StableImage';
 import { NotificationsApi, type MobileNotification } from '@/src/api/NotificationsApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { groupNotifications } from '@/src/utils/notificationGrouping';
 import {
   decrementUnreadNotificationCount,
+  incrementUnreadNotificationCount,
   replaceUnreadNotificationCount,
   useNotificationRealtimeChannel,
 } from '@/src/realtime/notifications';
@@ -66,54 +68,6 @@ function describeNotification(item: MobileNotification) {
   if (type.includes('MESSAGE')) return item.message || `${name} sent you a message.`;
   if (type.includes('SIZE_FIT')) return item.message || `${name} updated size-fit activity.`;
   return item.message || `${name} sent you a notification.`;
-}
-
-function groupLabel(dateValue: string) {
-  const date = new Date(dateValue);
-  const timestamp = date.getTime();
-  if (Number.isNaN(timestamp)) return 'Earlier';
-
-  const now = new Date();
-  const delta = Math.max(0, now.getTime() - timestamp);
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfYesterday = startOfToday - day;
-
-  if (delta < minute) return 'Just now';
-  if (delta < hour) {
-    const minutes = Math.max(1, Math.floor(delta / minute));
-    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
-  }
-  if (delta < 6 * hour) {
-    const hours = Math.max(1, Math.floor(delta / hour));
-    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-  }
-  if (timestamp >= startOfToday) return 'Today';
-  if (timestamp >= startOfYesterday) return 'Yesterday';
-  if (delta < 7 * day) return 'Last week';
-  if (delta < 30 * day) return 'Last month';
-  if (delta < 365 * day) return 'Last year';
-  return 'Earlier';
-}
-
-function groupNotifications(items: MobileNotification[]): NotificationGroup[] {
-  const ordered = [...items].sort((a, b) => {
-    const aTime = Date.parse(a.createdAt) || 0;
-    const bTime = Date.parse(b.createdAt) || 0;
-    return bTime - aTime;
-  });
-  const buckets = new Map<string, MobileNotification[]>();
-
-  ordered.forEach((item) => {
-    const label = groupLabel(item.createdAt);
-    const current = buckets.get(label) ?? [];
-    current.push(item);
-    buckets.set(label, current);
-  });
-
-  return Array.from(buckets.entries()).map(([title, grouped]) => ({ title, items: grouped }));
 }
 
 function NotificationAvatar({ item }: { item: MobileNotification }) {
@@ -206,9 +160,12 @@ export default function NotificationsScreen() {
     setLoading(true);
     setError(null);
     try {
-      const response = await NotificationsApi.list(undefined, 100);
+      const [response, unread] = await Promise.all([
+        NotificationsApi.list(undefined, 100),
+        NotificationsApi.getUnreadCount(),
+      ]);
       setItems(response.items);
-      replaceUnreadNotificationCount(response.items.filter((entry) => !entry.isRead).length);
+      replaceUnreadNotificationCount(unread.count);
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
@@ -224,7 +181,10 @@ export default function NotificationsScreen() {
     if (!item.isRead) {
       decrementUnreadNotificationCount(1);
       setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, isRead: true } : entry)));
-      void NotificationsApi.markAsRead(item.id).catch(() => undefined);
+      void NotificationsApi.markAsRead(item.id).catch(() => {
+        incrementUnreadNotificationCount(1);
+        setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, isRead: false } : entry)));
+      });
     }
     router.push(routeForNotification(item));
   }, []);

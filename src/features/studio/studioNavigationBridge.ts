@@ -118,6 +118,13 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
         nativeRoute: { pathname: '/(tabs)/me', params: { tab: 'orders' } } as Href,
       };
     }
+    if (normalizedTab === 'saved') {
+      return {
+        type: 'native',
+        path,
+        nativeRoute: { pathname: '/(tabs)/me', params: { tab: 'saved' } } as Href,
+      };
+    }
     return {
       type: 'native',
       path,

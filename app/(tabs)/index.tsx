@@ -117,8 +117,9 @@ const getCollectionMediaFileId = (media: CollectionDetailMediaDto) =>
   normalizeStableUri(media.file?.id);
 
 function ImageWarmPlaceholder() {
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
   const shimmer = useRef(new Animated.Value(0.35)).current;
+  const placeholderSurface = scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt;
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -143,7 +144,7 @@ function ImageWarmPlaceholder() {
   }, [shimmer]);
 
   return (
-    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.surfaceAlt }]}>
+    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: placeholderSurface }]}>
       <Animated.View
         style={[
           StyleSheet.absoluteFillObject,
@@ -166,7 +167,8 @@ function FeedMediaSlide({
   imageIndex: number;
   fallbackMedia?: FeedViewerMedia | null;
 }) {
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
+  const placeholderSurface = scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt;
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const primaryDebugContext = useMemo(
@@ -211,7 +213,7 @@ function FeedMediaSlide({
 
   if (!media) {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.feedEmptySlide, { backgroundColor: theme.colors.surfaceAlt }]}>
+      <View style={[StyleSheet.absoluteFillObject, styles.feedEmptySlide, { backgroundColor: placeholderSurface }]}>
         <AppText variant="display">🖼️</AppText>
         <AppText variant="subtitle" tone="inverse">No views yet</AppText>
         <AppText variant="body" tone="secondary" style={styles.feedSlideBody}>
@@ -223,7 +225,7 @@ function FeedMediaSlide({
 
   if (media.type === 'video') {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.feedVideoSlide, { backgroundColor: theme.colors.surfaceAlt }]}>
+      <View style={[StyleSheet.absoluteFillObject, styles.feedVideoSlide, { backgroundColor: placeholderSurface }]}>
         <AppText variant="display">🎬</AppText>
         <AppText variant="subtitle" tone="inverse">Video view</AppText>
         <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.feedSlideBody}>
@@ -239,7 +241,7 @@ function FeedMediaSlide({
         style={[
           StyleSheet.absoluteFillObject,
           styles.feedMediaLoadingSlide,
-          { backgroundColor: theme.colors.surfaceAlt },
+          { backgroundColor: placeholderSurface },
         ]}
       >
         {imageIndex === 0 ? <ImageWarmPlaceholder /> : null}
@@ -249,7 +251,7 @@ function FeedMediaSlide({
 
   if (!resolvedUri || imageFailed) {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.feedBrokenSlide, { backgroundColor: theme.colors.surfaceAlt }]}>
+      <View style={[StyleSheet.absoluteFillObject, styles.feedBrokenSlide, { backgroundColor: placeholderSurface }]}>
         <AppText variant="display">🖼️</AppText>
         <AppText variant="subtitle">Image unavailable</AppText>
         <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.feedSlideBody}>
@@ -260,7 +262,7 @@ function FeedMediaSlide({
   }
 
   return (
-    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.surfaceAlt }]}>
+    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: placeholderSurface }]}>
       {!imageLoaded ? <ImageWarmPlaceholder /> : null}
       <Image
         source={{ uri: resolvedUri }}
@@ -338,6 +340,18 @@ function FeedMediaCarousel({
     );
   }
 
+  if (!hasMultipleItems) {
+    return (
+      <View style={StyleSheet.absoluteFillObject}>
+        <FeedMediaSlide
+          media={stableMediaItems[0] ?? null}
+          imageIndex={0}
+          fallbackMedia={stableMediaItems.find((candidate) => candidate.type === 'image' && Boolean(candidate.url || candidate.fileId)) ?? null}
+        />
+      </View>
+    );
+  }
+
   const handleMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const rawIndex = Math.max(
       0,
@@ -401,12 +415,12 @@ function FeedMediaCarousel({
         horizontal
         pagingEnabled
         directionalLockEnabled
-        nestedScrollEnabled={false}
+        nestedScrollEnabled
         bounces={false}
         decelerationRate="fast"
         overScrollMode="never"
         showsHorizontalScrollIndicator={false}
-        scrollEnabled={hasMultipleItems}
+        scrollEnabled
         onMomentumScrollEnd={handleMomentumEnd}
       >
         {carouselItems.map((item, index) => (
@@ -522,7 +536,7 @@ const FeedSkeleton = ({
   return (
     <View style={styles.feedSkeletonRoot}>
       <View style={[styles.feedSkeletonHeader, { paddingTop: topOffset + 8 }]}> 
-        <View style={[styles.feedSkeletonLogoWrap, { backgroundColor: theme.colors.surfaceAlt }]}> 
+        <View style={[styles.feedSkeletonLogoWrap, { backgroundColor: theme.colors.surface }]}> 
           <ThreadlyLogo size={28} style={{ opacity: 0.92 }} />
         </View>
         <View style={styles.feedSkeletonHeaderActions}>

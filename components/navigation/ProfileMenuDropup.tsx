@@ -32,6 +32,20 @@ type ProfileMenuDropupProps = {
   user: AuthUser | null;
 };
 
+function getDisplayName(user: AuthUser | null) {
+  if (!user) return 'Your profile';
+
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  const name =
+    (user.type === 'BRAND' ? user.brandFullName?.trim() : fullName) ||
+    (user.type === 'BRAND' ? fullName : user.brandFullName?.trim()) ||
+    user.username?.trim() ||
+    user.email?.split('@')[0]?.trim() ||
+    'Profile';
+
+  return name;
+}
+
 export function ProfileMenuDropup({
   visible,
   onClose,
@@ -46,7 +60,7 @@ export function ProfileMenuDropup({
 }: ProfileMenuDropupProps) {
   const { signOut } = useAuth();
   const { scheme: liveScheme, theme: liveTheme } = useTheme();
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const activeScheme = liveScheme ?? scheme;
   const activeTheme = liveTheme ?? theme;
   const isDark = activeScheme === 'dark';
@@ -55,15 +69,14 @@ export function ProfileMenuDropup({
   const translateY = React.useRef(new Animated.Value(18)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
 
-  const displayName = user
-    ? ([user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.brandFullName || user.username || 'You')
-    : 'Your profile';
+  const displayName = getDisplayName(user);
   const handle = user?.username ? `@${user.username}` : null;
   const avatar = resolveProfileImageSource(user);
   const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: mounted });
   const initials = getAvatarFallback(displayName, user?.username);
   const availableMenuHeight = Math.max(264, height - bottomOffset - tokens.spacing.xl);
   const menuHeight = Math.min(availableMenuHeight, 340);
+  const menuWidth = Math.min(Math.max(112, Math.round(width * 0.26)), Math.max(112, width - tokens.spacing.sm * 2));
 
   const runCloseAnimation = React.useCallback(
     (onDone?: () => void) => {
@@ -143,6 +156,7 @@ export function ProfileMenuDropup({
               styles.menu,
               {
                 borderColor: activeTheme.colors.border,
+                width: menuWidth,
                 opacity,
                 transform: [{ translateY }],
               },
@@ -186,7 +200,7 @@ export function ProfileMenuDropup({
                 </View>
                 <View style={styles.textWrap}>
                   <View style={styles.nameRow}>
-                    <AppText variant="bodyBold" numberOfLines={1} style={styles.nameText}>
+                    <AppText variant="bodyBold" numberOfLines={2} ellipsizeMode="tail" style={styles.nameText}>
                       {displayName}
                     </AppText>
                     <Pressable
@@ -198,7 +212,7 @@ export function ProfileMenuDropup({
                     </Pressable>
                   </View>
                   {handle ? (
-                    <AppText variant="caption" tone="muted" numberOfLines={1}>
+                    <AppText variant="caption" tone="muted" numberOfLines={1} ellipsizeMode="tail" style={styles.handleText}>
                       {handle}
                     </AppText>
                   ) : null}
@@ -214,7 +228,9 @@ export function ProfileMenuDropup({
               >
                 <AppText variant="subtitle">🔔</AppText>
                 <View style={styles.textWrap}>
-                  <AppText variant="bodyBold">Notifications</AppText>
+                  <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
+                    Notifications
+                  </AppText>
                 </View>
                 <AppText variant="subtitle" tone="muted">
                   ›
@@ -228,7 +244,9 @@ export function ProfileMenuDropup({
                 >
                   <AppText variant="subtitle">🧵</AppText>
                   <View style={styles.textWrap}>
-                    <AppText variant="bodyBold">Studio</AppText>
+                    <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
+                      Studio
+                    </AppText>
                   </View>
                   <AppText variant="subtitle" tone="muted">
                     ›
@@ -242,7 +260,9 @@ export function ProfileMenuDropup({
               >
                 <AppText variant="subtitle">👤</AppText>
                 <View style={styles.textWrap}>
-                  <AppText variant="bodyBold">View full profile</AppText>
+                  <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
+                    View full profile
+                  </AppText>
                 </View>
                 <AppText variant="subtitle" tone="muted">
                   ›
@@ -255,7 +275,7 @@ export function ProfileMenuDropup({
               >
                 <AppText variant="subtitle">🚪</AppText>
                 <View style={styles.textWrap}>
-                  <AppText variant="bodyBold" tone="danger">
+                  <AppText variant="bodyBold" tone="danger" numberOfLines={1} ellipsizeMode="tail">
                     Sign Out
                   </AppText>
                 </View>
@@ -278,8 +298,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   menu: {
-    minWidth: 188,
-    maxWidth: 214,
+    minWidth: 112,
+    maxWidth: 156,
     borderRadius: tokens.radius.xl,
     borderWidth: 1,
     overflow: 'hidden',
@@ -297,29 +317,33 @@ const styles = StyleSheet.create({
   identity: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.sm,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.md,
+    gap: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.sm,
     borderBottomWidth: 1,
   },
   nameRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
+    alignItems: 'flex-start',
+    gap: 4,
   },
   nameText: {
     flex: 1,
+    flexShrink: 1,
+  },
+  handleText: {
+    flexShrink: 1,
   },
   themeButton: {
-    minWidth: 32,
-    minHeight: 32,
+    minWidth: 28,
+    minHeight: 28,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: tokens.radius.md,
   },
   avatar: {
-    width: 42,
-    height: 42,
+    width: 34,
+    height: 34,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
@@ -336,9 +360,9 @@ const styles = StyleSheet.create({
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.sm,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.lg,
+    gap: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.sm,
     borderBottomWidth: 1,
   },
   signOutItem: {

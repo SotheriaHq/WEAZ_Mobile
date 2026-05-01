@@ -5,10 +5,13 @@
  * then transitions with spring-eased timing on subsequent changes.
  */
 
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { LayoutChangeEvent, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
+  Extrapolation,
+  interpolate,
+  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -33,13 +36,14 @@ interface TabsProps {
   activeTab: string;
   onTabChange: (key: string) => void;
   scrollable?: boolean;
+  swipeProgress?: SharedValue<number>;
 }
 
 // ─────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────
 
-export function Tabs({ tabs, activeTab, onTabChange, scrollable = false }: TabsProps) {
+export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, swipeProgress }: TabsProps) {
   const { theme } = useTheme();
 
   // Mutable ref stores each tab's measured position/width.
@@ -48,12 +52,20 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false }: TabsP
 
   const underlineX = useSharedValue(-999);
   const underlineW = useSharedValue(0);
+  const indicatorLayouts = useSharedValue<Array<{ x: number; width: number }>>([]);
   const initialised = useRef(false);
+
+  const syncIndicatorLayouts = useCallback(() => {
+    const next = tabs.map((tab) => tabLayouts.current[tab.key]);
+    if (next.some((layout) => !layout)) return;
+    indicatorLayouts.value = next as Array<{ x: number; width: number }>;
+  }, [indicatorLayouts, tabs]);
 
   // Called when any tab is measured. If this is the active tab, snap or slide.
   const handleTabLayout = useCallback(
     (key: string, x: number, width: number) => {
       tabLayouts.current[key] = { x, width };
+      syncIndicatorLayouts();
 
       if (key !== activeTab) return;
 
@@ -67,7 +79,7 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false }: TabsP
         underlineW.value = withTiming(width, { duration: 200, easing: Easing.out(Easing.cubic) });
       }
     },
-    [activeTab, underlineX, underlineW],
+    [activeTab, syncIndicatorLayouts, underlineX, underlineW],
   );
 
   // Animate underline when the active tab key changes.
@@ -83,9 +95,42 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false }: TabsP
     [onTabChange, underlineX, underlineW],
   );
 
+  useEffect(() => {
+    const layout = tabLayouts.current[activeTab];
+    if (!layout) return;
+    if (!initialised.current) {
+      underlineX.value = layout.x;
+      underlineW.value = layout.width;
+      initialised.current = true;
+      return;
+    }
+    underlineX.value = withTiming(layout.x, { duration: 200, easing: Easing.out(Easing.cubic) });
+    underlineW.value = withTiming(layout.width, { duration: 200, easing: Easing.out(Easing.cubic) });
+  }, [activeTab, underlineX, underlineW]);
+
   const underlineStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: underlineX.value }],
-    width: underlineW.value,
+    transform: [
+      {
+        translateX:
+          swipeProgress && indicatorLayouts.value.length === tabs.length
+            ? interpolate(
+                swipeProgress.value,
+                indicatorLayouts.value.map((_, index) => index),
+                indicatorLayouts.value.map((layout) => layout.x),
+                Extrapolation.CLAMP,
+              )
+            : underlineX.value,
+      },
+    ],
+    width:
+      swipeProgress && indicatorLayouts.value.length === tabs.length
+        ? interpolate(
+            swipeProgress.value,
+            indicatorLayouts.value.map((_, index) => index),
+            indicatorLayouts.value.map((layout) => layout.width),
+            Extrapolation.CLAMP,
+          )
+        : underlineW.value,
   }));
 
   const TabContainer = scrollable ? ScrollView : View;
