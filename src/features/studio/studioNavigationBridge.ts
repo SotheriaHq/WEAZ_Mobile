@@ -2,6 +2,7 @@ import type { Href } from 'expo-router';
 
 import { env } from '@/src/config/env';
 import { getTrustedStudioOrigins } from '@/src/features/studio/studioRoutes';
+import { normalizeNotificationContext, getMessageNotificationTarget } from '@/src/utils/mobileRouting';
 
 export type StudioWebNavigationClassification =
   | { type: 'studio'; path: string }
@@ -207,6 +208,48 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
   return null;
 }
 
+function classifyMessagePath(url: URL): StudioWebNavigationClassification | null {
+  const pathname = url.pathname.replace(/\/+$/g, '') || '/';
+  const path = pathWithSearch(url);
+
+  if (pathname === '/studio/messages') {
+    const params: Record<string, unknown> = {};
+    for (const [key, value] of url.searchParams) {
+      if (['threadId', 'conversationId', 'messageId', 'orderId', 'customOrderId', 'brandId', 'customerId'].includes(key)) {
+        params[key] = value;
+      }
+    }
+
+    const target = getMessageNotificationTarget(params);
+    if (!target) {
+      return { type: 'native', path, nativeRoute: '/(tabs)/inbox' as Href };
+    }
+
+    if (target.type === 'thread') {
+      const routeParams: Record<string, string> = {};
+      if (target.params.threadId) routeParams.threadId = target.params.threadId;
+      if (target.params.conversationId) routeParams.conversationId = target.params.conversationId;
+      if (target.params.messageId) routeParams.messageId = target.params.messageId;
+      if (target.params.orderId) routeParams.orderId = target.params.orderId;
+      if (target.params.customOrderId) routeParams.customOrderId = target.params.customOrderId;
+      if (target.params.brandId) routeParams.brandId = target.params.brandId;
+      if (target.params.customerId) routeParams.customerId = target.params.customerId;
+
+      return {
+        type: 'native',
+        path,
+        nativeRoute: { pathname: '/messages/[threadId]', params: routeParams } as Href,
+      };
+    }
+
+    if (target.type === 'inbox' || target.type === 'unsupported') {
+      return { type: 'native', path, nativeRoute: '/(tabs)/inbox' as Href };
+    }
+  }
+
+  return null;
+}
+
 export function classifyStudioWebUrl(
   value: string,
   trustedOrigins: Set<string> = getTrustedStudioOrigins(),
@@ -218,6 +261,11 @@ export function classifyStudioWebUrl(
 
   if (!trustedOrigins.has(url.origin)) {
     return { type: 'external', url: url.toString() };
+  }
+
+  const messageRoute = classifyMessagePath(url);
+  if (messageRoute) {
+    return messageRoute;
   }
 
   if (isAllowedStudioRoute(url)) {
