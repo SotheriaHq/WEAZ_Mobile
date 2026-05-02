@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { router, usePathname } from 'expo-router';
 import * as Linking from 'expo-linking';
+// @ts-ignore - expo-notifications may not be installed yet
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
@@ -122,7 +123,7 @@ export function useNotificationRouting() {
 
     try {
       const parsed = Linking.parse(url);
-      const path = parsed.pathname || '';
+      const path = parsed.path || '';
 
       // Check if it's a message-related URL
       if (path.startsWith('/messages') || path.startsWith('/inbox')) {
@@ -209,7 +210,6 @@ export async function configurePushNotifications(): Promise<{
           allowVibrate: true,
           importance: Notifications.AndroidImportance.DEFAULT,
           vibrationPattern: [200, 270, 270, 270],
-          lightColor: '#4CAF50',
         },
       });
       finalStatus = status;
@@ -226,7 +226,6 @@ export async function configurePushNotifications(): Promise<{
         name: 'default',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#4CAF50',
       });
     }
 

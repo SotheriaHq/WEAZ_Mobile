@@ -140,7 +140,7 @@ export default function RootLayout() {
         };
 
         // Handle URL when app is already running
-        Linking.addEventListener('url', handleUrl);
+        const urlSubscription = Linking.addEventListener('url', handleUrl);
 
         // Check for initial URL (app opened from link while closed)
         const initialUrl = await Linking.getInitialURL();
@@ -152,7 +152,7 @@ export default function RootLayout() {
         }
 
         return () => {
-          Linking.removeEventListener('url', handleUrl);
+          urlSubscription.remove();
         };
       } catch (error) {
         console.error('Failed to initialize notification handling:', error);

@@ -22,6 +22,7 @@ export type MessageContextParams = {
   customerId?: string | null;
   designId?: string | null;
   productId?: string | null;
+  _hasUnsupportedContext?: boolean;
 };
 
 export type ConversationParticipant = {

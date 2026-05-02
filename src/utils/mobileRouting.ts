@@ -306,7 +306,7 @@ export function normalizeNotificationContext(
 export function getMessageNotificationTarget(
   payload: Record<string, unknown> | null | undefined,
 ): {
-  type: 'thread' | 'inbox' | 'unsupported' | null;
+  type: 'thread' | 'inbox' | 'unsupported';
   params: MessageContextParams;
 } | null {
   const context = normalizeNotificationContext(payload);
