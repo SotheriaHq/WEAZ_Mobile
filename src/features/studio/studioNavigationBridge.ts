@@ -2,7 +2,7 @@ import type { Href } from 'expo-router';
 
 import { env } from '@/src/config/env';
 import { getTrustedStudioOrigins } from '@/src/features/studio/studioRoutes';
-import { normalizeNotificationContext, getMessageNotificationTarget } from '@/src/utils/mobileRouting';
+import { getMessageNotificationTarget } from '@/src/utils/mobileRouting';
 
 export type StudioWebNavigationClassification =
   | { type: 'studio'; path: string }
@@ -212,14 +212,55 @@ function classifyMessagePath(url: URL): StudioWebNavigationClassification | null
   const pathname = url.pathname.replace(/\/+$/g, '') || '/';
   const path = pathWithSearch(url);
 
-  if (pathname === '/studio/messages') {
-    const params: Record<string, unknown> = {};
-    for (const [key, value] of url.searchParams) {
-      if (['threadId', 'conversationId', 'messageId', 'orderId', 'customOrderId', 'brandId', 'customerId'].includes(key)) {
-        params[key] = value;
-      }
-    }
+  // Message list paths
+  const messageListPaths = new Set([
+    '/studio/messages',
+    '/studio/inbox',
+    '/messages',
+    '/message',
+    '/chats',
+    '/chat',
+    '/inbox',
+    '/conversation',
+    '/thread',
+    '/brand/messages',
+    '/brand/inbox',
+  ]);
 
+  // Detail path patterns
+  const detailPatterns = [
+    { pattern: /^\/studio\/messages\/([^/]+)$/, param: 'threadId' },
+    { pattern: /^\/studio\/inbox\/([^/]+)$/, param: 'threadId' },
+    { pattern: /^\/messages\/([^/]+)$/, param: 'threadId' },
+    { pattern: /^\/message\/([^/]+)$/, param: 'messageId' },
+    { pattern: /^\/chats\/([^/]+)$/, param: 'threadId' },
+    { pattern: /^\/chat\/([^/]+)$/, param: 'threadId' },
+    { pattern: /^\/conversation\/([^/]+)$/, param: 'conversationId' },
+    { pattern: /^\/thread\/([^/]+)$/, param: 'threadId' },
+    { pattern: /^\/brand\/messages\/([^/]+)$/, param: 'threadId' },
+    { pattern: /^\/brand\/inbox\/([^/]+)$/, param: 'threadId' },
+  ];
+
+  const params: Record<string, unknown> = {};
+
+  // Check for detail path
+  for (const { pattern, param } of detailPatterns) {
+    const match = pathname.match(pattern);
+    if (match) {
+      params[param] = match[1];
+      break;
+    }
+  }
+
+  // Add query params
+  for (const [key, value] of url.searchParams) {
+    if (['threadId', 'conversationId', 'messageId', 'orderId', 'customOrderId', 'brandId', 'customerId', 'actorUserId'].includes(key)) {
+      params[key] = value;
+    }
+  }
+
+  // If it's a message list path or has params, intercept
+  if (messageListPaths.has(pathname) || Object.keys(params).length > 0) {
     const target = getMessageNotificationTarget(params);
     if (!target) {
       return { type: 'native', path, nativeRoute: '/(tabs)/inbox' as Href };
@@ -234,6 +275,7 @@ function classifyMessagePath(url: URL): StudioWebNavigationClassification | null
       if (target.params.customOrderId) routeParams.customOrderId = target.params.customOrderId;
       if (target.params.brandId) routeParams.brandId = target.params.brandId;
       if (target.params.customerId) routeParams.customerId = target.params.customerId;
+      if (params.actorUserId) routeParams.actorUserId = params.actorUserId as string;
 
       return {
         type: 'native',
