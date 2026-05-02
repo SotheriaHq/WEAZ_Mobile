@@ -117,6 +117,8 @@ export type DesignSavePayload = {
   customOrderEnabled?: boolean;
   customMeasurementKeys?: string[];
   customOrderConfigurationTemplateId?: string;
+  productionLeadDays?: number;
+  buyerInstructionText?: string;
   fitPreference?: 'SLIM' | 'REGULAR' | 'LOOSE' | 'OVERSIZED';
   targetAgeGroup?: 'ADULT' | 'CHILD';
   filterValueIds?: string[];
@@ -593,6 +595,10 @@ function buildConfigurationCreatePayload(
   template: DesignCustomOrderConfiguration,
   designId: string,
   requiredMeasurementKeys: string[],
+  overrides?: {
+    productionLeadDays?: number;
+    buyerInstructionText?: string;
+  },
 ) {
   if (!template.baseProductionCharge || !template.fabricCostPerYard || template.rules.length === 0) {
     throw new Error('Selected custom-order configuration is incomplete.');
@@ -602,7 +608,7 @@ function buildConfigurationCreatePayload(
     sourceType: 'DESIGN',
     sourceId: designId,
     title: template.title,
-    buyerInstructionText: template.buyerInstructionText ?? undefined,
+    buyerInstructionText: overrides?.buyerInstructionText ?? template.buyerInstructionText ?? undefined,
     requiredMeasurementKeys,
     requiredFreeformPointIds: [],
     baseProductionCharge: template.baseProductionCharge,
@@ -610,7 +616,7 @@ function buildConfigurationCreatePayload(
     rushEnabled: template.rushEnabled,
     rushFee: template.rushFee ?? undefined,
     rushProductionLeadDays: template.rushProductionLeadDays ?? undefined,
-    productionLeadDays: template.productionLeadDays,
+    productionLeadDays: overrides?.productionLeadDays ?? template.productionLeadDays,
     deliveryMinDays: template.deliveryMinDays,
     deliveryMaxDays: template.deliveryMaxDays,
     deliveryScope: template.deliveryScope,
@@ -627,6 +633,8 @@ async function createDesignCustomOrderConfigurationFromTemplate(args: {
   designId: string;
   templateId: string;
   requiredMeasurementKeys: string[];
+  productionLeadDays?: number;
+  buyerInstructionText?: string;
 }): Promise<DesignCustomOrderConfiguration> {
   const template = await getCustomOrderConfigurationById(args.templateId);
   if (!template) {
@@ -638,7 +646,10 @@ async function createDesignCustomOrderConfigurationFromTemplate(args: {
     : template.resolvedRequiredMeasurementKeys;
   const response = await apiClient.post(
     '/custom-order-configurations',
-    buildConfigurationCreatePayload(template, args.designId, keys),
+    buildConfigurationCreatePayload(template, args.designId, keys, {
+      productionLeadDays: args.productionLeadDays,
+      buyerInstructionText: args.buyerInstructionText,
+    }),
   );
   const configuration = normalizeCustomOrderConfiguration(response.data);
   if (!configuration) {
@@ -647,13 +658,15 @@ async function createDesignCustomOrderConfigurationFromTemplate(args: {
   return configuration;
 }
 
-async function updateDesignCustomOrderConfigurationFields(
+async function updateDesignCustomOrderConfiguration(
   configurationId: string,
-  requiredMeasurementKeys: string[],
+  updates: {
+    requiredMeasurementKeys?: string[];
+    productionLeadDays?: number;
+    buyerInstructionText?: string;
+  },
 ): Promise<DesignCustomOrderConfiguration> {
-  const response = await apiClient.patch(`/custom-order-configurations/${configurationId}`, {
-    requiredMeasurementKeys,
-  });
+  const response = await apiClient.patch(`/custom-order-configurations/${configurationId}`, updates);
   const configuration = normalizeCustomOrderConfiguration(response.data);
   if (!configuration) {
     throw new Error('Custom-order configuration could not be updated.');
@@ -670,20 +683,30 @@ async function ensureDesignCustomOrderConfiguration(
   const active = await getActiveDesignCustomConfiguration(designId);
   const keys = payload.customMeasurementKeys ?? [];
   if (active) {
+    // Update if keys changed
     if (keys.length > 0 && keys.join('|') !== active.resolvedRequiredMeasurementKeys.join('|')) {
-      return updateDesignCustomOrderConfigurationFields(active.id, keys);
+      return updateDesignCustomOrderConfiguration(active.id, { requiredMeasurementKeys: keys });
+    }
+    // Update other fields if provided
+    const updates: any = {};
+    if (payload.productionLeadDays !== undefined) updates.productionLeadDays = payload.productionLeadDays;
+    if (payload.buyerInstructionText !== undefined) updates.buyerInstructionText = payload.buyerInstructionText;
+    if (Object.keys(updates).length > 0) {
+      return updateDesignCustomOrderConfiguration(active.id, updates);
     }
     return active;
   }
 
   if (!payload.customOrderConfigurationTemplateId) {
-    throw new Error('Select a custom-order configuration before publishing custom orders.');
+    throw new Error('Select custom order settings before publishing custom orders.');
   }
 
   return createDesignCustomOrderConfigurationFromTemplate({
     designId,
     templateId: payload.customOrderConfigurationTemplateId,
     requiredMeasurementKeys: keys,
+    productionLeadDays: payload.productionLeadDays,
+    buyerInstructionText: payload.buyerInstructionText,
   });
 }
 

@@ -50,6 +50,8 @@ type FormState = {
   maxPrice: string;
   sizingMode: SizingMode;
   customOrderEnabled: boolean;
+  productionLeadDays: string;
+  buyerInstructionText: string;
   fitPreference: FitPreference;
   targetAgeGroup: TargetAgeGroup;
 };
@@ -118,6 +120,8 @@ const INITIAL_FORM: FormState = {
   maxPrice: '',
   sizingMode: 'RTW_PLUS_FITTINGS',
   customOrderEnabled: false,
+  productionLeadDays: '',
+  buyerInstructionText: '',
   fitPreference: 'REGULAR',
   targetAgeGroup: 'ADULT',
 };
@@ -147,6 +151,8 @@ function syncFormFromDetail(detail: DesignDetail): FormState {
     maxPrice: typeof detail.maxPrice === 'number' ? String(detail.maxPrice) : '',
     sizingMode: detail.sizingMode,
     customOrderEnabled: detail.customOrderEnabled,
+    productionLeadDays: '',
+    buyerInstructionText: '',
     fitPreference: detail.fitPreference ?? 'REGULAR',
     targetAgeGroup: detail.targetAgeGroup ?? 'ADULT',
   };
@@ -519,6 +525,8 @@ export function DesignEditorProvider({
             customOrderEnabled: form.customOrderEnabled,
             customMeasurementKeys,
             customOrderConfigurationTemplateId: selectedCustomOrderConfigurationId || undefined,
+            productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : undefined,
+            buyerInstructionText: form.buyerInstructionText || undefined,
             fitPreference: form.fitPreference,
             targetAgeGroup: form.targetAgeGroup,
             filterValueIds,

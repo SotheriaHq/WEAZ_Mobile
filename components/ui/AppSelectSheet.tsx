@@ -3,7 +3,9 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
+import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
+import { Input } from '@/components/ui/Input';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
@@ -114,11 +116,13 @@ export function AppMultiSelectSheet({
   maxSelected,
 }: MultiProps) {
   const [draft, setDraft] = useState<string[]>(values);
+  const [customTag, setCustomTag] = useState('');
   const selectedSet = useMemo(() => new Set(draft), [draft]);
 
   useEffect(() => {
     if (visible) {
       setDraft(values);
+      setCustomTag('');
     }
   }, [values, visible]);
 
@@ -132,6 +136,15 @@ export function AppMultiSelectSheet({
       }
       return [...current, value];
     });
+  };
+
+  const addCustomTag = () => {
+    const normalized = customTag.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!normalized || draft.includes(normalized) || (typeof maxSelected === 'number' && draft.length >= maxSelected)) {
+      return;
+    }
+    setDraft((current) => [...current, normalized]);
+    setCustomTag('');
   };
 
   return (
@@ -152,6 +165,22 @@ export function AppMultiSelectSheet({
           {draft.length}/{maxSelected} selected
         </AppText>
       ) : null}
+      <View style={styles.customTagRow}>
+        <Input
+          label="Custom tag"
+          hideLabel
+          value={customTag}
+          onChangeText={setCustomTag}
+          placeholder="Add custom tag"
+          containerStyle={styles.customTagInput}
+        />
+        <Button
+          title="Add"
+          size="sm"
+          disabled={!customTag.trim() || draft.includes(customTag.trim().toLowerCase().replace(/[^a-z0-9]/g, ''))}
+          onPress={addCustomTag}
+        />
+      </View>
       <View style={styles.optionWrap}>
         {options.map((option) => (
           <Chip
@@ -206,6 +235,14 @@ const styles = StyleSheet.create({
   },
   optionPressed: {
     opacity: 0.78,
+  },
+  customTagRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+    alignItems: 'flex-end',
+  },
+  customTagInput: {
+    flex: 1,
   },
 });
 

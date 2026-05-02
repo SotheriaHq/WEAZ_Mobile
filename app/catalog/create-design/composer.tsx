@@ -110,6 +110,7 @@ export default function CreateDesignComposerScreen() {
 
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [subcategoryOpen, setSubcategoryOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [mentionsOpen, setMentionsOpen] = useState(false);
@@ -130,22 +131,24 @@ export default function CreateDesignComposerScreen() {
   const targetAgeLabel = TARGET_AGE_LABELS[form.targetAgeGroup];
   const selectedSubCategory =
     selectedCategory?.subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
-  const selectedCategoryValue = form.categoryId && form.subCategoryId ? `${form.categoryId}:${form.subCategoryId}` : '';
-  const selectedCategoryLabel =
-    selectedCategory && selectedSubCategory ? `${selectedCategory.name} / ${selectedSubCategory.name}` : 'Select';
   const selectedCustomOrderConfiguration =
     customOrderConfigurations.find((entry) => entry.id === selectedCustomOrderConfigurationId) ?? null;
   const hasCustomOrderConfigurations = customOrderConfigurations.length > 0;
 
-  const combinedCategoryOptions = useMemo(
-    () =>
-      categories.flatMap((category) =>
-        category.subCategories.map((subCategory) => ({
-          value: `${category.id}:${subCategory.id}`,
-          label: `${category.name} / ${subCategory.name}`,
-        })),
-      ),
+  const categoryOptions = useMemo(
+    () => categories.map((category) => ({ value: category.id, label: category.name })),
     [categories],
+  );
+
+  const subcategoryOptions = useMemo(
+    () =>
+      selectedCategory
+        ? selectedCategory.subCategories.map((subCategory) => ({
+            value: subCategory.id,
+            label: subCategory.name,
+          }))
+        : [],
+    [selectedCategory],
   );
 
   const locationDimension = filterDimensions.find((dimension) => dimension.slug === 'designer-location') ?? null;
@@ -366,9 +369,16 @@ export default function CreateDesignComposerScreen() {
                 <OptionRow
                   leading="🏷️"
                   title="Category"
-                  subtitle="Choose category and sub-category together."
-                  value={selectedCategoryLabel}
+                  subtitle="Choose the main category."
+                  value={selectedCategory?.name ?? 'Select category'}
                   onPress={() => setCategoryOpen(true)}
+                />
+                <OptionRow
+                  title="Subcategory"
+                  subtitle="Choose a subcategory within the selected category."
+                  value={selectedSubCategory?.name ?? 'Select subcategory'}
+                  disabled={!selectedCategory}
+                  onPress={selectedCategory ? () => setSubcategoryOpen(true) : undefined}
                 />
                 <OptionRow
                   leading="📍"
@@ -442,16 +452,26 @@ export default function CreateDesignComposerScreen() {
       <AppSelectSheet
         visible={categoryOpen}
         title="Category"
-        subtitle="Pick the category and sub-category together."
-        options={combinedCategoryOptions}
-        value={selectedCategoryValue}
+        subtitle="Pick the main category."
+        options={categoryOptions}
+        value={form.categoryId}
         onChange={(value) => {
-          const [categoryId, subCategoryId] = value.split(':');
-          updateField('categoryId', categoryId);
-          updateField('subCategoryId', subCategoryId);
+          updateField('categoryId', value);
+          updateField('subCategoryId', ''); // clear subcategory
         }}
         onClose={() => setCategoryOpen(false)}
         emptyMessage="No categories are configured yet."
+      />
+
+      <AppSelectSheet
+        visible={subcategoryOpen}
+        title="Subcategory"
+        subtitle="Pick a subcategory within the selected category."
+        options={subcategoryOptions}
+        value={form.subCategoryId}
+        onChange={(value) => updateField('subCategoryId', value)}
+        onClose={() => setSubcategoryOpen(false)}
+        emptyMessage="No subcategories available."
       />
 
       <AppSelectSheet
@@ -477,12 +497,12 @@ export default function CreateDesignComposerScreen() {
       <AppMultiSelectSheet
         visible={tagsOpen}
         title="Tags"
-        subtitle="Choose seeded system tags for search and discovery."
+        subtitle="Choose existing tags or add your own."
         options={tagOptions}
         values={selectedTags}
         onChange={(values) => updateField('tagsInput', values.join(', '))}
         onClose={() => setTagsOpen(false)}
-        emptyMessage="No system tags are available yet."
+        emptyMessage="No suggestions found. Type a tag and tap Add."
         maxSelected={10}
       />
 
@@ -601,9 +621,9 @@ export default function CreateDesignComposerScreen() {
 
         {!hasCustomOrderConfigurations ? (
           <Card padding="md" style={[styles.requiredCard, { borderColor: theme.colors.border }]}>
-            <AppText variant="bodyBold">Custom-order configuration required</AppText>
+            <AppText variant="bodyBold">Custom-order setup required</AppText>
             <AppText variant="captionRegular" tone="muted">
-              Create or activate a backend custom-order configuration before enabling custom orders for this design.
+              Set up custom order options before enabling custom orders for this design.
             </AppText>
           </Card>
         ) : null}
@@ -614,8 +634,8 @@ export default function CreateDesignComposerScreen() {
               title="Configuration"
               subtitle={
                 hasCustomOrderConfigurations
-                  ? 'Select a real backend custom-order configuration.'
-                  : 'No active configurations are available.'
+                  ? 'Choose custom order settings.'
+                  : 'No configurations are available.'
               }
               value={selectedCustomOrderConfiguration?.title ?? 'Select'}
               disabled={!hasCustomOrderConfigurations}
@@ -639,6 +659,21 @@ export default function CreateDesignComposerScreen() {
                 </AppText>
               )}
             </View>
+            <Input
+              label="Production time"
+              value={form.productionLeadDays}
+              onChangeText={(value) => updateField('productionLeadDays', value.replace(/[^0-9]/g, ''))}
+              keyboardType="numeric"
+              placeholder="14"
+              helperText="Days to produce the custom order."
+            />
+            <Input
+              label="Additional instructions"
+              value={form.buyerInstructionText}
+              onChangeText={(value) => updateField('buyerInstructionText', value)}
+              multiline
+              placeholder="Any special instructions for buyers..."
+            />
           </View>
         ) : null}
       </AppBottomSheet>
@@ -646,16 +681,16 @@ export default function CreateDesignComposerScreen() {
       <AppSelectSheet
         visible={customOrderConfigOpen}
         title="Custom-order configuration"
-        subtitle="Choose the active backend configuration this design will use."
+        subtitle="Choose custom order settings."
         options={customOrderConfigurations.map((configuration) => ({
           value: configuration.id,
           label: configuration.title,
-          description: `${configuration.sourceType.toLowerCase()} · ${configuration.resolvedRequiredMeasurementKeys.length} field${configuration.resolvedRequiredMeasurementKeys.length === 1 ? '' : 's'}`,
+          description: `${configuration.resolvedRequiredMeasurementKeys.length} field${configuration.resolvedRequiredMeasurementKeys.length === 1 ? '' : 's'}`,
         }))}
         value={selectedCustomOrderConfigurationId}
         onChange={(value) => selectCustomOrderConfiguration(value)}
         onClose={() => setCustomOrderConfigOpen(false)}
-        emptyMessage="No active custom-order configurations are available."
+        emptyMessage="No custom order configurations are available."
       />
 
       <AppBottomSheet
