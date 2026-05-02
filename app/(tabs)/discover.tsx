@@ -13,12 +13,13 @@ import { StableImage } from '@/components/ui/StableImage';
 import { AppText } from '@/components/ui/AppText';
 import { Skeleton, SkeletonAvatar, SkeletonText } from '@/components/ui/Skeleton';
 import { getMarketFeed, getMarketFilterChips, type MarketFilterChip } from '@/src/api/MarketApi';
-import { LAYOUT, tokens } from '@/src/styles/tokens';
+import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import type { MarketItem } from '@/src/types/market';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
+import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 
 const toCompactCount = (value?: number | null) => {
   const n = typeof value === 'number' ? value : 0;
@@ -261,7 +262,7 @@ export default function DiscoverScreen() {
   const cardBg = isDark ? theme.colors.surfaceAlt : theme.colors.surface;
   const cardBorder = theme.colors.border;
   const pillBg = isDark ? theme.colors.surfaceAlt : theme.colors.surfaceAlt;
-  const overlayScrollPadding = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom, [insets.bottom]);
+  const overlayScrollPadding = useMemo(() => NATIVE_ISLAND_NAV.contentClearance + insets.bottom, [insets.bottom]);
 
   const renderItem = useCallback(
     ({ item }: { item: MarketItem }) => {

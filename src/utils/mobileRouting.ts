@@ -2,6 +2,7 @@ import type { Href } from 'expo-router';
 
 import type { MobileNotification } from '@/src/api/NotificationsApi';
 import type { SearchItem } from '@/src/types/search';
+import type { MessageContextParams } from '@/src/types/messaging';
 
 type RouterTarget = Href;
 
@@ -233,7 +234,7 @@ export function routeForNotification(notification: MobileNotification): RouterTa
     if (path.startsWith('/orders')) {
       return { pathname: '/(tabs)/me', params: { tab: 'Orders' } } as Href;
     }
-    if (path.startsWith('/messages')) {
+    if (path.startsWith('/messages') || path.startsWith('/inbox')) {
       return '/(tabs)/inbox' as Href;
     }
     if (path.startsWith('/settings')) {
@@ -252,4 +253,85 @@ export function routeForNotification(notification: MobileNotification): RouterTa
   }
 
   return '/notifications' as Href;
+}
+
+/**
+ * Normalize a notification or deep-link payload into message context params.
+ * Handles notification payload fields: threadId, conversationId, messageId, orderId,
+ * customOrderId, brandId, customerId, actorUserId, etc.
+ */
+export function normalizeNotificationContext(
+  payload: Record<string, unknown> | null | undefined,
+  contextOverrides: MessageContextParams = {},
+): MessageContextParams {
+  if (!payload) {
+    return { ...contextOverrides };
+  }
+
+  const threadId = typeof payload.threadId === 'string' ? payload.threadId : null;
+  const conversationId = typeof payload.conversationId === 'string' ? payload.conversationId : null;
+  const messageId = typeof payload.messageId === 'string' ? payload.messageId : null;
+  const orderId = typeof payload.orderId === 'string' ? payload.orderId : null;
+  const customOrderId = typeof payload.customOrderId === 'string' ? payload.customOrderId : null;
+  const brandId = typeof payload.brandId === 'string' ? payload.brandId : null;
+  const customerId = typeof payload.customerId === 'string' ? payload.customerId : null;
+  const designId = typeof payload.designId === 'string' ? payload.designId : null;
+  const productId = typeof payload.productId === 'string' ? payload.productId : null;
+
+  // Do not route unsupported design/product context as valid thread context
+  // These should be caught by the ChatThread unsupported state
+  const hasUnsupportedContext = Boolean(designId || productId);
+
+  return {
+    ...contextOverrides,
+    threadId,
+    conversationId,
+    messageId,
+    orderId,
+    customOrderId,
+    brandId,
+    customerId,
+    designId,
+    productId,
+    _hasUnsupportedContext: hasUnsupportedContext,
+  };
+}
+
+/**
+ * Determine the target route for a message notification payload.
+ * Prioritizes threadId/conversationId for direct navigation, then falls back
+ * to resolver-capable params (messageId, orderId, customOrderId, brandId, etc.)
+ * Returns null for generic message notifications without context.
+ */
+export function getMessageNotificationTarget(
+  payload: Record<string, unknown> | null | undefined,
+): {
+  type: 'thread' | 'inbox' | 'unsupported' | null;
+  params: MessageContextParams;
+} | null {
+  const context = normalizeNotificationContext(payload);
+
+  // Check for unsupported design/product context first
+  if (context._hasUnsupportedContext) {
+    return { type: 'unsupported', params: context };
+  }
+
+  const { threadId, conversationId, messageId, orderId, customOrderId, brandId, customerId } = context;
+
+  // Direct thread navigation
+  if (threadId || conversationId) {
+    return { type: 'thread', params: context };
+  }
+
+  // Context that can be resolved by the ChatThread resolver
+  if (messageId || orderId || customOrderId || brandId || customerId) {
+    return { type: 'thread', params: context };
+  }
+
+  // Generic message notification without specific context - route to inbox
+  if (payload && typeof payload.type === 'string' && String(payload.type).toLowerCase().includes('message')) {
+    return { type: 'inbox', params: context };
+  }
+
+  return null;
 }

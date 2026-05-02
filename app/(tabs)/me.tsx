@@ -13,10 +13,11 @@ import { StableImage } from '@/components/ui/StableImage';
 import { ProfileApi, type Order, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
-import { LAYOUT, tokens } from '@/src/styles/tokens';
+import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { resolveIdentity } from '@/src/utils/identity';
+import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 
@@ -517,7 +518,7 @@ export default function BuyerProfileScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + LAYOUT.TAB_BAR_HEIGHT + tokens.spacing.xl }]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + NATIVE_ISLAND_NAV.contentClearance }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primary} />}
       >
         <View style={styles.topBar}>

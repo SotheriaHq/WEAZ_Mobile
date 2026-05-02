@@ -6,7 +6,7 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useNavigation } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -20,6 +20,9 @@ import { ToastProvider } from '@/src/toast/ToastContext';
 import { useAuth } from '@/src/auth/AuthContext';
 import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
 import { FallbackLoaderScreen } from '@/components/ui/AppLoader';
+import * as Linking from 'expo-linking';
+
+import { configurePushNotifications, handleInitialNotification } from '@/src/utils/notificationRouting';
 
 
 export {
@@ -97,11 +100,67 @@ export default function RootLayout() {
   });
   const [themeBootstrapReady, setThemeBootstrapReady] = useState(false);
   const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode>('auto');
+  const navigation = useNavigation();
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
+
+  // Configure push notifications on app start
+  useEffect(() => {
+    configurePushNotifications().catch((error) => {
+      console.error('Failed to configure push notifications:', error);
+    });
+  }, []);
+
+  // Handle initial notification (cold start from notification tap)
+  useEffect(() => {
+    if (!loaded) return;
+
+    const initializeNotificationHandling = async () => {
+      try {
+        // Check if app was opened from a notification
+        const { notification, error } = await handleInitialNotification();
+        if (error) {
+          console.error('Error handling initial notification:', error);
+        }
+        if (notification) {
+          // Small delay to ensure navigation is ready
+          setTimeout(() => {
+            const { handleNotification } = require('@/src/utils/notificationRouting');
+            handleNotification(notification);
+          }, 100);
+        }
+
+        // Set up deep link listener
+        const handleUrl = ({ url }: { url: string }) => {
+          const { handleDeepLink } = require('@/src/utils/notificationRouting');
+          handleDeepLink(url);
+        };
+
+        // Handle URL when app is already running
+        Linking.addEventListener('url', handleUrl);
+
+        // Check for initial URL (app opened from link while closed)
+        const initialUrl = await Linking.getInitialURL();
+        if (initialUrl) {
+          setTimeout(() => {
+            const { handleDeepLink } = require('@/src/utils/notificationRouting');
+            handleDeepLink(initialUrl);
+          }, 100);
+        }
+
+        return () => {
+          Linking.removeEventListener('url', handleUrl);
+        };
+      } catch (error) {
+        console.error('Failed to initialize notification handling:', error);
+      }
+    };
+
+    void initializeNotificationHandling();
+  }, [loaded]);
 
   useEffect(() => {
     let isMounted = true;
@@ -165,6 +224,7 @@ function RootStack() {
       <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
       <Stack.Screen name="catalog" options={{ headerShown: false }} />
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
+      <Stack.Screen name="messages" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="search" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="products" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="studio" options={{ headerShown: false, animation: 'slide_from_right' }} />

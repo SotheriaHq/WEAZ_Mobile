@@ -8,7 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { GLASS, LAYOUT, tokens, type AppTheme } from '@/src/styles/tokens';
+import { GLASS, tokens, type AppTheme } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
 import { Chip } from '@/components/ui/Chip';
@@ -28,6 +28,7 @@ import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
 import { prefetchResolvedImageAsset, resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
+import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 
 /**
  * Module-level feed cache — stale-while-revalidate.
@@ -680,7 +681,7 @@ export default function HomeScreen() {
 
   const pageHeight = useMemo(() => {
     if (feedViewportHeight > 0) return Math.max(1, Math.round(feedViewportHeight));
-    return Math.max(1, Math.round(windowHeight - insets.top - LAYOUT.TAB_BAR_HEIGHT - insets.bottom));
+    return Math.max(1, Math.round(windowHeight - insets.top - NATIVE_ISLAND_NAV.contentClearance - insets.bottom));
   }, [feedViewportHeight, insets.bottom, insets.top, windowHeight]);
 
   const activeFilter = useMemo(
@@ -753,7 +754,7 @@ export default function HomeScreen() {
     () => `${activeTag ?? 'all'}-${items.map((item) => item.id).join('|')}-${pageHeight}`,
     [activeTag, items, pageHeight],
   );
-  const bottomClearance = useMemo(() => LAYOUT.TAB_BAR_HEIGHT + insets.bottom + 18, [insets.bottom]);
+  const bottomClearance = useMemo(() => NATIVE_ISLAND_NAV.contentClearance + insets.bottom, [insets.bottom]);
   const overlayScrollPadding = bottomClearance;
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
 

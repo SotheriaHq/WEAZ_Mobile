@@ -128,7 +128,7 @@ export function CatalogIslandBottomNav() {
       { key: 'designs', label: 'Designs', emoji: '🎨' },
       { key: 'market', label: 'Market', emoji: '🧭' },
       ...(isBrand ? [{ key: 'store', label: 'Store', emoji: '🛍️' }] : []),
-      { key: 'inbox', label: 'Inbox', emoji: '✉️' },
+      { key: 'inbox', label: 'Messages', emoji: '✉️' },
       {
         key: 'profile',
         label: 'Profile',
@@ -200,4 +200,3 @@ export function CatalogIslandBottomNav() {
 }
 
 export default CatalogIslandBottomNav;
-

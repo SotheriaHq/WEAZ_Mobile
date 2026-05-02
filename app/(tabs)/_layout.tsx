@@ -1,18 +1,17 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { BlurView } from 'expo-blur';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, BackHandler, Platform, useWindowDimensions } from 'react-native';
 import { Tabs, router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   getNativeIslandLayout,
-  NativeIslandTabIcon,
+  NativeIslandBottomNav,
   NATIVE_ISLAND_NAV,
+  type NativeIslandNavItem,
 } from '@/components/navigation/NativeIslandBottomNav';
 import { ProfileMenuDropup } from '@/components/navigation/ProfileMenuDropup';
 import { useAuth } from '@/src/auth/AuthContext';
 import { NotificationsApi } from '@/src/api/NotificationsApi';
-import { GLASS } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import {
@@ -22,8 +21,6 @@ import {
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
 
-const TAB_BAR_HEIGHT = NATIVE_ISLAND_NAV.height;
-const TAB_BAR_RADIUS = NATIVE_ISLAND_NAV.radius;
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
 export default function TabLayout() {
@@ -42,10 +39,7 @@ export default function TabLayout() {
 
   const isBrand = user?.type === 'BRAND';
   const canOpenProfileMenu = status === 'authenticated';
-  const active = theme.colors.primary;
-  const inactive = theme.colors.textMuted;
-  const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
-  const { bottomOffset: tabBarBottomOffset, sideOffset: tabBarSideOffset } = getNativeIslandLayout(
+  const { bottomOffset: islandBottomOffset } = getNativeIslandLayout(
     windowWidth,
     insets.bottom,
   );
@@ -56,6 +50,22 @@ export default function TabLayout() {
     pathname === '/inbox' ||
     pathname === '/me' ||
     pathname === '/(tabs)';
+
+  const activeIslandKey = useMemo(() => {
+    if (profileMenuVisible || pathname === '/me' || pathname === '/me-edit') {
+      return 'profile';
+    }
+    if (pathname === '/discover') {
+      return 'market';
+    }
+    if (pathname === '/store') {
+      return 'store';
+    }
+    if (pathname === '/inbox') {
+      return 'inbox';
+    }
+    return 'designs';
+  }, [pathname, profileMenuVisible]);
 
   const refreshUnreadNotificationCount = useCallback(async () => {
     if (status !== 'authenticated') {
@@ -88,13 +98,12 @@ export default function TabLayout() {
     router.push((isBrand ? '/catalog' : '/(tabs)/me') as any);
   }, [clearProfileTabTimer, isBrand]);
 
-  const handleProfileTabPress = useCallback(
-    (event: { preventDefault: () => void }) => {
+  const handleProfilePress = useCallback(
+    () => {
       if (!canOpenProfileMenu) {
+        router.replace('/(tabs)/me' as any);
         return;
       }
-
-      event.preventDefault();
 
       const now = Date.now();
       const isSecondTap =
@@ -115,6 +124,47 @@ export default function TabLayout() {
       }, PROFILE_TAB_DOUBLE_TAP_WINDOW_MS);
     },
     [canOpenProfileMenu, clearProfileTabTimer, navigateToProfile],
+  );
+
+  const items = useMemo<NativeIslandNavItem[]>(
+    () => [
+      { key: 'designs', label: 'Designs', emoji: '🎨', active: activeIslandKey === 'designs' },
+      { key: 'market', label: 'Market', emoji: '🧭', active: activeIslandKey === 'market' },
+      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: '🛍️', active: activeIslandKey === 'store' }] : []),
+      { key: 'inbox', label: 'Messages', emoji: '✉️', active: activeIslandKey === 'inbox' },
+      {
+        key: 'profile',
+        label: 'Profile',
+        emoji: '👤',
+        active: activeIslandKey === 'profile',
+        badge: notificationCountReady ? unreadNotificationCount : undefined,
+      },
+    ],
+    [activeIslandKey, isBrand, notificationCountReady, unreadNotificationCount],
+  );
+
+  const handleSelect = useCallback(
+    (item: NativeIslandNavItem) => {
+      if (item.key === 'profile') {
+        handleProfilePress();
+        return;
+      }
+
+      setProfileMenuVisible(false);
+      clearProfileTabTimer();
+      lastProfileTabPressAtRef.current = 0;
+
+      if (item.key === 'designs') {
+        router.replace('/' as any);
+      } else if (item.key === 'market') {
+        router.replace('/(tabs)/discover' as any);
+      } else if (item.key === 'store') {
+        router.replace('/(tabs)/store' as any);
+      } else if (item.key === 'inbox') {
+        router.replace('/(tabs)/inbox' as any);
+      }
+    },
+    [clearProfileTabTimer, handleProfilePress],
   );
 
   useEffect(() => {
@@ -195,56 +245,8 @@ export default function TabLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarShowLabel: false,
-          tabBarActiveTintColor: active,
-          tabBarInactiveTintColor: inactive,
-          tabBarBackground: () => (
-            <View style={styles.tabBarBg}>
-              <BlurView
-                tint={scheme === 'dark' ? 'dark' : 'light'}
-                intensity={glass.blur}
-                style={StyleSheet.absoluteFillObject}
-              />
-              <View
-                style={[
-                  StyleSheet.absoluteFillObject,
-                  styles.tabBarGlassFill,
-                  {
-                    backgroundColor: glass.bgStrong,
-                    borderColor: theme.colors.border,
-                    borderRadius: TAB_BAR_RADIUS,
-                  },
-                ]}
-              />
-            </View>
-          ),
           tabBarStyle: {
-            position: 'absolute',
-            left: tabBarSideOffset,
-            right: tabBarSideOffset,
-            bottom: tabBarBottomOffset,
-            alignSelf: 'center',
-            backgroundColor: 'transparent',
-            borderTopWidth: 0,
-            elevation: 10,
-            shadowColor: theme.colors.bg,
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: scheme === 'dark' ? 0.24 : 0.12,
-            shadowRadius: 18,
-            height: TAB_BAR_HEIGHT,
-            paddingTop: 0,
-            paddingBottom: 0,
-            paddingHorizontal: 4,
-            overflow: 'visible',
-            borderRadius: TAB_BAR_RADIUS,
-            zIndex: 100,
-          },
-          tabBarItemStyle: {
-            flex: 1,
-            paddingHorizontal: 0,
-            paddingVertical: 0,
-            alignItems: 'center',
-            justifyContent: 'center',
+            display: 'none',
           },
         }}
       >
@@ -252,9 +254,6 @@ export default function TabLayout() {
           name="index"
           options={{
             title: 'Designs',
-            tabBarIcon: ({ focused }) => (
-              <NativeIslandTabIcon label="Designs" emoji="🎨" focused={focused} />
-            ),
           }}
         />
 
@@ -262,9 +261,6 @@ export default function TabLayout() {
           name="discover"
           options={{
             title: 'Market',
-            tabBarIcon: ({ focused }) => (
-              <NativeIslandTabIcon label="Market" emoji="🧭" focused={focused} />
-            ),
           }}
         />
 
@@ -273,9 +269,6 @@ export default function TabLayout() {
           options={{
             title: 'Store',
             href: isBrand ? undefined : null,
-            tabBarIcon: ({ focused }) => (
-              <NativeIslandTabIcon label="Store" emoji="🛍️" focused={focused} />
-            ),
           }}
         />
 
@@ -290,28 +283,14 @@ export default function TabLayout() {
         <Tabs.Screen
           name="inbox"
           options={{
-            title: 'Inbox',
-            tabBarIcon: ({ focused }) => (
-              <NativeIslandTabIcon label="Inbox" emoji="✉️" focused={focused} />
-            ),
+            title: 'Messages',
           }}
         />
 
         <Tabs.Screen
           name="me"
-          listeners={{
-            tabPress: handleProfileTabPress,
-          }}
           options={{
             title: 'Profile',
-            tabBarIcon: ({ focused }) => (
-              <NativeIslandTabIcon
-                label="Profile"
-                emoji="👤"
-                focused={focused || profileMenuVisible}
-                badge={notificationCountReady ? unreadNotificationCount : undefined}
-              />
-            ),
           }}
         />
 
@@ -329,6 +308,8 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
+
+      <NativeIslandBottomNav items={items} onSelect={handleSelect} />
 
       <ProfileMenuDropup
         visible={profileMenuVisible}
@@ -355,21 +336,9 @@ export default function TabLayout() {
         }}
         scheme={scheme}
         theme={theme}
-        bottomOffset={TAB_BAR_HEIGHT + tabBarBottomOffset + 4}
+        bottomOffset={NATIVE_ISLAND_NAV.height + islandBottomOffset + 4}
         user={user}
       />
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  tabBarBg: {
-    flex: 1,
-    borderRadius: TAB_BAR_RADIUS,
-    overflow: 'hidden',
-  },
-  tabBarGlassFill: {
-    borderRadius: TAB_BAR_RADIUS,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-});

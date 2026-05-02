@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -9,7 +9,6 @@ import type { WebViewMessageEvent, WebViewNavigation } from 'react-native-webvie
 
 import { AppText } from '@/components/ui/AppText';
 import { AppBackButton } from '@/components/ui/AppBackButton';
-import { LoaderBlock } from '@/components/ui/AppLoader';
 import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
 import { IconButton } from '@/components/ui/IconButton';
@@ -19,7 +18,6 @@ import { env } from '@/src/config/env';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
 import {
-  appendStudioEmbeddedParams,
   buildStudioPath,
   buildStudioWebUrl,
   getStudioOriginWhitelist,
@@ -173,7 +171,6 @@ function StudioProfileMenu({
   user,
   topOffset,
   onClose,
-  onOpenStudio,
   onOpenNativePath,
   onOpenHelp,
   onUnavailable,
@@ -183,7 +180,6 @@ function StudioProfileMenu({
   user: AuthUser | null;
   topOffset: number;
   onClose: () => void;
-  onOpenStudio: () => void;
   onOpenNativePath: (path: string) => void;
   onOpenHelp: () => void;
   onUnavailable: (message: string) => void;
@@ -202,27 +198,11 @@ function StudioProfileMenu({
 
   const items: StudioMenuItem[] = [
     {
-      key: 'studio',
-      emoji: '🧵',
-      label: 'Studio',
-      onPress: onOpenStudio,
-    },
-    {
       key: 'profile',
       emoji: '👤',
       label: 'Profile',
       onPress: () => onOpenNativePath('/profile'),
     },
-    ...(user?.type === 'BRAND'
-      ? [
-          {
-            key: 'view-store',
-            emoji: '🏬',
-            label: 'View Store',
-            onPress: () => onOpenNativePath('/profile?tab=Store'),
-          },
-        ]
-      : []),
     {
       key: 'settings',
       emoji: '⚙️',
@@ -230,14 +210,6 @@ function StudioProfileMenu({
       description: 'Open from the main app settings.',
       disabled: true,
       onPress: () => onUnavailable('Settings is not available inside Studio yet.'),
-    },
-    {
-      key: 'language',
-      emoji: '🌍',
-      label: 'Language',
-      description: 'Open from the main app settings.',
-      disabled: true,
-      onPress: () => onUnavailable('Language settings are not available inside Studio yet.'),
     },
     {
       key: 'location',
@@ -258,12 +230,6 @@ function StudioProfileMenu({
       emoji: '📦',
       label: 'My Orders',
       onPress: () => onOpenNativePath('/profile?tab=orders'),
-    },
-    {
-      key: 'saved',
-      emoji: '🤍',
-      label: 'Saved',
-      onPress: () => onOpenNativePath('/profile?tab=saved'),
     },
     {
       key: 'sign-out',
@@ -612,17 +578,6 @@ export default function StudioWebViewScreen() {
     [closeStudio, openNavigationTarget, toast],
   );
 
-  const openStudioPathInWebView = useCallback(
-    (path: string) => {
-      const nextPath = appendStudioEmbeddedParams(path, scheme);
-      webViewRef.current?.injectJavaScript(`
-        window.location.assign(${JSON.stringify(nextPath)});
-        true;
-      `);
-    },
-    [scheme],
-  );
-
   const openSearch = useCallback(() => {
     if (loadState === 'ready' && webViewRef.current) {
       webViewRef.current.injectJavaScript(`
@@ -658,7 +613,7 @@ export default function StudioWebViewScreen() {
     });
   }, [signOut]);
 
-  const studioShellBackground = theme.colors.bg;
+  const studioShellBackground = theme.colors.surface;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: studioShellBackground }]}>
@@ -725,25 +680,24 @@ export default function StudioWebViewScreen() {
             domStorageEnabled
             allowsBackForwardNavigationGestures
             setSupportMultipleWindows={false}
-            style={styles.webView}
+            style={[styles.webView, { backgroundColor: studioShellBackground }]}
           />
         ) : null}
 
         {loadState === 'booting' || loadState === 'loading' ? (
           <View style={[styles.loadingOverlay, { backgroundColor: studioShellBackground }]}>
-            <LoaderBlock
-              title="Studio"
-              message="Preparing secure brand session"
-              size={72}
-              minHeight={220}
-              themeOverride={{ background: studioShellBackground }}
-              style={styles.loadingBlock}
-            />
+            <View style={styles.loadingContent}>
+              <ActivityIndicator size="large" color={theme.colors.primary} />
+              <AppText variant="h3">Studio</AppText>
+              <AppText variant="body" tone="muted" style={styles.centerText}>
+                Preparing secure brand session
+              </AppText>
+            </View>
           </View>
         ) : null}
 
         {loadState === 'error' ? (
-          <View style={[styles.overlay, { backgroundColor: theme.colors.bg }]}>
+          <View style={[styles.overlay, { backgroundColor: studioShellBackground }]}>
             <View style={[styles.loaderBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
               <AppText variant="h3">Studio unavailable</AppText>
               <AppText variant="body" tone="muted" style={styles.centerText}>
@@ -763,10 +717,6 @@ export default function StudioWebViewScreen() {
         user={user}
         topOffset={insets.top + 68}
         onClose={() => setProfileMenuVisible(false)}
-        onOpenStudio={() => {
-          setProfileMenuVisible(false);
-          openStudioPathInWebView('/studio');
-        }}
         onOpenNativePath={openProfileMenuPath}
         onOpenHelp={openHelp}
         onUnavailable={showUnavailable}
@@ -786,7 +736,6 @@ const styles = StyleSheet.create({
   },
   webView: {
     flex: 1,
-    backgroundColor: 'transparent',
   },
   headerActions: {
     flexDirection: 'row',
@@ -812,10 +761,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.xl,
     paddingBottom: tokens.spacing.xl,
   },
-  loadingBlock: {
+  loadingContent: {
     width: '100%',
-    maxWidth: 340,
-    borderRadius: tokens.radius.xl,
+    maxWidth: 300,
+    alignItems: 'center',
+    gap: tokens.spacing.md,
   },
   menuBackdrop: {
     ...StyleSheet.absoluteFillObject,
