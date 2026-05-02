@@ -22,7 +22,8 @@ import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
 import { FallbackLoaderScreen } from '@/components/ui/AppLoader';
 import * as Linking from 'expo-linking';
 
-import { configurePushNotifications, handleInitialNotification } from '@/src/utils/notificationRouting';
+import { configurePushNotifications, handleInitialNotification, setupNotificationListeners } from '@/src/utils/notificationRouting';
+import { useNotificationRouting } from '@/src/utils/notificationRouting';
 
 
 export {
@@ -69,12 +70,79 @@ function BootSplash({
   );
 }
 
+function NotificationSetup() {
+  const { handleNotification, handleDeepLink } = useNotificationRouting();
+
+  useEffect(() => {
+    // Configure push notifications on app start
+    configurePushNotifications().catch((error) => {
+      console.warn('Failed to configure push notifications:', error);
+    });
+
+    // Handle initial notification (cold start from notification tap)
+    const initializeNotificationHandling = async () => {
+      try {
+        // Check if app was opened from a notification
+        const { notification, error } = await handleInitialNotification();
+        if (error) {
+          console.warn('Error handling initial notification:', error);
+        }
+        if (notification) {
+          // Small delay to ensure navigation is ready
+          setTimeout(() => {
+            handleNotification(notification);
+          }, 100);
+        }
+
+        // Set up notification listeners
+        const unsubscribe = setupNotificationListeners(
+          (notification) => {
+            // Handle foreground notification
+            console.log('Notification received while foreground:', notification);
+          },
+          (response) => {
+            // Handle notification tap
+            handleNotification(response.notification);
+          },
+        );
+
+        // Set up deep link listener
+        const handleUrl = ({ url }: { url: string }) => {
+          handleDeepLink(url);
+        };
+
+        // Handle URL when app is already running
+        const urlSubscription = Linking.addEventListener('url', handleUrl);
+
+        // Check for initial URL (app opened from link while closed)
+        const initialUrl = await Linking.getInitialURL();
+        if (initialUrl) {
+          setTimeout(() => {
+            handleDeepLink(initialUrl);
+          }, 100);
+        }
+
+        return () => {
+          unsubscribe();
+          urlSubscription.remove();
+        };
+      } catch (error) {
+        console.warn('Failed to initialize notification handling:', error);
+      }
+    };
+
+    void initializeNotificationHandling();
+  }, [handleNotification, handleDeepLink]);
+
+  return null;
+}
+
 function RootBootstrap({
   fontsLoaded,
 }: {
   fontsLoaded: boolean;
 }) {
-  const { ready: themeReady, theme } = useTheme();
+  const { ready: themeReady, scheme, theme } = useTheme();
   const { status } = useAuth();
   const bootReady = fontsLoaded && themeReady && status !== 'loading';
 
@@ -84,6 +152,7 @@ function RootBootstrap({
 
   return (
     <View style={[styles.appRoot, { backgroundColor: theme.colors.bg }]} onLayout={() => void SplashScreen.hideAsync()}>
+      <NotificationSetup />
       <RootStack />
     </View>
   );
@@ -107,60 +176,7 @@ export default function RootLayout() {
     if (error) throw error;
   }, [error]);
 
-  // Configure push notifications on app start
-  useEffect(() => {
-    configurePushNotifications().catch((error) => {
-      console.error('Failed to configure push notifications:', error);
-    });
-  }, []);
 
-  // Handle initial notification (cold start from notification tap)
-  useEffect(() => {
-    if (!loaded) return;
-
-    const initializeNotificationHandling = async () => {
-      try {
-        // Check if app was opened from a notification
-        const { notification, error } = await handleInitialNotification();
-        if (error) {
-          console.error('Error handling initial notification:', error);
-        }
-        if (notification) {
-          // Small delay to ensure navigation is ready
-          setTimeout(() => {
-            const { handleNotification } = require('@/src/utils/notificationRouting');
-            handleNotification(notification);
-          }, 100);
-        }
-
-        // Set up deep link listener
-        const handleUrl = ({ url }: { url: string }) => {
-          const { handleDeepLink } = require('@/src/utils/notificationRouting');
-          handleDeepLink(url);
-        };
-
-        // Handle URL when app is already running
-        const urlSubscription = Linking.addEventListener('url', handleUrl);
-
-        // Check for initial URL (app opened from link while closed)
-        const initialUrl = await Linking.getInitialURL();
-        if (initialUrl) {
-          setTimeout(() => {
-            const { handleDeepLink } = require('@/src/utils/notificationRouting');
-            handleDeepLink(initialUrl);
-          }, 100);
-        }
-
-        return () => {
-          urlSubscription.remove();
-        };
-      } catch (error) {
-        console.error('Failed to initialize notification handling:', error);
-      }
-    };
-
-    void initializeNotificationHandling();
-  }, [loaded]);
 
   useEffect(() => {
     let isMounted = true;

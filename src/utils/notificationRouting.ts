@@ -4,6 +4,7 @@ import * as Linking from 'expo-linking';
 // @ts-ignore - expo-notifications may not be installed yet
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
@@ -181,27 +182,19 @@ export async function configurePushNotifications(): Promise<{
   error?: string;
 }> {
   try {
-    // Check if notifications are supported
-    const isSupported = await Notifications.isAvailableAsync();
-    if (!isSupported) {
-      return { error: 'Push notifications not supported on this device' };
-    }
+    const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
     // Get existing permission
     const existingSettings = await Notifications.getPermissionsAsync();
     let finalStatus = existingSettings.status;
 
     // Request permission if not granted
-    if (
-      finalStatus !== Notifications.PermissionStatus.GRANTED &&
-      finalStatus !== Notifications.PermissionStatus.PROVISIONAL
-    ) {
+    if (finalStatus !== Notifications.PermissionStatus.GRANTED) {
       const { status } = await Notifications.requestPermissionsAsync({
         ios: {
           allowAlert: true,
           allowBadge: true,
           allowSound: true,
-          allowAnnouncements: true,
         },
         android: {
           allowAlert: true,
@@ -219,7 +212,7 @@ export async function configurePushNotifications(): Promise<{
       return { error: 'Permission for push notifications not granted' };
     }
 
-    // Get push token
+    // Get push token - skip in Expo Go on Android SDK 53+
     let token: string | undefined;
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
@@ -229,16 +222,25 @@ export async function configurePushNotifications(): Promise<{
       });
     }
 
-    const projectId =
-      __DEV__ && process.env.EXPO_PUBLIC_FCM_SENDER_ID
-        ? process.env.EXPO_PUBLIC_FCM_SENDER_ID
-        : process.env.EXPO_PUBLIC_FCM_SENDER_ID;
+    if (!isExpoGo || Platform.OS !== 'android') {
+      const projectId =
+        __DEV__ && process.env.EXPO_PUBLIC_FCM_SENDER_ID
+          ? process.env.EXPO_PUBLIC_FCM_SENDER_ID
+          : process.env.EXPO_PUBLIC_FCM_SENDER_ID;
 
-    if (projectId) {
-      const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync({
-        projectId,
-      });
-      token = expoPushToken;
+      if (projectId) {
+        try {
+          const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync({
+            projectId,
+          });
+          token = expoPushToken;
+        } catch (tokenError) {
+          console.warn('Failed to get push token:', tokenError);
+          // Continue without token
+        }
+      }
+    } else {
+      console.log('Skipping push token registration in Expo Go on Android');
     }
 
     // Configure notification handlers
@@ -247,12 +249,14 @@ export async function configurePushNotifications(): Promise<{
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
       }),
     });
 
     return { token };
   } catch (error) {
-    console.error('Push notification configuration error:', error);
+    console.warn('Push notification configuration error:', error);
     return { error: 'Failed to configure push notifications' };
   }
 }
@@ -269,7 +273,7 @@ export async function handleInitialNotification(): Promise<{
     const response = await Notifications.getLastNotificationResponseAsync();
     return { notification: response?.notification || null };
   } catch (error) {
-    console.error('Initial notification error:', error);
+    console.warn('Initial notification error:', error);
     return { notification: null, error: 'Failed to get initial notification' };
   }
 }
@@ -282,19 +286,24 @@ export function setupNotificationListeners(
   onNotificationReceived: (notification: Notifications.Notification) => void,
   onNotificationResponse: (response: Notifications.NotificationResponse) => void,
 ) {
-  // Listener for when notification is received while app is foreground
-  const receivedSubscription = Notifications.addNotificationReceivedListener(
-    onNotificationReceived,
-  );
+  try {
+    // Listener for when notification is received while app is foreground
+    const receivedSubscription = Notifications.addNotificationReceivedListener(
+      onNotificationReceived,
+    );
 
-  // Listener for when user taps on notification
-  const responseSubscription = Notifications.addNotificationResponseReceivedListener(
-    onNotificationResponse,
-  );
+    // Listener for when user taps on notification
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(
+      onNotificationResponse,
+    );
 
-  // Return unsubscribe function
-  return () => {
-    receivedSubscription.remove();
-    responseSubscription.remove();
-  };
+    // Return unsubscribe function
+    return () => {
+      receivedSubscription.remove();
+      responseSubscription.remove();
+    };
+  } catch (error) {
+    console.warn('Failed to set up notification listeners:', error);
+    return () => {};
+  }
 }
