@@ -64,13 +64,13 @@ export function NativeIslandTabIcon({
   const chipStyle = [
     styles.tabChip,
     focused
-      ? {
+        ? {
           backgroundColor: theme.colors.primarySoft,
           shadowColor: theme.colors.primary,
           shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.16,
-          shadowRadius: 12,
-          elevation: 5,
+          shadowOpacity: 0.24,
+          shadowRadius: 16,
+          elevation: 6,
         }
       : styles.tabChipInactive,
   ];
@@ -135,7 +135,7 @@ export function NativeIslandBottomNav({ items, onSelect }: NativeIslandBottomNav
             height: NATIVE_ISLAND_NAV.height,
             borderRadius: NATIVE_ISLAND_NAV.radius,
             shadowColor: theme.colors.bg,
-            shadowOpacity: scheme === 'dark' ? 0.24 : 0.12,
+            shadowOpacity: scheme === 'dark' ? 0.32 : 0.16,
           },
         ]}
       >
@@ -186,9 +186,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     backgroundColor: 'transparent',
     borderTopWidth: 0,
-    elevation: 10,
+    elevation: 12,
     shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 18,
+    shadowRadius: 24,
     overflow: 'hidden',
     zIndex: 100,
   },
