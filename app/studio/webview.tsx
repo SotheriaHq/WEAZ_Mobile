@@ -658,6 +658,32 @@ export default function StudioWebViewScreen() {
             onNavigationStateChange={handleNavigationStateChange}
             onShouldStartLoadWithRequest={handleShouldStartLoad}
             onMessage={handleMessage}
+            injectedJavaScript={`
+              (function() {
+                var originalPushState = history.pushState;
+                var originalReplaceState = history.replaceState;
+                history.pushState = function(state, title, url) {
+                  originalPushState.call(this, state, title, url);
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'ROUTE_CHANGED',
+                    path: url || window.location.pathname + window.location.search + window.location.hash
+                  }));
+                };
+                history.replaceState = function(state, title, url) {
+                  originalReplaceState.call(this, state, title, url);
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'ROUTE_CHANGED',
+                    path: url || window.location.pathname + window.location.search + window.location.hash
+                  }));
+                };
+                window.addEventListener('popstate', function(event) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'ROUTE_CHANGED',
+                    path: window.location.pathname + window.location.search + window.location.hash
+                  }));
+                });
+              })();
+            `}
             onLoadStart={() => setLoadState((current) => (current === 'ready' ? current : 'loading'))}
             onError={() => {
               setErrorMessage('Studio could not load. Check your connection and try again.');

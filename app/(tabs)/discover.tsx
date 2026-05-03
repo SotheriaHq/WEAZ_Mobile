@@ -170,7 +170,7 @@ export default function DiscoverScreen() {
     () => filterChips.find((chip) => chip.id === selectedChipId)?.tag ?? null,
     [filterChips, selectedChipId],
   );
-  const visibleFilterChips = useMemo(() => filterChips.filter((chip) => chip.id !== 'all'), [filterChips]);
+  const visibleFilterChips = useMemo(() => filterChips, [filterChips]);
 
   const loadFirstPage = useCallback(async () => {
     devLog('MarketFeed', 'Load first page start', { activeTag });
