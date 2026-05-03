@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -8,6 +8,7 @@ import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { Chip } from '@/components/ui/Chip';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
@@ -38,6 +39,7 @@ export default function CreateDesignPreviewScreen() {
     tags,
     save,
     saveState,
+    canSaveDraft,
     canPublish,
     activeDesignId,
     isDraft,
@@ -49,6 +51,7 @@ export default function CreateDesignPreviewScreen() {
     filterDimensions,
   } = useDesignEditor();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deletePhrase, setDeletePhrase] = React.useState('');
 
@@ -66,7 +69,7 @@ export default function CreateDesignPreviewScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <AppBackButton fallbackHref="/catalog/create-design/composer" />
         <View style={styles.headerCopy}>
@@ -77,7 +80,7 @@ export default function CreateDesignPreviewScreen() {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: tokens.spacing.xl }]}>
         {assets[0] ? (
           <StableImage uri={assets[0].remoteUrl ?? assets[0].uri} containerStyle={styles.heroImage} imageStyle={styles.heroImage} />
         ) : (
@@ -118,10 +121,32 @@ export default function CreateDesignPreviewScreen() {
           <SummaryRow label="Location" value={selectedLocation?.name ?? 'Not selected'} />
           <SummaryRow label="Price" value={form.minPrice || form.maxPrice ? `NGN ${form.minPrice || '0'} - NGN ${form.maxPrice || '0'}` : 'Not set'} />
           <SummaryRow label="Assets" value={String(assets.length)} />
-          <SummaryRow label="Tags" value={tags.length > 0 ? tags.join(', ') : 'None'} />
-          <SummaryRow label="Custom fields" value={customMeasurementKeys.length > 0 ? customMeasurementKeys.join(', ') : 'None'} />
           <SummaryRow label="Discovery filters" value={selectedFilterCount > 0 ? `${selectedFilterCount} selected` : 'None'} />
         </Card>
+
+        {tags.length > 0 ? (
+          <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
+            <AppText variant="bodyBold">Tags</AppText>
+            <View style={styles.tagsWrap}>
+              {tags.map((tag) => (
+                <Chip key={tag} label={`#${tag}`} />
+              ))}
+            </View>
+          </Card>
+        ) : null}
+
+        {customMeasurementKeys.length > 0 ? (
+          <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
+            <AppText variant="bodyBold">Custom order fields</AppText>
+            <View style={styles.customFieldsWrap}>
+              {customMeasurementKeys.map((key) => (
+                <AppText key={key} variant="body" style={styles.customFieldItem}>
+                  {toPrettyLabel(key)}
+                </AppText>
+              ))}
+            </View>
+          </Card>
+        ) : null}
 
         {saveState.action ? (
           <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
@@ -131,13 +156,19 @@ export default function CreateDesignPreviewScreen() {
           </Card>
         ) : null}
 
-        <View style={styles.footerActions}>
+        <View style={[styles.footerActions, { paddingHorizontal: tokens.spacing.lg }]}>
+          {!canSaveDraft ? (
+            <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+              Add at least one field or one media item to save a draft.
+            </AppText>
+          ) : null}
           <Button title="Back to edit" variant="outline" onPress={() => router.replace('/catalog/create-design/composer' as any)} fullWidth />
           <View style={styles.actionRow}>
             <Button
               title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
               variant="secondary"
               loading={saveState.action === 'draft'}
+              disabled={!canSaveDraft}
               onPress={() => void save('draft')}
               fullWidth
             />
@@ -233,7 +264,10 @@ const styles = StyleSheet.create({
   },
   summaryValue: {
     flex: 1,
-    textAlign: 'right',
+    textAlign: 'left',
+  },
+  draftHelper: {
+    textAlign: 'center',
   },
   footerActions: {
     gap: tokens.spacing.md,
@@ -256,5 +290,16 @@ const styles = StyleSheet.create({
   modalActions: {
     flexDirection: 'row',
     gap: tokens.spacing.md,
+  },
+  tagsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  customFieldsWrap: {
+    gap: tokens.spacing.xs,
+  },
+  customFieldItem: {
+    textAlign: 'left',
   },
 });

@@ -75,6 +75,7 @@ type ContextValue = {
   selectedCustomOrderConfigurationId: string;
   form: FormState;
   assets: DesignEditorAsset[];
+  coverAssetId: string | null;
   filterSelection: DesignFilterSelection;
   customMeasurementKeys: string[];
   originalMediaIds: string[];
@@ -102,6 +103,7 @@ type ContextValue = {
   openMediaPermissionSettings: () => Promise<void>;
   moveAsset: (assetId: string, direction: 'left' | 'right') => void;
   removeAsset: (assetId: string) => void;
+  setCoverAssetId: (assetId: string | null) => void;
   save: (action: SaveAction) => Promise<void>;
   deleteDraft: () => Promise<void>;
   retryBootstrap: () => Promise<void>;
@@ -197,6 +199,7 @@ export function DesignEditorProvider({
   const [selectedCustomOrderConfigurationId, setSelectedCustomOrderConfigurationId] = useState('');
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [assets, setAssets] = useState<DesignEditorAsset[]>([]);
+  const [coverAssetId, setCoverAssetIdState] = useState<string | null>(null);
   const [filterSelection, setFilterSelection] = useState<DesignFilterSelection>({});
   const [customMeasurementKeys, setCustomMeasurementKeys] = useState<string[]>([]);
   const [originalMediaIds, setOriginalMediaIds] = useState<string[]>([]);
@@ -216,6 +219,7 @@ export function DesignEditorProvider({
     setFilterSelection(detail.filterSelection ?? {});
     setCustomMeasurementKeys(detail.customMeasurementKeys ?? []);
     setAssets(syncAssetsFromDetail(detail));
+    setCoverAssetIdState(detail.coverMediaId ?? null);
     setOriginalMediaIds(detail.medias.map((media) => media.id));
     setDraftVersion(detail.draftVersion);
     setActiveDesignId(detail.id);
@@ -485,9 +489,25 @@ export function DesignEditorProvider({
     });
   }, []);
 
-  const removeAsset = useCallback((assetId: string) => {
-    setAssets((prev) => prev.filter((asset) => asset.id !== assetId));
+  const setCoverAssetId = useCallback((assetId: string | null) => {
+    setCoverAssetIdState(assetId);
   }, []);
+
+  const removeAsset = useCallback((assetId: string) => {
+    setAssets((prev) => {
+      const next = prev.filter((asset) => asset.id !== assetId);
+      if (coverAssetId === assetId) {
+        setCoverAssetIdState(next.length > 0 ? next[0].id : null);
+      }
+      return next;
+    });
+  }, [coverAssetId]);
+
+  useEffect(() => {
+    if (coverAssetId == null && assets.length > 0) {
+      setCoverAssetIdState(assets[0].id);
+    }
+  }, [assets, coverAssetId]);
 
   const save = useCallback(
     async (action: SaveAction) => {
@@ -531,6 +551,7 @@ export function DesignEditorProvider({
             targetAgeGroup: form.targetAgeGroup,
             filterValueIds,
             assets,
+            coverMediaId: coverAssetId ?? undefined,
             action,
             designId: activeDesignId ?? undefined,
             originalMediaIds,
@@ -649,6 +670,7 @@ export function DesignEditorProvider({
       measurementPoints,
       form,
       assets,
+      coverAssetId,
       filterSelection,
       customMeasurementKeys,
       originalMediaIds,
@@ -676,6 +698,7 @@ export function DesignEditorProvider({
       openMediaPermissionSettings,
       moveAsset,
       removeAsset,
+      setCoverAssetId,
       save,
       deleteDraft,
       retryBootstrap,
@@ -685,6 +708,7 @@ export function DesignEditorProvider({
       activeDesignId,
       activeDesignStatus,
       assets,
+      coverAssetId,
       booting,
       canPublish,
       canSaveDraft,
@@ -704,6 +728,7 @@ export function DesignEditorProvider({
       permissionIssue,
       pickMedia,
       removeAsset,
+      setCoverAssetId,
       retryBootstrap,
       save,
       deleteDraft,

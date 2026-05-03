@@ -36,15 +36,14 @@ function extractSuggestions(payload: unknown): TagSuggestion[] {
 }
 
 export const TagsApi = {
-  async getSuggestions(limit = 20): Promise<string[]> {
-    const response = await apiClient.get('/tags/trending', { params: { window: '24h', limit } });
-    const suggestions = extractSuggestions(response.data);
-    if (suggestions.length > 0) {
-      return suggestions.map((item) => item.name);
-    }
+  async getTags(limit = 50): Promise<TagSuggestion[]> {
+    const response = await apiClient.get('/tags', { params: { limit } });
+    return extractSuggestions(response.data);
+  },
 
-    const fallback = await apiClient.get('/tags', { params: { limit } });
-    return extractSuggestions(fallback.data).map((item) => item.name);
+  async searchTags(query: string, limit = 20): Promise<TagSuggestion[]> {
+    const response = await apiClient.get('/tags/search', { params: { q: query, limit } });
+    return extractSuggestions(response.data);
   },
 };
 

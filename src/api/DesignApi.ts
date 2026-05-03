@@ -123,6 +123,7 @@ export type DesignSavePayload = {
   targetAgeGroup?: 'ADULT' | 'CHILD';
   filterValueIds?: string[];
   assets: DesignEditorAsset[];
+  coverMediaId?: string;
   action: 'draft' | 'publish';
   designId?: string;
   originalMediaIds?: string[];

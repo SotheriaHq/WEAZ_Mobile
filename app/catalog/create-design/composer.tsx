@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
-import { AppActionSheet } from '@/components/ui/AppActionSheet';
+import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { AppMultiSelectSheet, AppSelectSheet } from '@/components/ui/AppSelectSheet';
@@ -18,6 +18,7 @@ import { OptionRow } from '@/components/ui/OptionRow';
 import { RequiredFieldLabel } from '@/components/ui/RequiredFieldLabel';
 import { StableImage } from '@/components/ui/StableImage';
 import TagsApi from '@/src/api/TagsApi';
+import { apiClient } from '@/src/api/httpClient';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -86,6 +87,7 @@ export default function CreateDesignComposerScreen() {
   const {
     booting,
     assets,
+    coverAssetId,
     form,
     categories,
     selectedCategory,
@@ -101,12 +103,18 @@ export default function CreateDesignComposerScreen() {
     selectCustomOrderConfiguration,
     moveAsset,
     removeAsset,
+    setCoverAssetId,
+    save,
+    saveState,
+    canSaveDraft,
     pickMedia,
     clearPermissionIssue,
     openMediaPermissionSettings,
   } = useDesignEditor();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const autoLaunchRef = useRef(false);
+  const plusRef = useRef(null);
 
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -121,7 +129,8 @@ export default function CreateDesignComposerScreen() {
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [mentionsDraft, setMentionsDraft] = useState('');
-  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+  const [tagSuggestions, setTagSuggestions] = useState<{ name: string; usageCount: number }[]>([]);
+  const [tagError, setTagError] = useState<string | null>(null);
 
   const routeSource = Array.isArray(routeSourceParam) ? routeSourceParam[0] : routeSourceParam;
   const normalizedSource = routeSource === 'camera' || routeSource === 'library' ? routeSource : null;
@@ -174,9 +183,9 @@ export default function CreateDesignComposerScreen() {
   );
   const tagOptions = useMemo(
     () =>
-      Array.from(new Set([...tagSuggestions, ...selectedTags]))
-        .filter(Boolean)
-        .map((tag) => ({ value: tag, label: `#${tag}` })),
+      tagSuggestions
+        .filter((tag) => !selectedTags.includes(tag.name))
+        .map((tag) => ({ value: tag.name, label: `#${tag.name}`, usageCount: tag.usageCount })),
     [selectedTags, tagSuggestions],
   );
   const missingRequiredFields = useMemo(() => {
@@ -227,12 +236,29 @@ export default function CreateDesignComposerScreen() {
     if (!tagsOpen) return;
     let isActive = true;
 
-    void TagsApi.getSuggestions(24)
+    if (__DEV__) {
+      console.log('[CreateDesignTags] baseUrl', apiClient.defaults.baseURL || 'unknown');
+    }
+
+    void TagsApi.getTags(50)
       .then((items) => {
-        if (isActive) setTagSuggestions(items);
+        if (isActive) {
+          setTagSuggestions(items);
+          setTagError(null);
+          if (__DEV__) {
+            console.log('[CreateDesignTags] GET /tags status/count', 200, items.length);
+            console.log('[CreateDesignTags] normalized options count', items.length);
+          }
+        }
       })
-      .catch(() => {
-        if (isActive) setTagSuggestions([]);
+      .catch((error) => {
+        if (isActive) {
+          setTagSuggestions([]);
+          setTagError('Could not load tags. You can still add your own.');
+          if (__DEV__) {
+            console.log('[CreateDesignTags] GET /tags status/count', 'error', 0);
+          }
+        }
       });
 
     return () => {
@@ -263,55 +289,44 @@ export default function CreateDesignComposerScreen() {
       </View>
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing.xl }]} keyboardShouldPersistTaps="handled">
           <ComposerSection
-            title={assets.length > 0 ? 'Selected media' : 'Start with media'}
-            subtitle={assets.length > 0 ? 'The first item becomes the lead preview.' : 'Capture a new design or select media from your device.'}
+            title="Selected media"
+            subtitle=""
           >
-            {assets.length > 0 ? (
-              <>
-                <View style={styles.sectionTopRow}>
-                  <AppText variant="captionRegular" tone="muted">
-                    {assets.length} selected asset{assets.length === 1 ? '' : 's'}
-                  </AppText>
-                  <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaStrip}>
-                  {assets.map((asset, index) => (
-                    <View key={asset.id} style={styles.assetCard}>
-                      <StableImage uri={asset.remoteUrl ?? asset.uri} containerStyle={styles.assetPreview} imageStyle={styles.assetPreview} />
+            <View style={styles.sectionTopRow}>
+              <AppText variant="captionRegular" tone="muted">
+                {assets.length > 0 ? `${assets.length} selected asset${assets.length === 1 ? '' : 's'}` : 'No media selected yet'}
+              </AppText>
+                  <View ref={plusRef}>
+                    <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
+                  </View>
+            </View>
+            {assets.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaStrip}>
+                {assets.map((asset, index) => (
+                  <View key={asset.id} style={styles.assetCard}>
+                    <StableImage uri={asset.remoteUrl ?? asset.uri} containerStyle={styles.assetPreview} imageStyle={styles.assetPreview} />
                       <View style={[styles.assetBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
-                        <AppText variant="captionBold">{index === 0 ? 'Cover' : `#${index + 1}`}</AppText>
+                        <AppText variant="captionBold">{asset.id === coverAssetId ? 'Cover' : `#${index + 1}`}</AppText>
                       </View>
-                      <View style={styles.assetActionRow}>
-                        <Pressable onPress={() => moveAsset(asset.id, 'left')} disabled={index === 0}>
-                          <AppText variant="captionBold" tone={index === 0 ? 'muted' : 'primary'}>Left</AppText>
-                        </Pressable>
-                        <Pressable onPress={() => moveAsset(asset.id, 'right')} disabled={index === assets.length - 1}>
-                          <AppText variant="captionBold" tone={index === assets.length - 1 ? 'muted' : 'primary'}>Right</AppText>
-                        </Pressable>
-                        <Pressable onPress={() => removeAsset(asset.id)}>
-                          <AppText variant="captionBold" tone="danger">Remove</AppText>
-                        </Pressable>
-                      </View>
+                    <View style={styles.assetActionRow}>
+                      <Pressable onPress={() => moveAsset(asset.id, 'left')} disabled={index === 0}>
+                        <AppText variant="captionBold" tone={index === 0 ? 'muted' : 'primary'}>Left</AppText>
+                      </Pressable>
+                      <Pressable onPress={() => moveAsset(asset.id, 'right')} disabled={index === assets.length - 1}>
+                        <AppText variant="captionBold" tone={index === assets.length - 1 ? 'muted' : 'primary'}>Right</AppText>
+                      </Pressable>
+                      <Pressable onPress={() => setCoverAssetId(asset.id)}>
+                        <AppText variant="captionBold" tone={asset.id === coverAssetId ? 'muted' : 'primary'}>Set Cover</AppText>
+                      </Pressable>
+                      <Pressable onPress={() => removeAsset(asset.id)}>
+                        <AppText variant="captionBold" tone="danger">Remove</AppText>
+                      </Pressable>
                     </View>
-                  ))}
-                </ScrollView>
-              </>
-            ) : (
-              <View style={styles.emptyStage}>
-                <View style={[styles.emptyStageIcon, { backgroundColor: theme.colors.primarySoft }]}>
-                  <AppText variant="title" tone="primary">+</AppText>
-                </View>
-                <AppText variant="bodyBold">No media selected yet</AppText>
-                <AppText variant="body" tone="muted" style={styles.centerText}>
-                  Add media first so the composer and preview use a real design asset.
-                </AppText>
-                <View style={styles.emptyStageActions}>
-                  <Button title="Camera" variant="secondary" onPress={() => void handlePickMedia('camera')} />
-                  <Button title="Select from library" onPress={() => void handlePickMedia('library')} />
-                </View>
-              </View>
+                  </View>
+                ))}
+              </ScrollView>
             )}
           </ComposerSection>
 
@@ -340,23 +355,15 @@ export default function CreateDesignComposerScreen() {
                   multiline
                   containerStyle={styles.copyField}
                 />
-                <View style={styles.quickChipRow}>
-                  <Button
-                    title={`# Tags${selectedTags.length > 0 ? ` (${selectedTags.length})` : ' (Required)'}`}
-                    size="sm"
-                    variant="ghost"
-                    onPress={() => setTagsOpen(true)}
-                  />
-                  <Button
-                    title="@ Mention"
-                    size="sm"
-                    variant="ghost"
-                    onPress={() => {
-                      setMentionsDraft('');
-                      setMentionsOpen(true);
-                    }}
-                  />
-                </View>
+                <Button
+                  title="@ Mention"
+                  size="sm"
+                  variant="ghost"
+                  onPress={() => {
+                    setMentionsDraft('');
+                    setMentionsOpen(true);
+                  }}
+                />
               </View>
 
               <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
@@ -419,8 +426,15 @@ export default function CreateDesignComposerScreen() {
                   title="More options"
                   subtitle={`${audienceLabel} audience · ${selectedDiscoveryFilterCount} discovery filter${selectedDiscoveryFilterCount === 1 ? '' : 's'}`}
                   value="Open"
-                  divider={false}
                   onPress={() => setMoreOptionsOpen(true)}
+                />
+                <OptionRow
+                  leading="🏷️"
+                  title="Tags"
+                  subtitle="Choose tags for your design"
+                  value={selectedTags.length > 0 ? `${selectedTags.length} selected` : 'Required'}
+                  divider={false}
+                  onPress={() => setTagsOpen(true)}
                 />
               </Card>
 
@@ -433,7 +447,24 @@ export default function CreateDesignComposerScreen() {
                 </Card>
               ) : null}
 
-              <Button title="Preview" disabled={!canPreview} onPress={() => router.push('/catalog/create-design/preview' as any)} />
+              <View style={[styles.footerActions, { paddingBottom: insets.bottom, paddingHorizontal: tokens.spacing.lg }]}>
+                {!canSaveDraft ? (
+                  <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+                    Add at least one field or one media item to save a draft.
+                  </AppText>
+                ) : null}
+                <View style={styles.actionRow}>
+                  <Button
+                    title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
+                    variant="secondary"
+                    loading={saveState.action === 'draft'}
+                    disabled={!canSaveDraft}
+                    onPress={() => void save('draft')}
+                    fullWidth
+                  />
+                  <Button title="Preview" disabled={!canPreview} onPress={() => router.push('/catalog/create-design/preview' as any)} fullWidth />
+                </View>
+              </View>
             </>
           ) : null}
         </ScrollView>
@@ -500,9 +531,15 @@ export default function CreateDesignComposerScreen() {
         subtitle="Choose existing tags or add your own."
         options={tagOptions}
         values={selectedTags}
-        onChange={(values) => updateField('tagsInput', values.join(', '))}
+        onChange={(values) => {
+          updateField('tagsInput', values.join(', '));
+          if (__DEV__) {
+            console.log('[CreateDesignTags] selected count', values.length);
+          }
+        }}
         onClose={() => setTagsOpen(false)}
         emptyMessage="No suggestions found. Type a tag and tap Add."
+        errorMessage={tagError}
         maxSelected={10}
       />
 
@@ -725,31 +762,27 @@ export default function CreateDesignComposerScreen() {
         ))}
       </AppBottomSheet>
 
-      <AppActionSheet
+      <AppFloatingMenu
         visible={mediaOpen}
-        title="Add media"
-        subtitle="Choose how to attach the next asset."
+        anchorRef={plusRef}
         onClose={() => setMediaOpen(false)}
         options={[
           {
             key: 'camera',
             icon: '📷',
             title: 'Camera',
-            description: 'Capture a new photo or video.',
             onPress: () => void handlePickMedia('camera'),
           },
           {
             key: 'media',
             icon: '🖼️',
             title: 'Media',
-            description: 'Pick images or videos from your library.',
             onPress: () => void handlePickMedia('library'),
           },
           {
             key: 'attachment',
             icon: '📎',
             title: 'Attachment',
-            description: 'Attach an existing photo or video from your device.',
             onPress: () => void handlePickMedia('library'),
           },
         ]}
@@ -839,22 +872,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: tokens.spacing.sm,
   },
-  emptyStage: {
-    alignItems: 'center',
-    gap: tokens.spacing.md,
-    paddingVertical: tokens.spacing.lg,
-  },
-  emptyStageIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: tokens.radius.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyStageActions: {
-    alignSelf: 'stretch',
-    gap: tokens.spacing.sm,
-  },
+
   formCard: {
     gap: tokens.spacing.md,
     borderWidth: 1,
@@ -875,9 +893,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: tokens.spacing.sm,
   },
-  centerText: {
-    textAlign: 'center',
-  },
+
   requiredCard: {
     gap: tokens.spacing.xs,
     borderWidth: 1,
@@ -908,5 +924,15 @@ const styles = StyleSheet.create({
   },
   permissionActions: {
     gap: tokens.spacing.sm,
+  },
+  footerActions: {
+    gap: tokens.spacing.md,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.md,
+  },
+  draftHelper: {
+    textAlign: 'center',
   },
 });

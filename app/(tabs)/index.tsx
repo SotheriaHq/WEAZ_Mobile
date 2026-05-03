@@ -44,6 +44,8 @@ type FeedCacheEntry = {
 const feedPageCache = new Map<string | null, FeedCacheEntry>();
 const FEED_CACHE_TTL_MS = 5 * 60_000; // 5 minutes
 
+const devLog = __DEV__ ? (prefix: string, ...args: any[]) => console.log(`[${prefix}]`, ...args) : () => {};
+
 const toCompactCount = (value: number | null | undefined) => {
   const n = typeof value === 'number' ? value : 0;
   if (n < 1000) return String(n);
@@ -666,7 +668,7 @@ export default function HomeScreen() {
   const lastPatchFetchRef = useRef<number>(0);
   const STALE_THRESHOLD_MS = 60_000; // 60 seconds
 
-  const showBlockingLoader = loading && items.length === 0;
+  const showBlockingLoader = loading;
 
   const skeletonOpacity = useRef(new Animated.Value(1)).current;
   const [isSkeletonFadingOut, setIsSkeletonFadingOut] = useState(false);
@@ -712,9 +714,9 @@ export default function HomeScreen() {
     () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? { id: 'all', label: 'All', tag: null },
     [filterChips, selectedFilterId],
   );
-  const visibleFilterChips = useMemo(() => filterChips.filter((chip) => chip.id !== 'all'), [filterChips]);
+  const visibleFilterChips = useMemo(() => filterChips, [filterChips]);
   const activeTag = activeFilter?.tag ?? null;
-  const feedLoopEnabled = !hasNextPage && items.length > 1;
+  const feedLoopEnabled = false;
   const fallbackMediaByCollection = useMemo(() => {
     const next: Record<string, FeedViewerMedia[]> = {};
     items.forEach((item) => {
@@ -790,6 +792,7 @@ export default function HomeScreen() {
       return;
     }
 
+    devLog('HomeFeed', 'Scroll to offset', { offset: feedLoopHeadOffset * pageHeight, reason: 'loop init', currentLoopKey });
     initializedLoopKeyRef.current = currentLoopKey;
     requestAnimationFrame(() => {
       feedListRef.current?.scrollToOffset({
@@ -816,17 +819,27 @@ export default function HomeScreen() {
   }, [loadPatchedBrands]);
 
   useEffect(() => {
+    const activeItem = items[activePageIndex];
+    devLog('HomeFeed', 'Active index changed', {
+      index: activePageIndex,
+      itemId: activeItem?.id,
+      itemTitle: activeItem?.collectionTitle,
+      isModernAdre: activeItem?.collectionTitle?.includes('Modern Ad') || false,
+    });
+  }, [activePageIndex, items]);
+
+  useEffect(() => {
     let mounted = true;
 
     void getMarketFilterChips().then((chips) => {
       if (!mounted || !chips.length) return;
+      devLog('HomeFeed', 'Filter chips loaded', chips.map(c => ({ id: c.id, label: c.label, tag: c.tag })));
       setFilterChips(chips);
-      const firstVisibleChipId = chips.find((chip) => chip.id !== 'all')?.id ?? chips[0].id;
       setSelectedFilterId((current) => {
-        if (current !== 'all' && chips.some((chip) => chip.id === current && chip.id !== 'all')) {
+        if (chips.some((chip) => chip.id === current)) {
           return current;
         }
-        return firstVisibleChipId;
+        return 'all';
       });
     });
 
@@ -836,6 +849,7 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
+    devLog('HomeFeed', 'Filter change', { activeTag, oldIndex: activePageIndex, reason: 'activeTag changed' });
     setActivePageIndex(0);
     initializedLoopKeyRef.current = null;
     setCommentsTarget(null);
@@ -870,6 +884,19 @@ export default function HomeScreen() {
         if (!aValid && bValid) return 1;
         return 0;
       });
+      devLog('HomeFeed', 'Cache applied', sortedCachedItems.slice(0, 5).map((item, idx) => ({
+        index: idx,
+        id: item.id,
+        collectionId: item.collectionId,
+        title: item.collectionTitle,
+        brand: item.brandName,
+        username: item.username,
+        mediaUrl: item.media.url,
+        mediaFileId: item.media.fileId,
+        mediaType: item.media.type,
+        validity: isValidMediaItem(item) ? 'valid' : 'invalid',
+        isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
+      })));
       setItems(sortedCachedItems);
       setNextCursor(cached.nextCursor);
       setHasNextPage(cached.hasNextPage);
@@ -887,6 +914,19 @@ export default function HomeScreen() {
 
     try {
       const res = await getMarketFeed({ cursor: null, tag: activeTag, counts: 'combined' });
+      devLog('HomeFeed', 'API response', res.items.slice(0, 5).map((item, idx) => ({
+        index: idx,
+        id: item.id,
+        collectionId: item.collectionId,
+        title: item.collectionTitle,
+        brand: item.brandName,
+        username: item.username,
+        mediaUrl: item.media.url,
+        mediaFileId: item.media.fileId,
+        mediaType: item.media.type,
+        validity: isValidMediaItem(item) ? 'valid' : 'invalid',
+        isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
+      })));
       // Sort items to prioritize valid media (invalid items moved to end)
       const sortedItems = [...res.items].sort((a, b) => {
         const aValid = isValidMediaItem(a);
@@ -895,6 +935,12 @@ export default function HomeScreen() {
         if (!aValid && bValid) return 1;
         return 0;
       });
+      devLog('HomeFeed', 'After sort', sortedItems.slice(0, 5).map((item, idx) => ({
+        index: idx,
+        id: item.id,
+        title: item.collectionTitle,
+        isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
+      })));
       feedPageCache.set(activeTag, {
         items: sortedItems,
         nextCursor: res.nextCursor ?? null,

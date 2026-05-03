@@ -6,9 +6,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
+import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { ProfileApi, type Order, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { useAuth } from '@/src/auth/AuthContext';
@@ -82,6 +84,41 @@ function EmptyState({
       </AppText>
       <Button title={cta} onPress={onPress} fullWidth />
     </Card>
+  );
+}
+
+function ProfileSkeleton() {
+  return (
+    <View style={styles.skeletonWrap}>
+      <View style={styles.skeletonHeader}>
+        <Skeleton width={80} height={80} borderRadius={40} />
+        <View style={styles.skeletonHeaderText}>
+          <Skeleton width="60%" height={20} borderRadius={6} />
+          <Skeleton width="40%" height={16} borderRadius={4} />
+        </View>
+      </View>
+      <View style={styles.skeletonStats}>
+        <Skeleton width={60} height={40} borderRadius={8} />
+        <Skeleton width={60} height={40} borderRadius={8} />
+        <Skeleton width={60} height={40} borderRadius={8} />
+      </View>
+      <View style={styles.skeletonTabs}>
+        <Skeleton width="30%" height={32} borderRadius={16} />
+        <Skeleton width="30%" height={32} borderRadius={16} />
+        <Skeleton width="30%" height={32} borderRadius={16} />
+      </View>
+      <View style={styles.skeletonList}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <View key={i} style={styles.skeletonItem}>
+            <Skeleton width={50} height={50} borderRadius={25} />
+            <View style={styles.skeletonItemText}>
+              <Skeleton width="70%" height={16} borderRadius={4} />
+              <Skeleton width="50%" height={14} borderRadius={4} />
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -492,10 +529,8 @@ export default function BuyerProfileScreen() {
   if (status === 'loading' || loading) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
-        <View style={styles.loadingState}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
-          <AppText variant="body" tone="muted">Loading your profile...</AppText>
-        </View>
+        <BrandHeader />
+        <ProfileSkeleton />
       </SafeAreaView>
     );
   }
@@ -912,5 +947,42 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.82,
+  },
+  skeletonWrap: {
+    flex: 1,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.lg,
+    gap: tokens.spacing.lg,
+  },
+  skeletonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+  },
+  skeletonHeaderText: {
+    flex: 1,
+    gap: tokens.spacing.sm,
+  },
+  skeletonStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    gap: tokens.spacing.sm,
+  },
+  skeletonTabs: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: tokens.spacing.sm,
+  },
+  skeletonList: {
+    gap: tokens.spacing.md,
+  },
+  skeletonItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+  },
+  skeletonItemText: {
+    flex: 1,
+    gap: tokens.spacing.xs,
   },
 });

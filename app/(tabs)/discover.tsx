@@ -28,6 +28,8 @@ const toCompactCount = (value?: number | null) => {
   return `${(n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1)}m`;
 };
 
+const devLog = __DEV__ ? (prefix: string, ...args: any[]) => console.log(`[${prefix}]`, ...args) : () => {};
+
 const toErrorMessage = (err: unknown) => (err instanceof Error ? err.message : 'Unable to load market right now.');
 const isLikelyNetworkError = (msg: string) => /network|timeout|failed to fetch|connection/i.test(msg);
 
@@ -171,12 +173,25 @@ export default function DiscoverScreen() {
   const visibleFilterChips = useMemo(() => filterChips.filter((chip) => chip.id !== 'all'), [filterChips]);
 
   const loadFirstPage = useCallback(async () => {
+    devLog('MarketFeed', 'Load first page start', { activeTag });
     setLoading(true);
     setError(null);
     setNetworkError(false);
 
     try {
       const res = await getMarketFeed({ cursor: null, tag: activeTag, counts: 'combined' });
+      devLog('MarketFeed', 'API response', res.items.slice(0, 5).map((item, idx) => ({
+        index: idx,
+        id: item.id,
+        collectionId: item.collectionId,
+        title: item.collectionTitle,
+        brand: item.brandName,
+        username: item.username,
+        mediaUrl: item.media.url,
+        mediaFileId: item.media.fileId,
+        mediaType: item.media.type,
+        isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
+      })));
       setItems(res.items ?? []);
       setHasNextPage(Boolean(res.hasNextPage));
       setNextCursor(res.nextCursor ?? null);
@@ -220,13 +235,13 @@ export default function DiscoverScreen() {
 
     void getMarketFilterChips().then((chips) => {
       if (!mounted || chips.length === 0) return;
+      devLog('MarketFeed', 'Filter chips loaded', chips.map(c => ({ id: c.id, label: c.label, tag: c.tag })));
       setFilterChips(chips);
-      const firstVisibleChipId = chips.find((chip) => chip.id !== 'all')?.id ?? chips[0].id;
       setSelectedChipId((current) => {
-        if (current !== 'all' && chips.some((chip) => chip.id === current && chip.id !== 'all')) {
+        if (chips.some((chip) => chip.id === current)) {
           return current;
         }
-        return firstVisibleChipId;
+        return 'all';
       });
     });
 

@@ -6,6 +6,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { Input } from '@/components/ui/Input';
+import TagsApi, { type TagSuggestion } from '@/src/api/TagsApi';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
@@ -117,14 +118,43 @@ export function AppMultiSelectSheet({
 }: MultiProps) {
   const [draft, setDraft] = useState<string[]>(values);
   const [customTag, setCustomTag] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const [searchResults, setSearchResults] = useState<TagSuggestion[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const selectedSet = useMemo(() => new Set(draft), [draft]);
 
   useEffect(() => {
     if (visible) {
       setDraft(values);
       setCustomTag('');
+      setSearchText('');
+      setSearchResults([]);
+      setIsSearching(false);
     }
   }, [values, visible]);
+
+  useEffect(() => {
+    const trimmed = searchText.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    const timeout = setTimeout(async () => {
+      try {
+        const results = await TagsApi.searchTags(trimmed, 20);
+        setSearchResults(results);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [searchText]);
 
   const toggle = (value: string) => {
     setDraft((current) => {
@@ -137,6 +167,19 @@ export function AppMultiSelectSheet({
       return [...current, value];
     });
   };
+
+  const displayedOptions = useMemo(() => {
+    const baseOptions = searchText.trim() ? searchResults : options;
+    return baseOptions
+      .map((opt) => {
+        if ('name' in opt) { // TagSuggestion
+          return { value: opt.name, label: `#${opt.name}`, usageCount: opt.usageCount, disabled: false };
+        } else { // SelectSheetOption
+          return { value: opt.value, label: opt.label, usageCount: (opt as any).usageCount ?? 0, disabled: opt.disabled };
+        }
+      })
+      .filter((opt) => !selectedSet.has(opt.value));
+  }, [searchText, searchResults, options, selectedSet]);
 
   const addCustomTag = () => {
     const normalized = customTag.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -159,12 +202,36 @@ export function AppMultiSelectSheet({
       }}
       doneLabel="Done"
     >
-      <SelectSheetState loading={loading} errorMessage={errorMessage} empty={options.length === 0} emptyMessage={emptyMessage} />
+      <SelectSheetState loading={loading || isSearching} errorMessage={errorMessage} empty={displayedOptions.length === 0} emptyMessage={searchText.trim() ? "No suggestions found. Type a tag and tap Add." : emptyMessage} />
+      <Input
+        label="Search tags"
+        hideLabel
+        value={searchText}
+        onChangeText={setSearchText}
+        placeholder="Search or create a tag..."
+        containerStyle={styles.searchInput}
+      />
       {typeof maxSelected === 'number' ? (
         <AppText variant="captionRegular" tone="muted">
           {draft.length}/{maxSelected} selected
         </AppText>
       ) : null}
+      {!searchText.trim() && options.length > 0 ? (
+        <AppText variant="bodyBold" style={styles.sectionTitle}>Popular Tags:</AppText>
+      ) : null}
+      <View style={styles.optionWrap}>
+        {displayedOptions.map((option) => (
+          <Chip
+            key={option.value}
+            label={option.label}
+            selected={selectedSet.has(option.value)}
+            disabled={option.disabled}
+            onPress={() => {
+              if (!option.disabled) toggle(option.value);
+            }}
+          />
+        ))}
+      </View>
       <View style={styles.customTagRow}>
         <Input
           label="Custom tag"
@@ -180,19 +247,6 @@ export function AppMultiSelectSheet({
           disabled={!customTag.trim() || draft.includes(customTag.trim().toLowerCase().replace(/[^a-z0-9]/g, ''))}
           onPress={addCustomTag}
         />
-      </View>
-      <View style={styles.optionWrap}>
-        {options.map((option) => (
-          <Chip
-            key={option.value}
-            label={option.label}
-            selected={selectedSet.has(option.value)}
-            disabled={option.disabled}
-            onPress={() => {
-              if (!option.disabled) toggle(option.value);
-            }}
-          />
-        ))}
       </View>
     </AppBottomSheet>
   );
@@ -235,6 +289,12 @@ const styles = StyleSheet.create({
   },
   optionPressed: {
     opacity: 0.78,
+  },
+  searchInput: {
+    marginBottom: tokens.spacing.sm,
+  },
+  sectionTitle: {
+    marginBottom: tokens.spacing.sm,
   },
   customTagRow: {
     flexDirection: 'row',
