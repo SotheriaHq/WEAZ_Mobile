@@ -10,7 +10,7 @@ import { Stack, useNavigation } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { ThemeProvider, useTheme, type ThemeMode } from '@/src/theme/ThemeProvider';
@@ -21,6 +21,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
 import { FallbackLoaderScreen } from '@/components/ui/AppLoader';
 import * as Linking from 'expo-linking';
+import Constants from 'expo-constants';
 
 import { configurePushNotifications, handleInitialNotification, setupNotificationListeners } from '@/src/utils/notificationRouting';
 import { useNotificationRouting } from '@/src/utils/notificationRouting';
@@ -94,8 +95,9 @@ function NotificationSetup() {
           }, 100);
         }
 
-        // Set up notification listeners
-        const unsubscribe = setupNotificationListeners(
+        // Set up notification listeners - skip in Expo Go on Android
+        const isExpoGoAndroid = Constants.executionEnvironment === 'storeClient' && Platform.OS === 'android';
+        const unsubscribe = isExpoGoAndroid ? () => {} : setupNotificationListeners(
           (notification) => {
             // Handle foreground notification
             console.log('Notification received while foreground:', notification);

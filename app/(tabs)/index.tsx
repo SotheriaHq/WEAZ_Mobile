@@ -96,9 +96,23 @@ const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
     : [];
 };
 
+const isValidMediaItem = (item: MarketItem): boolean => {
+  const fallback = buildFallbackMediaItems(item);
+  if (fallback.length === 0) return false;
+  const media = fallback[0];
+  const hasUri = normalizeStableUri(media.url) || normalizeStableUri(media.fileId);
+  return Boolean(hasUri);
+};
+
 const normalizeStableUri = (value?: string | null) => {
   const normalized = typeof value === 'string' ? value.trim() : '';
   return normalized.length > 0 ? normalized : null;
+};
+
+const isValidImageUri = (uri?: string | null) => {
+  if (!uri || typeof uri !== 'string') return false;
+  const trimmed = uri.trim();
+  return trimmed.startsWith('http://') || trimmed.startsWith('https://');
 };
 
 const getCollectionMediaDirectUrl = (media: CollectionDetailMediaDto) =>
@@ -172,6 +186,7 @@ function FeedMediaSlide({
   const placeholderSurface = scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt;
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const [failedUri, setFailedUri] = useState<string | null>(null);
   const primaryDebugContext = useMemo(
     () => ({
       designId: media?.collectionId ?? null,
@@ -204,13 +219,19 @@ function FeedMediaSlide({
     enabled: shouldUseFallback,
     debugContext: fallbackDebugContext,
   });
-  const resolvedUri = imageFailed ? fallbackUri : primaryUri ?? fallbackUri;
+  const resolvedUri = useMemo(
+    () => (imageFailed ? fallbackUri : primaryUri ?? fallbackUri),
+    [imageFailed, fallbackUri, primaryUri],
+  );
   const loading = primaryLoading || (shouldUseFallback && fallbackLoading);
 
   useEffect(() => {
     setImageLoaded(false);
-    setImageFailed(false);
-  }, [resolvedUri]);
+    // Reset imageFailed only if URI changed and it's not the previously failed one
+    if (failedUri !== resolvedUri) {
+      setImageFailed(false);
+    }
+  }, [resolvedUri, failedUri]);
 
   if (!media) {
     return (
@@ -250,7 +271,7 @@ function FeedMediaSlide({
     );
   }
 
-  if (!resolvedUri || imageFailed) {
+  if (!resolvedUri || imageFailed || !isValidImageUri(resolvedUri)) {
     return (
       <View style={[StyleSheet.absoluteFillObject, styles.feedBrokenSlide, { backgroundColor: placeholderSurface }]}>
         <AppText variant="display">🖼️</AppText>
@@ -270,7 +291,10 @@ function FeedMediaSlide({
         style={[styles.pageImage, { opacity: imageLoaded ? 1 : 0 }]}
         resizeMode="cover"
         onLoad={() => setImageLoaded(true)}
-        onError={() => setImageFailed(true)}
+        onError={() => {
+          setFailedUri(resolvedUri);
+          setImageFailed(true);
+        }}
       />
     </View>
   );
@@ -751,8 +775,8 @@ export default function HomeScreen() {
   }, [feedLoopEnabled, items]);
   const feedLoopHeadOffset = feedLoopEnabled ? 1 : 0;
   const currentLoopKey = useMemo(
-    () => `${activeTag ?? 'all'}-${items.map((item) => item.id).join('|')}-${pageHeight}`,
-    [activeTag, items, pageHeight],
+    () => `${activeTag ?? 'all'}-${items.length}-${pageHeight}`,
+    [activeTag, items.length, pageHeight],
   );
   const bottomClearance = useMemo(() => NATIVE_ISLAND_NAV.contentClearance + insets.bottom, [insets.bottom]);
   const overlayScrollPadding = bottomClearance;
@@ -838,7 +862,15 @@ export default function HomeScreen() {
     const cached = feedPageCache.get(activeTag);
     const isCacheFresh = cached && Date.now() - cached.cachedAt < FEED_CACHE_TTL_MS;
     if (cached) {
-      setItems(cached.items);
+      // Sort cached items to prioritize valid media
+      const sortedCachedItems = [...cached.items].sort((a, b) => {
+        const aValid = isValidMediaItem(a);
+        const bValid = isValidMediaItem(b);
+        if (aValid && !bValid) return -1;
+        if (!aValid && bValid) return 1;
+        return 0;
+      });
+      setItems(sortedCachedItems);
       setNextCursor(cached.nextCursor);
       setHasNextPage(cached.hasNextPage);
       if (isCacheFresh) {
@@ -855,13 +887,21 @@ export default function HomeScreen() {
 
     try {
       const res = await getMarketFeed({ cursor: null, tag: activeTag, counts: 'combined' });
+      // Sort items to prioritize valid media (invalid items moved to end)
+      const sortedItems = [...res.items].sort((a, b) => {
+        const aValid = isValidMediaItem(a);
+        const bValid = isValidMediaItem(b);
+        if (aValid && !bValid) return -1;
+        if (!aValid && bValid) return 1;
+        return 0;
+      });
       feedPageCache.set(activeTag, {
-        items: res.items,
+        items: sortedItems,
         nextCursor: res.nextCursor ?? null,
         hasNextPage: res.hasNextPage,
         cachedAt: Date.now(),
       });
-      setItems(res.items);
+      setItems(sortedItems);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
     } catch (err) {
@@ -926,8 +966,13 @@ export default function HomeScreen() {
       if (!detail) return;
 
       const medias = Array.isArray(detail.medias) ? detail.medias : [];
+      const validMedias = medias.filter((media) => {
+        const directUrl = getCollectionMediaDirectUrl(media);
+        const fileId = getCollectionMediaFileId(media);
+        return directUrl || fileId;
+      });
       const nextMediaItems = await Promise.all(
-        medias.map(async (media: CollectionDetailMediaDto, index) => {
+        validMedias.map(async (media: CollectionDetailMediaDto, index) => {
           const directUrl = getCollectionMediaDirectUrl(media);
           const fileId = getCollectionMediaFileId(media);
           const url = (await resolveImageUri({
@@ -1260,18 +1305,25 @@ export default function HomeScreen() {
     setRefreshing(true);
     setError(null);
     setIsNetworkError(false);
-    setActivePageIndex(0);
     setCommentsTarget(null);
 
     try {
       const res = await getMarketFeed({ cursor: null, tag: activeTag, counts: 'combined' });
+      // Sort items to prioritize valid media (invalid items moved to end)
+      const sortedItems = [...res.items].sort((a, b) => {
+        const aValid = isValidMediaItem(a);
+        const bValid = isValidMediaItem(b);
+        if (aValid && !bValid) return -1;
+        if (!aValid && bValid) return 1;
+        return 0;
+      });
       feedPageCache.set(activeTag, {
-        items: res.items,
+        items: sortedItems,
         nextCursor: res.nextCursor ?? null,
         hasNextPage: res.hasNextPage,
         cachedAt: Date.now(),
       });
-      setItems(res.items);
+      setItems(sortedItems);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
     } catch (err) {
@@ -1294,6 +1346,8 @@ export default function HomeScreen() {
       if (now - lastPatchFetchRef.current > STALE_THRESHOLD_MS) {
         void loadPatchedBrands();
       }
+      // Clear any stale comments target on tab focus
+      setCommentsTarget(null);
     }, [loadPatchedBrands]),
   );
 

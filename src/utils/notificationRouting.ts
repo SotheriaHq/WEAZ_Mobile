@@ -6,6 +6,14 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
+/**
+ * Check if running in Expo Go on Android
+ */
+const isExpoGoAndroid = (): boolean => {
+  return Constants.executionEnvironment === 'storeClient' && Platform.OS === 'android';
+};
+
+
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
 import type { MessageContextParams } from '@/src/types/messaging';
@@ -181,6 +189,10 @@ export async function configurePushNotifications(): Promise<{
   token?: string;
   error?: string;
 }> {
+  // Skip all notification setup in Expo Go on Android
+  if (isExpoGoAndroid()) {
+    return { error: 'Push notifications are not available in Expo Go on Android' };
+  }
   try {
     const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
@@ -269,6 +281,10 @@ export async function handleInitialNotification(): Promise<{
   notification: Notifications.Notification | null;
   error?: string;
 }> {
+  // Skip in Expo Go on Android
+  if (isExpoGoAndroid()) {
+    return { notification: null };
+  }
   try {
     const response = await Notifications.getLastNotificationResponseAsync();
     return { notification: response?.notification || null };
@@ -285,7 +301,11 @@ export async function handleInitialNotification(): Promise<{
 export function setupNotificationListeners(
   onNotificationReceived: (notification: Notifications.Notification) => void,
   onNotificationResponse: (response: Notifications.NotificationResponse) => void,
-) {
+): () => void {
+  // Skip in Expo Go on Android
+  if (isExpoGoAndroid()) {
+    return () => {};
+  }
   try {
     // Listener for when notification is received while app is foreground
     const receivedSubscription = Notifications.addNotificationReceivedListener(

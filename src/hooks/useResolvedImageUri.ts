@@ -204,7 +204,7 @@ export const prefetchResolvedImageAsset = async ({
   debugContext,
 }: UseResolvedImageUriArgs) => {
   const uri = await resolveImageUri({ src, fileId, debugContext });
-  if (!uri) {
+  if (!uri || !isHttpUrl(uri)) {
     return false;
   }
 
