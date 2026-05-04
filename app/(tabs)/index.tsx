@@ -44,12 +44,9 @@ type FeedCacheEntry = {
 const feedPageCache = new Map<string | null, FeedCacheEntry>();
 const FEED_CACHE_TTL_MS = 5 * 60_000; // 5 minutes
 
-/**
- * Module-level feed state — persists across tab switches.
- * Since tabs unmount, state is stored here.
- */
+// Persists across tab switches / component remounts within the same app session.
 let feedScrollOffset = 0;
-const activeMediaIndexByCollection = new Map<string, number>();
+const carouselIndexMap = new Map<string, number>();
 
 const devLog = __DEV__ ? (prefix: string, ...args: any[]) => console.log(`[${prefix}]`, ...args) : () => {};
 
@@ -309,7 +306,6 @@ function FeedMediaSlide({
   );
 }
 
-/*
 function FeedMediaCarousel({
   mediaItems,
   initialActiveIndex = 0,
@@ -317,7 +313,7 @@ function FeedMediaCarousel({
 }: {
   mediaItems: FeedViewerMedia[];
   initialActiveIndex?: number;
-  onActiveIndexChange: (index: number) => void;
+  onActiveIndexChange: (nextIndex: number) => void;
 }) {
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
@@ -337,22 +333,16 @@ function FeedMediaCarousel({
   const carouselItems = useMemo<FeedCarouselMedia[]>(() => {
     return stableMediaItems.map((item, index) => ({
       ...item,
-      virtualKey: `real-${item.id}-${index}`,
+      virtualKey: `${item.id}-${index}`,
     }));
   }, [stableMediaItems]);
-  const internalIndex = hasMultipleItems ? safeActiveIndex + 1 : safeActiveIndex;
 
+  // Restore carousel position when media count or screen width changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!carouselRef.current || !carouselItems.length) {
-      return;
-    }
-
-    carouselRef.current.scrollTo({
-      x: internalIndex * width,
-      y: 0,
-      animated: false,
-    });
-  }, [carouselItems.length, internalIndex, width]);
+    if (!carouselRef.current || !stableMediaItems.length) return;
+    carouselRef.current.scrollTo({ x: safeActiveIndex * width, y: 0, animated: false });
+  }, [stableMediaItems.length, width]);
 
   if (!mediaItems.length) {
     return (
@@ -368,19 +358,20 @@ function FeedMediaCarousel({
         <FeedMediaSlide
           media={stableMediaItems[0] ?? null}
           imageIndex={0}
-          fallbackMedia={null}
+          fallbackMedia={stableMediaItems.find((candidate) => candidate.type === 'image' && Boolean(candidate.url || candidate.fileId)) ?? null}
         />
       </View>
     );
   }
 
   const handleMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const rawIndex = Math.max(0, Math.min(mediaItems.length - 1, Math.round(event.nativeEvent.contentOffset.x / width)));
+    const rawIndex = Math.max(
+      0,
+      Math.min(stableMediaItems.length - 1, Math.round(event.nativeEvent.contentOffset.x / width)),
+    );
     setActiveIndex(rawIndex);
     onActiveIndexChange(rawIndex);
   };
-
-
 
   return (
     <View style={StyleSheet.absoluteFillObject}>
@@ -402,8 +393,8 @@ function FeedMediaCarousel({
           <View key={item.virtualKey} style={{ width }}>
             <FeedMediaSlide
               media={item}
-              imageIndex={toRealImageIndex(index)}
-fallbackMedia={null}
+              imageIndex={index}
+              fallbackMedia={stableMediaItems.find((candidate) => candidate.type === 'image' && Boolean(candidate.url || candidate.fileId)) ?? null}
             />
           </View>
         ))}
@@ -597,7 +588,7 @@ export default function HomeScreen() {
   const [items, setItems] = useState<MarketItem[]>([]);
   const [collectionMediaMap, setCollectionMediaMap] = useState<Record<string, FeedViewerMedia[]>>({});
   const collectionMediaMapRef = useRef<Record<string, FeedViewerMedia[]>>({});
-  const [activeMediaIndexByCollection, setActiveMediaIndexByCollection] = useState<Record<string, number>>({});
+  // Carousel index is tracked in module-level carouselIndexMap (persists across remounts).
   const [threadStateByMedia, setThreadStateByMedia] = useState<Record<string, { threaded: boolean; count: number }>>({});
   const [threadingMediaById, setThreadingMediaById] = useState<Record<string, boolean>>({});
   const threadStateByMediaRef = useRef<Record<string, { threaded: boolean; count: number }>>({});
@@ -665,9 +656,6 @@ export default function HomeScreen() {
   const visibleFilterChips = useMemo(() => filterChips, [filterChips]);
   const activeTag = activeFilter?.tag ?? null;
   const feedLoopEnabled = false;
-  const feedLoopHeadOffset = 0;
-  const initializedLoopKeyRef = useRef<string | null>(null);
-  const currentLoopKey = useMemo(() => `market-feed-linear-${activeTag ?? 'all'}`, [activeTag]);
   const fallbackMediaByCollection = useMemo(() => {
     const next: Record<string, FeedViewerMedia[]> = {};
     items.forEach((item) => {
@@ -694,7 +682,7 @@ export default function HomeScreen() {
    *
    * The teleport uses scrollToOffset({ animated: false }) SYNCHRONOUSLY inside
   * the same onMomentumScrollEnd handler — no RAF gap, no frame flash.
-
+   */
   const canPatchBrands = user?.type !== 'BRAND';
 
   const feedItems = useMemo<FeedListEntry[]>(() => {
@@ -735,7 +723,23 @@ export default function HomeScreen() {
   const overlayScrollPadding = bottomClearance;
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
 
+  useEffect(() => {
+    if (!feedLoopEnabled || feedViewportHeight <= 0 || pageHeight <= 1 || feedItems.length < 3) {
+      return;
+    }
+    if (initializedLoopKeyRef.current === currentLoopKey) {
+      return;
+    }
 
+    devLog('HomeFeed', 'Scroll to offset', { offset: feedLoopHeadOffset * pageHeight, reason: 'loop init', currentLoopKey });
+    initializedLoopKeyRef.current = currentLoopKey;
+    requestAnimationFrame(() => {
+      feedListRef.current?.scrollToOffset({
+        offset: feedLoopHeadOffset * pageHeight,
+        animated: false,
+      });
+    });
+  }, [currentLoopKey, feedItems.length, feedLoopEnabled, feedLoopHeadOffset, feedViewportHeight, pageHeight]);
 
   useEffect(() => {
     collectionMediaMapRef.current = collectionMediaMap;
@@ -790,7 +794,8 @@ export default function HomeScreen() {
     setCommentsTarget(null);
     setCollectionMediaMap({});
     collectionMediaMapRef.current = {};
-    setActiveMediaIndexByCollection({});
+    carouselIndexMap.clear();
+    feedScrollOffset = 0;
     setThreadStateByMedia({});
     setThreadingMediaById({});
     threadStateByMediaRef.current = {};
@@ -1317,7 +1322,7 @@ export default function HomeScreen() {
   }, [activeTag]);
 
   useEffect(() => {
-    void loadFirstPage();
+    loadFirstPage();
   }, [loadFirstPage]);
 
   useFocusEffect(
@@ -1329,6 +1334,12 @@ export default function HomeScreen() {
       }
       // Clear any stale comments target on tab focus
       setCommentsTarget(null);
+      // Restore scroll position after tab switch / screen remount
+      if (feedScrollOffset > 0) {
+        requestAnimationFrame(() => {
+          feedListRef.current?.scrollToOffset({ offset: feedScrollOffset, animated: false });
+        });
+      }
     }, [loadPatchedBrands]),
   );
 
@@ -1433,38 +1444,131 @@ export default function HomeScreen() {
         >
           <FlatList
             ref={feedListRef}
-            data={!loading && !error ? items : []}
-            keyExtractor={keyExtractor}
-            renderItem={renderItem}
+            key={feedListKey}
+            data={feedItems}
+            keyExtractor={(entry) => entry.listKey}
+            pagingEnabled
+            snapToInterval={pageHeight}
+            snapToAlignment="start"
+            getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
+            decelerationRate="fast"
+            directionalLockEnabled
+            nestedScrollEnabled={false}
+            scrollEventThrottle={16}
+            bounces={false}
+            overScrollMode="never"
+            removeClippedSubviews={false}
+            initialNumToRender={3}
+            maxToRenderPerBatch={4}
+            windowSize={5}
+            scrollEnabled={!commentsTarget}
             showsVerticalScrollIndicator={false}
-            contentInset={{ bottom: overlayScrollPadding }}
-            scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
-            contentContainerStyle={[styles.content, { paddingBottom: overlayScrollPadding }]}
-            ItemSeparatorComponent={() => <View style={styles.separator} />}
-            ListHeaderComponent={ListHeader}
-            ListFooterComponent={
-              hasNextPage && !loading && !error ? (
-                <View style={styles.footer}>
-                  {loadingMore ? (
-                    <ActivityIndicator size="small" color={theme.colors.primary} />
-                  ) : (
-                    <Button title="Load more drops" onPress={loadMore} variant="secondary" size="md" fullWidth />
-                  )}
-                </View>
-              ) : (
-                <View style={styles.footerSpacer} />
-              )
-            }
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
+            keyboardShouldPersistTaps="handled"
+            onScroll={(event) => { feedScrollOffset = event.nativeEvent.contentOffset.y; }}
+            style={{ backgroundColor: 'transparent' }}
+            viewabilityConfig={viewabilityConfigRef.current}
+            onViewableItemsChanged={onViewableItemsChanged.current}
+            onScrollToIndexFailed={({ index }) => {
+              requestAnimationFrame(() => {
+                feedListRef.current?.scrollToOffset({
+                  offset: index * pageHeight,
+                  animated: false,
+                });
+              });
+            }}
+            onMomentumScrollEnd={(e) => {
+              const rawIndex = Math.max(
+                0,
+                Math.min(feedItems.length - 1, Math.round(e.nativeEvent.contentOffset.y / pageHeight)),
+              );
 
-            onEndReached={() => {
-              if (hasNextPage && !loadingMore) {
+              if (feedTeleportingRef.current) {
+                return;
+              }
+
+              if (feedLoopEnabled) {
+                // Landed on tail ghost (last item in list) — teleport to real first
+                if (rawIndex === feedItems.length - 1) {
+                  // Real first item is at index 1 (after head ghost)
+                  const targetOffset = feedLoopHeadOffset * pageHeight;
+                  feedTeleportingRef.current = true;
+                  feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
+                  setActivePageIndex(0);
+                  setTimeout(() => {
+                    feedTeleportingRef.current = false;
+                  }, 80);
+                  return;
+                }
+
+                // Landed on head ghost (index 0) — teleport to real last
+                if (rawIndex === 0) {
+                  const realLastIndex = items.length; // items.length because head ghost shifts by 1
+                  const targetOffset = realLastIndex * pageHeight;
+                  feedTeleportingRef.current = true;
+                  feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
+                  setActivePageIndex(items.length - 1);
+                  setTimeout(() => {
+                    feedTeleportingRef.current = false;
+                  }, 80);
+                  return;
+                }
+
+                // Normal item — rawIndex 1..N maps to real item 0..N-1
+                const realIndex = feedItems[rawIndex]?.realIndex ?? 0;
+                setActivePageIndex(Math.min(realIndex, items.length - 1));
+                return;
+              }
+
+              // Loop disabled (paginating or single item)
+              setActivePageIndex(feedItems[rawIndex]?.realIndex ?? rawIndex);
+              if (rawIndex >= items.length - 1 && hasNextPage) {
                 void loadMore();
               }
             }}
-            onEndReachedThreshold={0.4}
-            onScroll={(event) => { feedScrollOffset = event.nativeEvent.contentOffset.y; }}
-          />
+            onEndReachedThreshold={0.35}
+            onEndReached={() => {
+              if (hasNextPage) {
+                void loadMore();
+              }
+            }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
+            renderItem={({ item: entry }) => {
+              const item = entry.item;
+              const brandName = item.brandName ?? item.username ?? 'Brand';
+              const handle = item.username ? `@${item.username}` : '';
+              const fallbackMediaItems = fallbackMediaByCollection[item.collectionId] ?? [];
+              const mediaItems = collectionMediaMap[item.collectionId]?.length
+                ? collectionMediaMap[item.collectionId]
+                : fallbackMediaItems;
+              const activeMediaIndex = mediaItems.length
+                ? Math.min(carouselIndexMap.get(item.collectionId) ?? 0, mediaItems.length - 1)
+                : 0;
+              const currentMedia = mediaItems[activeMediaIndex] ?? fallbackMediaItems[0] ?? null;
+              const currentMediaId = currentMedia?.id ?? item.id;
+              const currentMediaThreadState = currentMedia ? threadStateByMedia[currentMedia.id] : undefined;
+              const isThreaded = currentMedia
+                ? currentMediaThreadState?.threaded ?? (currentMedia.id === item.id ? Boolean(item.isThreaded) : false)
+                : Boolean(item.isThreaded);
+              const isThreading = Boolean(threadingMediaById[currentMediaId]);
+              const likes = toCompactCount(item.likesCount ?? 0);
+              const comments = toCompactCount(item.combinedCommentsCount ?? item.commentsCount ?? 0);
+              const threadCountRaw =
+                currentMediaThreadState?.count ??
+                currentMedia?.threadsCount ??
+                item.threadsCount ??
+                0;
+              const threads = toCompactCount(threadCountRaw);
+              const isCommentsOpen = commentsTarget?.collectionId === item.collectionId;
+
+              return (
+                <View style={[styles.page, { height: pageHeight }]}> 
+                  <FeedMediaCarousel
+                    mediaItems={mediaItems}
+                    initialActiveIndex={activeMediaIndex}
+                    onActiveIndexChange={(nextIndex) => {
+                      carouselIndexMap.set(item.collectionId, nextIndex);
+                    }}
+                  />
 
                   {/* Right action rail */}
                   <View style={[styles.rail, { bottom: bottomClearance + 24 }]}>

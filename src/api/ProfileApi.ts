@@ -252,6 +252,11 @@ export const ProfileApi = {
     return normalizeProfile(res.data);
   },
 
+  async getPublicProfileById(profileId: string): Promise<UserProfile | null> {
+    const res = await apiClient.get(`/users/${encodeURIComponent(profileId)}/profile/public`);
+    return normalizeProfile(res.data);
+  },
+
   async updateProfile(userId: string, payload: {
     firstName: string;
     lastName: string;

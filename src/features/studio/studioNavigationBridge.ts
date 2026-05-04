@@ -99,14 +99,18 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
     return {
       type: 'native',
       path,
-      nativeRoute: { pathname: '/(tabs)/me', params: { tab: 'orders' } } as Href,
+      nativeRoute: '/orders' as Href,
     };
   }
 
   const orderId = singleSegmentAfter(pathname, '/orders/');
   const customOrderId = singleSegmentAfter(pathname, '/custom-orders/');
   if (orderId || customOrderId) {
-    return { type: 'blocked', path, reason: 'order_detail_native_route_missing' };
+    return {
+      type: 'native',
+      path,
+      nativeRoute: { pathname: '/orders/[orderId]', params: { orderId: orderId ?? customOrderId } } as Href,
+    };
   }
 
   if (pathname === '/profile') {
@@ -116,7 +120,7 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
       return {
         type: 'native',
         path,
-        nativeRoute: { pathname: '/(tabs)/me', params: { tab: 'orders' } } as Href,
+        nativeRoute: '/orders' as Href,
       };
     }
     if (normalizedTab === 'saved') {

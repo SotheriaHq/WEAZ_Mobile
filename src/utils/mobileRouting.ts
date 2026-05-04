@@ -170,7 +170,7 @@ export function routeForNotification(notification: MobileNotification): RouterTa
   }
 
   if (type.startsWith('ORDER_') || type.startsWith('CUSTOM_ORDER_')) {
-    return { pathname: '/(tabs)/me', params: { tab: 'Orders' } } as Href;
+    return '/orders' as Href;
   }
 
   if (type.startsWith('SIZE_FIT_')) {
@@ -229,10 +229,17 @@ export function routeForNotification(notification: MobileNotification): RouterTa
       return { pathname: '/catalog/create-design', params: { designId: draftId } } as Href;
     }
     if (path === '/profile') {
+      const tab = new URL(targetUrl, 'https://threadly.mobile').searchParams.get('tab')?.toLowerCase();
+      if (tab === 'orders') return '/orders' as Href;
       return '/(tabs)/me' as Href;
     }
-    if (path.startsWith('/orders')) {
-      return { pathname: '/(tabs)/me', params: { tab: 'Orders' } } as Href;
+    const orderId = parseHrefId(targetUrl, /\/orders\/([^/?#]+)/);
+    const customOrderId = parseHrefId(targetUrl, /\/custom-orders\/([^/?#]+)/);
+    if (orderId || customOrderId) {
+      return { pathname: '/orders/[orderId]', params: { orderId: orderId ?? customOrderId } } as Href;
+    }
+    if (path === '/orders' || path === '/custom-orders') {
+      return '/orders' as Href;
     }
     if (path.startsWith('/messages') || path.startsWith('/inbox')) {
       return '/(tabs)/inbox' as Href;
@@ -245,7 +252,7 @@ export function routeForNotification(notification: MobileNotification): RouterTa
       }
       if (normalizedTab === 'notifications' || normalizedTab === 'orders') {
         return normalizedTab === 'orders'
-          ? ({ pathname: '/(tabs)/me', params: { tab: 'Orders' } } as Href)
+          ? ('/orders' as Href)
           : ('/notifications' as Href);
       }
       return '/(tabs)/me' as Href;

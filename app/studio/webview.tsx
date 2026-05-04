@@ -14,6 +14,7 @@ import { Header } from '@/components/ui/Header';
 import { IconButton } from '@/components/ui/IconButton';
 import { StableImage } from '@/components/ui/StableImage';
 import StudioApi from '@/src/api/StudioApi';
+import { publicLinkApi } from '@/src/api/PublicLinkApi';
 import { env } from '@/src/config/env';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
@@ -139,18 +140,21 @@ function StudioHeaderActions({
         accessibilityLabel="Open profile menu"
         style={({ pressed }) => [
           styles.headerAvatarButton,
-          pressed ? { backgroundColor: theme.colors.surfaceOverlay } : null,
+          { backgroundColor: theme.colors.primarySoft },
           pressed ? styles.pressed : null,
         ]}
         testID="studio-header-profile"
       >
-        {avatarUri ? (
-          <StableImage uri={avatarUri} containerStyle={styles.headerAvatarImage} imageStyle={styles.headerAvatarImage} />
-        ) : (
-          <AppText variant="captionBold" tone="primary">
-            {initials}
-          </AppText>
-        )}
+        <StableImage
+          uri={avatarUri ?? undefined}
+          containerStyle={styles.headerAvatarFill}
+          imageStyle={styles.headerAvatarFill}
+          fallback={
+            <View style={[StyleSheet.absoluteFillObject, styles.avatarInitialsBg, { backgroundColor: theme.colors.primarySoft }]}>
+              <AppText variant="captionBold" tone="primary">{initials}</AppText>
+            </View>
+          }
+        />
       </Pressable>
     </View>
   );
@@ -160,9 +164,7 @@ type StudioMenuItem = {
   key: string;
   emoji: string;
   label: string;
-  description?: string;
   tone?: 'default' | 'danger';
-  disabled?: boolean;
   onPress: () => void;
 };
 
@@ -171,18 +173,20 @@ function StudioProfileMenu({
   user,
   topOffset,
   onClose,
-  onOpenNativePath,
+  onOpenProfile,
+  onOpenNotifications,
+  onOpenOrders,
   onOpenHelp,
-  onUnavailable,
   onSignOut,
 }: {
   visible: boolean;
   user: AuthUser | null;
   topOffset: number;
   onClose: () => void;
-  onOpenNativePath: (path: string) => void;
+  onOpenProfile: () => void;
+  onOpenNotifications: () => void;
+  onOpenOrders: () => void;
   onOpenHelp: () => void;
-  onUnavailable: (message: string) => void;
   onSignOut: () => void;
 }) {
   const { theme } = useTheme();
@@ -193,7 +197,7 @@ function StudioProfileMenu({
   const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: visible && Boolean(user) });
   const initials = getAvatarFallback(displayName, user?.username);
   const availableMenuWidth = Math.max(180, width - tokens.spacing.lg * 2);
-  const menuWidth = Math.min(Math.max(196, Math.round(width * 0.52)), Math.min(208, availableMenuWidth));
+  const menuWidth = Math.min(Math.max(180, Math.round(width * 0.46)), Math.min(196, availableMenuWidth));
   const maxHeight = Math.max(260, height - topOffset - tokens.spacing.lg);
 
   const items: StudioMenuItem[] = [
@@ -201,23 +205,19 @@ function StudioProfileMenu({
       key: 'profile',
       emoji: '👤',
       label: 'Profile',
-      onPress: () => onOpenNativePath('/profile'),
+      onPress: onOpenProfile,
     },
     {
-      key: 'settings',
-      emoji: '⚙️',
-      label: 'Settings',
-      description: 'Open from the main app settings.',
-      disabled: true,
-      onPress: () => onUnavailable('Settings is not available inside Studio yet.'),
+      key: 'notifications',
+      emoji: '🔔',
+      label: 'Notifications',
+      onPress: onOpenNotifications,
     },
     {
-      key: 'location',
-      emoji: '📍',
-      label: 'Share Location',
-      description: 'Use the main app profile menu.',
-      disabled: true,
-      onPress: () => onUnavailable('Location sharing is available from the main app.'),
+      key: 'orders',
+      emoji: '📦',
+      label: 'My Orders',
+      onPress: onOpenOrders,
     },
     {
       key: 'help',
@@ -226,16 +226,10 @@ function StudioProfileMenu({
       onPress: onOpenHelp,
     },
     {
-      key: 'orders',
-      emoji: '📦',
-      label: 'My Orders',
-      onPress: () => onOpenNativePath('/profile?tab=orders'),
-    },
-    {
       key: 'sign-out',
       emoji: '↩️',
       label: 'Sign out',
-      tone: 'danger',
+      tone: 'danger' as const,
       onPress: onSignOut,
     },
   ];
@@ -250,13 +244,16 @@ function StudioProfileMenu({
           <View style={[styles.menuPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <View style={[styles.menuIdentity, { borderBottomColor: theme.colors.border }]}>
               <View style={[styles.menuAvatar, { backgroundColor: theme.colors.primarySoft }]}>
-                {avatarUri ? (
-                  <StableImage uri={avatarUri} containerStyle={styles.menuAvatarImage} imageStyle={styles.menuAvatarImage} />
-                ) : (
-                  <AppText variant="subtitle" tone="primary">
-                    {initials}
-                  </AppText>
-                )}
+                <StableImage
+                  uri={avatarUri ?? undefined}
+                  containerStyle={styles.menuAvatarFill}
+                  imageStyle={styles.menuAvatarFill}
+                  fallback={
+                    <View style={[StyleSheet.absoluteFillObject, styles.avatarInitialsBg]}>
+                      <AppText variant="subtitle" tone="primary">{initials}</AppText>
+                    </View>
+                  }
+                />
               </View>
               <View style={styles.menuIdentityText}>
                 <AppText variant="bodyBold" numberOfLines={2} ellipsizeMode="tail">
@@ -280,16 +277,12 @@ function StudioProfileMenu({
                   key={item.key}
                   onPress={() => {
                     item.onPress();
-                    if (!item.disabled) {
-                      onClose();
-                    }
+                    onClose();
                   }}
                   accessibilityRole="button"
-                  disabled={false}
                   style={({ pressed }) => [
                     styles.menuItem,
                     { borderBottomColor: theme.colors.border },
-                    item.disabled ? styles.menuItemDisabled : null,
                     pressed ? styles.pressed : null,
                   ]}
                 >
@@ -303,13 +296,8 @@ function StudioProfileMenu({
                     >
                       {item.label}
                     </AppText>
-                    {item.description ? (
-                      <AppText variant="caption" tone="muted" numberOfLines={2} ellipsizeMode="tail">
-                        {item.description}
-                      </AppText>
-                    ) : null}
                   </View>
-                  {!item.disabled && item.key !== 'sign-out' ? (
+                  {item.key !== 'sign-out' ? (
                     <AppText variant="subtitle" tone="muted">
                       ›
                     </AppText>
@@ -322,6 +310,27 @@ function StudioProfileMenu({
       </View>
     </Modal>
   );
+}
+
+function getTrustedAliasPath(target: string): { type: 'profile' | 'brand'; value: string } | null {
+  try {
+    const parsed = new URL(target, env.webAppUrl);
+    const pathname = parsed.pathname.replace(/\/+$/g, '') || '/';
+
+    if (pathname.startsWith('/u/')) {
+      const username = pathname.slice('/u/'.length).replace(/^\/+|\/+$/g, '');
+      return username ? { type: 'profile', value: decodeURIComponent(username) } : null;
+    }
+
+    if (pathname.startsWith('/brand/')) {
+      const slug = pathname.slice('/brand/'.length).replace(/^\/+|\/+$/g, '');
+      return slug ? { type: 'brand', value: decodeURIComponent(slug) } : null;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export default function StudioWebViewScreen() {
@@ -461,6 +470,37 @@ export default function StudioWebViewScreen() {
 
   const openNavigationTarget = useCallback(
     (target: string, source: 'navigation' | 'message') => {
+      const aliasTarget = getTrustedAliasPath(target);
+      if (aliasTarget) {
+        void (async () => {
+          try {
+            if (aliasTarget.type === 'profile') {
+              const profile = await publicLinkApi.resolveProfileByUsername(aliasTarget.value);
+              trackStudioWebViewEvent('native-route-opened', {
+                source,
+                path: sanitizePathForTelemetry(`/profile/${profile.id}`),
+              });
+              router.push({ pathname: '/profile/[id]', params: { id: profile.id } } as any);
+              return;
+            }
+
+            const store = await publicLinkApi.resolveStorefrontBySlug(aliasTarget.value);
+            trackStudioWebViewEvent('native-route-opened', {
+              source,
+              path: sanitizePathForTelemetry(`/catalog/${store.ownerId}`),
+            });
+            router.push({ pathname: '/catalog/[brandId]', params: { brandId: store.ownerId, tab: 'Shop' } } as any);
+          } catch {
+            trackStudioWebViewEvent('native-route-blocked', {
+              source,
+              reason: aliasTarget.type === 'profile' ? 'profile_alias_resolution_failed' : 'storefront_alias_resolution_failed',
+            });
+            toast.info(aliasTarget.type === 'profile' ? 'Profile not found.' : 'Storefront not found.');
+          }
+        })();
+        return false;
+      }
+
       const classification = classifyStudioWebUrl(target, trustedOrigins);
 
       if (classification.type === 'studio') {
@@ -472,7 +512,7 @@ export default function StudioWebViewScreen() {
           source,
           path: sanitizePathForTelemetry(classification.path),
         });
-        router.replace(classification.nativeRoute as any);
+        router.push(classification.nativeRoute as any);
         return false;
       }
 
@@ -589,22 +629,25 @@ export default function StudioWebViewScreen() {
     openNavigationTarget('/search', 'message');
   }, [loadState, openNavigationTarget]);
 
-  const openProfileMenuPath = useCallback(
-    (path: string) => {
-      setProfileMenuVisible(false);
-      openNavigationTarget(path, 'message');
-    },
-    [openNavigationTarget],
-  );
-
   const openHelp = useCallback(() => {
     setProfileMenuVisible(false);
     void WebBrowser.openBrowserAsync(new URL('/help/verified-badge', env.webAppUrl).toString()).catch(() => undefined);
   }, []);
 
-  const showUnavailable = useCallback((message: string) => {
-    toast.info(message);
-  }, [toast]);
+  const handleMenuProfile = useCallback(() => {
+    setProfileMenuVisible(false);
+    router.replace((isBrand ? '/(tabs)/store' : '/(tabs)/me') as any);
+  }, [isBrand]);
+
+  const handleMenuNotifications = useCallback(() => {
+    setProfileMenuVisible(false);
+    router.replace('/notifications' as any);
+  }, []);
+
+  const handleMenuOrders = useCallback(() => {
+    setProfileMenuVisible(false);
+    router.replace('/orders' as any);
+  }, []);
 
   const handleStudioSignOut = useCallback(() => {
     setProfileMenuVisible(false);
@@ -613,7 +656,7 @@ export default function StudioWebViewScreen() {
     });
   }, [signOut]);
 
-  const studioShellBackground = theme.colors.surface;
+  const studioShellBackground = theme.colors.bg;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: studioShellBackground }]}>
@@ -623,7 +666,7 @@ export default function StudioWebViewScreen() {
         subtitle={headerSubtitle}
         style={{
           backgroundColor: studioShellBackground,
-          borderBottomColor: studioShellBackground,
+          borderBottomWidth: 0,
         }}
         left={
           <AppBackButton
@@ -724,7 +767,7 @@ export default function StudioWebViewScreen() {
 
         {loadState === 'error' ? (
           <View style={[styles.overlay, { backgroundColor: studioShellBackground }]}>
-            <View style={[styles.loaderBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
+            <View style={styles.errorContent}>
               <AppText variant="h3">Studio unavailable</AppText>
               <AppText variant="body" tone="muted" style={styles.centerText}>
                 {errorMessage}
@@ -743,9 +786,10 @@ export default function StudioWebViewScreen() {
         user={user}
         topOffset={insets.top + 68}
         onClose={() => setProfileMenuVisible(false)}
-        onOpenNativePath={openProfileMenuPath}
+        onOpenProfile={handleMenuProfile}
+        onOpenNotifications={handleMenuNotifications}
+        onOpenOrders={handleMenuOrders}
         onOpenHelp={openHelp}
-        onUnavailable={showUnavailable}
         onSignOut={handleStudioSignOut}
       />
     </SafeAreaView>
@@ -776,9 +820,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  headerAvatarImage: {
+  headerAvatarFill: {
     width: '100%',
     height: '100%',
+  },
+  avatarInitialsBg: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -827,7 +875,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  menuAvatarImage: {
+  menuAvatarFill: {
     width: '100%',
     height: '100%',
   },
@@ -849,10 +897,6 @@ const styles = StyleSheet.create({
   menuItemText: {
     flex: 1,
     minWidth: 0,
-    gap: tokens.spacing.xs,
-  },
-  menuItemDisabled: {
-    opacity: 0.62,
   },
   pressed: {
     opacity: 0.78,
@@ -863,12 +907,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: tokens.spacing.xl,
   },
-  loaderBlock: {
+  errorContent: {
     width: '100%',
-    maxWidth: 360,
-    borderWidth: 1,
-    borderRadius: tokens.radius.xl,
-    padding: tokens.spacing.xl,
+    maxWidth: 340,
     alignItems: 'center',
     gap: tokens.spacing.md,
   },

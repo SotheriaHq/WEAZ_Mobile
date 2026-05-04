@@ -339,7 +339,10 @@ export default function BuyerProfileScreen() {
     if (!requestedTab) return;
     const normalized = requestedTab.trim().toLowerCase();
     if (normalized === 'patches') setActiveTab('Patches');
-    if (normalized === 'orders') setActiveTab('Orders');
+    if (normalized === 'orders') {
+      router.replace('/orders' as any);
+      return;
+    }
     if (normalized === 'saved') setActiveTab('Saved');
   }, [requestedTab]);
 
@@ -591,7 +594,7 @@ export default function BuyerProfileScreen() {
         <View style={styles.actionGrid}>
           <ProfileAction emoji="✏️" label="Edit info" onPress={() => setEditOpen(true)} />
           <ProfileAction emoji="📏" label="My fits" onPress={() => setFittingsOpen(true)} />
-          <ProfileAction emoji="📦" label="Orders" onPress={() => setActiveTab('Orders')} />
+          <ProfileAction emoji="📦" label="Orders" onPress={() => router.push('/orders' as any)} />
           <ProfileAction emoji="🚪" label="Sign out" onPress={handleSignOut} />
         </View>
 
@@ -617,7 +620,13 @@ export default function BuyerProfileScreen() {
             return (
               <Pressable
                 key={tab}
-                onPress={() => setActiveTab(tab)}
+                onPress={() => {
+                  if (tab === 'Orders') {
+                    router.push('/orders' as any);
+                    return;
+                  }
+                  setActiveTab(tab);
+                }}
                 style={({ pressed }) => [
                   styles.tabPill,
                   {
@@ -632,7 +641,7 @@ export default function BuyerProfileScreen() {
                 </AppText>
               </Pressable>
             );
-          })}
+            })}
         </View>
 
         {activeTab === 'Saved' ? (

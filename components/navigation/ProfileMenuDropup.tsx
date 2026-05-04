@@ -77,7 +77,7 @@ export function ProfileMenuDropup({
   const availableMenuHeight = Math.max(264, height - bottomOffset - tokens.spacing.xl);
   const menuHeight = Math.min(availableMenuHeight, 340);
   const availableMenuWidth = Math.max(112, width - tokens.spacing.sm * 2);
-  const menuWidth = Math.min(Math.max(134, Math.round(width * 0.38)), Math.min(188, availableMenuWidth));
+  const menuWidth = Math.min(Math.max(128, Math.round(width * 0.32)), Math.min(160, availableMenuWidth));
 
   const runCloseAnimation = React.useCallback(
     (onDone?: () => void) => {
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   },
   menu: {
     minWidth: 112,
-    maxWidth: 188,
+    maxWidth: 160,
     borderRadius: tokens.radius.xl,
     borderWidth: 1,
     overflow: 'hidden',
