@@ -15,10 +15,10 @@ import {
   getDesignDetail,
   getDesignFilterDimensions,
   getActiveDesignCustomConfiguration,
-  getVisibleCustomOrderConfigurations,
   getMeasurementPoints,
   saveDesignEditor,
   startDesignDraftSession,
+  type DesignCustomOrderConfigurationInput,
   type DesignCustomOrderConfiguration,
   type DesignCategoryOption,
   type DesignDetail,
@@ -37,6 +37,7 @@ import {
   pickDesignEditorMediaAssets,
   type MediaPermissionIssue,
 } from './designEditorMediaFlow';
+import { DESIGN_REQUIRED_MEDIA_COUNT } from './designCreationRules';
 
 type Visibility = 'PUBLIC' | 'PRIVATE';
 type Audience = 'MALE' | 'FEMALE' | 'EVERYBODY';
@@ -58,6 +59,16 @@ type FormState = {
   customOrderEnabled: boolean;
   productionLeadDays: string;
   buyerInstructionText: string;
+  baseProductionCharge: string;
+  fabricCostPerYard: string;
+  deliveryMinDays: string;
+  deliveryMaxDays: string;
+  deliveryScope: string;
+  revisionPolicy: string;
+  returnPolicy: string;
+  defectPolicy: string;
+  fabricSourcingMode: 'BRAND_SOURCED' | 'BUYER_SUPPLIED' | 'EITHER';
+  fallbackOutputYards: string;
   fitPreference: FitPreference;
   targetAgeGroup: TargetAgeGroup;
 };
@@ -123,6 +134,16 @@ const INITIAL_FORM: FormState = {
   customOrderEnabled: false,
   productionLeadDays: '',
   buyerInstructionText: '',
+  baseProductionCharge: '',
+  fabricCostPerYard: '',
+  deliveryMinDays: '2',
+  deliveryMaxDays: '5',
+  deliveryScope: 'Nigeria',
+  revisionPolicy: 'One revision after delivery confirmation.',
+  returnPolicy: 'Custom orders are not returnable except where required by policy.',
+  defectPolicy: 'Defects and material faults are reviewed through support.',
+  fabricSourcingMode: 'BRAND_SOURCED',
+  fallbackOutputYards: '4',
   fitPreference: 'REGULAR',
   targetAgeGroup: 'ADULT',
 };
@@ -152,6 +173,16 @@ function syncFormFromDetail(detail: DesignDetail): FormState {
     customOrderEnabled: detail.customOrderEnabled,
     productionLeadDays: '',
     buyerInstructionText: '',
+    baseProductionCharge: '',
+    fabricCostPerYard: '',
+    deliveryMinDays: '2',
+    deliveryMaxDays: '5',
+    deliveryScope: 'Nigeria',
+    revisionPolicy: 'One revision after delivery confirmation.',
+    returnPolicy: 'Custom orders are not returnable except where required by policy.',
+    defectPolicy: 'Defects and material faults are reviewed through support.',
+    fabricSourcingMode: 'BRAND_SOURCED',
+    fallbackOutputYards: '4',
     fitPreference: detail.fitPreference ?? 'REGULAR',
     targetAgeGroup: detail.targetAgeGroup ?? 'ADULT',
   };
@@ -190,6 +221,8 @@ function hasMeaningfulDraftContent(form: FormState, tags: string[], filterSelect
   if (form.customOrderEnabled) return true;
   if (form.productionLeadDays.trim().length > 0) return true;
   if (form.buyerInstructionText.trim().length > 0) return true;
+  if (form.baseProductionCharge.trim().length > 0) return true;
+  if (form.fabricCostPerYard.trim().length > 0) return true;
   if (form.fitPreference !== 'REGULAR') return true;
   if (form.targetAgeGroup !== 'ADULT') return true;
   return Object.values(filterSelection).some((values) => values.length > 0);
@@ -286,16 +319,19 @@ export function DesignEditorProvider({
       setBooting(true);
       setLoadingError(null);
       try {
-        const [nextCategories, nextFilters, nextCustomOrderConfigurations] = await Promise.all([
+        const [nextCategories, nextFilters] = await Promise.all([
           getDesignCategories(),
           getDesignFilterDimensions(),
-          getVisibleCustomOrderConfigurations().catch(() => []),
         ]);
         setCategories(nextCategories);
         setFilterDimensions(
-          nextFilters.filter((dimension) => dimension.appliesTo.includes('COLLECTION')),
+          nextFilters.filter(
+            (dimension) =>
+              dimension.appliesTo.includes('COLLECTION') &&
+              dimension.slug !== 'designer-location',
+          ),
         );
-        setCustomOrderConfigurations(nextCustomOrderConfigurations);
+        setCustomOrderConfigurations([]);
 
         if (!activeDesignId && normalizedAssetHandoffToken) {
           const stagedAssets = consumeDesignEditorAssetBundle(normalizedAssetHandoffToken);
@@ -315,15 +351,31 @@ export function DesignEditorProvider({
           if (activeCustomConfiguration) {
             setSelectedCustomOrderConfigurationId(activeCustomConfiguration.id);
             setCustomMeasurementKeys(activeCustomConfiguration.resolvedRequiredMeasurementKeys);
+            setForm((prev) => ({
+              ...prev,
+              productionLeadDays: String(activeCustomConfiguration.productionLeadDays),
+              buyerInstructionText: activeCustomConfiguration.buyerInstructionText ?? '',
+              baseProductionCharge: activeCustomConfiguration.baseProductionCharge,
+              fabricCostPerYard: activeCustomConfiguration.fabricCostPerYard,
+              deliveryMinDays: String(activeCustomConfiguration.deliveryMinDays),
+              deliveryMaxDays: String(activeCustomConfiguration.deliveryMaxDays),
+              deliveryScope: activeCustomConfiguration.deliveryScope,
+              revisionPolicy: activeCustomConfiguration.revisionPolicy,
+              returnPolicy: activeCustomConfiguration.returnPolicy,
+              defectPolicy: activeCustomConfiguration.defectPolicy,
+              fabricSourcingMode:
+                activeCustomConfiguration.fabricSourcingMode === 'BUYER_SUPPLIED' ||
+                activeCustomConfiguration.fabricSourcingMode === 'EITHER'
+                  ? activeCustomConfiguration.fabricSourcingMode
+                  : 'BRAND_SOURCED',
+              fallbackOutputYards: activeCustomConfiguration.rules.find((rule) => rule.isFallback)?.outputYards ?? '4',
+            }));
             setCustomOrderConfigurations((prev) => {
               if (prev.some((entry) => entry.id === activeCustomConfiguration.id)) return prev;
               return [activeCustomConfiguration, ...prev];
             });
           } else {
             setSelectedCustomOrderConfigurationId('');
-            if (detail.customOrderEnabled && nextCustomOrderConfigurations.length === 0) {
-              setForm((prev) => ({ ...prev, customOrderEnabled: false }));
-            }
           }
 
           if (detail.status === 'DRAFT') {
@@ -381,12 +433,17 @@ export function DesignEditorProvider({
   const canSaveDraft =
     assets.length > 0 || hasMeaningfulDraftContent(form, tags, filterSelection);
   const canPublish =
-    assets.length > 0 &&
+    assets.length >= DESIGN_REQUIRED_MEDIA_COUNT &&
+    assets.length <= DESIGN_EDITOR_MAX_MEDIA &&
     form.title.trim().length > 0 &&
     Boolean(form.categoryId) &&
     Boolean(form.subCategoryId) &&
     tags.length > 0 &&
-    (!form.customOrderEnabled || (Boolean(selectedCustomOrderConfigurationId) && customMeasurementKeys.length > 0));
+    (!form.customOrderEnabled ||
+      (customMeasurementKeys.length > 0 &&
+        form.baseProductionCharge.trim().length > 0 &&
+        form.fabricCostPerYard.trim().length > 0 &&
+        form.fallbackOutputYards.trim().length > 0));
 
   useEffect(() => {
     if (!selectedCategory) return;
@@ -529,7 +586,7 @@ export function DesignEditorProvider({
         return;
       }
       if (action === 'publish' && !canPublish) {
-        toast.error('Add media, title, category, and tags before publishing.');
+        toast.error('Fill Front, Back, Left, and Right media plus title, category, and tags before publishing.');
         return;
       }
       if (!canSaveDraft) {
@@ -542,7 +599,41 @@ export function DesignEditorProvider({
       setSaveMessage(action === 'publish' ? 'Preparing design...' : 'Preparing draft...');
 
       try {
-        const filterValueIds = Array.from(new Set(Object.values(filterSelection).flat()));
+        const allowedFilterDimensionIds = new Set(filterDimensions.map((dimension) => dimension.id));
+        const filterValueIds = Array.from(
+          new Set(
+            Object.entries(filterSelection)
+              .filter(([dimensionId]) => allowedFilterDimensionIds.has(dimensionId))
+              .flatMap(([, values]) => values),
+          ),
+        );
+        const customOrderConfiguration: DesignCustomOrderConfigurationInput | undefined = form.customOrderEnabled
+          ? {
+              title: form.title.trim() || 'Design custom order',
+              buyerInstructionText: form.buyerInstructionText || undefined,
+              requiredMeasurementKeys: customMeasurementKeys,
+              requiredFreeformPointIds: [],
+              baseProductionCharge: form.baseProductionCharge,
+              fabricCostPerYard: form.fabricCostPerYard,
+              rushEnabled: false,
+              productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : 7,
+              deliveryMinDays: form.deliveryMinDays ? Number(form.deliveryMinDays) : 2,
+              deliveryMaxDays: form.deliveryMaxDays ? Number(form.deliveryMaxDays) : 5,
+              deliveryScope: form.deliveryScope.trim() || 'Nigeria',
+              revisionPolicy: form.revisionPolicy.trim() || 'One revision after delivery confirmation.',
+              returnPolicy: form.returnPolicy.trim() || 'Custom orders are not returnable except where required by policy.',
+              defectPolicy: form.defectPolicy.trim() || 'Defects and material faults are reviewed through support.',
+              fabricSourcingMode: form.fabricSourcingMode,
+              rules: [
+                {
+                  priority: 1,
+                  conditionsJson: {},
+                  outputYards: form.fallbackOutputYards,
+                  isFallback: true,
+                },
+              ],
+            }
+          : undefined;
         const result = await saveDesignEditor(
           {
             title: form.title,
@@ -557,7 +648,7 @@ export function DesignEditorProvider({
             sizingMode: form.sizingMode,
             customOrderEnabled: form.customOrderEnabled,
             customMeasurementKeys,
-            customOrderConfigurationTemplateId: selectedCustomOrderConfigurationId || undefined,
+            customOrderConfiguration,
             productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : undefined,
             buyerInstructionText: form.buyerInstructionText || undefined,
             fitPreference: form.fitPreference,

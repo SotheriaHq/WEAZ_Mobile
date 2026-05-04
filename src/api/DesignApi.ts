@@ -1,4 +1,5 @@
 import { apiClient } from '@/src/api/httpClient';
+import { DESIGN_EDITOR_MAX_MEDIA } from '@/src/features/design-editor/designCreationRules';
 
 export type MobileDesignAsset = {
   id: string;
@@ -117,6 +118,7 @@ export type DesignSavePayload = {
   customOrderEnabled?: boolean;
   customMeasurementKeys?: string[];
   customOrderConfigurationTemplateId?: string;
+  customOrderConfiguration?: DesignCustomOrderConfigurationInput;
   productionLeadDays?: number;
   buyerInstructionText?: string;
   fitPreference?: 'SLIM' | 'REGULAR' | 'LOOSE' | 'OVERSIZED';
@@ -190,7 +192,32 @@ type UploadCompletion = {
   actualMimeType: string;
 };
 
-const MAX_DESIGN_MEDIA = 20;
+export type DesignCustomOrderConfigurationInput = {
+  title?: string;
+  buyerInstructionText?: string;
+  requiredMeasurementKeys: string[];
+  requiredFreeformPointIds?: string[];
+  baseProductionCharge: string;
+  fabricCostPerYard: string;
+  rushEnabled: boolean;
+  rushFee?: string;
+  rushProductionLeadDays?: number;
+  productionLeadDays: number;
+  deliveryMinDays: number;
+  deliveryMaxDays: number;
+  deliveryScope: string;
+  revisionPolicy: string;
+  returnPolicy: string;
+  defectPolicy: string;
+  fabricSourcingMode: 'BRAND_SOURCED' | 'BUYER_SUPPLIED' | 'EITHER';
+  notes?: string;
+  rules: Array<{
+    priority: number;
+    conditionsJson: Record<string, unknown>;
+    outputYards: string;
+    isFallback?: boolean;
+  }>;
+};
 
 const createIdempotencyKey = () =>
   `mob_design_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -661,11 +688,7 @@ async function createDesignCustomOrderConfigurationFromTemplate(args: {
 
 async function updateDesignCustomOrderConfiguration(
   configurationId: string,
-  updates: {
-    requiredMeasurementKeys?: string[];
-    productionLeadDays?: number;
-    buyerInstructionText?: string;
-  },
+  updates: Partial<DesignCustomOrderConfigurationInput>,
 ): Promise<DesignCustomOrderConfiguration> {
   const response = await apiClient.patch(`/custom-order-configurations/${configurationId}`, updates);
   const configuration = normalizeCustomOrderConfiguration(response.data);
@@ -684,22 +707,31 @@ async function ensureDesignCustomOrderConfiguration(
   const active = await getActiveDesignCustomConfiguration(designId);
   const keys = payload.customMeasurementKeys ?? [];
   if (active) {
-    // Update if keys changed
-    if (keys.length > 0 && keys.join('|') !== active.resolvedRequiredMeasurementKeys.join('|')) {
-      return updateDesignCustomOrderConfiguration(active.id, { requiredMeasurementKeys: keys });
-    }
-    // Update other fields if provided
-    const updates: any = {};
-    if (payload.productionLeadDays !== undefined) updates.productionLeadDays = payload.productionLeadDays;
-    if (payload.buyerInstructionText !== undefined) updates.buyerInstructionText = payload.buyerInstructionText;
-    if (Object.keys(updates).length > 0) {
-      return updateDesignCustomOrderConfiguration(active.id, updates);
+    if (payload.customOrderConfiguration) {
+      return updateDesignCustomOrderConfiguration(active.id, {
+        ...payload.customOrderConfiguration,
+        requiredMeasurementKeys: keys,
+      });
     }
     return active;
   }
 
+  if (payload.customOrderConfiguration) {
+    const response = await apiClient.post('/custom-order-configurations', {
+      sourceType: 'DESIGN',
+      sourceId: designId,
+      ...payload.customOrderConfiguration,
+      requiredMeasurementKeys: keys,
+    });
+    const configuration = normalizeCustomOrderConfiguration(response.data);
+    if (!configuration) {
+      throw new Error('Custom-order configuration could not be created for this design.');
+    }
+    return configuration;
+  }
+
   if (!payload.customOrderConfigurationTemplateId) {
-    throw new Error('Select custom order settings before publishing custom orders.');
+    throw new Error('Complete custom order settings before publishing custom orders.');
   }
 
   return createDesignCustomOrderConfigurationFromTemplate({
@@ -814,7 +846,7 @@ export async function saveDesignEditor(
   onProgress?: (value: number, message: string) => void,
 ): Promise<{ id: string; detail: DesignDetail }> {
   const trimmedTitle = payload.title.trim() || 'Untitled design';
-  const filteredAssets = payload.assets.slice(0, MAX_DESIGN_MEDIA);
+  const filteredAssets = payload.assets.slice(0, DESIGN_EDITOR_MAX_MEDIA);
   const localAssets = filteredAssets.filter((asset) => !asset.existingMediaId);
   const existingMediaIds = filteredAssets
     .map((asset) => asset.existingMediaId)

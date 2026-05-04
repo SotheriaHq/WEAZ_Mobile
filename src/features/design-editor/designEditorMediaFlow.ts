@@ -1,8 +1,9 @@
 import * as ImagePicker from 'expo-image-picker';
 
 import type { DesignEditorAsset } from '@/src/api/DesignApi';
+import { DESIGN_EDITOR_MAX_MEDIA } from './designCreationRules';
 
-export const DESIGN_EDITOR_MAX_MEDIA = 20;
+export { DESIGN_EDITOR_MAX_MEDIA };
 
 export type DesignEditorMediaSource = 'camera' | 'library';
 

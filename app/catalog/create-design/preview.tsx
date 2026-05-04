@@ -12,6 +12,13 @@ import { Chip } from '@/components/ui/Chip';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
+import {
+  DESIGN_AUDIENCE_LABELS,
+  DESIGN_FIT_PREFERENCE_LABELS,
+  DESIGN_SIZING_LABELS,
+  DESIGN_TARGET_AGE_LABELS,
+  DESIGN_VISIBILITY_LABELS,
+} from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
@@ -49,7 +56,6 @@ export default function CreateDesignPreviewScreen() {
     subCategories,
     filterSelection,
     customMeasurementKeys,
-    filterDimensions,
   } = useDesignEditor();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -62,9 +68,6 @@ export default function CreateDesignPreviewScreen() {
   const categorySummary =
     selectedCategory && subCategory ? `${selectedCategory.name} / ${subCategory.name}` : 'Not selected';
   const selectedFilterCount = Object.values(filterSelection).reduce((sum, values) => sum + values.length, 0);
-  const locationDimension = filterDimensions.find((dimension) => dimension.slug === 'designer-location') ?? null;
-  const selectedLocationId = locationDimension ? (filterSelection[locationDimension.id] ?? [])[0] : null;
-  const selectedLocation = locationDimension?.values.find((value) => value.id === selectedLocationId) ?? null;
   const canDelete = deletePhrase === 'DELETE' && saveState.action !== 'draft';
   const selectedPreviewAsset = assets[selectedPreviewIndex] ?? null;
 
@@ -167,14 +170,13 @@ export default function CreateDesignPreviewScreen() {
         </Card>
 
         <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
-          <SummaryRow label="Privacy" value={form.visibility === 'PRIVATE' ? 'Only me' : 'Everyone'} />
+          <SummaryRow label="Privacy" value={DESIGN_VISIBILITY_LABELS[form.visibility]} />
           <SummaryRow label="Category" value={categorySummary} />
-          <SummaryRow label="Audience" value={toPrettyLabel(form.audience)} />
-          <SummaryRow label="Sizing" value={toPrettyLabel(form.sizingMode)} />
-          <SummaryRow label="Fit" value={toPrettyLabel(form.fitPreference)} />
-          <SummaryRow label="Age group" value={toPrettyLabel(form.targetAgeGroup)} />
+          <SummaryRow label="Audience" value={DESIGN_AUDIENCE_LABELS[form.audience]} />
+          <SummaryRow label="Sizing" value={DESIGN_SIZING_LABELS[form.sizingMode]} />
+          <SummaryRow label="Fit" value={DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference]} />
+          <SummaryRow label="Age group" value={DESIGN_TARGET_AGE_LABELS[form.targetAgeGroup]} />
           <SummaryRow label="Custom orders" value={form.customOrderEnabled ? 'Enabled' : 'Disabled'} />
-          <SummaryRow label="Location" value={selectedLocation?.name ?? 'Not selected'} />
           <SummaryRow label="Price" value={form.minPrice || form.maxPrice ? `NGN ${form.minPrice || '0'} - NGN ${form.maxPrice || '0'}` : 'Not set'} />
           <SummaryRow label="Assets" value={String(assets.length)} />
           <SummaryRow label="Discovery filters" value={selectedFilterCount > 0 ? `${selectedFilterCount} selected` : 'None'} />

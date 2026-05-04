@@ -18,68 +18,30 @@ import { OptionRow } from '@/components/ui/OptionRow';
 import { RequiredFieldLabel } from '@/components/ui/RequiredFieldLabel';
 import { StableImage } from '@/components/ui/StableImage';
 import TagsApi from '@/src/api/TagsApi';
-import { apiClient } from '@/src/api/httpClient';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
+import {
+  DESIGN_AUDIENCE_LABELS,
+  DESIGN_EDITOR_MAX_MEDIA,
+  DESIGN_FIT_PREFERENCE_LABELS,
+  DESIGN_MEDIA_SLOTS,
+  DESIGN_REQUIRED_MEDIA_COUNT,
+  DESIGN_SIZING_LABELS,
+  DESIGN_TARGET_AGE_LABELS,
+  DESIGN_VISIBILITY_LABELS,
+} from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
 const PRIVACY_OPTIONS = [
-  { value: 'PUBLIC', label: 'Everyone' },
-  { value: 'PRIVATE', label: 'Only me' },
+  { value: 'PUBLIC', label: DESIGN_VISIBILITY_LABELS.PUBLIC },
+  { value: 'PRIVATE', label: DESIGN_VISIBILITY_LABELS.PRIVATE },
 ] as const;
-
-const AUDIENCE_LABELS: Record<'EVERYBODY' | 'FEMALE' | 'MALE', string> = {
-  EVERYBODY: 'Everybody',
-  FEMALE: 'Women',
-  MALE: 'Men',
-};
-
-const FIT_PREFERENCE_LABELS: Record<'SLIM' | 'REGULAR' | 'LOOSE' | 'OVERSIZED', string> = {
-  SLIM: 'Slim',
-  REGULAR: 'Regular',
-  LOOSE: 'Loose',
-  OVERSIZED: 'Oversized',
-};
-
-const TARGET_AGE_LABELS: Record<'ADULT' | 'CHILD', string> = {
-  ADULT: 'Adult',
-  CHILD: 'Child',
-};
-
-const SIZING_LABELS: Record<'NONE' | 'RTW' | 'CUSTOM' | 'RTW_PLUS_FITTINGS', string> = {
-  NONE: 'No sizing info',
-  RTW: 'RTW only',
-  CUSTOM: 'Custom only',
-  RTW_PLUS_FITTINGS: 'RTW + fittings',
-};
 
 function formatPriceSummary(minPrice: string, maxPrice: string) {
   if (minPrice && maxPrice) return `NGN ${minPrice} - NGN ${maxPrice}`;
   if (minPrice) return `From NGN ${minPrice}`;
   if (maxPrice) return `Up to NGN ${maxPrice}`;
   return 'Not set';
-}
-
-function normalizeMentionsInput(value: string) {
-  return Array.from(
-    new Set(
-      value
-        .split(/[,\s]+/)
-        .map((entry) => entry.trim().replace(/^@/, ''))
-        .filter(Boolean)
-        .map((entry) => `@${entry}`),
-    ),
-  );
-}
-
-function mergeMentions(description: string, mentions: string[]) {
-  const withoutMentions = description
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('Mentions:'))
-    .join('\n')
-    .trim();
-  if (mentions.length === 0) return withoutMentions;
-  return [withoutMentions, `Mentions: ${mentions.join(' ')}`].filter(Boolean).join('\n\n');
 }
 
 export default function CreateDesignComposerScreen() {
@@ -90,16 +52,15 @@ export default function CreateDesignComposerScreen() {
     form,
     categories,
     selectedCategory,
+    subCategories,
     filterDimensions,
     filterSelection,
     measurementPoints,
-    customOrderConfigurations,
-    selectedCustomOrderConfigurationId,
     customMeasurementKeys,
     permissionIssue,
     updateField,
     toggleFilterValue,
-    selectCustomOrderConfiguration,
+    toggleMeasurementKey,
     moveAsset,
     removeAsset,
     setCoverAssetId,
@@ -118,52 +79,33 @@ export default function CreateDesignComposerScreen() {
 
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
-  const [subcategoryOpen, setSubcategoryOpen] = useState(false);
-  const [locationOpen, setLocationOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
-  const [mentionsOpen, setMentionsOpen] = useState(false);
   const [priceOpen, setPriceOpen] = useState(false);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [customOrdersOpen, setCustomOrdersOpen] = useState(false);
-  const [customOrderConfigOpen, setCustomOrderConfigOpen] = useState(false);
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
-  const [mentionsDraft, setMentionsDraft] = useState('');
+  const [categoryStep, setCategoryStep] = useState<'category' | 'subcategory'>('category');
   const [tagSuggestions, setTagSuggestions] = useState<{ name: string; usageCount: number }[]>([]);
   const [tagError, setTagError] = useState<string | null>(null);
 
-  const audienceLabel = AUDIENCE_LABELS[form.audience];
-  const sizingLabel = SIZING_LABELS[form.sizingMode];
-  const fitPreferenceLabel = FIT_PREFERENCE_LABELS[form.fitPreference];
-  const targetAgeLabel = TARGET_AGE_LABELS[form.targetAgeGroup];
+  const audienceLabel = DESIGN_AUDIENCE_LABELS[form.audience];
+  const sizingLabel = DESIGN_SIZING_LABELS[form.sizingMode];
+  const fitPreferenceLabel = DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference];
+  const targetAgeLabel = DESIGN_TARGET_AGE_LABELS[form.targetAgeGroup];
   const selectedSubCategory =
     selectedCategory?.subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
-  const selectedCustomOrderConfiguration =
-    customOrderConfigurations.find((entry) => entry.id === selectedCustomOrderConfigurationId) ?? null;
-  const hasCustomOrderConfigurations = customOrderConfigurations.length > 0;
+  const categoryValue = selectedCategory && selectedSubCategory
+    ? `${selectedCategory.name} / ${selectedSubCategory.name}`
+    : selectedCategory?.name ?? 'Select category';
 
   const categoryOptions = useMemo(
     () => categories.map((category) => ({ value: category.id, label: category.name })),
     [categories],
   );
 
-  const subcategoryOptions = useMemo(
-    () =>
-      selectedCategory
-        ? selectedCategory.subCategories.map((subCategory) => ({
-            value: subCategory.id,
-            label: subCategory.name,
-          }))
-        : [],
-    [selectedCategory],
-  );
-
-  const locationDimension = filterDimensions.find((dimension) => dimension.slug === 'designer-location') ?? null;
-  const locationValueIds = locationDimension ? filterSelection[locationDimension.id] ?? [] : [];
-  const selectedLocation = locationDimension?.values.find((value) => locationValueIds.includes(value.id)) ?? null;
-  const discoveryDimensions = filterDimensions.filter((dimension) => dimension.id !== locationDimension?.id);
+  const discoveryDimensions = filterDimensions;
   const selectedDiscoveryFilterCount = Object.entries(filterSelection).reduce((sum, [dimensionId, values]) => {
-    if (locationDimension?.id === dimensionId) return sum;
     return sum + values.length;
   }, 0);
 
@@ -189,11 +131,12 @@ export default function CreateDesignComposerScreen() {
   const missingRequiredFields = useMemo(() => {
     const missing: string[] = [];
     if (assets.length === 0) missing.push('Media');
+    if (assets.length > 0 && assets.length < DESIGN_REQUIRED_MEDIA_COUNT) missing.push('Front, Back, Left, Right media');
     if (form.title.trim().length === 0) missing.push('Title');
     if (!form.categoryId || !form.subCategoryId) missing.push('Category');
     if (selectedTags.length === 0) missing.push('Tags');
-    if (form.customOrderEnabled && !selectedCustomOrderConfigurationId) missing.push('Custom order configuration');
     if (form.customOrderEnabled && customMeasurementKeys.length === 0) missing.push('Custom order fields');
+    if (form.customOrderEnabled && (!form.baseProductionCharge || !form.fabricCostPerYard)) missing.push('Custom order pricing');
     return missing;
   }, [
     assets.length,
@@ -202,26 +145,9 @@ export default function CreateDesignComposerScreen() {
     form.customOrderEnabled,
     form.subCategoryId,
     form.title,
-    selectedCustomOrderConfigurationId,
     selectedTags.length,
   ]);
   const canPreview = missingRequiredFields.length === 0;
-
-  const customOrderFieldOptions = useMemo(() => {
-    const pointByKey = new Map(measurementPoints.map((point) => [point.key, point]));
-    return customMeasurementKeys.map((key) => {
-      const point = pointByKey.get(key);
-      return {
-        key,
-        label:
-          point?.label ??
-          key
-            .replace(/_/g, ' ')
-            .toLowerCase()
-            .replace(/\b\w/g, (char) => char.toUpperCase()),
-      };
-    });
-  }, [customMeasurementKeys, measurementPoints]);
 
   const handlePickMedia = useCallback(
     async (source: 'camera' | 'library') => {
@@ -234,28 +160,17 @@ export default function CreateDesignComposerScreen() {
     if (!tagsOpen) return;
     let isActive = true;
 
-    if (__DEV__) {
-      console.log('[CreateDesignTags] baseUrl', apiClient.defaults.baseURL || 'unknown');
-    }
-
     void TagsApi.getTags(50)
       .then((items) => {
         if (isActive) {
           setTagSuggestions(items);
           setTagError(null);
-          if (__DEV__) {
-            console.log('[CreateDesignTags] GET /tags status/count', 200, items.length);
-            console.log('[CreateDesignTags] normalized options count', items.length);
-          }
         }
       })
       .catch((error) => {
         if (isActive) {
           setTagSuggestions([]);
           setTagError('Could not load tags. You can still add your own.');
-          if (__DEV__) {
-            console.log('[CreateDesignTags] GET /tags status/count', 'error', 0);
-          }
         }
       });
 
@@ -300,7 +215,7 @@ export default function CreateDesignComposerScreen() {
           <ComposerSection title="Selected media">
             <View style={styles.sectionTopRow}>
               <AppText variant="captionRegular" tone="muted">
-                {assets.length > 0 ? `${assets.length} selected asset${assets.length === 1 ? '' : 's'}` : 'No media selected yet'}
+                {assets.length > 0 ? `${assets.length}/${DESIGN_EDITOR_MAX_MEDIA} selected` : 'No media selected yet'}
               </AppText>
               <View ref={plusRef}>
                 <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
@@ -312,7 +227,7 @@ export default function CreateDesignComposerScreen() {
                   <View key={asset.id} style={styles.assetCard}>
                     <StableImage uri={asset.remoteUrl ?? asset.uri} containerStyle={styles.assetPreview} imageStyle={styles.assetPreview} />
                     <View style={[styles.assetBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
-                      <AppText variant="captionBold">{asset.id === coverAssetId ? 'Cover' : `#${index + 1}`}</AppText>
+                      <AppText variant="captionBold">{DESIGN_MEDIA_SLOTS[index]}</AppText>
                     </View>
                     <View style={styles.assetActionRow}>
                       <Pressable onPress={() => moveAsset(asset.id, 'left')} disabled={index === 0}>
@@ -357,15 +272,6 @@ export default function CreateDesignComposerScreen() {
                   multiline
                   containerStyle={styles.copyField}
                 />
-                <Button
-                  title="@ Mention"
-                  size="sm"
-                  variant="ghost"
-                  onPress={() => {
-                    setMentionsDraft('');
-                    setMentionsOpen(true);
-                  }}
-                />
           </View>
 
           <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
@@ -378,24 +284,12 @@ export default function CreateDesignComposerScreen() {
                 <OptionRow
                   leading="🏷️"
                   title="Category"
-                  subtitle="Choose the main category."
-                  value={selectedCategory?.name ?? 'Select category'}
-                  onPress={() => setCategoryOpen(true)}
-                />
-                <OptionRow
-                  title="Subcategory"
-                  subtitle="Choose a subcategory within the selected category."
-                  value={selectedSubCategory?.name ?? 'Select subcategory'}
-                  disabled={!selectedCategory}
-                  onPress={selectedCategory ? () => setSubcategoryOpen(true) : undefined}
-                />
-                <OptionRow
-                  leading="📍"
-                  title="Location"
-                  subtitle={locationDimension ? 'Control where this design shows geographically.' : 'Designer location filters are not available yet.'}
-                  value={selectedLocation?.name ?? (locationDimension ? 'Select' : 'Unavailable')}
-                  disabled={!locationDimension}
-                  onPress={locationDimension ? () => setLocationOpen(true) : undefined}
+                  subtitle="Choose category and subcategory."
+                  value={categoryValue}
+                  onPress={() => {
+                    setCategoryStep('category');
+                    setCategoryOpen(true);
+                  }}
                 />
                 <OptionRow
                   leading="💸"
@@ -415,9 +309,7 @@ export default function CreateDesignComposerScreen() {
                   title="Custom orders"
                   subtitle={
                     form.customOrderEnabled
-                      ? selectedCustomOrderConfiguration
-                        ? `${selectedCustomOrderConfiguration.title} · ${customMeasurementKeys.length} field${customMeasurementKeys.length === 1 ? '' : 's'}`
-                        : 'Configuration required'
+                      ? `${customMeasurementKeys.length} field${customMeasurementKeys.length === 1 ? '' : 's'}`
                       : 'Off'
                   }
                   value={form.customOrderEnabled ? 'Enabled' : 'Disabled'}
@@ -488,46 +380,32 @@ export default function CreateDesignComposerScreen() {
       <AppSelectSheet
         visible={categoryOpen}
         title="Category"
-        subtitle="Pick the main category."
-        options={categoryOptions}
-        value={form.categoryId}
+        subtitle={categoryStep === 'category' ? 'Pick the main category.' : `Pick a subcategory in ${selectedCategory?.name ?? 'this category'}.`}
+        options={
+          categoryStep === 'category'
+            ? categoryOptions
+            : subCategories.map((subCategory) => ({
+                value: subCategory.id,
+                label: subCategory.name,
+              }))
+        }
+        value={categoryStep === 'category' ? form.categoryId : form.subCategoryId}
         onChange={(value) => {
-          updateField('categoryId', value);
-          updateField('subCategoryId', ''); // clear subcategory
-        }}
-        onClose={() => setCategoryOpen(false)}
-        emptyMessage="No categories are configured yet."
-      />
-
-      <AppSelectSheet
-        visible={subcategoryOpen}
-        title="Subcategory"
-        subtitle="Pick a subcategory within the selected category."
-        options={subcategoryOptions}
-        value={form.subCategoryId}
-        onChange={(value) => updateField('subCategoryId', value)}
-        onClose={() => setSubcategoryOpen(false)}
-        emptyMessage="No subcategories available."
-      />
-
-      <AppSelectSheet
-        visible={locationOpen}
-        title="Designer location"
-        subtitle="Use one location so discovery filters stay consistent."
-        options={(locationDimension?.values ?? []).map((value) => ({ value: value.id, label: value.name }))}
-        value={locationValueIds[0] ?? ''}
-        onChange={(value) => {
-          if (!locationDimension) return;
-          const currentValue = locationValueIds[0] ?? null;
-          if (currentValue === value) {
-            toggleFilterValue(locationDimension.id, value, false);
+          if (categoryStep === 'category') {
+            updateField('categoryId', value);
+            updateField('subCategoryId', '');
+            setCategoryStep('subcategory');
             return;
           }
-          if (currentValue) toggleFilterValue(locationDimension.id, currentValue, false);
-          toggleFilterValue(locationDimension.id, value, false);
+          updateField('subCategoryId', value);
+          setCategoryOpen(false);
+          setCategoryStep('category');
         }}
-        onClose={() => setLocationOpen(false)}
-        emptyMessage="No location filters configured yet."
+        onClose={() => {
+          setCategoryOpen(false);
+          setCategoryStep('category');
+        }}
+        emptyMessage={categoryStep === 'category' ? 'No categories are configured yet.' : 'No subcategories available.'}
       />
 
       <AppMultiSelectSheet
@@ -538,36 +416,12 @@ export default function CreateDesignComposerScreen() {
         values={selectedTags}
         onChange={(values) => {
           updateField('tagsInput', values.join(', '));
-          if (__DEV__) {
-            console.log('[CreateDesignTags] selected count', values.length);
-          }
         }}
         onClose={() => setTagsOpen(false)}
         emptyMessage="No suggestions found. Type a tag and tap Add."
         errorMessage={tagError}
         maxSelected={10}
       />
-
-      <AppBottomSheet
-        visible={mentionsOpen}
-        title="Mentions"
-        subtitle="Add usernames and they will be appended to the description."
-        onClose={() => setMentionsOpen(false)}
-        onDone={() => {
-          const mentions = normalizeMentionsInput(mentionsDraft);
-          updateField('description', mergeMentions(form.description, mentions));
-          setMentionsOpen(false);
-        }}
-        doneLabel="Apply"
-        showCloseButton
-      >
-        <Input
-          label="Usernames"
-          value={mentionsDraft}
-          onChangeText={setMentionsDraft}
-          placeholder="@stylecreator, @threadlybrand"
-        />
-      </AppBottomSheet>
 
       <AppBottomSheet
         visible={priceOpen}
@@ -607,7 +461,7 @@ export default function CreateDesignComposerScreen() {
           <AppText variant="bodyBold">Sizing mode</AppText>
           <View style={styles.sheetChipWrap}>
             {(['RTW_PLUS_FITTINGS', 'RTW', 'CUSTOM', 'NONE'] as const).map((value) => (
-              <Chip key={value} label={SIZING_LABELS[value]} selected={form.sizingMode === value} onPress={() => updateField('sizingMode', value)} />
+              <Chip key={value} label={DESIGN_SIZING_LABELS[value]} selected={form.sizingMode === value} onPress={() => updateField('sizingMode', value)} />
             ))}
           </View>
         </View>
@@ -616,7 +470,7 @@ export default function CreateDesignComposerScreen() {
           <AppText variant="bodyBold">Fit preference</AppText>
           <View style={styles.sheetChipWrap}>
             {(['SLIM', 'REGULAR', 'LOOSE', 'OVERSIZED'] as const).map((value) => (
-              <Chip key={value} label={FIT_PREFERENCE_LABELS[value]} selected={form.fitPreference === value} onPress={() => updateField('fitPreference', value)} />
+              <Chip key={value} label={DESIGN_FIT_PREFERENCE_LABELS[value]} selected={form.fitPreference === value} onPress={() => updateField('fitPreference', value)} />
             ))}
           </View>
         </View>
@@ -625,7 +479,7 @@ export default function CreateDesignComposerScreen() {
           <AppText variant="bodyBold">Target age group</AppText>
           <View style={styles.sheetChipWrap}>
             {(['ADULT', 'CHILD'] as const).map((value) => (
-              <Chip key={value} label={TARGET_AGE_LABELS[value]} selected={form.targetAgeGroup === value} onPress={() => updateField('targetAgeGroup', value)} />
+              <Chip key={value} label={DESIGN_TARGET_AGE_LABELS[value]} selected={form.targetAgeGroup === value} onPress={() => updateField('targetAgeGroup', value)} />
             ))}
           </View>
         </View>
@@ -646,60 +500,68 @@ export default function CreateDesignComposerScreen() {
             </AppText>
           </View>
           <Switch
-            value={form.customOrderEnabled && hasCustomOrderConfigurations}
-            disabled={!hasCustomOrderConfigurations}
+            value={form.customOrderEnabled}
             onValueChange={(value) => {
-              if (!hasCustomOrderConfigurations) {
-                updateField('customOrderEnabled', false);
-                return;
-              }
               updateField('customOrderEnabled', value);
-              if (value && !selectedCustomOrderConfigurationId && customOrderConfigurations[0]) {
-                selectCustomOrderConfiguration(customOrderConfigurations[0].id);
-              }
             }}
           />
         </View>
 
-        {!hasCustomOrderConfigurations ? (
-          <Card padding="md" style={[styles.requiredCard, { borderColor: theme.colors.border }]}>
-            <AppText variant="bodyBold">Custom-order setup required</AppText>
-            <AppText variant="captionRegular" tone="muted">
-              Set up custom order options before enabling custom orders for this design.
-            </AppText>
-          </Card>
-        ) : null}
-
-        {form.customOrderEnabled && hasCustomOrderConfigurations ? (
+        {form.customOrderEnabled ? (
           <View style={styles.sheetSection}>
-            <OptionRow
-              title="Configuration"
-              subtitle={
-                hasCustomOrderConfigurations
-                  ? 'Choose custom order settings.'
-                  : 'No configurations are available.'
-              }
-              value={selectedCustomOrderConfiguration?.title ?? 'Select'}
-              disabled={!hasCustomOrderConfigurations}
-              onPress={hasCustomOrderConfigurations ? () => setCustomOrderConfigOpen(true) : undefined}
-            />
             <RequiredFieldLabel required>Required custom-order fields</RequiredFieldLabel>
             <AppText variant="captionRegular" tone="muted">
-              These fields come from the selected custom-order configuration.
+              Select the exact buyer measurement fields for this design.
             </AppText>
             <View style={styles.sheetChipWrap}>
-              {customOrderFieldOptions.length > 0 ? customOrderFieldOptions.map((point) => (
+              {measurementPoints.length > 0 ? measurementPoints.map((point) => (
                 <Chip
                   key={point.key}
-                  label={point.label}
-                  selected
-                  disabled
+                  label={point.label || point.key}
+                  selected={customMeasurementKeys.includes(point.key)}
+                  onPress={() => toggleMeasurementKey(point.key)}
                 />
               )) : (
                 <AppText variant="body" tone="muted">
-                  Select a configuration to load its required fields.
+                  No measurement fields are available for this audience.
                 </AppText>
               )}
+            </View>
+            <View style={styles.priceRow}>
+              <Input
+                label="Base charge"
+                value={form.baseProductionCharge}
+                onChangeText={(value) => updateField('baseProductionCharge', value.replace(/[^0-9.]/g, ''))}
+                keyboardType="decimal-pad"
+                placeholder="5000"
+                containerStyle={styles.priceInput}
+              />
+              <Input
+                label="Fabric cost / yard"
+                value={form.fabricCostPerYard}
+                onChangeText={(value) => updateField('fabricCostPerYard', value.replace(/[^0-9.]/g, ''))}
+                keyboardType="decimal-pad"
+                placeholder="2500"
+                containerStyle={styles.priceInput}
+              />
+            </View>
+            <View style={styles.priceRow}>
+              <Input
+                label="Delivery min days"
+                value={form.deliveryMinDays}
+                onChangeText={(value) => updateField('deliveryMinDays', value.replace(/[^0-9]/g, ''))}
+                keyboardType="numeric"
+                placeholder="2"
+                containerStyle={styles.priceInput}
+              />
+              <Input
+                label="Delivery max days"
+                value={form.deliveryMaxDays}
+                onChangeText={(value) => updateField('deliveryMaxDays', value.replace(/[^0-9]/g, ''))}
+                keyboardType="numeric"
+                placeholder="5"
+                containerStyle={styles.priceInput}
+              />
             </View>
             <Input
               label="Production time"
@@ -710,30 +572,46 @@ export default function CreateDesignComposerScreen() {
               helperText="Days to produce the custom order."
             />
             <Input
+              label="Fallback yards"
+              value={form.fallbackOutputYards}
+              onChangeText={(value) => updateField('fallbackOutputYards', value.replace(/[^0-9.]/g, ''))}
+              keyboardType="decimal-pad"
+              placeholder="4"
+            />
+            <Input
+              label="Delivery scope"
+              value={form.deliveryScope}
+              onChangeText={(value) => updateField('deliveryScope', value)}
+              placeholder="Nigeria"
+            />
+            <Input
               label="Additional instructions"
               value={form.buyerInstructionText}
               onChangeText={(value) => updateField('buyerInstructionText', value)}
               multiline
               placeholder="Any special instructions for buyers..."
             />
+            <Input
+              label="Revision policy"
+              value={form.revisionPolicy}
+              onChangeText={(value) => updateField('revisionPolicy', value)}
+              multiline
+            />
+            <Input
+              label="Return policy"
+              value={form.returnPolicy}
+              onChangeText={(value) => updateField('returnPolicy', value)}
+              multiline
+            />
+            <Input
+              label="Defect policy"
+              value={form.defectPolicy}
+              onChangeText={(value) => updateField('defectPolicy', value)}
+              multiline
+            />
           </View>
         ) : null}
       </AppBottomSheet>
-
-      <AppSelectSheet
-        visible={customOrderConfigOpen}
-        title="Custom-order configuration"
-        subtitle="Choose custom order settings."
-        options={customOrderConfigurations.map((configuration) => ({
-          value: configuration.id,
-          label: configuration.title,
-          description: `${configuration.resolvedRequiredMeasurementKeys.length} field${configuration.resolvedRequiredMeasurementKeys.length === 1 ? '' : 's'}`,
-        }))}
-        value={selectedCustomOrderConfigurationId}
-        onChange={(value) => selectCustomOrderConfiguration(value)}
-        onClose={() => setCustomOrderConfigOpen(false)}
-        emptyMessage="No custom order configurations are available."
-      />
 
       <AppBottomSheet
         visible={moreOptionsOpen}
@@ -746,7 +624,7 @@ export default function CreateDesignComposerScreen() {
           <AppText variant="bodyBold">Audience</AppText>
           <View style={styles.sheetChipWrap}>
             {(['EVERYBODY', 'FEMALE', 'MALE'] as const).map((value) => (
-              <Chip key={value} label={AUDIENCE_LABELS[value]} selected={form.audience === value} onPress={() => updateField('audience', value)} />
+              <Chip key={value} label={DESIGN_AUDIENCE_LABELS[value]} selected={form.audience === value} onPress={() => updateField('audience', value)} />
             ))}
           </View>
         </View>
@@ -948,3 +826,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+
