@@ -6,10 +6,10 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import { useFonts } from 'expo-font';
-import { Stack, useNavigation } from 'expo-router';
+import { Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
@@ -19,7 +19,6 @@ import { AuthProvider } from '@/src/auth/AuthContext';
 import { ToastProvider } from '@/src/toast/ToastContext';
 import { useAuth } from '@/src/auth/AuthContext';
 import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
-import { FallbackLoaderScreen } from '@/components/ui/AppLoader';
 import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
 
@@ -40,35 +39,35 @@ export const unstable_settings = {
 void SplashScreen.preventAutoHideAsync();
 
 const THEME_MODE_KEY = 'threadly.theme.mode';
+const BOOT_BACKGROUND = '#0b0710';
+
+let rootLayoutMountCount = 0;
+let rootBootstrapMountCount = 0;
+let splashHideCallCount = 0;
+let splashHidden = false;
+
+function devBootLog(event: string, details?: Record<string, unknown>) {
+  if (!__DEV__) return;
+  console.log('[boot]', details ? { event, ...details } : { event });
+}
+
+function hideNativeSplashOnce(reason: string) {
+  if (splashHidden) return;
+  splashHidden = true;
+  splashHideCallCount += 1;
+  devBootLog('hide-native-splash', {
+    reason,
+    splashHideCallCount,
+  });
+  void SplashScreen.hideAsync().catch((error) => {
+    if (__DEV__) {
+      console.warn('[boot] hide-native-splash failed', error);
+    }
+  });
+}
 
 function isThemeMode(value: string | null | undefined): value is ThemeMode {
   return value === 'auto' || value === 'system' || value === 'time' || value === 'light' || value === 'dark';
-}
-
-function BootSplash({
-  ready,
-}: {
-  ready: boolean;
-}) {
-  const { scheme, theme } = useTheme();
-  const hasHiddenSplash = useRef(false);
-
-  const handleLayout = useCallback(() => {
-    if (hasHiddenSplash.current) return;
-    hasHiddenSplash.current = true;
-    void SplashScreen.hideAsync();
-  }, []);
-
-  return (
-    <View style={styles.bootRoot} onLayout={handleLayout}>
-      <FallbackLoaderScreen
-        title="Threadly"
-        message={ready ? 'Opening Threadly' : 'Preparing your space'}
-        tone={scheme}
-        themeOverride={{ background: theme.colors.bg }}
-      />
-    </View>
-  );
 }
 
 function NotificationSetup() {
@@ -177,16 +176,37 @@ function RootBootstrap({
 }: {
   fontsLoaded: boolean;
 }) {
-  const { ready: themeReady, scheme, theme } = useTheme();
+  const { ready: themeReady, theme } = useTheme();
   const { status } = useAuth();
   const bootReady = fontsLoaded && themeReady && status !== 'loading';
+  const hasLoggedReadyRef = useRef(false);
+
+  useEffect(() => {
+    rootBootstrapMountCount += 1;
+    devBootLog('root-bootstrap-mounted', { rootBootstrapMountCount });
+  }, []);
+
+  useEffect(() => {
+    if (!bootReady || hasLoggedReadyRef.current) return;
+    hasLoggedReadyRef.current = true;
+    devBootLog('root-bootstrap-ready', {
+      fontsLoaded,
+      themeReady,
+      authStatus: status,
+    });
+  }, [bootReady, fontsLoaded, status, themeReady]);
+
+  useEffect(() => {
+    if (!bootReady) return;
+    hideNativeSplashOnce('root-bootstrap-ready');
+  }, [bootReady]);
 
   if (!bootReady) {
-    return <BootSplash ready={bootReady} />;
+    return <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND }]} />;
   }
 
   return (
-    <View style={[styles.appRoot, { backgroundColor: theme.colors.bg }]} onLayout={() => void SplashScreen.hideAsync()}>
+    <View style={[styles.appRoot, { backgroundColor: theme.colors.bg }]}>
       <NotificationSetup />
       <RootStack />
     </View>
@@ -204,7 +224,11 @@ export default function RootLayout() {
   });
   const [themeBootstrapReady, setThemeBootstrapReady] = useState(false);
   const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode>('auto');
-  const navigation = useNavigation();
+
+  useEffect(() => {
+    rootLayoutMountCount += 1;
+    devBootLog('root-layout-mounted', { rootLayoutMountCount });
+  }, []);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
@@ -215,11 +239,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     let isMounted = true;
+    let resolvedMode: ThemeMode = 'auto';
 
     SecureStore.getItemAsync(THEME_MODE_KEY)
       .then((value) => {
         if (!isMounted) return;
         if (isThemeMode(value)) {
+          resolvedMode = value;
           setInitialThemeMode(value);
         }
       })
@@ -227,6 +253,9 @@ export default function RootLayout() {
       .finally(() => {
         if (isMounted) {
           setThemeBootstrapReady(true);
+          devBootLog('theme-bootstrap-complete', {
+            mode: resolvedMode,
+          });
         }
       });
 
@@ -236,7 +265,7 @@ export default function RootLayout() {
   }, []);
 
   if (!loaded || !themeBootstrapReady) {
-    return null;
+    return <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND }]} />;
   }
 
   return <RootLayoutNav fontsLoaded={loaded} initialThemeMode={initialThemeMode} />;
@@ -284,9 +313,6 @@ function RootStack() {
 }
 
 const styles = StyleSheet.create({
-  bootRoot: {
-    flex: 1,
-  },
   appRoot: {
     flex: 1,
   },

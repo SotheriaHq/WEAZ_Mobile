@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, FlatList, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Animated, Easing, FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { useFocusEffect } from '@react-navigation/native';
+import { Image as ExpoImage } from 'expo-image';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -46,6 +47,7 @@ const FEED_CACHE_TTL_MS = 5 * 60_000; // 5 minutes
 
 // Persists across tab switches / component remounts within the same app session.
 let feedScrollOffset = 0;
+let feedMountCount = 0;
 const carouselIndexMap = new Map<string, number>();
 
 const devLog = __DEV__ ? (prefix: string, ...args: any[]) => console.log(`[${prefix}]`, ...args) : () => {};
@@ -179,7 +181,7 @@ function ImageWarmPlaceholder() {
   );
 }
 
-function FeedMediaSlide({
+const FeedMediaSlide = React.memo(function FeedMediaSlide({
   media,
   imageIndex,
   fallbackMedia,
@@ -292,10 +294,13 @@ function FeedMediaSlide({
   return (
     <View style={[StyleSheet.absoluteFillObject, { backgroundColor: placeholderSurface }]}>
       {!imageLoaded ? <ImageWarmPlaceholder /> : null}
-      <Image
+      <ExpoImage
         source={{ uri: resolvedUri }}
         style={[styles.pageImage, { opacity: imageLoaded ? 1 : 0 }]}
-        resizeMode="cover"
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        recyclingKey={resolvedUri}
+        transition={80}
         onLoad={() => setImageLoaded(true)}
         onError={() => {
           setFailedUri(resolvedUri);
@@ -304,9 +309,9 @@ function FeedMediaSlide({
       />
     </View>
   );
-}
+});
 
-function FeedMediaCarousel({
+const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   mediaItems,
   initialActiveIndex = 0,
   onActiveIndexChange,
@@ -390,7 +395,7 @@ function FeedMediaCarousel({
         onMomentumScrollEnd={handleMomentumEnd}
       >
         {carouselItems.map((item, index) => (
-          <View key={item.virtualKey} style={{ width }}>
+          <View key={item.virtualKey} style={[styles.carouselSlide, { width }]}>
             <FeedMediaSlide
               media={item}
               imageIndex={index}
@@ -416,9 +421,9 @@ function FeedMediaCarousel({
       ) : null}
     </View>
   );
-}
+});
 
-function FeedBrandAvatar({
+const FeedBrandAvatar = React.memo(function FeedBrandAvatar({
   brandId,
   brandName,
   brandLogo,
@@ -456,7 +461,14 @@ function FeedBrandAvatar({
     >
       <View style={[styles.ownerAvatarCircle, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primarySoft }]}>
         {uri ? (
-          <Image source={{ uri }} style={styles.ownerAvatarImage} resizeMode="cover" />
+          <ExpoImage
+            source={{ uri }}
+            style={styles.ownerAvatarImage}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            recyclingKey={uri}
+            transition={80}
+          />
         ) : loading ? (
           <ThreadlyLogoLoader size={26} />
         ) : (
@@ -485,7 +497,299 @@ function FeedBrandAvatar({
       ) : null}
     </Pressable>
   );
-}
+});
+
+type FeedActionRailProps = {
+  item: MarketItem;
+  brandName: string;
+  currentMediaId: string;
+  isThreaded: boolean;
+  isThreading: boolean;
+  threads: string;
+  comments: string;
+  likes: string;
+  threadCountRaw: number;
+  canPatchBrands: boolean;
+  isPatched: boolean;
+  patchBusy: boolean;
+  isCommentsOpen: boolean;
+  bottomClearance: number;
+  onPatchBrand: (brandId?: string | null, brandName?: string | null) => void;
+  onOpenBrand: (brandId?: string | null) => void;
+  onThreadPress: (
+    mediaId: string | null | undefined,
+    collectionId?: string | null,
+    fallbackThreaded?: boolean,
+    fallbackCount?: number,
+  ) => void;
+  onOpenComments: (item: MarketItem) => void;
+  onCloseComments: () => void;
+};
+
+const FeedActionRail = React.memo(function FeedActionRail({
+  item,
+  brandName,
+  currentMediaId,
+  isThreaded,
+  isThreading,
+  threads,
+  comments,
+  likes,
+  threadCountRaw,
+  canPatchBrands,
+  isPatched,
+  patchBusy,
+  isCommentsOpen,
+  bottomClearance,
+  onPatchBrand,
+  onOpenBrand,
+  onThreadPress,
+  onOpenComments,
+  onCloseComments,
+}: FeedActionRailProps) {
+  const handlePatchPress = useCallback(() => {
+    onPatchBrand(item.brandId, brandName);
+  }, [brandName, item.brandId, onPatchBrand]);
+
+  const handleBrandPress = useCallback(() => {
+    onOpenBrand(item.brandId);
+  }, [item.brandId, onOpenBrand]);
+
+  const handleThreadActionPress = useCallback(() => {
+    onThreadPress(currentMediaId, item.collectionId, isThreaded, threadCountRaw);
+  }, [currentMediaId, isThreaded, item.collectionId, onThreadPress, threadCountRaw]);
+
+  const handleCommentsPress = useCallback(() => {
+    if (isCommentsOpen) {
+      onCloseComments();
+      return;
+    }
+    onOpenComments(item);
+  }, [isCommentsOpen, item, onCloseComments, onOpenComments]);
+
+  return (
+    <View style={[styles.rail, { bottom: bottomClearance + 24 }]}>
+      <FeedBrandAvatar
+        brandId={item.brandId}
+        brandName={brandName}
+        brandLogo={item.brandLogo}
+        brandLogoFileId={item.brandLogoFileId}
+        canPatch={canPatchBrands}
+        isPatched={isPatched}
+        patchBusy={patchBusy}
+        onPatchPress={handlePatchPress}
+        onPress={handleBrandPress}
+      />
+
+      <ThreadRailAction
+        threaded={isThreaded}
+        count={threads}
+        busy={isThreading}
+        onPress={handleThreadActionPress}
+      />
+
+      <View style={styles.railItem}>
+        <IconButton size={44} onPress={handleCommentsPress}>
+          <AppText variant="subtitle">ðŸ’¬</AppText>
+        </IconButton>
+        <AppText variant="captionBold" tone="inverse">{comments}</AppText>
+      </View>
+
+      <View style={styles.railItem}>
+        <IconButton size={44}>
+          <AppText variant="subtitle">{item.isLiked ? 'â¤ï¸' : 'ðŸ¤'}</AppText>
+        </IconButton>
+        <AppText variant="captionBold" tone="inverse">{likes}</AppText>
+      </View>
+    </View>
+  );
+});
+
+type FeedMetaOverlayProps = {
+  brandName: string;
+  handle: string;
+  title: string;
+  description?: string | null;
+  scheme: 'light' | 'dark';
+  glass: typeof GLASS.dark | typeof GLASS.light;
+  bottomClearance: number;
+};
+
+const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
+  brandName,
+  handle,
+  title,
+  description,
+  scheme,
+  glass,
+  bottomClearance,
+}: FeedMetaOverlayProps) {
+  return (
+    <View style={[styles.meta, { bottom: bottomClearance }]}>
+      <BlurView
+        tint={scheme === 'dark' ? 'dark' : 'light'}
+        intensity={20}
+        style={[
+          styles.metaCard,
+          {
+            backgroundColor: glass.bg,
+            borderColor: glass.border,
+          },
+        ]}
+      >
+        <View style={styles.brandLine}>
+          <View style={styles.brandTextWrap}>
+            <View style={styles.brandNameRow}>
+              <AppText variant="bodyBold" tone="inverse" numberOfLines={1} ellipsizeMode="tail">
+                {brandName}
+              </AppText>
+            </View>
+            {handle ? (
+              <AppText variant="captionRegular" tone="secondary" numberOfLines={1} ellipsizeMode="tail">
+                {handle}
+              </AppText>
+            ) : null}
+          </View>
+        </View>
+
+        <AppText variant="subtitle" tone="inverse" numberOfLines={2} ellipsizeMode="tail">
+          {title}
+        </AppText>
+        {description ? (
+          <AppText variant="body" tone="secondary" numberOfLines={2} ellipsizeMode="tail">
+            {description}
+          </AppText>
+        ) : null}
+
+        <View style={styles.audioRow}>
+          <AppText variant="captionBold">ðŸŽµ</AppText>
+          <AppText variant="captionBold" tone="inverse" numberOfLines={1} ellipsizeMode="tail">
+            Original Audio
+          </AppText>
+        </View>
+      </BlurView>
+    </View>
+  );
+});
+
+type FeedPostItemProps = {
+  item: MarketItem;
+  pageHeight: number;
+  fallbackMediaItems: FeedViewerMedia[];
+  mediaItems: FeedViewerMedia[];
+  bottomClearance: number;
+  scheme: 'light' | 'dark';
+  glass: typeof GLASS.dark | typeof GLASS.light;
+  canPatchBrands: boolean;
+  isPatched: boolean;
+  patchBusy: boolean;
+  threadStateByMedia: Record<string, { threaded: boolean; count: number }>;
+  threadingMediaById: Record<string, boolean>;
+  isCommentsOpen: boolean;
+  onCarouselIndexChange: (collectionId: string, nextIndex: number) => void;
+  onPatchBrand: (brandId?: string | null, brandName?: string | null) => void;
+  onOpenBrand: (brandId?: string | null) => void;
+  onThreadPress: (
+    mediaId: string | null | undefined,
+    collectionId?: string | null,
+    fallbackThreaded?: boolean,
+    fallbackCount?: number,
+  ) => void;
+  onOpenComments: (item: MarketItem) => void;
+  onCloseComments: () => void;
+};
+
+const FeedPostItem = React.memo(function FeedPostItem({
+  item,
+  pageHeight,
+  fallbackMediaItems,
+  mediaItems,
+  bottomClearance,
+  scheme,
+  glass,
+  canPatchBrands,
+  isPatched,
+  patchBusy,
+  threadStateByMedia,
+  threadingMediaById,
+  isCommentsOpen,
+  onCarouselIndexChange,
+  onPatchBrand,
+  onOpenBrand,
+  onThreadPress,
+  onOpenComments,
+  onCloseComments,
+}: FeedPostItemProps) {
+  const brandName = item.brandName ?? item.username ?? 'Brand';
+  const handle = item.username ? `@${item.username}` : '';
+  const activeMediaIndex = mediaItems.length
+    ? Math.min(carouselIndexMap.get(item.collectionId) ?? 0, mediaItems.length - 1)
+    : 0;
+  const currentMedia = mediaItems[activeMediaIndex] ?? fallbackMediaItems[0] ?? null;
+  const currentMediaId = currentMedia?.id ?? item.id;
+  const currentMediaThreadState = currentMedia ? threadStateByMedia[currentMedia.id] : undefined;
+  const isThreaded = currentMedia
+    ? currentMediaThreadState?.threaded ?? (currentMedia.id === item.id ? Boolean(item.isThreaded) : false)
+    : Boolean(item.isThreaded);
+  const isThreading = Boolean(threadingMediaById[currentMediaId]);
+  const likes = toCompactCount(item.likesCount ?? 0);
+  const comments = toCompactCount(item.combinedCommentsCount ?? item.commentsCount ?? 0);
+  const threadCountRaw =
+    currentMediaThreadState?.count ??
+    currentMedia?.threadsCount ??
+    item.threadsCount ??
+    0;
+  const threads = toCompactCount(threadCountRaw);
+
+  const handleActiveIndexChange = useCallback(
+    (nextIndex: number) => {
+      onCarouselIndexChange(item.collectionId, nextIndex);
+    },
+    [item.collectionId, onCarouselIndexChange],
+  );
+
+  return (
+    <View style={[styles.page, { height: pageHeight }]}>
+      <FeedMediaCarousel
+        mediaItems={mediaItems}
+        initialActiveIndex={activeMediaIndex}
+        onActiveIndexChange={handleActiveIndexChange}
+      />
+
+      <FeedActionRail
+        item={item}
+        brandName={brandName}
+        currentMediaId={currentMediaId}
+        isThreaded={isThreaded}
+        isThreading={isThreading}
+        threads={threads}
+        comments={comments}
+        likes={likes}
+        threadCountRaw={threadCountRaw}
+        canPatchBrands={canPatchBrands}
+        isPatched={isPatched}
+        patchBusy={patchBusy}
+        isCommentsOpen={isCommentsOpen}
+        bottomClearance={bottomClearance}
+        onPatchBrand={onPatchBrand}
+        onOpenBrand={onOpenBrand}
+        onThreadPress={onThreadPress}
+        onOpenComments={onOpenComments}
+        onCloseComments={onCloseComments}
+      />
+
+      <FeedMetaOverlay
+        brandName={brandName}
+        handle={handle}
+        title={item.collectionTitle}
+        description={item.collectionDescription}
+        scheme={scheme}
+        glass={glass}
+        bottomClearance={bottomClearance}
+      />
+    </View>
+  );
+});
 
 // Feed Skeleton Component for loading state
 const FeedSkeleton = ({
@@ -582,8 +886,13 @@ export default function HomeScreen() {
   const [feedViewportHeight, setFeedViewportHeight] = useState(0);
   const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
   const pendingCollectionIdsRef = useRef(new Set<string>());
+  const hydratedCollectionIdsRef = useRef(new Set<string>());
   const prefetchedImageUrisRef = useRef(new Set<string>());
   const feedTeleportingRef = useRef(false);
+  const loadingMoreInFlightRef = useRef(false);
+  const patchedBrandIdsRef = useRef<Set<string>>(new Set());
+  const lastLoggedPageHeightRef = useRef<number | null>(null);
+  const hasLoggedInitialPageHeightRef = useRef(false);
 
   const [items, setItems] = useState<MarketItem[]>([]);
   const [collectionMediaMap, setCollectionMediaMap] = useState<Record<string, FeedViewerMedia[]>>({});
@@ -644,10 +953,11 @@ export default function HomeScreen() {
     }
   }, [status, user?.id, user?.type]);
 
-  const pageHeight = useMemo(() => {
-    if (feedViewportHeight > 0) return Math.max(1, Math.round(feedViewportHeight));
+  const fallbackPageHeight = useMemo(() => {
     return Math.max(1, Math.round(windowHeight - insets.top - NATIVE_ISLAND_NAV.contentClearance - insets.bottom));
-  }, [feedViewportHeight, insets.bottom, insets.top, windowHeight]);
+  }, [insets.bottom, insets.top, windowHeight]);
+  const pageHeight = feedViewportHeight > 0 ? Math.max(1, Math.round(feedViewportHeight)) : 0;
+  const feedViewportReady = pageHeight > 0;
 
   const activeFilter = useMemo(
     () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? { id: 'all', label: 'All', tag: null },
@@ -724,6 +1034,41 @@ export default function HomeScreen() {
   const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
 
   useEffect(() => {
+    feedMountCount += 1;
+    devLog('HomeFeed', 'Feed mounted', {
+      feedMountCount,
+      restoredScrollOffset: feedScrollOffset,
+    });
+    return () => {
+      devLog('HomeFeed', 'Feed unmounted', {
+        feedMountCount,
+        savedScrollOffset: feedScrollOffset,
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (hasLoggedInitialPageHeightRef.current) return;
+    hasLoggedInitialPageHeightRef.current = true;
+    devLog('HomeFeed', 'Initial page height candidate', {
+      fallbackPageHeight,
+      measuredPageHeight: feedViewportHeight,
+      snapToInterval: pageHeight || null,
+      itemLayoutLength: pageHeight || null,
+    });
+  }, [fallbackPageHeight, feedViewportHeight, pageHeight]);
+
+  useEffect(() => {
+    if (!pageHeight || lastLoggedPageHeightRef.current === pageHeight) return;
+    lastLoggedPageHeightRef.current = pageHeight;
+    devLog('HomeFeed', 'Stable page height', {
+      measuredPageHeight: feedViewportHeight,
+      snapToInterval: pageHeight,
+      itemLayoutLength: pageHeight,
+    });
+  }, [feedViewportHeight, pageHeight]);
+
+  useEffect(() => {
     if (!feedLoopEnabled || feedViewportHeight <= 0 || pageHeight <= 1 || feedItems.length < 3) {
       return;
     }
@@ -746,6 +1091,10 @@ export default function HomeScreen() {
   }, [collectionMediaMap]);
 
   useEffect(() => {
+    patchedBrandIdsRef.current = patchedBrandIds;
+  }, [patchedBrandIds]);
+
+  useEffect(() => {
     threadStateByMediaRef.current = threadStateByMedia;
   }, [threadStateByMedia]);
 
@@ -760,12 +1109,14 @@ export default function HomeScreen() {
   useEffect(() => {
     const activeItem = items[activePageIndex];
     devLog('HomeFeed', 'Active index changed', {
-      index: activePageIndex,
+      visibleIndex: activePageIndex,
       itemId: activeItem?.id,
       itemTitle: activeItem?.collectionTitle,
+      snapToInterval: pageHeight || null,
+      itemLayoutLength: pageHeight || null,
       isModernAdre: activeItem?.collectionTitle?.includes('Modern Ad') || false,
     });
-  }, [activePageIndex, items]);
+  }, [activePageIndex, items, pageHeight]);
 
   useEffect(() => {
     let mounted = true;
@@ -802,6 +1153,7 @@ export default function HomeScreen() {
     threadingMediaByIdRef.current = {};
     queuedThreadIntentByMediaRef.current = {};
     pendingCollectionIdsRef.current.clear();
+    hydratedCollectionIdsRef.current.clear();
   }, [activeTag]);
 
   const toErrorMessage = (err: unknown) => (err instanceof Error ? err.message : 'Something went wrong');
@@ -944,12 +1296,16 @@ export default function HomeScreen() {
       });
       return;
     }
+    if (hydratedCollectionIdsRef.current.has(collectionId)) return;
     if (pendingCollectionIdsRef.current.has(collectionId)) return;
 
     pendingCollectionIdsRef.current.add(collectionId);
     try {
       const detail = await brandApi.getCollectionDetail(collectionId, { scope: 'design' });
-      if (!detail) return;
+      if (!detail) {
+        hydratedCollectionIdsRef.current.add(collectionId);
+        return;
+      }
 
       const medias = Array.isArray(detail.medias) ? detail.medias : [];
       const validMedias = medias.filter((media) => {
@@ -996,7 +1352,10 @@ export default function HomeScreen() {
           url: normalizeStableUri(media.url) ?? media.url,
           fileId: normalizeStableUri(media.fileId),
         }));
-      if (!normalizedMediaItems.length) return;
+      if (!normalizedMediaItems.length) {
+        hydratedCollectionIdsRef.current.add(collectionId);
+        return;
+      }
 
       prefetchMediaItems(normalizedMediaItems, {
         includeFirstImage: options?.includeFirstImageInPrefetch,
@@ -1021,6 +1380,7 @@ export default function HomeScreen() {
         });
         return next;
       });
+      hydratedCollectionIdsRef.current.add(collectionId);
     } catch {
       // Keep the feed on its current fallback media if hydration fails.
     } finally {
@@ -1233,7 +1593,7 @@ export default function HomeScreen() {
 
       requireAuth(
         async () => {
-          const isPatched = patchedBrandIds.has(normalizedBrandId);
+          const isPatched = patchedBrandIdsRef.current.has(normalizedBrandId);
           setPatchingBrandIds((prev) => ({ ...prev, [normalizedBrandId]: true }));
 
           try {
@@ -1267,11 +1627,76 @@ export default function HomeScreen() {
         { message: 'Sign in to patch brands' },
       );
     },
-    [patchedBrandIds, requireAuth, toast],
+    [requireAuth, toast],
+  );
+
+  const handleOpenBrand = useCallback((brandId?: string | null) => {
+    const normalizedBrandId = typeof brandId === 'string' ? brandId.trim() : '';
+    if (!normalizedBrandId) return;
+    router.push({ pathname: '/catalog/[brandId]', params: { brandId: normalizedBrandId } } as any);
+  }, []);
+
+  const handleCarouselIndexChange = useCallback((collectionId: string, nextIndex: number) => {
+    carouselIndexMap.set(collectionId, nextIndex);
+  }, []);
+
+  const renderFeedItem = useCallback(
+    ({ item: entry }: { item: FeedListEntry }) => {
+      const item = entry.item;
+      const fallbackMediaItems = fallbackMediaByCollection[item.collectionId] ?? [];
+      const mediaItems = collectionMediaMap[item.collectionId]?.length
+        ? collectionMediaMap[item.collectionId]
+        : fallbackMediaItems;
+
+      return (
+        <FeedPostItem
+          item={item}
+          pageHeight={pageHeight}
+          fallbackMediaItems={fallbackMediaItems}
+          mediaItems={mediaItems}
+          bottomClearance={bottomClearance}
+          scheme={scheme}
+          glass={glass}
+          canPatchBrands={canPatchBrands}
+          isPatched={Boolean(item.brandId && patchedBrandIds.has(item.brandId))}
+          patchBusy={Boolean(item.brandId && patchingBrandIds[item.brandId])}
+          threadStateByMedia={threadStateByMedia}
+          threadingMediaById={threadingMediaById}
+          isCommentsOpen={commentsTarget?.collectionId === item.collectionId}
+          onCarouselIndexChange={handleCarouselIndexChange}
+          onPatchBrand={handlePatchBrand}
+          onOpenBrand={handleOpenBrand}
+          onThreadPress={handleThreadPress}
+          onOpenComments={openCommentsSheet}
+          onCloseComments={closeCommentsSheet}
+        />
+      );
+    },
+    [
+      bottomClearance,
+      canPatchBrands,
+      closeCommentsSheet,
+      collectionMediaMap,
+      commentsTarget?.collectionId,
+      fallbackMediaByCollection,
+      glass,
+      handleCarouselIndexChange,
+      handleOpenBrand,
+      handlePatchBrand,
+      handleThreadPress,
+      openCommentsSheet,
+      pageHeight,
+      patchedBrandIds,
+      patchingBrandIds,
+      scheme,
+      threadStateByMedia,
+      threadingMediaById,
+    ],
   );
 
   const loadMore = useCallback(async () => {
-    if (!hasNextPage || !nextCursor || loading || refreshing) return;
+    if (!hasNextPage || !nextCursor || loading || refreshing || loadingMoreInFlightRef.current) return;
+    loadingMoreInFlightRef.current = true;
 
     try {
       const res = await getMarketFeed({ cursor: nextCursor, tag: activeTag, counts: 'combined' });
@@ -1284,6 +1709,8 @@ export default function HomeScreen() {
       setHasNextPage(res.hasNextPage);
     } catch {
       // Best-effort pagination; keep current items.
+    } finally {
+      loadingMoreInFlightRef.current = false;
     }
   }, [activeTag, hasNextPage, loading, nextCursor, refreshing]);
 
@@ -1411,7 +1838,7 @@ export default function HomeScreen() {
 
       {(showBlockingLoader || isSkeletonFadingOut) ? (
         <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 100, opacity: skeletonOpacity }]} pointerEvents={showBlockingLoader ? 'auto' : 'none'}>
-          <FeedSkeleton theme={theme} pageHeight={pageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
+          <FeedSkeleton theme={theme} pageHeight={pageHeight || fallbackPageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
         </Animated.View>
       ) : null}
 
@@ -1438,10 +1865,17 @@ export default function HomeScreen() {
           onLayout={(event) => {
             const nextHeight = Math.round(event.nativeEvent.layout.height);
             if (nextHeight > 0 && nextHeight !== feedViewportHeight) {
+              devLog('HomeFeed', 'Measured feed viewport', {
+                measuredPageHeight: nextHeight,
+                previousPageHeight: feedViewportHeight || null,
+              });
               setFeedViewportHeight(nextHeight);
             }
           }}
         >
+          {!feedViewportReady ? (
+            <FeedSkeleton theme={theme} pageHeight={fallbackPageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
+          ) : (
           <FlatList
             ref={feedListRef}
             key={feedListKey}
@@ -1674,6 +2108,7 @@ export default function HomeScreen() {
               );
             }}
           />
+          )}
         </View>
       )}
 

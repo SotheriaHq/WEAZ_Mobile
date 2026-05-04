@@ -8,6 +8,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
+import { Image as ExpoImage, type ImageContentFit } from 'expo-image';
 
 type StableImageProps = {
   uri?: string | null;
@@ -18,6 +19,14 @@ type StableImageProps = {
   fadeDuration?: number;
   onError?: () => void;
 };
+
+const AnimatedExpoImage = Animated.createAnimatedComponent(ExpoImage);
+
+function toContentFit(resizeMode: ImageResizeMode): ImageContentFit {
+  if (resizeMode === 'stretch') return 'fill';
+  if (resizeMode === 'center') return 'scale-down';
+  return resizeMode;
+}
 
 export function StableImage({
   uri,
@@ -33,6 +42,7 @@ export function StableImage({
   const displayOpacity = useRef(new Animated.Value(uri ? 0 : 1)).current;
   const incomingOpacity = useRef(new Animated.Value(0)).current;
   const incomingUriRef = useRef<string | null>(null);
+  const contentFit = toContentFit(resizeMode);
 
   useEffect(() => {
     incomingUriRef.current = incomingUri;
@@ -94,18 +104,22 @@ export function StableImage({
     <View style={containerStyle}>
       {fallback}
       {displayUri ? (
-        <Animated.Image
+        <AnimatedExpoImage
           source={{ uri: displayUri }}
-          resizeMode={resizeMode}
+          contentFit={contentFit}
+          cachePolicy="memory-disk"
+          recyclingKey={displayUri}
           onLoad={handleDisplayLoad}
           onError={onError}
           style={[styles.imageLayer, imageStyle, { opacity: displayOpacity }]}
         />
       ) : null}
       {incomingUri ? (
-        <Animated.Image
+        <AnimatedExpoImage
           source={{ uri: incomingUri }}
-          resizeMode={resizeMode}
+          contentFit={contentFit}
+          cachePolicy="memory-disk"
+          recyclingKey={incomingUri}
           onLoad={handleIncomingLoad}
           onError={onError}
           style={[styles.imageLayer, imageStyle, { opacity: incomingOpacity }]}

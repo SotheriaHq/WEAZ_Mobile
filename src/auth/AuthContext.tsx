@@ -105,6 +105,13 @@ const INVISIBLE_AUTH_SPACING_REGEX =
 
 const CONTROL_CHAR_REGEX = /[\u0000-\u001F\u007F]/;
 
+let authBootstrapCompletionCount = 0;
+
+function devAuthLog(event: string, details?: Record<string, unknown>) {
+  if (!__DEV__) return;
+  console.log('[auth-bootstrap]', details ? { event, ...details } : { event });
+}
+
 function containsInvisibleSpacing(value: string): boolean {
   INVISIBLE_AUTH_SPACING_REGEX.lastIndex = 0;
   return INVISIBLE_AUTH_SPACING_REGEX.test(value);
@@ -577,6 +584,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (mounted) {
           // validateToken sets status; ensure loading doesn't persist.
           setStatus((prev) => (prev === 'loading' ? 'unauthenticated' : prev));
+          authBootstrapCompletionCount += 1;
+          devAuthLog('complete', {
+            authBootstrapCompletionCount,
+            hadMountedProvider: mounted,
+          });
         }
       }
     };

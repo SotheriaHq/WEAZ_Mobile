@@ -1,4 +1,4 @@
-import { Image } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 
 import { brandApi, type SignedFileUrlDebugContext } from '@/src/api/BrandApi';
@@ -16,6 +16,14 @@ const MISSING_URI_TTL_MS = 2 * 60 * 1000;
 const resolvedUriCache = new Map<string, { uri: string; expiresAt: number }>();
 const resolvedUriMissingCache = new Map<string, number>();
 const pendingResolutions = new Map<string, Promise<string | null>>();
+
+function devMediaLog(event: string, details: Record<string, unknown>) {
+  if (!__DEV__) return;
+  console.log('[media-resolution]', {
+    event,
+    ...details,
+  });
+}
 
 const trim = (value?: string | null) => {
   const normalized = typeof value === 'string' ? value.trim() : '';
@@ -38,7 +46,32 @@ const isLoopbackHttpUrl = (value: string) => {
   }
 };
 
-const isSafeDirectHttpUrl = (value: string) => isHttpUrl(value) && !isS3LikeUrl(value) && !isLoopbackHttpUrl(value);
+const hasSignedUrlParams = (value: string) => {
+  try {
+    const parsed = new URL(value);
+    return Boolean(
+      parsed.searchParams.get('X-Amz-Signature') ||
+        parsed.searchParams.get('Signature') ||
+        parsed.searchParams.get('Expires') ||
+        parsed.searchParams.get('expires') ||
+        parsed.searchParams.get('token'),
+    );
+  } catch {
+    return false;
+  }
+};
+
+const getDirectSourceType = (value: string) => {
+  if (!isHttpUrl(value)) return null;
+  if (isLoopbackHttpUrl(value)) return 'loopback-url';
+  if (isS3LikeUrl(value)) return hasSignedUrlParams(value) ? 'signed-s3-url' : 'direct-s3-url';
+  return 'direct-url';
+};
+
+const isUsableDirectHttpUrl = (value: string) => {
+  const sourceType = getDirectSourceType(value);
+  return Boolean(sourceType && sourceType !== 'loopback-url');
+};
 
 const isPotentialFileId = (value: string) => !isHttpUrl(value) && !/[/?#\\]/.test(value);
 
@@ -147,15 +180,34 @@ export const resolveImageUri = async ({
   const normalizedFileId = trim(fileId);
 
   if (!directSrc && !normalizedFileId) {
+    devMediaLog('resolve-skip', {
+      reason: 'missing-source',
+      sourceType: 'none',
+      designId: debugContext?.designId ?? null,
+      mediaIndex: debugContext?.mediaIndex ?? null,
+    });
     return null;
   }
 
-  if (directSrc && isSafeDirectHttpUrl(directSrc)) {
+  if (directSrc && isUsableDirectHttpUrl(directSrc)) {
+    devMediaLog('resolve-direct', {
+      sourceType: getDirectSourceType(directSrc),
+      hasFileId: Boolean(normalizedFileId),
+      designId: debugContext?.designId ?? null,
+      mediaIndex: debugContext?.mediaIndex ?? null,
+    });
     return directSrc;
   }
 
   const cacheKey = getResolutionCacheKey(directSrc, normalizedFileId);
   if (!cacheKey) {
+    devMediaLog('resolve-failed', {
+      reason: 'missing-cache-key',
+      sourceType: directSrc ? getDirectSourceType(directSrc) ?? 'unsupported-src' : 'none',
+      hasFileId: Boolean(normalizedFileId),
+      designId: debugContext?.designId ?? null,
+      mediaIndex: debugContext?.mediaIndex ?? null,
+    });
     return null;
   }
   if (forceRefresh) {
@@ -164,9 +216,22 @@ export const resolveImageUri = async ({
   }
   const cached = getCachedUri(cacheKey);
   if (cached === '__missing__') {
+    devMediaLog('resolve-failed', {
+      reason: 'missing-cache',
+      sourceType: directSrc ? getDirectSourceType(directSrc) ?? 'unsupported-src' : 'fileId',
+      hasFileId: Boolean(normalizedFileId),
+      designId: debugContext?.designId ?? null,
+      mediaIndex: debugContext?.mediaIndex ?? null,
+    });
     return null;
   }
   if (cached) {
+    devMediaLog('resolve-cache-hit', {
+      sourceType: directSrc ? getDirectSourceType(directSrc) ?? 'fileId' : 'fileId',
+      hasFileId: Boolean(normalizedFileId),
+      designId: debugContext?.designId ?? null,
+      mediaIndex: debugContext?.mediaIndex ?? null,
+    });
     return cached;
   }
 
@@ -184,19 +249,45 @@ export const resolveImageUri = async ({
         });
         if (signed) {
           setCachedUri(cacheKey, signed);
+          devMediaLog('resolve-signed', {
+            sourceType: 'fileId',
+            hasFileId: true,
+            designId: debugContext?.designId ?? null,
+            mediaIndex: debugContext?.mediaIndex ?? null,
+          });
           return signed;
         }
       }
 
-      if (directSrc && isSafeDirectHttpUrl(directSrc)) {
+      if (directSrc && isUsableDirectHttpUrl(directSrc)) {
         setCachedUri(cacheKey, directSrc);
+        devMediaLog('resolve-direct-late', {
+          sourceType: getDirectSourceType(directSrc),
+          hasFileId: Boolean(normalizedFileId),
+          designId: debugContext?.designId ?? null,
+          mediaIndex: debugContext?.mediaIndex ?? null,
+        });
         return directSrc;
       }
 
       setMissingUri(cacheKey);
+      devMediaLog('resolve-failed', {
+        reason: normalizedFileId ? 'fileId-signing-returned-empty' : 'unsupported-or-protected-source-without-fileId',
+        sourceType: directSrc ? getDirectSourceType(directSrc) ?? 'unsupported-src' : 'none',
+        hasFileId: Boolean(normalizedFileId),
+        designId: debugContext?.designId ?? null,
+        mediaIndex: debugContext?.mediaIndex ?? null,
+      });
       return null;
     } catch {
       setMissingUri(cacheKey);
+      devMediaLog('resolve-failed', {
+        reason: 'resolution-error',
+        sourceType: directSrc ? getDirectSourceType(directSrc) ?? 'unsupported-src' : 'fileId',
+        hasFileId: Boolean(normalizedFileId),
+        designId: debugContext?.designId ?? null,
+        mediaIndex: debugContext?.mediaIndex ?? null,
+      });
       return null;
     } finally {
       pendingResolutions.delete(cacheKey);
@@ -218,7 +309,7 @@ export const prefetchResolvedImageAsset = async ({
   }
 
   try {
-    return await Image.prefetch(uri);
+    return await ExpoImage.prefetch(uri, 'memory-disk');
   } catch {
     return false;
   }
@@ -238,7 +329,7 @@ export function useResolvedImageUri({
   const resolvedKeyRef = useRef<string | null>(null);
   const lastSuccessfulRef = useRef<{ key: string; uri: string } | null>(null);
   const [resolvedUri, setResolvedUri] = useState<string | null>(() => {
-    if (directSrc && isSafeDirectHttpUrl(directSrc)) {
+    if (directSrc && isUsableDirectHttpUrl(directSrc)) {
       const key = `direct:${directSrc}`;
       resolvedKeyRef.current = key;
       lastSuccessfulRef.current = { key, uri: directSrc };
@@ -265,7 +356,7 @@ export function useResolvedImageUri({
       return;
     }
 
-    if (directSrc && isSafeDirectHttpUrl(directSrc)) {
+    if (directSrc && isUsableDirectHttpUrl(directSrc)) {
       resolvedKeyRef.current = activeKey;
       lastSuccessfulRef.current = { key: activeKey, uri: directSrc };
       setResolvedUri(directSrc);
@@ -298,7 +389,7 @@ export function useResolvedImageUri({
       };
     }
 
-    if (directSrc && isSafeDirectHttpUrl(directSrc)) {
+    if (directSrc && isUsableDirectHttpUrl(directSrc)) {
       resolvedKeyRef.current = activeKey ?? `direct:${directSrc}`;
       lastSuccessfulRef.current = { key: activeKey ?? `direct:${directSrc}`, uri: directSrc };
       setResolvedUri(directSrc);
@@ -333,7 +424,7 @@ export function useResolvedImageUri({
 
   useEffect(() => {
     if (!enabled || !cacheKey || !resolvedUri) return;
-    if (directSrc && isSafeDirectHttpUrl(directSrc) && !normalizedFileId) return;
+    if (directSrc && isUsableDirectHttpUrl(directSrc) && !normalizedFileId) return;
 
     const cached = getCachedUriEntry(cacheKey);
     if (!cached || cached === '__missing__') return;
@@ -372,7 +463,7 @@ export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {
   const [loading, setLoading] = useState<boolean>(() => {
     if (!enabled) return false;
     if (!directSrc && !normalizedFileId) return false;
-    if (directSrc && isSafeDirectHttpUrl(directSrc)) return false;
+    if (directSrc && isUsableDirectHttpUrl(directSrc)) return false;
     return uri == null;
   });
 
@@ -382,7 +473,7 @@ export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {
       return;
     }
 
-    if (directSrc && isSafeDirectHttpUrl(directSrc)) {
+    if (directSrc && isUsableDirectHttpUrl(directSrc)) {
       setLoading(false);
       return;
     }
