@@ -25,6 +25,7 @@ const AnimatedExpoImage = Animated.createAnimatedComponent(ExpoImage);
 function toContentFit(resizeMode: ImageResizeMode): ImageContentFit {
   if (resizeMode === 'stretch') return 'fill';
   if (resizeMode === 'center') return 'scale-down';
+  if (resizeMode === 'repeat') return 'cover';
   return resizeMode;
 }
 

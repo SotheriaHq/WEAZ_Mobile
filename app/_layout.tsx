@@ -196,17 +196,17 @@ function RootBootstrap({
     });
   }, [bootReady, fontsLoaded, status, themeReady]);
 
-  useEffect(() => {
-    if (!bootReady) return;
-    hideNativeSplashOnce('root-bootstrap-ready');
-  }, [bootReady]);
-
   if (!bootReady) {
     return <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND }]} />;
   }
 
   return (
-    <View style={[styles.appRoot, { backgroundColor: theme.colors.bg }]}>
+    <View
+      style={[styles.appRoot, { backgroundColor: theme.colors.bg }]}
+      onLayout={() => {
+        hideNativeSplashOnce('root-bootstrap-layout');
+      }}
+    >
       <NotificationSetup />
       <RootStack />
     </View>

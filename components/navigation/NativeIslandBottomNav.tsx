@@ -139,6 +139,16 @@ export function NativeIslandBottomNav({ items, onSelect }: NativeIslandBottomNav
           },
         ]}
       >
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            styles.navBaseFill,
+            {
+              backgroundColor: scheme === 'dark' ? 'rgba(11,7,16,0.92)' : 'rgba(255,255,255,0.94)',
+            },
+          ]}
+        />
         <BlurView
           tint={scheme === 'dark' ? 'dark' : 'light'}
           intensity={glass.blur}
@@ -194,6 +204,9 @@ const styles = StyleSheet.create({
   },
   navGlassFill: {
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  navBaseFill: {
+    borderWidth: 0,
   },
   navItems: {
     flex: 1,

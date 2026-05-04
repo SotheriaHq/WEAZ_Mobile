@@ -300,7 +300,7 @@ const FeedMediaSlide = React.memo(function FeedMediaSlide({
         contentFit="cover"
         cachePolicy="memory-disk"
         recyclingKey={resolvedUri}
-        transition={80}
+        transition={0}
         onLoad={() => setImageLoaded(true)}
         onError={() => {
           setFailedUri(resolvedUri);
@@ -338,7 +338,7 @@ const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   const carouselItems = useMemo<FeedCarouselMedia[]>(() => {
     return stableMediaItems.map((item, index) => ({
       ...item,
-      virtualKey: `${item.id}-${index}`,
+      virtualKey: item.id,
     }));
   }, [stableMediaItems]);
 
@@ -395,7 +395,7 @@ const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         onMomentumScrollEnd={handleMomentumEnd}
       >
         {carouselItems.map((item, index) => (
-          <View key={item.virtualKey} style={[styles.carouselSlide, { width }]}>
+          <View key={item.virtualKey} style={[styles.pageImage, { width }]}>
             <FeedMediaSlide
               media={item}
               imageIndex={index}
@@ -674,17 +674,24 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
 
 type FeedPostItemProps = {
   item: MarketItem;
+  brandName: string;
+  handle: string;
   pageHeight: number;
   fallbackMediaItems: FeedViewerMedia[];
   mediaItems: FeedViewerMedia[];
+  currentMediaId: string;
+  isThreaded: boolean;
+  isThreading: boolean;
+  likes: string;
+  comments: string;
+  threads: string;
+  threadCountRaw: number;
   bottomClearance: number;
   scheme: 'light' | 'dark';
   glass: typeof GLASS.dark | typeof GLASS.light;
   canPatchBrands: boolean;
   isPatched: boolean;
   patchBusy: boolean;
-  threadStateByMedia: Record<string, { threaded: boolean; count: number }>;
-  threadingMediaById: Record<string, boolean>;
   isCommentsOpen: boolean;
   onCarouselIndexChange: (collectionId: string, nextIndex: number) => void;
   onPatchBrand: (brandId?: string | null, brandName?: string | null) => void;
@@ -701,17 +708,24 @@ type FeedPostItemProps = {
 
 const FeedPostItem = React.memo(function FeedPostItem({
   item,
+  brandName,
+  handle,
   pageHeight,
   fallbackMediaItems,
   mediaItems,
+  currentMediaId,
+  isThreaded,
+  isThreading,
+  likes,
+  comments,
+  threads,
+  threadCountRaw,
   bottomClearance,
   scheme,
   glass,
   canPatchBrands,
   isPatched,
   patchBusy,
-  threadStateByMedia,
-  threadingMediaById,
   isCommentsOpen,
   onCarouselIndexChange,
   onPatchBrand,
@@ -720,26 +734,10 @@ const FeedPostItem = React.memo(function FeedPostItem({
   onOpenComments,
   onCloseComments,
 }: FeedPostItemProps) {
-  const brandName = item.brandName ?? item.username ?? 'Brand';
-  const handle = item.username ? `@${item.username}` : '';
   const activeMediaIndex = mediaItems.length
     ? Math.min(carouselIndexMap.get(item.collectionId) ?? 0, mediaItems.length - 1)
     : 0;
   const currentMedia = mediaItems[activeMediaIndex] ?? fallbackMediaItems[0] ?? null;
-  const currentMediaId = currentMedia?.id ?? item.id;
-  const currentMediaThreadState = currentMedia ? threadStateByMedia[currentMedia.id] : undefined;
-  const isThreaded = currentMedia
-    ? currentMediaThreadState?.threaded ?? (currentMedia.id === item.id ? Boolean(item.isThreaded) : false)
-    : Boolean(item.isThreaded);
-  const isThreading = Boolean(threadingMediaById[currentMediaId]);
-  const likes = toCompactCount(item.likesCount ?? 0);
-  const comments = toCompactCount(item.combinedCommentsCount ?? item.commentsCount ?? 0);
-  const threadCountRaw =
-    currentMediaThreadState?.count ??
-    currentMedia?.threadsCount ??
-    item.threadsCount ??
-    0;
-  const threads = toCompactCount(threadCountRaw);
 
   const handleActiveIndexChange = useCallback(
     (nextIndex: number) => {
@@ -999,7 +997,7 @@ export default function HomeScreen() {
     const realEntries = items.map((item, realIndex) => ({
       item,
       realIndex,
-      listKey: `real-${item.id}-${realIndex}`,
+      listKey: `real-${item.collectionId}`,
       isGhost: false,
     }));
 
@@ -1013,13 +1011,13 @@ export default function HomeScreen() {
     return [
       {
         ...lastEntry,
-        listKey: `ghost-head-${lastEntry.item.id}-${lastEntry.realIndex}`,
+        listKey: `ghost-head-${lastEntry.item.collectionId}`,
         isGhost: true,
       },
       ...realEntries,
       {
         ...firstEntry,
-        listKey: `ghost-tail-${firstEntry.item.id}-${firstEntry.realIndex}`,
+        listKey: `ghost-tail-${firstEntry.item.collectionId}`,
         isGhost: true,
       },
     ];
@@ -1647,21 +1645,48 @@ export default function HomeScreen() {
       const mediaItems = collectionMediaMap[item.collectionId]?.length
         ? collectionMediaMap[item.collectionId]
         : fallbackMediaItems;
+      const brandName = item.brandName ?? item.username ?? 'Brand';
+      const handle = item.username ? `@${item.username}` : '';
+      const activeMediaIndex = mediaItems.length
+        ? Math.min(carouselIndexMap.get(item.collectionId) ?? 0, mediaItems.length - 1)
+        : 0;
+      const currentMedia = mediaItems[activeMediaIndex] ?? fallbackMediaItems[0] ?? null;
+      const currentMediaId = currentMedia?.id ?? item.id;
+      const currentMediaThreadState = currentMedia ? threadStateByMedia[currentMedia.id] : undefined;
+      const isThreaded = currentMedia
+        ? currentMediaThreadState?.threaded ?? (currentMedia.id === item.id ? Boolean(item.isThreaded) : false)
+        : Boolean(item.isThreaded);
+      const isThreading = Boolean(threadingMediaById[currentMediaId]);
+      const likes = toCompactCount(item.likesCount ?? 0);
+      const comments = toCompactCount(item.combinedCommentsCount ?? item.commentsCount ?? 0);
+      const threadCountRaw =
+        currentMediaThreadState?.count ??
+        currentMedia?.threadsCount ??
+        item.threadsCount ??
+        0;
+      const threads = toCompactCount(threadCountRaw);
 
       return (
         <FeedPostItem
           item={item}
+          brandName={brandName}
+          handle={handle}
           pageHeight={pageHeight}
           fallbackMediaItems={fallbackMediaItems}
           mediaItems={mediaItems}
+          currentMediaId={currentMediaId}
+          isThreaded={isThreaded}
+          isThreading={isThreading}
+          likes={likes}
+          comments={comments}
+          threads={threads}
+          threadCountRaw={threadCountRaw}
           bottomClearance={bottomClearance}
           scheme={scheme}
           glass={glass}
           canPatchBrands={canPatchBrands}
           isPatched={Boolean(item.brandId && patchedBrandIds.has(item.brandId))}
           patchBusy={Boolean(item.brandId && patchingBrandIds[item.brandId])}
-          threadStateByMedia={threadStateByMedia}
-          threadingMediaById={threadingMediaById}
           isCommentsOpen={commentsTarget?.collectionId === item.collectionId}
           onCarouselIndexChange={handleCarouselIndexChange}
           onPatchBrand={handlePatchBrand}
@@ -1864,7 +1889,7 @@ export default function HomeScreen() {
           style={styles.feedListContainer}
           onLayout={(event) => {
             const nextHeight = Math.round(event.nativeEvent.layout.height);
-            if (nextHeight > 0 && nextHeight !== feedViewportHeight) {
+            if (nextHeight > 0 && feedViewportHeight === 0) {
               devLog('HomeFeed', 'Measured feed viewport', {
                 measuredPageHeight: nextHeight,
                 previousPageHeight: feedViewportHeight || null,
@@ -1966,147 +1991,7 @@ export default function HomeScreen() {
               }
             }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
-            renderItem={({ item: entry }) => {
-              const item = entry.item;
-              const brandName = item.brandName ?? item.username ?? 'Brand';
-              const handle = item.username ? `@${item.username}` : '';
-              const fallbackMediaItems = fallbackMediaByCollection[item.collectionId] ?? [];
-              const mediaItems = collectionMediaMap[item.collectionId]?.length
-                ? collectionMediaMap[item.collectionId]
-                : fallbackMediaItems;
-              const activeMediaIndex = mediaItems.length
-                ? Math.min(carouselIndexMap.get(item.collectionId) ?? 0, mediaItems.length - 1)
-                : 0;
-              const currentMedia = mediaItems[activeMediaIndex] ?? fallbackMediaItems[0] ?? null;
-              const currentMediaId = currentMedia?.id ?? item.id;
-              const currentMediaThreadState = currentMedia ? threadStateByMedia[currentMedia.id] : undefined;
-              const isThreaded = currentMedia
-                ? currentMediaThreadState?.threaded ?? (currentMedia.id === item.id ? Boolean(item.isThreaded) : false)
-                : Boolean(item.isThreaded);
-              const isThreading = Boolean(threadingMediaById[currentMediaId]);
-              const likes = toCompactCount(item.likesCount ?? 0);
-              const comments = toCompactCount(item.combinedCommentsCount ?? item.commentsCount ?? 0);
-              const threadCountRaw =
-                currentMediaThreadState?.count ??
-                currentMedia?.threadsCount ??
-                item.threadsCount ??
-                0;
-              const threads = toCompactCount(threadCountRaw);
-              const isCommentsOpen = commentsTarget?.collectionId === item.collectionId;
-
-              return (
-                <View style={[styles.page, { height: pageHeight }]}> 
-                  <FeedMediaCarousel
-                    mediaItems={mediaItems}
-                    initialActiveIndex={activeMediaIndex}
-                    onActiveIndexChange={(nextIndex) => {
-                      carouselIndexMap.set(item.collectionId, nextIndex);
-                    }}
-                  />
-
-                  {/* Right action rail */}
-                  <View style={[styles.rail, { bottom: bottomClearance + 24 }]}>
-                    <FeedBrandAvatar
-                      brandId={item.brandId}
-                      brandName={brandName}
-                      brandLogo={item.brandLogo}
-                      brandLogoFileId={item.brandLogoFileId}
-                      canPatch={canPatchBrands}
-                      isPatched={Boolean(item.brandId && patchedBrandIds.has(item.brandId))}
-                      patchBusy={Boolean(item.brandId && patchingBrandIds[item.brandId])}
-                      onPatchPress={() => {
-                        handlePatchBrand(item.brandId, brandName);
-                      }}
-                      onPress={() => {
-                        if (!item.brandId) return;
-                        router.push({ pathname: '/catalog/[brandId]', params: { brandId: item.brandId } } as any);
-                      }}
-                    />
-
-                    <ThreadRailAction
-                      threaded={isThreaded}
-                      count={threads}
-                      busy={isThreading}
-                      onPress={() => {
-                        void handleThreadPress(currentMediaId, item.collectionId, isThreaded, threadCountRaw);
-                      }}
-                    />
-
-                    <View style={styles.railItem}>
-                      <IconButton
-                        size={40}
-                        onPress={() => {
-                          if (isCommentsOpen) {
-                            closeCommentsSheet();
-                            return;
-                          }
-                          openCommentsSheet(item);
-                        }}
-                      >
-                        <AppText variant="subtitle">💬</AppText>
-                      </IconButton>
-                      <AppText variant="captionBold" tone="inverse">{comments}</AppText>
-                    </View>
-
-                    <View style={styles.railItem}>
-                      <IconButton size={40}>
-                        <AppText variant="subtitle">{item.isLiked ? '❤️' : '🤍'}</AppText>
-                      </IconButton>
-                      <AppText variant="captionBold" tone="inverse">{likes}</AppText>
-                    </View>
-
-                  </View>
-
-                  {/* Compact metadata overlay */}
-                  <View
-                    style={[
-                      styles.meta,
-                      {
-                        bottom: bottomClearance,
-                      },
-                    ]}
-                  >
-                    <BlurView
-                      tint={scheme === 'dark' ? 'dark' : 'light'}
-                      intensity={20}
-                      style={[
-                        styles.metaCard,
-                        {
-                          backgroundColor: glass.bg,
-                          borderColor: glass.border,
-                        },
-                      ]}
-                    >
-                      <View style={styles.brandLine}>
-                        <View style={styles.brandTextWrap}>
-                          <View style={styles.brandNameRow}>
-                            <AppText variant="bodyBold" tone="inverse">{brandName}</AppText>
-                          </View>
-                          {handle ? <AppText variant="captionRegular" tone="secondary">{handle}</AppText> : null}
-                        </View>
-
-                      </View>
-
-                      <AppText variant="subtitle" tone="inverse" numberOfLines={2}>
-                        {item.collectionTitle}
-                      </AppText>
-                      {item.collectionDescription ? (
-                        <AppText variant="body" tone="secondary" numberOfLines={2}>
-                          {item.collectionDescription}
-                        </AppText>
-                      ) : null}
-
-                      <View style={styles.audioRow}>
-                        <AppText variant="captionBold">🎵</AppText>
-                        <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
-                          Original Audio
-                        </AppText>
-                      </View>
-                    </BlurView>
-                  </View>
-                </View>
-              );
-            }}
+            renderItem={renderFeedItem}
           />
           )}
         </View>

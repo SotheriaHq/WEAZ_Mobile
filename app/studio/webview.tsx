@@ -129,7 +129,7 @@ function StudioHeaderActions({
 
   return (
     <View style={styles.headerActions}>
-      <IconButton size={40} onPress={onSearchPress} variant="ghost" testID="studio-header-search">
+      <IconButton size={44} onPress={onSearchPress} variant="ghost" testID="studio-header-search">
         <AppText variant="subtitle" accessibilityLabel="Open search">
           🔎
         </AppText>
