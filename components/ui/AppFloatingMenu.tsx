@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BackHandler, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { BackHandler, Dimensions, Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
@@ -22,13 +22,18 @@ type Props = {
 export function AppFloatingMenu({ visible, anchorRef, options, onClose }: Props) {
   const { theme } = useTheme();
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const menuWidth = 188;
 
   useEffect(() => {
     if (visible && anchorRef.current) {
       anchorRef.current.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
+        const windowWidth = Dimensions.get('window').width;
+        const preferredLeft = pageX + width - menuWidth;
+        const minLeft = tokens.spacing.md;
+        const maxLeft = Math.max(minLeft, windowWidth - menuWidth - tokens.spacing.md);
         setMenuPosition({
           top: pageY + height + tokens.spacing.xs,
-          left: Math.max(tokens.spacing.md, pageX - 100), // adjust to fit
+          left: Math.min(Math.max(preferredLeft, minLeft), maxLeft),
         });
       });
     } else {
@@ -56,10 +61,12 @@ export function AppFloatingMenu({ visible, anchorRef, options, onClose }: Props)
           style={[
             styles.menu,
             {
-              backgroundColor: theme.colors.surface,
+              backgroundColor: theme.colors.surfaceAlt,
               borderColor: theme.colors.border,
               top: menuPosition.top,
               left: menuPosition.left,
+              width: menuWidth,
+              ...tokens.elevation.sm,
             },
           ]}
         >
@@ -72,11 +79,11 @@ export function AppFloatingMenu({ visible, anchorRef, options, onClose }: Props)
                 index < options.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
               ]}
               onPress={() => {
-                option.onPress();
                 onClose();
+                requestAnimationFrame(option.onPress);
               }}
             >
-              <AppText variant="body" style={styles.icon}>
+              <AppText variant="body">
                 {option.icon}
               </AppText>
               <AppText variant="body">{option.title}</AppText>
@@ -92,13 +99,8 @@ const styles = StyleSheet.create({
   menu: {
     position: 'absolute',
     borderWidth: 1,
-    borderRadius: tokens.radius.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
-    minWidth: 150,
+    borderRadius: tokens.radius.lg,
+    minWidth: 176,
   },
   option: {
     flexDirection: 'row',
@@ -109,9 +111,6 @@ const styles = StyleSheet.create({
   },
   optionPressed: {
     opacity: 0.7,
-  },
-  icon: {
-    fontSize: 18,
   },
 });
 

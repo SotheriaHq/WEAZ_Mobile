@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
@@ -83,7 +83,6 @@ function mergeMentions(description: string, mentions: string[]) {
 }
 
 export default function CreateDesignComposerScreen() {
-  const { source: routeSourceParam } = useLocalSearchParams<{ source?: string | string[] }>();
   const {
     booting,
     assets,
@@ -107,14 +106,15 @@ export default function CreateDesignComposerScreen() {
     save,
     saveState,
     canSaveDraft,
+    isEditMode,
     pickMedia,
     clearPermissionIssue,
     openMediaPermissionSettings,
   } = useDesignEditor();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const autoLaunchRef = useRef(false);
-  const plusRef = useRef(null);
+  const plusRef = useRef<View>(null);
+  const hasEverHadAssetsRef = useRef(false);
 
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -132,8 +132,6 @@ export default function CreateDesignComposerScreen() {
   const [tagSuggestions, setTagSuggestions] = useState<{ name: string; usageCount: number }[]>([]);
   const [tagError, setTagError] = useState<string | null>(null);
 
-  const routeSource = Array.isArray(routeSourceParam) ? routeSourceParam[0] : routeSourceParam;
-  const normalizedSource = routeSource === 'camera' || routeSource === 'library' ? routeSource : null;
   const audienceLabel = AUDIENCE_LABELS[form.audience];
   const sizingLabel = SIZING_LABELS[form.sizingMode];
   const fitPreferenceLabel = FIT_PREFERENCE_LABELS[form.fitPreference];
@@ -267,12 +265,21 @@ export default function CreateDesignComposerScreen() {
   }, [tagsOpen]);
 
   useEffect(() => {
-    if (booting || !normalizedSource || autoLaunchRef.current || assets.length > 0) return;
-    autoLaunchRef.current = true;
-    void pickMedia(normalizedSource);
-  }, [assets.length, booting, normalizedSource, pickMedia]);
+    if (assets.length > 0) {
+      hasEverHadAssetsRef.current = true;
+    }
+  }, [assets.length]);
 
-  if (booting) {
+  const shouldRedirectEmptyCreate =
+    !booting && !isEditMode && assets.length === 0 && !hasEverHadAssetsRef.current;
+
+  useEffect(() => {
+    if (shouldRedirectEmptyCreate) {
+      router.replace('/catalog' as any);
+    }
+  }, [shouldRedirectEmptyCreate]);
+
+  if (booting || shouldRedirectEmptyCreate) {
     return <AppLoaderScreen message="Loading composer" />;
   }
 

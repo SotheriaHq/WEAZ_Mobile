@@ -7,7 +7,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import * as ImagePicker from 'expo-image-picker';
 import { Linking } from 'react-native';
 import { router } from 'expo-router';
 
@@ -31,6 +30,12 @@ import {
 } from '@/src/api/DesignApi';
 import { brandApi } from '@/src/api/BrandApi';
 import { useToast } from '@/src/toast/ToastContext';
+import {
+  consumeDesignEditorAssetBundle,
+  DESIGN_EDITOR_MAX_MEDIA,
+  pickDesignEditorMediaAssets,
+  type MediaPermissionIssue,
+} from './designEditorMediaFlow';
 
 type Visibility = 'PUBLIC' | 'PRIVATE';
 type Audience = 'MALE' | 'FEMALE' | 'EVERYBODY';
@@ -57,13 +62,6 @@ type FormState = {
 };
 
 type SaveAction = 'draft' | 'publish';
-type MediaPermissionIssue = {
-  source: 'camera' | 'library';
-  title: string;
-  message: string;
-  canAskAgain: boolean;
-};
-
 type ContextValue = {
   booting: boolean;
   loadingError: string | null;
@@ -128,8 +126,6 @@ const INITIAL_FORM: FormState = {
   targetAgeGroup: 'ADULT',
 };
 
-const MAX_MEDIA = 20;
-
 const DesignEditorContext = createContext<ContextValue | null>(null);
 
 function parseTags(input: string): string[] {
@@ -183,9 +179,11 @@ function measurementGenderForAudience(audience: Audience): 'MEN' | 'WOMEN' | 'UN
 
 export function DesignEditorProvider({
   designId,
+  assetHandoffToken,
   children,
 }: {
   designId?: string;
+  assetHandoffToken?: string;
   children: React.ReactNode;
 }) {
   const toast = useToast();
@@ -213,6 +211,7 @@ export function DesignEditorProvider({
   const [permissionIssue, setPermissionIssue] = useState<MediaPermissionIssue | null>(null);
 
   const bootstrappedRef = useRef(false);
+  const normalizedAssetHandoffToken = assetHandoffToken?.trim() || undefined;
 
   const hydrateFromDetail = useCallback((detail: DesignDetail) => {
     setForm(syncFormFromDetail(detail));
@@ -251,6 +250,15 @@ export function DesignEditorProvider({
           nextFilters.filter((dimension) => dimension.appliesTo.includes('COLLECTION')),
         );
         setCustomOrderConfigurations(nextCustomOrderConfigurations);
+
+        if (!activeDesignId && normalizedAssetHandoffToken) {
+          const stagedAssets = consumeDesignEditorAssetBundle(normalizedAssetHandoffToken);
+          if (stagedAssets?.length) {
+            setAssets(stagedAssets.slice(0, DESIGN_EDITOR_MAX_MEDIA));
+            setCoverAssetIdState(stagedAssets[0]?.id ?? null);
+            setOriginalMediaIds([]);
+          }
+        }
 
         if (activeDesignId) {
           const detail = await getDesignDetail(activeDesignId);
@@ -304,7 +312,7 @@ export function DesignEditorProvider({
         setBooting(false);
       }
     },
-    [activeDesignId, draftSessionToken, hydrateFromDetail, loadMeasurementPoints],
+    [activeDesignId, draftSessionToken, hydrateFromDetail, loadMeasurementPoints, normalizedAssetHandoffToken],
   );
 
   useEffect(() => {
@@ -389,75 +397,30 @@ export function DesignEditorProvider({
   }, [customOrderConfigurations]);
 
   const pickMedia = useCallback(async (source: 'camera' | 'library' = 'library') => {
-    const remainingSlots = Math.max(0, MAX_MEDIA - assets.length);
-    if (remainingSlots === 0) {
-      toast.error(`You can upload up to ${MAX_MEDIA} design assets.`);
+    const result = await pickDesignEditorMediaAssets({
+      source,
+      existingCount: assets.length,
+      maxMedia: DESIGN_EDITOR_MAX_MEDIA,
+    });
+
+    if (result.status === 'cancelled') {
+      return false;
+    }
+
+    if (result.status === 'limit') {
+      toast.error(result.message);
+      return false;
+    }
+
+    if (result.status === 'permission') {
+      setPermissionIssue(result.issue);
       return false;
     }
 
     setPermissionIssue(null);
 
-    if (source === 'camera') {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) {
-        setPermissionIssue({
-          source,
-          title: 'Camera permission needed',
-          message: permission.canAskAgain
-            ? 'Allow camera access to capture a photo or video for this design.'
-            : 'Camera access is blocked. Open settings to allow Threadly to use your camera.',
-          canAskAgain: Boolean(permission.canAskAgain),
-        });
-        return false;
-      }
-    } else {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        setPermissionIssue({
-          source,
-          title: 'Photo library permission needed',
-          message: permission.canAskAgain
-            ? 'Allow photo library access to select design media from your device.'
-            : 'Photo library access is blocked. Open settings to allow Threadly to use your media.',
-          canAskAgain: Boolean(permission.canAskAgain),
-        });
-        return false;
-      }
-    }
-
-    const result =
-      source === 'camera'
-        ? await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images', 'videos'],
-            quality: 0.9,
-          })
-        : await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images', 'videos'],
-            allowsMultipleSelection: true,
-            quality: 0.9,
-            selectionLimit: remainingSlots,
-          });
-
-    if (result.canceled || !result.assets?.length) {
-      return false;
-    }
-
     setAssets((prev) => {
-      const mapped = result.assets.map((asset, index) => ({
-        id: `${asset.assetId ?? asset.uri}_${Date.now()}_${index}`,
-        uri: asset.uri,
-        mimeType: asset.mimeType ?? (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
-        fileName:
-          asset.fileName ??
-          `design-${prev.length + index + 1}.${asset.type === 'video' ? 'mp4' : 'jpg'}`,
-        fileSize: asset.fileSize ?? 0,
-        mediaKind: (asset.type === 'video' ? 'video' : 'image') as 'image' | 'video',
-        aspectRatio:
-          typeof asset.width === 'number' && typeof asset.height === 'number' && asset.height > 0
-            ? asset.width / asset.height
-            : null,
-      }));
-      return [...prev, ...mapped].slice(0, MAX_MEDIA);
+      return [...prev, ...result.assets].slice(0, DESIGN_EDITOR_MAX_MEDIA);
     });
     return true;
   }, [assets.length, toast]);

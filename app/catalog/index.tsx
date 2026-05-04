@@ -22,8 +22,7 @@ import MobileProfileImageModal from '@/components/profile/ProfileImageModal';
 import { Tabs } from '@/components/catalog/Tabs';
 import { CollectionsGrid } from '@/components/catalog/CollectionsGrid';
 import { VisibilityFilter } from '@/components/catalog/VisibilityFilter';
-import { SkeletonText } from '@/components/ui/Skeleton';
-import { LoaderBlock } from '@/components/ui/AppLoader';
+import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { useToast } from '@/src/toast/ToastContext';
 import { useBrandPatchStatus } from '@/src/hooks/useBrandPatchStatus';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
@@ -33,9 +32,15 @@ import { BrandReviewsTab } from '@/components/catalog/BrandReviewsTab';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { AppActionSheet } from '@/components/ui/AppActionSheet';
+import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
 import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
 import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
+import {
+  pickDesignEditorMediaAssets,
+  stageDesignEditorAssetBundle,
+  type DesignEditorMediaSource,
+} from '@/src/features/design-editor/designEditorMediaFlow';
+import { tokens } from '@/src/styles/tokens';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -44,6 +49,45 @@ import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav
 type TabType = 'Collections' | 'Shop' | 'Reviews';
 type VisibilityType = 'Public' | 'Private' | 'Drafts';
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
+
+function CatalogLoadingSkeleton() {
+  const { theme } = useTheme();
+
+  return (
+    <ScrollView
+      style={styles.scrollView}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.skeletonScrollContent}
+    >
+      <View style={[styles.skeletonHero, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        <Skeleton width="100%" height={168} borderRadius={tokens.radius.xl} />
+        <View style={styles.skeletonHeroRow}>
+          <Skeleton width={68} height={68} borderRadius={tokens.radius.xl} />
+          <View style={styles.skeletonHeroCopy}>
+            <Skeleton width="58%" height={18} borderRadius={tokens.radius.sm} />
+            <SkeletonText lines={2} lineHeight={12} spacing={tokens.spacing.sm} lastLineWidth="72%" />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.skeletonTabsRow}>
+        <Skeleton width={72} height={32} borderRadius={tokens.radius.full} />
+        <Skeleton width={64} height={32} borderRadius={tokens.radius.full} />
+        <Skeleton width={72} height={32} borderRadius={tokens.radius.full} />
+      </View>
+
+      <View style={styles.skeletonGrid}>
+        {Array.from({ length: 6 }).map((_, index) => (
+          <View key={index} style={[styles.skeletonCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <Skeleton width="100%" height={180} borderRadius={tokens.radius.lg} />
+            <Skeleton width="72%" height={14} borderRadius={tokens.radius.sm} style={styles.skeletonCardTitle} />
+            <Skeleton width="48%" height={12} borderRadius={tokens.radius.sm} />
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // Empty States
@@ -116,8 +160,9 @@ export default function CatalogScreen() {
   const [draftDeleteTarget, setDraftDeleteTarget] = useState<CollectionDto | null>(null);
   const [draftDeletePhrase, setDraftDeletePhrase] = useState('');
   const [draftDeleteBusy, setDraftDeleteBusy] = useState(false);
-  const [createSheetOpen, setCreateSheetOpen] = useState(false);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const horizontalScrollRef = useRef<ScrollView>(null);
+  const createMenuAnchorRef = useRef<View>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
 
   // Determine if owner view
@@ -398,18 +443,48 @@ export default function CatalogScreen() {
   ];
 
   const handleCreatePress = () => {
-    setCreateSheetOpen(true);
+    setCreateMenuOpen(true);
   };
+
+  const handleLaunchCreateDesign = useCallback(
+    async (source: DesignEditorMediaSource) => {
+      const pickResult = await pickDesignEditorMediaAssets({
+        source,
+        existingCount: 0,
+      });
+
+      if (pickResult.status === 'cancelled') {
+        return;
+      }
+
+      if (pickResult.status === 'limit') {
+        toast.error(pickResult.message);
+        return;
+      }
+
+      if (pickResult.status === 'permission') {
+        toast.error(pickResult.issue.message);
+        return;
+      }
+
+      const handoffToken = stageDesignEditorAssetBundle(pickResult.assets);
+      router.push({ pathname: '/catalog/create-design', params: { handoffToken } } as any);
+    },
+    [toast],
+  );
+
+  if (showInitialSkeleton) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <CatalogLoadingSkeleton />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-
-      {showInitialSkeleton ? (
-        <View style={styles.initialSkeletonWrap}>
-          <LoaderBlock message="Loading catalog" minHeight={360} />
-        </View>
-      ) : null}
 
       <ScrollView
         style={styles.scrollView}
@@ -506,6 +581,7 @@ export default function CatalogScreen() {
 
               {isOwner && (
                 <Pressable
+                  ref={createMenuAnchorRef}
                   onPress={handleCreatePress}
                   style={({ pressed }) => [
                     styles.addButton,
@@ -565,32 +641,28 @@ export default function CatalogScreen() {
         onClose={() => setIsAvatarModalOpen(false)}
       />
 
-      <AppActionSheet
-        visible={createSheetOpen}
-        title="Create"
-        subtitle="Choose a media source for this design."
-        onClose={() => setCreateSheetOpen(false)}
+      <AppFloatingMenu
+        visible={createMenuOpen}
+        anchorRef={createMenuAnchorRef}
+        onClose={() => setCreateMenuOpen(false)}
         options={[
           {
             key: 'camera',
             icon: '📷',
             title: 'Camera',
-            description: 'Capture a new photo or video.',
-            onPress: () => router.push({ pathname: '/catalog/create-design', params: { source: 'camera' } } as any),
+            onPress: () => void handleLaunchCreateDesign('camera'),
           },
           {
             key: 'media',
             icon: '🖼️',
             title: 'Media',
-            description: 'Pick images or videos from your library.',
-            onPress: () => router.push({ pathname: '/catalog/create-design', params: { source: 'library' } } as any),
+            onPress: () => void handleLaunchCreateDesign('library'),
           },
           {
             key: 'attachment',
             icon: '📎',
             title: 'Attachment',
-            description: 'Attach an existing photo or video from your device.',
-            onPress: () => router.push({ pathname: '/catalog/create-design', params: { source: 'library' } } as any),
+            onPress: () => void handleLaunchCreateDesign('library'),
           },
         ]}
       />
@@ -633,17 +705,51 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  initialSkeletonWrap: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 20,
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingBottom: 24,
+  },
+  skeletonScrollContent: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.lg,
+    paddingBottom: tokens.spacing.xl,
+    gap: tokens.spacing.lg,
+  },
+  skeletonHero: {
+    borderWidth: 1,
+    borderRadius: tokens.radius.xl,
+    padding: tokens.spacing.lg,
+    gap: tokens.spacing.lg,
+  },
+  skeletonHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.lg,
+  },
+  skeletonHeroCopy: {
+    flex: 1,
+    gap: tokens.spacing.md,
+  },
+  skeletonTabsRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.md,
+  },
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.md,
+  },
+  skeletonCard: {
+    width: '48%',
+    borderWidth: 1,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.md,
+  },
+  skeletonCardTitle: {
+    marginTop: tokens.spacing.xs,
   },
   tabsWrapper: {
     borderBottomWidth: 0,
