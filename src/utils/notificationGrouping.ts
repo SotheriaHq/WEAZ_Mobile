@@ -40,5 +40,9 @@ export function groupNotifications(items: MobileNotification[], now = new Date()
     buckets.set(label, current);
   });
 
-  return Array.from(buckets.entries()).map(([title, grouped]) => ({ title, items: grouped }));
+  const groupOrder = ['Today', 'Yesterday', 'This week', 'Last week', 'Earlier'] as const;
+
+  return groupOrder
+    .filter((title) => buckets.has(title))
+    .map((title) => ({ title, items: buckets.get(title) ?? [] }));
 }

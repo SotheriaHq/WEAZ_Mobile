@@ -161,6 +161,15 @@ const isFileLikeRecord = (value: Record<string, unknown>) =>
       asString(value.fileType),
   );
 
+const isLoopbackHttpUrl = (value: string) => {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0' || hostname === '::1';
+  } catch {
+    return false;
+  }
+};
+
 const toIdempotencyKey = () => `mob_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
 const normalizeProduct = (raw: unknown): StoreProduct | null => {
@@ -180,6 +189,12 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
 
   const images = rawImages
     .map((entry) => {
+      if (typeof entry === 'string') {
+        const url = asString(entry);
+        if (!url) return null;
+        return { url, fileId: null };
+      }
+
       const media = asRecord(entry);
       const file = asRecord(media.file);
       const url =
@@ -203,6 +218,27 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
       return { url, fileId };
     })
     .filter((entry): entry is { url: string | null; fileId: string | null } => Boolean(entry));
+
+  const imageUrls = images.map((entry) => entry.url).filter((url): url is string => Boolean(url));
+  const preferredCoverUrl =
+    [
+      asString(item.coverImage),
+      asString(item.thumbnail),
+      asString(item.thumbnailUrl),
+      asString(rawImage.url),
+      asString(rawImage.s3Url),
+      imageUrls.find((url) => !isLoopbackHttpUrl(url)),
+      imageUrls[0],
+    ].find((candidate): candidate is string => typeof candidate === 'string' && !isLoopbackHttpUrl(candidate)) ??
+    [
+      asString(item.coverImage),
+      asString(item.thumbnail),
+      asString(item.thumbnailUrl),
+      asString(rawImage.url),
+      asString(rawImage.s3Url),
+      imageUrls[0],
+    ].find((candidate): candidate is string => Boolean(candidate)) ??
+    null;
 
   const variants = Array.isArray(item.variants)
     ? item.variants
@@ -231,14 +267,7 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
         ? asNumber(item.compareAtPrice)
         : null,
     currency: asString(item.currency) ?? 'NGN',
-    coverImage:
-      asString(item.coverImage) ??
-      asString(item.thumbnail) ??
-      asString(item.thumbnailUrl) ??
-      asString(rawImage.url) ??
-      asString(rawImage.s3Url) ??
-      images[0]?.url ??
-      null,
+    coverImage: preferredCoverUrl,
     coverImageId:
       asString(item.coverImageId) ??
       asString(item.thumbnailFileId) ??
@@ -246,6 +275,7 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
       asString(rawImage.fileUploadId) ??
       asString(rawImage.uploadFileId) ??
       (isFileLikeRecord(rawImage) ? asString(rawImage.id) : null) ??
+      images.find((entry) => entry.fileId && !isLoopbackHttpUrl(entry.url ?? ''))?.fileId ??
       images[0]?.fileId ??
       null,
     images,

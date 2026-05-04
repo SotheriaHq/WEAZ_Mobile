@@ -29,6 +29,17 @@ const isS3LikeUrl = (value: string) => {
   return lower.includes('.s3.') || lower.includes('amazonaws.com');
 };
 
+const isLoopbackHttpUrl = (value: string) => {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0' || hostname === '::1';
+  } catch {
+    return false;
+  }
+};
+
+const isSafeDirectHttpUrl = (value: string) => isHttpUrl(value) && !isS3LikeUrl(value) && !isLoopbackHttpUrl(value);
+
 const isPotentialFileId = (value: string) => !isHttpUrl(value) && !/[/?#\\]/.test(value);
 
 const getResolutionCacheKey = (directSrc: string | null, normalizedFileId: string | null) => {
@@ -139,7 +150,7 @@ export const resolveImageUri = async ({
     return null;
   }
 
-  if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc)) {
+  if (directSrc && isSafeDirectHttpUrl(directSrc)) {
     return directSrc;
   }
 
@@ -177,10 +188,8 @@ export const resolveImageUri = async ({
         }
       }
 
-      if (directSrc) {
-        if (isHttpUrl(directSrc)) {
-          setCachedUri(cacheKey, directSrc);
-        }
+      if (directSrc && isSafeDirectHttpUrl(directSrc)) {
+        setCachedUri(cacheKey, directSrc);
         return directSrc;
       }
 
@@ -229,7 +238,7 @@ export function useResolvedImageUri({
   const resolvedKeyRef = useRef<string | null>(null);
   const lastSuccessfulRef = useRef<{ key: string; uri: string } | null>(null);
   const [resolvedUri, setResolvedUri] = useState<string | null>(() => {
-    if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc)) {
+    if (directSrc && isSafeDirectHttpUrl(directSrc)) {
       const key = `direct:${directSrc}`;
       resolvedKeyRef.current = key;
       lastSuccessfulRef.current = { key, uri: directSrc };
@@ -256,7 +265,7 @@ export function useResolvedImageUri({
       return;
     }
 
-    if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc)) {
+    if (directSrc && isSafeDirectHttpUrl(directSrc)) {
       resolvedKeyRef.current = activeKey;
       lastSuccessfulRef.current = { key: activeKey, uri: directSrc };
       setResolvedUri(directSrc);
@@ -289,7 +298,7 @@ export function useResolvedImageUri({
       };
     }
 
-    if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc)) {
+    if (directSrc && isSafeDirectHttpUrl(directSrc)) {
       resolvedKeyRef.current = activeKey ?? `direct:${directSrc}`;
       lastSuccessfulRef.current = { key: activeKey ?? `direct:${directSrc}`, uri: directSrc };
       setResolvedUri(directSrc);
@@ -324,7 +333,7 @@ export function useResolvedImageUri({
 
   useEffect(() => {
     if (!enabled || !cacheKey || !resolvedUri) return;
-    if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc) && !normalizedFileId) return;
+    if (directSrc && isSafeDirectHttpUrl(directSrc) && !normalizedFileId) return;
 
     const cached = getCachedUriEntry(cacheKey);
     if (!cached || cached === '__missing__') return;
@@ -363,7 +372,7 @@ export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {
   const [loading, setLoading] = useState<boolean>(() => {
     if (!enabled) return false;
     if (!directSrc && !normalizedFileId) return false;
-    if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc)) return false;
+    if (directSrc && isSafeDirectHttpUrl(directSrc)) return false;
     return uri == null;
   });
 
@@ -373,7 +382,7 @@ export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {
       return;
     }
 
-    if (directSrc && isHttpUrl(directSrc) && !isS3LikeUrl(directSrc)) {
+    if (directSrc && isSafeDirectHttpUrl(directSrc)) {
       setLoading(false);
       return;
     }

@@ -112,11 +112,17 @@ function ProductMediaSlide({
           imageStyle={styles.heroImage}
           resizeMode="contain"
           onError={() => setImageFailed(true)}
-          fallback={<View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceAlt }]} />}
+          fallback={
+            <View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
+              <AppText variant="subtitle">🖼️</AppText>
+              <AppText variant="captionRegular" tone="muted">Preview unavailable</AppText>
+            </View>
+          }
         />
       ) : (
         <View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
-          <AppText variant="subtitle">Image unavailable</AppText>
+          <AppText variant="subtitle">🖼️</AppText>
+          <AppText variant="captionRegular" tone="muted">Preview unavailable</AppText>
         </View>
       )}
     </View>

@@ -192,7 +192,7 @@ export default function PublicProfileScreen() {
               <AppText variant="bodyBold">@{profile?.username || 'unknown'}</AppText>
             </View>
             <View style={styles.summaryCell}>
-              <AppText variant="captionRegular" tone="muted">Activity</AppText>
+              <AppText variant="captionRegular" tone="muted">Patched brands</AppText>
               <AppText variant="bodyBold">{profileTabsLabel}</AppText>
             </View>
           </View>

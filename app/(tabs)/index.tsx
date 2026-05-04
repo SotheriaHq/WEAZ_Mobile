@@ -171,7 +171,7 @@ function ImageWarmPlaceholder() {
           StyleSheet.absoluteFillObject,
           {
             opacity: shimmer,
-            backgroundColor: theme.colors.surface,
+            backgroundColor: placeholderSurface,
           },
         ]}
       />
@@ -281,7 +281,7 @@ function FeedMediaSlide({
     return (
       <View style={[StyleSheet.absoluteFillObject, styles.feedBrokenSlide, { backgroundColor: placeholderSurface }]}>
         <AppText variant="display">🖼️</AppText>
-        <AppText variant="subtitle">Image unavailable</AppText>
+        <AppText variant="subtitle">Preview unavailable</AppText>
         <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.feedSlideBody}>
           {media.label || 'Swipe to another view'}
         </AppText>
@@ -501,8 +501,8 @@ const FeedSkeleton = ({
 }) => {
   return (
     <View style={styles.feedSkeletonRoot}>
-      <View style={[styles.feedSkeletonHeader, { paddingTop: topOffset + 8 }]}> 
-        <View style={[styles.feedSkeletonLogoWrap, { backgroundColor: theme.colors.surface }]}> 
+      <View style={[styles.feedSkeletonHeader, { paddingTop: topOffset + 8 }]}>
+        <View style={[styles.feedSkeletonLogoWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
           <ThreadlyLogo size={28} style={{ opacity: 0.92 }} />
         </View>
         <View style={styles.feedSkeletonHeaderActions}>
