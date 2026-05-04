@@ -1,18 +1,39 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { router, usePathname } from 'expo-router';
 import * as Linking from 'expo-linking';
-// @ts-ignore - expo-notifications may not be installed yet
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import type * as Notifications from 'expo-notifications';
 
 /**
  * Check if running in Expo Go on Android
  */
-const isExpoGoAndroid = (): boolean => {
-  return Constants.executionEnvironment === 'storeClient' && Platform.OS === 'android';
-};
+const isExpoGo = (): boolean => Constants.executionEnvironment === 'storeClient';
+const isExpoGoAndroid = (): boolean => isExpoGo() && Platform.OS === 'android';
 
+type ExpoNotificationsModule = typeof import('expo-notifications');
+
+let notificationsModulePromise: Promise<ExpoNotificationsModule | null> | null = null;
+let pushConfigurationPromise: Promise<{
+  token?: string;
+  error?: string;
+  unsupported?: boolean;
+}> | null = null;
+
+function supportsNativeNotificationModule() {
+  return !isExpoGoAndroid();
+}
+
+async function getNotificationsModule() {
+  if (!supportsNativeNotificationModule()) return null;
+  notificationsModulePromise ??= import('expo-notifications').catch((error) => {
+    if (__DEV__) {
+      console.warn('Unable to load expo-notifications:', error);
+    }
+    return null;
+  });
+  return notificationsModulePromise;
+}
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
@@ -188,21 +209,36 @@ export function useNotificationRouting() {
 export async function configurePushNotifications(): Promise<{
   token?: string;
   error?: string;
+  unsupported?: boolean;
 }> {
-  // Skip all notification setup in Expo Go on Android
-  if (isExpoGoAndroid()) {
-    return { error: 'Push notifications are not available in Expo Go on Android' };
-  }
-  try {
-    const isExpoGo = Constants.executionEnvironment === 'storeClient';
+  if (pushConfigurationPromise) return pushConfigurationPromise;
 
+  pushConfigurationPromise = configurePushNotificationsOnce();
+  return pushConfigurationPromise;
+}
+
+async function configurePushNotificationsOnce(): Promise<{
+  token?: string;
+  error?: string;
+  unsupported?: boolean;
+}> {
+  if (!supportsNativeNotificationModule()) {
+    return { error: 'Push notifications are not available in Expo Go on Android.', unsupported: true };
+  }
+
+  const NotificationsModule = await getNotificationsModule();
+  if (!NotificationsModule) {
+    return { error: 'expo-notifications is unavailable.', unsupported: true };
+  }
+
+  try {
     // Get existing permission
-    const existingSettings = await Notifications.getPermissionsAsync();
+    const existingSettings = await NotificationsModule.getPermissionsAsync();
     let finalStatus = existingSettings.status;
 
     // Request permission if not granted
-    if (finalStatus !== Notifications.PermissionStatus.GRANTED) {
-      const { status } = await Notifications.requestPermissionsAsync({
+    if (finalStatus !== NotificationsModule.PermissionStatus.GRANTED) {
+      const { status } = await NotificationsModule.requestPermissionsAsync({
         ios: {
           allowAlert: true,
           allowBadge: true,
@@ -213,50 +249,42 @@ export async function configurePushNotifications(): Promise<{
           allowBadge: true,
           allowSound: true,
           allowVibrate: true,
-          importance: Notifications.AndroidImportance.DEFAULT,
+          importance: NotificationsModule.AndroidImportance.DEFAULT,
           vibrationPattern: [200, 270, 270, 270],
         },
       });
       finalStatus = status;
     }
 
-    if (finalStatus !== Notifications.PermissionStatus.GRANTED) {
+    if (finalStatus !== NotificationsModule.PermissionStatus.GRANTED) {
       return { error: 'Permission for push notifications not granted' };
     }
 
     // Get push token - skip in Expo Go on Android SDK 53+
     let token: string | undefined;
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
+      await NotificationsModule.setNotificationChannelAsync('default', {
         name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
+        importance: NotificationsModule.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
       });
     }
 
-    if (!isExpoGo || Platform.OS !== 'android') {
-      const projectId =
-        __DEV__ && process.env.EXPO_PUBLIC_FCM_SENDER_ID
-          ? process.env.EXPO_PUBLIC_FCM_SENDER_ID
-          : process.env.EXPO_PUBLIC_FCM_SENDER_ID;
+    const projectId = process.env.EXPO_PUBLIC_FCM_SENDER_ID;
 
-      if (projectId) {
-        try {
-          const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync({
-            projectId,
-          });
-          token = expoPushToken;
-        } catch (tokenError) {
-          console.warn('Failed to get push token:', tokenError);
-          // Continue without token
-        }
+    if (!isExpoGo() && projectId) {
+      try {
+        const { data: expoPushToken } = await NotificationsModule.getExpoPushTokenAsync({
+          projectId,
+        });
+        token = expoPushToken;
+      } catch (tokenError) {
+        console.warn('Failed to get push token:', tokenError);
       }
-    } else {
-      console.log('Skipping push token registration in Expo Go on Android');
     }
 
     // Configure notification handlers
-    Notifications.setNotificationHandler({
+    NotificationsModule.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
         shouldPlaySound: true,
@@ -281,12 +309,12 @@ export async function handleInitialNotification(): Promise<{
   notification: Notifications.Notification | null;
   error?: string;
 }> {
-  // Skip in Expo Go on Android
-  if (isExpoGoAndroid()) {
+  const NotificationsModule = await getNotificationsModule();
+  if (!NotificationsModule) {
     return { notification: null };
   }
   try {
-    const response = await Notifications.getLastNotificationResponseAsync();
+    const response = await NotificationsModule.getLastNotificationResponseAsync();
     return { notification: response?.notification || null };
   } catch (error) {
     console.warn('Initial notification error:', error);
@@ -302,28 +330,32 @@ export function setupNotificationListeners(
   onNotificationReceived: (notification: Notifications.Notification) => void,
   onNotificationResponse: (response: Notifications.NotificationResponse) => void,
 ): () => void {
-  // Skip in Expo Go on Android
-  if (isExpoGoAndroid()) {
-    return () => {};
-  }
-  try {
+  let mounted = true;
+  let cleanup: (() => void) | null = null;
+
+  void getNotificationsModule().then((NotificationsModule) => {
+    if (!mounted || !NotificationsModule) return;
+
     // Listener for when notification is received while app is foreground
-    const receivedSubscription = Notifications.addNotificationReceivedListener(
+    const receivedSubscription = NotificationsModule.addNotificationReceivedListener(
       onNotificationReceived,
     );
 
     // Listener for when user taps on notification
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(
+    const responseSubscription = NotificationsModule.addNotificationResponseReceivedListener(
       onNotificationResponse,
     );
 
-    // Return unsubscribe function
-    return () => {
+    cleanup = () => {
       receivedSubscription.remove();
       responseSubscription.remove();
     };
-  } catch (error) {
+  }).catch((error) => {
     console.warn('Failed to set up notification listeners:', error);
-    return () => {};
-  }
+  });
+
+  return () => {
+    mounted = false;
+    cleanup?.();
+  };
 }

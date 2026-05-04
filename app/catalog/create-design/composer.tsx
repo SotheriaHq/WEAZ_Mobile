@@ -297,26 +297,23 @@ export default function CreateDesignComposerScreen() {
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing.xl }]} keyboardShouldPersistTaps="handled">
-          <ComposerSection
-            title="Selected media"
-            subtitle=""
-          >
+          <ComposerSection title="Selected media">
             <View style={styles.sectionTopRow}>
               <AppText variant="captionRegular" tone="muted">
                 {assets.length > 0 ? `${assets.length} selected asset${assets.length === 1 ? '' : 's'}` : 'No media selected yet'}
               </AppText>
-                  <View ref={plusRef}>
-                    <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
-                  </View>
+              <View ref={plusRef}>
+                <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
+              </View>
             </View>
             {assets.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaStrip}>
                 {assets.map((asset, index) => (
                   <View key={asset.id} style={styles.assetCard}>
                     <StableImage uri={asset.remoteUrl ?? asset.uri} containerStyle={styles.assetPreview} imageStyle={styles.assetPreview} />
-                      <View style={[styles.assetBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
-                        <AppText variant="captionBold">{asset.id === coverAssetId ? 'Cover' : `#${index + 1}`}</AppText>
-                      </View>
+                    <View style={[styles.assetBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
+                      <AppText variant="captionBold">{asset.id === coverAssetId ? 'Cover' : `#${index + 1}`}</AppText>
+                    </View>
                     <View style={styles.assetActionRow}>
                       <Pressable onPress={() => moveAsset(asset.id, 'left')} disabled={index === 0}>
                         <AppText variant="captionBold" tone={index === 0 ? 'muted' : 'primary'}>Left</AppText>
@@ -337,9 +334,7 @@ export default function CreateDesignComposerScreen() {
             )}
           </ComposerSection>
 
-          {assets.length > 0 ? (
-            <>
-              <View style={styles.copyBlock}>
+          <View style={styles.copyBlock}>
                 <RequiredFieldLabel required>Title</RequiredFieldLabel>
                 <Input
                   label="Title"
@@ -371,9 +366,9 @@ export default function CreateDesignComposerScreen() {
                     setMentionsOpen(true);
                   }}
                 />
-              </View>
+          </View>
 
-              <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
+          <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
                 <OptionRow
                   leading="🌍"
                   title="Privacy"
@@ -443,37 +438,40 @@ export default function CreateDesignComposerScreen() {
                   divider={false}
                   onPress={() => setTagsOpen(true)}
                 />
-              </Card>
+          </Card>
 
-              {missingRequiredFields.length > 0 ? (
-                <Card padding="md" style={[styles.requiredCard, { borderColor: theme.colors.border }]}>
-                  <AppText variant="bodyBold">Required before preview</AppText>
-                  <AppText variant="captionRegular" tone="muted">
-                    Missing: {missingRequiredFields.join(', ')}
-                  </AppText>
-                </Card>
-              ) : null}
-
-              <View style={[styles.footerActions, { paddingBottom: insets.bottom, paddingHorizontal: tokens.spacing.lg }]}>
-                {!canSaveDraft ? (
-                  <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-                    Add at least one field or one media item to save a draft.
-                  </AppText>
-                ) : null}
-                <View style={styles.actionRow}>
-                  <Button
-                    title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
-                    variant="secondary"
-                    loading={saveState.action === 'draft'}
-                    disabled={!canSaveDraft}
-                    onPress={() => void save('draft')}
-                    fullWidth
-                  />
-                  <Button title="Preview" disabled={!canPreview} onPress={() => router.push('/catalog/create-design/preview' as any)} fullWidth />
-                </View>
-              </View>
-            </>
+          {missingRequiredFields.length > 0 ? (
+            <Card padding="md" style={[styles.requiredCard, { borderColor: theme.colors.border }]}>
+              <AppText variant="bodyBold">Required before preview</AppText>
+              <AppText variant="captionRegular" tone="muted">
+                Missing: {missingRequiredFields.join(', ')}
+              </AppText>
+            </Card>
           ) : null}
+
+          <View style={[styles.footerActions, { paddingBottom: insets.bottom, paddingHorizontal: tokens.spacing.lg }]}>
+            {!canSaveDraft ? (
+              <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+                Add at least one field or one media item to save a draft.
+              </AppText>
+            ) : null}
+            <View style={styles.actionRow}>
+              <Button
+                title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
+                variant="secondary"
+                loading={saveState.action === 'draft'}
+                disabled={!canSaveDraft}
+                onPress={() => void save('draft')}
+                style={styles.actionButton}
+              />
+              <Button
+                title="Preview"
+                disabled={!canPreview}
+                onPress={() => router.push('/catalog/create-design/preview' as any)}
+                style={styles.actionButton}
+              />
+            </View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -847,15 +845,18 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.lg,
     paddingHorizontal: tokens.spacing.lg,
     paddingBottom: tokens.spacing.xl,
+    paddingTop: tokens.spacing.sm,
   },
   sectionTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
+    minHeight: tokens.button.sm.height,
   },
   mediaStrip: {
     gap: tokens.spacing.sm,
+    paddingRight: tokens.spacing.sm,
   },
   assetCard: {
     width: 144,
@@ -876,7 +877,7 @@ const styles = StyleSheet.create({
   },
   assetActionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: tokens.spacing.sm,
   },
 
@@ -938,6 +939,10 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     gap: tokens.spacing.md,
+    alignItems: 'stretch',
+  },
+  actionButton: {
+    flex: 1,
   },
   draftHelper: {
     textAlign: 'center',

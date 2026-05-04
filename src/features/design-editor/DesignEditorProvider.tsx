@@ -29,6 +29,7 @@ import {
   type MeasurementPointOption,
 } from '@/src/api/DesignApi';
 import { brandApi } from '@/src/api/BrandApi';
+import { useAuthSession } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
 import {
   consumeDesignEditorAssetBundle,
@@ -177,6 +178,50 @@ function measurementGenderForAudience(audience: Audience): 'MEN' | 'WOMEN' | 'UN
   return undefined;
 }
 
+function hasMeaningfulDraftContent(form: FormState, tags: string[], filterSelection: DesignFilterSelection) {
+  if (form.title.trim().length > 0) return true;
+  if (form.description.trim().length > 0) return true;
+  if (tags.length > 0) return true;
+  if (Boolean(form.categoryId) || Boolean(form.subCategoryId)) return true;
+  if (form.minPrice.trim().length > 0 || form.maxPrice.trim().length > 0) return true;
+  if (form.visibility !== 'PUBLIC') return true;
+  if (form.audience !== 'EVERYBODY') return true;
+  if (form.sizingMode !== 'RTW_PLUS_FITTINGS') return true;
+  if (form.customOrderEnabled) return true;
+  if (form.productionLeadDays.trim().length > 0) return true;
+  if (form.buyerInstructionText.trim().length > 0) return true;
+  if (form.fitPreference !== 'REGULAR') return true;
+  if (form.targetAgeGroup !== 'ADULT') return true;
+  return Object.values(filterSelection).some((values) => values.length > 0);
+}
+
+function extractApiErrorMessage(error: any, fallback: string) {
+  const responseData = error?.response?.data;
+  const responseMessage = responseData?.message;
+
+  if (Array.isArray(responseMessage)) {
+    return responseMessage.join(', ');
+  }
+
+  if (typeof responseMessage === 'string') {
+    return responseMessage;
+  }
+
+  if (responseMessage && typeof responseMessage === 'object' && typeof responseMessage.message === 'string') {
+    return responseMessage.message;
+  }
+
+  if (typeof responseData?.error === 'string') {
+    return responseData.error;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 export function DesignEditorProvider({
   designId,
   assetHandoffToken,
@@ -187,6 +232,7 @@ export function DesignEditorProvider({
   children: React.ReactNode;
 }) {
   const toast = useToast();
+  const { userType, userEmailVerified } = useAuthSession();
   const [booting, setBooting] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [draftConflict, setDraftConflict] = useState<DraftSessionResponse | null>(null);
@@ -333,10 +379,7 @@ export function DesignEditorProvider({
   const subCategories = selectedCategory?.subCategories ?? [];
   const tags = useMemo(() => parseTags(form.tagsInput), [form.tagsInput]);
   const canSaveDraft =
-    assets.length > 0 ||
-    form.title.trim().length > 0 ||
-    form.description.trim().length > 0 ||
-    tags.length > 0;
+    assets.length > 0 || hasMeaningfulDraftContent(form, tags, filterSelection);
   const canPublish =
     assets.length > 0 &&
     form.title.trim().length > 0 &&
@@ -474,8 +517,15 @@ export function DesignEditorProvider({
 
   const save = useCallback(
     async (action: SaveAction) => {
+      if (saveAction) {
+        return;
+      }
       if (draftConflict?.hasConflict) {
         toast.error('Another device still owns this draft. Take over the draft before saving.');
+        return;
+      }
+      if (!activeDesignId && userType === 'BRAND' && userEmailVerified === false) {
+        toast.error('Verify your email before creating designs.');
         return;
       }
       if (action === 'publish' && !canPublish) {
@@ -546,17 +596,10 @@ export function DesignEditorProvider({
           params: { tab: 'Collections' },
         } as any);
       } catch (error: any) {
-        const responseMessage = error?.response?.data?.message;
-        const message =
-          Array.isArray(responseMessage)
-            ? responseMessage.join(', ')
-            : typeof responseMessage === 'string'
-              ? responseMessage
-              : error instanceof Error
-                ? error.message
-                : action === 'publish'
-                  ? 'Failed to publish design.'
-                  : 'Failed to save draft.';
+        const message = extractApiErrorMessage(
+          error,
+          action === 'publish' ? 'Failed to publish design.' : 'Failed to save draft.',
+        );
         toast.error(message);
       } finally {
         setSaveAction(null);
@@ -575,9 +618,12 @@ export function DesignEditorProvider({
       form,
       hydrateFromDetail,
       originalMediaIds,
+      saveAction,
       selectedCustomOrderConfigurationId,
       tags,
       toast,
+      userEmailVerified,
+      userType,
     ],
   );
 

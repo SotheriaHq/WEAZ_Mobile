@@ -112,8 +112,8 @@ export default function ForgotPasswordScreen() {
         <View style={styles.spacer} />
 
         <View style={styles.headlineBlock}>
-          <AppText variant="caption" style={[styles.kicker, { color: theme.colors.primary }]}>PASSWORD RESET</AppText>
-          <AppText variant="display" style={{ color: theme.colors.text }}>
+          <AppText variant="captionBold" tone="primary" style={styles.kicker}>PASSWORD RESET</AppText>
+          <AppText variant="display">
             Reset your password
           </AppText>
           <AppText variant="body" muted style={styles.subtitle}>
@@ -129,7 +129,7 @@ export default function ForgotPasswordScreen() {
           <View style={[styles.formInner, { backgroundColor: formBg }]}> 
             {sent ? (
               <View style={styles.successBlock}>
-                <AppText variant="title" style={{ color: theme.colors.text }}>
+                <AppText variant="title">
                   Check your inbox
                 </AppText>
                 <AppText variant="body" muted style={styles.successBody}>
@@ -155,7 +155,7 @@ export default function ForgotPasswordScreen() {
               </View>
             ) : (
               <View>
-                <AppText variant="caption" style={[styles.sectionLabel, { color: theme.colors.textMuted }]}>ACCOUNT EMAIL</AppText>
+                <AppText variant="captionBold" tone="muted" style={styles.sectionLabel}>ACCOUNT EMAIL</AppText>
 
                 <FloatingLabelInput
                   label="Email address"

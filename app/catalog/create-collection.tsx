@@ -77,7 +77,7 @@ export default function CreateCollectionScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <AppText style={[styles.eyebrow, { color: theme.colors.textMuted }]}>🗂️ Collection Builder</AppText>
+        <AppText variant="captionBold" tone="muted">🗂️ Collection Builder</AppText>
 
         {booting ? (
           <View style={styles.skeletonWrap}>
@@ -101,12 +101,12 @@ export default function CreateCollectionScreen() {
               },
             ]}
           >
-            <AppText style={[styles.title, { color: theme.colors.text }]}>Create New Collection</AppText>
-            <AppText style={[styles.subtitle, { color: theme.colors.textMuted }]}> 
+            <AppText variant="title">Create New Collection</AppText>
+            <AppText variant="small" tone="muted"> 
               Start with a title, add optional details, and save as a draft.
             </AppText>
 
-            {loadError && <AppText style={styles.error}>{loadError}</AppText>}
+            {loadError && <AppText variant="captionBold" tone="danger">{loadError}</AppText>}
 
             <Input
               label="Title"
@@ -142,12 +142,7 @@ export default function CreateCollectionScreen() {
                   },
                 ]}
               >
-                <AppText
-                  style={[
-                    styles.visibilityText,
-                    { color: visibility === 'PUBLIC' ? '#7C3AED' : theme.colors.text },
-                  ]}
-                >
+                <AppText variant="smallBold" tone={visibility === 'PUBLIC' ? 'primary' : 'default'}>
                   🌍 Public
                 </AppText>
               </Pressable>
@@ -167,12 +162,7 @@ export default function CreateCollectionScreen() {
                   },
                 ]}
               >
-                <AppText
-                  style={[
-                    styles.visibilityText,
-                    { color: visibility === 'PRIVATE' ? '#7C3AED' : theme.colors.text },
-                  ]}
-                >
+                <AppText variant="smallBold" tone={visibility === 'PRIVATE' ? 'primary' : 'default'}>
                   🔒 Private
                 </AppText>
               </Pressable>
@@ -183,7 +173,7 @@ export default function CreateCollectionScreen() {
                 onPress={() => router.back()}
                 style={[styles.secondaryButton, { borderColor: theme.colors.border }]}
               >
-                <AppText style={[styles.secondaryText, { color: theme.colors.text }]}>Cancel</AppText>
+                <AppText variant="smallBold">Cancel</AppText>
               </Pressable>
               <Pressable
                 onPress={handleCreate}
@@ -193,7 +183,7 @@ export default function CreateCollectionScreen() {
                 {saving ? (
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
-                  <AppText style={styles.primaryText}>Create</AppText>
+                  <AppText variant="smallBold" tone="inverse">Create</AppText>
                 )}
               </Pressable>
             </View>

@@ -92,14 +92,15 @@ function LoaderContent({ title = 'Threadly', message = 'Loading your feed', size
         showWordmark={false}
       />
       <AppText
+        variant="display"
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={0.84}
-        style={[styles.wordmark, { color: visualTheme.title }]}
+        style={styles.wordmark}
       >
         {title}
       </AppText>
-      <AppText numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.9} style={[styles.message, { color: visualTheme.message }]}>
+      <AppText variant="smallBold" tone="muted" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.9} style={styles.message}>
         {message}
       </AppText>
     </View>
@@ -191,14 +192,10 @@ const styles = StyleSheet.create({
   },
   wordmark: {
     marginTop: 24,
-    fontSize: 32,
-    fontWeight: '900',
     letterSpacing: 0.2,
   },
   message: {
     marginTop: 6,
-    fontSize: 14,
-    fontWeight: '600',
     letterSpacing: 0.15,
   },
   orb: {

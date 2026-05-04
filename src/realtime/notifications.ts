@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
 import { apiClient } from '@/src/api/httpClient';
-import type { MobileNotification } from '@/src/api/NotificationsApi';
+import { NotificationsApi, type MobileNotification } from '@/src/api/NotificationsApi';
 
 type RealtimeNotification = MobileNotification;
 type NotificationDeletedPayload = {
@@ -25,6 +25,7 @@ const deletedListeners = new Set<(payload: NotificationDeletedPayload) => void>(
 
 let unreadCount = 0;
 const unreadCountListeners = new Set<() => void>();
+let unreadCountRefreshPromise: Promise<boolean> | null = null;
 
 function emitUnreadCount() {
   unreadCountListeners.forEach((listener) => listener());
@@ -127,6 +128,34 @@ export function resetUnreadNotificationCount() {
   setUnreadCount(0);
 }
 
+export async function refreshUnreadNotificationCount({
+  authenticated,
+}: {
+  authenticated: boolean;
+}): Promise<boolean> {
+  if (!authenticated) {
+    resetUnreadNotificationCount();
+    return false;
+  }
+
+  if (unreadCountRefreshPromise) return unreadCountRefreshPromise;
+
+  unreadCountRefreshPromise = NotificationsApi.getUnreadCount()
+    .then(({ count }) => {
+      replaceUnreadNotificationCount(count);
+      return true;
+    })
+    .catch(() => {
+      resetUnreadNotificationCount();
+      return false;
+    })
+    .finally(() => {
+      unreadCountRefreshPromise = null;
+    });
+
+  return unreadCountRefreshPromise;
+}
+
 export function useNotificationRealtimeChannel({
   enabled = true,
   token,
@@ -139,23 +168,37 @@ export function useNotificationRealtimeChannel({
   userId: string | null;
 } & NotificationListeners) {
   useEffect(() => {
+    if (!enabled) return;
+    if (onCreated) createdListeners.add(onCreated);
+
+    return () => {
+      if (onCreated) createdListeners.delete(onCreated);
+    };
+  }, [enabled, onCreated]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (onDeleted) deletedListeners.add(onDeleted);
+
+    return () => {
+      if (onDeleted) deletedListeners.delete(onDeleted);
+    };
+  }, [enabled, onDeleted]);
+
+  useEffect(() => {
     if (!enabled || !token || !userId) {
       return;
     }
 
     activeSubscriptions += 1;
-    if (onCreated) createdListeners.add(onCreated);
-    if (onDeleted) deletedListeners.add(onDeleted);
     ensureSocket(token, userId);
 
     return () => {
       activeSubscriptions = Math.max(0, activeSubscriptions - 1);
-      if (onCreated) createdListeners.delete(onCreated);
-      if (onDeleted) deletedListeners.delete(onDeleted);
 
       if (activeSubscriptions === 0) {
         disconnectSocket();
       }
     };
-  }, [enabled, onCreated, onDeleted, token, userId]);
+  }, [enabled, token, userId]);
 }

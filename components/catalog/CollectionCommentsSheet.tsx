@@ -148,18 +148,18 @@ function CommentItem({
           { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
         ]}
       >
-        <AppText style={styles.commentAvatarText}>{authorName.slice(0, 1).toUpperCase()}</AppText>
+        <AppText variant="bodyBold" tone="primary">{authorName.slice(0, 1).toUpperCase()}</AppText>
       </View>
       <View style={styles.commentBody}>
         <View style={styles.commentMeta}>
-          <AppText style={[styles.commentAuthor, { color: colors.text }]}>{authorName}</AppText>
+          <AppText variant="smallBold">{authorName}</AppText>
           {time ? (
-            <AppText style={[styles.commentTime, { color: colors.textMuted }]}> 
+            <AppText variant="captionRegular" tone="muted"> 
               {time}
             </AppText>
           ) : null}
         </View>
-        <AppText style={[styles.commentText, { color: colors.textSecondary }]}> 
+        <AppText variant="small" tone="secondary" style={styles.commentText}> 
           {comment.text}
         </AppText>
       </View>
@@ -307,15 +307,15 @@ export default function CollectionCommentsSheet({
             ]}
           >
             <View style={styles.panelHeaderText}>
-              <AppText style={[styles.panelTitle, { color: theme.colors.text }]}>Comments</AppText>
+              <AppText variant="subtitle">Comments</AppText>
               {collectionTitle ? (
-                <AppText style={[styles.panelSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>
+                <AppText variant="captionRegular" tone="muted" style={styles.panelSubtitle} numberOfLines={1}>
                   {collectionTitle}
                 </AppText>
               ) : null}
             </View>
             <Pressable onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <AppText style={[styles.panelClose, { color: theme.colors.textSecondary }]}> 
+              <AppText variant="h2" tone="secondary"> 
                 ×
               </AppText>
             </Pressable>
@@ -353,8 +353,8 @@ export default function CollectionCommentsSheet({
               }}
               ListEmptyComponent={
                 <View style={styles.commentsEmpty}>
-                  <AppText style={styles.commentsEmptyEmoji}>💬</AppText>
-                  <AppText style={[styles.commentsEmptyText, { color: theme.colors.textMuted }]}> 
+                  <AppText variant="h1">💬</AppText>
+                  <AppText variant="small" tone="muted" style={styles.commentsEmptyText}> 
                     No comments yet. Be the first.
                   </AppText>
                 </View>
@@ -402,7 +402,7 @@ export default function CollectionCommentsSheet({
                   },
                 ]}
               >
-                {sendingComment ? <ActivityIndicator size="small" color="#fff" /> : <AppText style={styles.commentSendText}>↑</AppText>}
+                {sendingComment ? <ActivityIndicator size="small" color="#fff" /> : <AppText variant="h3" tone="inverse">↑</AppText>}
               </Pressable>
             </View>
           </KeyboardAvoidingView>

@@ -125,7 +125,7 @@ export default function CatalogScreen() {
   }>();
   const { theme, scheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { status, userId, userType, updateUser } = useAuthSession();
+  const { status, userId, userType, userEmailVerified, updateUser } = useAuthSession();
   const toast = useToast();
   const isDark = scheme === 'dark';
 
@@ -161,6 +161,12 @@ export default function CatalogScreen() {
   const [draftDeletePhrase, setDraftDeletePhrase] = useState('');
   const [draftDeleteBusy, setDraftDeleteBusy] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createMenuAnchorMetrics, setCreateMenuAnchorMetrics] = useState<{
+    pageX: number;
+    pageY: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const horizontalScrollRef = useRef<ScrollView>(null);
   const createMenuAnchorRef = useRef<View>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
@@ -443,11 +449,29 @@ export default function CatalogScreen() {
   ];
 
   const handleCreatePress = () => {
+    if (userType === 'BRAND' && userEmailVerified === false) {
+      toast.error('Verify your email before creating designs.');
+      return;
+    }
     setCreateMenuOpen(true);
   };
 
+  const handleCreateAnchorLayout = useCallback(() => {
+    if (!createMenuAnchorRef.current?.measureInWindow) return;
+
+    createMenuAnchorRef.current.measureInWindow((pageX: number, pageY: number, width: number, height: number) => {
+      if (width <= 0 || height <= 0) return;
+      setCreateMenuAnchorMetrics({ pageX, pageY, width, height });
+    });
+  }, []);
+
   const handleLaunchCreateDesign = useCallback(
     async (source: DesignEditorMediaSource) => {
+      if (userType === 'BRAND' && userEmailVerified === false) {
+        toast.error('Verify your email before creating designs.');
+        return;
+      }
+
       const pickResult = await pickDesignEditorMediaAssets({
         source,
         existingCount: 0,
@@ -470,7 +494,31 @@ export default function CatalogScreen() {
       const handoffToken = stageDesignEditorAssetBundle(pickResult.assets);
       router.push({ pathname: '/catalog/create-design', params: { handoffToken } } as any);
     },
-    [toast],
+    [toast, userEmailVerified, userType],
+  );
+
+  const createMenuOptions = useMemo(
+    () => [
+      {
+        key: 'camera',
+        icon: '📷',
+        title: 'Camera',
+        onPress: () => void handleLaunchCreateDesign('camera'),
+      },
+      {
+        key: 'media',
+        icon: '🖼️',
+        title: 'Media',
+        onPress: () => void handleLaunchCreateDesign('library'),
+      },
+      {
+        key: 'attachment',
+        icon: '📎',
+        title: 'Attachment',
+        onPress: () => void handleLaunchCreateDesign('library'),
+      },
+    ],
+    [handleLaunchCreateDesign],
   );
 
   if (showInitialSkeleton) {
@@ -580,19 +628,20 @@ export default function CatalogScreen() {
               />
 
               {isOwner && (
-                <Pressable
-                  ref={createMenuAnchorRef}
-                  onPress={handleCreatePress}
-                  style={({ pressed }) => [
-                    styles.addButton,
-                    pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
-                  ]}
-                  accessibilityLabel="Create menu"
-                >
-                  <View style={[styles.addButtonSolid, { backgroundColor: theme.colors.primary }]}>
-                    <AppText variant="subtitle" tone="inverse">+</AppText>
-                  </View>
-                </Pressable>
+                <View ref={createMenuAnchorRef} onLayout={handleCreateAnchorLayout} collapsable={false}>
+                  <Pressable
+                    onPress={handleCreatePress}
+                    style={({ pressed }) => [
+                      styles.addButton,
+                      pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
+                    ]}
+                    accessibilityLabel="Create menu"
+                  >
+                    <View style={[styles.addButtonSolid, { backgroundColor: theme.colors.primary }]}>
+                      <AppText variant="subtitle" tone="inverse">+</AppText>
+                    </View>
+                  </Pressable>
+                </View>
               )}
             </View>
 
@@ -644,27 +693,9 @@ export default function CatalogScreen() {
       <AppFloatingMenu
         visible={createMenuOpen}
         anchorRef={createMenuAnchorRef}
+        anchorMetrics={createMenuAnchorMetrics}
         onClose={() => setCreateMenuOpen(false)}
-        options={[
-          {
-            key: 'camera',
-            icon: '📷',
-            title: 'Camera',
-            onPress: () => void handleLaunchCreateDesign('camera'),
-          },
-          {
-            key: 'media',
-            icon: '🖼️',
-            title: 'Media',
-            onPress: () => void handleLaunchCreateDesign('library'),
-          },
-          {
-            key: 'attachment',
-            icon: '📎',
-            title: 'Attachment',
-            onPress: () => void handleLaunchCreateDesign('library'),
-          },
-        ]}
+        options={createMenuOptions}
       />
 
       <AppConfirmDialog

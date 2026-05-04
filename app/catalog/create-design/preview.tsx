@@ -36,6 +36,7 @@ export default function CreateDesignPreviewScreen() {
     booting,
     form,
     assets,
+    coverAssetId,
     tags,
     save,
     saveState,
@@ -54,6 +55,8 @@ export default function CreateDesignPreviewScreen() {
   const insets = useSafeAreaInsets();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deletePhrase, setDeletePhrase] = React.useState('');
+  const [selectedPreviewIndex, setSelectedPreviewIndex] = React.useState(0);
+  const hasInitializedPreviewRef = React.useRef(false);
 
   const subCategory = subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
   const categorySummary =
@@ -63,6 +66,29 @@ export default function CreateDesignPreviewScreen() {
   const selectedLocationId = locationDimension ? (filterSelection[locationDimension.id] ?? [])[0] : null;
   const selectedLocation = locationDimension?.values.find((value) => value.id === selectedLocationId) ?? null;
   const canDelete = deletePhrase === 'DELETE' && saveState.action !== 'draft';
+  const selectedPreviewAsset = assets[selectedPreviewIndex] ?? null;
+
+  React.useEffect(() => {
+    if (assets.length === 0) {
+      hasInitializedPreviewRef.current = false;
+      setSelectedPreviewIndex(0);
+      return;
+    }
+
+    if (!hasInitializedPreviewRef.current) {
+      hasInitializedPreviewRef.current = true;
+      const coverIndex = coverAssetId ? assets.findIndex((asset) => asset.id === coverAssetId) : -1;
+      const nextIndex = coverIndex >= 0 ? coverIndex : 0;
+      if (nextIndex !== selectedPreviewIndex) {
+        setSelectedPreviewIndex(nextIndex);
+      }
+      return;
+    }
+
+    if (selectedPreviewIndex >= assets.length) {
+      setSelectedPreviewIndex(assets.length - 1);
+    }
+  }, [assets, coverAssetId, selectedPreviewIndex]);
 
   if (booting) {
     return <AppLoaderScreen message="Loading preview" />;
@@ -80,9 +106,23 @@ export default function CreateDesignPreviewScreen() {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: tokens.spacing.xl }]}>
-        {assets[0] ? (
-          <StableImage uri={assets[0].remoteUrl ?? assets[0].uri} containerStyle={styles.heroImage} imageStyle={styles.heroImage} />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing.xl }]}
+      >
+        {selectedPreviewAsset ? (
+          <View style={styles.heroWrap}>
+            <StableImage
+              uri={selectedPreviewAsset.remoteUrl ?? selectedPreviewAsset.uri}
+              containerStyle={styles.heroImage}
+              imageStyle={styles.heroImage}
+            />
+            <View style={[styles.heroBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
+              <AppText variant="captionBold">
+                {selectedPreviewAsset.id === coverAssetId ? 'Cover' : `Asset ${selectedPreviewIndex + 1}`}
+              </AppText>
+            </View>
+          </View>
         ) : (
           <View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
             <AppText variant="display">🖼️</AppText>
@@ -92,15 +132,31 @@ export default function CreateDesignPreviewScreen() {
         {assets.length > 1 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assetStrip}>
             {assets.map((asset, index) => (
-              <StableImage
+              <Pressable
                 key={asset.id}
-                uri={asset.remoteUrl ?? asset.uri}
-                containerStyle={[
-                  styles.assetThumb,
-                  index === 0 ? { borderWidth: 2, borderColor: theme.colors.primary } : null,
+                onPress={() => setSelectedPreviewIndex(index)}
+                style={[
+                  styles.assetThumbWrap,
+                  {
+                    borderColor: index === selectedPreviewIndex ? theme.colors.primary : theme.colors.border,
+                    backgroundColor: theme.colors.surface,
+                  },
                 ]}
-                imageStyle={styles.assetThumb}
-              />
+              >
+                <StableImage
+                  uri={asset.remoteUrl ?? asset.uri}
+                  containerStyle={styles.assetThumb}
+                  imageStyle={styles.assetThumb}
+                />
+                <View style={styles.assetThumbMeta}>
+                  <AppText variant="captionBold" tone={index === selectedPreviewIndex ? 'primary' : 'default'}>
+                    {index === selectedPreviewIndex ? 'Previewing' : `Asset ${index + 1}`}
+                  </AppText>
+                  <AppText variant="captionRegular" tone="muted">
+                    {asset.id === coverAssetId ? 'Current cover' : 'Tap to preview'}
+                  </AppText>
+                </View>
+              </Pressable>
             ))}
           </ScrollView>
         ) : null}
@@ -156,7 +212,7 @@ export default function CreateDesignPreviewScreen() {
           </Card>
         ) : null}
 
-        <View style={[styles.footerActions, { paddingHorizontal: tokens.spacing.lg }]}>
+        <View style={[styles.footerActions, { paddingHorizontal: tokens.spacing.lg, paddingBottom: insets.bottom }]}>
           {!canSaveDraft ? (
             <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
               Add at least one field or one media item to save a draft.
@@ -170,14 +226,14 @@ export default function CreateDesignPreviewScreen() {
               loading={saveState.action === 'draft'}
               disabled={!canSaveDraft}
               onPress={() => void save('draft')}
-              fullWidth
+              style={styles.actionButton}
             />
             <Button
               title={saveState.action === 'publish' ? 'Publishing...' : 'Publish'}
               loading={saveState.action === 'publish'}
               disabled={!canPublish}
               onPress={() => void save('publish')}
-              fullWidth
+              style={styles.actionButton}
             />
           </View>
           {activeDesignId && isDraft ? (
@@ -231,24 +287,48 @@ const styles = StyleSheet.create({
   headerCopy: {
     flex: 1,
     gap: tokens.spacing.xs,
+    minWidth: 0,
   },
   content: {
     gap: tokens.spacing.lg,
     paddingHorizontal: tokens.spacing.lg,
     paddingBottom: tokens.spacing.xl,
+    paddingTop: tokens.spacing.sm,
   },
   assetStrip: {
     gap: tokens.spacing.sm,
+    paddingRight: tokens.spacing.sm,
+  },
+  assetThumbWrap: {
+    width: 108,
+    gap: tokens.spacing.xs,
+    borderRadius: tokens.radius.xl,
+    borderWidth: 1,
+    padding: tokens.spacing.xs,
   },
   assetThumb: {
-    width: 88,
-    height: 112,
+    width: '100%',
+    aspectRatio: 4 / 5,
     borderRadius: tokens.radius.lg,
+  },
+  assetThumbMeta: {
+    gap: tokens.spacing.xs,
+  },
+  heroWrap: {
+    position: 'relative',
   },
   heroImage: {
     width: '100%',
     aspectRatio: 4 / 5,
     borderRadius: tokens.radius.xl,
+  },
+  heroBadge: {
+    position: 'absolute',
+    top: tokens.spacing.sm,
+    left: tokens.spacing.sm,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
   },
   heroFallback: {
     alignItems: 'center',
@@ -275,6 +355,10 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     gap: tokens.spacing.md,
+    alignItems: 'stretch',
+  },
+  actionButton: {
+    flex: 1,
   },
   modalRoot: {
     flex: 1,

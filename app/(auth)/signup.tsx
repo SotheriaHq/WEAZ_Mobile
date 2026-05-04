@@ -368,8 +368,8 @@ export default function SignupScreen() {
               </View>
               <AppText variant="caption" tone="muted" style={styles.termsText}>
                 I agree to the{' '}
-                <AppText variant="caption" tone="primary" style={{ fontWeight: '700' }}>Terms</AppText> &{' '}
-                <AppText variant="caption" tone="primary" style={{ fontWeight: '700' }}>Privacy Policy</AppText>
+                <AppText variant="captionBold" tone="primary">Terms</AppText> &{' '}
+                <AppText variant="captionBold" tone="primary">Privacy Policy</AppText>
               </AppText>
             </Pressable>
 

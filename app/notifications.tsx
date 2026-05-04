@@ -200,17 +200,21 @@ export default function NotificationsScreen() {
     }
   }, []);
 
+  const handleRealtimeCreated = useCallback((notification: MobileNotification) => {
+    setItems((current) => [notification, ...current.filter((entry) => entry.id !== notification.id)]);
+  }, []);
+
+  const handleRealtimeDeleted = useCallback(({ id }: { id?: string }) => {
+    if (!id) return;
+    setItems((current) => current.filter((entry) => entry.id !== id));
+  }, []);
+
   useNotificationRealtimeChannel({
     enabled: status === 'authenticated' && Boolean(token) && Boolean(user?.id),
     token,
     userId: user?.id ?? null,
-    onCreated: (notification) => {
-      setItems((current) => [notification, ...current.filter((entry) => entry.id !== notification.id)]);
-    },
-    onDeleted: ({ id }) => {
-      if (!id) return;
-      setItems((current) => current.filter((entry) => entry.id !== id));
-    },
+    onCreated: handleRealtimeCreated,
+    onDeleted: handleRealtimeDeleted,
   });
 
   return (

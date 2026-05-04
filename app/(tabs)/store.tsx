@@ -24,13 +24,13 @@ export default function StoreTabScreen() {
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <BrandHeader />
         <View style={styles.guestWrap}>
-          <AppText style={[styles.guestTitle, { color: theme.colors.text }]}>Store is brand-only on this tab</AppText>
-          <AppText style={[styles.guestBody, { color: theme.colors.textMuted }]}>Visit brand catalogs from Market to explore products.</AppText>
+          <AppText variant="title" style={styles.guestTitle}>Store is brand-only on this tab</AppText>
+          <AppText variant="small" tone="muted" style={styles.guestBody}>Visit brand catalogs from Market to explore products.</AppText>
           <Pressable
             onPress={() => router.replace('/(tabs)/discover')}
             style={[styles.guestBtn, { backgroundColor: theme.colors.primary }]}
           >
-            <AppText style={styles.guestBtnText}>Open market</AppText>
+            <AppText variant="smallBold" tone="inverse">Open market</AppText>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -89,24 +89,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   guestTitle: {
-    fontSize: 20,
-    fontWeight: '800',
     textAlign: 'center',
   },
   guestBody: {
-    fontSize: 14,
     textAlign: 'center',
-    lineHeight: 20,
   },
   guestBtn: {
     marginTop: 8,
     borderRadius: 12,
     paddingHorizontal: 18,
     paddingVertical: 12,
-  },
-  guestBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '800',
   },
 });

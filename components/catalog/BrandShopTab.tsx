@@ -165,7 +165,7 @@ function ProductCard({
             { backgroundColor: theme.colors.surfaceAlt },
           ]}
         >
-          <AppText style={styles.imageFallbackEmoji}>🛍️</AppText>
+          <AppText variant="h1">🛍️</AppText>
         </View>
       }
       topOverlay={
@@ -787,8 +787,8 @@ export function BrandShopTab({
       {filteredProducts.length === 0 ? (
         <View style={styles.emptyState}>
           <AppText variant="display">🧵</AppText>
-          <AppText style={[styles.emptyTitle, { color: theme.colors.text }]}>No products match this view</AppText>
-          <AppText style={[styles.emptyBody, { color: theme.colors.textMuted }]}>Try a different filter or search phrase.</AppText>
+          <AppText variant="subtitle" style={styles.emptyTitle}>No products match this view</AppText>
+          <AppText variant="body" tone="muted" style={styles.emptyBody}>Try a different filter or search phrase.</AppText>
         </View>
       ) : (
         <FlatList
@@ -846,18 +846,18 @@ export function BrandShopTab({
                     />
                   ) : (
                     <View style={[styles.imageFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
-                      <AppText style={styles.imageFallbackEmoji}>🛍️</AppText>
+                      <AppText variant="h1">🛍️</AppText>
                     </View>
                   )}
                 </View>
 
-                <AppText style={[styles.modalTitle, { color: theme.colors.text }]}>{activeProduct.name}</AppText>
-                <AppText style={[styles.modalPrice, { color: theme.colors.primary }]}>
+                <AppText variant="title">{activeProduct.name}</AppText>
+                <AppText variant="subtitle" tone="primary">
                   {formatPrice(activeProduct.price, activeProduct.currency)}
                 </AppText>
 
                 {activeProduct.description ? (
-                  <AppText style={[styles.modalDescription, { color: theme.colors.textMuted }]}> 
+                  <AppText variant="body" tone="muted" style={styles.modalDescription}> 
                     {activeProduct.description}
                   </AppText>
                 ) : null}
@@ -865,14 +865,14 @@ export function BrandShopTab({
                 <View style={styles.modalMetaRow}>
                   {activeProduct.categoryName ? (
                     <View style={[styles.metaPill, { borderColor: theme.colors.border }]}> 
-                      <AppText style={[styles.metaPillText, { color: theme.colors.textMuted }]}>
+                      <AppText variant="captionRegular" tone="muted" style={styles.metaPillText}>
                         🏷️ {activeProduct.categoryName}
                       </AppText>
                     </View>
                   ) : null}
 
                   <View style={[styles.metaPill, { borderColor: theme.colors.border }]}> 
-                    <AppText style={[styles.metaPillText, { color: theme.colors.textMuted }]}> 
+                    <AppText variant="captionRegular" tone="muted" style={styles.metaPillText}> 
                       {activeStock > 0 ? `📦 ${activeStock} in stock` : '⚠️ Out of stock'}
                     </AppText>
                   </View>
@@ -880,7 +880,7 @@ export function BrandShopTab({
 
                 {availableSizes.length > 0 ? (
                   <View style={styles.selectorBlock}>
-                    <AppText style={[styles.selectorTitle, { color: theme.colors.text }]}>Size</AppText>
+                    <AppText variant="bodyBold">Size</AppText>
                     <View style={styles.selectorWrap}>
                       {availableSizes.map((size) => {
                         const selected = selectedSize === size;
@@ -899,7 +899,7 @@ export function BrandShopTab({
 
                 {availableColors.length > 0 ? (
                   <View style={styles.selectorBlock}>
-                    <AppText style={[styles.selectorTitle, { color: theme.colors.text }]}>Color</AppText>
+                    <AppText variant="bodyBold">Color</AppText>
                     <View style={styles.selectorWrap}>
                       {availableColors.map((color) => {
                         const selected = selectedColor === color;
@@ -919,8 +919,8 @@ export function BrandShopTab({
 
                 {isOwner ? (
                   <View style={[styles.ownerHintCard, { borderColor: theme.colors.border }]}> 
-                    <AppText style={[styles.ownerHintTitle, { color: theme.colors.text }]}>👑 Owner view</AppText>
-                    <AppText style={[styles.ownerHintBody, { color: theme.colors.textMuted }]}> 
+                    <AppText variant="bodyBold">👑 Owner view</AppText>
+                    <AppText variant="small" tone="muted" style={styles.ownerHintBody}> 
                       Wishlist and bag actions are disabled for your own products to match buyer behavior.
                     </AppText>
                   </View>

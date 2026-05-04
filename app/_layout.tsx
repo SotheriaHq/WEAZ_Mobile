@@ -75,8 +75,26 @@ function NotificationSetup() {
   const { handleNotification, handleDeepLink } = useNotificationRouting();
 
   useEffect(() => {
+    let isMounted = true;
+    let cleanupNotificationHandling: (() => void) | null = null;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+
+    const schedule = (callback: () => void, delay: number) => {
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        if (isMounted) {
+          callback();
+        }
+      }, delay);
+      timers.add(timer);
+    };
+
     // Configure push notifications on app start
-    configurePushNotifications().catch((error) => {
+    configurePushNotifications().then((result) => {
+      if (result.error && !result.unsupported) {
+        console.warn('Failed to configure push notifications:', result.error);
+      }
+    }).catch((error) => {
       console.warn('Failed to configure push notifications:', error);
     });
 
@@ -90,7 +108,7 @@ function NotificationSetup() {
         }
         if (notification) {
           // Small delay to ensure navigation is ready
-          setTimeout(() => {
+          schedule(() => {
             handleNotification(notification);
           }, 100);
         }
@@ -100,7 +118,9 @@ function NotificationSetup() {
         const unsubscribe = isExpoGoAndroid ? () => {} : setupNotificationListeners(
           (notification) => {
             // Handle foreground notification
-            console.log('Notification received while foreground:', notification);
+            if (__DEV__) {
+              console.log('Notification received while foreground');
+            }
           },
           (response) => {
             // Handle notification tap
@@ -119,21 +139,34 @@ function NotificationSetup() {
         // Check for initial URL (app opened from link while closed)
         const initialUrl = await Linking.getInitialURL();
         if (initialUrl) {
-          setTimeout(() => {
+          schedule(() => {
             handleDeepLink(initialUrl);
           }, 100);
         }
 
-        return () => {
+        const cleanup = () => {
           unsubscribe();
           urlSubscription.remove();
         };
+
+        if (isMounted) {
+          cleanupNotificationHandling = cleanup;
+        } else {
+          cleanup();
+        }
       } catch (error) {
         console.warn('Failed to initialize notification handling:', error);
       }
     };
 
     void initializeNotificationHandling();
+
+    return () => {
+      isMounted = false;
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
+      cleanupNotificationHandling?.();
+    };
   }, [handleNotification, handleDeepLink]);
 
   return null;
@@ -242,9 +275,9 @@ function RootStack() {
       <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
       <Stack.Screen name="catalog" options={{ headerShown: false }} />
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
-      <Stack.Screen name="messages" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="messages/[threadId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="search" options={{ headerShown: false, animation: 'slide_from_right' }} />
-      <Stack.Screen name="products" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="products/[productId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="studio" options={{ headerShown: false, animation: 'slide_from_right' }} />
     </Stack>
   );

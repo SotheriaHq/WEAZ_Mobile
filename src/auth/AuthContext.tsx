@@ -21,6 +21,7 @@ export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 export type AuthUser = {
   id: string;
   email?: string | null;
+  isEmailVerified?: boolean | null;
   type?: 'BRAND' | 'REGULAR' | string;
   firstName?: string | null;
   lastName?: string | null;
@@ -88,6 +89,7 @@ type AuthSessionContextValue = {
   token: string | null;
   userId: string | null;
   userType: AuthUser['type'] | null;
+  userEmailVerified: boolean | null;
   updateUser: (patch: Partial<AuthUser>) => void;
   validateToken: () => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
@@ -210,6 +212,10 @@ function normalizeAuthUser(raw: unknown): AuthUser | null {
   return {
     id,
     email: source.email ?? nestedUser?.email ?? null,
+    isEmailVerified:
+      typeof (source.isEmailVerified ?? nestedUser?.isEmailVerified) === 'boolean'
+        ? Boolean(source.isEmailVerified ?? nestedUser?.isEmailVerified)
+        : null,
     type: source.type ?? nestedUser?.type ?? null,
     firstName: source.firstName ?? nestedUser?.firstName ?? null,
     lastName: source.lastName ?? nestedUser?.lastName ?? null,
@@ -615,13 +621,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       userId: user?.id ?? null,
       userType: user?.type ?? null,
+      userEmailVerified:
+        typeof user?.isEmailVerified === 'boolean' ? user.isEmailVerified : null,
       updateUser,
       validateToken,
       signIn,
       signUp,
       signOut,
     }),
-    [status, token, user?.id, user?.type, updateUser, validateToken, signIn, signUp, signOut],
+    [status, token, user?.id, user?.type, user?.isEmailVerified, updateUser, validateToken, signIn, signUp, signOut],
   );
 
   return (

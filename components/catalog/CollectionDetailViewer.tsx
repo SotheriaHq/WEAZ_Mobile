@@ -118,9 +118,9 @@ function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null;
   if (!media) {
     return (
       <View style={[StyleSheet.absoluteFillObject, styles.emptySlide]}>
-        <AppText style={styles.emptySlideEmoji}>🖼️</AppText>
-        <AppText style={styles.emptySlideTitle}>No views yet</AppText>
-        <AppText style={styles.emptySlideText}>This design does not have any media to browse.</AppText>
+        <AppText variant="display" tone="inverse">🖼️</AppText>
+        <AppText variant="subtitle" tone="inverse">No views yet</AppText>
+        <AppText variant="small" tone="muted" style={styles.emptySlideText}>This design does not have any media to browse.</AppText>
       </View>
     );
   }
@@ -128,9 +128,9 @@ function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null;
   if (media.type === 'video') {
     return (
       <View style={[StyleSheet.absoluteFillObject, styles.videoSlide]}>
-        <AppText style={styles.videoEmoji}>🎬</AppText>
-        <AppText style={styles.videoTitle}>Video view</AppText>
-        <AppText style={styles.videoCaption} numberOfLines={2}>
+        <AppText variant="display" tone="inverse">🎬</AppText>
+        <AppText variant="subtitle" tone="inverse">Video view</AppText>
+        <AppText variant="small" tone="muted" style={styles.videoCaption} numberOfLines={2}>
           {media.label || 'Swipe to another view'}
         </AppText>
       </View>
@@ -148,9 +148,9 @@ function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null;
   if (!uri) {
     return (
       <View style={[StyleSheet.absoluteFillObject, styles.brokenSlide]}>
-        <AppText style={styles.emptySlideEmoji}>🖼️</AppText>
-        <AppText style={styles.emptySlideTitle}>No image available</AppText>
-        <AppText style={styles.emptySlideText}>This media is unavailable right now.</AppText>
+        <AppText variant="display" tone="inverse">🖼️</AppText>
+        <AppText variant="subtitle" tone="inverse">No image available</AppText>
+        <AppText variant="small" tone="muted" style={styles.emptySlideText}>This media is unavailable right now.</AppText>
       </View>
     );
   }
@@ -183,7 +183,7 @@ function OwnerAvatar({
         {uri && !loading ? (
           <Image source={{ uri }} style={styles.ownerAvatarImage} resizeMode="cover" />
         ) : (
-          <AppText style={styles.ownerAvatarInitials}>{initials}</AppText>
+          <AppText variant="bodyBold" tone="inverse">{initials}</AppText>
         )}
       </View>
     </Pressable>
@@ -659,17 +659,17 @@ export function CollectionDetailViewer({
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <View style={styles.errorWrap}>
-          <AppText style={styles.errorEmoji}>🔒</AppText>
-          <AppText style={[styles.errorTitle, { color: theme.colors.text }]}>Private design</AppText>
-          <AppText style={[styles.errorText, { color: theme.colors.textMuted }]}>
+          <AppText variant="display">🔒</AppText>
+          <AppText variant="subtitle">Private design</AppText>
+          <AppText variant="small" tone="muted" style={styles.errorText}>
             Request access to unlock this brand&apos;s private designs.
           </AppText>
           {requestState === 'PENDING' ? (
-            <AppText style={[styles.requestStateText, { color: theme.colors.textMuted }]}>
+            <AppText variant="captionRegular" tone="muted" style={styles.requestStateText}>
               ⏳ Access request pending
             </AppText>
           ) : requestState === 'REVOKED' ? (
-            <AppText style={[styles.requestStateText, { color: theme.colors.textMuted }]}>
+            <AppText variant="captionRegular" tone="muted" style={styles.requestStateText}>
               ❌ Access request declined. Wait 72 hours before retrying.
             </AppText>
           ) : null}
@@ -722,9 +722,9 @@ export function CollectionDetailViewer({
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <View style={styles.errorWrap}>
-          <AppText style={styles.errorEmoji}>😕</AppText>
-          <AppText style={[styles.errorTitle, { color: theme.colors.text }]}>Viewer unavailable</AppText>
-          <AppText style={[styles.errorText, { color: theme.colors.textMuted }]}>{error ?? 'Unable to load this design.'}</AppText>
+          <AppText variant="display">😕</AppText>
+          <AppText variant="subtitle">Viewer unavailable</AppText>
+          <AppText variant="small" tone="muted" style={styles.errorText}>{error ?? 'Unable to load this design.'}</AppText>
           <View style={styles.errorActions}>
             <Button title="Back" variant="secondary" onPress={() => router.back()} />
             <Button title="Retry" variant="primary" onPress={() => setReloadToken((value) => value + 1)} />
@@ -760,7 +760,7 @@ export function CollectionDetailViewer({
 
         <View style={[styles.topLeft, { top: insets.top + 12 }]} pointerEvents="box-none">
           <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.glassButton, pressed && { opacity: 0.75 }]}>
-            <AppText style={styles.glassButtonText}>← Back</AppText>
+            <AppText variant="smallBold" tone="inverse">← Back</AppText>
           </Pressable>
         </View>
 
@@ -770,14 +770,14 @@ export function CollectionDetailViewer({
             style={({ pressed }) => [styles.glassIconBtn, pressed && { opacity: 0.75 }]}
             accessibilityLabel="Saved items"
           >
-            <AppText style={styles.glassIconText}>🛍️</AppText>
+            <AppText variant="h3" tone="inverse">🛍️</AppText>
           </Pressable>
           <Pressable
             onPress={() => setIsWishlisted((value) => !value)}
             style={({ pressed }) => [styles.glassIconBtn, pressed && { opacity: 0.75 }]}
             accessibilityLabel="Wishlist"
           >
-            <AppText style={styles.glassIconText}>{isWishlisted ? '❤️' : '🤍'}</AppText>
+            <AppText variant="h3" tone="inverse">{isWishlisted ? '❤️' : '🤍'}</AppText>
           </Pressable>
         </View>
 
@@ -799,9 +799,9 @@ export function CollectionDetailViewer({
               style={({ pressed }) => [styles.railBtn, pressed && { opacity: 0.7 }]}
               accessibilityLabel="Comments"
             >
-              <AppText style={styles.railEmoji}>💬</AppText>
+              <AppText variant="h2" tone="inverse">💬</AppText>
             </Pressable>
-            <AppText style={styles.railLabel}>Comments</AppText>
+            <AppText variant="captionBold" tone="muted">Comments</AppText>
           </View>
 
           <View style={styles.railItem}>
@@ -810,9 +810,9 @@ export function CollectionDetailViewer({
               style={({ pressed }) => [styles.railBtn, pressed && { opacity: 0.7 }]}
               accessibilityLabel="Share"
             >
-              <AppText style={styles.railEmoji}>📤</AppText>
+              <AppText variant="h2" tone="inverse">📤</AppText>
             </Pressable>
-            <AppText style={styles.railLabel}>Share</AppText>
+            <AppText variant="captionBold" tone="muted">Share</AppText>
           </View>
         </View>
 
@@ -825,38 +825,38 @@ export function CollectionDetailViewer({
               <OwnerAvatar owner={detail.owner} onPress={openBrandProfile} />
             </View>
             <View style={styles.infoBrandTextWrap}>
-              <AppText style={styles.infoBrandName} numberOfLines={1}>
+              <AppText variant="smallBold" tone="inverse" numberOfLines={1}>
                 {brandName}
               </AppText>
               {brandHandle ? (
-                <AppText style={styles.infoBrandHandle} numberOfLines={1}>
+                <AppText variant="captionBold" tone="muted" numberOfLines={1}>
                   {brandHandle}
                 </AppText>
               ) : null}
             </View>
           </Pressable>
 
-          <AppText style={styles.infoTitle} numberOfLines={2}>
+          <AppText variant="h2" tone="inverse" numberOfLines={2}>
             {detail.title}
           </AppText>
           {detail.description ? (
-            <AppText style={styles.infoDescription} numberOfLines={3}>
+            <AppText variant="small" tone="inverse" style={styles.infoDescription} numberOfLines={3}>
               {detail.description}
             </AppText>
           ) : null}
 
           <View style={styles.infoPillRow}>
             <View style={styles.infoPill}>
-              <AppText style={styles.infoPillText}>{isStoreCollection ? 'Store' : 'Design'}</AppText>
+              <AppText variant="captionBold" tone="inverse">{isStoreCollection ? 'Store' : 'Design'}</AppText>
             </View>
             {mediaCount > 0 ? (
               <View style={styles.infoPill}>
-                <AppText style={styles.infoPillText}>{mediaCount} views</AppText>
+                <AppText variant="captionBold" tone="inverse">{mediaCount} views</AppText>
               </View>
             ) : null}
             {tags.slice(0, 3).map((tag) => (
               <View key={tag} style={styles.infoPill}>
-                <AppText style={styles.infoPillText}>#{tag}</AppText>
+                <AppText variant="captionBold" tone="inverse">#{tag}</AppText>
               </View>
             ))}
           </View>

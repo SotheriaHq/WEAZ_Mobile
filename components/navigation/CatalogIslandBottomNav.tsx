@@ -10,11 +10,9 @@ import {
   type NativeIslandNavItem,
 } from '@/components/navigation/NativeIslandBottomNav';
 import { ProfileMenuDropup } from '@/components/navigation/ProfileMenuDropup';
-import { NotificationsApi } from '@/src/api/NotificationsApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import {
-  resetUnreadNotificationCount,
-  replaceUnreadNotificationCount,
+  refreshUnreadNotificationCount as refreshSharedUnreadNotificationCount,
   useNotificationRealtimeChannel,
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
@@ -38,20 +36,10 @@ export function CatalogIslandBottomNav() {
   const { bottomOffset } = getNativeIslandLayout(windowWidth, insets.bottom);
 
   const refreshUnreadNotificationCount = useCallback(async () => {
-    if (status !== 'authenticated') {
-      resetUnreadNotificationCount();
-      setNotificationCountReady(false);
-      return;
-    }
-
-    try {
-      const { count } = await NotificationsApi.getUnreadCount();
-      replaceUnreadNotificationCount(count);
-      setNotificationCountReady(true);
-    } catch {
-      resetUnreadNotificationCount();
-      setNotificationCountReady(false);
-    }
+    const ready = await refreshSharedUnreadNotificationCount({
+      authenticated: status === 'authenticated',
+    });
+    setNotificationCountReady(ready);
   }, [status]);
 
   const clearProfileTabTimer = useCallback(() => {

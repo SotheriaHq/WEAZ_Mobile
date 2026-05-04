@@ -63,11 +63,9 @@ const resolvePriceBand = (item: MarketItem) => {
 function BrandAvatar({
   item,
   backgroundColor,
-  textColor,
 }: {
   item: MarketItem;
   backgroundColor: string;
-  textColor: string;
 }) {
   const brandName = item.brandName ?? item.username ?? 'Brand';
   const avatar = resolveProfileImageSource({
@@ -82,7 +80,7 @@ function BrandAvatar({
       {avatarUri ? (
         <StableImage uri={avatarUri} containerStyle={styles.avatarImage} imageStyle={styles.avatarImage} />
       ) : (
-        <AppText variant="caption" tone="primary" style={[styles.avatarFallback, { color: textColor }]}>
+        <AppText variant="captionBold" tone="primary" style={styles.avatarFallback}>
           {initials}
         </AppText>
       )}
@@ -309,7 +307,7 @@ export default function DiscoverScreen() {
           }
         >
           <Pressable style={styles.brandRow} onPress={() => openBrandStore(item)}>
-            <BrandAvatar item={item} backgroundColor={pillBg} textColor={theme.colors.primary} />
+            <BrandAvatar item={item} backgroundColor={pillBg} />
             <View style={styles.brandTextWrap}>
               <AppText variant="bodyBold" numberOfLines={1}>
                 {brandName}

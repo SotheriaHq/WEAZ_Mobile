@@ -272,7 +272,7 @@ function ImageFallback({ title }: { title: string }) {
       colors={isDark ? ['#1e1e24', '#111'] : ['#f3f4f6', '#e5e7eb']}
       style={styles.imageFallback}
     >
-      <AppText style={{ fontSize: 28, marginBottom: 8 }}>🖼️</AppText>
+      <AppText variant="h1" style={styles.imageFallbackEmoji}>🖼️</AppText>
       <AppText variant="caption" tone="muted" numberOfLines={1}>
         {title.trim() ? 'Image unavailable' : 'No image'}
       </AppText>
@@ -343,6 +343,9 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  imageFallbackEmoji: {
+    marginBottom: tokens.spacing.sm,
   },
   storeBadge: {
     position: 'absolute',

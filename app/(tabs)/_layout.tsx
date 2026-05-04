@@ -11,12 +11,10 @@ import {
 } from '@/components/navigation/NativeIslandBottomNav';
 import { ProfileMenuDropup } from '@/components/navigation/ProfileMenuDropup';
 import { useAuth } from '@/src/auth/AuthContext';
-import { NotificationsApi } from '@/src/api/NotificationsApi';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import {
-  resetUnreadNotificationCount,
-  replaceUnreadNotificationCount,
+  refreshUnreadNotificationCount as refreshSharedUnreadNotificationCount,
   useNotificationRealtimeChannel,
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
@@ -68,20 +66,10 @@ export default function TabLayout() {
   }, [pathname, profileMenuVisible]);
 
   const refreshUnreadNotificationCount = useCallback(async () => {
-    if (status !== 'authenticated') {
-      resetUnreadNotificationCount();
-      setNotificationCountReady(false);
-      return;
-    }
-
-    try {
-      const { count } = await NotificationsApi.getUnreadCount();
-      replaceUnreadNotificationCount(count);
-      setNotificationCountReady(true);
-    } catch {
-      resetUnreadNotificationCount();
-      setNotificationCountReady(false);
-    }
+    const ready = await refreshSharedUnreadNotificationCount({
+      authenticated: status === 'authenticated',
+    });
+    setNotificationCountReady(ready);
   }, [status]);
 
   const clearProfileTabTimer = useCallback(() => {
