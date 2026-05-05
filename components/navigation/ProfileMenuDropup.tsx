@@ -9,7 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { router } from 'expo-router';
 
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
@@ -74,10 +74,10 @@ export function ProfileMenuDropup({
   const avatar = resolveProfileImageSource(user);
   const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: mounted });
   const initials = getAvatarFallback(displayName, user?.username);
-  const availableMenuHeight = Math.max(264, height - bottomOffset - tokens.spacing.xl);
-  const menuHeight = Math.min(availableMenuHeight, 340);
-  const availableMenuWidth = Math.max(220, width - tokens.spacing.md * 2);
-  const menuWidth = Math.min(Math.max(220, Math.round(width * 0.7)), Math.min(300, availableMenuWidth));
+  const availableMenuHeight = Math.max(0, height - bottomOffset - tokens.spacing.sm);
+  const menuMaxHeight = Math.min(360, availableMenuHeight);
+  const availableMenuWidth = Math.max(0, width - tokens.spacing.md * 2);
+  const menuWidth = Math.min(Math.max(260, Math.round(width * 0.64)), Math.min(280, availableMenuWidth));
 
   const runCloseAnimation = React.useCallback(
     (onDone?: () => void) => {
@@ -138,7 +138,9 @@ export function ProfileMenuDropup({
   const handleSignOut = React.useCallback(() => {
     runCloseAnimation(() => {
       onClose();
-      void signOut();
+      void signOut().finally(() => {
+        router.replace('/(auth)/login' as any);
+      });
     });
   }, [onClose, runCloseAnimation, signOut]);
 
@@ -160,23 +162,10 @@ export function ProfileMenuDropup({
                 width: menuWidth,
                 opacity,
                 transform: [{ translateY }],
+                backgroundColor: isDark ? 'rgba(11,15,23,0.98)' : 'rgba(255,255,255,0.98)',
               },
             ]}
           >
-            <BlurView
-              tint={isDark ? 'dark' : 'light'}
-              intensity={38}
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              pointerEvents="none"
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  backgroundColor: isDark ? 'rgba(24,24,27,0.72)' : 'rgba(255,255,255,0.72)',
-                },
-              ]}
-            />
             <ScrollView
               scrollEnabled={true}
               nestedScrollEnabled={true}
@@ -184,7 +173,7 @@ export function ProfileMenuDropup({
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.menuContent}
-              style={{ height: menuHeight, maxHeight: availableMenuHeight }}
+              style={{ maxHeight: menuMaxHeight }}
             >
               <Pressable
                 onPress={onOpenProfile}
@@ -228,7 +217,9 @@ export function ProfileMenuDropup({
                 accessibilityLabel="Open notifications"
                 style={({ pressed }) => [styles.item, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
               >
-                <AppText variant="subtitle">🔔</AppText>
+                <View style={styles.iconSlot}>
+                  <AppText variant="captionBold">🔔</AppText>
+                </View>
                 <View style={styles.textWrap}>
                   <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
                     Notifications
@@ -243,7 +234,9 @@ export function ProfileMenuDropup({
                   accessibilityLabel="Open studio"
                   style={({ pressed }) => [styles.item, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
                 >
-                  <AppText variant="subtitle">🧵</AppText>
+                  <View style={styles.iconSlot}>
+                    <AppText variant="captionBold">🧵</AppText>
+                  </View>
                   <View style={styles.textWrap}>
                     <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
                       Studio
@@ -258,7 +251,9 @@ export function ProfileMenuDropup({
                 accessibilityLabel="View full profile"
                 style={({ pressed }) => [styles.item, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
               >
-                <AppText variant="subtitle">👤</AppText>
+                <View style={styles.iconSlot}>
+                  <AppText variant="captionBold">👤</AppText>
+                </View>
                 <View style={styles.textWrap}>
                   <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
                     View full profile
@@ -272,7 +267,9 @@ export function ProfileMenuDropup({
                 accessibilityLabel="Sign out"
                 style={({ pressed }) => [styles.item, { borderTopColor: activeTheme.colors.border }, styles.signOutItem, pressed && styles.pressed]}
               >
-                <AppText variant="subtitle">🚪</AppText>
+                <View style={styles.iconSlot}>
+                  <AppText variant="captionBold">🚪</AppText>
+                </View>
                 <View style={styles.textWrap}>
                   <AppText variant="bodyBold" tone="danger" numberOfLines={1} ellipsizeMode="tail">
                     Sign Out
@@ -297,8 +294,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   menu: {
-    minWidth: 220,
-    maxWidth: 300,
+    minWidth: 260,
+    maxWidth: 280,
     borderRadius: tokens.radius.xl,
     borderWidth: 1,
     overflow: 'hidden',
@@ -309,23 +306,21 @@ const styles = StyleSheet.create({
     elevation: 14,
   },
   menuContent: {
-    flexGrow: 1,
-    justifyContent: 'space-between',
-    paddingVertical: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
   },
   identity: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: tokens.spacing.xs,
-    paddingHorizontal: tokens.spacing.xs,
-    paddingVertical: tokens.spacing.sm,
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 8,
     borderBottomWidth: 1,
-    minHeight: 64,
+    minHeight: 52,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: tokens.spacing.xs,
   },
   nameText: {
     flex: 1,
@@ -335,11 +330,11 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   themeButton: {
-    minWidth: 28,
-    minHeight: 28,
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: tokens.radius.md,
+    borderRadius: tokens.radius.lg,
   },
   avatar: {
     width: 34,
@@ -357,12 +352,17 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  iconSlot: {
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.xs,
-    paddingHorizontal: tokens.spacing.xs,
-    paddingVertical: tokens.spacing.sm,
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     minHeight: 48,
   },

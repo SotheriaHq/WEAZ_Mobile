@@ -208,7 +208,7 @@ function ProfileAction({
       accessibilityRole="button"
       style={({ pressed }) => [styles.actionCard, { backgroundColor: theme.colors.surfaceAlt }, pressed ? styles.pressed : null]}
     >
-      <AppText variant="subtitle">{emoji}</AppText>
+      <AppText variant="captionBold">{emoji}</AppText>
       <AppText variant="bodyBold" numberOfLines={1}>{label}</AppText>
     </Pressable>
   );
@@ -223,38 +223,33 @@ function MeasurementCard({
 }) {
   const { theme } = useTheme();
   const measurements = Object.entries(sizeFit?.measurements ?? {}).filter(([, value]) => String(value).trim().length > 0);
-  const unit = sizeFit?.preferredLengthUnit?.toLowerCase() ?? 'cm';
+  const measurementCount = measurements.length;
 
   return (
-    <Card padding="md" style={[styles.fittingsCard, { backgroundColor: theme.colors.surfaceAlt }]}>
+    <Card padding="sm" style={[styles.fittingsCard, { backgroundColor: theme.colors.surfaceAlt }]}>
       <View style={styles.sectionHeaderRow}>
         <View style={styles.sectionHeaderCopy}>
           <AppText variant="bodyBold">My fittings</AppText>
           <AppText variant="captionRegular" tone="muted">
-            Keep your measurements ready so brands can tailor faster.
+            {measurementCount > 0
+              ? `${measurementCount} saved measurement${measurementCount === 1 ? '' : 's'} for custom orders.`
+              : 'Add your measurements once for faster custom orders.'}
           </AppText>
         </View>
         <Button title={measurements.length > 0 ? 'Edit' : 'Add'} size="sm" variant="secondary" onPress={onPress} />
       </View>
 
+      {measurements.length === 0 ? (
+        <AppText variant="body" tone="muted" style={styles.measurementCopy}>
+          Add your baseline measurements once and reuse them across custom orders.
+        </AppText>
+      ) : null}
+
       {measurements.length > 0 ? (
-        <View style={styles.measurementGrid}>
-          {measurements.slice(0, 6).map(([key, value]) => (
-            <View key={key} style={[styles.measurementPill, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
-              <AppText variant="captionRegular" tone="muted">{key.replace(/_/g, ' ')}</AppText>
-              <AppText variant="bodyBold">{String(value)} {unit}</AppText>
-            </View>
-          ))}
-        </View>
-      ) : (
-        <Pressable onPress={onPress} style={({ pressed }) => [styles.measurementEmpty, pressed ? styles.pressed : null]}>
-          <AppText variant="title">📏</AppText>
-          <AppText variant="bodyBold">No fittings saved yet</AppText>
-          <AppText variant="body" tone="muted" style={styles.emptyBody}>
-            Add your baseline measurements once and reuse them across custom orders.
-          </AppText>
-        </Pressable>
-      )}
+        <AppText variant="captionRegular" tone="muted" style={styles.measurementCopy}>
+          Tap Edit to update your saved fit or add a missing measurement.
+        </AppText>
+      ) : null}
     </Card>
   );
 }
@@ -487,9 +482,9 @@ export default function BuyerProfileScreen() {
       });
 
       if (profileFailed) {
-        setError('Could not load your profile right now.');
+        setError('Profile could not refresh right now.');
       } else if (optionalFailure) {
-        setError('Could not load some profile data.');
+        setError('Some profile sections could not load.');
       } else {
         setError(null);
       }
@@ -540,6 +535,14 @@ export default function BuyerProfileScreen() {
     fileId: profileIdentity.avatarFileId ?? undefined,
     enabled: Boolean(profileIdentity.avatarSrc || profileIdentity.avatarFileId),
   });
+
+  const handleOpenNotifications = useCallback(() => {
+    router.push('/notifications' as any);
+  }, []);
+
+  const handleOpenSettings = useCallback(() => {
+    toast.info('More settings are coming soon.');
+  }, [toast]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -655,7 +658,15 @@ export default function BuyerProfileScreen() {
   const handleSignOut = useCallback(() => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: () => {
+          void signOut().finally(() => {
+            router.replace(PROFILE_LOGIN_ROUTE as any);
+          });
+        },
+      },
     ]);
   }, [signOut]);
 
@@ -689,9 +700,15 @@ export default function BuyerProfileScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + NATIVE_ISLAND_NAV.contentClearance }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primary} />}
       >
-        <View style={styles.topBar}>
-          <Button title="Notifications" size="sm" variant="ghost" onPress={() => router.push('/notifications' as any)} />
-          <Button title="Settings" size="sm" variant="ghost" onPress={() => toast.info('More settings are coming soon.')} />
+        <View style={styles.headerActionsRow}>
+          <Pressable
+            onPress={handleOpenNotifications}
+            accessibilityRole="button"
+            accessibilityLabel="Open notifications"
+            style={({ pressed }) => [styles.headerActionButton, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }, pressed && styles.pressed]}
+          >
+            <AppText variant="body">🔔</AppText>
+          </Pressable>
         </View>
 
         <View style={styles.hero}>
@@ -725,26 +742,29 @@ export default function BuyerProfileScreen() {
           <ProfileAction emoji="✏️" label="Edit info" onPress={() => setEditOpen(true)} />
           <ProfileAction emoji="📏" label="My fits" onPress={() => setFittingsOpen(true)} />
           <ProfileAction emoji="📦" label="Orders" onPress={() => router.push('/orders' as any)} />
-          <ProfileAction emoji="🚪" label="Sign out" onPress={handleSignOut} />
+          <ProfileAction emoji="⚙️" label="Settings" onPress={handleOpenSettings} />
         </View>
 
         <View style={styles.summaryRow}>
           <SummaryStat title="Saved" value={String(profileCounts.saved)} subtitle="designs" />
           <SummaryStat title="Patched" value={String(profileCounts.patches)} subtitle="brands" />
-          <SummaryStat title="Orders" value={String(profileCounts.orders)} subtitle="active history" />
+          <SummaryStat title="History" value={String(profileCounts.orders)} subtitle="orders" />
         </View>
 
         <MeasurementCard sizeFit={state.sizeFit} onPress={() => setFittingsOpen(true)} />
 
         {error ? (
-          <Card padding="md" style={[styles.errorCard, { borderColor: theme.colors.danger }]}>
-            <AppText variant="bodyBold">Could not load some profile data</AppText>
-            <AppText variant="body" tone="muted">{error}</AppText>
-            <Button title="Retry" size="sm" onPress={() => void load()} />
-          </Card>
+          <View style={[styles.inlineNotice, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+            <View style={styles.inlineNoticeCopy}>
+              <AppText variant="captionRegular" tone="muted">
+                {error}
+              </AppText>
+            </View>
+            <Button title="Retry" size="sm" variant="outline" onPress={() => void load()} />
+          </View>
         ) : null}
 
-        <View style={[styles.tabWrap, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+        <View style={[styles.tabRail, { borderBottomColor: theme.colors.border }] }>
           {PROFILE_TABS.map((tab) => {
             const selected = tab === activeTab;
             return (
@@ -759,15 +779,14 @@ export default function BuyerProfileScreen() {
                   setActiveTab(tab);
                 }}
                 style={({ pressed }) => [
-                  styles.tabPill,
-                  {
-                    backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
-                    borderColor: selected ? theme.colors.primary : theme.colors.border,
-                  },
+                  styles.tabItem,
+                  selected && [styles.tabItemActive, { borderBottomColor: theme.colors.primary }],
                   pressed ? styles.pressed : null,
                 ]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
               >
-                <AppText variant="bodyBold" tone={selected ? 'primary' : 'secondary'}>
+                <AppText variant="captionBold" tone={selected ? 'primary' : 'muted'}>
                   {tab}
                 </AppText>
               </Pressable>
@@ -833,13 +852,21 @@ export default function BuyerProfileScreen() {
       <AppBottomSheet
         visible={editOpen}
         title="Edit profile"
-        subtitle="Keep your public buyer details clean and current."
+        subtitle="Update your details"
         onClose={() => setEditOpen(false)}
-        onDone={() => void handleSaveProfile()}
-        doneLabel="Save"
-        doneDisabled={!hasProfile || firstName.trim().length < 2 || lastName.trim().length < 2}
-        loading={savingProfile}
-        showCloseButton
+        footer={(
+          <View style={styles.sheetFooterActions}>
+            <Button title="Cancel" size="md" variant="outline" onPress={() => setEditOpen(false)} style={styles.sheetFooterButton} />
+            <Button
+              title="Done"
+              size="md"
+              onPress={() => void handleSaveProfile()}
+              disabled={!hasProfile || firstName.trim().length < 2 || lastName.trim().length < 2}
+              loading={savingProfile}
+              style={styles.sheetFooterButton}
+            />
+          </View>
+        )}
       >
         <Input label="First name" value={firstName} onChangeText={setFirstName} placeholder="First name" />
         <Input label="Last name" value={lastName} onChangeText={setLastName} placeholder="Last name" />
@@ -849,12 +876,14 @@ export default function BuyerProfileScreen() {
       <AppBottomSheet
         visible={fittingsOpen}
         title="My fittings"
-        subtitle="Add your baseline measurements once. You can refine them per order later."
+        subtitle="Update your measurements"
         onClose={() => setFittingsOpen(false)}
-        onDone={() => void handleSaveFittings()}
-        doneLabel="Save"
-        loading={savingFittings}
-        showCloseButton
+        footer={(
+          <View style={styles.sheetFooterActions}>
+            <Button title="Cancel" size="md" variant="outline" onPress={() => setFittingsOpen(false)} style={styles.sheetFooterButton} />
+            <Button title="Done" size="md" onPress={() => void handleSaveFittings()} loading={savingFittings} style={styles.sheetFooterButton} />
+          </View>
+        )}
       >
         <View style={styles.unitRow}>
           {(['CM', 'IN'] as const).map((unit) => {
@@ -901,6 +930,19 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
     paddingTop: tokens.spacing.sm,
+  },
+  headerActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingTop: tokens.spacing.xs,
+  },
+  headerActionButton: {
+    width: 44,
+    height: 44,
+    borderRadius: tokens.radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
   },
   loadingState: {
     flex: 1,
@@ -951,13 +993,13 @@ const styles = StyleSheet.create({
   actionCard: {
     flexBasis: '48%',
     flexGrow: 1,
-    minHeight: 76,
+    minHeight: 68,
     borderRadius: tokens.radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -972,26 +1014,15 @@ const styles = StyleSheet.create({
   },
   sectionHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: tokens.spacing.md,
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
   },
   sectionHeaderCopy: {
     flex: 1,
     gap: tokens.spacing.xs,
   },
-  measurementGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.xs,
-  },
-  measurementPill: {
-    minWidth: '31%',
-    flexGrow: 1,
-    borderWidth: 1,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.sm,
-    gap: 2,
+  measurementCopy: {
+    lineHeight: 18,
   },
   measurementEmpty: {
     alignItems: 'center',
@@ -1001,22 +1032,6 @@ const styles = StyleSheet.create({
   errorCard: {
     gap: tokens.spacing.xs,
     borderWidth: 1,
-  },
-  tabWrap: {
-    flexDirection: 'row',
-    gap: tokens.spacing.xs,
-    padding: 4,
-    borderRadius: tokens.radius.full,
-    borderWidth: 1,
-  },
-  tabPill: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: tokens.radius.full,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.xs,
   },
   savedGrid: {
     flexDirection: 'row',
@@ -1075,6 +1090,40 @@ const styles = StyleSheet.create({
   },
   emptyBody: {
     textAlign: 'center',
+  },
+  inlineNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  inlineNoticeCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tabRail: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xs,
+    borderBottomWidth: 1,
+  },
+  tabItem: {
+    minHeight: 44,
+    paddingVertical: tokens.spacing.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabItemActive: {
+    borderBottomWidth: 2,
+  },
+  sheetFooterActions: {
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+  },
+  sheetFooterButton: {
+    flex: 1,
   },
   unitRow: {
     flexDirection: 'row',
