@@ -30,6 +30,7 @@ export type NativeIslandNavItem = {
 type NativeIslandBottomNavProps = {
   items: NativeIslandNavItem[];
   onSelect: (item: NativeIslandNavItem) => void;
+  onPressIn?: (item: NativeIslandNavItem) => void;
 };
 
 export function getNativeIslandLayout(windowWidth: number, bottomInset: number) {
@@ -66,11 +67,13 @@ export function NativeIslandTabIcon({
     focused
         ? {
           backgroundColor: theme.colors.primarySoft,
+          borderColor: theme.colors.primarySoft,
+          borderWidth: StyleSheet.hairlineWidth,
           shadowColor: theme.colors.primary,
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.24,
-          shadowRadius: 16,
-          elevation: 6,
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.3,
+          shadowRadius: 18,
+          elevation: 8,
         }
       : styles.tabChipInactive,
   ];
@@ -113,7 +116,7 @@ export function NativeIslandTabIcon({
   );
 }
 
-export function NativeIslandBottomNav({ items, onSelect }: NativeIslandBottomNavProps) {
+export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIslandBottomNavProps) {
   const { scheme, theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -134,8 +137,10 @@ export function NativeIslandBottomNav({ items, onSelect }: NativeIslandBottomNav
             bottom: bottomOffset,
             height: NATIVE_ISLAND_NAV.height,
             borderRadius: NATIVE_ISLAND_NAV.radius,
-            shadowColor: theme.colors.bg,
-            shadowOpacity: scheme === 'dark' ? 0.32 : 0.16,
+            shadowColor: scheme === 'dark' ? '#000000' : 'rgba(15, 23, 42, 0.9)',
+            shadowOpacity: scheme === 'dark' ? 0.42 : 0.24,
+            shadowRadius: 28,
+            elevation: 16,
           },
         ]}
       >
@@ -145,7 +150,7 @@ export function NativeIslandBottomNav({ items, onSelect }: NativeIslandBottomNav
             StyleSheet.absoluteFillObject,
             styles.navBaseFill,
             {
-              backgroundColor: scheme === 'dark' ? 'rgba(11,7,16,0.92)' : 'rgba(255,255,255,0.94)',
+              backgroundColor: glass.bg,
             },
           ]}
         />
@@ -161,7 +166,7 @@ export function NativeIslandBottomNav({ items, onSelect }: NativeIslandBottomNav
             styles.navGlassFill,
             {
               backgroundColor: glass.bgStrong,
-              borderColor: theme.colors.border,
+              borderColor: glass.border,
               borderRadius: NATIVE_ISLAND_NAV.radius,
             },
           ]}
@@ -174,6 +179,7 @@ export function NativeIslandBottomNav({ items, onSelect }: NativeIslandBottomNav
               accessibilityState={{ selected: Boolean(item.active && !item.disabled), disabled: item.disabled }}
               accessibilityLabel={item.label}
               disabled={item.disabled}
+              onPressIn={item.disabled ? undefined : () => onPressIn?.(item)}
               onPress={item.disabled ? undefined : () => onSelect(item)}
               style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
             >
@@ -196,9 +202,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     backgroundColor: 'transparent',
     borderTopWidth: 0,
-    elevation: 12,
     shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 24,
     overflow: 'hidden',
     zIndex: 100,
   },
@@ -223,7 +227,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   navItemPressed: {
-    opacity: 0.78,
+    opacity: 0.92,
+    transform: [{ scale: 0.985 }],
   },
   navItemDisabled: {
     opacity: 0.5,
@@ -240,12 +245,13 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     minWidth: 50,
     height: 38,
-    borderRadius: 19,
+    borderRadius: 9999,
     paddingHorizontal: 5,
     paddingVertical: 1,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
+    overflow: 'hidden',
   },
   tabChipInactive: {
     backgroundColor: 'transparent',

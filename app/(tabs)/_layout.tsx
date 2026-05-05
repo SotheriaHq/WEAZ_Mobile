@@ -34,6 +34,7 @@ export default function TabLayout() {
   const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProfileTabPressAtRef = useRef(0);
   const lastBackPressAtRef = useRef(0);
+  const [optimisticActiveKey, setOptimisticActiveKey] = useState<string | null>(null);
 
   const isBrand = user?.type === 'BRAND';
   const canOpenProfileMenu = status === 'authenticated';
@@ -66,6 +67,7 @@ export default function TabLayout() {
     }
     return 'designs';
   }, [canOpenProfileMenu, pathname, profileMenuVisible]);
+  const displayedActiveKey = optimisticActiveKey ?? activeIslandKey;
 
   const refreshUnreadNotificationCount = useCallback(async () => {
     const ready = await refreshSharedUnreadNotificationCount({
@@ -85,11 +87,14 @@ export default function TabLayout() {
     setProfileMenuVisible(false);
     clearProfileTabTimer();
     lastProfileTabPressAtRef.current = 0;
+    setOptimisticActiveKey('profile');
     router.push((isBrand ? '/catalog' : '/(tabs)/me') as any);
   }, [clearProfileTabTimer, isBrand]);
 
   const handleProfilePress = useCallback(
     () => {
+      setOptimisticActiveKey('profile');
+
       if (!canOpenProfileMenu) {
         router.replace({ pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as any);
         return;
@@ -116,25 +121,31 @@ export default function TabLayout() {
     [canOpenProfileMenu, clearProfileTabTimer, navigateToProfile],
   );
 
+  const clearSelectionState = useCallback(() => {
+    setOptimisticActiveKey(null);
+  }, []);
+
   const items = useMemo<NativeIslandNavItem[]>(
     () => [
-      { key: 'designs', label: 'Designs', emoji: '🎨', active: activeIslandKey === 'designs' },
-      { key: 'market', label: 'Market', emoji: '🧭', active: activeIslandKey === 'market' },
-      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: '🛍️', active: activeIslandKey === 'store' }] : []),
-      { key: 'inbox', label: 'Messages', emoji: '✉️', active: activeIslandKey === 'inbox' },
+      { key: 'designs', label: 'Designs', emoji: '🎨', active: displayedActiveKey === 'designs' },
+      { key: 'market', label: 'Market', emoji: '🧭', active: displayedActiveKey === 'market' },
+      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: '🛍️', active: displayedActiveKey === 'store' }] : []),
+      { key: 'inbox', label: 'Messages', emoji: '✉️', active: displayedActiveKey === 'inbox' },
       {
         key: 'profile',
         label: profileNavLabel,
         emoji: profileNavEmoji,
-        active: activeIslandKey === 'profile',
+        active: displayedActiveKey === 'profile',
         badge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
       },
     ],
-    [activeIslandKey, canOpenProfileMenu, isBrand, notificationCountReady, profileNavEmoji, profileNavLabel, unreadNotificationCount],
+    [displayedActiveKey, canOpenProfileMenu, isBrand, notificationCountReady, profileNavEmoji, profileNavLabel, unreadNotificationCount],
   );
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
+      setOptimisticActiveKey(item.key);
+
       if (item.key === 'profile') {
         handleProfilePress();
         return;
@@ -156,6 +167,10 @@ export default function TabLayout() {
     },
     [clearProfileTabTimer, handleProfilePress],
   );
+
+  useEffect(() => {
+    clearSelectionState();
+  }, [pathname, clearSelectionState]);
 
   useEffect(() => {
     if (!canOpenProfileMenu) {
@@ -299,7 +314,13 @@ export default function TabLayout() {
         />
       </Tabs>
 
-      <NativeIslandBottomNav items={items} onSelect={handleSelect} />
+      <NativeIslandBottomNav
+        items={items}
+        onSelect={handleSelect}
+        onPressIn={(item) => {
+          setOptimisticActiveKey(item.key);
+        }}
+      />
 
       <ProfileMenuDropup
         visible={profileMenuVisible}
@@ -307,18 +328,21 @@ export default function TabLayout() {
           setProfileMenuVisible(false);
           clearProfileTabTimer();
           lastProfileTabPressAtRef.current = 0;
+          clearSelectionState();
         }}
         onOpenProfile={navigateToProfile}
         onOpenNotifications={() => {
           setProfileMenuVisible(false);
           clearProfileTabTimer();
           lastProfileTabPressAtRef.current = 0;
+          clearSelectionState();
           router.push('/notifications' as any);
         }}
         onOpenStudio={() => {
           setProfileMenuVisible(false);
           clearProfileTabTimer();
           lastProfileTabPressAtRef.current = 0;
+          clearSelectionState();
           router.push('/studio' as any);
         }}
         onToggleTheme={() => {

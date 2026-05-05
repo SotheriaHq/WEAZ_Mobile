@@ -28,6 +28,7 @@ export function CatalogIslandBottomNav() {
   const unreadNotificationCount = useUnreadNotificationCount();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [notificationCountReady, setNotificationCountReady] = useState(false);
+  const [optimisticActiveKey, setOptimisticActiveKey] = useState<string | null>(null);
   const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProfileTabPressAtRef = useRef(0);
 
@@ -53,10 +54,13 @@ export function CatalogIslandBottomNav() {
     setProfileMenuVisible(false);
     clearProfileTabTimer();
     lastProfileTabPressAtRef.current = 0;
+    setOptimisticActiveKey('profile');
     router.push((isBrand ? '/catalog' : '/(tabs)/me') as any);
   }, [clearProfileTabTimer, isBrand]);
 
   const handleProfilePress = useCallback(() => {
+    setOptimisticActiveKey('profile');
+
     if (!canOpenProfileMenu) {
       router.push('/(tabs)/me' as any);
       return;
@@ -80,6 +84,10 @@ export function CatalogIslandBottomNav() {
       lastProfileTabPressAtRef.current = 0;
     }, PROFILE_TAB_DOUBLE_TAP_WINDOW_MS);
   }, [canOpenProfileMenu, clearProfileTabTimer, navigateToProfile]);
+
+  const clearSelectionState = useCallback(() => {
+    setOptimisticActiveKey(null);
+  }, []);
 
   useEffect(() => {
     setNotificationCountReady(false);
@@ -113,23 +121,25 @@ export function CatalogIslandBottomNav() {
 
   const items = useMemo<NativeIslandNavItem[]>(
     () => [
-      { key: 'designs', label: 'Designs', emoji: '🎨' },
-      { key: 'market', label: 'Market', emoji: '🧭' },
-      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: '🛍️' }] : []),
-      { key: 'inbox', label: 'Messages', emoji: '✉️' },
+      { key: 'designs', label: 'Designs', emoji: '🎨', active: optimisticActiveKey === 'designs' },
+      { key: 'market', label: 'Market', emoji: '🧭', active: optimisticActiveKey === 'market' },
+      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: '🛍️', active: optimisticActiveKey === 'store' }] : []),
+      { key: 'inbox', label: 'Messages', emoji: '✉️', active: optimisticActiveKey === 'inbox' },
       {
         key: 'profile',
         label: 'Profile',
         emoji: '👤',
-        active: true,
+        active: optimisticActiveKey === 'profile' || optimisticActiveKey == null,
         badge: notificationCountReady ? unreadNotificationCount : undefined,
       },
     ],
-    [isBrand, notificationCountReady, unreadNotificationCount],
+    [isBrand, notificationCountReady, optimisticActiveKey, unreadNotificationCount],
   );
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
+      setOptimisticActiveKey(item.key);
+
       if (item.key === 'profile') {
         handleProfilePress();
         return;
@@ -154,25 +164,34 @@ export function CatalogIslandBottomNav() {
 
   return (
     <>
-      <NativeIslandBottomNav items={items} onSelect={handleSelect} />
+      <NativeIslandBottomNav
+        items={items}
+        onSelect={handleSelect}
+        onPressIn={(item) => {
+          setOptimisticActiveKey(item.key);
+        }}
+      />
       <ProfileMenuDropup
         visible={profileMenuVisible}
         onClose={() => {
           setProfileMenuVisible(false);
           clearProfileTabTimer();
           lastProfileTabPressAtRef.current = 0;
+          clearSelectionState();
         }}
         onOpenProfile={navigateToProfile}
         onOpenNotifications={() => {
           setProfileMenuVisible(false);
           clearProfileTabTimer();
           lastProfileTabPressAtRef.current = 0;
+          clearSelectionState();
           router.push('/notifications' as any);
         }}
         onOpenStudio={() => {
           setProfileMenuVisible(false);
           clearProfileTabTimer();
           lastProfileTabPressAtRef.current = 0;
+          clearSelectionState();
           router.push('/studio' as any);
         }}
         onToggleTheme={() => {

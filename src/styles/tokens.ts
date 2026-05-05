@@ -14,16 +14,16 @@ export const LAYOUT = {
 // 🌟 Glassmorphism tokens
 export const GLASS = {
   dark: {
-    bg: 'rgba(0, 0, 0, 0.5)',
-    bgStrong: 'rgba(0, 0, 0, 0.65)',
-    border: 'rgba(255, 255, 255, 0.08)',
-    blur: 30,
+    bg: 'rgba(0, 0, 0, 0.58)',
+    bgStrong: 'rgba(3, 7, 18, 0.74)',
+    border: 'rgba(255, 255, 255, 0.12)',
+    blur: 36,
   },
   light: {
-    bg: 'rgba(255, 255, 255, 0.7)',
-    bgStrong: 'rgba(255, 255, 255, 0.85)',
-    border: 'rgba(0, 0, 0, 0.08)',
-    blur: 25,
+    bg: 'rgba(255, 255, 255, 0.78)',
+    bgStrong: 'rgba(255, 255, 255, 0.92)',
+    border: 'rgba(15, 23, 42, 0.12)',
+    blur: 32,
   },
 } as const;
 
