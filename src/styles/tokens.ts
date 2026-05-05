@@ -1,4 +1,6 @@
-export type ThemeScheme = 'light' | 'dark';
+import type { ResolvedTheme } from '@/src/types/theme';
+
+export type ThemeScheme = ResolvedTheme;
 
 
 // 📐 Layout constants for consistent spacing across the app

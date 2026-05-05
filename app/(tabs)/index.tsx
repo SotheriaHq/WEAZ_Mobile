@@ -24,6 +24,7 @@ import { brandApi, type CollectionDetailMediaDto } from '@/src/api/BrandApi';
 import { ProfileApi } from '@/src/api/ProfileApi';
 import { getMarketFeed, getMarketFilterChips, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import type { MarketItem } from '@/src/types/market';
+import type { ResolvedTheme } from '@/src/types/theme';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
 import { prefetchResolvedImageAsset, resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
@@ -610,7 +611,7 @@ type FeedMetaOverlayProps = {
   handle: string;
   title: string;
   description?: string | null;
-  scheme: 'light' | 'dark';
+  scheme: ResolvedTheme;
   glass: typeof GLASS.dark | typeof GLASS.light;
   bottomClearance: number;
 };
@@ -687,7 +688,7 @@ type FeedPostItemProps = {
   threads: string;
   threadCountRaw: number;
   bottomClearance: number;
-  scheme: 'light' | 'dark';
+  scheme: ResolvedTheme;
   glass: typeof GLASS.dark | typeof GLASS.light;
   canPatchBrands: boolean;
   isPatched: boolean;

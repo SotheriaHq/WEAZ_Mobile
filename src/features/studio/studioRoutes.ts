@@ -1,4 +1,5 @@
 import { env } from '@/src/config/env';
+import type { ResolvedTheme } from '@/src/types/theme';
 
 export type StudioRouteKey =
   | 'overview'
@@ -184,7 +185,7 @@ export function buildStudioWebUrl(args: {
   routeKey: StudioRouteKey;
   params?: StudioRouteParams;
   handoffCode?: string | null;
-  theme?: 'light' | 'dark';
+  theme?: ResolvedTheme;
 }): string {
   const base = env.webAppUrl.replace(/\/$/, '');
   const path = buildStudioPath(args.routeKey, args.params);
@@ -199,7 +200,7 @@ export function buildStudioWebUrl(args: {
   return url.toString();
 }
 
-export function appendStudioEmbeddedParams(path: string, theme: 'light' | 'dark'): string {
+export function appendStudioEmbeddedParams(path: string, theme: ResolvedTheme): string {
   const [pathWithSearch, hash = ''] = path.split('#');
   const [pathname, search = ''] = pathWithSearch.split('?');
   const params = new URLSearchParams(search);

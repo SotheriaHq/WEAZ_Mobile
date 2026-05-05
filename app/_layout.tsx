@@ -14,6 +14,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { ThemeProvider, useTheme, type ThemeMode } from '@/src/theme/ThemeProvider';
+import { normalizeThemePreference } from '@/src/types/theme';
 import { AuthProvider } from '@/src/auth/AuthContext';
 
 import { ToastProvider } from '@/src/toast/ToastContext';
@@ -64,10 +65,6 @@ function hideNativeSplashOnce(reason: string) {
       console.warn('[boot] hide-native-splash failed', error);
     }
   });
-}
-
-function isThemeMode(value: string | null | undefined): value is ThemeMode {
-  return value === 'auto' || value === 'system' || value === 'time' || value === 'light' || value === 'dark';
 }
 
 function NotificationSetup() {
@@ -223,7 +220,7 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
   const [themeBootstrapReady, setThemeBootstrapReady] = useState(false);
-  const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode>('auto');
+  const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode>('system');
 
   useEffect(() => {
     rootLayoutMountCount += 1;
@@ -239,15 +236,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     let isMounted = true;
-    let resolvedMode: ThemeMode = 'auto';
+    let resolvedMode: ThemeMode = 'system';
 
     SecureStore.getItemAsync(THEME_MODE_KEY)
       .then((value) => {
         if (!isMounted) return;
-        if (isThemeMode(value)) {
-          resolvedMode = value;
-          setInitialThemeMode(value);
-        }
+        resolvedMode = normalizeThemePreference(value);
+        setInitialThemeMode(resolvedMode);
       })
       .catch(() => undefined)
       .finally(() => {

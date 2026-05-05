@@ -17,6 +17,7 @@ import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens, type AppTheme } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import type { ResolvedTheme } from '@/src/types/theme';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 
 type ProfileMenuDropupProps = {
@@ -26,7 +27,7 @@ type ProfileMenuDropupProps = {
   onOpenNotifications: () => void;
   onOpenStudio?: () => void;
   onToggleTheme: () => void;
-  scheme: 'light' | 'dark';
+  scheme: ResolvedTheme;
   theme: AppTheme;
   bottomOffset: number;
   user: AuthUser | null;
