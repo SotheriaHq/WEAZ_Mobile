@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { ProfileApi, type Order, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
-import { useAuth } from '@/src/auth/AuthContext';
+import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -32,6 +32,8 @@ type ProfileState = {
 };
 
 type MeasurementKey = 'CHEST' | 'WAIST' | 'HIPS' | 'SHOULDER' | 'INSEAM' | 'HEIGHT';
+
+const PROFILE_LOGIN_ROUTE = { pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as const;
 
 const PROFILE_TABS: ProfileTab[] = ['Saved', 'Patches', 'Orders'];
 const MEASUREMENT_FIELDS: Array<{ key: MeasurementKey; label: string }> = [
@@ -60,6 +62,54 @@ function formatDate(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function createEmptyProfileState(): ProfileState {
+  return {
+    profile: null,
+    sizeFit: null,
+    saved: [],
+    patches: [],
+    orders: [],
+  };
+}
+
+function buildFallbackProfile(user: AuthUser | null): UserProfile | null {
+  if (!user?.id) return null;
+  const identity = resolveIdentity(user);
+
+  return {
+    id: user.id,
+    username: user.username?.trim() ?? '',
+    firstName: user.firstName?.trim() ?? '',
+    lastName: user.lastName?.trim() ?? '',
+    email: user.email ?? null,
+    profileImage: identity.avatarSrc,
+    profileImageId: identity.avatarFileId,
+    profileImageFile:
+      identity.avatarSrc || identity.avatarFileId
+        ? {
+            id: identity.avatarFileId,
+            s3Url: identity.avatarSrc,
+            url: identity.avatarSrc,
+          }
+        : null,
+    bannerImage: user.bannerImage ?? null,
+    address: null,
+    location: null,
+    profileVisibility: 'UNLOCKED',
+    isEmailVerified: typeof user.isEmailVerified === 'boolean' ? user.isEmailVerified : false,
+    createdAt: user.updatedAt ?? null,
+  };
+}
+
+function getHttpStatus(error: unknown): number | null {
+  const status = Number((error as any)?.response?.status ?? 0);
+  return Number.isFinite(status) && status > 0 ? status : null;
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return getHttpStatus(error) === 404;
 }
 
 function EmptyState({
@@ -307,13 +357,7 @@ export default function BuyerProfileScreen() {
   const params = useLocalSearchParams<{ tab?: string | string[] }>();
   const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
 
-  const [state, setState] = useState<ProfileState>({
-    profile: null,
-    sizeFit: null,
-    saved: [],
-    patches: [],
-    orders: [],
-  });
+  const [state, setState] = useState<ProfileState>(() => createEmptyProfileState());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -334,6 +378,49 @@ export default function BuyerProfileScreen() {
     INSEAM: '',
     HEIGHT: '',
   });
+  const loadRequestIdRef = useRef(0);
+  const lastUserIdRef = useRef<string | null>(null);
+  const redirectToAuthRef = useRef(false);
+
+  const fallbackProfile = useMemo(() => buildFallbackProfile(user), [user]);
+  const profileRecord = state.profile ?? fallbackProfile;
+  const profileIdentity = useMemo(() => resolveIdentity(profileRecord), [profileRecord]);
+  const hasProfile = Boolean(profileRecord);
+  const profileCounts = useMemo(
+    () => ({
+      saved: state.saved.length,
+      patches: state.patches.length,
+      orders: state.orders.length,
+    }),
+    [state.orders.length, state.patches.length, state.saved.length],
+  );
+
+  useEffect(() => {
+    if (status === 'authenticated' && user?.id) {
+      redirectToAuthRef.current = false;
+      if (lastUserIdRef.current !== user.id) {
+        lastUserIdRef.current = user.id;
+        setState(createEmptyProfileState());
+        setError(null);
+        setLoading(true);
+        setRefreshing(false);
+      }
+      return;
+    }
+
+    lastUserIdRef.current = null;
+    redirectToAuthRef.current = false;
+    setState(createEmptyProfileState());
+    setError(null);
+    setLoading(false);
+    setRefreshing(false);
+  }, [status, user?.id]);
+
+  useEffect(() => {
+    if (status !== 'unauthenticated' || redirectToAuthRef.current) return;
+    redirectToAuthRef.current = true;
+    router.replace(PROFILE_LOGIN_ROUTE as any);
+  }, [status]);
 
   useEffect(() => {
     if (!requestedTab) return;
@@ -346,15 +433,22 @@ export default function BuyerProfileScreen() {
     if (normalized === 'saved') setActiveTab('Saved');
   }, [requestedTab]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
     if (status !== 'authenticated' || !user?.id) {
       setLoading(false);
+      setRefreshing(false);
+      setState(createEmptyProfileState());
       return;
     }
 
+    const requestId = ++loadRequestIdRef.current;
+    if (!silent) {
+      setLoading(true);
+    }
     setError(null);
     try {
-      const [profile, sizeFit, saved, patches, orders] = await Promise.all([
+      const [profileResult, sizeFitResult, savedResult, patchesResult, ordersResult] = await Promise.allSettled([
         ProfileApi.getMe(),
         ProfileApi.getSizeFit(),
         ProfileApi.getSaved(),
@@ -362,31 +456,65 @@ export default function BuyerProfileScreen() {
         ProfileApi.getOrders({ limit: 20, page: 1 }),
       ]);
 
+      if (requestId !== loadRequestIdRef.current) return;
+
+      const nextProfile =
+        profileResult.status === 'fulfilled' && profileResult.value
+          ? profileResult.value
+          : fallbackProfile;
+      const nextSizeFit = sizeFitResult.status === 'fulfilled' ? sizeFitResult.value : null;
+      const nextSaved = savedResult.status === 'fulfilled' ? savedResult.value : [];
+      const nextPatches = patchesResult.status === 'fulfilled' ? patchesResult.value : [];
+      const nextOrders = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
+      const profileFailed = profileResult.status === 'rejected' && !isNotFoundError(profileResult.reason);
+      const optionalFailure =
+        sizeFitResult.status === 'rejected' ||
+        savedResult.status === 'rejected' ||
+        patchesResult.status === 'rejected' ||
+        ordersResult.status === 'rejected';
+
       setState({
-        profile,
-        sizeFit,
-        saved,
-        patches,
-        orders,
+        profile: nextProfile,
+        sizeFit: nextSizeFit,
+        saved: nextSaved,
+        patches: nextPatches,
+        orders: nextOrders,
       });
+
+      if (profileFailed) {
+        setError('Could not load your profile right now.');
+      } else if (optionalFailure) {
+        setError('Could not load some profile data.');
+      } else {
+        setError(null);
+      }
     } catch (nextError) {
+      if (requestId !== loadRequestIdRef.current) return;
+      setState((current) => ({
+        ...current,
+        profile: fallbackProfile,
+      }));
       setError(nextError instanceof Error ? nextError.message : 'Unable to load your profile.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === loadRequestIdRef.current) {
+        if (!silent) {
+          setLoading(false);
+        }
+        setRefreshing(false);
+      }
     }
-  }, [status, user?.id]);
+  }, [fallbackProfile, status, user?.id]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
-    if (!editOpen || !state.profile) return;
-    setFirstName(state.profile.firstName || '');
-    setLastName(state.profile.lastName || '');
-    setAddress(state.profile.address || state.profile.location || '');
-  }, [editOpen, state.profile]);
+    if (!editOpen || !profileRecord) return;
+    setFirstName(profileRecord.firstName || '');
+    setLastName(profileRecord.lastName || '');
+    setAddress(profileRecord.address || profileRecord.location || '');
+  }, [editOpen, profileRecord]);
 
   useEffect(() => {
     if (!fittingsOpen) return;
@@ -402,27 +530,19 @@ export default function BuyerProfileScreen() {
     });
   }, [fittingsOpen, state.sizeFit]);
 
-  const profileIdentity = useMemo(() => resolveIdentity(state.profile), [state.profile]);
   const avatarUri = useResolvedImageUri({
     src: profileIdentity.avatarSrc ?? undefined,
     fileId: profileIdentity.avatarFileId ?? undefined,
     enabled: Boolean(profileIdentity.avatarSrc || profileIdentity.avatarFileId),
   });
 
-  const hasProfile = Boolean(state.profile);
-  const profileCounts = {
-    saved: state.saved.length,
-    patches: state.patches.length,
-    orders: state.orders.length,
-  };
-
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
+    await load({ silent: true });
   }, [load]);
 
   const handlePickAvatar = useCallback(async () => {
-    if (!state.profile) return;
+    if (!profileRecord) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       toast.error('Allow photo access to update your profile photo.');
@@ -458,29 +578,34 @@ export default function BuyerProfileScreen() {
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
       });
-      setState((current) => current.profile ? {
-        ...current,
-        profile: {
-          ...current.profile,
-          profileImage: uploaded.url,
-          profileImageId: uploaded.id,
-          profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
-        },
-      } : current);
+      setState((current) => {
+        const nextProfile = current.profile ?? profileRecord;
+        if (!nextProfile) return current;
+
+        return {
+          ...current,
+          profile: {
+            ...nextProfile,
+            profileImage: uploaded.url,
+            profileImageId: uploaded.id,
+            profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
+          },
+        };
+      });
       toast.success('Profile photo updated.');
     } catch {
       toast.error('Failed to upload photo.');
     }
-  }, [state.profile, toast, updateUser]);
+  }, [profileRecord, toast, updateUser]);
 
   const handleSaveProfile = useCallback(async () => {
-    if (!state.profile || savingProfile) return;
+    if (!profileRecord || savingProfile) return;
     setSavingProfile(true);
     try {
-      const updated = await ProfileApi.updateProfile(state.profile.id, {
+      const updated = await ProfileApi.updateProfile(profileRecord.id, {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        username: state.profile.username,
+        username: profileRecord.username,
         address: address.trim(),
       });
       if (!updated) throw new Error('Profile update failed');
@@ -497,7 +622,7 @@ export default function BuyerProfileScreen() {
     } finally {
       setSavingProfile(false);
     }
-  }, [address, firstName, lastName, savingProfile, state.profile, toast, updateUser]);
+  }, [address, firstName, lastName, profileRecord, savingProfile, toast, updateUser]);
 
   const handleSaveFittings = useCallback(async () => {
     if (savingFittings) return;
@@ -529,7 +654,7 @@ export default function BuyerProfileScreen() {
     ]);
   }, [signOut]);
 
-  if (status === 'loading' || loading) {
+  if (status === 'loading' || (status === 'authenticated' && loading)) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <BrandHeader />
@@ -542,11 +667,11 @@ export default function BuyerProfileScreen() {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <View style={styles.loadingState}>
-          <AppText variant="subtitle">Profile unavailable</AppText>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <AppText variant="subtitle">Redirecting to sign in</AppText>
           <AppText variant="body" tone="muted" style={styles.emptyBody}>
             Sign in to manage your saved designs, fittings, and orders.
           </AppText>
-          <Button title="Sign in" onPress={() => router.push('/(auth)/login' as any)} />
         </View>
       </SafeAreaView>
     );

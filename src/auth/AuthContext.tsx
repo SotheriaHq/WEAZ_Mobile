@@ -270,6 +270,81 @@ function normalizeAuthUser(raw: unknown): AuthUser | null {
   };
 }
 
+function extractAuthErrorMessage(error: unknown): string | null {
+  const candidates = [
+    (error as any)?.response?.data?.message,
+    (error as any)?.response?.data?.error,
+    (error as any)?.response?.data?.errors,
+    (error as any)?.response?.data,
+    (error as any)?.message,
+  ];
+
+  const flatten = (value: unknown): string | null => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+
+    if (Array.isArray(value)) {
+      const joined = value.map((item) => flatten(item)).filter(Boolean).join(' ');
+      return joined.length > 0 ? joined : null;
+    }
+
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      for (const key of ['message', 'error', 'detail', 'details']) {
+        const nested = flatten(record[key]);
+        if (nested) return nested;
+      }
+    }
+
+    return null;
+  };
+
+  for (const candidate of candidates) {
+    const message = flatten(candidate);
+    if (message) return message;
+  }
+
+  return null;
+}
+
+function normalizeAuthErrorMessage(error: unknown, fallbackMessage: string): string {
+  const rawMessage = extractAuthErrorMessage(error);
+  const lowerMessage = rawMessage?.toLowerCase() ?? '';
+  const status = Number((error as any)?.response?.status ?? 0) || null;
+
+  if (!status && /network|failed to fetch|network request failed|timeout|econn/i.test(lowerMessage)) {
+    return 'Network error. Check your connection and try again.';
+  }
+
+  if (status === 401) {
+    return 'Invalid email or password. Check your details and try again.';
+  }
+
+  if (status === 409 || /already exist|already exists|already in use|duplicate/i.test(lowerMessage)) {
+    return 'That email is already in use. Sign in instead.';
+  }
+
+  if (/invalid email|please provide a valid email address|email is required/i.test(lowerMessage)) {
+    return 'Enter a valid email address.';
+  }
+
+  if (
+    /password must be at least|password is required|password cannot be empty|too common|too easy to guess|repeated patterns|password must be at most/i.test(
+      lowerMessage,
+    )
+  ) {
+    return 'Use a stronger password with at least 12 characters.';
+  }
+
+  if (/missing required fields|first name is required|last name is required|brand full name/i.test(lowerMessage)) {
+    return 'Complete all required signup fields.';
+  }
+
+  return fallbackMessage;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [token, setToken] = useState<string | null>(null);
@@ -345,166 +420,133 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [signOut, token]);
 
   const signIn = useCallback(async ({ email, password }: SignInParams) => {
-    const rawIdentifier = String(email ?? '');
-    const rawPassword = String(password ?? '');
-    const normalizedIdentifier = sanitizeLoginIdentifier(email);
-    const sanitizedPassword = sanitizeLoginPassword(password);
-    const looksLikeEmail = normalizedIdentifier.includes('@');
+    try {
+      const rawIdentifier = String(email ?? '');
+      const rawPassword = String(password ?? '');
+      const normalizedIdentifier = sanitizeLoginIdentifier(email);
+      const sanitizedPassword = sanitizeLoginPassword(password);
+      const looksLikeEmail = normalizedIdentifier.includes('@');
 
-    if (__DEV__) {
-      console.log('[auth] login submit diagnostics', {
-        rawIdentifierMeta: summarizeIdentifier(rawIdentifier),
-        normalizedIdentifierMeta: summarizeIdentifier(normalizedIdentifier),
-        identifierChanged: rawIdentifier !== normalizedIdentifier,
-        looksLikeEmail,
-        rawPasswordMeta: summarizeSecret(rawPassword),
-        sanitizedPasswordMeta: summarizeSecret(sanitizedPassword),
-      });
-    }
-
-    if (!normalizedIdentifier || !sanitizedPassword) {
-      throw new Error('Login failed: missing identifier or password');
-    }
-
-    const loginWithPayload = (
-      candidatePayload: { email: string; password: string } | { identifier: string; password: string },
-      label: string,
-    ) => {
       if (__DEV__) {
-        console.log('[auth] /auth/login payload', {
-          attempt: label,
-          payload: {
-            field: 'email' in candidatePayload ? 'email' : 'identifier',
-            identifierMeta: summarizeIdentifier(
-              'email' in candidatePayload ? candidatePayload.email : candidatePayload.identifier,
-            ),
-            password: maskSecret(candidatePayload.password),
-          },
-          passwordMeta: summarizeSecret(candidatePayload.password),
+        console.log('[auth] login submit diagnostics', {
+          rawIdentifierMeta: summarizeIdentifier(rawIdentifier),
+          normalizedIdentifierMeta: summarizeIdentifier(normalizedIdentifier),
+          identifierChanged: rawIdentifier !== normalizedIdentifier,
+          looksLikeEmail,
+          rawPasswordMeta: summarizeSecret(rawPassword),
+          sanitizedPasswordMeta: summarizeSecret(sanitizedPassword),
         });
       }
 
-      return apiClient.post('/auth/login', candidatePayload).catch((error) => {
+      if (!normalizedIdentifier || !sanitizedPassword) {
+        throw new Error('Login failed: missing identifier or password');
+      }
+
+      const loginWithPayload = (
+        candidatePayload: { email: string; password: string } | { identifier: string; password: string },
+        label: string,
+      ) => {
         if (__DEV__) {
-          console.log('[auth] login attempt failed', {
+          console.log('[auth] /auth/login payload', {
             attempt: label,
-            status: error?.response?.status,
-            data: error?.response?.data,
+            payload: {
+              field: 'email' in candidatePayload ? 'email' : 'identifier',
+              identifierMeta: summarizeIdentifier(
+                'email' in candidatePayload ? candidatePayload.email : candidatePayload.identifier,
+              ),
+              password: maskSecret(candidatePayload.password),
+            },
+            passwordMeta: summarizeSecret(candidatePayload.password),
           });
         }
-        throw error;
-      });
-    };
 
-    const loginWithPassword = (candidatePassword: string, label: string) =>
-      apiClient.post(
-        '/auth/login',
-        looksLikeEmail
-          ? {
-              email: normalizedIdentifier,
-              password: candidatePassword,
-            }
-          : {
-              identifier: normalizedIdentifier,
-              password: candidatePassword,
-            },
-      ).catch((error) => {
-        if (__DEV__) {
-          console.log('[auth] login attempt failed', {
-            attempt: label,
-            status: error?.response?.status,
-            data: error?.response?.data,
-          });
-        }
-        throw error;
-      });
-
-    let response;
-    try {
-      try {
-        response = await loginWithPassword(sanitizedPassword, 'primary');
-      } catch (error: any) {
-        const trimmedPassword = sanitizedPassword.trim();
-        const canRetryWithTrimmedPassword =
-          error?.response?.status === 401 && trimmedPassword !== sanitizedPassword;
-
-        if (canRetryWithTrimmedPassword) {
-          response = await loginWithPassword(trimmedPassword, 'trimmed-password-retry');
-        } else if (error?.response?.status === 401 && looksLikeEmail) {
-          response = await loginWithPayload(
-            {
-              identifier: normalizedIdentifier,
-              password: sanitizedPassword,
-            },
-            'identifier-fallback',
-          );
-        } else {
+        return apiClient.post('/auth/login', candidatePayload).catch((error) => {
+          if (__DEV__) {
+            console.log('[auth] login attempt failed', {
+              attempt: label,
+              status: (error as any)?.response?.status,
+              data: (error as any)?.response?.data,
+            });
+          }
           throw error;
+        });
+      };
+
+      const loginWithPassword = (candidatePassword: string, label: string) =>
+        apiClient.post(
+          '/auth/login',
+          looksLikeEmail
+            ? {
+                email: normalizedIdentifier,
+                password: candidatePassword,
+              }
+            : {
+                identifier: normalizedIdentifier,
+                password: candidatePassword,
+              },
+        ).catch((error) => {
+          if (__DEV__) {
+            console.log('[auth] login attempt failed', {
+              attempt: label,
+              status: (error as any)?.response?.status,
+              data: (error as any)?.response?.data,
+            });
+          }
+          throw error;
+        });
+
+      let response;
+      try {
+        try {
+          response = await loginWithPassword(sanitizedPassword, 'primary');
+        } catch (error: any) {
+          const trimmedPassword = sanitizedPassword.trim();
+          const canRetryWithTrimmedPassword =
+            error?.response?.status === 401 && trimmedPassword !== sanitizedPassword;
+
+          if (canRetryWithTrimmedPassword) {
+            response = await loginWithPassword(trimmedPassword, 'trimmed-password-retry');
+          } else if (error?.response?.status === 401 && looksLikeEmail) {
+            response = await loginWithPayload(
+              {
+                identifier: normalizedIdentifier,
+                password: sanitizedPassword,
+              },
+              'identifier-fallback',
+            );
+          } else {
+            throw error;
+          }
         }
+      } catch (error: any) {
+        throw new Error(
+          normalizeAuthErrorMessage(
+            error,
+            'Unable to sign in right now. Check your connection and try again.',
+          ),
+        );
       }
-    } catch (error: any) {
-      if (error?.response?.status === 401) {
-        throw new Error('Invalid email or password. Check your details and try again.');
+
+      const data = unwrapData<any>(response.data);
+      const accessToken: string | null = (data as any)?.accessToken ?? (data as any)?.token ?? null;
+      const refreshToken: string | null = (data as any)?.refreshToken ?? null;
+
+      if (!accessToken) {
+        throw new Error('Login failed: missing access token');
       }
-      throw error;
-    }
 
-    const data = unwrapData<any>(response.data);
-    const accessToken: string | null = (data as any)?.accessToken ?? (data as any)?.token ?? null;
-    const refreshToken: string | null = (data as any)?.refreshToken ?? null;
-
-    if (!accessToken) {
-      throw new Error('Login failed: missing access token');
-    }
-
-    await setAccessToken(accessToken);
-    setApiAuthToken(accessToken);
-    setToken(accessToken);
-    setStatus('authenticated');
-
-    if (refreshToken) {
-      await setRefreshToken(refreshToken);
-      setApiRefreshToken(refreshToken);
-      setRefreshTokenState(refreshToken);
-    }
-
-    // Prefer server-provided user; else validate with /auth/profile.
-    const rawUser = (data as any)?.user;
-    const mappedUser = normalizeAuthUser(rawUser);
-    if (mappedUser?.id) {
-      setUser(mappedUser);
-    } else {
-      await validateToken();
-    }
-  }, [validateToken]);
-
-  const signUp = useCallback(async (params: SignUpParams) => {
-    const payload = {
-      firstName: params.firstName.trim(),
-      lastName: params.lastName.trim(),
-      email: params.email.trim(),
-      password: params.password,
-      type: params.type ?? 'REGULAR',
-      brandFullName: params.brandFullName?.trim() || undefined,
-    };
-
-    const response = await apiClient.post('/auth/signup', payload);
-    const data = unwrapData<any>(response.data);
-
-    // Backend may return token + user. If not, fall back to signIn.
-    const accessToken: string | null = (data as any)?.accessToken ?? (data as any)?.token ?? null;
-    const refreshToken: string | null = (data as any)?.refreshToken ?? null;
-
-    if (accessToken) {
       await setAccessToken(accessToken);
       setApiAuthToken(accessToken);
       setToken(accessToken);
       setStatus('authenticated');
+
       if (refreshToken) {
         await setRefreshToken(refreshToken);
         setApiRefreshToken(refreshToken);
         setRefreshTokenState(refreshToken);
       }
+
+      // Prefer server-provided user; else validate with /auth/profile.
       const rawUser = (data as any)?.user;
       const mappedUser = normalizeAuthUser(rawUser);
       if (mappedUser?.id) {
@@ -512,10 +554,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         await validateToken();
       }
-      return;
+    } catch (error: any) {
+      throw new Error(
+        normalizeAuthErrorMessage(
+          error,
+          'Unable to sign in right now. Check your connection and try again.',
+        ),
+      );
     }
+  }, [validateToken]);
 
-    await signIn({ email: payload.email, password: payload.password });
+  const signUp = useCallback(async (params: SignUpParams) => {
+    try {
+      const payload = {
+        firstName: params.firstName.trim(),
+        lastName: params.lastName.trim(),
+        email: params.email.trim(),
+        password: params.password,
+        type: params.type ?? 'REGULAR',
+        brandFullName: params.brandFullName?.trim() || undefined,
+      };
+
+      const response = await apiClient.post('/auth/signup', payload);
+      const data = unwrapData<any>(response.data);
+
+      // Backend may return token + user. If not, fall back to signIn.
+      const accessToken: string | null = (data as any)?.accessToken ?? (data as any)?.token ?? null;
+      const refreshToken: string | null = (data as any)?.refreshToken ?? null;
+
+      if (accessToken) {
+        await setAccessToken(accessToken);
+        setApiAuthToken(accessToken);
+        setToken(accessToken);
+        setStatus('authenticated');
+        if (refreshToken) {
+          await setRefreshToken(refreshToken);
+          setApiRefreshToken(refreshToken);
+          setRefreshTokenState(refreshToken);
+        }
+        const rawUser = (data as any)?.user;
+        const mappedUser = normalizeAuthUser(rawUser);
+        if (mappedUser?.id) {
+          setUser(mappedUser);
+        } else {
+          await validateToken();
+        }
+        return;
+      }
+
+      await signIn({ email: payload.email, password: payload.password });
+    } catch (error: any) {
+      throw new Error(
+        normalizeAuthErrorMessage(
+          error,
+          'Unable to create your account right now. Please try again.',
+        ),
+      );
+    }
   }, [signIn, validateToken]);
 
   useEffect(() => {

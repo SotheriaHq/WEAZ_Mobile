@@ -35,6 +35,21 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 type UserType = 'REGULAR' | 'BRAND' | null;
 
+const PASSWORD_MIN_LENGTH = 12;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function clearError(
+  setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+  key: string,
+) {
+  setErrors((current) => {
+    if (!current[key]) return current;
+    const next = { ...current };
+    delete next[key];
+    return next;
+  });
+}
+
 export default function SignupScreen() {
   const { theme, scheme } = useTheme();
   const isDark = scheme === 'dark';
@@ -143,20 +158,35 @@ export default function SignupScreen() {
 
   const onSubmit = async () => {
     const newErrors: Record<string, string> = {};
+    const trimmedFirstName = firstName.trim();
+    const trimmedLastName = lastName.trim();
+    const trimmedBrandName = brandName.trim();
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password;
+    const trimmedConfirmPassword = confirmPassword;
 
     if (!userType) {
-      toast.warning('Choose whether you are a Shopper or a Brand 🛍️✨');
-      return;
+      newErrors.userType = 'Choose an account type.';
     }
-    if (!firstName.trim()) newErrors.firstName = 'First name required';
-    if (!lastName.trim()) newErrors.lastName = 'Last name required';
-    if (userType === 'BRAND' && !brandName.trim()) newErrors.brandName = 'Brand name required';
-    if (!email.trim()) newErrors.email = 'Email address required';
-    if (!password) newErrors.password = 'Password required';
-    if (!confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password';
-    } else if (password !== confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
+    if (trimmedFirstName.length < 2) newErrors.firstName = 'First name must be at least 2 characters.';
+    if (trimmedLastName.length < 2) newErrors.lastName = 'Last name must be at least 2 characters.';
+    if (userType === 'BRAND' && trimmedBrandName.length < 2) {
+      newErrors.brandName = 'Brand name must be at least 2 characters.';
+    }
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      newErrors.email = 'Enter a valid email address.';
+    }
+    if (trimmedPassword.length < PASSWORD_MIN_LENGTH) {
+      newErrors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+    }
+    if (!trimmedConfirmPassword) {
+      newErrors.confirmPassword = 'Please confirm your password.';
+    } else if (trimmedPassword !== trimmedConfirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match.';
+    }
+
+    if (!acceptedTerms) {
+      newErrors.acceptedTerms = 'Accept the Terms and Privacy Policy to continue.';
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -164,27 +194,27 @@ export default function SignupScreen() {
       return;
     }
 
-    if (!acceptedTerms) {
-      toast.warning('Please accept the Terms & Privacy to continue.');
-      return;
-    }
-
     setErrors({});
     setSubmitting(true);
     try {
       await signUp({
-        firstName,
-        lastName,
-        email: email.trim(),
-        password,
-        type: userType,
-        ...(userType === 'BRAND' ? { brandFullName: brandName.trim() } : {}),
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
+        email: trimmedEmail,
+        password: trimmedPassword,
+        type: userType ?? 'REGULAR',
+        ...(userType === 'BRAND' ? { brandFullName: trimmedBrandName } : {}),
       });
       toast.success('Welcome to Threadly! 🎉');
       setPendingNavigation(true);
     } catch (e: any) {
       const message =
         typeof e?.message === 'string' ? e.message : 'Signup failed. Please try again.';
+      if (/email/i.test(message)) {
+        setErrors((current) => ({ ...current, email: message }));
+      } else if (/password/i.test(message)) {
+        setErrors((current) => ({ ...current, password: message }));
+      }
       toast.error(message);
     } finally {
       setSubmitting(false);
@@ -281,7 +311,21 @@ export default function SignupScreen() {
           <View style={[styles.formInner, { backgroundColor: formBg }]}>
             {/* Account type selector */}
             <AppText variant="caption" tone="muted" style={styles.sectionLabel}>I AM A...</AppText>
-            <AccountTypeSelector value={userType} onChange={setUserType} />
+            <AccountTypeSelector
+              value={userType}
+              onChange={(nextType) => {
+                setUserType(nextType);
+                clearError(setErrors, 'userType');
+                if (nextType !== 'BRAND') {
+                  clearError(setErrors, 'brandName');
+                }
+              }}
+            />
+            {errors.userType ? (
+              <AppText variant="caption" tone="danger" style={styles.inlineError}>
+                {errors.userType}
+              </AppText>
+            ) : null}
 
             <View style={styles.fieldsContainer}>
               {/* Name row */}
@@ -290,7 +334,10 @@ export default function SignupScreen() {
                   <FloatingLabelInput
                     label="First Name"
                     value={firstName}
-                    onChangeText={setFirstName}
+                    onChangeText={(value) => {
+                      setFirstName(value);
+                      clearError(setErrors, 'firstName');
+                    }}
                     autoCapitalize="words"
                     error={errors.firstName}
                     testID="signup-firstname-input"
@@ -301,7 +348,10 @@ export default function SignupScreen() {
                   <FloatingLabelInput
                     label="Last Name"
                     value={lastName}
-                    onChangeText={setLastName}
+                    onChangeText={(value) => {
+                      setLastName(value);
+                      clearError(setErrors, 'lastName');
+                    }}
                     autoCapitalize="words"
                     error={errors.lastName}
                     testID="signup-lastname-input"
@@ -316,7 +366,10 @@ export default function SignupScreen() {
                     label="Brand Name"
                     icon="✨"
                     value={brandName}
-                    onChangeText={setBrandName}
+                    onChangeText={(value) => {
+                      setBrandName(value);
+                      clearError(setErrors, 'brandName');
+                    }}
                     autoCapitalize="words"
                     error={errors.brandName}
                     testID="signup-brandname-input"
@@ -328,7 +381,10 @@ export default function SignupScreen() {
                 label="Email Address"
                 icon="📧"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  clearError(setErrors, 'email');
+                }}
                 keyboardType="email-address"
                 error={errors.email}
                 testID="signup-email-input"
@@ -338,7 +394,11 @@ export default function SignupScreen() {
                 label="Password"
                 icon="🔑"
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(value) => {
+                  setPassword(value);
+                  clearError(setErrors, 'password');
+                  clearError(setErrors, 'confirmPassword');
+                }}
                 isPassword
                 error={errors.password}
                 testID="signup-password-input"
@@ -348,7 +408,10 @@ export default function SignupScreen() {
                 label="Confirm Password"
                 icon="🔒"
                 value={confirmPassword}
-                onChangeText={setConfirmPassword}
+                onChangeText={(value) => {
+                  setConfirmPassword(value);
+                  clearError(setErrors, 'confirmPassword');
+                }}
                 isPassword
                 error={errors.confirmPassword}
                 testID="signup-confirm-password-input"
@@ -357,7 +420,10 @@ export default function SignupScreen() {
 
             {/* Terms checkbox */}
             <Pressable
-              onPress={() => setAcceptedTerms((v) => !v)}
+              onPress={() => {
+                setAcceptedTerms((v) => !v);
+                clearError(setErrors, 'acceptedTerms');
+              }}
               style={styles.termsRow}
               accessibilityRole="checkbox"
               accessibilityLabel="Accept terms and privacy"
@@ -372,6 +438,11 @@ export default function SignupScreen() {
                 <AppText variant="captionBold" tone="primary">Privacy Policy</AppText>
               </AppText>
             </Pressable>
+            {errors.acceptedTerms ? (
+              <AppText variant="caption" tone="danger" style={styles.inlineError}>
+                {errors.acceptedTerms}
+              </AppText>
+            ) : null}
 
             {/* CTA */}
             <View style={{ marginTop: tokens.spacing.xl }}>
@@ -387,9 +458,7 @@ export default function SignupScreen() {
             <View style={styles.footerRow}>
               <AppText variant="body" tone="muted">Already a member?</AppText>
               <Pressable
-                onPress={() =>
-                  router.replace({ pathname: '/login', params: { next: nextPath } })
-                }
+                onPress={() => router.replace({ pathname: '/(auth)/login', params: { next: nextPath } })}
                 accessibilityRole="button"
                 accessibilityLabel="Sign in to existing account"
               >
@@ -488,6 +557,10 @@ const styles = StyleSheet.create({
   },
   termsText: {
     flex: 1,
+  },
+  inlineError: {
+    marginTop: -tokens.spacing.xs,
+    marginBottom: tokens.spacing.xs,
   },
   footerRow: {
     marginTop: tokens.spacing['2xl'],

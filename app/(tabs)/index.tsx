@@ -590,14 +590,14 @@ const FeedActionRail = React.memo(function FeedActionRail({
 
       <View style={styles.railItem}>
         <IconButton size={44} onPress={handleCommentsPress}>
-          <AppText variant="subtitle">ðŸ’¬</AppText>
+          <AppText variant="subtitle">💬</AppText>
         </IconButton>
         <AppText variant="captionBold" tone="inverse">{comments}</AppText>
       </View>
 
       <View style={styles.railItem}>
         <IconButton size={44}>
-          <AppText variant="subtitle">{item.isLiked ? 'â¤ï¸' : 'ðŸ¤'}</AppText>
+          <AppText variant="subtitle">{item.isLiked ? '❤️' : '🤍'}</AppText>
         </IconButton>
         <AppText variant="captionBold" tone="inverse">{likes}</AppText>
       </View>
@@ -662,7 +662,7 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
         ) : null}
 
         <View style={styles.audioRow}>
-          <AppText variant="captionBold">ðŸŽµ</AppText>
+          <AppText variant="captionBold">🎵</AppText>
           <AppText variant="captionBold" tone="inverse" numberOfLines={1} ellipsizeMode="tail">
             Original Audio
           </AppText>

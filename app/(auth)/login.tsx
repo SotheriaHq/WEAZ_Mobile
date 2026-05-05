@@ -288,7 +288,7 @@ export default function LoginScreen() {
                 New to Threadly?
               </AppText>
               <Pressable
-                onPress={() => router.push({ pathname: '/signup', params: { next: nextPath } })}
+                onPress={() => router.push({ pathname: '/(auth)/signup', params: { next: nextPath } })}
                 accessibilityRole="button"
                 accessibilityLabel="Create account"
               >

@@ -68,6 +68,17 @@ const getDirectSourceType = (value: string) => {
   return 'direct-url';
 };
 
+const shouldPreferFileIdResolution = (directSrc: string | null, normalizedFileId: string | null) => {
+  if (!directSrc || !normalizedFileId) return false;
+
+  const directSourceType = getDirectSourceType(directSrc);
+  return Boolean(
+    directSourceType === 'signed-s3-url' ||
+      directSourceType === 'direct-s3-url' ||
+      hasSignedUrlParams(directSrc),
+  );
+};
+
 const isUsableDirectHttpUrl = (value: string) => {
   const sourceType = getDirectSourceType(value);
   return Boolean(sourceType && sourceType !== 'loopback-url');
@@ -189,7 +200,7 @@ export const resolveImageUri = async ({
     return null;
   }
 
-  if (directSrc && isUsableDirectHttpUrl(directSrc)) {
+  if (directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
     devMediaLog('resolve-direct', {
       sourceType: getDirectSourceType(directSrc),
       hasFileId: Boolean(normalizedFileId),
@@ -329,7 +340,7 @@ export function useResolvedImageUri({
   const resolvedKeyRef = useRef<string | null>(null);
   const lastSuccessfulRef = useRef<{ key: string; uri: string } | null>(null);
   const [resolvedUri, setResolvedUri] = useState<string | null>(() => {
-    if (directSrc && isUsableDirectHttpUrl(directSrc)) {
+    if (directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
       const key = `direct:${directSrc}`;
       resolvedKeyRef.current = key;
       lastSuccessfulRef.current = { key, uri: directSrc };
@@ -356,7 +367,7 @@ export function useResolvedImageUri({
       return;
     }
 
-    if (directSrc && isUsableDirectHttpUrl(directSrc)) {
+    if (directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
       resolvedKeyRef.current = activeKey;
       lastSuccessfulRef.current = { key: activeKey, uri: directSrc };
       setResolvedUri(directSrc);
@@ -463,7 +474,7 @@ export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {
   const [loading, setLoading] = useState<boolean>(() => {
     if (!enabled) return false;
     if (!directSrc && !normalizedFileId) return false;
-    if (directSrc && isUsableDirectHttpUrl(directSrc)) return false;
+    if (directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) return false;
     return uri == null;
   });
 
@@ -473,7 +484,7 @@ export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {
       return;
     }
 
-    if (directSrc && isUsableDirectHttpUrl(directSrc)) {
+    if (directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
       setLoading(false);
       return;
     }

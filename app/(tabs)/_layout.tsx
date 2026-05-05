@@ -37,6 +37,8 @@ export default function TabLayout() {
 
   const isBrand = user?.type === 'BRAND';
   const canOpenProfileMenu = status === 'authenticated';
+  const profileNavLabel = canOpenProfileMenu ? 'Profile' : 'Sign In';
+  const profileNavEmoji = canOpenProfileMenu ? '👤' : '🔐';
   const { bottomOffset: islandBottomOffset } = getNativeIslandLayout(
     windowWidth,
     insets.bottom,
@@ -50,7 +52,7 @@ export default function TabLayout() {
     pathname === '/(tabs)';
 
   const activeIslandKey = useMemo(() => {
-    if (profileMenuVisible || pathname === '/me' || pathname === '/me-edit') {
+    if (profileMenuVisible || (canOpenProfileMenu && (pathname === '/me' || pathname === '/me-edit'))) {
       return 'profile';
     }
     if (pathname === '/discover') {
@@ -63,7 +65,7 @@ export default function TabLayout() {
       return 'inbox';
     }
     return 'designs';
-  }, [pathname, profileMenuVisible]);
+  }, [canOpenProfileMenu, pathname, profileMenuVisible]);
 
   const refreshUnreadNotificationCount = useCallback(async () => {
     const ready = await refreshSharedUnreadNotificationCount({
@@ -89,7 +91,7 @@ export default function TabLayout() {
   const handleProfilePress = useCallback(
     () => {
       if (!canOpenProfileMenu) {
-        router.replace('/(tabs)/me' as any);
+        router.replace({ pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as any);
         return;
       }
 
@@ -122,13 +124,13 @@ export default function TabLayout() {
       { key: 'inbox', label: 'Messages', emoji: '✉️', active: activeIslandKey === 'inbox' },
       {
         key: 'profile',
-        label: 'Profile',
-        emoji: '👤',
+        label: profileNavLabel,
+        emoji: profileNavEmoji,
         active: activeIslandKey === 'profile',
-        badge: notificationCountReady ? unreadNotificationCount : undefined,
+        badge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
       },
     ],
-    [activeIslandKey, isBrand, notificationCountReady, unreadNotificationCount],
+    [activeIslandKey, canOpenProfileMenu, isBrand, notificationCountReady, profileNavEmoji, profileNavLabel, unreadNotificationCount],
   );
 
   const handleSelect = useCallback(
@@ -278,7 +280,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="me"
           options={{
-            title: 'Profile',
+            title: canOpenProfileMenu ? 'Profile' : 'Sign In',
           }}
         />
 
