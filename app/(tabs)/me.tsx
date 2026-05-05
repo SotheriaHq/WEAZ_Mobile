@@ -125,14 +125,15 @@ function EmptyState({
   cta: string;
   onPress: () => void;
 }) {
+  const { theme } = useTheme();
   return (
-    <Card padding="lg" style={styles.emptyCard}>
+    <Card padding="md" style={[styles.emptyCard, { backgroundColor: theme.colors.surfaceAlt }]}>
       <AppText variant="display">{emoji}</AppText>
       <AppText variant="subtitle">{title}</AppText>
       <AppText variant="body" tone="muted" style={styles.emptyBody}>
         {body}
       </AppText>
-      <Button title={cta} onPress={onPress} fullWidth />
+      <Button title={cta} size="sm" onPress={onPress} fullWidth />
     </Card>
   );
 }
@@ -202,7 +203,11 @@ function ProfileAction({
 }) {
   const { theme } = useTheme();
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.actionCard, { backgroundColor: theme.colors.surfaceAlt }, pressed ? styles.pressed : null]}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.actionCard, { backgroundColor: theme.colors.surfaceAlt }, pressed ? styles.pressed : null]}
+    >
       <AppText variant="subtitle">{emoji}</AppText>
       <AppText variant="bodyBold" numberOfLines={1}>{label}</AppText>
     </Pressable>
@@ -221,7 +226,7 @@ function MeasurementCard({
   const unit = sizeFit?.preferredLengthUnit?.toLowerCase() ?? 'cm';
 
   return (
-    <Card padding="lg" style={[styles.fittingsCard, { backgroundColor: theme.colors.surfaceAlt }]}>
+    <Card padding="md" style={[styles.fittingsCard, { backgroundColor: theme.colors.surfaceAlt }]}>
       <View style={styles.sectionHeaderRow}>
         <View style={styles.sectionHeaderCopy}>
           <AppText variant="bodyBold">My fittings</AppText>
@@ -265,6 +270,7 @@ function SavedDesignCard({ item }: { item: SavedItem }) {
           params: { collectionId: destinationId, scope: 'design' },
         } as any)
       }
+      accessibilityRole="button"
       style={({ pressed }) => [styles.savedCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, pressed ? styles.pressed : null]}
     >
       {item.thumbnail ? (
@@ -316,7 +322,6 @@ function PatchRow({ brand }: { brand: PatchedBrand }) {
           {identity.locationLabel || identity.handle || 'Patched brand'}
         </AppText>
       </View>
-      <AppText variant="subtitle" tone="muted">›</AppText>
     </Pressable>
   );
 }
@@ -739,7 +744,7 @@ export default function BuyerProfileScreen() {
           </Card>
         ) : null}
 
-        <View style={styles.tabWrap}>
+        <View style={[styles.tabWrap, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
           {PROFILE_TABS.map((tab) => {
             const selected = tab === activeTab;
             return (
@@ -747,6 +752,7 @@ export default function BuyerProfileScreen() {
                 key={tab}
                 onPress={() => {
                   if (tab === 'Orders') {
+                    setActiveTab(tab);
                     router.push('/orders' as any);
                     return;
                   }
@@ -892,9 +898,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    gap: tokens.spacing.lg,
+    gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.md,
+    paddingTop: tokens.spacing.sm,
   },
   loadingState: {
     flex: 1,
@@ -910,23 +916,23 @@ const styles = StyleSheet.create({
   },
   hero: {
     alignItems: 'center',
-    gap: tokens.spacing.md,
+    gap: tokens.spacing.sm,
   },
   avatarWrap: {
     position: 'relative',
   },
   heroAvatar: {
-    width: 104,
-    height: 104,
-    borderRadius: 28,
+    width: 92,
+    height: 92,
+    borderRadius: 26,
   },
   avatarBadge: {
     position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    right: 0,
+    bottom: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -940,29 +946,29 @@ const styles = StyleSheet.create({
   actionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
   },
   actionCard: {
     flexBasis: '48%',
     flexGrow: 1,
-    minHeight: 88,
+    minHeight: 76,
     borderRadius: tokens.radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.md,
   },
   summaryRow: {
     flexDirection: 'row',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
   },
   summaryCard: {
     flex: 1,
     gap: tokens.spacing.xs,
   },
   fittingsCard: {
-    gap: tokens.spacing.md,
+    gap: tokens.spacing.sm,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -976,43 +982,46 @@ const styles = StyleSheet.create({
   measurementGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
   },
   measurementPill: {
     minWidth: '31%',
     flexGrow: 1,
     borderWidth: 1,
     borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.sm,
     paddingVertical: tokens.spacing.sm,
-    gap: tokens.spacing.xs,
+    gap: 2,
   },
   measurementEmpty: {
     alignItems: 'center',
-    gap: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.md,
+    gap: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.sm,
   },
   errorCard: {
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
     borderWidth: 1,
   },
   tabWrap: {
     flexDirection: 'row',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
+    padding: 4,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
   },
   tabPill: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 40,
     borderRadius: tokens.radius.full,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.xs,
   },
   savedGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
   },
   savedCard: {
     width: '48.5%',
@@ -1033,19 +1042,19 @@ const styles = StyleSheet.create({
     padding: tokens.spacing.md,
   },
   listStack: {
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
   },
   listCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.md,
+    gap: tokens.spacing.sm,
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
-    padding: tokens.spacing.md,
+    padding: tokens.spacing.sm,
   },
   rowAvatar: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1062,7 +1071,7 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     alignItems: 'center',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
   },
   emptyBody: {
     textAlign: 'center',
@@ -1085,8 +1094,8 @@ const styles = StyleSheet.create({
   skeletonWrap: {
     flex: 1,
     paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.lg,
-    gap: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
+    gap: tokens.spacing.md,
   },
   skeletonHeader: {
     flexDirection: 'row',

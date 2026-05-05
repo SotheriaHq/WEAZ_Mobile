@@ -76,8 +76,8 @@ export function ProfileMenuDropup({
   const initials = getAvatarFallback(displayName, user?.username);
   const availableMenuHeight = Math.max(264, height - bottomOffset - tokens.spacing.xl);
   const menuHeight = Math.min(availableMenuHeight, 340);
-  const availableMenuWidth = Math.max(112, width - tokens.spacing.sm * 2);
-  const menuWidth = Math.min(Math.max(128, Math.round(width * 0.32)), Math.min(160, availableMenuWidth));
+  const availableMenuWidth = Math.max(220, width - tokens.spacing.md * 2);
+  const menuWidth = Math.min(Math.max(220, Math.round(width * 0.7)), Math.min(300, availableMenuWidth));
 
   const runCloseAnimation = React.useCallback(
     (onDone?: () => void) => {
@@ -188,6 +188,8 @@ export function ProfileMenuDropup({
             >
               <Pressable
                 onPress={onOpenProfile}
+                accessibilityRole="button"
+                accessibilityLabel={`Open profile for ${displayName}`}
                 style={({ pressed }) => [styles.identity, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
               >
                 <View style={[styles.avatar, { backgroundColor: activeTheme.colors.primarySoft }]}> 
@@ -201,7 +203,7 @@ export function ProfileMenuDropup({
                 </View>
                 <View style={styles.textWrap}>
                   <View style={styles.nameRow}>
-                    <AppText variant="bodyBold" numberOfLines={2} ellipsizeMode="tail" style={styles.nameText}>
+                    <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail" style={styles.nameText}>
                       {displayName}
                     </AppText>
                     <Pressable
@@ -218,13 +220,12 @@ export function ProfileMenuDropup({
                     </AppText>
                   ) : null}
                 </View>
-                <AppText variant="subtitle" tone="muted">
-                  ›
-                </AppText>
               </Pressable>
 
               <Pressable
                 onPress={onOpenNotifications}
+                accessibilityRole="button"
+                accessibilityLabel="Open notifications"
                 style={({ pressed }) => [styles.item, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
               >
                 <AppText variant="subtitle">🔔</AppText>
@@ -233,14 +234,13 @@ export function ProfileMenuDropup({
                     Notifications
                   </AppText>
                 </View>
-                <AppText variant="subtitle" tone="muted">
-                  ›
-                </AppText>
               </Pressable>
 
               {user?.type === 'BRAND' && onOpenStudio ? (
                 <Pressable
                   onPress={onOpenStudio}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open studio"
                   style={({ pressed }) => [styles.item, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
                 >
                   <AppText variant="subtitle">🧵</AppText>
@@ -249,14 +249,13 @@ export function ProfileMenuDropup({
                       Studio
                     </AppText>
                   </View>
-                  <AppText variant="subtitle" tone="muted">
-                    ›
-                  </AppText>
                 </Pressable>
               ) : null}
 
               <Pressable
                 onPress={onOpenProfile}
+                accessibilityRole="button"
+                accessibilityLabel="View full profile"
                 style={({ pressed }) => [styles.item, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
               >
                 <AppText variant="subtitle">👤</AppText>
@@ -265,13 +264,12 @@ export function ProfileMenuDropup({
                     View full profile
                   </AppText>
                 </View>
-                <AppText variant="subtitle" tone="muted">
-                  ›
-                </AppText>
               </Pressable>
 
               <Pressable
                 onPress={handleSignOut}
+                accessibilityRole="button"
+                accessibilityLabel="Sign out"
                 style={({ pressed }) => [styles.item, { borderTopColor: activeTheme.colors.border }, styles.signOutItem, pressed && styles.pressed]}
               >
                 <AppText variant="subtitle">🚪</AppText>
@@ -299,8 +297,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   menu: {
-    minWidth: 112,
-    maxWidth: 160,
+    minWidth: 220,
+    maxWidth: 300,
     borderRadius: tokens.radius.xl,
     borderWidth: 1,
     overflow: 'hidden',
@@ -313,19 +311,20 @@ const styles = StyleSheet.create({
   menuContent: {
     flexGrow: 1,
     justifyContent: 'space-between',
-    paddingVertical: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.sm,
   },
   identity: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.xs,
     paddingVertical: tokens.spacing.sm,
     borderBottomWidth: 1,
+    minHeight: 64,
   },
   nameRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 4,
   },
   nameText: {
@@ -365,6 +364,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.xs,
     paddingVertical: tokens.spacing.sm,
     borderBottomWidth: 1,
+    minHeight: 48,
   },
   signOutItem: {
     borderTopWidth: 1,
