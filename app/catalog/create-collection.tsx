@@ -11,7 +11,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 
 export default function CreateCollectionScreen() {
-  const { theme, scheme } = useTheme();
+  const { theme } = useTheme();
   const toast = useToast();
 
   const [booting, setBooting] = useState(true);
@@ -45,7 +45,7 @@ export default function CreateCollectionScreen() {
   }, []);
 
   const canSave = useMemo(() => title.trim().length > 0 && !saving, [saving, title]);
-  const isDark = scheme === 'dark';
+  
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -96,8 +96,8 @@ export default function CreateCollectionScreen() {
             style={[
               styles.card,
               {
-                backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#ffffff',
-                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(17,24,39,0.08)',
+                backgroundColor: theme.colors.controlSurface,
+                borderColor: theme.colors.controlSurfaceActive,
               },
             ]}
           >
@@ -136,9 +136,7 @@ export default function CreateCollectionScreen() {
                     backgroundColor:
                       visibility === 'PUBLIC'
                         ? 'rgba(124,58,237,0.12)'
-                        : isDark
-                          ? 'rgba(255,255,255,0.03)'
-                          : '#ffffff',
+                        : theme.colors.surface,
                   },
                 ]}
               >
@@ -156,9 +154,7 @@ export default function CreateCollectionScreen() {
                     backgroundColor:
                       visibility === 'PRIVATE'
                         ? 'rgba(124,58,237,0.12)'
-                        : isDark
-                          ? 'rgba(255,255,255,0.03)'
-                          : '#ffffff',
+                        : theme.colors.surface,
                   },
                 ]}
               >

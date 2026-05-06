@@ -13,7 +13,7 @@ export const LAYOUT = {
   META_BOTTOM: 80,
 } as const;
 
-// 🌟 Glassmorphism tokens
+// 🌟 Glassmorphism tokens (DEPRECATED - pending Phase 10 cleanup)
 export const GLASS = {
   dark: {
     bg: 'rgba(0, 0, 0, 0.58)',
@@ -29,7 +29,7 @@ export const GLASS = {
   },
 } as const;
 
-// 🎬 Gradient presets for overlays (use with LinearGradient)
+// 🎬 Gradient presets for overlays (DEPRECATED - pending Phase 10 cleanup)
 export const GRADIENTS = {
   // Top overlay: dark at top, fades to transparent
   feedTop: {
@@ -72,17 +72,20 @@ type Theme = {
     success: string;
     warning: string;
     badgeRed: string;
+    skeletonBase: string;
+    skeletonHighlight: string;
+    backdrop: string;
+    backdropStrong: string;
+    bottomSheetSurface: string;
+    bottomSheetHandle: string;
+    mutedSurface: string;
+    controlSurface: string;
+    controlSurfaceActive: string;
   };
 };
 
 export const tokens = {
   // Theme schedule for time-based mode.
-  timeTheme: {
-    // 7pm -> dark; 7am -> light
-    darkStartHour: 19,
-    lightStartHour: 7,
-  },
-
   themes: {
     light: {
       colors: {
@@ -107,6 +110,15 @@ export const tokens = {
         success: '#22c55e',
         warning: '#f59e0b',
         badgeRed: '#ef4444',
+        skeletonBase: 'rgba(0,0,0,0.02)',
+        skeletonHighlight: 'rgba(255,255,255,0.9)',
+        backdrop: 'rgba(8,15,26,0.22)',
+        backdropStrong: 'rgba(8,15,26,0.4)',
+        bottomSheetSurface: '#ffffff',
+        bottomSheetHandle: 'rgba(0,0,0,0.06)',
+        mutedSurface: '#ffffff',
+        controlSurface: '#ffffff',
+        controlSurfaceActive: 'rgba(17,24,39,0.08)',
       },
     } satisfies Theme,
     dark: {
@@ -132,6 +144,15 @@ export const tokens = {
         success: '#22c55e',
         warning: '#f59e0b',
         badgeRed: '#ef4444',
+        skeletonBase: 'rgba(255,255,255,0.04)',
+        skeletonHighlight: 'rgba(255,255,255,0.04)',
+        backdrop: 'rgba(0,0,0,0.58)',
+        backdropStrong: 'rgba(0,0,0,0.8)',
+        bottomSheetSurface: '#0B0F17',
+        bottomSheetHandle: 'rgba(255,255,255,0.08)',
+        mutedSurface: 'rgba(255,255,255,0.05)',
+        controlSurface: 'rgba(255,255,255,0.05)',
+        controlSurfaceActive: 'rgba(255,255,255,0.10)',
       },
     } satisfies Theme,
   } as const,

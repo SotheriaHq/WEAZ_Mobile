@@ -20,8 +20,7 @@ export function Skeleton({
   borderRadius = 8,
   style,
 }: SkeletonProps) {
-  const { scheme } = useTheme();
-  const isDark = scheme === 'dark';
+  const { theme } = useTheme();
   
   const shimmerAnim = useRef(new Animated.Value(0)).current;
 
@@ -43,13 +42,9 @@ export function Skeleton({
     outputRange: [-200, 200],
   });
 
-  const backgroundColor = isDark 
-    ? 'rgba(255, 255, 255, 0.08)' 
-    : 'rgba(0, 0, 0, 0.06)';
+  const backgroundColor = theme.colors.skeletonBase;
 
-  const shimmerColors = isDark
-    ? ['transparent', 'rgba(255, 255, 255, 0.12)', 'transparent']
-    : ['transparent', 'rgba(255, 255, 255, 0.6)', 'transparent'];
+  const shimmerColors = ['transparent', theme.colors.skeletonHighlight, 'transparent'];
 
   return (
     <View
@@ -126,16 +121,15 @@ export function SkeletonAvatar({ size = 48 }: { size?: number }) {
  * Card skeleton for feed items, products, etc.
  */
 export function SkeletonCard() {
-  const { scheme } = useTheme();
-  const isDark = scheme === 'dark';
+  const { theme } = useTheme();
 
   return (
     <View
       style={[
         styles.card,
         {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-          borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+          backgroundColor: theme.colors.skeletonBase,
+          borderColor: theme.colors.controlSurfaceActive,
         },
       ]}
     >
@@ -173,8 +167,7 @@ export function SkeletonCard() {
  * Post/Feed item skeleton (TikTok style)
  */
 export function SkeletonPost() {
-  const { scheme } = useTheme();
-  const isDark = scheme === 'dark';
+  const { theme } = useTheme();
 
   return (
     <View style={styles.postContainer}>
@@ -211,16 +204,15 @@ export function SkeletonPost() {
  * Product card skeleton for shop/store
  */
 export function SkeletonProductCard() {
-  const { scheme } = useTheme();
-  const isDark = scheme === 'dark';
+  const { theme } = useTheme();
 
   return (
     <View
       style={[
         styles.productCard,
         {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.9)',
-          borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+          backgroundColor: theme.colors.controlSurface,
+          borderColor: theme.colors.controlSurfaceActive,
         },
       ]}
     >

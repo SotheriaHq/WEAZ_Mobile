@@ -92,7 +92,7 @@ export function AppBottomSheet({
           <BlurView
             tint={isDark ? 'dark' : 'light'}
             intensity={Platform.OS === 'android' ? 24 : 38}
-            style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(0,0,0,0.58)' : 'rgba(8,15,26,0.22)' }]}
+            style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdrop }]}
           />
         </Pressable>
 
@@ -104,7 +104,7 @@ export function AppBottomSheet({
             style={[
               styles.sheet,
               {
-                backgroundColor: theme.colors.surface,
+                backgroundColor: theme.colors.bottomSheetSurface,
                 borderColor: theme.colors.border,
                 paddingBottom: Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm),
               },
@@ -112,7 +112,7 @@ export function AppBottomSheet({
               style,
             ]}
           >
-            <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
+            <View style={[styles.handle, { backgroundColor: theme.colors.bottomSheetHandle }]} />
 
             {(title || subtitle || onDone) ? (
               <View style={styles.header}>
