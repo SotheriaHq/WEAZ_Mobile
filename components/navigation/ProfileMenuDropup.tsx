@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
+import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens, type AppTheme } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -277,7 +278,7 @@ export function ProfileMenuDropup({
                 </View>
               </Pressable>
 
-              {user?.type === 'BRAND' && onOpenStudio ? (
+              {hasActiveBrandMembership(user) && onOpenStudio ? (
                 <Pressable
                   onPress={onOpenStudio}
                   accessibilityRole="button"

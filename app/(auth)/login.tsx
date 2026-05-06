@@ -26,6 +26,7 @@ import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
 import { Button } from '@/components/ui/Button';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
+import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 
 // ─── Invisible-character sanitizer (logic unchanged from original) ─────────────
 const INVISIBLE_AUTH_SPACING_REGEX =
@@ -100,7 +101,7 @@ export default function LoginScreen() {
     if (pendingNavigation && status === 'authenticated' && user) {
       const next = typeof params.next === 'string' ? params.next : undefined;
       const shouldForceBrandCatalog =
-        user.type === 'BRAND' &&
+        hasActiveBrandMembership(user) &&
         (!next || next === '/(tabs)/me' || next.startsWith('/(tabs)/me?'));
 
       if (shouldForceBrandCatalog) {

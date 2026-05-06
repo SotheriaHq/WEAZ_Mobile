@@ -11,6 +11,7 @@ import {
 } from '@/components/navigation/NativeIslandBottomNav';
 import { ProfileMenuDropup } from '@/components/navigation/ProfileMenuDropup';
 import { useAuth } from '@/src/auth/AuthContext';
+import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import {
@@ -36,7 +37,7 @@ export default function TabLayout() {
   const lastBackPressAtRef = useRef(0);
   const [optimisticActiveKey, setOptimisticActiveKey] = useState<string | null>(null);
 
-  const isBrand = user?.type === 'BRAND';
+  const isBrand = hasActiveBrandMembership(user);
   const canOpenProfileMenu = status === 'authenticated';
   const profileNavLabel = canOpenProfileMenu ? 'Profile' : 'Sign In';
   const profileNavEmoji = canOpenProfileMenu ? '👤' : '🔐';

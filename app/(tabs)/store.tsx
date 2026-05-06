@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { BrandShopTab } from '@/components/catalog/BrandShopTab';
 import { useAuth } from '@/src/auth/AuthContext';
+import { getActiveBrandId, hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -16,7 +17,8 @@ export default function StoreTabScreen() {
   const { theme, scheme } = useTheme();
   const [containerWidth, setContainerWidth] = useState(0);
 
-  const isBrand = user?.type === 'BRAND';
+  const isBrand = hasActiveBrandMembership(user);
+  const activeBrandId = getActiveBrandId(user);
 
   if (!isBrand) {
     return (
@@ -48,7 +50,7 @@ export default function StoreTabScreen() {
       >
         {containerWidth > 0 ? (
           <BrandShopTab
-            brandId={user?.id}
+            brandId={activeBrandId ?? user?.id}
             isOwner
             containerWidth={containerWidth}
             scrollEnabled

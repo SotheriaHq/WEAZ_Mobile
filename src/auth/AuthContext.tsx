@@ -19,6 +19,22 @@ import { resolveProfileImageSource } from '@/src/utils/profileImage';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
+export type BrandMemberRole =
+  | 'OWNER'
+  | 'MANAGER'
+  | 'CATALOG_MANAGER'
+  | 'ORDER_MANAGER'
+  | 'SUPPORT_AGENT'
+  | 'VIEWER';
+export type BrandMemberStatus = 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'REMOVED';
+export type AuthBrandMembership = {
+  brandId: string;
+  brandName: string;
+  role: BrandMemberRole;
+  status: BrandMemberStatus;
+  isOwner: boolean;
+};
+
 export type AuthUser = {
   id: string;
   email?: string | null;
@@ -56,6 +72,9 @@ export type AuthUser = {
   } | null;
   verificationStatus?: string | null;
   isVerifiedBrand?: boolean | null;
+  storeId?: string | null;
+  activeBrandId?: string | null;
+  brandMemberships: AuthBrandMembership[];
   updatedAt?: string | null;
 };
 
@@ -92,6 +111,8 @@ type AuthSessionContextValue = {
   userId: string | null;
   userType: AuthUser['type'] | null;
   userEmailVerified: boolean | null;
+  activeBrandId: string | null;
+  hasActiveBrandMembership: boolean;
   updateUser: (patch: Partial<AuthUser>) => void;
   validateToken: () => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
@@ -197,6 +218,24 @@ const normalizeAuthBannerFile = (raw: any) =>
     raw?.user?.bannerImageMeta,
   ]);
 
+const normalizeBrandMemberships = (raw: any): AuthBrandMembership[] => {
+  const source = Array.isArray(raw?.brandMemberships)
+    ? raw.brandMemberships
+    : Array.isArray(raw?.user?.brandMemberships)
+      ? raw.user.brandMemberships
+      : [];
+
+  return source
+    .map((membership: any) => ({
+      brandId: String(membership?.brandId ?? ''),
+      brandName: String(membership?.brandName ?? ''),
+      role: String(membership?.role ?? 'VIEWER') as BrandMemberRole,
+      status: String(membership?.status ?? 'REMOVED') as BrandMemberStatus,
+      isOwner: Boolean(membership?.isOwner),
+    }))
+    .filter((membership: AuthBrandMembership) => membership.brandId.length > 0);
+};
+
 function normalizeAuthUser(raw: unknown): AuthUser | null {
   if (!raw || typeof raw !== 'object') return null;
 
@@ -217,6 +256,15 @@ function normalizeAuthUser(raw: unknown): AuthUser | null {
     brandLogoFile: source.brandLogoFile ?? nestedUser?.brandLogoFile ?? null,
     avatarUrl: source.avatarUrl ?? nestedUser?.avatarUrl ?? null,
   });
+
+  const brandMemberships = normalizeBrandMemberships(source);
+  const activeBrandId =
+    source.activeBrandId ??
+    nestedUser?.activeBrandId ??
+    source.storeId ??
+    nestedUser?.storeId ??
+    brandMemberships.find((membership) => membership.status === 'ACTIVE')?.brandId ??
+    null;
 
   return {
     id,
@@ -269,6 +317,9 @@ function normalizeAuthUser(raw: unknown): AuthUser | null {
     bannerImageFile: normalizeAuthBannerFile(source),
     verificationStatus: source.verificationStatus ?? nestedUser?.verificationStatus ?? null,
     isVerifiedBrand: source.isVerifiedBrand ?? nestedUser?.isVerifiedBrand ?? null,
+    storeId: source.storeId ?? nestedUser?.storeId ?? null,
+    activeBrandId,
+    brandMemberships,
     updatedAt: source.updatedAt ?? nestedUser?.updatedAt ?? null,
   };
 }
@@ -416,7 +467,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setToken(currentToken);
       setStatus('authenticated');
       return true;
-    } catch {
+    } catch (error) {
+      const statusCode = Number((error as any)?.response?.status ?? 0);
+      if (statusCode === 403) {
+        return false;
+      }
       await signOut();
       return false;
     }
@@ -733,13 +788,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       userType: user?.type ?? null,
       userEmailVerified:
         typeof user?.isEmailVerified === 'boolean' ? user.isEmailVerified : null,
+      activeBrandId: user?.activeBrandId ?? null,
+      hasActiveBrandMembership: Boolean(
+        user?.brandMemberships?.some((membership) => membership.status === 'ACTIVE') ||
+          (user?.type === 'BRAND' && user?.activeBrandId),
+      ),
       updateUser,
       validateToken,
       signIn,
       signUp,
       signOut,
     }),
-    [status, token, user?.id, user?.type, user?.isEmailVerified, updateUser, validateToken, signIn, signUp, signOut],
+    [status, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, updateUser, validateToken, signIn, signUp, signOut],
   );
 
   return (

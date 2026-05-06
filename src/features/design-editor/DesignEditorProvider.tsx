@@ -265,7 +265,7 @@ export function DesignEditorProvider({
   children: React.ReactNode;
 }) {
   const toast = useToast();
-  const { userType, userEmailVerified } = useAuthSession();
+  const { hasActiveBrandMembership, userEmailVerified } = useAuthSession();
   const [booting, setBooting] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [draftConflict, setDraftConflict] = useState<DraftSessionResponse | null>(null);
@@ -581,7 +581,7 @@ export function DesignEditorProvider({
         toast.error('Another device still owns this draft. Take over the draft before saving.');
         return;
       }
-      if (!activeDesignId && userType === 'BRAND' && userEmailVerified === false) {
+      if (!activeDesignId && hasActiveBrandMembership && userEmailVerified === false) {
         toast.error('Verify your email before creating designs.');
         return;
       }
@@ -714,7 +714,7 @@ export function DesignEditorProvider({
       tags,
       toast,
       userEmailVerified,
-      userType,
+      hasActiveBrandMembership,
     ],
   );
 

@@ -17,6 +17,7 @@ import StudioApi from '@/src/api/StudioApi';
 import { publicLinkApi } from '@/src/api/PublicLinkApi';
 import { env } from '@/src/config/env';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
+import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
 import {
   buildStudioPath,
@@ -361,7 +362,7 @@ export default function StudioWebViewScreen() {
   const headerSubtitle = resolvedRouteKey === 'overview' ? undefined : 'Studio';
   const trustedOrigins = useMemo(() => getTrustedStudioOrigins(), []);
   const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
-  const isBrand = user?.type === 'BRAND';
+  const isBrand = hasActiveBrandMembership(user);
 
   const closeStudio = useCallback(() => {
     if (router.canGoBack()) {
@@ -393,7 +394,7 @@ export default function StudioWebViewScreen() {
         return;
       }
       if (!isBrand) {
-        setErrorMessage('Studio is available only for brand accounts.');
+        setErrorMessage('Ask the brand owner for access to this workspace.');
         setLoadState('error');
         return;
       }

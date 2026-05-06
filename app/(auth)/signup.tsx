@@ -27,6 +27,7 @@ import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
 import { AccountTypeSelector } from '@/components/auth/AccountTypeSelector';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
+import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -147,7 +148,7 @@ export default function SignupScreen() {
 
   useEffect(() => {
     if (pendingNavigation && status === 'authenticated' && user) {
-      if (user.type === 'BRAND') {
+      if (hasActiveBrandMembership(user)) {
         router.replace('/catalog' as any);
       } else {
         router.replace(nextPath as any);

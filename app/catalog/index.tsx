@@ -14,7 +14,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import Reanimated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { useAuthSession } from '@/src/auth/AuthContext';
+import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
+import { canManageCatalog, getActiveBrandId } from '@/src/auth/brandAccess';
 import { brandApi, type BrandProfileDto, type CollectionDto } from '@/src/api/BrandApi';
 import { OwnerCatalogMediaHeader } from '@/components/catalog/OwnerCatalogMediaHeader';
 import { ProfileHeader } from '@/components/catalog/ProfileHeader';
@@ -125,7 +126,8 @@ export default function CatalogScreen() {
   }>();
   const { theme, scheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { status, userId, userType, userEmailVerified, updateUser } = useAuthSession();
+  const { user } = useAuth();
+  const { status, userId, userEmailVerified, updateUser } = useAuthSession();
   const toast = useToast();
   const isDark = scheme === 'dark';
 
@@ -172,8 +174,9 @@ export default function CatalogScreen() {
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
 
   // Determine if owner view
-  const isOwner = Boolean(userType === 'BRAND' && (!routeBrandId || routeBrandId === userId));
-  const targetBrandId = routeBrandId || userId;
+  const activeBrandId = getActiveBrandId(user);
+  const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
+  const targetBrandId = routeBrandId || activeBrandId || userId;
   const patchEnabled = Boolean(!isOwner && status === 'authenticated' && targetBrandId);
   const {
     isPatched,
@@ -449,7 +452,7 @@ export default function CatalogScreen() {
   ];
 
   const handleCreatePress = () => {
-    if (userType === 'BRAND' && userEmailVerified === false) {
+    if (canManageCatalog(user) && userEmailVerified === false) {
       toast.error('Verify your email before creating designs.');
       return;
     }
@@ -467,7 +470,7 @@ export default function CatalogScreen() {
 
   const handleLaunchCreateDesign = useCallback(
     async (source: DesignEditorMediaSource) => {
-      if (userType === 'BRAND' && userEmailVerified === false) {
+      if (canManageCatalog(user) && userEmailVerified === false) {
         toast.error('Verify your email before creating designs.');
         return;
       }
@@ -494,7 +497,7 @@ export default function CatalogScreen() {
       const handoffToken = stageDesignEditorAssetBundle(pickResult.assets);
       router.push({ pathname: '/catalog/create-design', params: { handoffToken } } as any);
     },
-    [toast, userEmailVerified, userType],
+    [toast, user, userEmailVerified],
   );
 
   const createMenuOptions = useMemo(

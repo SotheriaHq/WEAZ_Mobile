@@ -17,6 +17,7 @@ import {
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
@@ -32,7 +33,7 @@ export function CatalogIslandBottomNav() {
   const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProfileTabPressAtRef = useRef(0);
 
-  const isBrand = user?.type === 'BRAND';
+  const isBrand = hasActiveBrandMembership(user);
   const canOpenProfileMenu = status === 'authenticated';
   const { bottomOffset } = getNativeIslandLayout(windowWidth, insets.bottom);
 
