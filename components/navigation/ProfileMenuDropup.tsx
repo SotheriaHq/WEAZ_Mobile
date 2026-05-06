@@ -17,7 +17,8 @@ import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens, type AppTheme } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import type { ResolvedTheme } from '@/src/types/theme';
+import { useSyncedThemePreference } from '@/src/hooks/useSyncedThemePreference';
+import type { ResolvedTheme, ThemePreference } from '@/src/types/theme';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 
 type ProfileMenuDropupProps = {
@@ -26,12 +27,17 @@ type ProfileMenuDropupProps = {
   onOpenProfile: () => void;
   onOpenNotifications: () => void;
   onOpenStudio?: () => void;
-  onToggleTheme: () => void;
   scheme: ResolvedTheme;
   theme: AppTheme;
   bottomOffset: number;
   user: AuthUser | null;
 };
+
+const THEME_OPTIONS: Array<{ value: ThemePreference; label: string; emoji: string }> = [
+  { value: 'light', label: 'Light', emoji: '☀️' },
+  { value: 'dark', label: 'Dark', emoji: '🌙' },
+  { value: 'system', label: 'System', emoji: '💻' },
+];
 
 function getDisplayName(user: AuthUser | null) {
   if (!user) return 'Your profile';
@@ -53,7 +59,6 @@ export function ProfileMenuDropup({
   onOpenProfile,
   onOpenNotifications,
   onOpenStudio,
-  onToggleTheme,
   scheme,
   theme,
   bottomOffset,
@@ -61,11 +66,11 @@ export function ProfileMenuDropup({
 }: ProfileMenuDropupProps) {
   const { signOut } = useAuth();
   const { scheme: liveScheme, theme: liveTheme } = useTheme();
+  const { themePreference, setThemePreference } = useSyncedThemePreference();
   const { height, width } = useWindowDimensions();
   const activeScheme = liveScheme ?? scheme;
   const activeTheme = liveTheme ?? theme;
   const isDark = activeScheme === 'dark';
-  const themeEmoji = isDark ? '☀️' : '🌙';
   const [mounted, setMounted] = React.useState(visible);
   const translateY = React.useRef(new Animated.Value(18)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
@@ -145,6 +150,13 @@ export function ProfileMenuDropup({
     });
   }, [onClose, runCloseAnimation, signOut]);
 
+  const handleThemePreferencePress = React.useCallback(
+    (next: ThemePreference) => {
+      void setThemePreference(next);
+    },
+    [setThemePreference],
+  );
+
   if (!mounted) return null;
 
   return (
@@ -196,19 +208,56 @@ export function ProfileMenuDropup({
                     <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail" style={styles.nameText}>
                       {displayName}
                     </AppText>
-                    <Pressable
-                      onPress={onToggleTheme}
-                      style={({ pressed }) => [styles.themeButton, pressed && styles.pressed]}
-                      accessibilityLabel={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-                    >
-                      <AppText variant="subtitle">{themeEmoji}</AppText>
-                    </Pressable>
                   </View>
                   {handle ? (
                     <AppText variant="caption" tone="muted" numberOfLines={1} ellipsizeMode="tail" style={styles.handleText}>
                       {handle}
                     </AppText>
                   ) : null}
+                  <View
+                    style={[
+                      styles.themeSelector,
+                      {
+                        backgroundColor: isDark
+                          ? activeTheme.colors.surfaceAlt
+                          : activeTheme.colors.surface,
+                      },
+                    ]}
+                  >
+                    {THEME_OPTIONS.map((option) => {
+                      const selected = themePreference === option.value;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          onPress={() => handleThemePreferencePress(option.value)}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          accessibilityLabel={`Use ${option.label.toLowerCase()} theme`}
+                          style={({ pressed }) => [
+                            styles.themeOption,
+                            {
+                              backgroundColor: selected
+                                ? activeTheme.colors.primarySoft
+                                : 'transparent',
+                              borderColor: selected
+                                ? activeTheme.colors.primary
+                                : activeTheme.colors.border,
+                            },
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <AppText variant="captionBold">{option.emoji}</AppText>
+                          <AppText
+                            variant="captionBold"
+                            tone={selected ? 'primary' : 'secondary'}
+                            numberOfLines={1}
+                          >
+                            {option.label}
+                          </AppText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 </View>
               </Pressable>
 
@@ -330,12 +379,22 @@ const styles = StyleSheet.create({
   handleText: {
     flexShrink: 1,
   },
-  themeButton: {
-    minWidth: 44,
+  themeSelector: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xs,
+    marginTop: tokens.spacing.sm,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.spacing.xs,
+  },
+  themeOption: {
+    flex: 1,
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: tokens.radius.lg,
+    gap: 2,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    paddingHorizontal: tokens.spacing.xs,
   },
   avatar: {
     width: 34,

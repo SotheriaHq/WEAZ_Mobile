@@ -22,7 +22,7 @@ import {
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
 export default function TabLayout() {
-  const { scheme, theme, setMode } = useTheme();
+  const { scheme, theme } = useTheme();
   const { status, token, user } = useAuth();
   const toast = useToast();
   const pathname = usePathname();
@@ -344,9 +344,6 @@ export default function TabLayout() {
           lastProfileTabPressAtRef.current = 0;
           clearSelectionState();
           router.push('/studio' as any);
-        }}
-        onToggleTheme={() => {
-          setMode(scheme === 'dark' ? 'light' : 'dark');
         }}
         scheme={scheme}
         theme={theme}

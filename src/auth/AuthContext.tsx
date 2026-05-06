@@ -14,6 +14,7 @@ import {
   setAccessToken,
   setRefreshToken,
 } from '@/src/storage/secureStorage';
+import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
@@ -22,6 +23,7 @@ export type AuthUser = {
   id: string;
   email?: string | null;
   isEmailVerified?: boolean | null;
+  themePreference: ThemePreference;
   type?: 'BRAND' | 'REGULAR' | string;
   firstName?: string | null;
   lastName?: string | null;
@@ -223,6 +225,7 @@ function normalizeAuthUser(raw: unknown): AuthUser | null {
       typeof (source.isEmailVerified ?? nestedUser?.isEmailVerified) === 'boolean'
         ? Boolean(source.isEmailVerified ?? nestedUser?.isEmailVerified)
         : null,
+    themePreference: normalizeThemePreference(source.themePreference ?? nestedUser?.themePreference),
     type: source.type ?? nestedUser?.type ?? null,
     firstName: source.firstName ?? nestedUser?.firstName ?? null,
     lastName: source.lastName ?? nestedUser?.lastName ?? null,

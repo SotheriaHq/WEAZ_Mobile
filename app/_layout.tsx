@@ -14,6 +14,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { ThemeProvider, useTheme, type ThemeMode } from '@/src/theme/ThemeProvider';
+import { ThemeBackendSync } from '@/src/theme/ThemeBackendSync';
 import { normalizeThemePreference } from '@/src/types/theme';
 import { AuthProvider } from '@/src/auth/AuthContext';
 
@@ -277,6 +278,7 @@ function RootLayoutNav({
     <ThemeProvider initialMode={initialThemeMode} bootstrapped>
       <ToastProvider>
         <AuthProvider>
+          <ThemeBackendSync />
           <BagFlowProvider>
             <RootBootstrap fontsLoaded={fontsLoaded} />
           </BagFlowProvider>

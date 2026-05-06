@@ -21,7 +21,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
 export function CatalogIslandBottomNav() {
-  const { scheme, theme, setMode } = useTheme();
+  const { scheme, theme } = useTheme();
   const { status, token, user } = useAuth();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -193,9 +193,6 @@ export function CatalogIslandBottomNav() {
           lastProfileTabPressAtRef.current = 0;
           clearSelectionState();
           router.push('/studio' as any);
-        }}
-        onToggleTheme={() => {
-          setMode(scheme === 'dark' ? 'light' : 'dark');
         }}
         scheme={scheme}
         theme={theme}

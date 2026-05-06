@@ -1,4 +1,5 @@
 import { apiClient } from '@/src/api/httpClient';
+import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -9,6 +10,7 @@ export interface UserProfile {
   firstName: string;
   lastName: string;
   email?: string | null;
+  themePreference: ThemePreference;
   profileImage?: string | null;
   profileImageId?: string | null;
   profileImageFile?: {
@@ -118,6 +120,7 @@ function normalizeProfile(raw: unknown): UserProfile | null {
     firstName: s.firstName ?? '',
     lastName: s.lastName ?? '',
     email: s.email ?? null,
+    themePreference: normalizeThemePreference(s.themePreference),
     profileImage: image.src,
     profileImageId: image.fileId,
     profileImageFile: s.profileImageFile ?? null,

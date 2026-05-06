@@ -13,7 +13,18 @@ export type ThemeMode = ThemePreference;
 
 export type ThemeContextValue = {
   ready: boolean;
+  /**
+   * Compatibility alias for the saved preference. Prefer `themePreference`
+   * in new code so it is not confused with the resolved rendered scheme.
+   */
   mode: ThemeMode;
+  themePreference: ThemePreference;
+  resolvedTheme: ResolvedTheme;
+  setThemePreference: (mode: ThemePreference) => void;
+  syncThemePreferenceFromBackend: (mode: unknown) => void;
+  /**
+   * Compatibility alias for `setThemePreference`.
+   */
   setMode: (mode: ThemeMode) => void;
   scheme: ThemeScheme;
   theme: (typeof tokens)['themes'][ThemeScheme];
@@ -43,10 +54,15 @@ export function ThemeProvider({
   const [ready, setReady] = useState(bootstrapped);
   const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(Appearance.getColorScheme());
 
-  const setMode = useCallback((next: ThemeMode) => {
-    setModeState(next);
-    SecureStore.setItemAsync(THEME_MODE_KEY, next).catch(() => undefined);
+  const setThemePreference = useCallback((next: ThemePreference) => {
+    const normalized = normalizeThemePreference(next);
+    setModeState(normalized);
+    SecureStore.setItemAsync(THEME_MODE_KEY, normalized).catch(() => undefined);
   }, []);
+
+  const syncThemePreferenceFromBackend = useCallback((next: unknown) => {
+    setThemePreference(normalizeThemePreference(next));
+  }, [setThemePreference]);
 
   useEffect(() => {
     setModeState(initialMode);
@@ -90,11 +106,15 @@ export function ThemeProvider({
     () => ({
       ready,
       mode,
-      setMode,
+      themePreference: mode,
+      resolvedTheme: scheme,
+      setThemePreference,
+      syncThemePreferenceFromBackend,
+      setMode: setThemePreference,
       scheme,
       theme,
     }),
-    [ready, mode, setMode, scheme, theme],
+    [ready, mode, setThemePreference, syncThemePreferenceFromBackend, scheme, theme],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

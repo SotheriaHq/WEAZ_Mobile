@@ -84,6 +84,7 @@ function buildFallbackProfile(user: AuthUser | null): UserProfile | null {
     firstName: user.firstName?.trim() ?? '',
     lastName: user.lastName?.trim() ?? '',
     email: user.email ?? null,
+    themePreference: user.themePreference,
     profileImage: identity.avatarSrc,
     profileImageId: identity.avatarFileId,
     profileImageFile:
