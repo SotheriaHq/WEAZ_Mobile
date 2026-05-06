@@ -87,6 +87,7 @@ export function GlassBottomSheet({
           {
             backgroundColor: theme.colors.surface,
             borderColor: theme.colors.border,
+            shadowColor: theme.colors.backdropStrong,
           },
         ]}
       >
@@ -129,8 +130,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderRightWidth: 1,
     overflow: 'hidden',
-    // Shadow
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: -10 },
     shadowOpacity: 0.25,
     shadowRadius: 30,

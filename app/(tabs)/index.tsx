@@ -9,7 +9,7 @@ import { Image as ExpoImage } from 'expo-image';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { GLASS, tokens, type AppTheme } from '@/src/styles/tokens';
+import { tokens, type AppTheme } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
 import { Chip } from '@/components/ui/Chip';
@@ -612,7 +612,11 @@ type FeedMetaOverlayProps = {
   title: string;
   description?: string | null;
   scheme: ResolvedTheme;
-  glass: typeof GLASS.dark | typeof GLASS.light;
+  overlaySurface: {
+    backgroundColor: string;
+    borderColor: string;
+    blurIntensity: number;
+  };
   bottomClearance: number;
 };
 
@@ -622,19 +626,19 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
   title,
   description,
   scheme,
-  glass,
+  overlaySurface,
   bottomClearance,
 }: FeedMetaOverlayProps) {
   return (
     <View style={[styles.meta, { bottom: bottomClearance }]}>
       <BlurView
         tint={scheme === 'dark' ? 'dark' : 'light'}
-        intensity={20}
+        intensity={overlaySurface.blurIntensity}
         style={[
           styles.metaCard,
           {
-            backgroundColor: glass.bg,
-            borderColor: glass.border,
+            backgroundColor: overlaySurface.backgroundColor,
+            borderColor: overlaySurface.borderColor,
           },
         ]}
       >
@@ -689,7 +693,7 @@ type FeedPostItemProps = {
   threadCountRaw: number;
   bottomClearance: number;
   scheme: ResolvedTheme;
-  glass: typeof GLASS.dark | typeof GLASS.light;
+  overlaySurface: FeedMetaOverlayProps['overlaySurface'];
   canPatchBrands: boolean;
   isPatched: boolean;
   patchBusy: boolean;
@@ -723,7 +727,7 @@ const FeedPostItem = React.memo(function FeedPostItem({
   threadCountRaw,
   bottomClearance,
   scheme,
-  glass,
+  overlaySurface,
   canPatchBrands,
   isPatched,
   patchBusy,
@@ -783,7 +787,7 @@ const FeedPostItem = React.memo(function FeedPostItem({
         title={item.collectionTitle}
         description={item.collectionDescription}
         scheme={scheme}
-        glass={glass}
+        overlaySurface={overlaySurface}
         bottomClearance={bottomClearance}
       />
     </View>
@@ -1030,7 +1034,14 @@ export default function HomeScreen() {
   );
   const bottomClearance = useMemo(() => NATIVE_ISLAND_NAV.contentClearance + insets.bottom, [insets.bottom]);
   const overlayScrollPadding = bottomClearance;
-  const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
+  const overlaySurface = useMemo(
+    () => ({
+      backgroundColor: theme.colors.glassSurfaceStrong,
+      borderColor: theme.colors.glassBorder,
+      blurIntensity: theme.colors.glassBlur as number,
+    }),
+    [theme.colors.glassBlur, theme.colors.glassBorder, theme.colors.glassSurfaceStrong],
+  );
 
   useEffect(() => {
     feedMountCount += 1;
@@ -1684,7 +1695,7 @@ export default function HomeScreen() {
           threadCountRaw={threadCountRaw}
           bottomClearance={bottomClearance}
           scheme={scheme}
-          glass={glass}
+          overlaySurface={overlaySurface}
           canPatchBrands={canPatchBrands}
           isPatched={Boolean(item.brandId && patchedBrandIds.has(item.brandId))}
           patchBusy={Boolean(item.brandId && patchingBrandIds[item.brandId])}
@@ -1705,12 +1716,12 @@ export default function HomeScreen() {
       collectionMediaMap,
       commentsTarget?.collectionId,
       fallbackMediaByCollection,
-      glass,
       handleCarouselIndexChange,
       handleOpenBrand,
       handlePatchBrand,
       handleThreadPress,
       openCommentsSheet,
+      overlaySurface,
       pageHeight,
       patchedBrandIds,
       patchingBrandIds,

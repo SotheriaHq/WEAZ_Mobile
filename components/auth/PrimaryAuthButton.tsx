@@ -43,7 +43,10 @@ export function PrimaryAuthButton({
       style={[
         styles.button,
         styles.solidContainer,
-        { backgroundColor: disabled ? theme.colors.primarySoft : theme.colors.primary },
+        {
+          backgroundColor: disabled ? theme.colors.primarySoft : theme.colors.primary,
+          shadowColor: theme.colors.backdropStrong,
+        },
       ]}
     >
       <Button
@@ -63,7 +66,6 @@ export function PrimaryAuthButton({
 
 const styles = StyleSheet.create({
   button: {
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18,
     shadowRadius: 18,
