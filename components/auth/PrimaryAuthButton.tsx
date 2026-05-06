@@ -1,9 +1,9 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { Button } from '@/components/ui/Button';
-import { GRADIENTS, tokens } from '@/src/styles/tokens';
+import { useTheme } from '@/src/theme/ThemeProvider';
+import { tokens } from '@/src/styles/tokens';
 
 interface PrimaryAuthButtonProps {
   title: string;
@@ -20,6 +20,8 @@ export function PrimaryAuthButton({
   disabled = false,
   ghost = false,
 }: PrimaryAuthButtonProps) {
+  const { theme } = useTheme();
+
   if (ghost) {
     return (
       <Button
@@ -37,25 +39,24 @@ export function PrimaryAuthButton({
   }
 
   return (
-    <View style={styles.button}>
-      <LinearGradient
-        colors={GRADIENTS.primaryButton.colors}
-        start={GRADIENTS.primaryButton.start}
-        end={GRADIENTS.primaryButton.end}
-        style={styles.gradientContainer}
-      >
-        <Button
-          title={title}
-          onPress={onPress}
-          loading={loading}
-          disabled={disabled}
-          variant="ghost"
-          size="lg"
-          fullWidth
-          style={styles.innerButton}
-          textStyle={styles.label}
-        />
-      </LinearGradient>
+    <View
+      style={[
+        styles.button,
+        styles.solidContainer,
+        { backgroundColor: disabled ? theme.colors.primarySoft : theme.colors.primary },
+      ]}
+    >
+      <Button
+        title={title}
+        onPress={onPress}
+        loading={loading}
+        disabled={disabled}
+        variant="ghost"
+        size="lg"
+        fullWidth
+        style={styles.innerButton}
+        textStyle={styles.label}
+      />
     </View>
   );
 }
@@ -68,7 +69,7 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 8,
   },
-  gradientContainer: {
+  solidContainer: {
     borderRadius: tokens.radius.lg,
     overflow: 'hidden',
   },

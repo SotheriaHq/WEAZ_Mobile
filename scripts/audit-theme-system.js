@@ -64,17 +64,15 @@ const COLOR_ALLOWLIST = [
   path.join('app', 'catalog', 'create-collection.tsx'),        // Primary CTA #7C3AED — brand colour, not surface
   path.join('app', 'orders', '[orderId].tsx'),                 // Order status badge colours (semantic states)
   path.join('app', '(auth)'),                                  // Auth brand identity & gradient surfaces
-  path.join('app', '(tabs)', 'index.tsx'),                     // GLASS legacy (deprecated, tracked)
-  path.join('components', 'auth', 'PrimaryAuthButton.tsx'),    // GRADIENTS preset (deprecated, tracked)
-  path.join('components', 'auth', 'GlassBottomSheet.tsx'),     // Deprecated GLASS media overlay
-  path.join('components', 'catalog', 'CollectionCard.tsx'),    // GLASS legacy (deprecated, tracked)
+  path.join('app', '(tabs)', 'index.tsx'),                     // StatusBar + legacy feed usage
+  path.join('components', 'auth', 'GlassBottomSheet.tsx'),     // Shadow #000 — elevation-only, not surface
+  path.join('components', 'catalog', 'CollectionCard.tsx'),    // ImageFallback gradient — media overlay, not surface
   path.join('components', 'catalog', 'CollectionCommentsSheet.tsx'), // Media overlay on dark backdrop
   path.join('components', 'catalog', 'CollectionDetailViewer.tsx'),  // Full-screen media overlay
   path.join('components', 'catalog', 'EditBrandProfileSheet.tsx'),   // Avatar placeholder fill
   path.join('components', 'catalog', 'ProfileHeader.tsx'),           // Media/banner overlay
   path.join('components', 'catalog', 'ThreadRailAction.tsx'),        // Video overlay contrast
   path.join('components', 'catalog', 'ThreadTapBurstOverlay.tsx'),   // Animation particle overlay
-  path.join('components', 'navigation', 'NativeIslandBottomNav.tsx'),// GLASS legacy (deprecated, tracked)
   path.join('components', 'navigation', 'ProfileMenuDropup.tsx'),    // Glassmorphic surface rgba (intentional)
   path.join('components', 'profile', 'ProfileImageModal.tsx'),       // Full-screen media backdrop
   path.join('components', 'ui', 'Chip.tsx'),                         // 'transparent' keyword — not a surface colour

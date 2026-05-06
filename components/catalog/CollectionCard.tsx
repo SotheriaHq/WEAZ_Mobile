@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import type { CollectionDto } from '@/src/api/BrandApi';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
-import { tokens, GLASS } from '@/src/styles/tokens';
+import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
 interface CollectionCardProps {
@@ -292,15 +292,15 @@ function AvatarFallback({ label }: { label: string }) {
 }
 
 function RailButton({ emoji, label, onPress }: { emoji: string; label?: string; onPress?: () => void }) {
-  const { scheme } = useTheme();
+  const { theme, scheme } = useTheme();
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.railButton, { backgroundColor: scheme === 'dark' ? GLASS.dark.bg : GLASS.light.bg }]}
+      style={[styles.railButton, { backgroundColor: theme.colors.glassSurface }]}
       hitSlop={tokens.spacing.xs}
     >
       <BlurView
-        intensity={scheme === 'dark' ? GLASS.dark.blur : GLASS.light.blur}
+        intensity={theme.colors.glassBlur as number}
         tint={scheme === 'dark' ? 'dark' : 'light'}
         style={StyleSheet.absoluteFillObject}
       />

@@ -13,42 +13,6 @@ export const LAYOUT = {
   META_BOTTOM: 80,
 } as const;
 
-// 🌟 Glassmorphism tokens (DEPRECATED - pending Phase 10 cleanup)
-export const GLASS = {
-  dark: {
-    bg: 'rgba(0, 0, 0, 0.58)',
-    bgStrong: 'rgba(3, 7, 18, 0.74)',
-    border: 'rgba(255, 255, 255, 0.12)',
-    blur: 36,
-  },
-  light: {
-    bg: 'rgba(255, 255, 255, 0.78)',
-    bgStrong: 'rgba(255, 255, 255, 0.92)',
-    border: 'rgba(15, 23, 42, 0.12)',
-    blur: 32,
-  },
-} as const;
-
-// 🎬 Gradient presets for overlays (DEPRECATED - pending Phase 10 cleanup)
-export const GRADIENTS = {
-  // Top overlay: dark at top, fades to transparent
-  feedTop: {
-    colors: ['rgba(0,0,0,0.6)', 'rgba(0,0,0,0.2)', 'transparent'] as const,
-    locations: [0, 0.5, 1] as const,
-  },
-  // Bottom overlay: transparent at top, dark at bottom
-  feedBottom: {
-    colors: ['transparent', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.92)'] as const,
-    locations: [0, 0.25, 1] as const,
-  },
-  // Primary button gradient
-  primaryButton: {
-    colors: ['#9333EA', '#7e22ce'] as const,
-    start: { x: 0, y: 0 },
-    end: { x: 1, y: 0 },
-  },
-} as const;
-
 type Theme = {
   colors: {
     bg: string;
@@ -81,11 +45,15 @@ type Theme = {
     mutedSurface: string;
     controlSurface: string;
     controlSurfaceActive: string;
+    // Phase 12: semantic glassmorphism tokens (replaces GLASS export)
+    glassSurface: string;
+    glassSurfaceStrong: string;
+    glassBorder: string;
+    glassBlur: number;
   };
 };
 
 export const tokens = {
-  // Semantic Theme Tokens
   themes: {
     light: {
       colors: {
@@ -119,6 +87,10 @@ export const tokens = {
         mutedSurface: '#ffffff',
         controlSurface: '#ffffff',
         controlSurfaceActive: 'rgba(17,24,39,0.08)',
+        glassSurface: 'rgba(255,255,255,0.78)',
+        glassSurfaceStrong: 'rgba(255,255,255,0.92)',
+        glassBorder: 'rgba(15,23,42,0.12)',
+        glassBlur: 32,
       },
     } satisfies Theme,
     dark: {
@@ -153,6 +125,10 @@ export const tokens = {
         mutedSurface: 'rgba(255,255,255,0.05)',
         controlSurface: 'rgba(255,255,255,0.05)',
         controlSurfaceActive: 'rgba(255,255,255,0.10)',
+        glassSurface: 'rgba(0,0,0,0.58)',
+        glassSurfaceStrong: 'rgba(3,7,18,0.74)',
+        glassBorder: 'rgba(255,255,255,0.12)',
+        glassBlur: 36,
       },
     } satisfies Theme,
   } as const,

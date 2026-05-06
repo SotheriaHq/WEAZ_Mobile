@@ -4,7 +4,6 @@ import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
-import { GLASS } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
 export const NATIVE_ISLAND_NAV = {
@@ -120,7 +119,6 @@ export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIsla
   const { scheme, theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
-  const glass = scheme === 'dark' ? GLASS.dark : GLASS.light;
   const { bottomOffset, sideOffset } = getNativeIslandLayout(windowWidth, insets.bottom);
   if (items.length === 0) {
     return null;
@@ -150,13 +148,13 @@ export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIsla
             StyleSheet.absoluteFillObject,
             styles.navBaseFill,
             {
-              backgroundColor: glass.bg,
+              backgroundColor: theme.colors.glassSurface,
             },
           ]}
         />
         <BlurView
           tint={scheme === 'dark' ? 'dark' : 'light'}
-          intensity={glass.blur}
+          intensity={theme.colors.glassBlur as number}
           style={StyleSheet.absoluteFillObject}
         />
         <View
@@ -165,8 +163,8 @@ export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIsla
             StyleSheet.absoluteFillObject,
             styles.navGlassFill,
             {
-              backgroundColor: glass.bgStrong,
-              borderColor: glass.border,
+              backgroundColor: theme.colors.glassSurfaceStrong,
+              borderColor: theme.colors.glassBorder,
               borderRadius: NATIVE_ISLAND_NAV.radius,
             },
           ]}
