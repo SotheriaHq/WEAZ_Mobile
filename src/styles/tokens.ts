@@ -85,7 +85,7 @@ type Theme = {
 };
 
 export const tokens = {
-  // Theme schedule for time-based mode.
+  // Semantic Theme Tokens
   themes: {
     light: {
       colors: {
