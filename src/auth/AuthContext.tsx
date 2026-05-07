@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import * as SecureStore from 'expo-secure-store';
 
 import {
   apiClient,
@@ -98,6 +99,7 @@ type AuthContextValue = {
   token: string | null;
   user: AuthUser | null;
   updateUser: (patch: Partial<AuthUser>) => void;
+  setActiveBrandId: (brandId: string | null) => Promise<void>;
   validateToken: () => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
   signUp: (params: SignUpParams) => Promise<void>;
@@ -113,6 +115,7 @@ type AuthSessionContextValue = {
   userEmailVerified: boolean | null;
   activeBrandId: string | null;
   hasActiveBrandMembership: boolean;
+  setActiveBrandId: (brandId: string | null) => Promise<void>;
   updateUser: (patch: Partial<AuthUser>) => void;
   validateToken: () => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
@@ -129,6 +132,7 @@ const INVISIBLE_AUTH_SPACING_REGEX =
 const CONTROL_CHAR_REGEX = /[\u0000-\u001F\u007F]/;
 
 let authBootstrapCompletionCount = 0;
+const ACTIVE_BRAND_STORAGE_KEY = 'threadly.activeBrandId';
 
 function devAuthLog(event: string, details?: Record<string, unknown>) {
   if (!__DEV__) return;
@@ -324,6 +328,22 @@ function normalizeAuthUser(raw: unknown): AuthUser | null {
   };
 }
 
+function resolveSelectableActiveBrandId(user: AuthUser, preferredBrandId?: string | null): string | null {
+  const activeMemberships = Array.isArray(user.brandMemberships)
+    ? user.brandMemberships.filter((membership) => membership.status === 'ACTIVE')
+    : [];
+  if (preferredBrandId && activeMemberships.some((membership) => membership.brandId === preferredBrandId)) {
+    return preferredBrandId;
+  }
+  if (user.activeBrandId && activeMemberships.some((membership) => membership.brandId === user.activeBrandId)) {
+    return user.activeBrandId;
+  }
+  if (user.type === 'BRAND' && user.storeId && activeMemberships.length === 0) {
+    return user.storeId;
+  }
+  return activeMemberships[0]?.brandId ?? user.activeBrandId ?? null;
+}
+
 function extractAuthErrorMessage(error: unknown): string | null {
   const candidates = [
     (error as any)?.response?.data?.message,
@@ -404,8 +424,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [refreshTokenState, setRefreshTokenState] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [selectedActiveBrandId, setSelectedActiveBrandId] = useState<string | null>(null);
 
   const bootstrappedRef = useRef(false);
+  const selectedActiveBrandIdRef = useRef<string | null>(null);
+
+  const applyActiveBrandSelection = useCallback((nextUser: AuthUser): AuthUser => {
+    return {
+      ...nextUser,
+      activeBrandId: resolveSelectableActiveBrandId(
+        nextUser,
+        selectedActiveBrandIdRef.current,
+      ),
+    };
+  }, []);
 
   const signOut = useCallback(async (options?: { notifyServer?: boolean }) => {
     const notifyServer = options?.notifyServer ?? true;
@@ -426,9 +458,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setRefreshTokenState(null);
     setUser(null);
+    setSelectedActiveBrandId(null);
+    selectedActiveBrandIdRef.current = null;
     setStatus('unauthenticated');
     await removeAccessToken();
     await removeRefreshToken();
+    await SecureStore.deleteItemAsync(ACTIVE_BRAND_STORAGE_KEY).catch(() => {});
   }, [refreshTokenState]);
 
   const updateUser = useCallback((patch: Partial<AuthUser>) => {
@@ -442,7 +477,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      return normalizeAuthUser(nextUser) ?? nextUser;
+      const normalized = normalizeAuthUser(nextUser) ?? nextUser;
+      return applyActiveBrandSelection(normalized);
+    });
+  }, [applyActiveBrandSelection]);
+
+  const setActiveBrandId = useCallback(async (brandId: string | null) => {
+    const normalizedBrandId = String(brandId ?? '').trim() || null;
+    selectedActiveBrandIdRef.current = normalizedBrandId;
+    setSelectedActiveBrandId(normalizedBrandId);
+    if (normalizedBrandId) {
+      await SecureStore.setItemAsync(ACTIVE_BRAND_STORAGE_KEY, normalizedBrandId);
+    } else {
+      await SecureStore.deleteItemAsync(ACTIVE_BRAND_STORAGE_KEY).catch(() => {});
+    }
+
+    setUser((current) => {
+      if (!current) return current;
+      const nextActiveBrandId = resolveSelectableActiveBrandId(current, normalizedBrandId);
+      return { ...current, activeBrandId: nextActiveBrandId };
     });
   }, []);
 
@@ -463,7 +516,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!mappedUser?.id) throw new Error('Invalid profile response');
 
-      setUser(mappedUser);
+      setUser(applyActiveBrandSelection(mappedUser));
       setToken(currentToken);
       setStatus('authenticated');
       return true;
@@ -475,7 +528,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await signOut();
       return false;
     }
-  }, [signOut, token]);
+  }, [applyActiveBrandSelection, signOut, token]);
 
   const signIn = useCallback(async ({ email, password }: SignInParams) => {
     try {
@@ -608,7 +661,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const rawUser = (data as any)?.user;
       const mappedUser = normalizeAuthUser(rawUser);
       if (mappedUser?.id) {
-        setUser(mappedUser);
+        setUser(applyActiveBrandSelection(mappedUser));
       } else {
         await validateToken();
       }
@@ -620,7 +673,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ),
       );
     }
-  }, [validateToken]);
+  }, [applyActiveBrandSelection, validateToken]);
 
   const signUp = useCallback(async (params: SignUpParams) => {
     try {
@@ -653,7 +706,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const rawUser = (data as any)?.user;
         const mappedUser = normalizeAuthUser(rawUser);
         if (mappedUser?.id) {
-          setUser(mappedUser);
+          setUser(applyActiveBrandSelection(mappedUser));
         } else {
           await validateToken();
         }
@@ -669,7 +722,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ),
       );
     }
-  }, [signIn, validateToken]);
+  }, [applyActiveBrandSelection, signIn, validateToken]);
 
   useEffect(() => {
     if (bootstrappedRef.current) return;
@@ -679,6 +732,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const run = async () => {
       try {
+        const storedActiveBrandId = await SecureStore.getItemAsync(ACTIVE_BRAND_STORAGE_KEY).catch(() => null);
+        selectedActiveBrandIdRef.current = storedActiveBrandId;
+        setSelectedActiveBrandId(storedActiveBrandId);
         const stored = await getAccessToken();
         const storedRefresh = await getRefreshToken();
         if (!mounted) return;
@@ -771,12 +827,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       user,
       updateUser,
+      setActiveBrandId,
       validateToken,
       signIn,
       signUp,
       signOut,
     }),
-    [status, token, user, updateUser, validateToken, signIn, signUp, signOut],
+    [status, token, user, updateUser, setActiveBrandId, validateToken, signIn, signUp, signOut],
   );
 
   const sessionValue = useMemo<AuthSessionContextValue>(
@@ -793,13 +850,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user?.brandMemberships?.some((membership) => membership.status === 'ACTIVE') ||
           (user?.type === 'BRAND' && user?.activeBrandId),
       ),
+      setActiveBrandId,
       updateUser,
       validateToken,
       signIn,
       signUp,
       signOut,
     }),
-    [status, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, updateUser, validateToken, signIn, signUp, signOut],
+    [status, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, selectedActiveBrandId, setActiveBrandId, updateUser, validateToken, signIn, signUp, signOut],
   );
 
   return (

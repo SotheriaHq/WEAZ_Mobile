@@ -17,7 +17,7 @@ import StudioApi from '@/src/api/StudioApi';
 import { publicLinkApi } from '@/src/api/PublicLinkApi';
 import { env } from '@/src/config/env';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
-import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { getActiveBrandId, hasActiveBrandMembership, isBrandOwner } from '@/src/auth/brandAccess';
 import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
 import {
   buildStudioPath,
@@ -177,6 +177,7 @@ function StudioProfileMenu({
   onOpenProfile,
   onOpenNotifications,
   onOpenOrders,
+  onOpenStaff,
   onOpenHelp,
   onSignOut,
 }: {
@@ -187,6 +188,7 @@ function StudioProfileMenu({
   onOpenProfile: () => void;
   onOpenNotifications: () => void;
   onOpenOrders: () => void;
+  onOpenStaff: () => void;
   onOpenHelp: () => void;
   onSignOut: () => void;
 }) {
@@ -200,6 +202,8 @@ function StudioProfileMenu({
   const availableMenuWidth = Math.max(180, width - tokens.spacing.lg * 2);
   const menuWidth = Math.min(Math.max(180, Math.round(width * 0.46)), Math.min(196, availableMenuWidth));
   const maxHeight = Math.max(260, height - topOffset - tokens.spacing.lg);
+  const activeBrandId = getActiveBrandId(user);
+  const owner = isBrandOwner(user, activeBrandId);
 
   const items: StudioMenuItem[] = [
     {
@@ -220,6 +224,16 @@ function StudioProfileMenu({
       label: 'My Orders',
       onPress: onOpenOrders,
     },
+    ...(owner
+      ? [
+          {
+            key: 'staff',
+            emoji: '👥',
+            label: 'Staff',
+            onPress: onOpenStaff,
+          },
+        ]
+      : []),
     {
       key: 'help',
       emoji: '🆘',
@@ -650,6 +664,11 @@ export default function StudioWebViewScreen() {
     router.replace('/orders' as any);
   }, []);
 
+  const handleMenuStaff = useCallback(() => {
+    setProfileMenuVisible(false);
+    router.push('/studio/staff' as any);
+  }, []);
+
   const handleStudioSignOut = useCallback(() => {
     setProfileMenuVisible(false);
     void signOut().finally(() => {
@@ -790,6 +809,7 @@ export default function StudioWebViewScreen() {
         onOpenProfile={handleMenuProfile}
         onOpenNotifications={handleMenuNotifications}
         onOpenOrders={handleMenuOrders}
+        onOpenStaff={handleMenuStaff}
         onOpenHelp={openHelp}
         onSignOut={handleStudioSignOut}
       />

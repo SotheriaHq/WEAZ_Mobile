@@ -36,6 +36,7 @@ import { Input } from '@/components/ui/Input';
 import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
 import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
 import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
+import { BrandSwitcherSheet } from '@/components/brand/BrandSwitcherSheet';
 import {
   pickDesignEditorMediaAssets,
   stageDesignEditorAssetBundle,
@@ -595,6 +596,12 @@ export default function CatalogScreen() {
           />
         )}
 
+        {isOwner ? (
+          <View style={styles.brandSwitcherWrap}>
+            <BrandSwitcherSheet />
+          </View>
+        ) : null}
+
         {/* Tabs */}
         <View style={[styles.tabsWrapper, { borderBottomColor: theme.colors.border }]}>
           <Tabs
@@ -787,6 +794,11 @@ const styles = StyleSheet.create({
   },
   tabsWrapper: {
     borderBottomWidth: 0,
+  },
+  brandSwitcherWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
   catalogControls: {
     flexDirection: 'row',

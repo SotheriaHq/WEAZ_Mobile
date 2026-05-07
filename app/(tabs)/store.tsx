@@ -7,10 +7,11 @@ import { router } from 'expo-router';
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { BrandShopTab } from '@/components/catalog/BrandShopTab';
 import { useAuth } from '@/src/auth/AuthContext';
-import { getActiveBrandId, hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { getActiveBrandId, hasActiveBrandMembership, isBrandOwner } from '@/src/auth/brandAccess';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
+import { BrandSwitcherSheet } from '@/components/brand/BrandSwitcherSheet';
 
 export default function StoreTabScreen() {
   const { user } = useAuth();
@@ -19,6 +20,7 @@ export default function StoreTabScreen() {
 
   const isBrand = hasActiveBrandMembership(user);
   const activeBrandId = getActiveBrandId(user);
+  const owner = isBrandOwner(user, activeBrandId);
 
   if (!isBrand) {
     return (
@@ -56,11 +58,21 @@ export default function StoreTabScreen() {
             scrollEnabled
             headerComponent={
               <View style={styles.heroBlock}>
+                <BrandSwitcherSheet />
                 <AppText variant="title">Brand Store</AppText>
                 <AppText variant="body" tone="muted">
                   Owner storefront workspace with buyer-grade interactions for save, bag, and custom bag flows.
                 </AppText>
-                <Button title="Open Studio" onPress={() => router.push('/studio' as any)} />
+                <View style={styles.heroActions}>
+                  <Button title="Open Studio" onPress={() => router.push('/studio' as any)} />
+                  {owner ? (
+                    <Button
+                      title="Manage Staff"
+                      variant="outline"
+                      onPress={() => router.push('/studio/staff' as any)}
+                    />
+                  ) : null}
+                </View>
               </View>
             }
           />
@@ -81,7 +93,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 8,
-    gap: 6,
+    gap: 10,
+  },
+  heroActions: {
+    gap: 8,
   },
   guestWrap: {
     flex: 1,
