@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 import { env } from '@/src/config/env';
+import { apiHostDevLog, apiHostDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 
 const DEFAULT_PORT = 3040;
 const MOBILE_PLATFORM_HEADER = 'x-client-platform';
@@ -133,6 +134,12 @@ function getDefaultBaseUrl() {
   const envUrl = process.env.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
   if (envUrl) return normalizeApiBaseUrl(envUrl);
 
+  if (!__DEV__) {
+    throw new Error(
+      'Missing EXPO_PUBLIC_API_URL/EXPO_PUBLIC_API_BASE_URL. Production mobile builds require a stable API base URL.',
+    );
+  }
+
   // Physical devices cannot use localhost/10.0.2.2 to reach the dev machine.
   if (isPhysicalDevice()) {
     if (__DEV__) {
@@ -213,13 +220,27 @@ const getActiveBaseUrl = () =>
   baseUrlCandidates[Math.min(activeBaseUrlIndex, baseUrlCandidates.length - 1)] ??
   `http://localhost:${DEFAULT_PORT}`;
 
+const hashString = (value: string) => {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+export const getActiveApiBaseUrl = () => getActiveBaseUrl();
+
+export const getApiEnvironmentKey = () => hashString(getActiveBaseUrl());
+
 const baseURL = getActiveBaseUrl();
 
 if (__DEV__) {
-  console.log('[api] baseURL =', baseURL);
-  console.log('[api] baseURL candidates =', baseUrlCandidates);
-  console.log('[api] isPhysicalDevice =', isPhysicalDevice());
-  console.log('[api] Platform.OS =', Platform.OS);
+  apiHostDevLog('active-host', {
+    baseURL,
+    candidates: baseUrlCandidates,
+    isPhysicalDevice: isPhysicalDevice(),
+    platform: Platform.OS,
+  });
 }
 
 export const apiClient: AxiosInstance = axios.create({
@@ -284,7 +305,7 @@ function promoteActiveHostTo(index: number, reason: string) {
   applyBaseUrl(next);
 
   if (__DEV__) {
-    console.warn('[api] Active API host pinned ->', next, { reason });
+    apiHostDevWarn('active-host-pinned', { baseURL: next, reason });
   }
 }
 
@@ -524,7 +545,8 @@ apiClient.interceptors.response.use(
         originalRequest.headers = headers;
 
         if (__DEV__) {
-          console.warn('[api] Network failure, retrying with failover host', {
+          const isFeedRequest = originalRequest.url?.includes('/collections/market');
+          apiHostDevWarn(isFeedRequest ? 'feed-host-failover' : 'host-failover', {
             fromBaseUrl: baseUrlCandidates[startIndex],
             nextBaseUrl,
             url: originalRequest.url,

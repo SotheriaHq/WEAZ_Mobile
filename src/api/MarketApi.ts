@@ -1,6 +1,7 @@
 import type { AxiosRequestConfig } from 'axios';
 
 import { apiClient } from '@/src/api/httpClient';
+import { feedContractDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import type { MarketFeedResponse } from '@/src/types/market';
 import type { FeedMediaAsset, MarketFeedBrand, MarketItem, MarketMediaType } from '@/src/types/market';
 
@@ -45,9 +46,15 @@ const asNumber = (value: unknown): number | null => {
 const asBoolean = (value: unknown, fallback = false): boolean =>
   typeof value === 'boolean' ? value : fallback;
 
+let currentDropReasons: Partial<Record<DropReason, number>> | null = null;
+
 const warnDroppedFeedItem = (reason: DropReason, item: RawMarketItem) => {
+  if (currentDropReasons) {
+    currentDropReasons[reason] = (currentDropReasons[reason] ?? 0) + 1;
+  }
   if (!__DEV__) return;
-  console.warn('[market-feed] dropped item', {
+  console.warn('[feed-contract]', {
+    event: 'dropped-item',
     reason,
     id: asString(item.id),
     collectionId: asString(item.collectionId),
@@ -368,6 +375,11 @@ export const normalizeLegacyMarketFeedItem = (raw: RawMarketItem): MarketItem | 
 };
 
 export async function getMarketFeed(params?: GetMarketFeedParams, config?: AxiosRequestConfig): Promise<MarketFeedResponse> {
+  feedContractDevLog('fetch-started', {
+    cursor: params?.cursor ?? null,
+    tag: params?.tag ?? null,
+    limit: params?.limit ?? 20,
+  });
   const response = await apiClient.get('/collections/market', {
     ...config,
     params: {
@@ -382,14 +394,28 @@ export async function getMarketFeed(params?: GetMarketFeedParams, config?: Axios
   const unwrapped = unwrapPayload<unknown>(response.data);
   const data = (unwrapped ?? response.data) as MarketFeedResponse & { items?: RawMarketItem[] };
   const rawItems = data && Array.isArray((data as any).items) ? ((data as any).items as RawMarketItem[]) : [];
-  const items = rawItems.map((item) => {
-    const mapped = parseStrictMarketFeedItem(item) ?? normalizeLegacyMarketFeedItem(item);
-    if (!mapped) return null;
-    if (typeof (item as any).combinedCommentsCount === 'number') {
-      mapped.commentsCount = (item as any).combinedCommentsCount as number;
-    }
-    return mapped;
-  }).filter((item): item is MarketItem => Boolean(item));
+  const previousDropReasons = currentDropReasons;
+  currentDropReasons = {};
+  const items = rawItems
+    .map((item) => {
+      const mapped = parseStrictMarketFeedItem(item) ?? normalizeLegacyMarketFeedItem(item);
+      if (!mapped) return null;
+      if (typeof (item as any).combinedCommentsCount === 'number') {
+        mapped.commentsCount = (item as any).combinedCommentsCount as number;
+      }
+      return mapped;
+    })
+    .filter((item): item is MarketItem => Boolean(item));
+  const dropReasons = currentDropReasons;
+  currentDropReasons = previousDropReasons;
+
+  feedContractDevLog('fetch-completed', {
+    pageCount: rawItems.length,
+    validItemCount: items.length,
+    droppedItemCount: rawItems.length - items.length,
+    dropReasons,
+    hasNextPage: Boolean((data as any).hasNextPage ?? items.length > 0),
+  });
 
   return {
     items,

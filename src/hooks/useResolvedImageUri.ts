@@ -2,6 +2,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 
 import { brandApi, type SignedFileUrlDebugContext } from '@/src/api/BrandApi';
+import { mediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 
 type UseResolvedImageUriArgs = {
   src?: string | null;
@@ -18,11 +19,7 @@ const resolvedUriMissingCache = new Map<string, number>();
 const pendingResolutions = new Map<string, Promise<string | null>>();
 
 function devMediaLog(event: string, details: Record<string, unknown>) {
-  if (!__DEV__) return;
-  console.log('[media-resolution]', {
-    event,
-    ...details,
-  });
+  mediaDevLog(event, details);
 }
 
 const trim = (value?: string | null) => {
@@ -291,7 +288,6 @@ export const resolveImageUri = async ({
       });
       return null;
     } catch {
-      setMissingUri(cacheKey);
       devMediaLog('resolve-failed', {
         reason: 'resolution-error',
         sourceType: directSrc ? getDirectSourceType(directSrc) ?? 'unsupported-src' : 'fileId',
@@ -322,6 +318,11 @@ export const prefetchResolvedImageAsset = async ({
   try {
     return await ExpoImage.prefetch(uri, 'memory-disk');
   } catch {
+    mediaDevWarn('prefetch-image-failed', {
+      designId: debugContext?.designId ?? null,
+      mediaIndex: debugContext?.mediaIndex ?? null,
+      hasFileId: Boolean(fileId),
+    });
     return false;
   }
 };

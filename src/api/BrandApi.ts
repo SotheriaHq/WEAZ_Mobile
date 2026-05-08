@@ -908,7 +908,7 @@ export const brandApi = {
               return null;
             }
             console.error('Error getting public URL fallback:', publicError);
-            return null;
+            throw publicError;
           }
         }
         if (error?.response?.status === 400 || error?.response?.status === 404) {
@@ -917,7 +917,7 @@ export const brandApi = {
           return null;
         }
         console.error('Error getting signed URL:', error);
-        return null;
+        throw error;
       } finally {
         signedUrlPending.delete(fileId);
       }
