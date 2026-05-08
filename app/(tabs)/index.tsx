@@ -91,6 +91,27 @@ const toFeedMediaType = (rawType?: string | null): 'image' | 'video' => {
 };
 
 const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
+  const strictMediaItems = Array.isArray(item.mediaItems) && item.mediaItems.length
+    ? item.mediaItems
+    : item.primaryMedia
+      ? [item.primaryMedia]
+      : [];
+  if (strictMediaItems.length) {
+    return strictMediaItems
+      .filter((media) => media.status === 'READY' && Boolean(normalizeStableUri(media.displayUrl)))
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .map((media, index) => ({
+        id: media.id,
+        collectionId: item.collectionId,
+        mediaIndex: index,
+        url: media.displayUrl,
+        fileId: media.fileId,
+        type: media.type === 'VIDEO' ? 'video' : 'image',
+        label: item.title ?? item.collectionTitle,
+        threadsCount: typeof item.stats?.threads === 'number' ? item.stats.threads : typeof item.threadsCount === 'number' ? item.threadsCount : 0,
+      }));
+  }
+
   const directUrl = item.media?.url ?? item.media?.previewUrl ?? '';
   return directUrl
     ? [
@@ -1397,6 +1418,22 @@ export default function HomeScreen() {
   ) => {
     const collectionId = item?.collectionId?.trim();
     if (!collectionId) return;
+    if (!item) return;
+    const strictFeedMedia = buildFallbackMediaItems(item);
+    if (strictFeedMedia.length > 0) {
+      setCollectionMediaMap((prev) => {
+        if (prev[collectionId]?.length) return prev;
+        return {
+          ...prev,
+          [collectionId]: strictFeedMedia,
+        };
+      });
+      prefetchMediaItems(strictFeedMedia, {
+        includeFirstImage: options?.includeFirstImageInPrefetch,
+      });
+      hydratedCollectionIdsRef.current.add(collectionId);
+      return;
+    }
     if (collectionMediaMapRef.current[collectionId]?.length) {
       prefetchMediaItems(collectionMediaMapRef.current[collectionId], {
         includeFirstImage: options?.includeFirstImageInPrefetch,

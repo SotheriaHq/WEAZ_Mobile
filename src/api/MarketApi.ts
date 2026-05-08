@@ -2,7 +2,7 @@ import type { AxiosRequestConfig } from 'axios';
 
 import { apiClient } from '@/src/api/httpClient';
 import type { MarketFeedResponse } from '@/src/types/market';
-import type { MarketItem, MarketMediaType } from '@/src/types/market';
+import type { FeedMediaAsset, MarketFeedBrand, MarketItem, MarketMediaType } from '@/src/types/market';
 
 export type GetMarketFeedParams = {
   cursor?: string | null;
@@ -18,6 +18,14 @@ export type MarketFilterChip = {
 };
 
 type RawMarketItem = Record<string, unknown>;
+type DropReason =
+  | 'missing id'
+  | 'missing primaryMedia'
+  | 'missing displayUrl'
+  | 'invalid media status'
+  | 'invalid aspectRatio'
+  | 'unsupported media type'
+  | 'missing collectionId';
 
 const asString = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -27,6 +35,157 @@ const asString = (value: unknown): string | null => {
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+const asNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))) return Number(value);
+  return null;
+};
+
+const asBoolean = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback;
+
+const warnDroppedFeedItem = (reason: DropReason, item: RawMarketItem) => {
+  if (!__DEV__) return;
+  console.warn('[market-feed] dropped item', {
+    reason,
+    id: asString(item.id),
+    collectionId: asString(item.collectionId),
+  });
+};
+
+const parseFeedMediaAsset = (value: unknown): { asset: FeedMediaAsset | null; reason?: DropReason } => {
+  const media = asRecord(value);
+  if (!Object.keys(media).length) return { asset: null, reason: 'missing primaryMedia' };
+
+  const id = asString(media.id);
+  if (!id) return { asset: null, reason: 'missing id' };
+
+  const displayUrl = asString(media.displayUrl);
+  if (!displayUrl) return { asset: null, reason: 'missing displayUrl' };
+
+  const status = asString(media.status);
+  if (status !== 'READY') return { asset: null, reason: 'invalid media status' };
+
+  const type = asString(media.type);
+  if (type !== 'IMAGE' && type !== 'VIDEO') return { asset: null, reason: 'unsupported media type' };
+
+  const aspectRatio = asNumber(media.aspectRatio);
+  if (!aspectRatio || aspectRatio <= 0) return { asset: null, reason: 'invalid aspectRatio' };
+
+  return {
+    asset: {
+      id,
+      fileId: asString(media.fileId),
+      type,
+      displayUrl,
+      thumbnailUrl: asString(media.thumbnailUrl),
+      previewUrl: asString(media.previewUrl),
+      blurHash: asString(media.blurHash),
+      dominantColor: asString(media.dominantColor),
+      width: asNumber(media.width),
+      height: asNumber(media.height),
+      aspectRatio,
+      status: 'READY',
+      orderIndex: asNumber(media.orderIndex) ?? 0,
+    },
+  };
+};
+
+const mapStrictAssetToLegacyMedia = (asset: FeedMediaAsset) => ({
+  fileId: asset.fileId ?? '',
+  url: asset.displayUrl,
+  previewUrl: asset.previewUrl ?? asset.thumbnailUrl ?? asset.displayUrl,
+  type: asset.type === 'VIDEO' ? 'POST_VIDEO' : 'POST_IMAGE',
+  aspectRatio: asset.aspectRatio,
+  createdAt: null,
+});
+
+export const parseStrictMarketFeedItem = (raw: RawMarketItem): MarketItem | null => {
+  const id = asString(raw.id);
+  if (!id) {
+    warnDroppedFeedItem('missing id', raw);
+    return null;
+  }
+
+  const collectionId = asString(raw.collectionId);
+  if (!collectionId) {
+    warnDroppedFeedItem('missing collectionId', raw);
+    return null;
+  }
+
+  const primaryResult = parseFeedMediaAsset(raw.primaryMedia);
+  if (!primaryResult.asset) {
+    warnDroppedFeedItem(primaryResult.reason ?? 'missing primaryMedia', raw);
+    return null;
+  }
+
+  const rawMediaItems = Array.isArray(raw.mediaItems) ? raw.mediaItems : [];
+  const mediaItems = rawMediaItems
+    .map((entry) => parseFeedMediaAsset(entry).asset)
+    .filter((asset): asset is FeedMediaAsset => Boolean(asset));
+
+  if (mediaItems.length === 0) {
+    mediaItems.push(primaryResult.asset);
+  }
+
+  const brandRecord = asRecord(raw.brand);
+  const brandId = asString(brandRecord.id);
+  const brand: MarketFeedBrand = {
+    id: brandId ?? '',
+    name: asString(brandRecord.name) ?? asString(raw.brandName) ?? 'Brand',
+    username: asString(brandRecord.username),
+    avatar: parseFeedMediaAsset(brandRecord.avatar).asset,
+  };
+
+  const stats = asRecord(raw.stats);
+  const viewerState = asRecord(raw.viewerState);
+  const tags = Array.isArray(raw.tags)
+    ? raw.tags.map((tag) => asString(tag)).filter((tag): tag is string => Boolean(tag))
+    : [];
+
+  return {
+    id,
+    collectionId,
+    sourceType: asString(raw.sourceType) as MarketItem['sourceType'],
+    title: asString(raw.title) ?? '',
+    description: asString(raw.description),
+    brand,
+    primaryMedia: primaryResult.asset,
+    mediaItems,
+    stats: {
+      likes: asNumber(stats.likes) ?? 0,
+      comments: asNumber(stats.comments) ?? 0,
+      threads: asNumber(stats.threads) ?? 0,
+      patches: asNumber(stats.patches) ?? undefined,
+    },
+    viewerState: {
+      isLiked: asBoolean(viewerState.isLiked),
+      isThreaded: asBoolean(viewerState.isThreaded),
+      isPatched: asBoolean(viewerState.isPatched),
+      canBag: asBoolean(viewerState.canBag),
+      isBagged: asBoolean(viewerState.isBagged),
+    },
+    createdAt: asString(raw.createdAt) ?? undefined,
+    updatedAt: asString(raw.updatedAt) ?? undefined,
+    collectionTitle: asString(raw.title) ?? '',
+    collectionDescription: asString(raw.description),
+    brandId: brand.id,
+    brandName: brand.name,
+    username: brand.username,
+    brandLogo: brand.avatar?.displayUrl ?? null,
+    brandLogoFileId: brand.avatar?.fileId ?? null,
+    threadsCount: asNumber(stats.threads),
+    likesCount: asNumber(stats.likes),
+    commentsCount: asNumber(stats.comments),
+    combinedCommentsCount: asNumber(stats.comments),
+    patchesCount: asNumber(stats.patches),
+    tags,
+    isLiked: asBoolean(viewerState.isLiked),
+    isThreaded: asBoolean(viewerState.isThreaded),
+    media: mapStrictAssetToLegacyMedia(primaryResult.asset),
+  };
+};
 
 const isFileLikeRecord = (value: Record<string, unknown>) =>
   Boolean(
@@ -58,7 +217,7 @@ const toFilterLabel = (value: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 
-const toMarketItem = (raw: RawMarketItem): MarketItem => {
+export const normalizeLegacyMarketFeedItem = (raw: RawMarketItem): MarketItem | null => {
   const collection = asRecord(raw.collection);
   const owner = asRecord(collection.owner);
   const media = asRecord(raw.media ?? raw.file ?? raw);
@@ -97,16 +256,23 @@ const toMarketItem = (raw: RawMarketItem): MarketItem => {
     asString(raw.mediaUrl) ??
     undefined;
 
+  if (!asString(raw.id) && !mediaFileId) {
+    warnDroppedFeedItem('missing id', raw);
+    return null;
+  }
+  if (!asString(raw.collectionId) && !asString(collection.id)) {
+    warnDroppedFeedItem('missing collectionId', raw);
+    return null;
+  }
+  if (!asString(mediaUrl)) {
+    warnDroppedFeedItem('missing displayUrl', raw);
+    return null;
+  }
+
   const mediaType =
     (raw.mediaType as MarketMediaType) ??
     (((media as any).mediaType || (media as any).type) as MarketMediaType) ??
     'POST_IMAGE';
-
-  const num = (value: unknown): number | null => {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))) return Number(value);
-    return null;
-  };
 
   return {
     id: String(raw.id ?? mediaFileId ?? ''),
@@ -132,10 +298,10 @@ const toMarketItem = (raw: RawMarketItem): MarketItem => {
       ((((owner as any).profileImageFile as Record<string, unknown> | undefined)?.id as string | undefined) ?? undefined) ??
       (((raw as any).brandLogoFileId as string | undefined) ?? undefined) ??
       null,
-    minPrice: num((collection as any).minPrice) ?? num((raw as any).minPrice),
-    maxPrice: num((collection as any).maxPrice) ?? num((raw as any).maxPrice),
-    saleMinPrice: num((collection as any).saleMinPrice ?? (raw as any).saleMinPrice),
-    saleMaxPrice: num((collection as any).saleMaxPrice ?? (raw as any).saleMaxPrice),
+    minPrice: asNumber((collection as any).minPrice) ?? asNumber((raw as any).minPrice),
+    maxPrice: asNumber((collection as any).maxPrice) ?? asNumber((raw as any).maxPrice),
+    saleMinPrice: asNumber((collection as any).saleMinPrice ?? (raw as any).saleMinPrice),
+    saleMaxPrice: asNumber((collection as any).saleMaxPrice ?? (raw as any).saleMaxPrice),
     saleStartAt:
       typeof (collection as any).saleStartAt === 'string'
         ? ((collection as any).saleStartAt as string)
@@ -217,12 +383,13 @@ export async function getMarketFeed(params?: GetMarketFeedParams, config?: Axios
   const data = (unwrapped ?? response.data) as MarketFeedResponse & { items?: RawMarketItem[] };
   const rawItems = data && Array.isArray((data as any).items) ? ((data as any).items as RawMarketItem[]) : [];
   const items = rawItems.map((item) => {
-    const mapped = toMarketItem(item);
+    const mapped = parseStrictMarketFeedItem(item) ?? normalizeLegacyMarketFeedItem(item);
+    if (!mapped) return null;
     if (typeof (item as any).combinedCommentsCount === 'number') {
       mapped.commentsCount = (item as any).combinedCommentsCount as number;
     }
     return mapped;
-  });
+  }).filter((item): item is MarketItem => Boolean(item));
 
   return {
     items,

@@ -1,5 +1,43 @@
 export type MarketMediaType = 'POST_IMAGE' | 'POST_VIDEO' | string;
 
+export type FeedMediaAsset = {
+  id: string;
+  fileId: string | null;
+  type: 'IMAGE' | 'VIDEO';
+  displayUrl: string;
+  thumbnailUrl: string | null;
+  previewUrl: string | null;
+  blurHash: string | null;
+  dominantColor: string | null;
+  width: number | null;
+  height: number | null;
+  aspectRatio: number;
+  status: 'READY';
+  orderIndex: number;
+};
+
+export type MarketFeedBrand = {
+  id: string;
+  name: string;
+  username: string | null;
+  avatar: FeedMediaAsset | null;
+};
+
+export type MarketFeedStats = {
+  likes: number;
+  comments: number;
+  threads: number;
+  patches?: number;
+};
+
+export type MarketFeedViewerState = {
+  isLiked: boolean;
+  isThreaded: boolean;
+  isPatched?: boolean;
+  canBag?: boolean;
+  isBagged?: boolean;
+};
+
 export type MarketMedia = {
   fileId: string;
   url?: string | null;
@@ -12,6 +50,16 @@ export type MarketMedia = {
 export type MarketItem = {
   id: string;
   collectionId: string;
+  sourceType?: 'DESIGN' | 'STORE_COLLECTION' | 'COLLECTION_MEDIA';
+  title?: string;
+  description?: string | null;
+  brand?: MarketFeedBrand;
+  primaryMedia?: FeedMediaAsset;
+  mediaItems?: FeedMediaAsset[];
+  stats?: MarketFeedStats;
+  viewerState?: MarketFeedViewerState;
+  createdAt?: string;
+  updatedAt?: string;
   collectionTitle: string;
   collectionDescription?: string | null;
   brandId: string;
