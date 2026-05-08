@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 
@@ -68,15 +68,19 @@ export const FeedImage = React.memo(function FeedImage({
   const [retryToken, setRetryToken] = useState(0);
   const lastSuccessfulUriRef = useRef<string | null>(null);
   const sourceUrl = displayUrl || previewUrl || thumbnailUrl || null;
+  const debugContext = useMemo(
+    () => ({
+      designId: id,
+      fileId,
+      sourceField: fileId ? 'feed.media.fileId' : 'feed.media.displayUrl',
+    }),
+    [fileId, id],
+  );
   const { uri, loading } = useResolvedImageAsset({
     src: sourceUrl,
     fileId,
     enabled: true,
-    debugContext: {
-      designId: id,
-      fileId,
-      sourceField: fileId ? 'feed.media.fileId' : 'feed.media.displayUrl',
-    },
+    debugContext,
   });
   const visibleUri = uri && uri !== failedUri ? uri : lastSuccessfulUriRef.current;
 
@@ -95,8 +99,8 @@ export const FeedImage = React.memo(function FeedImage({
     setFailedUri(null);
     setLoaded(false);
     setRetryToken((current) => current + 1);
-    void resolveImageUri({ src: sourceUrl, fileId, forceRefresh: true });
-  }, [fileId, sourceUrl]);
+    void resolveImageUri({ src: sourceUrl, fileId, forceRefresh: true, debugContext });
+  }, [debugContext, fileId, sourceUrl]);
 
   if (!visibleUri || loading) {
     return (

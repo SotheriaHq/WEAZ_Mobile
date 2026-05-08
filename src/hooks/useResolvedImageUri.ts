@@ -401,7 +401,7 @@ export function useResolvedImageUri({
       };
     }
 
-    if (directSrc && isUsableDirectHttpUrl(directSrc)) {
+    if (directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
       resolvedKeyRef.current = activeKey ?? `direct:${directSrc}`;
       lastSuccessfulRef.current = { key: activeKey ?? `direct:${directSrc}`, uri: directSrc };
       setResolvedUri(directSrc);

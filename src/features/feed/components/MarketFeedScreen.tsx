@@ -36,7 +36,6 @@ import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
 import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
-import type { ProductBagStatus } from '@/src/api/StoreApi';
 import { FeedImage } from '@/src/features/feed/components/FeedImage';
 
 /**
@@ -559,8 +558,6 @@ type FeedActionRailProps = {
   canPatchBrands: boolean;
   isPatched: boolean;
   patchBusy: boolean;
-  isCommentsOpen: boolean;
-  isActive: boolean;
   bottomClearance: number;
   onPatchBrand: (brandId?: string | null, brandName?: string | null) => void;
   onOpenBrand: (brandId?: string | null) => void;
@@ -571,82 +568,36 @@ type FeedActionRailProps = {
     fallbackCount?: number,
   ) => void;
   onOpenComments: (item: MarketItem) => void;
-  onCloseComments: () => void;
 };
 
 type FeedBagActionProps = {
   item: MarketItem;
-  enabled: boolean;
 };
 
-const FeedBagAction = React.memo(function FeedBagAction({ item, enabled }: FeedBagActionProps) {
-  const { prepareSourceBag, bagSource, loadingByProductId } = useMobileBagging();
-  const [status, setStatus] = useState<ProductBagStatus | null>(null);
-  const [statusChecked, setStatusChecked] = useState(false);
+const FeedBagAction = React.memo(function FeedBagAction({ item }: FeedBagActionProps) {
+  const { bagSource, loadingByProductId } = useMobileBagging();
   const sourceId = item.collectionId;
   const loadingKey = `DESIGN:${sourceId}`;
   const isLoading = Boolean(loadingByProductId[loadingKey]);
   const feedViewerCanBag = Boolean(item.viewerState?.canBag);
-
-  useEffect(() => {
-    let active = true;
-    setStatus(null);
-    setStatusChecked(false);
-    if (!enabled || !sourceId || !feedViewerCanBag) {
-      setStatusChecked(true);
-      return () => {
-        active = false;
-      };
-    }
-
-    void prepareSourceBag('DESIGN', sourceId)
-      .then((nextStatus) => {
-        if (active) setStatus(nextStatus);
-      })
-      .catch(() => {
-        if (active) setStatus(null);
-      })
-      .finally(() => {
-        if (active) setStatusChecked(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [enabled, feedViewerCanBag, prepareSourceBag, sourceId]);
-
-  const visible = Boolean(
-    enabled &&
-      statusChecked &&
-      (status
-        ? (status.canBag || status.standard.inBag || status.custom.alreadyBagged) &&
-          (status.ui.defaultAction !== 'DISABLED' || status.standard.inBag || status.custom.alreadyBagged)
-        : feedViewerCanBag),
-  );
 
   const handlePress = useCallback(() => {
     void bagSource({
       sourceType: 'DESIGN',
       sourceId,
       name: item.collectionTitle,
-    }).then((result) => {
-      if (result?.status) {
-        setStatus(result.status);
-      }
     });
   }, [bagSource, item.collectionTitle, sourceId]);
 
-  if (!visible) return null;
+  if (!feedViewerCanBag) return null;
 
   const pulseStatus = isLoading
     ? 'bagging'
-    : status?.standard.inBag || status?.custom.alreadyBagged
+    : item.viewerState?.isBagged
       ? 'currently_bagged'
-      : status?.userState.hasPreviouslyBaggedOrOrdered
-        ? 'previously_bagged'
-        : status?.ui.heartbeatState ?? 'not_bagged';
+      : 'not_bagged';
 
-  const mode = status?.modes.customOrder && !status.modes.standard ? 'custom' : 'standard';
+  const mode = 'custom';
 
   return (
     <View style={styles.railItem}>
@@ -676,14 +627,11 @@ const FeedActionRail = React.memo(function FeedActionRail({
   canPatchBrands,
   isPatched,
   patchBusy,
-  isCommentsOpen,
-  isActive,
   bottomClearance,
   onPatchBrand,
   onOpenBrand,
   onThreadPress,
   onOpenComments,
-  onCloseComments,
 }: FeedActionRailProps) {
   const handlePatchPress = useCallback(() => {
     onPatchBrand(item.brandId, brandName);
@@ -698,12 +646,8 @@ const FeedActionRail = React.memo(function FeedActionRail({
   }, [currentMediaId, isThreaded, item.collectionId, onThreadPress, threadCountRaw]);
 
   const handleCommentsPress = useCallback(() => {
-    if (isCommentsOpen) {
-      onCloseComments();
-      return;
-    }
     onOpenComments(item);
-  }, [isCommentsOpen, item, onCloseComments, onOpenComments]);
+  }, [item, onOpenComments]);
 
   return (
     <View style={[styles.rail, { bottom: bottomClearance + 24 }]}>
@@ -726,7 +670,7 @@ const FeedActionRail = React.memo(function FeedActionRail({
         onPress={handleThreadActionPress}
       />
 
-      <FeedBagAction item={item} enabled={isActive} />
+      <FeedBagAction item={item} />
 
       <View style={styles.railItem}>
         <IconButton size={44} onPress={handleCommentsPress}>
@@ -836,8 +780,6 @@ type FeedPostItemProps = {
   canPatchBrands: boolean;
   isPatched: boolean;
   patchBusy: boolean;
-  isCommentsOpen: boolean;
-  isActive: boolean;
   onCarouselIndexChange: (collectionId: string, nextIndex: number) => void;
   onPatchBrand: (brandId?: string | null, brandName?: string | null) => void;
   onOpenBrand: (brandId?: string | null) => void;
@@ -848,7 +790,6 @@ type FeedPostItemProps = {
     fallbackCount?: number,
   ) => void;
   onOpenComments: (item: MarketItem) => void;
-  onCloseComments: () => void;
 };
 
 const FeedPostItem = React.memo(function FeedPostItem({
@@ -871,14 +812,11 @@ const FeedPostItem = React.memo(function FeedPostItem({
   canPatchBrands,
   isPatched,
   patchBusy,
-  isCommentsOpen,
-  isActive,
   onCarouselIndexChange,
   onPatchBrand,
   onOpenBrand,
   onThreadPress,
   onOpenComments,
-  onCloseComments,
 }: FeedPostItemProps) {
   const activeMediaIndex = mediaItems.length
     ? Math.min(carouselIndexMap.get(item.collectionId) ?? 0, mediaItems.length - 1)
@@ -913,14 +851,11 @@ const FeedPostItem = React.memo(function FeedPostItem({
         canPatchBrands={canPatchBrands}
         isPatched={isPatched}
         patchBusy={patchBusy}
-        isCommentsOpen={isCommentsOpen}
-        isActive={isActive}
         bottomClearance={bottomClearance}
         onPatchBrand={onPatchBrand}
         onOpenBrand={onOpenBrand}
         onThreadPress={onThreadPress}
         onOpenComments={onOpenComments}
-        onCloseComments={onCloseComments}
       />
 
       <FeedMetaOverlay
@@ -1876,23 +1811,18 @@ export function MarketFeedScreen() {
           canPatchBrands={canPatchBrands}
           isPatched={Boolean(item.brandId && patchedBrandIds.has(item.brandId))}
           patchBusy={Boolean(item.brandId && patchingBrandIds[item.brandId])}
-          isCommentsOpen={commentsTarget?.collectionId === item.collectionId}
-          isActive={activePageIndex === entry.realIndex}
           onCarouselIndexChange={handleCarouselIndexChange}
           onPatchBrand={handlePatchBrand}
           onOpenBrand={handleOpenBrand}
           onThreadPress={handleThreadPress}
           onOpenComments={openCommentsSheet}
-          onCloseComments={closeCommentsSheet}
         />
       );
     },
     [
       bottomClearance,
       canPatchBrands,
-      closeCommentsSheet,
       collectionMediaMap,
-      commentsTarget?.collectionId,
       fallbackMediaByCollection,
       handleCarouselIndexChange,
       handleOpenBrand,

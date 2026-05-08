@@ -319,6 +319,22 @@ function logSignedFileUrlFailure(
   });
 }
 
+function logSignedFileUrlNetworkError(
+  label: string,
+  error: any,
+  context?: SignedFileUrlDebugContext,
+) {
+  if (process.env.NODE_ENV === 'production') return;
+  console.warn('[media-resolution]', {
+    event: label,
+    designId: context?.designId ?? null,
+    mediaIndex: context?.mediaIndex ?? null,
+    fileId: context?.fileId ?? null,
+    status: error?.response?.status ?? null,
+    message: typeof error?.message === 'string' ? error.message : 'request failed',
+  });
+}
+
 function asNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -907,7 +923,7 @@ export const brandApi = {
               logSignedFileUrlFailure(fileId, publicError.response.status, context);
               return null;
             }
-            console.error('Error getting public URL fallback:', publicError);
+            logSignedFileUrlNetworkError('public-url-fallback-error', publicError, context);
             throw publicError;
           }
         }
@@ -916,7 +932,7 @@ export const brandApi = {
           logSignedFileUrlFailure(fileId, error.response.status, context);
           return null;
         }
-        console.error('Error getting signed URL:', error);
+        logSignedFileUrlNetworkError('signed-url-error', error, context);
         throw error;
       } finally {
         signedUrlPending.delete(fileId);
