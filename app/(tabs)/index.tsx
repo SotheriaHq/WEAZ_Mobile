@@ -197,8 +197,9 @@ const FeedMediaSlide = React.memo(function FeedMediaSlide({
   const { scheme, theme } = useTheme();
   const placeholderSurface = scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt;
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [imageFailed, setImageFailed] = useState(false);
-  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const [, bumpFailedUrisVersion] = useState(0);
+  const failedUrisRef = useRef<Set<string>>(new Set());
+  const lastMediaKeyRef = useRef<string | null>(null);
   const primaryDebugContext = useMemo(
     () => ({
       designId: media?.collectionId ?? null,
@@ -223,27 +224,42 @@ const FeedMediaSlide = React.memo(function FeedMediaSlide({
     enabled: Boolean(media),
     debugContext: primaryDebugContext,
   });
+  const primaryFailed = Boolean(primaryUri && failedUrisRef.current.has(primaryUri));
   const fallbackCandidate = fallbackMedia && fallbackMedia.id !== media?.id ? fallbackMedia : null;
-  const shouldUseFallback = Boolean(fallbackCandidate && !primaryLoading && (!primaryUri || imageFailed));
+  const shouldUseFallback = Boolean(fallbackCandidate && !primaryLoading && (!primaryUri || primaryFailed));
   const { uri: fallbackUri, loading: fallbackLoading } = useResolvedImageAsset({
     src: fallbackCandidate?.url,
     fileId: fallbackCandidate?.fileId,
     enabled: shouldUseFallback,
     debugContext: fallbackDebugContext,
   });
+  const fallbackFailed = Boolean(fallbackUri && failedUrisRef.current.has(fallbackUri));
   const resolvedUri = useMemo(
-    () => (imageFailed ? fallbackUri : primaryUri ?? fallbackUri),
-    [imageFailed, fallbackUri, primaryUri],
+    () => (primaryFailed ? fallbackUri : primaryUri ?? fallbackUri),
+    [fallbackUri, primaryFailed, primaryUri],
   );
   const loading = primaryLoading || (shouldUseFallback && fallbackLoading);
+  const displayUri = resolvedUri && !failedUrisRef.current.has(resolvedUri) ? resolvedUri : null;
+
+  useEffect(() => {
+    const mediaKey = `${media?.id ?? 'empty'}:${media?.url ?? ''}:${media?.fileId ?? ''}`;
+    if (lastMediaKeyRef.current !== mediaKey) {
+      lastMediaKeyRef.current = mediaKey;
+      failedUrisRef.current = new Set();
+      bumpFailedUrisVersion((current) => current + 1);
+    }
+  }, [media?.fileId, media?.id, media?.url]);
 
   useEffect(() => {
     setImageLoaded(false);
-    // Reset imageFailed only if URI changed and it's not the previously failed one
-    if (failedUri !== resolvedUri) {
-      setImageFailed(false);
-    }
-  }, [resolvedUri, failedUri]);
+  }, [displayUri]);
+
+  const handleImageError = useCallback(() => {
+    if (!displayUri || failedUrisRef.current.has(displayUri)) return;
+    failedUrisRef.current.add(displayUri);
+    setImageLoaded(false);
+    bumpFailedUrisVersion((current) => current + 1);
+  }, [displayUri]);
 
   if (!media) {
     return (
@@ -283,7 +299,7 @@ const FeedMediaSlide = React.memo(function FeedMediaSlide({
     );
   }
 
-  if (!resolvedUri || imageFailed || !isValidImageUri(resolvedUri)) {
+  if (!displayUri || fallbackFailed || !isValidImageUri(displayUri)) {
     return (
       <View style={[StyleSheet.absoluteFillObject, styles.feedBrokenSlide, { backgroundColor: placeholderSurface }]}>
         <AppText variant="display">🖼️</AppText>
@@ -299,17 +315,14 @@ const FeedMediaSlide = React.memo(function FeedMediaSlide({
     <View style={[StyleSheet.absoluteFillObject, { backgroundColor: placeholderSurface }]}>
       {!imageLoaded ? <ImageWarmPlaceholder /> : null}
       <ExpoImage
-        source={{ uri: resolvedUri }}
+        source={{ uri: displayUri }}
         style={[styles.pageImage, { opacity: imageLoaded ? 1 : 0 }]}
         contentFit="cover"
         cachePolicy="memory-disk"
-        recyclingKey={resolvedUri}
+        recyclingKey={displayUri}
         transition={0}
         onLoad={() => setImageLoaded(true)}
-        onError={() => {
-          setFailedUri(resolvedUri);
-          setImageFailed(true);
-        }}
+        onError={handleImageError}
       />
     </View>
   );

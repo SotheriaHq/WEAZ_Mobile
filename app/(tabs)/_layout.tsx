@@ -67,9 +67,8 @@ export default function TabLayout() {
     pathname === '/(tabs)';
 
   const activeIslandKey = useMemo(() => {
-    if (profileMenuVisible) return 'profile';
     return mapPathnameToIslandKey(pathname);
-  }, [pathname, profileMenuVisible]);
+  }, [pathname]);
   const displayedActiveKey = optimisticActiveKey ?? activeIslandKey;
 
   const refreshUnreadNotificationCount = useCallback(async () => {
@@ -96,8 +95,6 @@ export default function TabLayout() {
 
   const handleProfilePress = useCallback(
     () => {
-      setOptimisticActiveKey('profile');
-
       if (!canOpenProfileMenu) {
         router.replace({ pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as any);
         return;
@@ -129,7 +126,7 @@ export default function TabLayout() {
   }, []);
 
   const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
-    if (!item.disabled) {
+    if (!item.disabled && item.key !== 'profile') {
       setOptimisticActiveKey(item.key);
     }
   }, []);
@@ -170,12 +167,12 @@ export default function TabLayout() {
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
-      setOptimisticActiveKey(item.key);
-
       if (item.key === 'profile') {
         handleProfilePress();
         return;
       }
+
+      setOptimisticActiveKey(item.key);
 
       if (item.key === 'bag') {
         bagFlow?.openMyBag();
@@ -376,6 +373,13 @@ export default function TabLayout() {
           lastProfileTabPressAtRef.current = 0;
           clearSelectionState();
           router.push('/studio' as any);
+        }}
+        onOpenSettings={() => {
+          setProfileMenuVisible(false);
+          clearProfileTabTimer();
+          lastProfileTabPressAtRef.current = 0;
+          clearSelectionState();
+          router.push('/settings' as any);
         }}
         scheme={scheme}
         theme={theme}

@@ -18,8 +18,7 @@ import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens, type AppTheme } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { useSyncedThemePreference } from '@/src/hooks/useSyncedThemePreference';
-import type { ResolvedTheme, ThemePreference } from '@/src/types/theme';
+import type { ResolvedTheme } from '@/src/types/theme';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 
 type ProfileMenuDropupProps = {
@@ -28,17 +27,12 @@ type ProfileMenuDropupProps = {
   onOpenProfile: () => void;
   onOpenNotifications: () => void;
   onOpenStudio?: () => void;
+  onOpenSettings?: () => void;
   scheme: ResolvedTheme;
   theme: AppTheme;
   bottomOffset: number;
   user: AuthUser | null;
 };
-
-const THEME_OPTIONS: Array<{ value: ThemePreference; label: string; emoji: string }> = [
-  { value: 'light', label: 'Light', emoji: '☀️' },
-  { value: 'dark', label: 'Dark', emoji: '🌙' },
-  { value: 'system', label: 'System', emoji: '💻' },
-];
 
 function getDisplayName(user: AuthUser | null) {
   if (!user) return 'Your profile';
@@ -60,18 +54,15 @@ export function ProfileMenuDropup({
   onOpenProfile,
   onOpenNotifications,
   onOpenStudio,
-  scheme,
+  onOpenSettings,
   theme,
   bottomOffset,
   user,
 }: ProfileMenuDropupProps) {
   const { signOut } = useAuth();
-  const { scheme: liveScheme, theme: liveTheme } = useTheme();
-  const { themePreference, setThemePreference } = useSyncedThemePreference();
+  const { theme: liveTheme } = useTheme();
   const { height, width } = useWindowDimensions();
-  const activeScheme = liveScheme ?? scheme;
   const activeTheme = liveTheme ?? theme;
-  const isDark = activeScheme === 'dark';
   const [mounted, setMounted] = React.useState(visible);
   const translateY = React.useRef(new Animated.Value(18)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
@@ -84,7 +75,7 @@ export function ProfileMenuDropup({
   const availableMenuHeight = Math.max(0, height - bottomOffset - tokens.spacing.sm);
   const menuMaxHeight = Math.min(360, availableMenuHeight);
   const availableMenuWidth = Math.max(0, width - tokens.spacing.md * 2);
-  const menuWidth = Math.min(Math.max(260, Math.round(width * 0.64)), Math.min(280, availableMenuWidth));
+  const menuWidth = Math.min(Math.max(196, Math.round(width * 0.46)), Math.min(236, availableMenuWidth));
 
   const runCloseAnimation = React.useCallback(
     (onDone?: () => void) => {
@@ -151,12 +142,16 @@ export function ProfileMenuDropup({
     });
   }, [onClose, runCloseAnimation, signOut]);
 
-  const handleThemePreferencePress = React.useCallback(
-    (next: ThemePreference) => {
-      void setThemePreference(next);
-    },
-    [setThemePreference],
-  );
+  const handleOpenSettings = React.useCallback(() => {
+    if (onOpenSettings) {
+      onOpenSettings();
+      return;
+    }
+    runCloseAnimation(() => {
+      onClose();
+      router.push('/settings' as any);
+    });
+  }, [onClose, onOpenSettings, runCloseAnimation]);
 
   if (!mounted) return null;
 
@@ -176,7 +171,7 @@ export function ProfileMenuDropup({
                 width: menuWidth,
                 opacity,
                 transform: [{ translateY }],
-                backgroundColor: isDark ? 'rgba(11,15,23,0.98)' : 'rgba(255,255,255,0.98)',
+                backgroundColor: activeTheme.colors.surface,
               },
             ]}
           >
@@ -193,7 +188,7 @@ export function ProfileMenuDropup({
                 onPress={onOpenProfile}
                 accessibilityRole="button"
                 accessibilityLabel={`Open profile for ${displayName}`}
-                style={({ pressed }) => [styles.identity, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
               >
                 <View style={[styles.avatar, { backgroundColor: activeTheme.colors.primarySoft }]}> 
                   {avatarUri ? (
@@ -215,50 +210,6 @@ export function ProfileMenuDropup({
                       {handle}
                     </AppText>
                   ) : null}
-                  <View
-                    style={[
-                      styles.themeSelector,
-                      {
-                        backgroundColor: isDark
-                          ? activeTheme.colors.surfaceAlt
-                          : activeTheme.colors.surface,
-                      },
-                    ]}
-                  >
-                    {THEME_OPTIONS.map((option) => {
-                      const selected = themePreference === option.value;
-                      return (
-                        <Pressable
-                          key={option.value}
-                          onPress={() => handleThemePreferencePress(option.value)}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          accessibilityLabel={`Use ${option.label.toLowerCase()} theme`}
-                          style={({ pressed }) => [
-                            styles.themeOption,
-                            {
-                              backgroundColor: selected
-                                ? activeTheme.colors.primarySoft
-                                : 'transparent',
-                              borderColor: selected
-                                ? activeTheme.colors.primary
-                                : activeTheme.colors.border,
-                            },
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          <AppText variant="captionBold">{option.emoji}</AppText>
-                          <AppText
-                            variant="captionBold"
-                            tone={selected ? 'primary' : 'secondary'}
-                            numberOfLines={1}
-                          >
-                            {option.label}
-                          </AppText>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
                 </View>
               </Pressable>
 
@@ -266,7 +217,7 @@ export function ProfileMenuDropup({
                 onPress={onOpenNotifications}
                 accessibilityRole="button"
                 accessibilityLabel="Open notifications"
-                style={({ pressed }) => [styles.item, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.item, pressed && styles.pressed]}
               >
                 <View style={styles.iconSlot}>
                   <AppText variant="captionBold">🔔</AppText>
@@ -283,7 +234,7 @@ export function ProfileMenuDropup({
                   onPress={onOpenStudio}
                   accessibilityRole="button"
                   accessibilityLabel="Open studio"
-                  style={({ pressed }) => [styles.item, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
+                  style={({ pressed }) => [styles.item, pressed && styles.pressed]}
                 >
                   <View style={styles.iconSlot}>
                     <AppText variant="captionBold">🧵</AppText>
@@ -300,7 +251,7 @@ export function ProfileMenuDropup({
                 onPress={onOpenProfile}
                 accessibilityRole="button"
                 accessibilityLabel="View full profile"
-                style={({ pressed }) => [styles.item, { borderBottomColor: activeTheme.colors.border }, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.item, pressed && styles.pressed]}
               >
                 <View style={styles.iconSlot}>
                   <AppText variant="captionBold">👤</AppText>
@@ -313,10 +264,26 @@ export function ProfileMenuDropup({
               </Pressable>
 
               <Pressable
+                onPress={handleOpenSettings}
+                accessibilityRole="button"
+                accessibilityLabel="Open settings"
+                style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+              >
+                <View style={styles.iconSlot}>
+                  <AppText variant="captionBold">⚙️</AppText>
+                </View>
+                <View style={styles.textWrap}>
+                  <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
+                    Settings
+                  </AppText>
+                </View>
+              </Pressable>
+
+              <Pressable
                 onPress={handleSignOut}
                 accessibilityRole="button"
                 accessibilityLabel="Sign out"
-                style={({ pressed }) => [styles.item, { borderTopColor: activeTheme.colors.border }, styles.signOutItem, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.item, styles.signOutItem, pressed && styles.pressed]}
               >
                 <View style={styles.iconSlot}>
                   <AppText variant="captionBold">🚪</AppText>
@@ -345,8 +312,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   menu: {
-    minWidth: 260,
-    maxWidth: 280,
+    minWidth: 196,
+    maxWidth: 236,
     borderRadius: tokens.radius.xl,
     borderWidth: 1,
     overflow: 'hidden',
@@ -357,7 +324,8 @@ const styles = StyleSheet.create({
     elevation: 14,
   },
   menuContent: {
-    paddingVertical: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
   },
   identity: {
     flexDirection: 'row',
@@ -365,7 +333,6 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 8,
-    borderBottomWidth: 1,
     minHeight: 52,
   },
   nameRow: {
@@ -379,23 +346,6 @@ const styles = StyleSheet.create({
   },
   handleText: {
     flexShrink: 1,
-  },
-  themeSelector: {
-    flexDirection: 'row',
-    gap: tokens.spacing.xs,
-    marginTop: tokens.spacing.sm,
-    borderRadius: tokens.radius.lg,
-    padding: tokens.spacing.xs,
-  },
-  themeOption: {
-    flex: 1,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    paddingHorizontal: tokens.spacing.xs,
   },
   avatar: {
     width: 34,
@@ -424,12 +374,10 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 8,
-    borderBottomWidth: 1,
     minHeight: 48,
   },
   signOutItem: {
-    borderTopWidth: 1,
-    borderBottomWidth: 0,
+    marginTop: tokens.spacing.xs,
   },
   pressed: {
     opacity: 0.78,
