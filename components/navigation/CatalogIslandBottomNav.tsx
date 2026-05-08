@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, useWindowDimensions } from 'react-native';
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -21,9 +21,19 @@ import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
+function mapPathnameToIslandKey(pathname: string): string {
+  if (pathname === '/catalog' || pathname.startsWith('/catalog/')) return 'profile';
+  if (pathname === '/discover') return 'market';
+  if (pathname === '/store') return 'store';
+  if (pathname === '/inbox') return 'inbox';
+  if (pathname === '/me' || pathname === '/me-edit') return 'profile';
+  return 'designs';
+}
+
 export function CatalogIslandBottomNav() {
   const { scheme, theme } = useTheme();
   const { status, token, user } = useAuth();
+  const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const unreadNotificationCount = useUnreadNotificationCount();
@@ -36,6 +46,11 @@ export function CatalogIslandBottomNav() {
   const isBrand = hasActiveBrandMembership(user);
   const canOpenProfileMenu = status === 'authenticated';
   const { bottomOffset } = getNativeIslandLayout(windowWidth, insets.bottom);
+  const activeIslandKey = useMemo(() => {
+    if (profileMenuVisible) return 'profile';
+    return mapPathnameToIslandKey(pathname);
+  }, [pathname, profileMenuVisible]);
+  const displayedActiveKey = optimisticActiveKey ?? activeIslandKey;
 
   const refreshUnreadNotificationCount = useCallback(async () => {
     const ready = await refreshSharedUnreadNotificationCount({
@@ -90,6 +105,12 @@ export function CatalogIslandBottomNav() {
     setOptimisticActiveKey(null);
   }, []);
 
+  const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
+    if (!item.disabled) {
+      setOptimisticActiveKey(item.key);
+    }
+  }, []);
+
   useEffect(() => {
     setNotificationCountReady(false);
     void refreshUnreadNotificationCount();
@@ -114,6 +135,12 @@ export function CatalogIslandBottomNav() {
     };
   }, [clearProfileTabTimer]);
 
+  useEffect(() => {
+    if (optimisticActiveKey && mapPathnameToIslandKey(pathname) === optimisticActiveKey) {
+      clearSelectionState();
+    }
+  }, [clearSelectionState, optimisticActiveKey, pathname]);
+
   useNotificationRealtimeChannel({
     enabled: status === 'authenticated' && Boolean(user?.id),
     token: token ?? null,
@@ -122,19 +149,19 @@ export function CatalogIslandBottomNav() {
 
   const items = useMemo<NativeIslandNavItem[]>(
     () => [
-      { key: 'designs', label: 'Designs', emoji: '🎨', active: optimisticActiveKey === 'designs' },
-      { key: 'market', label: 'Market', emoji: '🧭', active: optimisticActiveKey === 'market' },
-      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: '🛍️', active: optimisticActiveKey === 'store' }] : []),
-      { key: 'inbox', label: 'Messages', emoji: '✉️', active: optimisticActiveKey === 'inbox' },
+      { key: 'designs', label: 'Designs', emoji: '🎨', active: displayedActiveKey === 'designs' },
+      { key: 'market', label: 'Market', emoji: '🧭', active: displayedActiveKey === 'market' },
+      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: '🛍️', active: displayedActiveKey === 'store' }] : []),
+      { key: 'inbox', label: 'Messages', emoji: '✉️', active: displayedActiveKey === 'inbox' },
       {
         key: 'profile',
         label: 'Profile',
         emoji: '👤',
-        active: optimisticActiveKey === 'profile' || optimisticActiveKey == null,
+        active: displayedActiveKey === 'profile',
         badge: notificationCountReady ? unreadNotificationCount : undefined,
       },
     ],
-    [isBrand, notificationCountReady, optimisticActiveKey, unreadNotificationCount],
+    [displayedActiveKey, isBrand, notificationCountReady, unreadNotificationCount],
   );
 
   const handleSelect = useCallback(
@@ -168,9 +195,7 @@ export function CatalogIslandBottomNav() {
       <NativeIslandBottomNav
         items={items}
         onSelect={handleSelect}
-        onPressIn={(item) => {
-          setOptimisticActiveKey(item.key);
-        }}
+        onPressIn={markOptimisticActive}
       />
       <ProfileMenuDropup
         visible={profileMenuVisible}

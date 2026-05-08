@@ -24,6 +24,15 @@ import {
 
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
+function mapPathnameToIslandKey(pathname: string): string {
+  if (pathname === '/catalog' || pathname.startsWith('/catalog/')) return 'profile';
+  if (pathname === '/discover') return 'market';
+  if (pathname === '/store') return 'store';
+  if (pathname === '/inbox') return 'inbox';
+  if (pathname === '/me' || pathname === '/me-edit') return 'profile';
+  return 'designs';
+}
+
 export default function TabLayout() {
   const { scheme, theme } = useTheme();
   const { status, token, user } = useAuth();
@@ -58,20 +67,9 @@ export default function TabLayout() {
     pathname === '/(tabs)';
 
   const activeIslandKey = useMemo(() => {
-    if (profileMenuVisible || (canOpenProfileMenu && (pathname === '/me' || pathname === '/me-edit'))) {
-      return 'profile';
-    }
-    if (pathname === '/discover') {
-      return 'market';
-    }
-    if (pathname === '/store') {
-      return 'store';
-    }
-    if (pathname === '/inbox') {
-      return 'inbox';
-    }
-    return 'designs';
-  }, [canOpenProfileMenu, pathname, profileMenuVisible]);
+    if (profileMenuVisible) return 'profile';
+    return mapPathnameToIslandKey(pathname);
+  }, [pathname, profileMenuVisible]);
   const displayedActiveKey = optimisticActiveKey ?? activeIslandKey;
 
   const refreshUnreadNotificationCount = useCallback(async () => {
@@ -128,6 +126,12 @@ export default function TabLayout() {
 
   const clearSelectionState = useCallback(() => {
     setOptimisticActiveKey(null);
+  }, []);
+
+  const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
+    if (!item.disabled) {
+      setOptimisticActiveKey(item.key);
+    }
   }, []);
 
   const items = useMemo<NativeIslandNavItem[]>(
@@ -197,8 +201,10 @@ export default function TabLayout() {
   );
 
   useEffect(() => {
-    clearSelectionState();
-  }, [pathname, clearSelectionState]);
+    if (optimisticActiveKey && mapPathnameToIslandKey(pathname) === optimisticActiveKey) {
+      clearSelectionState();
+    }
+  }, [clearSelectionState, optimisticActiveKey, pathname]);
 
   useEffect(() => {
     if (!canOpenProfileMenu) {
@@ -345,9 +351,7 @@ export default function TabLayout() {
       <NativeIslandBottomNav
         items={islandItems}
         onSelect={handleSelect}
-        onPressIn={(item) => {
-          setOptimisticActiveKey(item.key);
-        }}
+        onPressIn={markOptimisticActive}
       />
 
       <ProfileMenuDropup
