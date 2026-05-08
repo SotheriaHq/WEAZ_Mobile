@@ -1,4 +1,4 @@
-import { MobileStoreApi, type ProductBagStatus } from '@/src/api/StoreApi';
+import { MobileStoreApi, type BagCount, type BagSourceType, type ProductBagStatus } from '@/src/api/StoreApi';
 
 export type AddStandardBagPayload = {
   productId: string;
@@ -22,6 +22,14 @@ export async function prepareBag(productId: string): Promise<ProductBagStatus> {
   return MobileStoreApi.getProductBagStatus(productId);
 }
 
+export async function prepareSourceBag(sourceType: BagSourceType, sourceId: string): Promise<ProductBagStatus> {
+  return MobileStoreApi.getSourceBagStatus(sourceType, sourceId);
+}
+
+export async function getBagCount(): Promise<BagCount> {
+  return MobileStoreApi.getBagCount();
+}
+
 export async function addStandard({ productId, size, color, qty = 1 }: AddStandardBagPayload) {
   return MobileStoreApi.addToCart({
     productId,
@@ -37,6 +45,8 @@ export async function addCustomOrder(config: AddCustomOrderBagPayload) {
 
 export const baggingService = {
   prepareBag,
+  prepareSourceBag,
+  getBagCount,
   addStandard,
   addCustomOrder,
 };

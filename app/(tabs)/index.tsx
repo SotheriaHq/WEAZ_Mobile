@@ -30,7 +30,10 @@ import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
 import { prefetchResolvedImageAsset, resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
+import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
 import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
+import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
+import type { ProductBagStatus } from '@/src/api/StoreApi';
 
 /**
  * Module-level feed cache — stale-while-revalidate.
@@ -527,6 +530,85 @@ type FeedActionRailProps = {
   onCloseComments: () => void;
 };
 
+type FeedBagActionProps = {
+  item: MarketItem;
+};
+
+const FeedBagAction = React.memo(function FeedBagAction({ item }: FeedBagActionProps) {
+  const { prepareSourceBag, bagSource, loadingByProductId } = useMobileBagging();
+  const [status, setStatus] = useState<ProductBagStatus | null>(null);
+  const [statusChecked, setStatusChecked] = useState(false);
+  const sourceId = item.collectionId;
+  const loadingKey = `DESIGN:${sourceId}`;
+  const isLoading = Boolean(loadingByProductId[loadingKey]);
+
+  useEffect(() => {
+    let active = true;
+    setStatus(null);
+    setStatusChecked(false);
+
+    void prepareSourceBag('DESIGN', sourceId)
+      .then((nextStatus) => {
+        if (active) setStatus(nextStatus);
+      })
+      .catch(() => {
+        if (active) setStatus(null);
+      })
+      .finally(() => {
+        if (active) setStatusChecked(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [prepareSourceBag, sourceId]);
+
+  const visible = Boolean(
+    statusChecked &&
+      status &&
+      (status.canBag || status.standard.inBag || status.custom.alreadyBagged) &&
+      (status.ui.defaultAction !== 'DISABLED' || status.standard.inBag || status.custom.alreadyBagged),
+  );
+
+  const handlePress = useCallback(() => {
+    void bagSource({
+      sourceType: 'DESIGN',
+      sourceId,
+      name: item.collectionTitle,
+    }).then((result) => {
+      if (result?.status) {
+        setStatus(result.status);
+      }
+    });
+  }, [bagSource, item.collectionTitle, sourceId]);
+
+  if (!visible) return null;
+
+  const pulseStatus = isLoading
+    ? 'bagging'
+    : status?.standard.inBag || status?.custom.alreadyBagged
+      ? 'currently_bagged'
+      : status?.userState.hasPreviouslyBaggedOrOrdered
+        ? 'previously_bagged'
+        : status?.ui.heartbeatState ?? 'not_bagged';
+
+  const mode = status?.modes.customOrder && !status.modes.standard ? 'custom' : 'standard';
+
+  return (
+    <View style={styles.railItem}>
+      <IconButton size={44} onPress={handlePress} disabled={isLoading}>
+        <BagPulseIcon
+          status={pulseStatus}
+          context="rail"
+          mode={mode}
+          size={38}
+        />
+      </IconButton>
+      <AppText variant="captionBold" tone="inverse">Bag</AppText>
+    </View>
+  );
+});
+
 const FeedActionRail = React.memo(function FeedActionRail({
   item,
   brandName,
@@ -588,6 +670,8 @@ const FeedActionRail = React.memo(function FeedActionRail({
         busy={isThreading}
         onPress={handleThreadActionPress}
       />
+
+      <FeedBagAction item={item} />
 
       <View style={styles.railItem}>
         <IconButton size={44} onPress={handleCommentsPress}>

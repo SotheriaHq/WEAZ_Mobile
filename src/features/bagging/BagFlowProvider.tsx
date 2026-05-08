@@ -21,11 +21,17 @@ import ProductBagSelectorSheet from '@/components/bagging/ProductBagSelectorShee
 import BagFittingsSheet from '@/components/bagging/BagFittingsSheet';
 import BagSummarySheet from '@/components/bagging/BagSummarySheet';
 import CustomBagSheet from '@/components/bagging/CustomBagSheet';
+import MyBagSheet from '@/components/bagging/MyBagSheet';
+import StaleFittingConfirmationSheet from '@/components/bagging/StaleFittingConfirmationSheet';
+import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { baggingService } from '@/src/services/bagging';
+import type { BagSourceType } from '@/src/api/StoreApi';
 
 type BagProductInput = {
   id: string;
   name?: string;
+  sourceType?: BagSourceType;
+  sourceId?: string;
 };
 
 type BagFlowTarget = {
@@ -45,6 +51,8 @@ type BagDefaultAction = ProductBagStatus['ui']['defaultAction'];
 type PendingBagAction = {
   productId: string;
   productName?: string;
+  sourceType?: BagSourceType;
+  sourceId?: string;
   intendedAction: BagDefaultAction;
   returnPath: string;
 };
@@ -55,12 +63,14 @@ type BagFlowContextValue = {
   openSelector: (product: BagProductInput, status: ProductBagStatus) => void;
   openCustomFlow: (product: BagProductInput, status: ProductBagStatus) => void;
   openFittings: (product: BagProductInput, status: ProductBagStatus) => void;
+  openStaleFittings: (product: BagProductInput, status: ProductBagStatus) => void;
   openAuthPrompt: (
     product: BagProductInput,
     action: BagDefaultAction,
     resume?: () => void | Promise<void>,
   ) => void;
   openExistingBag: (product: BagProductInput, status: ProductBagStatus) => void;
+  openMyBag: () => void;
   closeActiveFlow: () => void;
 };
 
@@ -74,11 +84,14 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { status: authStatus } = useAuth();
   const toast = useToast();
+  const { refreshGlobalBagCount } = useBagCount();
 
   const [selectorTarget, setSelectorTarget] = useState<BagFlowTarget | null>(null);
   const [customTarget, setCustomTarget] = useState<BagFlowTarget | null>(null);
   const [fittingsTarget, setFittingsTarget] = useState<BagFlowTarget | null>(null);
+  const [staleTarget, setStaleTarget] = useState<BagFlowTarget | null>(null);
   const [summaryTarget, setSummaryTarget] = useState<BagFlowTarget | null>(null);
+  const [myBagVisible, setMyBagVisible] = useState(false);
   const [pendingAuth, setPendingAuth] = useState<PendingAuthResume | null>(null);
 
   const pendingResumeRef = useRef<PendingAuthResume | null>(null);
@@ -87,7 +100,9 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSelectorTarget(null);
     setCustomTarget(null);
     setFittingsTarget(null);
+    setStaleTarget(null);
     setSummaryTarget(null);
+    setMyBagVisible(false);
     setPendingAuth(null);
     pendingResumeRef.current = null;
     void SecureStore.deleteItemAsync(PENDING_BAG_ACTION_KEY).catch(() => undefined);
@@ -103,7 +118,9 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
       setSelectorTarget(null);
       setCustomTarget(null);
       setFittingsTarget(null);
+      setStaleTarget(null);
       setSummaryTarget(null);
+      setMyBagVisible(false);
 
       if (status.standard.inBag || status.custom.alreadyBagged) {
         setSummaryTarget({ product, status });
@@ -120,9 +137,14 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (action === 'ADD_STANDARD') {
+        if ((status.sourceType ?? product.sourceType ?? 'PRODUCT') !== 'PRODUCT') {
+          toast.error('This design is not available for standard bagging.');
+          return;
+        }
         await baggingService.addStandard({ productId: product.id, qty: 1 });
         const nextStatus = await baggingService.prepareBag(product.id);
-        toast.success('Bagged.');
+        await refreshGlobalBagCount();
+        toast.success('Added to your bag');
         setSummaryTarget({ product, status: nextStatus });
         return;
       }
@@ -134,6 +156,15 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
 
       if (action === 'OPEN_FITTINGS') {
         setFittingsTarget({ product, status });
+        return;
+      }
+
+      if (
+        action === 'CONFIRM_STALE_FITTINGS' ||
+        status.custom.freshnessState === 'STALE' ||
+        status.custom.requiresStaleConfirmation
+      ) {
+        setStaleTarget({ product, status });
         return;
       }
 
@@ -149,7 +180,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
         setCustomTarget({ product, status });
       }
     },
-    [toast],
+    [refreshGlobalBagCount, toast],
   );
 
   const resumePersistedBagAction = useCallback(async () => {
@@ -173,8 +204,12 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     const product = {
       id: pending.productId,
       name: pending.productName,
+      sourceType: pending.sourceType,
+      sourceId: pending.sourceId,
     };
-    const status = await baggingService.prepareBag(pending.productId);
+    const status = pending.sourceType && pending.sourceId && pending.sourceType !== 'PRODUCT'
+      ? await baggingService.prepareSourceBag(pending.sourceType, pending.sourceId)
+      : await baggingService.prepareBag(pending.productId);
     await routeResolvedStatus(product, status, pending.intendedAction);
     return true;
   }, [routeResolvedStatus]);
@@ -183,7 +218,9 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setPendingAuth(null);
     setCustomTarget(null);
     setFittingsTarget(null);
+    setStaleTarget(null);
     setSummaryTarget(null);
+    setMyBagVisible(false);
     setSelectorTarget({ product, status });
   }, []);
 
@@ -191,7 +228,9 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setPendingAuth(null);
     setSelectorTarget(null);
     setFittingsTarget(null);
+    setStaleTarget(null);
     setSummaryTarget(null);
+    setMyBagVisible(false);
 
     if (!status.custom.available || !status.custom.configurationId) {
       toast.error(status.ui.disabledReason || 'This product is not configured for custom bagging yet.');
@@ -199,6 +238,10 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     }
     if (status.custom.fittingState === 'MISSING' || status.custom.fittingState === 'PARTIAL') {
       setFittingsTarget({ product, status });
+      return;
+    }
+    if (status.custom.freshnessState === 'STALE' || status.custom.requiresStaleConfirmation) {
+      setStaleTarget({ product, status });
       return;
     }
 
@@ -209,8 +252,20 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setPendingAuth(null);
     setSelectorTarget(null);
     setCustomTarget(null);
+    setStaleTarget(null);
     setSummaryTarget(null);
+    setMyBagVisible(false);
     setFittingsTarget({ product, status });
+  }, []);
+
+  const openStaleFittings = useCallback((product: BagProductInput, status: ProductBagStatus) => {
+    setPendingAuth(null);
+    setSelectorTarget(null);
+    setCustomTarget(null);
+    setFittingsTarget(null);
+    setSummaryTarget(null);
+    setMyBagVisible(false);
+    setStaleTarget({ product, status });
   }, []);
 
   const openAuthPrompt = useCallback(
@@ -218,13 +273,17 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
       setSelectorTarget(null);
       setCustomTarget(null);
       setFittingsTarget(null);
+      setStaleTarget(null);
       setSummaryTarget(null);
+      setMyBagVisible(false);
       const nextPending = { product, action, returnPath: pathname, resume };
       setPendingAuth(nextPending);
       pendingResumeRef.current = nextPending;
       const serialized: PendingBagAction = {
         productId: product.id,
         productName: product.name,
+        sourceType: product.sourceType,
+        sourceId: product.sourceId,
         intendedAction: action,
         returnPath: pathname,
       };
@@ -239,8 +298,21 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSelectorTarget(null);
     setCustomTarget(null);
     setFittingsTarget(null);
+    setStaleTarget(null);
     setSummaryTarget({ product, status });
+    setMyBagVisible(false);
   }, []);
+
+  const openMyBag = useCallback(() => {
+    setPendingAuth(null);
+    setSelectorTarget(null);
+    setCustomTarget(null);
+    setFittingsTarget(null);
+    setStaleTarget(null);
+    setSummaryTarget(null);
+    setMyBagVisible(true);
+    void refreshGlobalBagCount();
+  }, [refreshGlobalBagCount]);
 
   useEffect(() => {
     pendingResumeRef.current = pendingAuth;
@@ -268,11 +340,13 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
       openSelector,
       openCustomFlow,
       openFittings,
+      openStaleFittings,
       openAuthPrompt,
       openExistingBag,
+      openMyBag,
       closeActiveFlow,
     }),
-    [closeActiveFlow, openAuthPrompt, openCustomFlow, openExistingBag, openFittings, openSelector],
+    [closeActiveFlow, openAuthPrompt, openCustomFlow, openExistingBag, openFittings, openMyBag, openSelector, openStaleFittings],
   );
 
   return (
@@ -297,6 +371,23 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
         }}
       />
 
+      <StaleFittingConfirmationSheet
+        visible={Boolean(staleTarget)}
+        product={staleTarget?.product ?? null}
+        status={staleTarget?.status ?? null}
+        onClose={closeActiveFlow}
+        onUpdateFittings={() => {
+          if (!staleTarget) return;
+          setStaleTarget(null);
+          setFittingsTarget(staleTarget);
+        }}
+        onContinue={() => {
+          if (!staleTarget) return;
+          setStaleTarget(null);
+          setCustomTarget(staleTarget);
+        }}
+      />
+
       <CustomBagSheet
         visible={Boolean(customTarget)}
         product={customTarget?.product ?? null}
@@ -313,6 +404,11 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
         visible={Boolean(summaryTarget)}
         product={summaryTarget?.product ?? null}
         status={summaryTarget?.status ?? null}
+        onClose={closeActiveFlow}
+      />
+
+      <MyBagSheet
+        visible={myBagVisible}
         onClose={closeActiveFlow}
       />
 

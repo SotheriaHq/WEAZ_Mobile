@@ -114,6 +114,7 @@ export default function ProductBagSelectorSheet({ visible, product, status, onCl
         size: selectedSize ?? undefined,
         color: selectedColor ?? undefined,
       });
+      toast.success('Added to your bag');
       onClose();
     } catch (error) {
       const message = error instanceof Error && error.message.trim()

@@ -20,6 +20,7 @@ import { AuthProvider } from '@/src/auth/AuthContext';
 
 import { ToastProvider } from '@/src/toast/ToastContext';
 import { useAuth } from '@/src/auth/AuthContext';
+import { BagCountProvider } from '@/src/features/bagging/BagCountContext';
 import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
 import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
@@ -279,9 +280,11 @@ function RootLayoutNav({
       <ToastProvider>
         <AuthProvider>
           <ThemeBackendSync />
-          <BagFlowProvider>
-            <RootBootstrap fontsLoaded={fontsLoaded} />
-          </BagFlowProvider>
+          <BagCountProvider>
+            <BagFlowProvider>
+              <RootBootstrap fontsLoaded={fontsLoaded} />
+            </BagFlowProvider>
+          </BagCountProvider>
         </AuthProvider>
       </ToastProvider>
     </ThemeProvider>

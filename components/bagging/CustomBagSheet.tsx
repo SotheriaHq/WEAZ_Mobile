@@ -9,10 +9,13 @@ import { MobileStoreApi, type ProductBagStatus } from '@/src/api/StoreApi';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { tokens } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
+import type { BagSourceType } from '@/src/api/StoreApi';
 
 type BagProductInput = {
   id: string;
   name?: string;
+  sourceType?: BagSourceType;
+  sourceId?: string;
 };
 
 type Props = {
@@ -80,7 +83,7 @@ const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.
 
 export default function CustomBagSheet({ visible, product, status, onClose, onCompleted }: Props) {
   const toast = useToast();
-  const { addCustomOrder, prepareBag } = useMobileBagging();
+  const { addCustomOrder, prepareBag, prepareSourceBag } = useMobileBagging();
   const [values, setValues] = useState<Record<string, string>>({});
   const [customerName, setCustomerName] = useState('');
   const [email, setEmail] = useState('');
@@ -216,6 +219,9 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
         throw new Error('Could not create a custom bag intent for this product.');
       }
 
+      const sourceType = status.sourceType ?? product.sourceType ?? 'PRODUCT';
+      const sourceId = status.sourceId ?? product.sourceId ?? product.id;
+
       await addCustomOrder(product.id, {
         checkoutIntentId: preview.checkoutIntentId,
         configurationId: status.custom.configurationId,
@@ -229,10 +235,12 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
         },
         customerName: trimmedCustomerName,
         noDirectMatchAcknowledged: true,
-      });
+      }, sourceType, sourceId);
 
-      const nextStatus = await prepareBag(product.id);
-      toast.success('Custom request added to bag.');
+      const nextStatus = sourceType === 'PRODUCT'
+        ? await prepareBag(product.id)
+        : await prepareSourceBag(sourceType, sourceId);
+      toast.success('Added to your bag');
       onCompleted(nextStatus);
     } catch (nextError) {
       const message = toApiErrorMessage(nextError, 'Unable to add this custom request to your bag.');

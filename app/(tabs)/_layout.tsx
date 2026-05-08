@@ -12,6 +12,8 @@ import {
 import { ProfileMenuDropup } from '@/components/navigation/ProfileMenuDropup';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { useBagCount } from '@/src/features/bagging/BagCountContext';
+import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import {
@@ -26,6 +28,8 @@ export default function TabLayout() {
   const { scheme, theme } = useTheme();
   const { status, token, user } = useAuth();
   const toast = useToast();
+  const bagFlow = useBagFlow();
+  const { count: bagCount, refreshGlobalBagCount } = useBagCount();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -143,12 +147,35 @@ export default function TabLayout() {
     [displayedActiveKey, canOpenProfileMenu, isBrand, notificationCountReady, profileNavEmoji, profileNavLabel, unreadNotificationCount],
   );
 
+  const islandItems = useMemo<NativeIslandNavItem[]>(() => {
+    const bagItem: NativeIslandNavItem = {
+      key: 'bag',
+      label: 'My Bag',
+      emoji: '🧺',
+      active: displayedActiveKey === 'bag',
+      badge: bagCount.combinedCount,
+    };
+    const inboxIndex = items.findIndex((item) => item.key === 'inbox');
+    if (inboxIndex < 0) return [...items, bagItem];
+    return [
+      ...items.slice(0, inboxIndex),
+      bagItem,
+      ...items.slice(inboxIndex),
+    ];
+  }, [bagCount.combinedCount, displayedActiveKey, items]);
+
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
       setOptimisticActiveKey(item.key);
 
       if (item.key === 'profile') {
         handleProfilePress();
+        return;
+      }
+
+      if (item.key === 'bag') {
+        bagFlow?.openMyBag();
+        void refreshGlobalBagCount();
         return;
       }
 
@@ -166,7 +193,7 @@ export default function TabLayout() {
         router.replace('/(tabs)/inbox' as any);
       }
     },
-    [clearProfileTabTimer, handleProfilePress],
+    [bagFlow, clearProfileTabTimer, handleProfilePress, refreshGlobalBagCount],
   );
 
   useEffect(() => {
@@ -316,7 +343,7 @@ export default function TabLayout() {
       </Tabs>
 
       <NativeIslandBottomNav
-        items={items}
+        items={islandItems}
         onSelect={handleSelect}
         onPressIn={(item) => {
           setOptimisticActiveKey(item.key);

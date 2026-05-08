@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
 import { MobileStoreApi, type ProductBagStatus } from '@/src/api/StoreApi';
+import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { tokens } from '@/src/styles/tokens';
 
 type BagProductInput = {
@@ -19,6 +20,7 @@ type Props = {
 };
 
 export default function BagSummarySheet({ visible, product, status, onClose }: Props) {
+  const { refreshGlobalBagCount } = useBagCount();
   const [standardCount, setStandardCount] = useState(0);
   const [customCount, setCustomCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -30,13 +32,14 @@ export default function BagSummarySheet({ visible, product, status, onClose }: P
     const load = async () => {
       setLoading(true);
       try {
-        const [cart, customBag] = await Promise.all([
+        const [count, cart, customBag] = await Promise.all([
+          refreshGlobalBagCount(),
           MobileStoreApi.getCart(),
           MobileStoreApi.listCustomBag(),
         ]);
         if (!active) return;
-        setStandardCount(cart.totalQuantity);
-        setCustomCount(customBag.total);
+        setStandardCount(count.standardQuantity ?? cart.totalQuantity);
+        setCustomCount(count.customLineCount ?? customBag.total);
       } catch {
         if (!active) return;
         setStandardCount(0);
@@ -50,7 +53,7 @@ export default function BagSummarySheet({ visible, product, status, onClose }: P
     return () => {
       active = false;
     };
-  }, [visible]);
+  }, [refreshGlobalBagCount, visible]);
 
   return (
     <AppBottomSheet

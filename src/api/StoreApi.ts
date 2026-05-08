@@ -66,8 +66,18 @@ export interface CustomBagState {
   total: number;
 }
 
+export type BagSourceType = 'PRODUCT' | 'DESIGN' | 'COLLECTION';
+
+export interface BagCount {
+  standardQuantity: number;
+  customLineCount: number;
+  combinedCount: number;
+}
+
 export interface ProductBagStatus {
   productId: string;
+  sourceType?: BagSourceType;
+  sourceId?: string;
   canBag: boolean;
   bagMode: 'STANDARD' | 'CUSTOM' | 'STANDARD_OR_CUSTOM' | 'UNAVAILABLE';
   baggable: boolean;
@@ -109,7 +119,19 @@ export interface ProductBagStatus {
     requiredMeasurementKeys: string[];
     requiredFreeformPointIds: string[];
     fittingState: 'COMPLETE' | 'PARTIAL' | 'MISSING' | 'NOT_REQUIRED';
+    freshnessState: 'FRESH' | 'STALE' | 'MISSING' | 'PARTIAL' | 'NOT_REQUIRED';
     missingMeasurementKeys: string[];
+    measurementUpdatedAt: string | null;
+    staleAfterDays: number;
+    staleAt: string | null;
+    requiresStaleConfirmation: boolean;
+  };
+  duplicateState: {
+    inBag: boolean;
+    submittedUnpaid: boolean;
+    paidActive: boolean;
+    completedPolicy: 'ALLOW_REPEAT' | 'BLOCK_REPEAT' | 'UNKNOWN';
+    reason: string | null;
   };
   stockState: 'IN_STOCK' | 'OUT_OF_STOCK' | 'CUSTOM_ONLY' | 'UNAVAILABLE';
   userState: {
@@ -119,7 +141,7 @@ export interface ProductBagStatus {
   };
   ui: {
     heartbeatState: 'not_bagged' | 'previously_bagged' | 'currently_bagged' | 'bagging' | 'disabled';
-    defaultAction: 'ADD_STANDARD' | 'OPEN_SELECTOR' | 'OPEN_CUSTOM_FLOW' | 'OPEN_FITTINGS' | 'DISABLED';
+    defaultAction: 'ADD_STANDARD' | 'OPEN_SELECTOR' | 'OPEN_CUSTOM_FLOW' | 'OPEN_FITTINGS' | 'CONFIRM_STALE_FITTINGS' | 'DISABLED';
     disabledReason: string | null;
   };
 }
@@ -294,12 +316,18 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
   };
 };
 
-const normalizeBagStatus = (payload: unknown, fallbackProductId: string): ProductBagStatus => {
+const normalizeBagStatus = (
+  payload: unknown,
+  fallbackProductId: string,
+  fallbackSourceType: BagSourceType = 'PRODUCT',
+  fallbackSourceId = fallbackProductId,
+): ProductBagStatus => {
   const data = unwrapData<Record<string, unknown>>(payload);
   const modes = asRecord(data?.modes);
   const standard = asRecord(data?.standard);
   const custom = asRecord(data?.custom);
   const customOrder = asRecord(data?.customOrder);
+  const duplicateState = asRecord(data?.duplicateState);
   const standardAvailable = Boolean(standard.available ?? standard.enabled);
   const standardBagged = Boolean(standard.alreadyBagged ?? standard.inBag);
   const customAvailable = Boolean(custom.available ?? customOrder.enabled);
@@ -331,11 +359,20 @@ const normalizeBagStatus = (payload: unknown, fallbackProductId: string): Produc
         : customMissingKeys.length === customRequiredKeys.length
           ? 'MISSING'
           : 'PARTIAL');
+  const freshnessState =
+    asString(custom.freshnessState) ??
+    (fittingState === 'NOT_REQUIRED'
+      ? 'NOT_REQUIRED'
+      : fittingState === 'COMPLETE'
+        ? 'FRESH'
+        : fittingState);
   const canBag = Boolean(data?.canBag ?? data?.baggable);
   const disabledReason = asString(asRecord(data?.ui).disabledReason) ?? asString(data?.reason);
 
   return {
     productId: asString(data?.productId) ?? fallbackProductId,
+    sourceType: (asString(data?.sourceType) as BagSourceType | null) ?? fallbackSourceType,
+    sourceId: asString(data?.sourceId) ?? fallbackSourceId,
     canBag,
     bagMode: (asString(data?.bagMode) as ProductBagStatus['bagMode']) ?? (
       standardAvailable && customAvailable
@@ -385,7 +422,19 @@ const normalizeBagStatus = (payload: unknown, fallbackProductId: string): Produc
       requiredMeasurementKeys: customRequiredKeys,
       requiredFreeformPointIds: customFreeformIds,
       fittingState: fittingState as ProductBagStatus['custom']['fittingState'],
+      freshnessState: freshnessState as ProductBagStatus['custom']['freshnessState'],
       missingMeasurementKeys: customMissingKeys,
+      measurementUpdatedAt: asString(custom.measurementUpdatedAt),
+      staleAfterDays: asNumber(custom.staleAfterDays, 14),
+      staleAt: asString(custom.staleAt),
+      requiresStaleConfirmation: Boolean(custom.requiresStaleConfirmation),
+    },
+    duplicateState: {
+      inBag: Boolean(duplicateState.inBag ?? customBagged),
+      submittedUnpaid: Boolean(duplicateState.submittedUnpaid),
+      paidActive: Boolean(duplicateState.paidActive),
+      completedPolicy: (asString(duplicateState.completedPolicy) as ProductBagStatus['duplicateState']['completedPolicy']) ?? 'UNKNOWN',
+      reason: asString(duplicateState.reason),
     },
     stockState: (asString(data?.stockState) as ProductBagStatus['stockState']) ?? (
       standardAvailable
@@ -414,7 +463,9 @@ const normalizeBagStatus = (payload: unknown, fallbackProductId: string): Produc
             ? 'OPEN_SELECTOR'
             : standardAvailable
               ? 'ADD_STANDARD'
-              : fittingState === 'MISSING' || fittingState === 'PARTIAL'
+              : freshnessState === 'STALE'
+                ? 'CONFIRM_STALE_FITTINGS'
+                : fittingState === 'MISSING' || fittingState === 'PARTIAL'
                 ? 'OPEN_FITTINGS'
                 : 'OPEN_CUSTOM_FLOW'
       ),
@@ -489,6 +540,8 @@ export const MobileStoreApi = {
 
       return {
         productId,
+        sourceType: 'PRODUCT',
+        sourceId: productId,
         canBag,
         bagMode: inStock && customAvailable ? 'STANDARD_OR_CUSTOM' : inStock ? 'STANDARD' : customAvailable ? 'CUSTOM' : 'UNAVAILABLE',
         baggable: canBag,
@@ -530,7 +583,19 @@ export const MobileStoreApi = {
           requiredMeasurementKeys: missingKeys,
           requiredFreeformPointIds: [],
           fittingState,
+          freshnessState: fittingState === 'MISSING' ? 'MISSING' : 'NOT_REQUIRED',
           missingMeasurementKeys: missingKeys,
+          measurementUpdatedAt: null,
+          staleAfterDays: 14,
+          staleAt: null,
+          requiresStaleConfirmation: false,
+        },
+        duplicateState: {
+          inBag: Boolean(customBagLine),
+          submittedUnpaid: false,
+          paidActive: false,
+          completedPolicy: 'UNKNOWN',
+          reason: null,
         },
         stockState: inStock ? 'IN_STOCK' : customAvailable ? 'CUSTOM_ONLY' : 'OUT_OF_STOCK',
         userState: {
@@ -557,6 +622,24 @@ export const MobileStoreApi = {
         },
       };
     }
+  },
+
+  async getSourceBagStatus(sourceType: BagSourceType, sourceId: string): Promise<ProductBagStatus> {
+    const normalizedSourceType = sourceType.toUpperCase() as BagSourceType;
+    const response = await apiClient.get(`/bag/sources/${normalizedSourceType}/${sourceId}/status`);
+    return normalizeBagStatus(response.data, sourceId, normalizedSourceType, sourceId);
+  },
+
+  async getBagCount(): Promise<BagCount> {
+    const response = await apiClient.get('/bag/count');
+    const payload = unwrapData<Record<string, unknown>>(response.data);
+    const standardQuantity = asNumber(payload?.standardQuantity);
+    const customLineCount = asNumber(payload?.customLineCount);
+    return {
+      standardQuantity,
+      customLineCount,
+      combinedCount: asNumber(payload?.combinedCount, standardQuantity + customLineCount),
+    };
   },
 
   async getCart(): Promise<CartState> {

@@ -9,11 +9,13 @@ import { baggingService } from '@/src/services/bagging';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
-import type { ProductBagStatus } from '@/src/api/StoreApi';
+import type { BagSourceType, ProductBagStatus } from '@/src/api/StoreApi';
 
 type BagProductInput = {
   id: string;
   name?: string;
+  sourceType?: BagSourceType;
+  sourceId?: string;
 };
 
 type Props = {
@@ -55,6 +57,16 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
     () => status?.custom.missingMeasurementKeys ?? [],
     [status?.custom.missingMeasurementKeys],
   );
+  const measurementsToEdit = useMemo(
+    () => (
+      missingMeasurements.length > 0
+        ? missingMeasurements
+        : status?.custom.freshnessState === 'STALE'
+          ? status.custom.requiredMeasurementKeys
+          : []
+    ),
+    [missingMeasurements, status?.custom.freshnessState, status?.custom.requiredMeasurementKeys],
+  );
 
   useEffect(() => {
     if (!visible) return;
@@ -68,7 +80,7 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
         if (!active) return;
         const currentMeasurements = extractMeasurements(sizeFit);
         setValues(
-          missingMeasurements.reduce<Record<string, string>>((acc, key) => {
+          measurementsToEdit.reduce<Record<string, string>>((acc, key) => {
             acc[key] = currentMeasurements[key] ?? '';
             return acc;
           }, {}),
@@ -84,14 +96,14 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
     return () => {
       active = false;
     };
-  }, [missingMeasurements, visible]);
+  }, [measurementsToEdit, visible]);
 
   const unresolvedKeys = useMemo(
-    () => missingMeasurements.filter((key) => {
+    () => measurementsToEdit.filter((key) => {
       const parsed = Number(values[key]);
       return !(Number.isFinite(parsed) && parsed > 0);
     }),
-    [missingMeasurements, values],
+    [measurementsToEdit, values],
   );
 
   const handleSave = async () => {
@@ -108,7 +120,7 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
       const currentMeasurements = current?.measurements ?? {};
       const nextMeasurements = {
         ...currentMeasurements,
-        ...missingMeasurements.reduce<Record<string, number>>((acc, key) => {
+        ...measurementsToEdit.reduce<Record<string, number>>((acc, key) => {
           acc[key] = Number(values[key]);
           return acc;
         }, {}),
@@ -120,7 +132,11 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
         notes: current?.notes ?? undefined,
       });
 
-      const nextStatus = await baggingService.prepareBag(product.id);
+      const sourceType = status.sourceType ?? product.sourceType ?? 'PRODUCT';
+      const sourceId = status.sourceId ?? product.sourceId ?? product.id;
+      const nextStatus = sourceType === 'PRODUCT'
+        ? await baggingService.prepareBag(product.id)
+        : await baggingService.prepareSourceBag(sourceType, sourceId);
       toast.success('Fittings updated.');
       onResolved?.(nextStatus);
     } catch (nextError) {
@@ -138,13 +154,13 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
   return (
     <AppBottomSheet
       visible={visible}
-      title={`Finish fittings for ${product?.name || 'this item'}`}
-      subtitle="Add the missing measurements before continuing this custom bag request."
+      title={`${status?.custom.freshnessState === 'STALE' ? 'Update' : 'Finish'} fittings for ${product?.name || 'this item'}`}
+      subtitle={status?.custom.freshnessState === 'STALE' ? 'Refresh the measurements required for this custom bag request.' : 'Add the missing measurements before continuing this custom bag request.'}
       onClose={onClose}
       showCloseButton
       onDone={handleSave}
       doneLabel="Save"
-      doneDisabled={loading || saving || missingMeasurements.length === 0 || unresolvedKeys.length > 0}
+      doneDisabled={loading || saving || measurementsToEdit.length === 0 || unresolvedKeys.length > 0}
       loading={saving}
       scrollable
     >
@@ -157,9 +173,9 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
         ) : null}
 
         <View style={styles.section}>
-          <AppText variant="subtitle">Missing measurements</AppText>
-          {missingMeasurements.length > 0 ? (
-            missingMeasurements.map((measurement) => (
+          <AppText variant="subtitle">{status?.custom.freshnessState === 'STALE' ? 'Measurements to refresh' : 'Missing measurements'}</AppText>
+          {measurementsToEdit.length > 0 ? (
+            measurementsToEdit.map((measurement) => (
               <Input
                 key={measurement}
                 label={`${toTitleCase(measurement)} (cm)`}
@@ -174,7 +190,7 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
             ))
           ) : (
             <AppText variant="caption" tone="muted">
-              No measurements are missing. Continue into the custom order flow.
+              No measurements are required. Continue into the custom order flow.
             </AppText>
           )}
         </View>
