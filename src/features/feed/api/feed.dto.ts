@@ -10,7 +10,7 @@ export type FeedCacheIdentity = {
 };
 
 export type PersistedFeedSnapshot = {
-  version: 1;
+  version: 2;
   identity: FeedCacheIdentity;
   items: MarketItem[];
   nextCursor: string | null;

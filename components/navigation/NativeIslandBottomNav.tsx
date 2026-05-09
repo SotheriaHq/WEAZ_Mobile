@@ -54,15 +54,18 @@ export function NativeIslandTabIcon({
   emoji,
   focused,
   badge,
+  compact,
 }: {
   label: string;
   emoji: string;
   focused: boolean;
   badge?: number;
+  compact?: boolean;
 }) {
   const { theme } = useTheme();
   const chipStyle = [
     styles.tabChip,
+    compact && styles.tabChipCompact,
     focused
         ? {
           backgroundColor: theme.colors.primarySoft,
@@ -87,7 +90,7 @@ export function NativeIslandTabIcon({
                 {emoji}
               </Text>
             </View>
-            <View style={styles.tabLabelWrap}>
+            <View style={[styles.tabLabelWrap, compact && !focused && styles.tabLabelWrapCompact]}>
               <AppText
                 variant="captionBold"
                 tone={focused ? 'primary' : 'secondary'}
@@ -96,7 +99,7 @@ export function NativeIslandTabIcon({
                 minimumFontScale={0.84}
                 style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
               >
-                {label}
+                {compact && !focused ? '' : label}
               </AppText>
             </View>
           </View>
@@ -120,6 +123,7 @@ export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIsla
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const { bottomOffset, sideOffset } = getNativeIslandLayout(windowWidth, insets.bottom);
+  const compact = items.length >= 6 || windowWidth < 380;
   if (items.length === 0) {
     return null;
   }
@@ -186,6 +190,7 @@ export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIsla
                 emoji={item.emoji}
                 focused={Boolean(item.active && !item.disabled)}
                 badge={item.badge}
+                compact={compact}
               />
             </Pressable>
           ))}
@@ -201,7 +206,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderTopWidth: 0,
     shadowOffset: { width: 0, height: 8 },
-    overflow: 'hidden',
+    overflow: 'visible',
     zIndex: 100,
   },
   navGlassFill: {
@@ -216,6 +221,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: NATIVE_ISLAND_NAV.horizontalPadding,
+    overflow: 'visible',
   },
   navItem: {
     flex: 1,
@@ -250,6 +256,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'center',
     overflow: 'hidden',
+  },
+  tabChipCompact: {
+    minWidth: 42,
+    height: 34,
+    paddingHorizontal: 3,
   },
   tabChipInactive: {
     backgroundColor: 'transparent',
@@ -294,6 +305,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
     width: '100%',
     paddingHorizontal: 2,
+  },
+  tabLabelWrapCompact: {
+    minHeight: 0,
+    height: 0,
   },
   badgeWrap: {
     position: 'absolute',

@@ -2,13 +2,26 @@ import type { MarketItem } from '@/src/types/market';
 
 const trim = (value?: string | null) => (typeof value === 'string' ? value.trim() : '');
 
+const isUsableHttpUrl = (value?: string | null) => {
+  const url = trim(value);
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    return !['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(hostname);
+  } catch {
+    return false;
+  }
+};
+
 export const isDisplayReadyFeedItem = (item: MarketItem | null | undefined) => {
   if (!item?.id || !item.collectionId) return false;
   const primary = item.primaryMedia;
   if (primary) {
-    return primary.status === 'READY' && Boolean(trim(primary.displayUrl));
+    return primary.status === 'READY' && isUsableHttpUrl(primary.displayUrl);
   }
-  return Boolean(trim(item.media?.url));
+  return isUsableHttpUrl(item.media?.url);
 };
 
 export const sanitizeFeedItems = (items: MarketItem[]) => {

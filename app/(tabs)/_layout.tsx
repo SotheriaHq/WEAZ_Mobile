@@ -165,6 +165,17 @@ export default function TabLayout() {
     ];
   }, [bagCount.combinedCount, displayedActiveKey, items]);
 
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log('[nav] island-items', {
+      pathname,
+      keys: islandItems.map((item) => item.key),
+      activeKey: displayedActiveKey,
+      width: windowWidth,
+      itemCount: islandItems.length,
+    });
+  }, [displayedActiveKey, islandItems, pathname, windowWidth]);
+
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
       if (item.key === 'profile') {

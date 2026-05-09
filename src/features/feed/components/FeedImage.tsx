@@ -7,6 +7,8 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 
+type FeedImageLoadState = 'idle' | 'resolving' | 'loading' | 'loaded' | 'failed';
+
 type FeedImageProps = {
   id: string;
   displayUrl?: string | null;
@@ -17,6 +19,8 @@ type FeedImageProps = {
   dominantColor?: string | null;
   label?: string | null;
   style?: StyleProp<ViewStyle>;
+  sourceType?: string;
+  imageIndex?: number;
 };
 
 function FeedImagePlaceholder({ backgroundColor }: { backgroundColor: string }) {
@@ -60,94 +64,133 @@ export const FeedImage = React.memo(function FeedImage({
   dominantColor,
   label,
   style,
+  sourceType,
+  imageIndex,
 }: FeedImageProps) {
   const { scheme, theme } = useTheme();
   const placeholderSurface = dominantColor || (scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt);
-  const [loaded, setLoaded] = useState(false);
+  const [loadState, setLoadState] = useState<FeedImageLoadState>('idle');
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   const lastSuccessfulUriRef = useRef<string | null>(null);
+  const failedUriSetRef = useRef<Set<string>>(new Set());
   const sourceUrl = displayUrl || previewUrl || thumbnailUrl || null;
+  const hasSource = Boolean(sourceUrl || fileId);
   const debugContext = useMemo(
     () => ({
       designId: id,
       fileId,
-      sourceField: fileId ? 'feed.media.fileId' : 'feed.media.displayUrl',
+      mediaIndex: imageIndex,
+      sourceField: sourceType ?? (fileId ? 'feed.media.fileId' : 'feed.media.displayUrl'),
     }),
-    [fileId, id],
+    [fileId, id, imageIndex, sourceType],
   );
   const { uri, loading } = useResolvedImageAsset({
     src: sourceUrl,
     fileId,
-    enabled: true,
+    enabled: hasSource,
     debugContext,
   });
   const visibleUri = uri && uri !== failedUri ? uri : lastSuccessfulUriRef.current;
+  const hostname = useMemo(() => {
+    const candidate = visibleUri ?? uri ?? sourceUrl;
+    if (!candidate) return null;
+    try {
+      return new URL(candidate).hostname;
+    } catch {
+      return null;
+    }
+  }, [sourceUrl, uri, visibleUri]);
 
   useEffect(() => {
-    setLoaded(false);
+    setLoadState(hasSource ? 'resolving' : 'idle');
     setFailedUri(null);
-  }, [id, sourceUrl, fileId, retryToken]);
+    failedUriSetRef.current = new Set();
+  }, [hasSource, id, sourceUrl, fileId, retryToken]);
 
   useEffect(() => {
     if (uri && uri !== failedUri) {
-      lastSuccessfulUriRef.current = uri;
+      setLoadState((current) => (current === 'loaded' ? 'loaded' : 'loading'));
     }
   }, [failedUri, uri]);
 
   const handleRetry = useCallback(() => {
     setFailedUri(null);
-    setLoaded(false);
+    failedUriSetRef.current = new Set();
+    setLoadState(hasSource ? 'resolving' : 'idle');
     setRetryToken((current) => current + 1);
     void resolveImageUri({ src: sourceUrl, fileId, forceRefresh: true, debugContext });
-  }, [debugContext, fileId, sourceUrl]);
+  }, [debugContext, fileId, hasSource, sourceUrl]);
 
-  if (!visibleUri || loading) {
+  const renderFallback = (copy: string) => (
+    <Pressable
+      onPress={handleRetry}
+      disabled={!hasSource}
+      style={[styles.root, styles.fallback, { backgroundColor: placeholderSurface }, style]}
+      accessibilityRole={hasSource ? 'button' : undefined}
+      accessibilityLabel={hasSource ? 'Retry image preview' : 'Image preview unavailable'}
+    >
+      <AppText variant="display">Image</AppText>
+      <AppText variant="subtitle">Preview unavailable</AppText>
+      <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.fallbackText}>
+        {label || copy}
+      </AppText>
+    </Pressable>
+  );
+
+  if (!hasSource) {
+    return renderFallback('No media source available');
+  }
+
+  if (loading || loadState === 'resolving') {
     return (
       <View style={[styles.root, { backgroundColor: placeholderSurface }, style]}>
-        <FeedImagePlaceholder backgroundColor={placeholderSurface} />
+        {lastSuccessfulUriRef.current ? (
+          <ExpoImage
+            source={{ uri: lastSuccessfulUriRef.current }}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            recyclingKey={`${id}:${lastSuccessfulUriRef.current}:stale`}
+          />
+        ) : (
+          <FeedImagePlaceholder backgroundColor={placeholderSurface} />
+        )}
       </View>
     );
   }
 
-  if (failedUri === visibleUri) {
-    return (
-      <Pressable
-        onPress={handleRetry}
-        style={[styles.root, styles.fallback, { backgroundColor: placeholderSurface }, style]}
-        accessibilityRole="button"
-        accessibilityLabel="Retry image preview"
-      >
-        <AppText variant="display">🖼️</AppText>
-        <AppText variant="subtitle">Preview unavailable</AppText>
-        <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.fallbackText}>
-          {label || 'Tap to retry'}
-        </AppText>
-      </Pressable>
-    );
+  if (!visibleUri || loadState === 'failed' || failedUri === visibleUri) {
+    return renderFallback('Tap to retry');
   }
 
   return (
     <View style={[styles.root, { backgroundColor: placeholderSurface }, style]}>
-      {!loaded ? <FeedImagePlaceholder backgroundColor={placeholderSurface} /> : null}
+      {loadState !== 'loaded' ? <FeedImagePlaceholder backgroundColor={placeholderSurface} /> : null}
       <ExpoImage
         source={{ uri: visibleUri }}
         placeholder={blurHash ? { blurhash: blurHash } : undefined}
-        style={[StyleSheet.absoluteFillObject, { opacity: loaded ? 1 : 0 }]}
+        style={[StyleSheet.absoluteFillObject, { opacity: loadState === 'loaded' ? 1 : 0 }]}
         contentFit="cover"
         cachePolicy="memory-disk"
         recyclingKey={`${id}:${visibleUri}`}
         transition={120}
-        onLoad={() => setLoaded(true)}
-        onError={() => {
+        onLoad={() => {
+          lastSuccessfulUriRef.current = visibleUri;
+          setLoadState('loaded');
+        }}
+        onError={(event) => {
+          if (failedUriSetRef.current.has(visibleUri)) return;
+          failedUriSetRef.current.add(visibleUri);
           mediaDevWarn('image-on-error', {
             mediaId: id,
+            sourceType: sourceType ?? (displayUrl ? 'display-url' : fileId ? 'protected-file-id' : 'missing-source'),
             hasFileId: Boolean(fileId),
-            sourceType: displayUrl ? 'display-url' : fileId ? 'protected-file-id' : 'missing-source',
+            hostname,
+            error: typeof event?.error === 'string' ? event.error : 'image-load-error',
           });
-          if (visibleUri !== failedUri) {
-            setFailedUri(visibleUri);
-          }
+          setFailedUri(visibleUri);
+          setLoadState(lastSuccessfulUriRef.current && lastSuccessfulUriRef.current !== visibleUri ? 'loading' : 'failed');
         }}
       />
     </View>

@@ -7,7 +7,7 @@ import { getFeedCacheMemoryKey, getPersistedFeedCacheKey } from '@/src/features/
 import { feedDevLog, feedDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 
 const FEED_CACHE_TTL_MS = 5 * 60_000;
-const PERSISTED_CACHE_VERSION = 1;
+const PERSISTED_CACHE_VERSION = 2;
 
 const memoryCache = new Map<string, PersistedFeedSnapshot>();
 
@@ -42,13 +42,23 @@ export const readCachedMarketFeed = async (identity: FeedCacheIdentity) => {
     const raw = await SecureStore.getItemAsync(getPersistedFeedCacheKey(identity));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedFeedSnapshot;
-    if (!isMatchingSnapshot(parsed, identity)) return null;
+    if (!isMatchingSnapshot(parsed, identity)) {
+      feedDevLog('cache-discarded', {
+        reason: 'version-or-identity-mismatch',
+        cacheKey: getPersistedFeedCacheKey(identity),
+        expectedVersion: PERSISTED_CACHE_VERSION,
+        actualVersion: parsed?.version ?? null,
+      });
+      return null;
+    }
     const sanitizedItems = sanitizeFeedItems(parsed.items);
     if (!sanitizedItems.length) return null;
     const snapshot = { ...parsed, items: sanitizedItems };
     memoryCache.set(memoryKey, snapshot);
     feedDevLog('stale-cache-used', {
       source: 'persisted',
+      cacheKey: getPersistedFeedCacheKey(identity),
+      version: snapshot.version,
       itemCount: snapshot.items.length,
       isFresh: Date.now() - snapshot.cachedAt < FEED_CACHE_TTL_MS,
     });
@@ -84,6 +94,11 @@ export const writeCachedMarketFeed = async (
   memoryCache.set(getFeedCacheMemoryKey(identity), snapshot);
 
   try {
+    feedDevLog('cache-write', {
+      cacheKey: getPersistedFeedCacheKey(identity),
+      version: snapshot.version,
+      itemCount: items.length,
+    });
     await SecureStore.setItemAsync(getPersistedFeedCacheKey(identity), JSON.stringify(snapshot));
   } catch {
     feedDevWarn('persisted-cache-write-failed', { itemCount: items.length });

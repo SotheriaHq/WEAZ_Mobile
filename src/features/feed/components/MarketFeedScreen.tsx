@@ -36,7 +36,10 @@ import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
 import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
+import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
+import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
 import { FeedImage } from '@/src/features/feed/components/FeedImage';
+import type { FeedCarouselMedia, FeedListEntry, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
 
 /**
  * Module-level feed cache — stale-while-revalidate.
@@ -56,28 +59,6 @@ const toCompactCount = (value: number | null | undefined) => {
   if (n < 1000) return String(n);
   if (n < 1000000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
   return `${(n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1)}m`;
-};
-
-type FeedViewerMedia = {
-  id: string;
-  collectionId: string;
-  mediaIndex: number;
-  url: string;
-  fileId: string | null;
-  type: 'image' | 'video';
-  label: string;
-  threadsCount: number;
-};
-
-type FeedCarouselMedia = FeedViewerMedia & {
-  virtualKey: string;
-};
-
-type FeedListEntry = {
-  item: MarketItem;
-  listKey: string;
-  realIndex: number;
-  isGhost: boolean;
 };
 
 const toFeedMediaType = (rawType?: string | null): 'image' | 'video' => {
@@ -100,10 +81,15 @@ const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
         collectionId: item.collectionId,
         mediaIndex: index,
         url: media.displayUrl,
+        displayUrl: media.displayUrl,
+        thumbnailUrl: media.thumbnailUrl,
+        previewUrl: media.previewUrl,
         fileId: media.fileId,
         type: media.type === 'VIDEO' ? 'video' : 'image',
         label: item.title ?? item.collectionTitle,
         threadsCount: typeof item.stats?.threads === 'number' ? item.stats.threads : typeof item.threadsCount === 'number' ? item.threadsCount : 0,
+        blurHash: media.blurHash,
+        dominantColor: media.dominantColor,
       }));
   }
 
@@ -1444,6 +1430,7 @@ export function MarketFeedScreen() {
             collectionId,
             mediaIndex: index,
             url,
+            displayUrl: url,
             fileId,
             type: toFeedMediaType(media.mediaType ?? null),
             label: media.caption ?? detail.title ?? item?.collectionTitle ?? 'Design view',
@@ -1791,31 +1778,44 @@ export function MarketFeedScreen() {
       const threads = toCompactCount(threadCountRaw);
 
       return (
-        <FeedPostItem
-          item={item}
-          brandName={brandName}
-          handle={handle}
+        <MarketFeedItem
+          collectionId={item.collectionId}
           pageHeight={pageHeight}
-          fallbackMediaItems={fallbackMediaItems}
           mediaItems={mediaItems}
-          currentMediaId={currentMediaId}
-          isThreaded={isThreaded}
-          isThreading={isThreading}
-          likes={likes}
-          comments={comments}
-          threads={threads}
-          threadCountRaw={threadCountRaw}
-          bottomClearance={bottomClearance}
-          scheme={scheme}
-          overlaySurface={overlaySurface}
-          canPatchBrands={canPatchBrands}
-          isPatched={Boolean(item.brandId && patchedBrandIds.has(item.brandId))}
-          patchBusy={Boolean(item.brandId && patchingBrandIds[item.brandId])}
+          activeMediaIndex={activeMediaIndex}
           onCarouselIndexChange={handleCarouselIndexChange}
-          onPatchBrand={handlePatchBrand}
-          onOpenBrand={handleOpenBrand}
-          onThreadPress={handleThreadPress}
-          onOpenComments={openCommentsSheet}
+          actionRail={
+            <FeedActionRail
+              item={item}
+              brandName={brandName}
+              currentMediaId={currentMediaId}
+              isThreaded={isThreaded}
+              isThreading={isThreading}
+              likes={likes}
+              comments={comments}
+              threads={threads}
+              threadCountRaw={threadCountRaw}
+              canPatchBrands={canPatchBrands}
+              isPatched={Boolean(item.brandId && patchedBrandIds.has(item.brandId))}
+              patchBusy={Boolean(item.brandId && patchingBrandIds[item.brandId])}
+              bottomClearance={bottomClearance}
+              onPatchBrand={handlePatchBrand}
+              onOpenBrand={handleOpenBrand}
+              onThreadPress={handleThreadPress}
+              onOpenComments={openCommentsSheet}
+            />
+          }
+          metaOverlay={
+            <FeedMetaOverlay
+              brandName={brandName}
+              handle={handle}
+              title={item.collectionTitle}
+              description={item.collectionDescription}
+              scheme={scheme}
+              overlaySurface={overlaySurface}
+              bottomClearance={bottomClearance}
+            />
+          }
         />
       );
     },
@@ -1837,6 +1837,79 @@ export function MarketFeedScreen() {
       threadStateByMedia,
       threadingMediaById,
     ],
+  );
+
+  const handleFeedScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      feedScrollOffset = event.nativeEvent.contentOffset.y;
+      feedActiveIndex = Math.max(0, Math.min(feedItems.length - 1, Math.round(feedScrollOffset / pageHeight)));
+    },
+    [feedItems.length, pageHeight],
+  );
+
+  const handleFeedMomentumEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const rawIndex = Math.max(
+        0,
+        Math.min(feedItems.length - 1, Math.round(e.nativeEvent.contentOffset.y / pageHeight)),
+      );
+      const previousIndex = activePageIndex;
+      const measuredRealIndex = feedItems[rawIndex]?.realIndex ?? rawIndex;
+      const jumpDistance = Math.abs(measuredRealIndex - previousIndex);
+      const shouldCorrectJump = !feedLoopEnabled && jumpDistance > 1;
+      const correctedRealIndex = shouldCorrectJump
+        ? Math.max(0, Math.min(items.length - 1, previousIndex + Math.sign(measuredRealIndex - previousIndex)))
+        : measuredRealIndex;
+
+      scrollDevLog('active-index', {
+        previousIndex,
+        nextIndex: correctedRealIndex,
+        jumpDistance,
+      });
+
+      if (shouldCorrectJump) {
+        const correctedListIndex = feedItems.findIndex((entry) => entry.realIndex === correctedRealIndex && !entry.isGhost);
+        if (correctedListIndex >= 0) {
+          feedListRef.current?.scrollToIndex({ index: correctedListIndex, animated: true });
+        }
+      }
+
+      if (feedLoopEnabled) {
+        if (rawIndex === feedItems.length - 1) {
+          const targetOffset = feedLoopHeadOffset * pageHeight;
+          feedTeleportingRef.current = true;
+          feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
+          setActivePageIndex(0);
+          setTimeout(() => {
+            feedTeleportingRef.current = false;
+          }, 80);
+          return;
+        }
+
+        if (rawIndex === 0) {
+          const realLastIndex = items.length;
+          const targetOffset = realLastIndex * pageHeight;
+          feedTeleportingRef.current = true;
+          feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
+          setActivePageIndex(items.length - 1);
+          setTimeout(() => {
+            feedTeleportingRef.current = false;
+          }, 80);
+          return;
+        }
+
+        const realIndex = feedItems[rawIndex]?.realIndex ?? 0;
+        setActivePageIndex(Math.min(realIndex, items.length - 1));
+        return;
+      }
+
+      feedActiveIndex = correctedRealIndex;
+      setActivePageIndex(correctedRealIndex);
+      if (rawIndex >= items.length - 1 && hasNextPage) {
+        void loadMore();
+      }
+    },
+    [activePageIndex, feedItems, feedLoopEnabled, feedLoopHeadOffset, hasNextPage, items.length, pageHeight],
   );
 
   const loadMore = useCallback(async () => {
@@ -2028,7 +2101,7 @@ export function MarketFeedScreen() {
           {!feedViewportReady ? (
             <FeedSkeleton theme={theme} pageHeight={fallbackPageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
           ) : (
-          <FlatList
+          <MarketFeedList
             ref={feedListRef}
             key={feedListKey}
             data={feedItems}
@@ -2052,10 +2125,7 @@ export function MarketFeedScreen() {
             scrollEnabled={!commentsTarget}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            onScroll={(event) => {
-              feedScrollOffset = event.nativeEvent.contentOffset.y;
-              feedActiveIndex = Math.max(0, Math.min(feedItems.length - 1, Math.round(feedScrollOffset / pageHeight)));
-            }}
+            onScroll={handleFeedScroll}
             style={{ backgroundColor: 'transparent' }}
             viewabilityConfig={viewabilityConfigRef.current}
             onViewableItemsChanged={onViewableItemsChanged.current}
@@ -2068,6 +2138,8 @@ export function MarketFeedScreen() {
               });
             }}
             onMomentumScrollEnd={(e) => {
+              handleFeedMomentumEnd(e);
+              return;
               const rawIndex = Math.max(
                 0,
                 Math.min(feedItems.length - 1, Math.round(e.nativeEvent.contentOffset.y / pageHeight)),

@@ -1,4 +1,5 @@
 import type { AxiosRequestConfig } from 'axios';
+import { Platform } from 'react-native';
 
 import { apiClient } from '@/src/api/httpClient';
 import { feedContractDevLog } from '@/src/features/feed/utils/feedDiagnostics';
@@ -26,7 +27,8 @@ type DropReason =
   | 'invalid media status'
   | 'invalid aspectRatio'
   | 'unsupported media type'
-  | 'missing collectionId';
+  | 'missing collectionId'
+  | 'invalid displayUrl';
 
 const asString = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -48,6 +50,73 @@ const asBoolean = (value: unknown, fallback = false): boolean =>
 
 let currentDropReasons: Partial<Record<DropReason, number>> | null = null;
 
+const isStrictDtoShape = (raw: RawMarketItem) =>
+  raw.primaryMedia !== undefined || raw.mediaItems !== undefined || raw.sourceType === 'DESIGN';
+
+const summarizeUrl = (value: string) => {
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase();
+    const isLoopback =
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '::1';
+    const isPrivateLan =
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+    return {
+      protocol: parsed.protocol,
+      hostname,
+      isLoopback,
+      isPrivateLan,
+      isS3: hostname.includes('amazonaws.com') || hostname.includes('.s3.'),
+      isSigned:
+        parsed.searchParams.has('X-Amz-Signature') ||
+        parsed.searchParams.has('Signature') ||
+        parsed.searchParams.has('Expires') ||
+        parsed.searchParams.has('token'),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const isUsableFeedDisplayUrl = (value: string, item: RawMarketItem, mediaId: string) => {
+  const summary = summarizeUrl(value);
+  if (!summary || (summary.protocol !== 'http:' && summary.protocol !== 'https:')) {
+    return false;
+  }
+
+  if (summary.isLoopback) {
+    if (__DEV__) {
+      console.warn('[feed-contract]', {
+        event: 'loopback-display-url-rejected',
+        id: asString(item.id),
+        collectionId: asString(item.collectionId),
+        mediaId,
+        hostname: summary.hostname,
+        platform: Platform.OS,
+      });
+    }
+    return false;
+  }
+
+  if (__DEV__ && summary.isPrivateLan) {
+    console.warn('[feed-contract]', {
+      event: 'private-lan-display-url',
+      id: asString(item.id),
+      collectionId: asString(item.collectionId),
+      mediaId,
+      hostname: summary.hostname,
+      platform: Platform.OS,
+    });
+  }
+
+  return true;
+};
+
 const warnDroppedFeedItem = (reason: DropReason, item: RawMarketItem) => {
   if (currentDropReasons) {
     currentDropReasons[reason] = (currentDropReasons[reason] ?? 0) + 1;
@@ -61,7 +130,7 @@ const warnDroppedFeedItem = (reason: DropReason, item: RawMarketItem) => {
   });
 };
 
-const parseFeedMediaAsset = (value: unknown): { asset: FeedMediaAsset | null; reason?: DropReason } => {
+const parseFeedMediaAsset = (value: unknown, item: RawMarketItem): { asset: FeedMediaAsset | null; reason?: DropReason } => {
   const media = asRecord(value);
   if (!Object.keys(media).length) return { asset: null, reason: 'missing primaryMedia' };
 
@@ -70,6 +139,7 @@ const parseFeedMediaAsset = (value: unknown): { asset: FeedMediaAsset | null; re
 
   const displayUrl = asString(media.displayUrl);
   if (!displayUrl) return { asset: null, reason: 'missing displayUrl' };
+  if (!isUsableFeedDisplayUrl(displayUrl, item, id)) return { asset: null, reason: 'invalid displayUrl' };
 
   const status = asString(media.status);
   if (status !== 'READY') return { asset: null, reason: 'invalid media status' };
@@ -121,7 +191,7 @@ export const parseStrictMarketFeedItem = (raw: RawMarketItem): MarketItem | null
     return null;
   }
 
-  const primaryResult = parseFeedMediaAsset(raw.primaryMedia);
+  const primaryResult = parseFeedMediaAsset(raw.primaryMedia, raw);
   if (!primaryResult.asset) {
     warnDroppedFeedItem(primaryResult.reason ?? 'missing primaryMedia', raw);
     return null;
@@ -129,7 +199,7 @@ export const parseStrictMarketFeedItem = (raw: RawMarketItem): MarketItem | null
 
   const rawMediaItems = Array.isArray(raw.mediaItems) ? raw.mediaItems : [];
   const mediaItems = rawMediaItems
-    .map((entry) => parseFeedMediaAsset(entry).asset)
+    .map((entry) => parseFeedMediaAsset(entry, raw).asset)
     .filter((asset): asset is FeedMediaAsset => Boolean(asset));
 
   if (mediaItems.length === 0) {
@@ -142,7 +212,7 @@ export const parseStrictMarketFeedItem = (raw: RawMarketItem): MarketItem | null
     id: brandId ?? '',
     name: asString(brandRecord.name) ?? asString(raw.brandName) ?? 'Brand',
     username: asString(brandRecord.username),
-    avatar: parseFeedMediaAsset(brandRecord.avatar).asset,
+    avatar: parseFeedMediaAsset(brandRecord.avatar, raw).asset,
   };
 
   const stats = asRecord(raw.stats);
@@ -398,7 +468,8 @@ export async function getMarketFeed(params?: GetMarketFeedParams, config?: Axios
   currentDropReasons = {};
   const items = rawItems
     .map((item) => {
-      const mapped = parseStrictMarketFeedItem(item) ?? normalizeLegacyMarketFeedItem(item);
+      const strictItem = parseStrictMarketFeedItem(item);
+      const mapped = strictItem ?? (isStrictDtoShape(item) ? null : normalizeLegacyMarketFeedItem(item));
       if (!mapped) return null;
       if (typeof (item as any).combinedCommentsCount === 'number') {
         mapped.commentsCount = (item as any).combinedCommentsCount as number;
