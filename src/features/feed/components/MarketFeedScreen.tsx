@@ -25,7 +25,7 @@ import { ProfileApi } from '@/src/api/ProfileApi';
 import { getMarketFilterChips, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import { fetchMarketFeedPage, readCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { buildFeedCacheIdentity } from '@/src/features/feed/utils/feedKeys';
-import { feedDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
+import { brandAvatarDevLog, feedDevLog, feedMediaDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import type { MarketItem } from '@/src/types/market';
 import type { ResolvedTheme } from '@/src/types/theme';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
@@ -87,6 +87,7 @@ const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
         type: media.type === 'VIDEO' ? 'video' : 'image',
         label: item.title ?? item.collectionTitle,
         threadsCount: typeof item.stats?.threads === 'number' ? item.stats.threads : typeof item.threadsCount === 'number' ? item.threadsCount : 0,
+        orderIndex: media.orderIndex,
         blurHash: media.blurHash,
         dominantColor: media.dominantColor,
       }));
@@ -104,6 +105,7 @@ const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
           type: toFeedMediaType(item.media?.type ?? null),
           label: item.collectionTitle,
           threadsCount: typeof item.threadsCount === 'number' ? item.threadsCount : 0,
+          orderIndex: 0,
         },
       ]
     : [];
@@ -166,6 +168,25 @@ const FeedBrandAvatar = React.memo(function FeedBrandAvatar({
     enabled: Boolean(brandId || brandLogo || brandLogoFileId),
   });
   const initials = getAvatarFallback(brandName, brandName);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    let host: string | null = null;
+    const candidate = uri ?? brandLogo ?? null;
+    if (candidate) {
+      try {
+        host = new URL(candidate).hostname;
+      } catch {
+        host = null;
+      }
+    }
+    brandAvatarDevLog('summary', {
+      brandId: brandId ?? null,
+      hasAvatarDisplayUrl: Boolean(brandLogo),
+      hasAvatarFileId: Boolean(brandLogoFileId),
+      host,
+    });
+  }, [brandId, brandLogo, brandLogoFileId, uri]);
 
   return (
     <Pressable
@@ -956,6 +977,7 @@ export function MarketFeedScreen() {
           fileId,
           type: toFeedMediaType(media.mediaType ?? null),
           label: media.caption ?? detail.title ?? item?.collectionTitle ?? 'Design view',
+          orderIndex: typeof media.orderIndex === 'number' ? media.orderIndex : index,
           threadsCount:
             typeof media.threadsCount === 'number'
               ? media.threadsCount
@@ -970,8 +992,10 @@ export function MarketFeedScreen() {
         .map((media) => ({
           ...media,
           url: normalizeStableUri(media.url) ?? media.url,
+          displayUrl: normalizeStableUri(media.displayUrl) ?? normalizeStableUri(media.url),
           fileId: normalizeStableUri(media.fileId),
-        }));
+        }))
+        .sort((a, b) => (a.orderIndex ?? a.mediaIndex) - (b.orderIndex ?? b.mediaIndex));
       if (!normalizedMediaItems.length) {
         hydratedCollectionIdsRef.current.add(collectionId);
         return;
@@ -1266,14 +1290,31 @@ export function MarketFeedScreen() {
     ({ item: entry }: { item: FeedListEntry }) => {
       const item = entry.item;
       const fallbackMediaItems = fallbackMediaByCollection[item.collectionId] ?? [];
-      const mediaItems = collectionMediaMap[item.collectionId]?.length
-        ? collectionMediaMap[item.collectionId]
-        : fallbackMediaItems;
+      const hydratedMediaItems = collectionMediaMap[item.collectionId] ?? [];
+      const mediaItems =
+        hydratedMediaItems.length > fallbackMediaItems.length
+          ? hydratedMediaItems
+          : fallbackMediaItems.length
+            ? fallbackMediaItems
+            : hydratedMediaItems;
       const brandName = item.brandName ?? item.username ?? 'Brand';
       const handle = item.username ? `@${item.username}` : '';
       const activeMediaIndex = mediaItems.length
         ? Math.min(carouselIndexMap.get(item.collectionId) ?? 0, mediaItems.length - 1)
         : 0;
+      if (__DEV__) {
+        const uniqueSources = new Set(
+          mediaItems.map((media) => normalizeStableUri(media.displayUrl) ?? normalizeStableUri(media.url) ?? normalizeStableUri(media.fileId) ?? media.id),
+        );
+        feedMediaDevLog('carousel-media-summary', {
+          collectionId: item.collectionId,
+          strictMediaCount: fallbackMediaItems.length,
+          hydratedMediaCount: hydratedMediaItems.length,
+          finalMediaCount: mediaItems.length,
+          uniqueUrlCount: uniqueSources.size,
+          activeIndex: activeMediaIndex,
+        });
+      }
       const currentMedia = mediaItems[activeMediaIndex] ?? fallbackMediaItems[0] ?? null;
       const currentMediaId = currentMedia?.id ?? item.id;
       const currentMediaThreadState = currentMedia ? threadStateByMedia[currentMedia.id] : undefined;
@@ -1374,10 +1415,12 @@ export function MarketFeedScreen() {
         ? Math.max(0, Math.min(items.length - 1, previousIndex + Math.sign(measuredRealIndex - previousIndex)))
         : measuredRealIndex;
 
-      scrollDevLog('active-index', {
+      scrollDevLog('vertical-momentum', {
+        measuredIndex: measuredRealIndex,
         previousIndex,
-        nextIndex: correctedRealIndex,
         jumpDistance,
+        corrected: shouldCorrectJump,
+        pageHeight,
       });
 
       if (shouldCorrectJump) {
@@ -1496,16 +1539,19 @@ export function MarketFeedScreen() {
       }
       // Clear any stale comments target on tab focus
       setCommentsTarget(null);
-      // Restore scroll position after tab switch / screen remount
-      if (feedScrollOffset > 0) {
-        requestAnimationFrame(() => {
-          feedListRef.current?.scrollToIndex({
-            index: Math.max(0, Math.min(feedActiveIndex, feedItems.length - 1)),
-            animated: false,
+      // Only restore scroll when the FlatList has drifted from the expected snap position.
+      // Skips the call when the list is already at the right page (prevents jarring teleport on tab refocus).
+      if (feedScrollOffset > 0 && pageHeight > 0) {
+        const safeIndex = Math.max(0, Math.min(feedActiveIndex, feedItems.length - 1));
+        const expectedOffset = safeIndex * pageHeight;
+        const drift = Math.abs(feedScrollOffset - expectedOffset);
+        if (drift > pageHeight * 0.3) {
+          requestAnimationFrame(() => {
+            feedListRef.current?.scrollToIndex({ index: safeIndex, animated: false });
           });
-        });
+        }
       }
-    }, [feedItems.length, loadPatchedBrands]),
+    }, [feedItems.length, loadPatchedBrands, pageHeight]),
   );
 
   return (
@@ -1624,7 +1670,7 @@ export function MarketFeedScreen() {
             snapToAlignment="start"
             disableIntervalMomentum
             getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
-            decelerationRate="fast"
+            decelerationRate="normal"
             directionalLockEnabled
             nestedScrollEnabled={false}
             scrollEventThrottle={16}
@@ -1750,21 +1796,21 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
   headerChipsContent: {
-    gap: tokens.spacing.xs,
-    paddingHorizontal: tokens.spacing.xs,
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.sm,
     alignItems: 'center',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 36,
-    gap: 6,
+    minHeight: 44,
+    gap: tokens.spacing.sm,
   },
   headerLogoButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1774,9 +1820,9 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
   headerIconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -14,6 +14,7 @@ export type FeedViewerMedia = {
   type: 'image' | 'video';
   label: string;
   threadsCount: number;
+  orderIndex?: number | null;
   blurHash?: string | null;
   dominantColor?: string | null;
 };

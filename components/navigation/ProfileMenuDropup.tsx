@@ -304,7 +304,7 @@ export function ProfileMenuDropup({
 
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: 'rgba(0,0,0,0.12)',
+    backgroundColor: 'transparent',
   },
   wrap: {
     position: 'absolute',

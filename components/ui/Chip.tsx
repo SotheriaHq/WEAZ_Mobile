@@ -73,12 +73,9 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
         ) : (
           <View style={styles.labelWrap}>
             <AppText
-              variant={isNav ? (selected ? 'captionBold' : 'captionRegular') : 'smallBold'}
-              tone={isNav ? (selected ? 'primary' : 'inverse') : selected ? 'inverse' : 'secondary'}
+              variant={isNav ? 'captionBold' : 'smallBold'}
+              tone={isNav ? (selected ? 'primary' : 'default') : selected ? 'inverse' : 'secondary'}
               numberOfLines={1}
-              adjustsFontSizeToFit={isNav}
-              minimumFontScale={0.88}
-              style={isNav ? styles.navLabel : undefined}
             >
               {label}
             </AppText>
@@ -105,17 +102,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   navBase: {
-    minHeight: 32,
-    paddingHorizontal: 4,
-    paddingTop: 3,
-    paddingBottom: 5,
+    minHeight: 38,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingTop: tokens.spacing.xs,
+    paddingBottom: tokens.spacing.sm,
     borderWidth: 0,
     borderBottomWidth: 2,
     borderRadius: 0,
     flexShrink: 0,
   },
   navSelected: {
-    paddingHorizontal: 9,
+    paddingHorizontal: tokens.spacing.md,
   },
   navInactive: {
     backgroundColor: 'transparent',
@@ -131,10 +128,5 @@ const styles = StyleSheet.create({
     gap: 0,
     flexShrink: 1,
     minWidth: 0,
-  },
-  navLabel: {
-    textShadowColor: 'rgba(0,0,0,0.42)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
   },
 });

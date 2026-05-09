@@ -20,6 +20,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { resolveIdentity } from '@/src/utils/identity';
 import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
+import { profileDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 
@@ -468,11 +469,21 @@ export default function BuyerProfileScreen() {
       const nextPatches = patchesResult.status === 'fulfilled' ? patchesResult.value : [];
       const nextOrders = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
       const profileFailed = profileResult.status === 'rejected' && !isNotFoundError(profileResult.reason);
-      const optionalFailure =
-        sizeFitResult.status === 'rejected' ||
-        savedResult.status === 'rejected' ||
-        patchesResult.status === 'rejected' ||
-        ordersResult.status === 'rejected';
+      const optionalFailures = [
+        { section: 'size-fit', endpoint: '/users/me/size-fit', result: sizeFitResult },
+        { section: 'saved', endpoint: '/saved/me', result: savedResult },
+        { section: 'patches', endpoint: `/users/${user.id}/patches`, result: patchesResult },
+        { section: 'orders', endpoint: '/order/my-orders', result: ordersResult },
+      ].filter((entry) => entry.result.status === 'rejected');
+
+      optionalFailures.forEach((entry) => {
+        const reason = entry.result.status === 'rejected' ? entry.result.reason : null;
+        profileDevWarn('section-load-failed', {
+          section: entry.section,
+          endpoint: entry.endpoint,
+          status: reason?.response?.status ?? reason?.status ?? null,
+        });
+      });
 
       setState({
         profile: nextProfile,
@@ -484,8 +495,6 @@ export default function BuyerProfileScreen() {
 
       if (profileFailed) {
         setError('Profile could not refresh right now.');
-      } else if (optionalFailure) {
-        setError('Some profile sections could not load.');
       } else {
         setError(null);
       }
@@ -787,7 +796,7 @@ export default function BuyerProfileScreen() {
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
               >
-                <AppText variant="captionBold" tone={selected ? 'primary' : 'muted'}>
+                <AppText variant="captionBold" tone={selected ? 'primary' : 'secondary'}>
                   {tab}
                 </AppText>
               </Pressable>
@@ -1107,12 +1116,15 @@ const styles = StyleSheet.create({
   },
   tabRail: {
     flexDirection: 'row',
-    gap: tokens.spacing.xs,
     borderBottomWidth: 1,
+    justifyContent: 'space-between',
   },
   tabItem: {
-    minHeight: 44,
-    paddingVertical: tokens.spacing.sm,
+    flex: 1,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: tokens.spacing.md,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },

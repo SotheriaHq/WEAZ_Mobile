@@ -1,115 +1,87 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
-import { Card } from '@/components/ui/Card';
-import { useSyncedThemePreference } from '@/src/hooks/useSyncedThemePreference';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import type { ThemePreference } from '@/src/types/theme';
 
-const THEME_OPTIONS: Array<{
-  value: ThemePreference;
-  title: string;
-  subtitle: string;
-  emoji: string;
-}> = [
-  {
-    value: 'system',
-    title: 'System',
-    subtitle: 'Follow your device appearance.',
-    emoji: '💻',
-  },
-  {
-    value: 'light',
-    title: 'Light',
-    subtitle: 'Use the bright Threadly theme.',
-    emoji: '☀️',
-  },
-  {
-    value: 'dark',
-    title: 'Dark',
-    subtitle: 'Use the AMOLED-ready dark theme.',
-    emoji: '🌙',
-  },
-];
+type SettingsRowProps = {
+  icon: string;
+  iconBg: string;
+  label: string;
+  subtitle?: string;
+  onPress: () => void;
+  last?: boolean;
+};
+
+function SettingsRow({ icon, iconBg, label, subtitle, onPress, last }: SettingsRowProps) {
+  const { theme } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [
+        styles.row,
+        !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+        pressed && { backgroundColor: theme.colors.surfaceAlt },
+      ]}
+    >
+      <View style={[styles.rowIconWrap, { backgroundColor: iconBg }]}>
+        <AppText variant="body">{icon}</AppText>
+      </View>
+      <View style={styles.rowBody}>
+        <AppText variant="bodyRegular">{label}</AppText>
+        {subtitle ? (
+          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+            {subtitle}
+          </AppText>
+        ) : null}
+      </View>
+      <AppText variant="body" tone="muted" style={styles.chevron}>›</AppText>
+    </Pressable>
+  );
+}
+
+function SectionLabel({ text }: { text: string }) {
+  return (
+    <View style={styles.sectionLabelWrap}>
+      <AppText variant="captionRegular" tone="muted" style={styles.sectionLabelText}>
+        {text.toUpperCase()}
+      </AppText>
+    </View>
+  );
+}
 
 export default function SettingsScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { themePreference, setThemePreference } = useSyncedThemePreference();
-
-  const handleThemePress = useCallback(
-    (next: ThemePreference) => {
-      void setThemePreference(next);
-    },
-    [setThemePreference],
-  );
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
         <AppBackButton fallbackHref="/(tabs)" />
-        <View style={styles.headerCopy}>
-          <AppText variant="title">Settings</AppText>
-          <AppText variant="captionRegular" tone="muted">
-            Manage your app preferences.
-          </AppText>
-        </View>
+        <AppText variant="title">Settings</AppText>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing.xl }]}
+        contentContainerStyle={{ paddingBottom: insets.bottom + tokens.spacing['2xl'] }}
       >
-        <Card padding="md" style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <AppText variant="bodyBold">Theme</AppText>
-            <AppText variant="captionRegular" tone="muted">
-              Choose how Threadly appears on this device.
-            </AppText>
-          </View>
-
-          <View style={styles.options}>
-            {THEME_OPTIONS.map((option) => {
-              const selected = themePreference === option.value;
-              return (
-                <Pressable
-                  key={option.value}
-                  onPress={() => handleThemePress(option.value)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={`Use ${option.title.toLowerCase()} theme`}
-                  style={({ pressed }) => [
-                    styles.themeOption,
-                    {
-                      backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surfaceAlt,
-                      borderColor: selected ? theme.colors.primary : theme.colors.border,
-                    },
-                    pressed ? styles.pressed : null,
-                  ]}
-                >
-                  <View style={styles.optionIcon}>
-                    <AppText variant="subtitle">{option.emoji}</AppText>
-                  </View>
-                  <View style={styles.optionCopy}>
-                    <AppText variant="bodyBold" tone={selected ? 'primary' : 'default'}>
-                      {option.title}
-                    </AppText>
-                    <AppText variant="captionRegular" tone="muted">
-                      {option.subtitle}
-                    </AppText>
-                  </View>
-                  <AppText variant="bodyBold" tone={selected ? 'primary' : 'muted'}>
-                    {selected ? '✓' : ''}
-                  </AppText>
-                </Pressable>
-              );
-            })}
-          </View>
-        </Card>
+        <SectionLabel text="Appearance" />
+        <View style={[styles.section, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}>
+          <SettingsRow
+            icon="🎨"
+            iconBg={theme.colors.primarySoft}
+            label="Theme"
+            subtitle="Light, Dark, or System default"
+            onPress={() => router.push('/settings/theme' as never)}
+            last
+          />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -124,49 +96,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
-    paddingBottom: tokens.spacing.md,
+    paddingVertical: tokens.spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  headerCopy: {
-    flex: 1,
-    gap: tokens.spacing.xs,
-    minWidth: 0,
-  },
-  content: {
-    gap: tokens.spacing.md,
+  sectionLabelWrap: {
     paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.md,
+    paddingTop: tokens.spacing.xl,
+    paddingBottom: tokens.spacing.xs,
   },
-  sectionCard: {
-    gap: tokens.spacing.md,
+  sectionLabelText: {
+    letterSpacing: 0.6,
   },
-  sectionHeader: {
-    gap: tokens.spacing.xs,
+  section: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  options: {
-    gap: tokens.spacing.sm,
-  },
-  themeOption: {
-    minHeight: 72,
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.md,
     gap: tokens.spacing.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
+    minHeight: 56,
   },
-  optionIcon: {
+  rowIconWrap: {
     width: 36,
+    height: 36,
+    borderRadius: tokens.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  optionCopy: {
+  rowBody: {
     flex: 1,
-    gap: tokens.spacing.xs,
+    gap: 2,
     minWidth: 0,
   },
-  pressed: {
-    opacity: 0.84,
+  chevron: {
+    fontSize: 22,
+    lineHeight: 26,
+    flexShrink: 0,
   },
 });

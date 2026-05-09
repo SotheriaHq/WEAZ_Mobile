@@ -1,10 +1,11 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 
 export const NATIVE_ISLAND_NAV = {
   height: 56,
@@ -75,7 +76,9 @@ export function NativeIslandTabIcon({
           shadowOffset: { width: 0, height: 8 },
           shadowOpacity: 0.3,
           shadowRadius: 18,
-          elevation: 8,
+          // No elevation: on Android, elevation raises z-order and its shadow layer
+          // covers adjacent chips, making their emojis invisible on tab switch.
+          // The primarySoft background is sufficient as the active indicator.
         }
       : styles.tabChipInactive,
   ];
@@ -90,16 +93,14 @@ export function NativeIslandTabIcon({
                 {emoji}
               </Text>
             </View>
-            <View style={[styles.tabLabelWrap, compact && !focused && styles.tabLabelWrapCompact]}>
+            <View style={styles.tabLabelWrap}>
               <AppText
                 variant="captionBold"
                 tone={focused ? 'primary' : 'secondary'}
                 numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.84}
                 style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
               >
-                {compact && !focused ? '' : label}
+                {label}
               </AppText>
             </View>
           </View>
@@ -124,6 +125,15 @@ export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIsla
   const { width: windowWidth } = useWindowDimensions();
   const { bottomOffset, sideOffset } = getNativeIslandLayout(windowWidth, insets.bottom);
   const compact = items.length >= 6 || windowWidth < 380;
+  React.useEffect(() => {
+    navDevLog('island-items', {
+      keys: items.map((item) => item.key),
+      labels: items.map((item) => item.label),
+      compact,
+      width: windowWidth,
+      activeKey: items.find((item) => item.active)?.key ?? null,
+    });
+  }, [compact, items, windowWidth]);
   if (items.length === 0) {
     return null;
   }
@@ -206,7 +216,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderTopWidth: 0,
     shadowOffset: { width: 0, height: 8 },
-    overflow: 'visible',
+    overflow: 'hidden',
     zIndex: 100,
   },
   navGlassFill: {
@@ -221,7 +231,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: NATIVE_ISLAND_NAV.horizontalPadding,
-    overflow: 'visible',
+    overflow: 'hidden',
   },
   navItem: {
     flex: 1,
@@ -259,8 +269,8 @@ const styles = StyleSheet.create({
   },
   tabChipCompact: {
     minWidth: 42,
-    height: 34,
-    paddingHorizontal: 3,
+    height: 42,
+    paddingHorizontal: 2,
   },
   tabChipInactive: {
     backgroundColor: 'transparent',
@@ -306,14 +316,12 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: 2,
   },
-  tabLabelWrapCompact: {
-    minHeight: 0,
-    height: 0,
-  },
+  // Badge sits just outside the top-right of the chip but within the island's safe area.
+  // top: 6, right: 8 keeps it safely inside the navWrap's borderRadius: 28 corner arc.
   badgeWrap: {
     position: 'absolute',
-    top: -6,
-    right: -12,
+    top: 6,
+    right: 8,
   },
   badge: {
     minWidth: 18,

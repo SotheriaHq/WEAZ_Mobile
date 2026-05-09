@@ -33,6 +33,7 @@ export const MarketFeedItem = React.memo(function MarketFeedItem({
   return (
     <View style={[styles.page, { height: pageHeight }]}>
       <FeedMediaCarousel
+        collectionId={collectionId}
         mediaItems={mediaItems}
         initialActiveIndex={activeMediaIndex}
         onActiveIndexChange={handleActiveIndexChange}

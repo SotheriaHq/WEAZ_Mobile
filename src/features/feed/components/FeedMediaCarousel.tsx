@@ -12,12 +12,14 @@ const normalizeStableUri = (value?: string | null) => {
 };
 
 type FeedMediaCarouselProps = {
+  collectionId: string;
   mediaItems: FeedViewerMedia[];
   initialActiveIndex?: number;
   onActiveIndexChange: (nextIndex: number) => void;
 };
 
 export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
+  collectionId,
   mediaItems,
   initialActiveIndex = 0,
   onActiveIndexChange,
@@ -26,6 +28,10 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   const { width } = useWindowDimensions();
   const carouselRef = useRef<FlatList<FeedCarouselMedia>>(null);
   const previousIndexRef = useRef(initialActiveIndex);
+  const initialActiveIndexRef = useRef(initialActiveIndex);
+  const prevCollectionIdRef = useRef<string>(collectionId);
+  const prevMediaIdentityRef = useRef<string>('');
+  const prevWidthRef = useRef<number>(width);
   const hasMultipleItems = mediaItems.length > 1;
   const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
   const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
@@ -47,11 +53,47 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       })),
     [stableMediaItems],
   );
+  const mediaIdentity = useMemo(
+    () => stableMediaItems.map((item) => `${item.id}:${item.fileId ?? ''}:${item.displayUrl ?? item.url}`).join('|'),
+    [stableMediaItems],
+  );
 
+  // Sync prop to ref so reset effect can read latest value without it being a dep
   useEffect(() => {
+    initialActiveIndexRef.current = initialActiveIndex;
+  }, [initialActiveIndex]);
+
+  // Reset carousel ONLY when collection identity, media identity, or layout width truly changes.
+  // Never fires just because the parent re-renders with a new activeIndex after a user swipe.
+  useEffect(() => {
+    const collectionChanged = prevCollectionIdRef.current !== collectionId;
+    const identityChanged = prevMediaIdentityRef.current !== mediaIdentity;
+    const widthChanged = prevWidthRef.current !== width;
+
+    prevCollectionIdRef.current = collectionId;
+    prevMediaIdentityRef.current = mediaIdentity;
+    prevWidthRef.current = width;
+
+    if (!collectionChanged && !identityChanged && !widthChanged) return;
     if (!carouselRef.current || !stableMediaItems.length) return;
-    carouselRef.current.scrollToIndex({ index: safeActiveIndex, animated: false });
-  }, [safeActiveIndex, stableMediaItems.length, width]);
+
+    const targetIndex = Math.max(0, Math.min(stableMediaItems.length - 1, initialActiveIndexRef.current));
+    previousIndexRef.current = targetIndex;
+    setActiveIndex(targetIndex);
+    requestAnimationFrame(() => {
+      carouselRef.current?.scrollToIndex({ index: targetIndex, animated: false });
+    });
+  }, [collectionId, mediaIdentity, stableMediaItems.length, width]);
+
+  // Clamp active index when media items shrink beneath current position
+  useEffect(() => {
+    if (!stableMediaItems.length) return;
+    setActiveIndex((prev) => {
+      const clamped = Math.min(prev, stableMediaItems.length - 1);
+      if (clamped !== prev) previousIndexRef.current = clamped;
+      return clamped;
+    });
+  }, [stableMediaItems.length]);
 
   const handleMomentumEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -77,6 +119,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         previousIndex,
         nextIndex,
         jumpDistance,
+        corrected: nextIndex !== measuredIndex,
       });
       setActiveIndex(nextIndex);
       onActiveIndexChange(nextIndex);
@@ -120,9 +163,9 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         bounces={false}
         decelerationRate="fast"
         disableIntervalMomentum
-        windowSize={3}
-        initialNumToRender={1}
-        maxToRenderPerBatch={2}
+        windowSize={5}
+        initialNumToRender={Math.min(2, carouselItems.length)}
+        maxToRenderPerBatch={3}
         removeClippedSubviews={Platform.OS === 'android'}
         overScrollMode="never"
         showsHorizontalScrollIndicator={false}

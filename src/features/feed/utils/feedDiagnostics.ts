@@ -1,4 +1,4 @@
-type DiagnosticPrefix = 'feed' | 'feed-contract' | 'media' | 'scroll' | 'prefetch' | 'api-host';
+type DiagnosticPrefix = 'feed' | 'feed-contract' | 'feed-media' | 'media' | 'scroll' | 'prefetch' | 'api-host' | 'brand-avatar' | 'profile' | 'nav';
 
 const writeDevDiagnostic = (
   level: 'log' | 'warn',
@@ -21,6 +21,9 @@ export const feedDevLog = (event: string, details?: Record<string, unknown>) =>
 export const feedContractDevLog = (event: string, details?: Record<string, unknown>) =>
   writeDevDiagnostic('log', 'feed-contract', event, details);
 
+export const feedMediaDevLog = (event: string, details?: Record<string, unknown>) =>
+  writeDevDiagnostic('log', 'feed-media', event, details);
+
 export const feedDevWarn = (event: string, details?: Record<string, unknown>) =>
   writeDevDiagnostic('warn', 'feed', event, details);
 
@@ -41,3 +44,12 @@ export const apiHostDevLog = (event: string, details?: Record<string, unknown>) 
 
 export const apiHostDevWarn = (event: string, details?: Record<string, unknown>) =>
   writeDevDiagnostic('warn', 'api-host', event, details);
+
+export const brandAvatarDevLog = (event: string, details?: Record<string, unknown>) =>
+  writeDevDiagnostic('log', 'brand-avatar', event, details);
+
+export const profileDevWarn = (event: string, details?: Record<string, unknown>) =>
+  writeDevDiagnostic('warn', 'profile', event, details);
+
+export const navDevLog = (event: string, details?: Record<string, unknown>) =>
+  writeDevDiagnostic('log', 'nav', event, details);

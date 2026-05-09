@@ -21,6 +21,7 @@ import {
   useNotificationRealtimeChannel,
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
+import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
@@ -52,7 +53,7 @@ export default function TabLayout() {
 
   const isBrand = hasActiveBrandMembership(user);
   const canOpenProfileMenu = status === 'authenticated';
-  const profileNavLabel = canOpenProfileMenu ? 'Profile' : 'Sign In';
+  const profileNavLabel = canOpenProfileMenu ? 'Me' : 'Sign In';
   const profileNavEmoji = canOpenProfileMenu ? '👤' : '🔐';
   const { bottomOffset: islandBottomOffset } = getNativeIslandLayout(
     windowWidth,
@@ -136,7 +137,7 @@ export default function TabLayout() {
       { key: 'designs', label: 'Designs', emoji: '🎨', active: displayedActiveKey === 'designs' },
       { key: 'market', label: 'Market', emoji: '🧭', active: displayedActiveKey === 'market' },
       ...(isBrand ? [{ key: 'store', label: 'Store', emoji: '🛍️', active: displayedActiveKey === 'store' }] : []),
-      { key: 'inbox', label: 'Messages', emoji: '✉️', active: displayedActiveKey === 'inbox' },
+      { key: 'inbox', label: 'Msgs', emoji: '✉️', active: displayedActiveKey === 'inbox' },
       {
         key: 'profile',
         label: profileNavLabel,
@@ -151,7 +152,7 @@ export default function TabLayout() {
   const islandItems = useMemo<NativeIslandNavItem[]>(() => {
     const bagItem: NativeIslandNavItem = {
       key: 'bag',
-      label: 'My Bag',
+      label: 'Bag',
       emoji: '🧺',
       active: displayedActiveKey === 'bag',
       badge: bagCount.combinedCount,
@@ -166,13 +167,13 @@ export default function TabLayout() {
   }, [bagCount.combinedCount, displayedActiveKey, items]);
 
   useEffect(() => {
-    if (!__DEV__) return;
-    console.log('[nav] island-items', {
+    navDevLog('island-items', {
       pathname,
       keys: islandItems.map((item) => item.key),
+      labels: islandItems.map((item) => item.label),
       activeKey: displayedActiveKey,
+      compact: islandItems.length >= 6 || windowWidth < 380,
       width: windowWidth,
-      itemCount: islandItems.length,
     });
   }, [displayedActiveKey, islandItems, pathname, windowWidth]);
 
