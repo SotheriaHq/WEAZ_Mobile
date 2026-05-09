@@ -30,7 +30,7 @@ import type { MarketItem } from '@/src/types/market';
 import type { ResolvedTheme } from '@/src/types/theme';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
-import { prefetchResolvedImageAsset, resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
@@ -38,8 +38,7 @@ import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
 import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
-import { FeedImage } from '@/src/features/feed/components/FeedImage';
-import type { FeedCarouselMedia, FeedListEntry, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
+import type { FeedListEntry, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
 
 /**
  * Module-level feed cache — stale-while-revalidate.
@@ -123,12 +122,6 @@ const normalizeStableUri = (value?: string | null) => {
   return normalized.length > 0 ? normalized : null;
 };
 
-const isValidImageUri = (uri?: string | null) => {
-  if (!uri || typeof uri !== 'string') return false;
-  const trimmed = uri.trim();
-  return trimmed.startsWith('http://') || trimmed.startsWith('https://');
-};
-
 const getCollectionMediaDirectUrl = (media: CollectionDetailMediaDto) =>
   normalizeStableUri(media.url) ??
   normalizeStableUri(media.secureUrl) ??
@@ -144,316 +137,6 @@ const getCollectionMediaFileId = (media: CollectionDetailMediaDto) =>
   normalizeStableUri(media.uploadFileId) ??
   normalizeStableUri(media.file?.fileId) ??
   normalizeStableUri(media.file?.id);
-
-function ImageWarmPlaceholder() {
-  const { scheme, theme } = useTheme();
-  const shimmer = useRef(new Animated.Value(0.35)).current;
-  const placeholderSurface = scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, {
-          toValue: 0.72,
-          duration: 550,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmer, {
-          toValue: 0.35,
-          duration: 550,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-
-    animation.start();
-    return () => animation.stop();
-  }, [shimmer]);
-
-  return (
-    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: placeholderSurface }]}>
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFillObject,
-          {
-            opacity: shimmer,
-            backgroundColor: placeholderSurface,
-          },
-        ]}
-      />
-    </View>
-  );
-}
-
-const FeedMediaSlide = React.memo(function FeedMediaSlide({
-  media,
-  imageIndex,
-  fallbackMedia,
-}: {
-  media: FeedViewerMedia | null;
-  imageIndex: number;
-  fallbackMedia?: FeedViewerMedia | null;
-}) {
-  const { scheme, theme } = useTheme();
-  const placeholderSurface = scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt;
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [, bumpFailedUrisVersion] = useState(0);
-  const failedUrisRef = useRef<Set<string>>(new Set());
-  const lastMediaKeyRef = useRef<string | null>(null);
-  const primaryDebugContext = useMemo(
-    () => ({
-      designId: media?.collectionId ?? null,
-      mediaIndex: imageIndex,
-      fileId: media?.fileId ?? null,
-      sourceField: media?.fileId ? 'collection.media.fileId' : 'collection.media.url',
-    }),
-    [imageIndex, media?.collectionId, media?.fileId],
-  );
-  const fallbackDebugContext = useMemo(
-    () => ({
-      designId: fallbackMedia?.collectionId ?? media?.collectionId ?? null,
-      mediaIndex: 0,
-      fileId: fallbackMedia?.fileId ?? null,
-      sourceField: fallbackMedia?.fileId ? 'collection.cover.fileId' : 'collection.cover.url',
-    }),
-    [fallbackMedia?.collectionId, fallbackMedia?.fileId, media?.collectionId],
-  );
-  const { uri: primaryUri, loading: primaryLoading } = useResolvedImageAsset({
-    src: media?.url,
-    fileId: media?.fileId,
-    enabled: Boolean(media),
-    debugContext: primaryDebugContext,
-  });
-  const primaryFailed = Boolean(primaryUri && failedUrisRef.current.has(primaryUri));
-  const fallbackCandidate = fallbackMedia && fallbackMedia.id !== media?.id ? fallbackMedia : null;
-  const shouldUseFallback = Boolean(fallbackCandidate && !primaryLoading && (!primaryUri || primaryFailed));
-  const { uri: fallbackUri, loading: fallbackLoading } = useResolvedImageAsset({
-    src: fallbackCandidate?.url,
-    fileId: fallbackCandidate?.fileId,
-    enabled: shouldUseFallback,
-    debugContext: fallbackDebugContext,
-  });
-  const fallbackFailed = Boolean(fallbackUri && failedUrisRef.current.has(fallbackUri));
-  const resolvedUri = useMemo(
-    () => (primaryFailed ? fallbackUri : primaryUri ?? fallbackUri),
-    [fallbackUri, primaryFailed, primaryUri],
-  );
-  const loading = primaryLoading || (shouldUseFallback && fallbackLoading);
-  const displayUri = resolvedUri && !failedUrisRef.current.has(resolvedUri) ? resolvedUri : null;
-
-  useEffect(() => {
-    const mediaKey = `${media?.id ?? 'empty'}:${media?.url ?? ''}:${media?.fileId ?? ''}`;
-    if (lastMediaKeyRef.current !== mediaKey) {
-      lastMediaKeyRef.current = mediaKey;
-      failedUrisRef.current = new Set();
-      bumpFailedUrisVersion((current) => current + 1);
-    }
-  }, [media?.fileId, media?.id, media?.url]);
-
-  useEffect(() => {
-    setImageLoaded(false);
-  }, [displayUri]);
-
-  const handleImageError = useCallback(() => {
-    if (!displayUri || failedUrisRef.current.has(displayUri)) return;
-    failedUrisRef.current.add(displayUri);
-    setImageLoaded(false);
-    bumpFailedUrisVersion((current) => current + 1);
-  }, [displayUri]);
-
-  if (!media) {
-    return (
-      <View style={[StyleSheet.absoluteFillObject, styles.feedEmptySlide, { backgroundColor: placeholderSurface }]}>
-        <AppText variant="display">🖼️</AppText>
-        <AppText variant="subtitle" tone="inverse">No views yet</AppText>
-        <AppText variant="body" tone="secondary" style={styles.feedSlideBody}>
-          This design does not have any media to browse.
-        </AppText>
-      </View>
-    );
-  }
-
-  if (media.type === 'video') {
-    return (
-      <View style={[StyleSheet.absoluteFillObject, styles.feedVideoSlide, { backgroundColor: placeholderSurface }]}>
-        <AppText variant="display">🎬</AppText>
-        <AppText variant="subtitle" tone="inverse">Video view</AppText>
-        <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.feedSlideBody}>
-          {media.label || 'Swipe to another view'}
-        </AppText>
-      </View>
-    );
-  }
-
-  if (loading) {
-    return (
-      <View
-        style={[
-          StyleSheet.absoluteFillObject,
-          styles.feedMediaLoadingSlide,
-          { backgroundColor: placeholderSurface },
-        ]}
-      >
-        {imageIndex === 0 ? <ImageWarmPlaceholder /> : null}
-      </View>
-    );
-  }
-
-  if (!displayUri || fallbackFailed || !isValidImageUri(displayUri)) {
-    return (
-      <View style={[StyleSheet.absoluteFillObject, styles.feedBrokenSlide, { backgroundColor: placeholderSurface }]}>
-        <AppText variant="display">🖼️</AppText>
-        <AppText variant="subtitle">Preview unavailable</AppText>
-        <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.feedSlideBody}>
-          {media.label || 'Swipe to another view'}
-        </AppText>
-      </View>
-    );
-  }
-
-  return (
-    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: placeholderSurface }]}>
-      <FeedImage
-        id={media.id}
-        displayUrl={displayUri}
-        fileId={null}
-        label={media.label}
-        style={styles.pageImage}
-      />
-    </View>
-  );
-});
-
-const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
-  mediaItems,
-  initialActiveIndex = 0,
-  onActiveIndexChange,
-}: {
-  mediaItems: FeedViewerMedia[];
-  initialActiveIndex?: number;
-  onActiveIndexChange: (nextIndex: number) => void;
-}) {
-  const { theme } = useTheme();
-  const { width } = useWindowDimensions();
-  const carouselRef = useRef<FlatList<FeedCarouselMedia>>(null);
-  const hasMultipleItems = mediaItems.length > 1;
-  const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
-  const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
-  const stableMediaItems = useMemo(
-    () =>
-      mediaItems.map((item) => ({
-        ...item,
-        url: normalizeStableUri(item.url) ?? item.url,
-        fileId: normalizeStableUri(item.fileId),
-      })),
-    [mediaItems],
-  );
-  const carouselItems = useMemo<FeedCarouselMedia[]>(() => {
-    return stableMediaItems.map((item, index) => ({
-      ...item,
-      virtualKey: item.id,
-    }));
-  }, [stableMediaItems]);
-
-  // Restore carousel position when media count or screen width changes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!carouselRef.current || !stableMediaItems.length) return;
-    carouselRef.current.scrollToIndex({ index: safeActiveIndex, animated: false });
-  }, [stableMediaItems.length, width]);
-
-  if (!mediaItems.length) {
-    return (
-      <View style={StyleSheet.absoluteFillObject}>
-        <FeedMediaSlide media={null} imageIndex={0} />
-      </View>
-    );
-  }
-
-  if (!hasMultipleItems) {
-    return (
-      <View style={StyleSheet.absoluteFillObject}>
-        <FeedMediaSlide
-          media={stableMediaItems[0] ?? null}
-          imageIndex={0}
-          fallbackMedia={stableMediaItems.find((candidate) => candidate.type === 'image' && Boolean(candidate.url || candidate.fileId)) ?? null}
-        />
-      </View>
-    );
-  }
-
-  const handleMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const rawIndex = Math.max(
-      0,
-      Math.min(stableMediaItems.length - 1, Math.round(event.nativeEvent.contentOffset.x / width)),
-    );
-    scrollDevLog('horizontal-carousel-index', {
-      collectionId: stableMediaItems[rawIndex]?.collectionId ?? null,
-      mediaId: stableMediaItems[rawIndex]?.id ?? null,
-      index: rawIndex,
-    });
-    setActiveIndex(rawIndex);
-    onActiveIndexChange(rawIndex);
-  };
-
-  return (
-    <View style={StyleSheet.absoluteFillObject}>
-      <FlatList
-        ref={carouselRef}
-        horizontal
-        pagingEnabled
-        data={carouselItems}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item, index }) => (
-          <View style={[styles.pageImage, { width }]}>
-            <FeedMediaSlide
-              media={item}
-              imageIndex={index}
-              fallbackMedia={stableMediaItems.find((candidate) => candidate.type === 'image' && Boolean(candidate.url || candidate.fileId)) ?? null}
-            />
-          </View>
-        )}
-        getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
-        initialScrollIndex={safeActiveIndex > 0 ? safeActiveIndex : undefined}
-        directionalLockEnabled
-        nestedScrollEnabled
-        bounces={false}
-        decelerationRate="fast"
-        disableIntervalMomentum
-        windowSize={3}
-        initialNumToRender={1}
-        maxToRenderPerBatch={2}
-        removeClippedSubviews={Platform.OS === 'android'}
-        overScrollMode="never"
-        showsHorizontalScrollIndicator={false}
-        scrollEnabled
-        onMomentumScrollEnd={handleMomentumEnd}
-        onScrollToIndexFailed={({ index }) => {
-          requestAnimationFrame(() => {
-            carouselRef.current?.scrollToOffset({ offset: index * width, animated: false });
-          });
-        }}
-      />
-
-      {hasMultipleItems ? (
-        <View style={styles.feedDotRow} pointerEvents="none">
-          {stableMediaItems.map((_, index) => (
-            <View
-              key={`${stableMediaItems[index]?.id ?? index}-${index}`}
-              style={[
-                styles.feedDot,
-                { backgroundColor: theme.colors.textMuted },
-                index === safeActiveIndex && [styles.feedDotActive, { backgroundColor: theme.colors.textInverse }],
-              ]}
-            />
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
-});
 
 const FeedBrandAvatar = React.memo(function FeedBrandAvatar({
   brandId,
@@ -746,117 +429,6 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
   );
 });
 
-type FeedPostItemProps = {
-  item: MarketItem;
-  brandName: string;
-  handle: string;
-  pageHeight: number;
-  fallbackMediaItems: FeedViewerMedia[];
-  mediaItems: FeedViewerMedia[];
-  currentMediaId: string;
-  isThreaded: boolean;
-  isThreading: boolean;
-  likes: string;
-  comments: string;
-  threads: string;
-  threadCountRaw: number;
-  bottomClearance: number;
-  scheme: ResolvedTheme;
-  overlaySurface: FeedMetaOverlayProps['overlaySurface'];
-  canPatchBrands: boolean;
-  isPatched: boolean;
-  patchBusy: boolean;
-  onCarouselIndexChange: (collectionId: string, nextIndex: number) => void;
-  onPatchBrand: (brandId?: string | null, brandName?: string | null) => void;
-  onOpenBrand: (brandId?: string | null) => void;
-  onThreadPress: (
-    mediaId: string | null | undefined,
-    collectionId?: string | null,
-    fallbackThreaded?: boolean,
-    fallbackCount?: number,
-  ) => void;
-  onOpenComments: (item: MarketItem) => void;
-};
-
-const FeedPostItem = React.memo(function FeedPostItem({
-  item,
-  brandName,
-  handle,
-  pageHeight,
-  fallbackMediaItems,
-  mediaItems,
-  currentMediaId,
-  isThreaded,
-  isThreading,
-  likes,
-  comments,
-  threads,
-  threadCountRaw,
-  bottomClearance,
-  scheme,
-  overlaySurface,
-  canPatchBrands,
-  isPatched,
-  patchBusy,
-  onCarouselIndexChange,
-  onPatchBrand,
-  onOpenBrand,
-  onThreadPress,
-  onOpenComments,
-}: FeedPostItemProps) {
-  const activeMediaIndex = mediaItems.length
-    ? Math.min(carouselIndexMap.get(item.collectionId) ?? 0, mediaItems.length - 1)
-    : 0;
-  const currentMedia = mediaItems[activeMediaIndex] ?? fallbackMediaItems[0] ?? null;
-
-  const handleActiveIndexChange = useCallback(
-    (nextIndex: number) => {
-      onCarouselIndexChange(item.collectionId, nextIndex);
-    },
-    [item.collectionId, onCarouselIndexChange],
-  );
-
-  return (
-    <View style={[styles.page, { height: pageHeight }]}>
-      <FeedMediaCarousel
-        mediaItems={mediaItems}
-        initialActiveIndex={activeMediaIndex}
-        onActiveIndexChange={handleActiveIndexChange}
-      />
-
-      <FeedActionRail
-        item={item}
-        brandName={brandName}
-        currentMediaId={currentMediaId}
-        isThreaded={isThreaded}
-        isThreading={isThreading}
-        threads={threads}
-        comments={comments}
-        likes={likes}
-        threadCountRaw={threadCountRaw}
-        canPatchBrands={canPatchBrands}
-        isPatched={isPatched}
-        patchBusy={patchBusy}
-        bottomClearance={bottomClearance}
-        onPatchBrand={onPatchBrand}
-        onOpenBrand={onOpenBrand}
-        onThreadPress={onThreadPress}
-        onOpenComments={onOpenComments}
-      />
-
-      <FeedMetaOverlay
-        brandName={brandName}
-        handle={handle}
-        title={item.collectionTitle}
-        description={item.collectionDescription}
-        scheme={scheme}
-        overlaySurface={overlaySurface}
-        bottomClearance={bottomClearance}
-      />
-    </View>
-  );
-});
-
 // Feed Skeleton Component for loading state
 const FeedSkeleton = ({
   theme,
@@ -953,7 +525,6 @@ export function MarketFeedScreen() {
   const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
   const pendingCollectionIdsRef = useRef(new Set<string>());
   const hydratedCollectionIdsRef = useRef(new Set<string>());
-  const prefetchedImageUrisRef = useRef(new Set<string>());
   const feedTeleportingRef = useRef(false);
   const loadingMoreInFlightRef = useRef(false);
   const patchedBrandIdsRef = useRef<Set<string>>(new Set());
@@ -1336,40 +907,7 @@ export function MarketFeedScreen() {
     }
   }, [activeTag, status, user?.id]);
 
-  const prefetchMediaItems = useCallback((mediaItems: FeedViewerMedia[], options?: { includeFirstImage?: boolean }) => {
-    const includeFirstImage = options?.includeFirstImage ?? false;
-    mediaItems.forEach((media, index) => {
-      if (media.type !== 'image') return;
-      if (index === 0 && !includeFirstImage) return;
-
-      const uri = normalizeStableUri(media.url);
-      const cacheKey = normalizeStableUri(media.fileId) ?? uri;
-      if (!cacheKey || prefetchedImageUrisRef.current.has(cacheKey)) return;
-
-      prefetchedImageUrisRef.current.add(cacheKey);
-      void prefetchResolvedImageAsset({
-        src: uri,
-        fileId: media.fileId,
-        debugContext: {
-          designId: media.collectionId,
-          mediaIndex: index,
-          fileId: media.fileId,
-          sourceField: media.fileId ? 'collection.media.fileId' : 'collection.media.url',
-        },
-      }).then((prefetched) => {
-        if (!prefetched) {
-          prefetchedImageUrisRef.current.delete(cacheKey);
-        }
-      }).catch(() => {
-        prefetchedImageUrisRef.current.delete(cacheKey);
-      });
-    });
-  }, []);
-
-  const hydrateCollectionMedia = useCallback(async (
-    item: MarketItem | null | undefined,
-    options?: { includeFirstImageInPrefetch?: boolean },
-  ) => {
+  const hydrateCollectionMedia = useCallback(async (item: MarketItem | null | undefined) => {
     const collectionId = item?.collectionId?.trim();
     if (!collectionId) return;
     if (!item) return;
@@ -1382,16 +920,10 @@ export function MarketFeedScreen() {
           [collectionId]: strictFeedMedia,
         };
       });
-      prefetchMediaItems(strictFeedMedia, {
-        includeFirstImage: options?.includeFirstImageInPrefetch,
-      });
       hydratedCollectionIdsRef.current.add(collectionId);
       return;
     }
     if (collectionMediaMapRef.current[collectionId]?.length) {
-      prefetchMediaItems(collectionMediaMapRef.current[collectionId], {
-        includeFirstImage: options?.includeFirstImageInPrefetch,
-      });
       return;
     }
     if (hydratedCollectionIdsRef.current.has(collectionId)) return;
@@ -1411,38 +943,27 @@ export function MarketFeedScreen() {
         const fileId = getCollectionMediaFileId(media);
         return directUrl || fileId;
       });
-      const nextMediaItems = await Promise.all(
-        validMedias.map(async (media: CollectionDetailMediaDto, index) => {
-          const directUrl = getCollectionMediaDirectUrl(media);
-          const fileId = getCollectionMediaFileId(media);
-          const url = (await resolveImageUri({
-            src: directUrl,
-            fileId,
-            debugContext: {
-              designId: collectionId,
-              mediaIndex: index,
-              fileId,
-              sourceField: fileId ? 'collection.media.fileId' : 'collection.media.url',
-            },
-          })) ?? '';
-          return {
-            id: media.id || media.file?.id || `${collectionId}-${index}`,
-            collectionId,
-            mediaIndex: index,
-            url,
-            displayUrl: url,
-            fileId,
-            type: toFeedMediaType(media.mediaType ?? null),
-            label: media.caption ?? detail.title ?? item?.collectionTitle ?? 'Design view',
-            threadsCount:
-              typeof media.threadsCount === 'number'
-                ? media.threadsCount
-                : media.id === item?.id && typeof item?.threadsCount === 'number'
-                  ? item.threadsCount
-                  : 0,
-          } satisfies FeedViewerMedia;
-        }),
-      );
+      const nextMediaItems = validMedias.map((media: CollectionDetailMediaDto, index) => {
+        const directUrl = getCollectionMediaDirectUrl(media);
+        const fileId = getCollectionMediaFileId(media);
+        const url = directUrl ?? '';
+        return {
+          id: media.id || media.file?.id || `${collectionId}-${index}`,
+          collectionId,
+          mediaIndex: index,
+          url,
+          displayUrl: url,
+          fileId,
+          type: toFeedMediaType(media.mediaType ?? null),
+          label: media.caption ?? detail.title ?? item?.collectionTitle ?? 'Design view',
+          threadsCount:
+            typeof media.threadsCount === 'number'
+              ? media.threadsCount
+              : media.id === item?.id && typeof item?.threadsCount === 'number'
+                ? item.threadsCount
+                : 0,
+        } satisfies FeedViewerMedia;
+      });
 
       const normalizedMediaItems = nextMediaItems
         .filter((media) => Boolean(media.id))
@@ -1455,10 +976,6 @@ export function MarketFeedScreen() {
         hydratedCollectionIdsRef.current.add(collectionId);
         return;
       }
-
-      prefetchMediaItems(normalizedMediaItems, {
-        includeFirstImage: options?.includeFirstImageInPrefetch,
-      });
 
       setCollectionMediaMap((prev) => {
         if (prev[collectionId]?.length) return prev;
@@ -1485,7 +1002,7 @@ export function MarketFeedScreen() {
     } finally {
       pendingCollectionIdsRef.current.delete(collectionId);
     }
-  }, [prefetchMediaItems]);
+  }, []);
 
   const viewabilityConfigRef = useRef({
     itemVisiblePercentThreshold: 80,
@@ -1509,7 +1026,7 @@ export function MarketFeedScreen() {
         for (let offset = -1; offset <= 2; offset += 1) {
           const nextIndex = feedLoopEnabled ? (realIndex + offset + items.length) % items.length : realIndex + offset;
           if (nextIndex < 0 || nextIndex >= items.length) continue;
-          void hydrateCollectionMedia(items[nextIndex], { includeFirstImageInPrefetch: true });
+          void hydrateCollectionMedia(items[nextIndex]);
         }
       });
     },
@@ -1532,7 +1049,7 @@ export function MarketFeedScreen() {
         for (let offset = -1; offset <= 2; offset += 1) {
           const nextIndex = feedLoopEnabled ? (realIndex + offset + items.length) % items.length : realIndex + offset;
           if (nextIndex < 0 || nextIndex >= items.length) continue;
-          void hydrateCollectionMedia(items[nextIndex], { includeFirstImageInPrefetch: true });
+          void hydrateCollectionMedia(items[nextIndex]);
         }
       });
     };
@@ -1548,13 +1065,9 @@ export function MarketFeedScreen() {
       if (nextIndex < 0 || nextIndex >= items.length) continue;
 
       const item = items[nextIndex];
-      const fallbackMediaItems = fallbackMediaByCollection[item.collectionId] ?? [];
-      prefetchMediaItems(collectionMediaMapRef.current[item.collectionId] ?? fallbackMediaItems, {
-        includeFirstImage: true,
-      });
-      void hydrateCollectionMedia(item, { includeFirstImageInPrefetch: true });
+      void hydrateCollectionMedia(item);
     }
-  }, [activePageIndex, fallbackMediaByCollection, feedLoopEnabled, hydrateCollectionMedia, items, prefetchMediaItems]);
+  }, [activePageIndex, feedLoopEnabled, hydrateCollectionMedia, items]);
 
   const openCommentsSheet = useCallback((item: MarketItem) => {
     if (!item.collectionId) return;
@@ -2324,58 +1837,6 @@ const styles = StyleSheet.create({
   },
   feedListContainer: {
     flex: 1,
-  },
-  page: {
-    width: '100%',
-    backgroundColor: 'transparent',
-    position: 'relative',
-  },
-  pageImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: undefined,
-    height: undefined,
-  },
-  feedMediaLoadingSlide: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  feedBrokenSlide: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  feedSlideBody: {
-    marginTop: 6,
-    textAlign: 'center',
-  },
-  feedVideoSlide: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  feedEmptySlide: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  feedDotRow: {
-    position: 'absolute',
-    bottom: 114,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-    zIndex: 6,
-  },
-  feedDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  feedDotActive: {
-    width: 18,
   },
   rail: {
     position: 'absolute',
