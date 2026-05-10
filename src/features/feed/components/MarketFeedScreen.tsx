@@ -35,13 +35,14 @@ import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
 import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
+import { requestNativeIslandCollapse } from '@/components/navigation/nativeIslandEvents';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
 import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
 import type { FeedListEntry, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
 
 /**
- * Module-level feed cache — stale-while-revalidate.
+ * Module-level feed cache - stale-while-revalidate.
  * Persists across component remounts within the same app session.
  * Key: tag (null = 'all'), Value: last successful page 1 response.
  */
@@ -380,10 +381,8 @@ const FeedActionRail = React.memo(function FeedActionRail({
 });
 
 type FeedMetaOverlayProps = {
-  brandName: string;
   handle: string;
   title: string;
-  description?: string | null;
   scheme: ResolvedTheme;
   overlaySurface: {
     backgroundColor: string;
@@ -391,19 +390,26 @@ type FeedMetaOverlayProps = {
     blurIntensity: number;
   };
   bottomClearance: number;
+  visible: boolean;
+  onBrandPress: () => void;
 };
 
 const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
-  brandName,
   handle,
   title,
-  description,
   scheme,
   overlaySurface,
   bottomClearance,
+  visible,
+  onBrandPress,
 }: FeedMetaOverlayProps) {
   return (
-    <View style={[styles.meta, { bottom: bottomClearance }]}>
+    <View
+      style={[styles.meta, { bottom: bottomClearance + tokens.spacing.sm, opacity: visible ? 1 : 0 }]}
+      pointerEvents={visible ? 'auto' : 'none'}
+      accessibilityElementsHidden={!visible}
+      importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}
+    >
       <BlurView
         tint={scheme === 'dark' ? 'dark' : 'light'}
         intensity={overlaySurface.blurIntensity}
@@ -415,36 +421,22 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
           },
         ]}
       >
-        <View style={styles.brandLine}>
-          <View style={styles.brandTextWrap}>
-            <View style={styles.brandNameRow}>
-              <AppText variant="bodyBold" tone="inverse" numberOfLines={1} ellipsizeMode="tail">
-                {brandName}
-              </AppText>
-            </View>
-            {handle ? (
-              <AppText variant="captionRegular" tone="secondary" numberOfLines={1} ellipsizeMode="tail">
-                {handle}
-              </AppText>
-            ) : null}
-          </View>
-        </View>
-
         <AppText variant="subtitle" tone="inverse" numberOfLines={2} ellipsizeMode="tail">
           {title}
         </AppText>
-        {description ? (
-          <AppText variant="body" tone="secondary" numberOfLines={2} ellipsizeMode="tail">
-            {description}
-          </AppText>
+        {handle ? (
+          <Pressable
+            onPress={onBrandPress}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${handle} catalog`}
+            style={({ pressed }) => pressed && styles.metaHandlePressed}
+          >
+            <AppText variant="captionRegular" tone="secondary" numberOfLines={1} ellipsizeMode="tail">
+              by {handle}
+            </AppText>
+          </Pressable>
         ) : null}
-
-        <View style={styles.audioRow}>
-          <AppText variant="captionBold">🎵</AppText>
-          <AppText variant="captionBold" tone="inverse" numberOfLines={1} ellipsizeMode="tail">
-            Original Audio
-          </AppText>
-        </View>
       </BlurView>
     </View>
   );
@@ -552,6 +544,8 @@ export function MarketFeedScreen() {
   const lastLoggedPageHeightRef = useRef<number | null>(null);
   const hasLoggedInitialPageHeightRef = useRef(false);
   const previousActivePageIndexRef = useRef(0);
+  const metaOverlayHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [visibleMetaCollectionId, setVisibleMetaCollectionId] = useState<string | null>(null);
 
   const [items, setItems] = useState<MarketItem[]>([]);
   const [collectionMediaMap, setCollectionMediaMap] = useState<Record<string, FeedViewerMedia[]>>({});
@@ -571,7 +565,7 @@ export function MarketFeedScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isNetworkError, setIsNetworkError] = useState(false);
 
-  // Staleness guards — prevent refetch on every tab focus
+  // Staleness guards - prevent refetch on every tab focus
   const lastPatchFetchRef = useRef<number>(0);
   const STALE_THRESHOLD_MS = 60_000; // 60 seconds
 
@@ -645,12 +639,12 @@ export function MarketFeedScreen() {
    * Circular buffer: [ghost(last)] [item0...itemN] [ghost(first)]
    *
    * When user scrolls to ghost(first) at index N+2, we silently teleport to
-  * item0 at index 1 — same content, zero visual difference.
+  * item0 at index 1 - same content, zero visual difference.
    * When user scrolls to ghost(last) at index 0, we teleport to itemN at
-  * index N+1 — same content, zero visual difference.
+  * index N+1 - same content, zero visual difference.
    *
    * The teleport uses scrollToOffset({ animated: false }) SYNCHRONOUSLY inside
-  * the same onMomentumScrollEnd handler — no RAF gap, no frame flash.
+  * the same onMomentumScrollEnd handler - no RAF gap, no frame flash.
    */
   const canPatchBrands = user?.type !== 'BRAND';
 
@@ -868,14 +862,14 @@ export function MarketFeedScreen() {
       setNextCursor(cached.snapshot.nextCursor);
       setHasNextPage(cached.snapshot.hasNextPage);
       if (cached.isFresh) {
-        // Cache is fresh — no need to revalidate
+        // Cache is fresh - no need to revalidate
         setLoading(false);
         return;
       }
-      // Stale cache — show content immediately but revalidate silently
+      // Stale cache - show content immediately but revalidate silently
       setLoading(false);
     } else {
-      // No cache — show skeleton on first load
+      // No cache - show skeleton on first load
       setLoading(true);
     }
 
@@ -1286,6 +1280,33 @@ export function MarketFeedScreen() {
     carouselIndexMap.set(collectionId, nextIndex);
   }, []);
 
+  const hideMetaOverlay = useCallback(() => {
+    if (metaOverlayHideTimerRef.current) {
+      clearTimeout(metaOverlayHideTimerRef.current);
+      metaOverlayHideTimerRef.current = null;
+    }
+    setVisibleMetaCollectionId(null);
+  }, []);
+
+  const showMetaOverlay = useCallback((collectionId: string) => {
+    if (metaOverlayHideTimerRef.current) {
+      clearTimeout(metaOverlayHideTimerRef.current);
+    }
+    setVisibleMetaCollectionId(collectionId);
+    metaOverlayHideTimerRef.current = setTimeout(() => {
+      setVisibleMetaCollectionId((current) => (current === collectionId ? null : current));
+      metaOverlayHideTimerRef.current = null;
+    }, 4000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (metaOverlayHideTimerRef.current) {
+        clearTimeout(metaOverlayHideTimerRef.current);
+      }
+    };
+  }, []);
+
   const renderFeedItem = useCallback(
     ({ item: entry }: { item: FeedListEntry }) => {
       const item = entry.item;
@@ -1340,6 +1361,7 @@ export function MarketFeedScreen() {
           mediaItems={mediaItems}
           activeMediaIndex={activeMediaIndex}
           onCarouselIndexChange={handleCarouselIndexChange}
+          onContentPress={() => showMetaOverlay(item.collectionId)}
           actionRail={
             <FeedActionRail
               item={item}
@@ -1363,13 +1385,13 @@ export function MarketFeedScreen() {
           }
           metaOverlay={
             <FeedMetaOverlay
-              brandName={brandName}
               handle={handle}
               title={item.collectionTitle}
-              description={item.collectionDescription}
               scheme={scheme}
               overlaySurface={overlaySurface}
               bottomClearance={bottomClearance}
+              visible={visibleMetaCollectionId === item.collectionId}
+              onBrandPress={() => handleOpenBrand(item.brandId)}
             />
           }
         />
@@ -1390,8 +1412,10 @@ export function MarketFeedScreen() {
       patchedBrandIds,
       patchingBrandIds,
       scheme,
+      showMetaOverlay,
       threadStateByMedia,
       threadingMediaById,
+      visibleMetaCollectionId,
     ],
   );
 
@@ -1402,6 +1426,11 @@ export function MarketFeedScreen() {
     },
     [feedItems.length, pageHeight],
   );
+
+  const handleFeedScrollBeginDrag = useCallback(() => {
+    hideMetaOverlay();
+    requestNativeIslandCollapse();
+  }, [hideMetaOverlay]);
 
   const handleFeedMomentumEnd = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -1423,6 +1452,7 @@ export function MarketFeedScreen() {
         jumpDistance,
         corrected: shouldCorrectJump,
         pageHeight,
+        contentOffsetY: e.nativeEvent.contentOffset.y,
       });
 
       if (shouldCorrectJump) {
@@ -1535,7 +1565,7 @@ export function MarketFeedScreen() {
   useFocusEffect(
     useCallback(() => {
       const now = Date.now();
-      // Only refetch if data is stale (> 60s old) — prevents redundant calls on every tab visit
+      // Only refetch if data is stale (> 60s old) - prevents redundant calls on every tab visit
       if (now - lastPatchFetchRef.current > STALE_THRESHOLD_MS) {
         void loadPatchedBrands();
       }
@@ -1667,9 +1697,9 @@ export function MarketFeedScreen() {
             key={feedListKey}
             data={feedItems}
             keyExtractor={(entry) => entry.listKey}
-            pagingEnabled
             snapToInterval={pageHeight}
             snapToAlignment="start"
+            disableIntervalMomentum
             getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
             decelerationRate="normal"
             directionalLockEnabled
@@ -1686,6 +1716,7 @@ export function MarketFeedScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             onScroll={handleFeedScroll}
+            onScrollBeginDrag={handleFeedScrollBeginDrag}
             style={{ backgroundColor: 'transparent' }}
             viewabilityConfig={viewabilityConfigRef.current}
             onViewableItemsChanged={onViewableItemsChanged.current}
@@ -1706,7 +1737,7 @@ export function MarketFeedScreen() {
               );
 
               if (feedLoopEnabled) {
-                // Landed on tail ghost (last item in list) — teleport to real first
+                // Landed on tail ghost (last item in list) - teleport to real first
                 if (rawIndex === feedItems.length - 1) {
                   // Real first item is at index 1 (after head ghost)
                   const targetOffset = feedLoopHeadOffset * pageHeight;
@@ -1719,7 +1750,7 @@ export function MarketFeedScreen() {
                   return;
                 }
 
-                // Landed on head ghost (index 0) — teleport to real last
+                // Landed on head ghost (index 0) - teleport to real last
                 if (rawIndex === 0) {
                   const realLastIndex = items.length; // items.length because head ghost shifts by 1
                   const targetOffset = realLastIndex * pageHeight;
@@ -1732,7 +1763,7 @@ export function MarketFeedScreen() {
                   return;
                 }
 
-                // Normal item — rawIndex 1..N maps to real item 0..N-1
+                // Normal item - rawIndex 1..N maps to real item 0..N-1
                 const realIndex = feedItems[rawIndex]?.realIndex ?? 0;
                 setActivePageIndex(Math.min(realIndex, items.length - 1));
                 return;
@@ -2032,14 +2063,20 @@ const styles = StyleSheet.create({
   meta: {
     position: 'absolute',
     left: 16,
-    right: 80,
+    right: 96,
   },
   metaCard: {
-    padding: 12,
-    borderRadius: tokens.radius.lg,
-    gap: 8,
-    borderWidth: 1,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: tokens.radius.md,
+    gap: 3,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
+  },
+  metaHandlePressed: {
+    opacity: 0.72,
   },
   brandLine: {
     flexDirection: 'row',

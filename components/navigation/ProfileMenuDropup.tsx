@@ -2,7 +2,6 @@
 import {
   Animated,
   Easing,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -156,41 +155,33 @@ export function ProfileMenuDropup({
   if (!mounted) return null;
 
   return (
-    <Modal
-      transparent
-      visible={mounted}
-      animationType="none"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={handleClose}
-    >
-      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-        <Pressable style={StyleSheet.absoluteFill} onPress={handleClose}>
-          <View style={[StyleSheet.absoluteFill, styles.backdrop]} />
-        </Pressable>
+    <View style={styles.overlayRoot} pointerEvents="box-none">
+      <Pressable style={StyleSheet.absoluteFill} onPress={handleClose}>
+        <View style={[StyleSheet.absoluteFill, styles.backdrop]} />
+      </Pressable>
 
-        <View style={[styles.wrap, { bottom: bottomOffset }]} pointerEvents="box-none">
-          <Animated.View
-            style={[
-              styles.menu,
-              {
-                borderColor: activeTheme.colors.border,
-                width: menuWidth,
-                opacity,
-                transform: [{ translateY }],
-                backgroundColor: activeTheme.colors.surface,
-              },
-            ]}
+      <View style={[styles.wrap, { bottom: bottomOffset }]} pointerEvents="box-none">
+        <Animated.View
+          style={[
+            styles.menu,
+            {
+              borderColor: activeTheme.colors.border,
+              width: menuWidth,
+              opacity,
+              transform: [{ translateY }],
+              backgroundColor: activeTheme.colors.surface,
+            },
+          ]}
+        >
+          <ScrollView
+            scrollEnabled={true}
+            nestedScrollEnabled={true}
+            bounces={false}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.menuContent}
+            style={{ maxHeight: menuMaxHeight }}
           >
-            <ScrollView
-              scrollEnabled={true}
-              nestedScrollEnabled={true}
-              bounces={false}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.menuContent}
-              style={{ maxHeight: menuMaxHeight }}
-            >
               <Pressable
                 onPress={onOpenProfile}
                 accessibilityRole="button"
@@ -301,15 +292,19 @@ export function ProfileMenuDropup({
                   </AppText>
                 </View>
               </Pressable>
-            </ScrollView>
-          </Animated.View>
-        </View>
+          </ScrollView>
+        </Animated.View>
       </View>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  overlayRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 250,
+    elevation: 250,
+  },
   backdrop: {
     backgroundColor: 'transparent',
   },
@@ -325,10 +320,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
     shadowColor: tokens.colors.dark,
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.18,
-    shadowRadius: 22,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    elevation: 6,
   },
   menuContent: {
     paddingVertical: tokens.spacing.sm,

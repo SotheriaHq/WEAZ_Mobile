@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -9,11 +9,13 @@ import type { FeedViewerMedia } from '@/src/features/feed/components/feedCompone
 type FeedMediaSlideProps = {
   media: FeedViewerMedia | null;
   imageIndex: number;
+  onPress?: () => void;
 };
 
 export const FeedMediaSlide = React.memo(function FeedMediaSlide({
   media,
   imageIndex,
+  onPress,
 }: FeedMediaSlideProps) {
   const { scheme, theme } = useTheme();
   const placeholderSurface = scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt;
@@ -43,7 +45,13 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
   }
 
   return (
-    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: placeholderSurface }]}>
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={[StyleSheet.absoluteFillObject, { backgroundColor: placeholderSurface }]}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={onPress ? `Show details for ${media.label || 'this design'}` : undefined}
+    >
       <FeedImage
         id={media.id}
         displayUrl={media.displayUrl ?? media.url}
@@ -57,7 +65,7 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
         sourceType={media.fileId ? 'feed-media-file' : 'feed-media-url'}
         imageIndex={imageIndex}
       />
-    </View>
+    </Pressable>
   );
 });
 

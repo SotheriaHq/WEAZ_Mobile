@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, View } from 'react-native';
-import { AppText } from '@/components/ui/AppText';
+import { tokens } from '@/src/styles/tokens';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -319,7 +319,9 @@ export default function ThreadRailAction({
   const stitchThreadHeadStyle = useAnimatedStyle(() => ({
     opacity: stitchOpacity.value,
     transform: [
-      { translateX: interpolate(stitchProgress.value, [0, 1], [-12, 12]) },
+      { translateX: interpolate(stitchProgress.value, [0, 1], [-13, 13]) },
+      { translateY: interpolate(stitchProgress.value, [0, 0.5, 1], [4, -4, 4]) },
+      { rotate: '-18deg' },
       { scale: interpolate(stitchProgress.value, [0, 1], [0.88, 1.05]) },
     ],
   }));
@@ -358,12 +360,12 @@ export default function ThreadRailAction({
             buttonInnerStyle,
           ]}
         >
-          <Animated.View
-            style={[
-              styles.emojiWrap,
-              iconWrapStyle,
-            ]}
-          >
+          <Animated.View style={[styles.stitchIcon, iconWrapStyle]}>
+            <View style={[styles.fabricPatch, threaded && styles.fabricPatchActive]}>
+              <View style={[styles.stitchDash, styles.stitchDashOne, threaded && styles.stitchDashActive]} />
+              <View style={[styles.stitchDash, styles.stitchDashTwo, threaded && styles.stitchDashActive]} />
+              <View style={[styles.stitchDash, styles.stitchDashThree, threaded && styles.stitchDashActive]} />
+            </View>
             {!reduceMotion ? (
               <View pointerEvents="none" style={styles.overlayLayer}>
                 <Animated.View
@@ -374,22 +376,19 @@ export default function ThreadRailAction({
                 />
                 <Animated.View
                   style={[
-                    styles.threadHeadWrap,
+                    styles.needleWrap,
                     stitchThreadHeadStyle,
                   ]}
                 >
-                  <View style={styles.threadHead} />
+                  <View style={styles.needle} />
+                  <View style={styles.needleEye} />
                 </Animated.View>
-                <View style={[styles.fabricPoint, styles.fabricPointStart]} />
-                <View style={[styles.fabricPoint, styles.fabricPointEnd]} />
               </View>
             ) : null}
-            <Animated.Text style={[styles.glyph, styles.threadGlyph, threadGlyphStyle]}>
-              🧵
-            </Animated.Text>
-            <Animated.Text style={[styles.glyph, styles.idleThreadGlyph, idleThreadGlyphStyle]}>
-              🧵
-            </Animated.Text>
+            <Animated.View style={[styles.threadStateOverlay, threadGlyphStyle]}>
+              <View style={styles.activeThreadLine} />
+            </Animated.View>
+            <Animated.View style={[styles.idleThreadOverlay, idleThreadGlyphStyle]} />
           </Animated.View>
         </Animated.View>
       </Pressable>
@@ -400,7 +399,7 @@ export default function ThreadRailAction({
           countStyle,
         ]}
       >
-        {busy ? '…' : count}
+        {busy ? '...' : count}
       </Animated.Text>
     </View>
   );
@@ -435,12 +434,51 @@ const styles = StyleSheet.create({
   buttonPressed: {
     opacity: 0.9,
   },
-  emojiWrap: {
-    width: 24,
-    height: 24,
+  stitchIcon: {
+    width: 34,
+    height: 30,
     overflow: 'visible',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  fabricPatch: {
+    width: 28,
+    height: 20,
+    borderRadius: 6,
+    backgroundColor: '#FDE68A',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    overflow: 'hidden',
+    transform: [{ rotate: '-4deg' }],
+  },
+  fabricPatchActive: {
+    backgroundColor: '#CCFBF1',
+    borderColor: '#0F766E',
+  },
+  stitchDash: {
+    position: 'absolute',
+    width: 8,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#B45309',
+    opacity: 0.72,
+    transform: [{ rotate: '-20deg' }],
+  },
+  stitchDashActive: {
+    backgroundColor: '#0F766E',
+    opacity: 1,
+  },
+  stitchDashOne: {
+    left: 4,
+    top: 6,
+  },
+  stitchDashTwo: {
+    left: 10,
+    top: 10,
+  },
+  stitchDashThree: {
+    left: 16,
+    top: 14,
   },
   overlayLayer: {
     position: 'absolute',
@@ -453,53 +491,58 @@ const styles = StyleSheet.create({
   },
   trail: {
     position: 'absolute',
-    width: 28,
+    width: 30,
     height: 2,
     borderRadius: 1,
     backgroundColor: '#0f766e',
   },
-  threadHeadWrap: {
+  needleWrap: {
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  threadHead: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#CCFBF1',
-    borderWidth: 1,
-    borderColor: '#0f766e',
-  },
-  fabricPoint: {
-    position: 'absolute',
-    width: 4,
-    height: 4,
+  needle: {
+    width: 18,
+    height: 3,
     borderRadius: 2,
-    backgroundColor: '#CCFBF1',
+    backgroundColor: '#E5E7EB',
+    borderWidth: 1,
+    borderColor: '#64748B',
   },
-  fabricPointStart: {
-    left: -2,
-  },
-  fabricPointEnd: {
-    right: -2,
-  },
-  glyph: {
+  needleEye: {
     position: 'absolute',
-    textAlign: 'center',
+    left: 2,
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#0F766E',
   },
-  threadGlyph: {
-    fontSize: 22,
-    lineHeight: 24,
+  threadStateOverlay: {
+    position: 'absolute',
+    left: 4,
+    right: 4,
+    top: 13,
   },
-  idleThreadGlyph: {
-    fontSize: 21,
-    lineHeight: 24,
+  activeThreadLine: {
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#0F766E',
+  },
+  idleThreadOverlay: {
+    position: 'absolute',
+    right: 2,
+    top: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
   },
   count: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
+    fontFamily: tokens.fontFamily.bold,
   },
   countActive: {
     color: '#CCFBF1',

@@ -71,11 +71,11 @@ function SettingsSectionBlock({ section }: { section: SettingsSection }) {
   const { theme } = useTheme();
 
   return (
-    <View style={styles.sectionWrap}>
+    <View style={[styles.sectionWrap, { borderBottomColor: theme.colors.border }]}>
       <AppText variant="captionBold" tone="muted" style={styles.sectionTitle}>
         {section.title.toUpperCase()}
       </AppText>
-      <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
         {section.rows.map((row, index) => (
           <SettingRow key={`${section.title}-${row.title}`} row={row} last={index === section.rows.length - 1} />
         ))}
@@ -317,6 +317,8 @@ const styles = StyleSheet.create({
   },
   sectionWrap: {
     gap: tokens.spacing.xs,
+    paddingBottom: tokens.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   sectionTitle: {
     paddingHorizontal: tokens.spacing.xs,
@@ -324,7 +326,6 @@ const styles = StyleSheet.create({
   },
   section: {
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   row: {

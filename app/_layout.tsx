@@ -7,11 +7,11 @@ import {
 } from '@expo-google-fonts/inter';
 import { useFonts } from 'expo-font';
 import * as NavigationBar from 'expo-navigation-bar';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Appearance, Platform, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { ThemeProvider, useTheme, type ThemeMode } from '@/src/theme/ThemeProvider';
@@ -53,6 +53,28 @@ let splashHidden = false;
 function devBootLog(event: string, details?: Record<string, unknown>) {
   if (!__DEV__) return;
   console.log('[boot]', details ? { event, ...details } : { event });
+}
+
+function getAndroidNavigationButtonStyle(scheme: 'light' | 'dark') {
+  return scheme === 'dark' ? 'light' : 'dark';
+}
+
+function applyAndroidNavigationBarPolicy(scheme: 'light' | 'dark', reason: string) {
+  if (Platform.OS !== 'android') return;
+
+  void Promise.allSettled([
+    NavigationBar.setVisibilityAsync('visible'),
+    NavigationBar.setButtonStyleAsync(getAndroidNavigationButtonStyle(scheme)),
+  ]).then((results) => {
+    if (!__DEV__) return;
+    const rejected = results.find((result) => result.status === 'rejected');
+    if (rejected) {
+      console.warn('[system-ui] navigation-bar-policy-partial-failure', {
+        reason,
+        error: rejected.reason,
+      });
+    }
+  });
 }
 
 function hideNativeSplashOnce(reason: string) {
@@ -178,6 +200,7 @@ function RootBootstrap({
 }) {
   const { ready: themeReady, scheme, theme } = useTheme();
   const { status } = useAuth();
+  const pathname = usePathname();
   const bootReady = fontsLoaded && themeReady && status !== 'loading';
   const hasLoggedReadyRef = useRef(false);
 
@@ -197,29 +220,8 @@ function RootBootstrap({
   }, [bootReady, fontsLoaded, status, themeReady]);
 
   useEffect(() => {
-    if (!bootReady || Platform.OS !== 'android') return;
-
-    const style = scheme === 'dark' ? 'dark' : 'light';
-    try {
-      NavigationBar.setStyle(style);
-      void Promise.allSettled([
-        NavigationBar.setVisibilityAsync('visible'),
-        NavigationBar.setPositionAsync('absolute'),
-        NavigationBar.setBackgroundColorAsync('#00000000'),
-        NavigationBar.setBorderColorAsync('#00000000'),
-      ]).then((results) => {
-        if (!__DEV__) return;
-        const rejected = results.find((result) => result.status === 'rejected');
-        if (rejected) {
-          console.warn('[system-ui] navigation-bar-policy-partial-failure', rejected.reason);
-        }
-      });
-    } catch (error) {
-      if (__DEV__) {
-        console.warn('[system-ui] navigation-bar-policy-failed', error);
-      }
-    }
-  }, [bootReady, scheme]);
+    applyAndroidNavigationBarPolicy(scheme, bootReady ? `route:${pathname}` : 'bootstrap');
+  }, [bootReady, pathname, scheme]);
 
   if (!bootReady) {
     return <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND }]} />;
@@ -253,6 +255,8 @@ export default function RootLayout() {
   useEffect(() => {
     rootLayoutMountCount += 1;
     devBootLog('root-layout-mounted', { rootLayoutMountCount });
+    const initialScheme = Appearance.getColorScheme() === 'light' ? 'light' : 'dark';
+    applyAndroidNavigationBarPolicy(initialScheme, 'root-layout-first-render');
   }, []);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.

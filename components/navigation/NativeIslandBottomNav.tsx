@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +32,8 @@ type NativeIslandBottomNavProps = {
   items: NativeIslandNavItem[];
   onSelect: (item: NativeIslandNavItem) => void;
   onPressIn?: (item: NativeIslandNavItem) => void;
+  collapsed?: boolean;
+  onCollapsedPress?: () => void;
 };
 
 export function getNativeIslandLayout(windowWidth: number, bottomInset: number) {
@@ -120,13 +122,22 @@ export function NativeIslandTabIcon({
   );
 }
 
-export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIslandBottomNavProps) {
+export function NativeIslandBottomNav({
+  items,
+  onSelect,
+  onPressIn,
+  collapsed = false,
+  onCollapsedPress,
+}: NativeIslandBottomNavProps) {
   const { scheme, theme } = useTheme();
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const { width: windowWidth } = useWindowDimensions();
   const { bottomOffset, sideOffset, islandWidth } = getNativeIslandLayout(windowWidth, insets.bottom);
   const compact = items.length >= 6 || windowWidth < 380;
+  const activeItem = items.find((item) => item.active && !item.disabled) ?? items[0];
+  const collapsedWidth = Math.min(islandWidth, Math.max(172, Math.min(238, Math.round(windowWidth * 0.52))));
+  const collapsedSideOffset = Math.max(NATIVE_ISLAND_NAV.minSideOffset, Math.round((windowWidth - collapsedWidth) / 2));
   React.useEffect(() => {
     navDevLog('island-layout', {
       pathname,
@@ -134,11 +145,12 @@ export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIsla
       keys: items.map((item) => item.key),
       labels: items.map((item) => item.label),
       compact,
+      collapsed,
       windowWidth,
       islandWidth,
       activeKey: items.find((item) => item.active)?.key ?? null,
     });
-  }, [compact, islandWidth, items, pathname, windowWidth]);
+  }, [collapsed, compact, islandWidth, items, pathname, windowWidth]);
   if (items.length === 0) {
     return null;
   }
@@ -151,6 +163,12 @@ export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIsla
           {
             left: sideOffset,
             right: sideOffset,
+            ...(collapsed
+              ? {
+                  left: collapsedSideOffset,
+                  right: collapsedSideOffset,
+                }
+              : null),
             bottom: bottomOffset,
             height: NATIVE_ISLAND_NAV.height,
             borderRadius: NATIVE_ISLAND_NAV.radius,
@@ -189,26 +207,55 @@ export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIsla
           ]}
         />
         <View style={styles.navItems}>
-          {items.map((item) => (
+          {collapsed ? (
             <Pressable
-              key={item.key}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: Boolean(item.active && !item.disabled), disabled: item.disabled }}
-              accessibilityLabel={item.label}
-              disabled={item.disabled}
-              onPressIn={item.disabled ? undefined : () => onPressIn?.(item)}
-              onPress={item.disabled ? undefined : () => onSelect(item)}
-              style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Expand navigation. Current tab: ${activeItem?.label ?? 'Threadly'}`}
+              onPress={onCollapsedPress}
+              style={({ pressed }) => [styles.collapsedButton, pressed && styles.navItemPressed]}
             >
-              <NativeIslandTabIcon
-                label={item.label}
-                emoji={item.emoji}
-                focused={Boolean(item.active && !item.disabled)}
-                badge={item.badge}
-                compact={compact}
-              />
+              <View style={[styles.collapsedActiveChip, { backgroundColor: theme.colors.primarySoft }]}>
+                <Text style={styles.collapsedActiveEmoji}>{activeItem?.emoji ?? '•'}</Text>
+                <AppText variant="captionBold" tone="primary" numberOfLines={1} style={styles.collapsedActiveLabel}>
+                  {activeItem?.label ?? 'Menu'}
+                </AppText>
+              </View>
+              <View style={[styles.collapsedDivider, { backgroundColor: theme.colors.glassBorder }]} />
+              <View style={styles.collapsedDeck} pointerEvents="none">
+                {items.map((item) => (
+                  <View key={item.key} style={styles.collapsedDeckItem}>
+                    <Text style={[styles.collapsedDeckEmoji, item.active && styles.collapsedDeckEmojiActive]}>
+                      {item.emoji}
+                    </Text>
+                    {typeof item.badge === 'number' && item.badge > 0 ? (
+                      <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
+                    ) : null}
+                  </View>
+                ))}
+              </View>
             </Pressable>
-          ))}
+          ) : (
+            items.map((item) => (
+              <Pressable
+                key={item.key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: Boolean(item.active && !item.disabled), disabled: item.disabled }}
+                accessibilityLabel={item.label}
+                disabled={item.disabled}
+                onPressIn={item.disabled ? undefined : () => onPressIn?.(item)}
+                onPress={item.disabled ? undefined : () => onSelect(item)}
+                style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
+              >
+                <NativeIslandTabIcon
+                  label={item.label}
+                  emoji={item.emoji}
+                  focused={Boolean(item.active && !item.disabled)}
+                  badge={item.badge}
+                  compact={compact}
+                />
+              </Pressable>
+            ))
+          )}
         </View>
       </View>
     </View>
@@ -242,6 +289,69 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: NATIVE_ISLAND_NAV.horizontalPadding,
     overflow: 'hidden',
+  },
+  collapsedButton: {
+    flex: 1,
+    height: '100%',
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 6,
+  },
+  collapsedActiveChip: {
+    minWidth: 78,
+    maxWidth: 110,
+    height: 38,
+    borderRadius: 19,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+  },
+  collapsedActiveEmoji: {
+    fontSize: 18,
+    lineHeight: 20,
+  },
+  collapsedActiveLabel: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  collapsedDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 28,
+  },
+  collapsedDeck: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 1,
+    minWidth: 44,
+  },
+  collapsedDeckItem: {
+    width: 14,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  collapsedDeckEmoji: {
+    fontSize: 12,
+    lineHeight: 14,
+    opacity: 0.62,
+  },
+  collapsedDeckEmojiActive: {
+    opacity: 1,
+  },
+  collapsedBadge: {
+    position: 'absolute',
+    right: 1,
+    top: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   navItem: {
     flex: 1,

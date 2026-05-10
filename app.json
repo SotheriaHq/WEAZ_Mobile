@@ -38,7 +38,7 @@
           "position": "absolute",
           "backgroundColor": "#00000000",
           "borderColor": "#00000000",
-          "barStyle": "dark",
+          "barStyle": "light",
           "visibility": "visible",
           "enforceContrast": false
         }

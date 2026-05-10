@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Platform, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { FlatList, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { prefetchResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
@@ -17,6 +17,7 @@ type FeedMediaCarouselProps = {
   mediaItems: FeedViewerMedia[];
   initialActiveIndex?: number;
   onActiveIndexChange: (nextIndex: number) => void;
+  onContentPress?: () => void;
 };
 
 export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
@@ -24,6 +25,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   mediaItems,
   initialActiveIndex = 0,
   onActiveIndexChange,
+  onContentPress,
 }: FeedMediaCarouselProps) {
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
@@ -35,6 +37,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   const prevWidthRef = useRef<number>(width);
   const hasMultipleItems = mediaItems.length > 1;
   const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
+  const [scrollProgressIndex, setScrollProgressIndex] = useState(initialActiveIndex);
   const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
   const stableMediaItems = useMemo(
     () =>
@@ -118,6 +121,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     const targetIndex = Math.max(0, Math.min(stableMediaItems.length - 1, initialActiveIndexRef.current));
     previousIndexRef.current = targetIndex;
     setActiveIndex(targetIndex);
+    setScrollProgressIndex(targetIndex);
     requestAnimationFrame(() => {
       carouselRef.current?.scrollToIndex({ index: targetIndex, animated: false });
     });
@@ -131,7 +135,20 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       if (clamped !== prev) previousIndexRef.current = clamped;
       return clamped;
     });
+    setScrollProgressIndex((current) => Math.min(current, stableMediaItems.length - 1));
   }, [stableMediaItems.length]);
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!width || stableMediaItems.length < 2) return;
+      const nextProgress = Math.max(
+        0,
+        Math.min(stableMediaItems.length - 1, event.nativeEvent.contentOffset.x / width),
+      );
+      setScrollProgressIndex((current) => (Math.abs(current - nextProgress) < 0.03 ? current : nextProgress));
+    },
+    [stableMediaItems.length, width],
+  );
 
   const handleMomentumEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -151,6 +168,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       }
 
       previousIndexRef.current = nextIndex;
+      setScrollProgressIndex(nextIndex);
       scrollDevLog('horizontal-carousel-index', {
         collectionId: stableMediaItems[nextIndex]?.collectionId ?? null,
         mediaId: stableMediaItems[nextIndex]?.id ?? null,
@@ -168,7 +186,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   if (!mediaItems.length) {
     return (
       <View style={StyleSheet.absoluteFillObject}>
-        <FeedMediaSlide media={null} imageIndex={0} />
+        <FeedMediaSlide media={null} imageIndex={0} onPress={onContentPress} />
       </View>
     );
   }
@@ -176,7 +194,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   if (!hasMultipleItems) {
     return (
       <View style={StyleSheet.absoluteFillObject}>
-        <FeedMediaSlide media={stableMediaItems[0] ?? null} imageIndex={0} />
+        <FeedMediaSlide media={stableMediaItems[0] ?? null} imageIndex={0} onPress={onContentPress} />
       </View>
     );
   }
@@ -191,7 +209,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         keyExtractor={(item, index) => `${item.id}:${index}`}
         renderItem={({ item, index }) => (
           <View style={[styles.pageImage, { width }]}>
-            <FeedMediaSlide media={item} imageIndex={index} />
+            <FeedMediaSlide media={item} imageIndex={index} onPress={onContentPress} />
           </View>
         )}
         getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
@@ -204,10 +222,12 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         windowSize={5}
         initialNumToRender={Math.min(2, carouselItems.length)}
         maxToRenderPerBatch={3}
-        removeClippedSubviews={Platform.OS === 'android'}
+        removeClippedSubviews={false}
         overScrollMode="never"
         showsHorizontalScrollIndicator={false}
         scrollEnabled
+        scrollEventThrottle={16}
+        onScroll={handleScroll}
         onMomentumScrollEnd={handleMomentumEnd}
         onScrollToIndexFailed={({ index }) => {
           requestAnimationFrame(() => {
@@ -222,8 +242,11 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
             key={`${stableMediaItems[index]?.id ?? index}-${index}`}
             style={[
               styles.dot,
-              { backgroundColor: theme.colors.textMuted },
-              index === safeActiveIndex && [styles.dotActive, { backgroundColor: theme.colors.textInverse }],
+              {
+                backgroundColor: theme.colors.textInverse,
+                opacity: 0.38 + Math.max(0, 1 - Math.min(1, Math.abs(scrollProgressIndex - index))) * 0.62,
+                width: 6 + Math.max(0, 1 - Math.min(1, Math.abs(scrollProgressIndex - index))) * 12,
+              },
             ]}
           />
         ))}

@@ -10,6 +10,7 @@ import {
   type NativeIslandNavItem,
 } from '@/components/navigation/NativeIslandBottomNav';
 import { ProfileMenuDropup } from '@/components/navigation/ProfileMenuDropup';
+import { subscribeToNativeIslandCollapse } from '@/components/navigation/nativeIslandEvents';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
@@ -44,6 +45,7 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+  const [isIslandExpanded, setIsIslandExpanded] = useState(false);
   const unreadNotificationCount = useUnreadNotificationCount();
   const [notificationCountReady, setNotificationCountReady] = useState(false);
   const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -167,6 +169,13 @@ export default function TabLayout() {
   }, [bagCount.combinedCount, displayedActiveKey, items]);
 
   useEffect(() => {
+    const unsubscribe = subscribeToNativeIslandCollapse(() => {
+      setIsIslandExpanded(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     navDevLog('island-layout', {
       pathname,
       itemCount: islandItems.length,
@@ -174,18 +183,21 @@ export default function TabLayout() {
       labels: islandItems.map((item) => item.label),
       activeKey: displayedActiveKey,
       compact: islandItems.length >= 6 || windowWidth < 380,
+      collapsed: !isIslandExpanded,
       windowWidth,
       islandWidth,
     });
-  }, [displayedActiveKey, islandItems, islandWidth, pathname, windowWidth]);
+  }, [displayedActiveKey, isIslandExpanded, islandItems, islandWidth, pathname, windowWidth]);
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
       if (item.key === 'profile') {
+        setIsIslandExpanded(false);
         handleProfilePress();
         return;
       }
 
+      setIsIslandExpanded(false);
       setOptimisticActiveKey(item.key);
 
       if (item.key === 'bag') {
@@ -363,6 +375,8 @@ export default function TabLayout() {
         items={islandItems}
         onSelect={handleSelect}
         onPressIn={markOptimisticActive}
+        collapsed={!isIslandExpanded}
+        onCollapsedPress={() => setIsIslandExpanded(true)}
       />
 
       <ProfileMenuDropup
