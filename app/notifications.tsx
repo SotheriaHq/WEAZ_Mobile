@@ -6,7 +6,6 @@ import { router } from 'expo-router';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { StableImage } from '@/components/ui/StableImage';
 import { NotificationsApi, type MobileNotification } from '@/src/api/NotificationsApi';
 import { useAuth } from '@/src/auth/AuthContext';
@@ -108,39 +107,30 @@ function NotificationRow({
   const previewUri = item.target?.preview ?? (typeof item.payload?.preview === 'string' ? item.payload.preview : null);
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [pressed ? styles.pressed : null]}>
-      <Card
-        padding="md"
-        style={[
-          styles.rowCard,
-          {
-            backgroundColor: unread ? theme.colors.surfaceAlt : theme.colors.surface,
-            borderColor: 'transparent',
-            borderWidth: 0,
-          },
-        ]}
-      >
-        <View style={styles.rowTop}>
-          <NotificationAvatar item={item} />
-          <View style={styles.copyWrap}>
-            <View style={styles.rowMeta}>
-              <AppText variant="captionBold" tone={unread ? 'primary' : 'muted'}>
-                {item.type.replace(/_/g, ' ')}
-              </AppText>
-              <AppText variant="captionRegular" tone="muted">
-                {compactTime(item.createdAt)}
-              </AppText>
-            </View>
-            <AppText variant="body" numberOfLines={3}>
-              {describeNotification(item)}
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
+    >
+      <View style={styles.rowTop}>
+        <NotificationAvatar item={item} />
+        <View style={styles.copyWrap}>
+          <View style={styles.rowMeta}>
+            <AppText variant="captionBold" tone={unread ? 'primary' : 'muted'}>
+              {item.type.replace(/_/g, ' ')}
+            </AppText>
+            <AppText variant="captionRegular" tone="muted">
+              {compactTime(item.createdAt)}
             </AppText>
           </View>
-          {previewUri ? (
-            <StableImage uri={previewUri} containerStyle={styles.previewThumb} imageStyle={styles.previewThumb} />
-          ) : null}
-          {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} /> : null}
+          <AppText variant="body" numberOfLines={3}>
+            {describeNotification(item)}
+          </AppText>
         </View>
-      </Card>
+        {previewUri ? (
+          <StableImage uri={previewUri} containerStyle={styles.previewThumb} imageStyle={styles.previewThumb} />
+        ) : null}
+        {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} /> : null}
+      </View>
     </Pressable>
   );
 }
@@ -269,7 +259,7 @@ export default function NotificationsScreen() {
                 <AppText variant="bodyBold">{group.title}</AppText>
                 <View style={[styles.groupDivider, { backgroundColor: theme.colors.border }]} />
               </View>
-              <View style={styles.groupRows}>
+              <View style={[styles.groupRows, { backgroundColor: theme.colors.surface }]}>
                 {group.items.map((item) => (
                   <NotificationRow key={item.id} item={item} onPress={() => handleOpenNotification(item)} />
                 ))}
@@ -325,10 +315,13 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
   },
   groupRows: {
-    gap: tokens.spacing.sm,
+    borderRadius: tokens.radius.lg,
+    overflow: 'hidden',
   },
-  rowCard: {
+  row: {
     minHeight: 86,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.md,
   },
   rowTop: {
     flexDirection: 'row',

@@ -43,6 +43,7 @@ import {
   type DesignEditorMediaSource,
 } from '@/src/features/design-editor/designEditorMediaFlow';
 import { tokens } from '@/src/styles/tokens';
+import { catalogDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -234,6 +235,15 @@ export default function CatalogScreen() {
       
       if (visibilityFilter === 'Drafts' && isOwner) {
         const data = await brandApi.getDrafts();
+        catalogDevLog('load', {
+          tab: visibilityFilter,
+          brandId: targetBrandId,
+          ownerId: userId,
+          endpoint: '/designs/my/drafts',
+          itemCount: data.length,
+          status: 'DRAFT',
+          visibility: null,
+        });
         setDrafts(data);
       } else {
         const { items } = await brandApi.getCollections({
@@ -241,13 +251,22 @@ export default function CatalogScreen() {
           visibility,
           status: statusFilter,
         });
+        catalogDevLog('load', {
+          tab: visibilityFilter,
+          brandId: targetBrandId,
+          ownerId: userId,
+          endpoint: `/designs/user/${targetBrandId}`,
+          itemCount: items.length,
+          status: statusFilter,
+          visibility: visibility ?? null,
+        });
         setCollections(items);
       }
     } catch (error) {
       console.error('Error fetching collections:', error);
       // Collections error will show empty state
     }
-  }, [targetBrandId, visibilityFilter, isOwner]);
+  }, [targetBrandId, visibilityFilter, isOwner, userId]);
 
   // Initial load
   useEffect(() => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -135,9 +135,68 @@ export function NativeIslandBottomNav({
   const { width: windowWidth } = useWindowDimensions();
   const { bottomOffset, sideOffset, islandWidth } = getNativeIslandLayout(windowWidth, insets.bottom);
   const compact = items.length >= 6 || windowWidth < 380;
-  const activeItem = items.find((item) => item.active && !item.disabled) ?? items[0];
+  const orderedItems = items;
+  const activeIndex = Math.max(0, orderedItems.findIndex((item) => item.active && !item.disabled));
+  const activeItem = orderedItems[activeIndex] ?? orderedItems[0];
+  const visibleLeftItems = orderedItems.slice(0, activeIndex).filter((item) => !item.disabled);
+  const visibleRightItems = orderedItems.slice(activeIndex + 1).filter((item) => !item.disabled);
+  const deckItems = [...visibleLeftItems, ...visibleRightItems];
   const collapsedWidth = Math.min(islandWidth, Math.max(172, Math.min(238, Math.round(windowWidth * 0.52))));
   const collapsedSideOffset = Math.max(NATIVE_ISLAND_NAV.minSideOffset, Math.round((windowWidth - collapsedWidth) / 2));
+  const [scrubMode, setScrubMode] = React.useState(false);
+  const [scrubCandidateKey, setScrubCandidateKey] = React.useState<string | null>(null);
+  const scrubModeRef = React.useRef(false);
+  const scrubStartXRef = React.useRef<number | null>(null);
+  const scrubMovedRef = React.useRef(false);
+  const scrubCandidateRef = React.useRef<NativeIslandNavItem | null>(null);
+  const suppressNextPressRef = React.useRef(false);
+
+  const getCandidateFromX = React.useCallback(
+    (x: number) => {
+      if (!orderedItems.length) return null;
+      const segmentWidth = collapsedWidth / orderedItems.length;
+      const rawIndex = Math.max(0, Math.min(orderedItems.length - 1, Math.floor(x / Math.max(1, segmentWidth))));
+      const candidate = orderedItems[rawIndex];
+      return candidate && !candidate.disabled ? candidate : null;
+    },
+    [collapsedWidth, orderedItems],
+  );
+
+  const updateScrubCandidate = React.useCallback(
+    (event: GestureResponderEvent) => {
+      const locationX = event.nativeEvent.locationX;
+      if (scrubStartXRef.current !== null && Math.abs(locationX - scrubStartXRef.current) >= 18) {
+        scrubMovedRef.current = true;
+      }
+      if (!scrubModeRef.current) return;
+      const candidate = getCandidateFromX(locationX);
+      scrubCandidateRef.current = candidate;
+      setScrubCandidateKey(candidate?.key ?? null);
+    },
+    [getCandidateFromX],
+  );
+
+  const resetScrub = React.useCallback(() => {
+    scrubModeRef.current = false;
+    scrubStartXRef.current = null;
+    scrubMovedRef.current = false;
+    scrubCandidateRef.current = null;
+    setScrubMode(false);
+    setScrubCandidateKey(null);
+  }, []);
+
+  const commitScrub = React.useCallback(() => {
+    if (!scrubModeRef.current) return false;
+    const candidate = scrubCandidateRef.current;
+    const shouldNavigate = Boolean(candidate && scrubMovedRef.current && candidate.key !== activeItem?.key);
+    suppressNextPressRef.current = true;
+    resetScrub();
+    if (shouldNavigate && candidate) {
+      onSelect(candidate);
+    }
+    return true;
+  }, [activeItem?.key, onSelect, resetScrub]);
+
   React.useEffect(() => {
     navDevLog('island-layout', {
       pathname,
@@ -150,7 +209,16 @@ export function NativeIslandBottomNav({
       islandWidth,
       activeKey: items.find((item) => item.active)?.key ?? null,
     });
-  }, [collapsed, compact, islandWidth, items, pathname, windowWidth]);
+    navDevLog('collapsed-layout', {
+      pathname,
+      activeKey: activeItem?.key ?? null,
+      activeIndex,
+      visibleLeftKeys: visibleLeftItems.map((item) => item.key),
+      visibleRightKeys: visibleRightItems.map((item) => item.key),
+      deckKeys: deckItems.map((item) => item.key),
+      collapsed,
+    });
+  }, [activeIndex, activeItem?.key, collapsed, compact, deckItems, islandWidth, items, pathname, visibleLeftItems, visibleRightItems, windowWidth]);
   if (items.length === 0) {
     return null;
   }
@@ -211,27 +279,75 @@ export function NativeIslandBottomNav({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Expand navigation. Current tab: ${activeItem?.label ?? 'Threadly'}`}
-              onPress={onCollapsedPress}
-              style={({ pressed }) => [styles.collapsedButton, pressed && styles.navItemPressed]}
+              delayLongPress={260}
+              onTouchStart={(event) => {
+                scrubStartXRef.current = event.nativeEvent.locationX;
+              }}
+              onTouchMove={updateScrubCandidate}
+              onLongPress={(event) => {
+                scrubModeRef.current = true;
+                setScrubMode(true);
+                updateScrubCandidate(event);
+              }}
+              onPressOut={() => {
+                commitScrub();
+              }}
+              onPress={() => {
+                if (scrubModeRef.current || suppressNextPressRef.current) {
+                  suppressNextPressRef.current = false;
+                  return;
+                }
+                onCollapsedPress?.();
+              }}
+              style={({ pressed }) => [styles.collapsedButton, scrubMode && styles.collapsedButtonScrubbing, pressed && styles.navItemPressed]}
             >
+              <View style={styles.collapsedSideDeck} pointerEvents="none">
+                {visibleLeftItems.map((item, index) => {
+                  const highlighted = scrubCandidateKey === item.key;
+                  return (
+                    <View
+                      key={item.key}
+                      style={[
+                        styles.collapsedDeckItem,
+                        { transform: [{ translateX: Math.max(-18, -6 * (visibleLeftItems.length - index)) }, { scale: highlighted ? 1.16 : 1 }] },
+                      ]}
+                    >
+                      <Text style={[styles.collapsedDeckEmoji, highlighted && styles.collapsedDeckEmojiHighlighted]}>
+                        {item.emoji}
+                      </Text>
+                      {typeof item.badge === 'number' && item.badge > 0 ? (
+                        <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
               <View style={[styles.collapsedActiveChip, { backgroundColor: theme.colors.primarySoft }]}>
                 <Text style={styles.collapsedActiveEmoji}>{activeItem?.emoji ?? '•'}</Text>
                 <AppText variant="captionBold" tone="primary" numberOfLines={1} style={styles.collapsedActiveLabel}>
                   {activeItem?.label ?? 'Menu'}
                 </AppText>
               </View>
-              <View style={[styles.collapsedDivider, { backgroundColor: theme.colors.glassBorder }]} />
-              <View style={styles.collapsedDeck} pointerEvents="none">
-                {items.map((item) => (
-                  <View key={item.key} style={styles.collapsedDeckItem}>
-                    <Text style={[styles.collapsedDeckEmoji, item.active && styles.collapsedDeckEmojiActive]}>
-                      {item.emoji}
-                    </Text>
-                    {typeof item.badge === 'number' && item.badge > 0 ? (
-                      <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
-                    ) : null}
-                  </View>
-                ))}
+              <View style={styles.collapsedSideDeck} pointerEvents="none">
+                {visibleRightItems.map((item, index) => {
+                  const highlighted = scrubCandidateKey === item.key;
+                  return (
+                    <View
+                      key={item.key}
+                      style={[
+                        styles.collapsedDeckItem,
+                        { transform: [{ translateX: Math.min(18, 6 * (index + 1)) }, { scale: highlighted ? 1.16 : 1 }] },
+                      ]}
+                    >
+                      <Text style={[styles.collapsedDeckEmoji, highlighted && styles.collapsedDeckEmojiHighlighted]}>
+                        {item.emoji}
+                      </Text>
+                      {typeof item.badge === 'number' && item.badge > 0 ? (
+                        <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
+                      ) : null}
+                    </View>
+                  );
+                })}
               </View>
             </Pressable>
           ) : (
@@ -300,6 +416,9 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 6,
   },
+  collapsedButtonScrubbing: {
+    opacity: 0.98,
+  },
   collapsedActiveChip: {
     minWidth: 78,
     maxWidth: 110,
@@ -319,19 +438,16 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
   },
-  collapsedDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 28,
-  },
-  collapsedDeck: {
+  collapsedSideDeck: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 1,
-    minWidth: 44,
+    minWidth: 36,
+    flexShrink: 1,
   },
   collapsedDeckItem: {
-    width: 14,
+    width: 16,
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
@@ -342,8 +458,9 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     opacity: 0.62,
   },
-  collapsedDeckEmojiActive: {
+  collapsedDeckEmojiHighlighted: {
     opacity: 1,
+    fontSize: 15,
   },
   collapsedBadge: {
     position: 'absolute',

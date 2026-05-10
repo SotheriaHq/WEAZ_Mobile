@@ -12,9 +12,11 @@ import { router } from 'expo-router';
 
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
+import ThreadlyLogoLoader from '@/components/ui/ThreadlyLogoLoader';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
-import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { profileMenuAvatarDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { tokens, type AppTheme } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import type { ResolvedTheme } from '@/src/types/theme';
@@ -69,7 +71,12 @@ export function ProfileMenuDropup({
   const displayName = getDisplayName(user);
   const handle = user?.username ? `@${user.username}` : null;
   const avatar = resolveProfileImageSource(user);
-  const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: mounted });
+  const hasAvatarSource = Boolean(avatar.src || avatar.fileId);
+  const { uri: avatarUri, loading: avatarLoading } = useResolvedImageAsset({
+    src: avatar.src,
+    fileId: avatar.fileId,
+    enabled: mounted && hasAvatarSource,
+  });
   const initials = getAvatarFallback(displayName, user?.username);
   const availableMenuHeight = Math.max(0, height - bottomOffset - tokens.spacing.sm);
   const menuMaxHeight = Math.min(360, availableMenuHeight);
@@ -100,6 +107,25 @@ export function ProfileMenuDropup({
     },
     [opacity, translateY],
   );
+
+  React.useEffect(() => {
+    if (!__DEV__) return;
+    let host: string | null = null;
+    const candidate = avatarUri ?? avatar.src ?? null;
+    if (candidate) {
+      try {
+        host = new URL(candidate).hostname;
+      } catch {
+        host = null;
+      }
+    }
+    profileMenuAvatarDevLog('summary', {
+      hasSrc: Boolean(avatar.src),
+      hasFileId: Boolean(avatar.fileId),
+      host,
+      resolved: Boolean(avatarUri),
+    });
+  }, [avatar.fileId, avatar.src, avatarUri]);
 
   React.useEffect(() => {
     if (visible) {
@@ -191,6 +217,8 @@ export function ProfileMenuDropup({
                 <View style={[styles.avatar, { backgroundColor: activeTheme.colors.primarySoft }]}> 
                   {avatarUri ? (
                     <StableImage uri={avatarUri} containerStyle={styles.avatarImage} imageStyle={styles.avatarImage} />
+                  ) : hasAvatarSource && avatarLoading ? (
+                    <ThreadlyLogoLoader size={22} />
                   ) : (
                     <AppText variant="subtitle" tone="primary">
                       {initials}

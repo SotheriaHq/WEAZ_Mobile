@@ -321,7 +321,6 @@ export default function ThreadRailAction({
     transform: [
       { translateX: interpolate(stitchProgress.value, [0, 1], [-13, 13]) },
       { translateY: interpolate(stitchProgress.value, [0, 0.5, 1], [4, -4, 4]) },
-      { rotate: '-18deg' },
       { scale: interpolate(stitchProgress.value, [0, 1], [0.88, 1.05]) },
     ],
   }));
@@ -376,12 +375,12 @@ export default function ThreadRailAction({
                 />
                 <Animated.View
                   style={[
-                    styles.needleWrap,
+                    styles.threadHeadWrap,
                     stitchThreadHeadStyle,
                   ]}
                 >
-                  <View style={styles.needle} />
-                  <View style={styles.needleEye} />
+                  <View style={styles.threadHead} />
+                  <View style={styles.threadHeadCore} />
                 </Animated.View>
               </View>
             ) : null}
@@ -496,25 +495,24 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     backgroundColor: '#0f766e',
   },
-  needleWrap: {
+  threadHeadWrap: {
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  needle: {
-    width: 18,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#E5E7EB',
-    borderWidth: 1,
-    borderColor: '#64748B',
+  threadHead: {
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: '#CCFBF1',
+    borderWidth: 2,
+    borderColor: '#0F766E',
   },
-  needleEye: {
+  threadHeadCore: {
     position: 'absolute',
-    left: 2,
-    width: 3,
-    height: 3,
-    borderRadius: 2,
+    width: 4,
+    height: 4,
+    borderRadius: 3,
     backgroundColor: '#0F766E',
   },
   threadStateOverlay: {

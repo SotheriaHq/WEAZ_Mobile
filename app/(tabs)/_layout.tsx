@@ -23,6 +23,7 @@ import {
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
 import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
+import { applyAndroidSystemBarsPolicy } from '@/src/system/AndroidSystemBars';
 
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
@@ -189,6 +190,10 @@ export default function TabLayout() {
     });
   }, [displayedActiveKey, isIslandExpanded, islandItems, islandWidth, pathname, windowWidth]);
 
+  useEffect(() => {
+    setIsIslandExpanded(false);
+  }, [pathname]);
+
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
       if (item.key === 'profile') {
@@ -265,7 +270,8 @@ export default function TabLayout() {
     if (profileMenuVisible) {
       void refreshUnreadNotificationCount();
     }
-  }, [profileMenuVisible, refreshUnreadNotificationCount]);
+    applyAndroidSystemBarsPolicy(scheme, profileMenuVisible ? 'profile-dropup-open' : 'profile-dropup-closed');
+  }, [profileMenuVisible, refreshUnreadNotificationCount, scheme]);
 
   useNotificationRealtimeChannel({
     enabled: status === 'authenticated' && Boolean(user?.id),

@@ -25,7 +25,7 @@ type SettingsSection = {
   rows: SettingsRow[];
 };
 
-function SettingRow({ row, last }: { row: SettingsRow; last: boolean }) {
+function SettingRow({ row }: { row: SettingsRow }) {
   const { theme } = useTheme();
 
   return (
@@ -36,8 +36,7 @@ function SettingRow({ row, last }: { row: SettingsRow; last: boolean }) {
       accessibilityLabel={row.title}
       style={({ pressed }) => [
         styles.row,
-        !last && { borderBottomColor: theme.colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
-        pressed && { backgroundColor: theme.colors.surfaceAlt },
+        pressed && styles.rowPressed,
       ]}
     >
       <View style={[styles.iconWrap, { backgroundColor: row.danger ? theme.colors.surfaceAlt : theme.colors.primarySoft }]}>
@@ -76,8 +75,8 @@ function SettingsSectionBlock({ section }: { section: SettingsSection }) {
         {section.title.toUpperCase()}
       </AppText>
       <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-        {section.rows.map((row, index) => (
-          <SettingRow key={`${section.title}-${row.title}`} row={row} last={index === section.rows.length - 1} />
+        {section.rows.map((row) => (
+          <SettingRow key={`${section.title}-${row.title}`} row={row} />
         ))}
       </View>
     </View>
@@ -335,6 +334,9 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
+  },
+  rowPressed: {
+    opacity: 0.78,
   },
   iconWrap: {
     width: 38,

@@ -25,12 +25,12 @@ import { ProfileApi } from '@/src/api/ProfileApi';
 import { getMarketFilterChips, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import { fetchMarketFeedPage, readCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { buildFeedCacheIdentity } from '@/src/features/feed/utils/feedKeys';
-import { brandAvatarDevLog, feedDevLog, feedMediaDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
+import { brandAvatarDevLog, feedDevLog, feedLoadDevLog, feedMediaDevLog, layoutDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import type { MarketItem } from '@/src/types/market';
 import type { ResolvedTheme } from '@/src/types/theme';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
-import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { prefetchResolvedImageAsset, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
@@ -534,7 +534,7 @@ export function MarketFeedScreen() {
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>([{ id: 'all', label: 'All', tag: null }]);
   const [selectedFilterId, setSelectedFilterId] = useState('all');
   const [activePageIndex, setActivePageIndex] = useState(0);
-  const [feedViewportHeight, setFeedViewportHeight] = useState(0);
+  const [measuredFeedViewportHeight, setFeedViewportHeight] = useState(0);
   const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
   const pendingCollectionIdsRef = useRef(new Set<string>());
   const hydratedCollectionIdsRef = useRef(new Set<string>());
@@ -569,7 +569,7 @@ export function MarketFeedScreen() {
   const lastPatchFetchRef = useRef<number>(0);
   const STALE_THRESHOLD_MS = 60_000; // 60 seconds
 
-  const showBlockingLoader = loading;
+  const showBlockingLoader = loading && items.length === 0;
 
   const skeletonOpacity = useRef(new Animated.Value(1)).current;
   const [isSkeletonFadingOut, setIsSkeletonFadingOut] = useState(false);
@@ -606,10 +606,9 @@ export function MarketFeedScreen() {
     }
   }, [status, user?.id, user?.type]);
 
-  const fallbackPageHeight = useMemo(() => {
-    return Math.max(1, Math.round(windowHeight - insets.top - NATIVE_ISLAND_NAV.contentClearance - insets.bottom));
-  }, [insets.bottom, insets.top, windowHeight]);
-  const pageHeight = feedViewportHeight > 0 ? Math.max(1, Math.round(feedViewportHeight)) : 0;
+  const fallbackPageHeight = useMemo(() => Math.max(1, Math.round(windowHeight)), [windowHeight]);
+  const pageHeight = fallbackPageHeight;
+  const feedViewportHeight = pageHeight;
   const feedViewportReady = pageHeight > 0;
 
   const activeFilter = useMemo(
@@ -711,22 +710,35 @@ export function MarketFeedScreen() {
     if (hasLoggedInitialPageHeightRef.current) return;
     hasLoggedInitialPageHeightRef.current = true;
     devLog('HomeFeed', 'Initial page height candidate', {
+      windowHeight,
+      insetsTop: insets.top,
+      insetsBottom: insets.bottom,
       fallbackPageHeight,
-      measuredPageHeight: feedViewportHeight,
+      measuredPageHeight: measuredFeedViewportHeight || null,
+      feedViewportHeight,
       snapToInterval: pageHeight || null,
       itemLayoutLength: pageHeight || null,
+      bottomClearance,
+      model: 'immersive-full-screen',
     });
-  }, [fallbackPageHeight, feedViewportHeight, pageHeight]);
+  }, [bottomClearance, fallbackPageHeight, feedViewportHeight, insets.bottom, insets.top, measuredFeedViewportHeight, pageHeight, windowHeight]);
 
   useEffect(() => {
     if (!pageHeight || lastLoggedPageHeightRef.current === pageHeight) return;
     lastLoggedPageHeightRef.current = pageHeight;
-    devLog('HomeFeed', 'Stable page height', {
-      measuredPageHeight: feedViewportHeight,
+    layoutDevLog('feed-page-height', {
+      windowHeight,
+      insetsTop: insets.top,
+      insetsBottom: insets.bottom,
+      measuredPageHeight: measuredFeedViewportHeight || null,
+      feedViewportHeight,
+      pageHeight,
       snapToInterval: pageHeight,
-      itemLayoutLength: pageHeight,
+      itemHeight: pageHeight,
+      bottomClearance,
+      model: 'immersive-full-screen',
     });
-  }, [feedViewportHeight, pageHeight]);
+  }, [bottomClearance, feedViewportHeight, insets.bottom, insets.top, measuredFeedViewportHeight, pageHeight, windowHeight]);
 
   useEffect(() => {
     if (!feedLoopEnabled || feedViewportHeight <= 0 || pageHeight <= 1 || feedItems.length < 3) {
@@ -784,6 +796,22 @@ export function MarketFeedScreen() {
   }, [activePageIndex, items, pageHeight]);
 
   useEffect(() => {
+    const nextItem = items[activePageIndex + 1];
+    const nextMedia = nextItem ? buildFallbackMediaItems(nextItem)[0] : null;
+    if (!nextMedia) return;
+    void prefetchResolvedImageAsset({
+      src: nextMedia.displayUrl ?? nextMedia.url,
+      fileId: nextMedia.fileId,
+      debugContext: {
+        designId: nextMedia.id,
+        fileId: nextMedia.fileId ?? undefined,
+        mediaIndex: 0,
+        sourceField: nextMedia.fileId ? 'feed.next.fileId' : 'feed.next.displayUrl',
+      },
+    });
+  }, [activePageIndex, items]);
+
+  useEffect(() => {
     let mounted = true;
 
     void getMarketFilterChips().then((chips) => {
@@ -836,6 +864,7 @@ export function MarketFeedScreen() {
       userId: status === 'authenticated' ? user?.id ?? null : null,
     });
     const cached = await readCachedMarketFeed(cacheIdentity);
+    const startedAt = Date.now();
     if (cached) {
       // Sort cached items to prioritize valid media
       const sortedCachedItems = [...cached.snapshot.items].sort((a, b) => {
@@ -861,6 +890,12 @@ export function MarketFeedScreen() {
       setItems(sortedCachedItems);
       setNextCursor(cached.snapshot.nextCursor);
       setHasNextPage(cached.snapshot.hasNextPage);
+      feedLoadDevLog('summary', {
+        cacheHit: true,
+        blockingSkeleton: false,
+        fetchMs: 0,
+        itemCount: sortedCachedItems.length,
+      });
       if (cached.isFresh) {
         // Cache is fresh - no need to revalidate
         setLoading(false);
@@ -871,6 +906,12 @@ export function MarketFeedScreen() {
     } else {
       // No cache - show skeleton on first load
       setLoading(true);
+      feedLoadDevLog('summary', {
+        cacheHit: false,
+        blockingSkeleton: true,
+        fetchMs: 0,
+        itemCount: 0,
+      });
     }
 
     try {
@@ -910,6 +951,12 @@ export function MarketFeedScreen() {
       setItems(sortedItems);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
+      feedLoadDevLog('summary', {
+        cacheHit: Boolean(cached),
+        blockingSkeleton: !cached && sortedItems.length === 0,
+        fetchMs: Date.now() - startedAt,
+        itemCount: sortedItems.length,
+      });
     } catch (err) {
       // If we already have cached content, don't overwrite with an error state
       if (!cached) {
@@ -1677,13 +1724,14 @@ export function MarketFeedScreen() {
         </ScrollView>
       ) : (
         <View
-          style={styles.feedListContainer}
+          style={[styles.feedListContainer, { height: pageHeight }]}
           onLayout={(event) => {
             const nextHeight = Math.round(event.nativeEvent.layout.height);
-            if (nextHeight > 0 && feedViewportHeight === 0) {
+            if (nextHeight > 0 && measuredFeedViewportHeight !== nextHeight) {
               devLog('HomeFeed', 'Measured feed viewport', {
                 measuredPageHeight: nextHeight,
-                previousPageHeight: feedViewportHeight || null,
+                pageHeightModel: pageHeight,
+                previousPageHeight: measuredFeedViewportHeight || null,
               });
               setFeedViewportHeight(nextHeight);
             }
@@ -1730,52 +1778,6 @@ export function MarketFeedScreen() {
             }}
             onMomentumScrollEnd={(e) => {
               handleFeedMomentumEnd(e);
-              return;
-              const rawIndex = Math.max(
-                0,
-                Math.min(feedItems.length - 1, Math.round(e.nativeEvent.contentOffset.y / pageHeight)),
-              );
-
-              if (feedLoopEnabled) {
-                // Landed on tail ghost (last item in list) - teleport to real first
-                if (rawIndex === feedItems.length - 1) {
-                  // Real first item is at index 1 (after head ghost)
-                  const targetOffset = feedLoopHeadOffset * pageHeight;
-                  feedTeleportingRef.current = true;
-                  feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
-                  setActivePageIndex(0);
-                  setTimeout(() => {
-                    feedTeleportingRef.current = false;
-                  }, 80);
-                  return;
-                }
-
-                // Landed on head ghost (index 0) - teleport to real last
-                if (rawIndex === 0) {
-                  const realLastIndex = items.length; // items.length because head ghost shifts by 1
-                  const targetOffset = realLastIndex * pageHeight;
-                  feedTeleportingRef.current = true;
-                  feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
-                  setActivePageIndex(items.length - 1);
-                  setTimeout(() => {
-                    feedTeleportingRef.current = false;
-                  }, 80);
-                  return;
-                }
-
-                // Normal item - rawIndex 1..N maps to real item 0..N-1
-                const realIndex = feedItems[rawIndex]?.realIndex ?? 0;
-                setActivePageIndex(Math.min(realIndex, items.length - 1));
-                return;
-              }
-
-              // Loop disabled (paginating or single item)
-              const nextActiveIndex = feedItems[rawIndex]?.realIndex ?? rawIndex;
-              feedActiveIndex = nextActiveIndex;
-              setActivePageIndex(nextActiveIndex);
-              if (rawIndex >= items.length - 1 && hasNextPage) {
-                void loadMore();
-              }
             }}
             onEndReachedThreshold={0.6}
             onEndReached={() => {

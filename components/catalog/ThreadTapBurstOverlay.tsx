@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
-import { AppText } from '@/components/ui/AppText';
 
 type ThreadTapBurstOverlayProps = {
   burstKey: number;
@@ -216,7 +215,11 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           <View style={[styles.fabricPoint, styles.fabricPointEnd]} />
         </>
       ) : null}
-      <AppText style={styles.threadEmoji}>🧵</AppText>
+      <View style={styles.fabricPatch}>
+        <View style={[styles.stitchDash, styles.stitchDashOne]} />
+        <View style={[styles.stitchDash, styles.stitchDashTwo]} />
+        <View style={[styles.stitchDash, styles.stitchDashThree]} />
+      </View>
     </Animated.View>
   );
 }
@@ -265,11 +268,34 @@ const styles = StyleSheet.create({
   fabricPointEnd: {
     right: 30,
   },
-  threadEmoji: {
-    fontSize: 28,
-    lineHeight: 30,
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+  fabricPatch: {
+    width: 42,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: '#CCFBF1',
+    borderWidth: 1,
+    borderColor: '#0F766E',
+    overflow: 'hidden',
+    transform: [{ rotate: '-5deg' }],
+  },
+  stitchDash: {
+    position: 'absolute',
+    width: 13,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#0F766E',
+    transform: [{ rotate: '-18deg' }],
+  },
+  stitchDashOne: {
+    left: 7,
+    top: 8,
+  },
+  stitchDashTwo: {
+    left: 15,
+    top: 14,
+  },
+  stitchDashThree: {
+    left: 23,
+    top: 20,
   },
 });
