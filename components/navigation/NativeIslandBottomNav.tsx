@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from 'react-native';
+import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -143,59 +143,21 @@ export function NativeIslandBottomNav({
   const deckItems = [...visibleLeftItems, ...visibleRightItems];
   const collapsedWidth = Math.min(islandWidth, Math.max(172, Math.min(238, Math.round(windowWidth * 0.52))));
   const collapsedSideOffset = Math.max(NATIVE_ISLAND_NAV.minSideOffset, Math.round((windowWidth - collapsedWidth) / 2));
-  const [scrubMode, setScrubMode] = React.useState(false);
-  const [scrubCandidateKey, setScrubCandidateKey] = React.useState<string | null>(null);
-  const scrubModeRef = React.useRef(false);
-  const scrubStartXRef = React.useRef<number | null>(null);
-  const scrubMovedRef = React.useRef(false);
-  const scrubCandidateRef = React.useRef<NativeIslandNavItem | null>(null);
-  const suppressNextPressRef = React.useRef(false);
 
-  const getCandidateFromX = React.useCallback(
-    (x: number) => {
-      if (!orderedItems.length) return null;
-      const segmentWidth = collapsedWidth / orderedItems.length;
-      const rawIndex = Math.max(0, Math.min(orderedItems.length - 1, Math.floor(x / Math.max(1, segmentWidth))));
-      const candidate = orderedItems[rawIndex];
-      return candidate && !candidate.disabled ? candidate : null;
-    },
-    [collapsedWidth, orderedItems],
-  );
-
-  const updateScrubCandidate = React.useCallback(
-    (event: GestureResponderEvent) => {
-      const locationX = event.nativeEvent.locationX;
-      if (scrubStartXRef.current !== null && Math.abs(locationX - scrubStartXRef.current) >= 18) {
-        scrubMovedRef.current = true;
-      }
-      if (!scrubModeRef.current) return;
-      const candidate = getCandidateFromX(locationX);
-      scrubCandidateRef.current = candidate;
-      setScrubCandidateKey(candidate?.key ?? null);
-    },
-    [getCandidateFromX],
-  );
-
-  const resetScrub = React.useCallback(() => {
-    scrubModeRef.current = false;
-    scrubStartXRef.current = null;
-    scrubMovedRef.current = false;
-    scrubCandidateRef.current = null;
-    setScrubMode(false);
-    setScrubCandidateKey(null);
+  React.useEffect(() => {
+    if (Platform.OS === 'android') {
+      UIManager.setLayoutAnimationEnabledExperimental?.(true);
+    }
   }, []);
 
-  const commitScrub = React.useCallback(() => {
-    if (!scrubModeRef.current) return false;
-    const candidate = scrubCandidateRef.current;
-    const shouldNavigate = Boolean(candidate && scrubMovedRef.current && candidate.key !== activeItem?.key);
-    suppressNextPressRef.current = true;
-    resetScrub();
-    if (shouldNavigate && candidate) {
-      onSelect(candidate);
-    }
-    return true;
-  }, [activeItem?.key, onSelect, resetScrub]);
+  React.useEffect(() => {
+    LayoutAnimation.configureNext({
+      duration: 180,
+      update: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+      },
+    });
+  }, [collapsed]);
 
   React.useEffect(() => {
     navDevLog('island-layout', {
@@ -279,40 +241,22 @@ export function NativeIslandBottomNav({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Expand navigation. Current tab: ${activeItem?.label ?? 'Threadly'}`}
-              delayLongPress={260}
-              onTouchStart={(event) => {
-                scrubStartXRef.current = event.nativeEvent.locationX;
-              }}
-              onTouchMove={updateScrubCandidate}
-              onLongPress={(event) => {
-                scrubModeRef.current = true;
-                setScrubMode(true);
-                updateScrubCandidate(event);
-              }}
-              onPressOut={() => {
-                commitScrub();
-              }}
               onPress={() => {
-                if (scrubModeRef.current || suppressNextPressRef.current) {
-                  suppressNextPressRef.current = false;
-                  return;
-                }
                 onCollapsedPress?.();
               }}
-              style={({ pressed }) => [styles.collapsedButton, scrubMode && styles.collapsedButtonScrubbing, pressed && styles.navItemPressed]}
+              style={({ pressed }) => [styles.collapsedButton, pressed && styles.navItemPressed]}
             >
               <View style={styles.collapsedSideDeck} pointerEvents="none">
                 {visibleLeftItems.map((item, index) => {
-                  const highlighted = scrubCandidateKey === item.key;
                   return (
                     <View
                       key={item.key}
                       style={[
                         styles.collapsedDeckItem,
-                        { transform: [{ translateX: Math.max(-18, -6 * (visibleLeftItems.length - index)) }, { scale: highlighted ? 1.16 : 1 }] },
+                        { transform: [{ translateX: Math.max(-18, -6 * (visibleLeftItems.length - index)) }] },
                       ]}
                     >
-                      <Text style={[styles.collapsedDeckEmoji, highlighted && styles.collapsedDeckEmojiHighlighted]}>
+                      <Text style={styles.collapsedDeckEmoji}>
                         {item.emoji}
                       </Text>
                       {typeof item.badge === 'number' && item.badge > 0 ? (
@@ -330,16 +274,15 @@ export function NativeIslandBottomNav({
               </View>
               <View style={styles.collapsedSideDeck} pointerEvents="none">
                 {visibleRightItems.map((item, index) => {
-                  const highlighted = scrubCandidateKey === item.key;
                   return (
                     <View
                       key={item.key}
                       style={[
                         styles.collapsedDeckItem,
-                        { transform: [{ translateX: Math.min(18, 6 * (index + 1)) }, { scale: highlighted ? 1.16 : 1 }] },
+                        { transform: [{ translateX: Math.min(18, 6 * (index + 1)) }] },
                       ]}
                     >
-                      <Text style={[styles.collapsedDeckEmoji, highlighted && styles.collapsedDeckEmojiHighlighted]}>
+                      <Text style={styles.collapsedDeckEmoji}>
                         {item.emoji}
                       </Text>
                       {typeof item.badge === 'number' && item.badge > 0 ? (
@@ -416,9 +359,6 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 6,
   },
-  collapsedButtonScrubbing: {
-    opacity: 0.98,
-  },
   collapsedActiveChip: {
     minWidth: 78,
     maxWidth: 110,
@@ -457,10 +397,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 14,
     opacity: 0.62,
-  },
-  collapsedDeckEmojiHighlighted: {
-    opacity: 1,
-    fontSize: 15,
   },
   collapsedBadge: {
     position: 'absolute',

@@ -10,9 +10,14 @@ export interface StoreProductVariant {
 export interface StoreProduct {
   id: string;
   brandId?: string | null;
+  brandName?: string | null;
+  brandLogo?: string | null;
+  brandLogoFileId?: string | null;
   name: string;
   description?: string | null;
   price: number;
+  salePrice?: number | null;
+  effectivePrice?: number | null;
   compareAtPrice?: number | null;
   currency: string;
   coverImage?: string | null;
@@ -24,6 +29,8 @@ export interface StoreProduct {
   variants: StoreProductVariant[];
   customOrderEnabled: boolean;
   categoryName?: string | null;
+  categorySlug?: string | null;
+  tags?: string[];
   isWishlisted?: boolean;
   createdAt?: string | null;
 }
@@ -72,6 +79,24 @@ export interface BagCount {
   standardQuantity: number;
   customLineCount: number;
   combinedCount: number;
+}
+
+export interface MarketplaceProductParams {
+  cursor?: string | null;
+  limit?: number;
+  category?: string | null;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+  tags?: string[];
+  sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'popular';
+  search?: string | null;
+}
+
+export interface MarketplaceProductsResponse {
+  items: StoreProduct[];
+  hasNextPage: boolean;
+  nextCursor: string | null;
+  total?: number;
 }
 
 export interface ProductBagStatus {
@@ -202,6 +227,7 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
   const rawImage = asRecord(item.image);
   const rawCategory = asRecord(item.category);
   const rawCategoryType = asRecord(item.categoryType);
+  const rawBrand = asRecord(item.brand);
 
   const rawImages = Array.isArray(item.images)
     ? item.images
@@ -281,9 +307,14 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
   return {
     id,
     brandId: asString(item.brandId),
+    brandName: asString(item.brandName) ?? asString(rawBrand.name),
+    brandLogo: asString(item.brandLogo) ?? asString(rawBrand.logo),
+    brandLogoFileId: asString(item.brandLogoFileId) ?? null,
     name: asString(item.name ?? item.title) ?? 'Untitled product',
     description: asString(item.description),
     price: asNumber(item.price),
+    salePrice: item.salePrice !== null && item.salePrice !== undefined ? asNumber(item.salePrice) : null,
+    effectivePrice: item.effectivePrice !== null && item.effectivePrice !== undefined ? asNumber(item.effectivePrice) : null,
     compareAtPrice:
       item.compareAtPrice !== null && item.compareAtPrice !== undefined
         ? asNumber(item.compareAtPrice)
@@ -311,6 +342,12 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
       asString(rawCategory.name) ??
       asString(rawCategoryType.name) ??
       null,
+    categorySlug:
+      asString(item.categorySlug) ??
+      asString(rawCategory.slug) ??
+      asString(rawCategoryType.slug) ??
+      null,
+    tags: asStringList(item.tags),
     isWishlisted: Boolean(item.isWishlisted),
     createdAt: asString(item.createdAt),
   };
@@ -475,6 +512,33 @@ const normalizeBagStatus = (
 };
 
 export const MobileStoreApi = {
+  async getMarketplaceProducts(params: MarketplaceProductParams = {}): Promise<MarketplaceProductsResponse> {
+    const response = await apiClient.get('/products/market', {
+      params: {
+        limit: params.limit ?? 36,
+        cursor: params.cursor ?? undefined,
+        category: params.category ?? undefined,
+        minPrice: params.minPrice ?? undefined,
+        maxPrice: params.maxPrice ?? undefined,
+        tags: params.tags && params.tags.length > 0 ? params.tags : undefined,
+        sortBy: params.sortBy ?? 'newest',
+        search: params.search ?? undefined,
+      },
+    });
+
+    const payload = unwrapData<Record<string, unknown>>(response.data);
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+
+    return {
+      items: items
+        .map((entry) => normalizeProduct(entry))
+        .filter((entry): entry is StoreProduct => Boolean(entry)),
+      hasNextPage: Boolean(payload?.hasNextPage),
+      nextCursor: asString(payload?.nextCursor),
+      total: asNumber(payload?.total, 0),
+    };
+  },
+
   async getBrandProducts(brandId: string, limit = 60): Promise<StoreProduct[]> {
     const response = await apiClient.get('/products/market', {
       params: {

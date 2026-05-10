@@ -534,6 +534,7 @@ export function MarketFeedScreen() {
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>([{ id: 'all', label: 'All', tag: null }]);
   const [selectedFilterId, setSelectedFilterId] = useState('all');
   const [activePageIndex, setActivePageIndex] = useState(0);
+  const [rootViewportHeight, setRootViewportHeight] = useState(0);
   const [measuredFeedViewportHeight, setFeedViewportHeight] = useState(0);
   const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
   const pendingCollectionIdsRef = useRef(new Set<string>());
@@ -607,7 +608,7 @@ export function MarketFeedScreen() {
   }, [status, user?.id, user?.type]);
 
   const fallbackPageHeight = useMemo(() => Math.max(1, Math.round(windowHeight)), [windowHeight]);
-  const pageHeight = fallbackPageHeight;
+  const pageHeight = rootViewportHeight > 0 ? rootViewportHeight : fallbackPageHeight;
   const feedViewportHeight = pageHeight;
   const feedViewportReady = pageHeight > 0;
 
@@ -1634,7 +1635,16 @@ export function MarketFeedScreen() {
   );
 
   return (
-    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg }]}>
+    <SafeAreaView
+      edges={[]}
+      style={[styles.root, { backgroundColor: theme.colors.bg }]}
+      onLayout={(event) => {
+        const nextHeight = Math.round(event.nativeEvent.layout.height);
+        if (nextHeight > 0 && nextHeight !== rootViewportHeight) {
+          setRootViewportHeight(nextHeight);
+        }
+      }}
+    >
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} translucent backgroundColor="transparent" />
 
       {!loading ? (
@@ -1805,6 +1815,7 @@ export function MarketFeedScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    overflow: 'hidden',
   },
   header: {
     position: 'absolute',
@@ -1917,6 +1928,7 @@ const styles = StyleSheet.create({
   },
   feedListContainer: {
     flex: 1,
+    overflow: 'hidden',
   },
   rail: {
     position: 'absolute',

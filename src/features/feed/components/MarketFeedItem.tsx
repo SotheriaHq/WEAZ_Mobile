@@ -52,5 +52,6 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: 'transparent',
     position: 'relative',
+    overflow: 'hidden',
   },
 });

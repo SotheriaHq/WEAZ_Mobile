@@ -20,6 +20,13 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
+const NAV_EMOJI = {
+  designs: String.fromCodePoint(0x1F9F5),
+  market: String.fromCodePoint(0x1F6CD),
+  store: String.fromCodePoint(0x1F3EA),
+  inbox: String.fromCodePoint(0x2709, 0xFE0F),
+  profile: String.fromCodePoint(0x1F464),
+} as const;
 
 function mapPathnameToIslandKey(pathname: string): string {
   if (pathname === '/catalog' || pathname.startsWith('/catalog/')) return 'profile';
@@ -38,6 +45,7 @@ export function CatalogIslandBottomNav() {
   const { width: windowWidth } = useWindowDimensions();
   const unreadNotificationCount = useUnreadNotificationCount();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+  const [isIslandExpanded, setIsIslandExpanded] = useState(false);
   const [notificationCountReady, setNotificationCountReady] = useState(false);
   const [optimisticActiveKey, setOptimisticActiveKey] = useState<string | null>(null);
   const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -141,6 +149,10 @@ export function CatalogIslandBottomNav() {
     }
   }, [clearSelectionState, optimisticActiveKey, pathname]);
 
+  useEffect(() => {
+    setIsIslandExpanded(false);
+  }, [pathname]);
+
   useNotificationRealtimeChannel({
     enabled: status === 'authenticated' && Boolean(user?.id),
     token: token ?? null,
@@ -149,10 +161,10 @@ export function CatalogIslandBottomNav() {
 
   const items = useMemo<NativeIslandNavItem[]>(
     () => [
-      { key: 'designs', label: 'Designs', emoji: '🎨', active: displayedActiveKey === 'designs' },
-      { key: 'market', label: 'Market', emoji: '🧭', active: displayedActiveKey === 'market' },
-      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: '🛍️', active: displayedActiveKey === 'store' }] : []),
-      { key: 'inbox', label: 'Messages', emoji: '✉️', active: displayedActiveKey === 'inbox' },
+      { key: 'designs', label: 'Designs', emoji: NAV_EMOJI.designs, active: displayedActiveKey === 'designs' },
+      { key: 'market', label: 'Market', emoji: NAV_EMOJI.market, active: displayedActiveKey === 'market' },
+      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: NAV_EMOJI.store, active: displayedActiveKey === 'store' }] : []),
+      { key: 'inbox', label: 'Messages', emoji: NAV_EMOJI.inbox, active: displayedActiveKey === 'inbox' },
       {
         key: 'profile',
         label: 'Profile',
@@ -166,6 +178,7 @@ export function CatalogIslandBottomNav() {
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
+      setIsIslandExpanded(false);
       setOptimisticActiveKey(item.key);
 
       if (item.key === 'profile') {
@@ -196,6 +209,8 @@ export function CatalogIslandBottomNav() {
         items={items}
         onSelect={handleSelect}
         onPressIn={markOptimisticActive}
+        collapsed={!isIslandExpanded}
+        onCollapsedPress={() => setIsIslandExpanded(true)}
       />
       <ProfileMenuDropup
         visible={profileMenuVisible}

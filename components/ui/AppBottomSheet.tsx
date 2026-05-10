@@ -23,6 +23,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
+import { applyAndroidSystemBarsPolicy } from '@/src/system/AndroidSystemBars';
 
 type Props = {
   visible: boolean;
@@ -63,13 +64,15 @@ export function AppBottomSheet({
 
   useEffect(() => {
     if (visible) {
+      applyAndroidSystemBarsPolicy(scheme, 'bottom-sheet-open');
       translateY.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
       opacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
     } else {
+      applyAndroidSystemBarsPolicy(scheme, 'bottom-sheet-closed');
       translateY.value = 28;
       opacity.value = 0;
     }
-  }, [opacity, translateY, visible]);
+  }, [opacity, scheme, translateY, visible]);
 
   const sheetStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -86,7 +89,14 @@ export function AppBottomSheet({
     : { style: styles.bodyContent };
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close sheet">
           <BlurView

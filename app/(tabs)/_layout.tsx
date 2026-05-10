@@ -26,6 +26,15 @@ import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { applyAndroidSystemBarsPolicy } from '@/src/system/AndroidSystemBars';
 
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
+const NAV_EMOJI = {
+  designs: String.fromCodePoint(0x1F9F5),
+  market: String.fromCodePoint(0x1F6CD),
+  store: String.fromCodePoint(0x1F3EA),
+  inbox: String.fromCodePoint(0x2709, 0xFE0F),
+  profile: String.fromCodePoint(0x1F464),
+  signIn: String.fromCodePoint(0x1F510),
+  bag: String.fromCodePoint(0x1F6CD),
+} as const;
 
 function mapPathnameToIslandKey(pathname: string): string {
   if (pathname === '/catalog' || pathname.startsWith('/catalog/')) return 'profile';
@@ -57,7 +66,7 @@ export default function TabLayout() {
   const isBrand = hasActiveBrandMembership(user);
   const canOpenProfileMenu = status === 'authenticated';
   const profileNavLabel = canOpenProfileMenu ? 'Me' : 'Sign In';
-  const profileNavEmoji = canOpenProfileMenu ? '👤' : '🔐';
+  const profileNavEmoji = canOpenProfileMenu ? NAV_EMOJI.profile : NAV_EMOJI.signIn;
   const { bottomOffset: islandBottomOffset, islandWidth } = getNativeIslandLayout(
     windowWidth,
     insets.bottom,
@@ -137,10 +146,10 @@ export default function TabLayout() {
 
   const items = useMemo<NativeIslandNavItem[]>(
     () => [
-      { key: 'designs', label: 'Designs', emoji: '🎨', active: displayedActiveKey === 'designs' },
-      { key: 'market', label: 'Market', emoji: '🧭', active: displayedActiveKey === 'market' },
-      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: '🛍️', active: displayedActiveKey === 'store' }] : []),
-      { key: 'inbox', label: 'Msgs', emoji: '✉️', active: displayedActiveKey === 'inbox' },
+      { key: 'designs', label: 'Designs', emoji: NAV_EMOJI.designs, active: displayedActiveKey === 'designs' },
+      { key: 'market', label: 'Market', emoji: NAV_EMOJI.market, active: displayedActiveKey === 'market' },
+      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: NAV_EMOJI.store, active: displayedActiveKey === 'store' }] : []),
+      { key: 'inbox', label: 'Msgs', emoji: NAV_EMOJI.inbox, active: displayedActiveKey === 'inbox' },
       {
         key: 'profile',
         label: profileNavLabel,
@@ -156,7 +165,7 @@ export default function TabLayout() {
     const bagItem: NativeIslandNavItem = {
       key: 'bag',
       label: 'Bag',
-      emoji: '🧺',
+      emoji: NAV_EMOJI.bag,
       active: displayedActiveKey === 'bag',
       badge: bagCount.combinedCount,
     };
