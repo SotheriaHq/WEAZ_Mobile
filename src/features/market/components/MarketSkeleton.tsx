@@ -18,8 +18,8 @@ export function MarketSkeleton() {
       <View style={styles.header}>
         <Skeleton width={112} height={30} borderRadius={8} />
         <View style={styles.headerActions}>
-          <Skeleton width={44} height={44} borderRadius={22} />
-          <Skeleton width={44} height={44} borderRadius={22} />
+          <Skeleton width={44} height={44} borderRadius={tokens.radius.md} />
+          <Skeleton width={44} height={44} borderRadius={tokens.radius.md} />
         </View>
       </View>
       <Skeleton width="100%" height={52} borderRadius={16} />

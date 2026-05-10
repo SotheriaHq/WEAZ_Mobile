@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import { tokens } from '@/src/styles/tokens';
 import Animated, {
   Easing,
@@ -18,6 +18,8 @@ type ThreadRailActionProps = {
   busy?: boolean;
   onPress: () => void;
 };
+
+const THREAD_EMOJI = String.fromCodePoint(0x1f9f5);
 
 export default function ThreadRailAction({
   threaded,
@@ -361,9 +363,7 @@ export default function ThreadRailAction({
         >
           <Animated.View style={[styles.stitchIcon, iconWrapStyle]}>
             <View style={[styles.fabricPatch, threaded && styles.fabricPatchActive]}>
-              <View style={[styles.stitchDash, styles.stitchDashOne, threaded && styles.stitchDashActive]} />
-              <View style={[styles.stitchDash, styles.stitchDashTwo, threaded && styles.stitchDashActive]} />
-              <View style={[styles.stitchDash, styles.stitchDashThree, threaded && styles.stitchDashActive]} />
+              <Text style={styles.threadEmoji}>{THREAD_EMOJI}</Text>
             </View>
             {!reduceMotion ? (
               <View pointerEvents="none" style={styles.overlayLayer}>
@@ -442,42 +442,23 @@ const styles = StyleSheet.create({
   },
   fabricPatch: {
     width: 28,
-    height: 20,
+    height: 24,
     borderRadius: 6,
-    backgroundColor: '#FDE68A',
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
     borderWidth: 1,
-    borderColor: '#F59E0B',
+    borderColor: 'rgba(255, 255, 255, 0.44)',
     overflow: 'hidden',
-    transform: [{ rotate: '-4deg' }],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fabricPatchActive: {
-    backgroundColor: '#CCFBF1',
+    backgroundColor: 'rgba(204, 251, 241, 0.92)',
     borderColor: '#0F766E',
   },
-  stitchDash: {
-    position: 'absolute',
-    width: 8,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#B45309',
-    opacity: 0.72,
-    transform: [{ rotate: '-20deg' }],
-  },
-  stitchDashActive: {
-    backgroundColor: '#0F766E',
-    opacity: 1,
-  },
-  stitchDashOne: {
-    left: 4,
-    top: 6,
-  },
-  stitchDashTwo: {
-    left: 10,
-    top: 10,
-  },
-  stitchDashThree: {
-    left: 16,
-    top: 14,
+  threadEmoji: {
+    fontSize: 18,
+    lineHeight: 22,
+    textAlign: 'center',
   },
   overlayLayer: {
     position: 'absolute',

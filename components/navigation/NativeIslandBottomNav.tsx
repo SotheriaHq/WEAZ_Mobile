@@ -267,7 +267,7 @@ export function NativeIslandBottomNav({
                 })}
               </View>
               <View style={[styles.collapsedActiveChip, { backgroundColor: theme.colors.primarySoft }]}>
-                <Text style={styles.collapsedActiveEmoji}>{activeItem?.emoji ?? '•'}</Text>
+                <Text style={styles.collapsedActiveEmoji}>{activeItem?.emoji ?? String.fromCodePoint(0x2022)}</Text>
                 <AppText variant="captionBold" tone="primary" numberOfLines={1} style={styles.collapsedActiveLabel}>
                   {activeItem?.label ?? 'Menu'}
                 </AppText>

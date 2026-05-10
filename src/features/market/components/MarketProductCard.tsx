@@ -101,7 +101,7 @@ export const MarketProductCard = memo(function MarketProductCard({
           </Pressable>
         </View>
 
-        <View style={styles.badgeWrap}>
+        <View style={[styles.badgeWrap, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
           <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
             {badge}
           </AppText>
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
   iconButton: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: tokens.radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
@@ -198,8 +198,7 @@ const styles = StyleSheet.create({
     left: tokens.spacing.xs,
     minHeight: 24,
     paddingHorizontal: tokens.spacing.sm,
-    borderRadius: tokens.radius.full,
-    backgroundColor: 'rgba(0,0,0,0.52)',
+    borderRadius: tokens.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -228,7 +227,7 @@ const styles = StyleSheet.create({
   bagButton: {
     minWidth: 42,
     height: 32,
-    borderRadius: tokens.radius.full,
+    borderRadius: tokens.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.sm,

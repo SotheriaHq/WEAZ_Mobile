@@ -24,26 +24,14 @@ import {
 } from '@/src/realtime/notifications';
 import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { applyAndroidSystemBarsPolicy } from '@/src/system/AndroidSystemBars';
-
-const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
-const NAV_EMOJI = {
-  designs: String.fromCodePoint(0x1F9F5),
-  market: String.fromCodePoint(0x1F6CD),
-  store: String.fromCodePoint(0x1F3EA),
-  inbox: String.fromCodePoint(0x2709, 0xFE0F),
-  profile: String.fromCodePoint(0x1F464),
-  signIn: String.fromCodePoint(0x1F510),
-  bag: String.fromCodePoint(0x1F6CD),
-} as const;
-
-function mapPathnameToIslandKey(pathname: string): string {
-  if (pathname === '/catalog' || pathname.startsWith('/catalog/')) return 'profile';
-  if (pathname === '/discover') return 'market';
-  if (pathname === '/store') return 'store';
-  if (pathname === '/inbox') return 'inbox';
-  if (pathname === '/me' || pathname === '/me-edit') return 'profile';
-  return 'designs';
-}
+import {
+  NATIVE_ISLAND_ICONS,
+  NATIVE_ISLAND_KEYS,
+  buildNativeIslandItems,
+  getNativeIslandRoute,
+  mapPathnameToIslandKey,
+  type NativeIslandKey,
+} from '@/src/navigation/nativeIslandConfig';
 
 export default function TabLayout() {
   const { scheme, theme } = useTheme();
@@ -58,15 +46,13 @@ export default function TabLayout() {
   const [isIslandExpanded, setIsIslandExpanded] = useState(false);
   const unreadNotificationCount = useUnreadNotificationCount();
   const [notificationCountReady, setNotificationCountReady] = useState(false);
-  const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastProfileTabPressAtRef = useRef(0);
   const lastBackPressAtRef = useRef(0);
-  const [optimisticActiveKey, setOptimisticActiveKey] = useState<string | null>(null);
+  const [optimisticActiveKey, setOptimisticActiveKey] = useState<NativeIslandKey | null>(null);
 
   const isBrand = hasActiveBrandMembership(user);
   const canOpenProfileMenu = status === 'authenticated';
   const profileNavLabel = canOpenProfileMenu ? 'Me' : 'Sign In';
-  const profileNavEmoji = canOpenProfileMenu ? NAV_EMOJI.profile : NAV_EMOJI.signIn;
+  const profileNavEmoji = canOpenProfileMenu ? NATIVE_ISLAND_ICONS.profile : NATIVE_ISLAND_ICONS.signIn;
   const { bottomOffset: islandBottomOffset, islandWidth } = getNativeIslandLayout(
     windowWidth,
     insets.bottom,
@@ -91,20 +77,11 @@ export default function TabLayout() {
     setNotificationCountReady(ready);
   }, [status]);
 
-  const clearProfileTabTimer = useCallback(() => {
-    if (profileTabTimerRef.current) {
-      clearTimeout(profileTabTimerRef.current);
-      profileTabTimerRef.current = null;
-    }
-  }, []);
-
   const navigateToProfile = useCallback(() => {
     setProfileMenuVisible(false);
-    clearProfileTabTimer();
-    lastProfileTabPressAtRef.current = 0;
-    setOptimisticActiveKey('profile');
+    setOptimisticActiveKey(NATIVE_ISLAND_KEYS.profile);
     router.push((isBrand ? '/catalog' : '/(tabs)/me') as any);
-  }, [clearProfileTabTimer, isBrand]);
+  }, [isBrand]);
 
   const handleProfilePress = useCallback(
     () => {
@@ -112,26 +89,9 @@ export default function TabLayout() {
         router.replace({ pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as any);
         return;
       }
-
-      const now = Date.now();
-      const isSecondTap =
-        lastProfileTabPressAtRef.current > 0 &&
-        now - lastProfileTabPressAtRef.current <= PROFILE_TAB_DOUBLE_TAP_WINDOW_MS;
-
-      if (isSecondTap) {
-        navigateToProfile();
-        return;
-      }
-
-      lastProfileTabPressAtRef.current = now;
-      clearProfileTabTimer();
-      profileTabTimerRef.current = setTimeout(() => {
-        setProfileMenuVisible(true);
-        profileTabTimerRef.current = null;
-        lastProfileTabPressAtRef.current = 0;
-      }, PROFILE_TAB_DOUBLE_TAP_WINDOW_MS);
+      navigateToProfile();
     },
-    [canOpenProfileMenu, clearProfileTabTimer, navigateToProfile],
+    [canOpenProfileMenu, navigateToProfile],
   );
 
   const clearSelectionState = useCallback(() => {
@@ -139,44 +99,32 @@ export default function TabLayout() {
   }, []);
 
   const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
-    if (!item.disabled && item.key !== 'profile') {
-      setOptimisticActiveKey(item.key);
+    if (!item.disabled && item.key !== NATIVE_ISLAND_KEYS.bag) {
+      setOptimisticActiveKey(item.key as NativeIslandKey);
     }
   }, []);
 
-  const items = useMemo<NativeIslandNavItem[]>(
-    () => [
-      { key: 'designs', label: 'Designs', emoji: NAV_EMOJI.designs, active: displayedActiveKey === 'designs' },
-      { key: 'market', label: 'Market', emoji: NAV_EMOJI.market, active: displayedActiveKey === 'market' },
-      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: NAV_EMOJI.store, active: displayedActiveKey === 'store' }] : []),
-      { key: 'inbox', label: 'Msgs', emoji: NAV_EMOJI.inbox, active: displayedActiveKey === 'inbox' },
-      {
-        key: 'profile',
-        label: profileNavLabel,
-        emoji: profileNavEmoji,
-        active: displayedActiveKey === 'profile',
-        badge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
-      },
+  const islandItems = useMemo<NativeIslandNavItem[]>(
+    () =>
+      buildNativeIslandItems({
+        activeKey: displayedActiveKey,
+        isBrand,
+        profileLabel: profileNavLabel,
+        profileIcon: profileNavEmoji,
+        profileBadge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
+        bagBadge: bagCount.combinedCount,
+      }),
+    [
+      bagCount.combinedCount,
+      canOpenProfileMenu,
+      displayedActiveKey,
+      isBrand,
+      notificationCountReady,
+      profileNavEmoji,
+      profileNavLabel,
+      unreadNotificationCount,
     ],
-    [displayedActiveKey, canOpenProfileMenu, isBrand, notificationCountReady, profileNavEmoji, profileNavLabel, unreadNotificationCount],
   );
-
-  const islandItems = useMemo<NativeIslandNavItem[]>(() => {
-    const bagItem: NativeIslandNavItem = {
-      key: 'bag',
-      label: 'Bag',
-      emoji: NAV_EMOJI.bag,
-      active: displayedActiveKey === 'bag',
-      badge: bagCount.combinedCount,
-    };
-    const inboxIndex = items.findIndex((item) => item.key === 'inbox');
-    if (inboxIndex < 0) return [...items, bagItem];
-    return [
-      ...items.slice(0, inboxIndex),
-      bagItem,
-      ...items.slice(inboxIndex),
-    ];
-  }, [bagCount.combinedCount, displayedActiveKey, items]);
 
   useEffect(() => {
     const unsubscribe = subscribeToNativeIslandCollapse(() => {
@@ -212,7 +160,9 @@ export default function TabLayout() {
       }
 
       setIsIslandExpanded(false);
-      setOptimisticActiveKey(item.key);
+      if (item.key !== NATIVE_ISLAND_KEYS.bag) {
+        setOptimisticActiveKey(item.key as NativeIslandKey);
+      }
 
       if (item.key === 'bag') {
         bagFlow?.openMyBag();
@@ -221,20 +171,13 @@ export default function TabLayout() {
       }
 
       setProfileMenuVisible(false);
-      clearProfileTabTimer();
-      lastProfileTabPressAtRef.current = 0;
 
-      if (item.key === 'designs') {
-        router.replace('/' as any);
-      } else if (item.key === 'market') {
-        router.replace('/(tabs)/discover' as any);
-      } else if (item.key === 'store') {
-        router.replace('/(tabs)/store' as any);
-      } else if (item.key === 'inbox') {
-        router.replace('/(tabs)/inbox' as any);
+      const nextRoute = getNativeIslandRoute(item.key, isBrand);
+      if (nextRoute) {
+        router.replace(nextRoute as any);
       }
     },
-    [bagFlow, clearProfileTabTimer, handleProfilePress, refreshGlobalBagCount],
+    [bagFlow, handleProfilePress, isBrand, refreshGlobalBagCount],
   );
 
   useEffect(() => {
@@ -245,18 +188,9 @@ export default function TabLayout() {
 
   useEffect(() => {
     if (!canOpenProfileMenu) {
-      clearProfileTabTimer();
-      lastProfileTabPressAtRef.current = 0;
       setProfileMenuVisible(false);
     }
-  }, [canOpenProfileMenu, clearProfileTabTimer]);
-
-  useEffect(() => {
-    return () => {
-      clearProfileTabTimer();
-      lastProfileTabPressAtRef.current = 0;
-    };
-  }, [clearProfileTabTimer]);
+  }, [canOpenProfileMenu]);
 
   useEffect(() => {
     setNotificationCountReady(false);
@@ -294,8 +228,6 @@ export default function TabLayout() {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (profileMenuVisible) {
         setProfileMenuVisible(false);
-        clearProfileTabTimer();
-        lastProfileTabPressAtRef.current = 0;
         return true;
       }
 
@@ -315,7 +247,7 @@ export default function TabLayout() {
     });
 
     return () => subscription.remove();
-  }, [clearProfileTabTimer, isRootTabPath, profileMenuVisible, toast]);
+  }, [isRootTabPath, profileMenuVisible, toast]);
 
   return (
     <>
@@ -398,29 +330,21 @@ export default function TabLayout() {
         visible={profileMenuVisible}
         onClose={() => {
           setProfileMenuVisible(false);
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
           clearSelectionState();
         }}
         onOpenProfile={navigateToProfile}
         onOpenNotifications={() => {
           setProfileMenuVisible(false);
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
           clearSelectionState();
           router.push('/notifications' as any);
         }}
         onOpenStudio={() => {
           setProfileMenuVisible(false);
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
           clearSelectionState();
           router.push('/studio' as any);
         }}
         onOpenSettings={() => {
           setProfileMenuVisible(false);
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
           clearSelectionState();
           router.push('/settings' as any);
         }}

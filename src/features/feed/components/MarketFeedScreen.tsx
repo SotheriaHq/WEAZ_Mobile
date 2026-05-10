@@ -608,7 +608,7 @@ export function MarketFeedScreen() {
   }, [status, user?.id, user?.type]);
 
   const fallbackPageHeight = useMemo(() => Math.max(1, Math.round(windowHeight)), [windowHeight]);
-  const pageHeight = rootViewportHeight > 0 ? rootViewportHeight : fallbackPageHeight;
+  const pageHeight = fallbackPageHeight;
   const feedViewportHeight = pageHeight;
   const feedViewportReady = pageHeight > 0;
 

@@ -31,6 +31,7 @@ import type { MarketItem } from '@/src/types/market';
 
 const GRID_GAP = tokens.spacing.sm;
 const SIDE_PADDING = tokens.spacing.md;
+const PREFERRED_CATEGORIES = ['Ankara Fashion', 'Lacewear', 'Ready to Wear', 'Custom', 'Bridal'];
 
 const toErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to load market right now.';
 
@@ -105,6 +106,7 @@ export function MarketScreen() {
 
   const categoryOptions = useMemo(() => {
     const values = new Set<string>();
+    PREFERRED_CATEGORIES.forEach((category) => values.add(category));
     allItems.forEach((item) => {
       getItemCategories(item).forEach((category) => values.add(category));
     });
@@ -165,51 +167,69 @@ export function MarketScreen() {
         setLoadingMore(true);
       }
 
-      const productRequest = MobileStoreApi.getMarketplaceProducts({
-        cursor: mode === 'more' ? productCursor : null,
-        limit: 36,
-        sortBy: filters.sort === 'popular' ? 'popular' : filters.sort,
-        search: search.trim() || null,
-      });
-      const designRequest = getMarketFeed({
-        cursor: mode === 'more' ? designCursor : null,
-        limit: 18,
-        tag: filters.category,
-        counts: 'combined',
-      });
-
-      const [productResult, designResult] = await Promise.allSettled([productRequest, designRequest]);
-      const productOk = productResult.status === 'fulfilled';
-      const designOk = designResult.status === 'fulfilled';
-
-      if (!productOk && !designOk) {
-        setError(toErrorMessage(productResult.reason ?? designResult.reason));
-      }
-
-      if (productOk) {
-        setProductCursor(productResult.value.nextCursor);
-        setProductHasNext(productResult.value.hasNextPage);
-        setProducts((current) => {
-          if (mode === 'reset') return productResult.value.items;
-          const seen = new Set(current.map((item) => item.id));
-          return [...current, ...productResult.value.items.filter((item) => !seen.has(item.id))];
+      try {
+        const minPrice = parsePriceFilter(filters.minPrice);
+        const maxPrice = parsePriceFilter(filters.maxPrice);
+        const productRequest = MobileStoreApi.getMarketplaceProducts({
+          cursor: mode === 'more' ? productCursor : null,
+          limit: 36,
+          category: filters.category,
+          minPrice,
+          maxPrice,
+          sortBy: filters.sort === 'popular' ? 'popular' : filters.sort,
+          search: search.trim() || null,
         });
-      }
-
-      if (designOk) {
-        setDesignCursor(designResult.value.nextCursor ?? null);
-        setDesignHasNext(Boolean(designResult.value.hasNextPage));
-        setDesigns((current) => {
-          if (mode === 'reset') return designResult.value.items;
-          const seen = new Set(current.map((item) => item.collectionId));
-          return [...current, ...designResult.value.items.filter((item) => !seen.has(item.collectionId))];
+        const designRequest = getMarketFeed({
+          cursor: mode === 'more' ? designCursor : null,
+          limit: 18,
+          tag: filters.category,
+          counts: 'combined',
         });
-      }
 
-      if (mode === 'reset') setLoading(false);
-      else setLoadingMore(false);
+        const [productResult, designResult] = await Promise.allSettled([productRequest, designRequest]);
+        const productOk = productResult.status === 'fulfilled';
+        const designOk = designResult.status === 'fulfilled';
+
+        if (!productOk && !designOk) {
+          setError(toErrorMessage(productResult.reason ?? designResult.reason));
+        }
+
+        if (productOk) {
+          setProductCursor(productResult.value.nextCursor);
+          setProductHasNext(productResult.value.hasNextPage);
+          setProducts((current) => {
+            if (mode === 'reset') return productResult.value.items;
+            const seen = new Set(current.map((item) => item.id));
+            return [...current, ...productResult.value.items.filter((item) => !seen.has(item.id))];
+          });
+        }
+
+        if (designOk) {
+          setDesignCursor(designResult.value.nextCursor ?? null);
+          setDesignHasNext(Boolean(designResult.value.hasNextPage));
+          setDesigns((current) => {
+            if (mode === 'reset') return designResult.value.items;
+            const seen = new Set(current.map((item) => item.collectionId));
+            return [...current, ...designResult.value.items.filter((item) => !seen.has(item.collectionId))];
+          });
+        }
+      } finally {
+        if (mode === 'reset') setLoading(false);
+        else setLoadingMore(false);
+      }
     },
-    [designCursor, designHasNext, filters.category, filters.sort, loadingMore, productCursor, productHasNext, search],
+    [
+      designCursor,
+      designHasNext,
+      filters.category,
+      filters.maxPrice,
+      filters.minPrice,
+      filters.sort,
+      loadingMore,
+      productCursor,
+      productHasNext,
+      search,
+    ],
   );
 
   useEffect(() => {
@@ -217,7 +237,7 @@ export function MarketScreen() {
     // Reset only when query-shaping controls change. Pagination cursors update inside
     // loadMarket and must not recursively trigger another first-page request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.category, filters.sort, search]);
+  }, [filters.category, filters.maxPrice, filters.minPrice, filters.sort, search]);
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
@@ -361,7 +381,7 @@ export function MarketScreen() {
           accessibilityRole="button"
           accessibilityLabel="Open filters"
         >
-          <AppText variant="subtitle">≡</AppText>
+          <AppText variant="subtitle">{String.fromCodePoint(0x2699, 0xfe0f)}</AppText>
         </Pressable>
       </View>
 
@@ -371,7 +391,7 @@ export function MarketScreen() {
         value={search}
         onChangeText={setSearch}
         placeholder="Search brands, styles, items..."
-        leading={<AppText variant="body" tone="muted">⌕</AppText>}
+        leading={<AppText variant="body" tone="muted">{String.fromCodePoint(0x1f50d)}</AppText>}
         trailing={
           <Pressable onPress={() => setFilterSheetVisible(true)} accessibilityRole="button" accessibilityLabel="Sort and filter">
             <AppText variant="captionBold" tone="primary">Sort</AppText>
@@ -518,7 +538,7 @@ const styles = StyleSheet.create({
   logoButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: tokens.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -529,7 +549,7 @@ const styles = StyleSheet.create({
   roundButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: tokens.radius.md,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
