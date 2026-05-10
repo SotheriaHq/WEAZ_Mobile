@@ -1,6 +1,7 @@
 import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -47,7 +48,7 @@ export function getNativeIslandLayout(windowWidth: number, bottomInset: number) 
     bottomInset + NATIVE_ISLAND_NAV.safeAreaGap,
   );
 
-  return { bottomOffset, sideOffset };
+  return { bottomOffset, sideOffset, islandWidth };
 }
 
 export function NativeIslandTabIcon({
@@ -122,18 +123,22 @@ export function NativeIslandTabIcon({
 export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIslandBottomNavProps) {
   const { scheme, theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
   const { width: windowWidth } = useWindowDimensions();
-  const { bottomOffset, sideOffset } = getNativeIslandLayout(windowWidth, insets.bottom);
+  const { bottomOffset, sideOffset, islandWidth } = getNativeIslandLayout(windowWidth, insets.bottom);
   const compact = items.length >= 6 || windowWidth < 380;
   React.useEffect(() => {
-    navDevLog('island-items', {
+    navDevLog('island-layout', {
+      pathname,
+      itemCount: items.length,
       keys: items.map((item) => item.key),
       labels: items.map((item) => item.label),
       compact,
-      width: windowWidth,
+      windowWidth,
+      islandWidth,
       activeKey: items.find((item) => item.active)?.key ?? null,
     });
-  }, [compact, items, windowWidth]);
+  }, [compact, islandWidth, items, pathname, windowWidth]);
   if (items.length === 0) {
     return null;
   }
@@ -169,7 +174,7 @@ export function NativeIslandBottomNav({ items, onSelect, onPressIn }: NativeIsla
         <BlurView
           tint={scheme === 'dark' ? 'dark' : 'light'}
           intensity={theme.colors.glassBlur as number}
-          style={StyleSheet.absoluteFillObject}
+          style={[StyleSheet.absoluteFillObject, styles.navBlur]}
         />
         <View
           pointerEvents="none"
@@ -224,6 +229,11 @@ const styles = StyleSheet.create({
   },
   navBaseFill: {
     borderWidth: 0,
+    borderRadius: NATIVE_ISLAND_NAV.radius,
+  },
+  navBlur: {
+    borderRadius: NATIVE_ISLAND_NAV.radius,
+    overflow: 'hidden',
   },
   navItems: {
     flex: 1,

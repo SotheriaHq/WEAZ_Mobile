@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, Platform, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
+import { prefetchResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { feedMediaDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { FeedMediaSlide } from '@/src/features/feed/components/FeedMediaSlide';
 import type { FeedCarouselMedia, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
 
@@ -57,6 +58,43 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     () => stableMediaItems.map((item) => `${item.id}:${item.fileId ?? ''}:${item.displayUrl ?? item.url}`).join('|'),
     [stableMediaItems],
   );
+  const uniqueMediaIds = useMemo(
+    () => Array.from(new Set(stableMediaItems.map((item) => item.id))),
+    [stableMediaItems],
+  );
+  const uniqueDisplayUrls = useMemo(
+    () => Array.from(new Set(stableMediaItems.map((item) => normalizeStableUri(item.displayUrl) ?? normalizeStableUri(item.url)).filter(Boolean))),
+    [stableMediaItems],
+  );
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    feedMediaDevLog('carousel-summary', {
+      collectionId,
+      mediaCount: stableMediaItems.length,
+      uniqueMediaIds,
+      uniqueDisplayUrls: uniqueDisplayUrls.length,
+      activeIndex: safeActiveIndex,
+      nextIndex: stableMediaItems.length > 1 ? Math.min(stableMediaItems.length - 1, safeActiveIndex + 1) : null,
+    });
+  }, [collectionId, safeActiveIndex, stableMediaItems.length, uniqueDisplayUrls, uniqueMediaIds]);
+
+  useEffect(() => {
+    if (stableMediaItems.length < 2) return;
+    const nextIndex = Math.min(stableMediaItems.length - 1, safeActiveIndex + 1);
+    const next = stableMediaItems[nextIndex];
+    if (!next) return;
+    void prefetchResolvedImageAsset({
+      src: next.displayUrl ?? next.url,
+      fileId: next.fileId,
+      debugContext: {
+        designId: next.id,
+        fileId: next.fileId ?? undefined,
+        mediaIndex: nextIndex,
+        sourceField: next.fileId ? 'feed.media.fileId' : 'feed.media.displayUrl',
+      },
+    });
+  }, [safeActiveIndex, stableMediaItems]);
 
   // Sync prop to ref so reset effect can read latest value without it being a dep
   useEffect(() => {
@@ -150,7 +188,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         horizontal
         pagingEnabled
         data={carouselItems}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => `${item.id}:${index}`}
         renderItem={({ item, index }) => (
           <View style={[styles.pageImage, { width }]}>
             <FeedMediaSlide media={item} imageIndex={index} />
@@ -196,9 +234,8 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
 
 const styles = StyleSheet.create({
   pageImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: undefined,
-    height: undefined,
+    height: '100%',
+    position: 'relative',
   },
   dotRow: {
     position: 'absolute',

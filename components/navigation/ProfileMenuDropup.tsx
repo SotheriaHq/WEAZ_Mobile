@@ -156,7 +156,14 @@ export function ProfileMenuDropup({
   if (!mounted) return null;
 
   return (
-    <Modal transparent visible={mounted} animationType="none" statusBarTranslucent onRequestClose={handleClose}>
+    <Modal
+      transparent
+      visible={mounted}
+      animationType="none"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={handleClose}
+    >
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose}>
           <View style={[StyleSheet.absoluteFill, styles.backdrop]} />
@@ -319,9 +326,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: tokens.colors.dark,
     shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.24,
-    shadowRadius: 28,
-    elevation: 14,
+    shadowOpacity: 0.18,
+    shadowRadius: 22,
+    elevation: 8,
   },
   menuContent: {
     paddingVertical: tokens.spacing.sm,

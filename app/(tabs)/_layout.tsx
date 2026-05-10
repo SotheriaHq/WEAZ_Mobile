@@ -55,7 +55,7 @@ export default function TabLayout() {
   const canOpenProfileMenu = status === 'authenticated';
   const profileNavLabel = canOpenProfileMenu ? 'Me' : 'Sign In';
   const profileNavEmoji = canOpenProfileMenu ? '👤' : '🔐';
-  const { bottomOffset: islandBottomOffset } = getNativeIslandLayout(
+  const { bottomOffset: islandBottomOffset, islandWidth } = getNativeIslandLayout(
     windowWidth,
     insets.bottom,
   );
@@ -167,15 +167,17 @@ export default function TabLayout() {
   }, [bagCount.combinedCount, displayedActiveKey, items]);
 
   useEffect(() => {
-    navDevLog('island-items', {
+    navDevLog('island-layout', {
       pathname,
+      itemCount: islandItems.length,
       keys: islandItems.map((item) => item.key),
       labels: islandItems.map((item) => item.label),
       activeKey: displayedActiveKey,
       compact: islandItems.length >= 6 || windowWidth < 380,
-      width: windowWidth,
+      windowWidth,
+      islandWidth,
     });
-  }, [displayedActiveKey, islandItems, pathname, windowWidth]);
+  }, [displayedActiveKey, islandItems, islandWidth, pathname, windowWidth]);
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {

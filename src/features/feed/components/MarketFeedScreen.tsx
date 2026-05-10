@@ -1038,7 +1038,7 @@ export function MarketFeedScreen() {
       const primaryEntry = viewableItems[0]?.item;
       if (primaryEntry && !primaryEntry.isGhost) {
         feedActiveIndex = primaryEntry.realIndex;
-        setActivePageIndex(primaryEntry.realIndex);
+        setActivePageIndex((current) => (current === primaryEntry.realIndex ? current : primaryEntry.realIndex));
       }
       viewableItems.forEach(({ item: entry }) => {
         const collectionId = entry?.item.collectionId?.trim();
@@ -1061,7 +1061,7 @@ export function MarketFeedScreen() {
       const primaryEntry = viewableItems[0]?.item;
       if (primaryEntry && !primaryEntry.isGhost) {
         feedActiveIndex = primaryEntry.realIndex;
-        setActivePageIndex(primaryEntry.realIndex);
+        setActivePageIndex((current) => (current === primaryEntry.realIndex ? current : primaryEntry.realIndex));
       }
       viewableItems.forEach(({ item: entry }) => {
         const collectionId = entry?.item.collectionId?.trim();
@@ -1306,13 +1306,15 @@ export function MarketFeedScreen() {
         const uniqueSources = new Set(
           mediaItems.map((media) => normalizeStableUri(media.displayUrl) ?? normalizeStableUri(media.url) ?? normalizeStableUri(media.fileId) ?? media.id),
         );
-        feedMediaDevLog('carousel-media-summary', {
+        feedMediaDevLog('carousel-summary', {
           collectionId: item.collectionId,
+          mediaCount: mediaItems.length,
+          uniqueMediaIds: Array.from(new Set(mediaItems.map((media) => media.id))),
+          uniqueDisplayUrls: uniqueSources.size,
+          activeIndex: activeMediaIndex,
+          nextIndex: mediaItems.length > 1 ? Math.min(mediaItems.length - 1, activeMediaIndex + 1) : null,
           strictMediaCount: fallbackMediaItems.length,
           hydratedMediaCount: hydratedMediaItems.length,
-          finalMediaCount: mediaItems.length,
-          uniqueUrlCount: uniqueSources.size,
-          activeIndex: activeMediaIndex,
         });
       }
       const currentMedia = mediaItems[activeMediaIndex] ?? fallbackMediaItems[0] ?? null;
@@ -1668,7 +1670,6 @@ export function MarketFeedScreen() {
             pagingEnabled
             snapToInterval={pageHeight}
             snapToAlignment="start"
-            disableIntervalMomentum
             getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
             decelerationRate="normal"
             directionalLockEnabled

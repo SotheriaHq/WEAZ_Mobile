@@ -1118,6 +1118,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderBottomWidth: 1,
     justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.xs,
   },
   tabItem: {
     flex: 1,
@@ -1125,6 +1127,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.sm,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },

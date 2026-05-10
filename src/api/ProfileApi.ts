@@ -291,13 +291,9 @@ export const ProfileApi = {
   },
 
   async getSizeFit(): Promise<SizeFitProfile | null> {
-    try {
-      const res = await apiClient.get('/users/me/size-fit');
-      const d = (res.data?.data ?? res.data) as any;
-      return d ?? null;
-    } catch {
-      return null;
-    }
+    const res = await apiClient.get('/users/me/size-fit');
+    const d = (res.data?.data ?? res.data) as any;
+    return d ?? null;
   },
 
   async updateSizeFit(payload: {

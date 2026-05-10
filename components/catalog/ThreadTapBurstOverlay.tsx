@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, StyleProp, StyleSheet, ViewStyle } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { AppText } from '@/components/ui/AppText';
 
 type ThreadTapBurstOverlayProps = {
@@ -12,8 +12,8 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
 
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.92)).current;
-  const needleProgress = useRef(new Animated.Value(0)).current;
-  const needleOpacity = useRef(new Animated.Value(0)).current;
+  const stitchProgress = useRef(new Animated.Value(0)).current;
+  const stitchOpacity = useRef(new Animated.Value(0)).current;
   const trailProgress = useRef(new Animated.Value(0)).current;
   const trailOpacity = useRef(new Animated.Value(0)).current;
 
@@ -43,8 +43,8 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
 
     opacity.setValue(0);
     scale.setValue(reduceMotion ? 0.96 : 0.92);
-    needleProgress.setValue(0);
-    needleOpacity.setValue(0);
+    stitchProgress.setValue(0);
+    stitchOpacity.setValue(0);
     trailProgress.setValue(0);
     trailOpacity.setValue(0);
 
@@ -107,7 +107,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
       ]),
       Animated.sequence([
         Animated.delay(120),
-        Animated.timing(needleProgress, {
+        Animated.timing(stitchProgress, {
           toValue: 1,
           duration: 240,
           easing: Easing.out(Easing.cubic),
@@ -116,13 +116,13 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
       ]),
       Animated.sequence([
         Animated.delay(120),
-        Animated.timing(needleOpacity, {
+        Animated.timing(stitchOpacity, {
           toValue: 1,
           duration: 90,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
-        Animated.timing(needleOpacity, {
+        Animated.timing(stitchOpacity, {
           toValue: 0,
           duration: 120,
           delay: 110,
@@ -156,16 +156,16 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
         }),
       ]),
     ]).start();
-  }, [burstKey, needleOpacity, needleProgress, opacity, reduceMotion, scale, trailOpacity, trailProgress]);
+  }, [burstKey, opacity, reduceMotion, scale, stitchOpacity, stitchProgress, trailOpacity, trailProgress]);
 
-  const needleTranslateX = needleProgress.interpolate({
+  const stitchTranslateX = stitchProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [-14, 14],
   });
 
-  const needleRotate = needleProgress.interpolate({
+  const stitchScale = stitchProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: ['-12deg', '8deg'],
+    outputRange: [0.84, 1.08],
   });
 
   const trailTranslateX = trailProgress.interpolate({
@@ -203,15 +203,17 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           />
           <Animated.View
             style={[
-              styles.needleWrap,
+              styles.threadHeadWrap,
               {
-                opacity: needleOpacity,
-                transform: [{ translateX: needleTranslateX }, { rotate: needleRotate }],
+                opacity: stitchOpacity,
+                transform: [{ translateX: stitchTranslateX }, { scale: stitchScale }],
               },
             ]}
           >
-            <AppText style={styles.needleEmoji}>🪡</AppText>
+            <View style={styles.threadHead} />
           </Animated.View>
+          <View style={[styles.fabricPoint, styles.fabricPointStart]} />
+          <View style={[styles.fabricPoint, styles.fabricPointEnd]} />
         </>
       ) : null}
       <AppText style={styles.threadEmoji}>🧵</AppText>
@@ -237,13 +239,31 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     backgroundColor: '#0f766e',
   },
-  needleWrap: {
+  threadHeadWrap: {
     position: 'absolute',
-    top: -8,
+    top: 8,
   },
-  needleEmoji: {
-    fontSize: 18,
-    lineHeight: 20,
+  threadHead: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#0f766e',
+    backgroundColor: '#CCFBF1',
+  },
+  fabricPoint: {
+    position: 'absolute',
+    top: 11,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#CCFBF1',
+  },
+  fabricPointStart: {
+    left: 30,
+  },
+  fabricPointEnd: {
+    right: 30,
   },
   threadEmoji: {
     fontSize: 28,

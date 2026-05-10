@@ -30,7 +30,7 @@ export default function ThreadRailAction({
   const pressScale = useSharedValue(1);
   const iconScale = useSharedValue(1);
   const threadGlyphOpacity = useSharedValue(threaded ? 1 : 0);
-  const idleNeedleGlyphOpacity = useSharedValue(threaded ? 0 : 1);
+  const idleThreadGlyphOpacity = useSharedValue(threaded ? 0 : 1);
 
   const stitchProgress = useSharedValue(0);
   const stitchOpacity = useSharedValue(0);
@@ -65,7 +65,7 @@ export default function ThreadRailAction({
     cancelAnimation(pressScale);
     cancelAnimation(iconScale);
     cancelAnimation(threadGlyphOpacity);
-    cancelAnimation(idleNeedleGlyphOpacity);
+    cancelAnimation(idleThreadGlyphOpacity);
     cancelAnimation(stitchProgress);
     cancelAnimation(stitchOpacity);
     cancelAnimation(trailOpacity);
@@ -77,7 +77,7 @@ export default function ThreadRailAction({
     countScale,
     countTranslateY,
     iconScale,
-    idleNeedleGlyphOpacity,
+    idleThreadGlyphOpacity,
     pressScale,
     stitchOpacity,
     stitchProgress,
@@ -90,7 +90,7 @@ export default function ThreadRailAction({
 
     iconScale.value = reduceMotion ? 0.98 : 0.94;
     threadGlyphOpacity.value = reduceMotion ? 1 : 0.18;
-    idleNeedleGlyphOpacity.value = 1;
+    idleThreadGlyphOpacity.value = 1;
     stitchProgress.value = 0;
     stitchOpacity.value = 0;
     trailOpacity.value = 0;
@@ -103,7 +103,7 @@ export default function ThreadRailAction({
         duration: 120,
         easing: Easing.out(Easing.quad),
       });
-      idleNeedleGlyphOpacity.value = withTiming(0, {
+      idleThreadGlyphOpacity.value = withTiming(0, {
         duration: 120,
         easing: Easing.out(Easing.quad),
       });
@@ -130,7 +130,7 @@ export default function ThreadRailAction({
       duration: 90,
       easing: Easing.out(Easing.quad),
     });
-    idleNeedleGlyphOpacity.value = withTiming(0, {
+    idleThreadGlyphOpacity.value = withTiming(0, {
       duration: 90,
       easing: Easing.out(Easing.quad),
     });
@@ -186,7 +186,7 @@ export default function ThreadRailAction({
     countScale,
     countTranslateY,
     iconScale,
-    idleNeedleGlyphOpacity,
+    idleThreadGlyphOpacity,
     reduceMotion,
     stitchOpacity,
     stitchProgress,
@@ -200,7 +200,7 @@ export default function ThreadRailAction({
 
     iconScale.value = 1;
     threadGlyphOpacity.value = 1;
-    idleNeedleGlyphOpacity.value = 0;
+    idleThreadGlyphOpacity.value = 0;
     stitchProgress.value = 0;
     stitchOpacity.value = 0;
     trailOpacity.value = 0;
@@ -213,7 +213,7 @@ export default function ThreadRailAction({
         duration: 120,
         easing: Easing.out(Easing.quad),
       });
-      idleNeedleGlyphOpacity.value = withTiming(1, {
+      idleThreadGlyphOpacity.value = withTiming(1, {
         duration: 120,
         easing: Easing.out(Easing.quad),
       });
@@ -232,7 +232,7 @@ export default function ThreadRailAction({
       duration: 120,
       easing: Easing.out(Easing.quad),
     });
-    idleNeedleGlyphOpacity.value = withTiming(1, {
+    idleThreadGlyphOpacity.value = withTiming(1, {
       duration: 120,
       easing: Easing.out(Easing.quad),
     });
@@ -263,7 +263,7 @@ export default function ThreadRailAction({
     countScale,
     countTranslateY,
     iconScale,
-    idleNeedleGlyphOpacity,
+    idleThreadGlyphOpacity,
     reduceMotion,
     stitchOpacity,
     stitchProgress,
@@ -312,15 +312,15 @@ export default function ThreadRailAction({
     opacity: threadGlyphOpacity.value,
   }));
 
-  const idleNeedleGlyphStyle = useAnimatedStyle(() => ({
-    opacity: idleNeedleGlyphOpacity.value,
+  const idleThreadGlyphStyle = useAnimatedStyle(() => ({
+    opacity: idleThreadGlyphOpacity.value,
   }));
 
-  const stitchNeedleStyle = useAnimatedStyle(() => ({
+  const stitchThreadHeadStyle = useAnimatedStyle(() => ({
     opacity: stitchOpacity.value,
     transform: [
       { translateX: interpolate(stitchProgress.value, [0, 1], [-12, 12]) },
-      { rotateZ: `${interpolate(stitchProgress.value, [0, 1], [-10, 6])}deg` },
+      { scale: interpolate(stitchProgress.value, [0, 1], [0.88, 1.05]) },
     ],
   }));
 
@@ -350,7 +350,7 @@ export default function ThreadRailAction({
           pressed && styles.buttonPressed,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={threaded ? 'Unthread design' : 'Thread design'}
+        accessibilityLabel={threaded ? 'Remove thread' : 'Thread this design'}
       >
         <Animated.View
           style={[
@@ -374,19 +374,21 @@ export default function ThreadRailAction({
                 />
                 <Animated.View
                   style={[
-                    styles.needleWrap,
-                    stitchNeedleStyle,
+                    styles.threadHeadWrap,
+                    stitchThreadHeadStyle,
                   ]}
                 >
-                  <AppText style={styles.sewNeedleEmoji}>🪡</AppText>
+                  <View style={styles.threadHead} />
                 </Animated.View>
+                <View style={[styles.fabricPoint, styles.fabricPointStart]} />
+                <View style={[styles.fabricPoint, styles.fabricPointEnd]} />
               </View>
             ) : null}
             <Animated.Text style={[styles.glyph, styles.threadGlyph, threadGlyphStyle]}>
               🧵
             </Animated.Text>
-            <Animated.Text style={[styles.glyph, styles.needleGlyph, idleNeedleGlyphStyle]}>
-              🪡
+            <Animated.Text style={[styles.glyph, styles.idleThreadGlyph, idleThreadGlyphStyle]}>
+              🧵
             </Animated.Text>
           </Animated.View>
         </Animated.View>
@@ -456,14 +458,31 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     backgroundColor: '#0f766e',
   },
-  needleWrap: {
+  threadHeadWrap: {
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sewNeedleEmoji: {
-    fontSize: 12,
-    lineHeight: 14,
+  threadHead: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#CCFBF1',
+    borderWidth: 1,
+    borderColor: '#0f766e',
+  },
+  fabricPoint: {
+    position: 'absolute',
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#CCFBF1',
+  },
+  fabricPointStart: {
+    left: -2,
+  },
+  fabricPointEnd: {
+    right: -2,
   },
   glyph: {
     position: 'absolute',
@@ -473,7 +492,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 24,
   },
-  needleGlyph: {
+  idleThreadGlyph: {
     fontSize: 21,
     lineHeight: 24,
   },

@@ -5,83 +5,290 @@ import { router } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { useAuth } from '@/src/auth/AuthContext';
+import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { useToast } from '@/src/toast/ToastContext';
 
-type SettingsRowProps = {
+type SettingsRow = {
   icon: string;
-  iconBg: string;
-  label: string;
+  title: string;
   subtitle?: string;
-  onPress: () => void;
-  last?: boolean;
+  metadata?: string;
+  danger?: boolean;
+  onPress?: () => void;
 };
 
-function SettingsRow({ icon, iconBg, label, subtitle, onPress, last }: SettingsRowProps) {
+type SettingsSection = {
+  title: string;
+  rows: SettingsRow[];
+};
+
+function SettingRow({ row, last }: { row: SettingsRow; last: boolean }) {
   const { theme } = useTheme();
+
   return (
     <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
+      onPress={row.onPress}
+      disabled={!row.onPress}
+      accessibilityRole={row.onPress ? 'button' : undefined}
+      accessibilityLabel={row.title}
       style={({ pressed }) => [
         styles.row,
-        !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+        !last && { borderBottomColor: theme.colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
         pressed && { backgroundColor: theme.colors.surfaceAlt },
       ]}
     >
-      <View style={[styles.rowIconWrap, { backgroundColor: iconBg }]}>
-        <AppText variant="body">{icon}</AppText>
+      <View style={[styles.iconWrap, { backgroundColor: row.danger ? theme.colors.surfaceAlt : theme.colors.primarySoft }]}>
+        <AppText variant="body">{row.icon}</AppText>
       </View>
-      <View style={styles.rowBody}>
-        <AppText variant="bodyRegular">{label}</AppText>
-        {subtitle ? (
-          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-            {subtitle}
+      <View style={styles.rowCopy}>
+        <AppText variant="bodyBold" tone={row.danger ? 'danger' : 'default'} numberOfLines={1}>
+          {row.title}
+        </AppText>
+        {row.subtitle ? (
+          <AppText variant="small" tone="muted" numberOfLines={2}>
+            {row.subtitle}
           </AppText>
         ) : null}
       </View>
-      <AppText variant="body" tone="muted" style={styles.chevron}>›</AppText>
+      {row.metadata ? (
+        <AppText variant="captionRegular" tone="muted" numberOfLines={1} style={styles.metadata}>
+          {row.metadata}
+        </AppText>
+      ) : null}
+      {row.onPress ? (
+        <AppText variant="body" tone="muted" style={styles.chevron}>
+          {'>'}
+        </AppText>
+      ) : null}
     </Pressable>
   );
 }
 
-function SectionLabel({ text }: { text: string }) {
+function SettingsSectionBlock({ section }: { section: SettingsSection }) {
+  const { theme } = useTheme();
+
   return (
-    <View style={styles.sectionLabelWrap}>
-      <AppText variant="captionRegular" tone="muted" style={styles.sectionLabelText}>
-        {text.toUpperCase()}
+    <View style={styles.sectionWrap}>
+      <AppText variant="captionBold" tone="muted" style={styles.sectionTitle}>
+        {section.title.toUpperCase()}
       </AppText>
+      <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        {section.rows.map((row, index) => (
+          <SettingRow key={`${section.title}-${row.title}`} row={row} last={index === section.rows.length - 1} />
+        ))}
+      </View>
     </View>
   );
 }
 
 export default function SettingsScreen() {
   const { theme } = useTheme();
+  const { user, signOut } = useAuth();
+  const toast = useToast();
   const insets = useSafeAreaInsets();
+  const isBrand = hasActiveBrandMembership(user);
+
+  const comingSoon = React.useCallback(
+    (title: string) => {
+      toast.info(`${title} will open when that settings screen is ready.`);
+    },
+    [toast],
+  );
+
+  const sections = React.useMemo<SettingsSection[]>(() => {
+    const base: SettingsSection[] = [
+      {
+        title: 'Account',
+        rows: [
+          {
+            icon: '👤',
+            title: 'Profile information',
+            subtitle: 'Name, username, photo',
+            onPress: () => router.push('/(tabs)/me-edit' as never),
+          },
+          {
+            icon: '✉️',
+            title: 'Phone & email',
+            subtitle: 'Login and contact details',
+            metadata: user?.email ? 'Email set' : undefined,
+            onPress: () => comingSoon('Phone & email'),
+          },
+          {
+            icon: '🔐',
+            title: 'Password & security',
+            subtitle: 'Password, sessions, passkeys',
+            onPress: () => comingSoon('Password & security'),
+          },
+        ],
+      },
+      {
+        title: 'Privacy & Security',
+        rows: [
+          {
+            icon: '🛡️',
+            title: 'Privacy controls',
+            subtitle: 'Visibility, blocked users',
+            onPress: () => comingSoon('Privacy controls'),
+          },
+          {
+            icon: '📱',
+            title: 'Login sessions',
+            subtitle: 'Manage active devices',
+            onPress: () => comingSoon('Login sessions'),
+          },
+          {
+            icon: '🔑',
+            title: 'Two-factor authentication',
+            subtitle: 'Extra account protection',
+            onPress: () => comingSoon('Two-factor authentication'),
+          },
+        ],
+      },
+      {
+        title: 'Notifications',
+        rows: [
+          {
+            icon: '🔔',
+            title: 'Push notifications',
+            subtitle: 'Likes, comments, messages',
+            onPress: () => router.push('/notifications' as never),
+          },
+          {
+            icon: '📨',
+            title: 'Email notifications',
+            subtitle: 'Orders and account updates',
+            onPress: () => comingSoon('Email notifications'),
+          },
+          {
+            icon: '💬',
+            title: 'Chat alerts',
+            subtitle: 'Message and thread alerts',
+            onPress: () => comingSoon('Chat alerts'),
+          },
+        ],
+      },
+      {
+        title: 'Shopping',
+        rows: [
+          {
+            icon: '📦',
+            title: 'Orders',
+            subtitle: 'Track purchases and custom requests',
+            onPress: () => router.push('/orders' as never),
+          },
+          {
+            icon: '🗂️',
+            title: 'Saved designs',
+            subtitle: 'Designs you want to revisit',
+            onPress: () => router.push({ pathname: '/(tabs)/me', params: { tab: 'saved' } } as never),
+          },
+          {
+            icon: '📏',
+            title: 'Measurements / My fits',
+            subtitle: 'Saved fittings for custom orders',
+            onPress: () => router.push('/(tabs)/me' as never),
+          },
+          {
+            icon: '💳',
+            title: 'Payment settings',
+            subtitle: 'Cards, payouts, billing if available',
+            onPress: () => comingSoon('Payment settings'),
+          },
+        ],
+      },
+      {
+        title: 'Data & Storage',
+        rows: [
+          {
+            icon: '🖼️',
+            title: 'Media cache',
+            subtitle: 'Manage image and video cache',
+            onPress: () => comingSoon('Media cache'),
+          },
+          {
+            icon: '⬆️',
+            title: 'Upload preferences',
+            subtitle: 'Image quality and data usage',
+            onPress: () => comingSoon('Upload preferences'),
+          },
+          {
+            icon: '🎨',
+            title: 'Theme',
+            subtitle: 'Light, Dark, or System default',
+            onPress: () => router.push('/settings/theme' as never),
+          },
+        ],
+      },
+      {
+        title: 'Support',
+        rows: [
+          { icon: '❔', title: 'Help center', subtitle: 'Guides and common questions', onPress: () => comingSoon('Help center') },
+          { icon: '⚠️', title: 'Report a problem', subtitle: 'Tell us what went wrong', onPress: () => comingSoon('Report a problem') },
+          { icon: '📄', title: 'Terms & conditions', onPress: () => comingSoon('Terms & conditions') },
+          { icon: '🔏', title: 'Privacy policy', onPress: () => comingSoon('Privacy policy') },
+        ],
+      },
+      {
+        title: 'Account actions',
+        rows: [
+          {
+            icon: '🚪',
+            title: 'Sign out',
+            subtitle: 'Leave this device',
+            onPress: () => {
+              void signOut().finally(() => router.replace('/(auth)/login' as never));
+            },
+          },
+          {
+            icon: '🗑️',
+            title: 'Delete account',
+            subtitle: 'Permanently remove your Threadly account',
+            danger: true,
+            onPress: () => comingSoon('Delete account'),
+          },
+        ],
+      },
+    ];
+
+    if (!isBrand) return base;
+
+    return [
+      ...base.slice(0, 4),
+      {
+        title: 'Studio / Brand',
+        rows: [
+          { icon: '🏷️', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => router.push('/catalog' as never) },
+          { icon: '🧵', title: 'Catalog settings', subtitle: 'Designs, products, collections', onPress: () => router.push('/catalog' as never) },
+          { icon: '✅', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => router.push('/studio' as never) },
+          { icon: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => router.push('/studio' as never) },
+        ],
+      },
+      ...base.slice(4),
+    ];
+  }, [comingSoon, isBrand, signOut, user?.email]);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
         <AppBackButton fallbackHref="/(tabs)" />
-        <AppText variant="title">Settings</AppText>
+        <View style={styles.headerCopy}>
+          <AppText variant="title">Settings</AppText>
+          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+            Account, shopping, privacy, and support
+          </AppText>
+        </View>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + tokens.spacing['2xl'] }}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['3xl'] }]}
       >
-        <SectionLabel text="Appearance" />
-        <View style={[styles.section, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}>
-          <SettingsRow
-            icon="🎨"
-            iconBg={theme.colors.primarySoft}
-            label="Theme"
-            subtitle="Light, Dark, or System default"
-            onPress={() => router.push('/settings/theme' as never)}
-            last
-          />
-        </View>
+        {sections.map((section) => (
+          <SettingsSectionBlock key={section.title} section={section} />
+        ))}
       </ScrollView>
     </SafeAreaView>
   );
@@ -99,42 +306,55 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sectionLabelWrap: {
-    paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.xl,
-    paddingBottom: tokens.spacing.xs,
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
   },
-  sectionLabelText: {
-    letterSpacing: 0.6,
+  content: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.lg,
+    gap: tokens.spacing.lg,
+  },
+  sectionWrap: {
+    gap: tokens.spacing.xs,
+  },
+  sectionTitle: {
+    paddingHorizontal: tokens.spacing.xs,
+    letterSpacing: 0,
   },
   section: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
   row: {
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: tokens.spacing.md,
     gap: tokens.spacing.md,
-    minHeight: 56,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
   },
-  rowIconWrap: {
-    width: 36,
-    height: 36,
+  iconWrap: {
+    width: 38,
+    height: 38,
     borderRadius: tokens.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  rowBody: {
+  rowCopy: {
     flex: 1,
-    gap: 2,
     minWidth: 0,
+    gap: 2,
+  },
+  metadata: {
+    maxWidth: 92,
+    flexShrink: 1,
   },
   chevron: {
-    fontSize: 22,
-    lineHeight: 26,
     flexShrink: 0,
+    width: 16,
+    textAlign: 'right',
   },
 });

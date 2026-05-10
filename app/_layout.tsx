@@ -6,6 +6,7 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import { useFonts } from 'expo-font';
+import * as NavigationBar from 'expo-navigation-bar';
 import { Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
@@ -175,7 +176,7 @@ function RootBootstrap({
 }: {
   fontsLoaded: boolean;
 }) {
-  const { ready: themeReady, theme } = useTheme();
+  const { ready: themeReady, scheme, theme } = useTheme();
   const { status } = useAuth();
   const bootReady = fontsLoaded && themeReady && status !== 'loading';
   const hasLoggedReadyRef = useRef(false);
@@ -194,6 +195,31 @@ function RootBootstrap({
       authStatus: status,
     });
   }, [bootReady, fontsLoaded, status, themeReady]);
+
+  useEffect(() => {
+    if (!bootReady || Platform.OS !== 'android') return;
+
+    const style = scheme === 'dark' ? 'dark' : 'light';
+    try {
+      NavigationBar.setStyle(style);
+      void Promise.allSettled([
+        NavigationBar.setVisibilityAsync('visible'),
+        NavigationBar.setPositionAsync('absolute'),
+        NavigationBar.setBackgroundColorAsync('#00000000'),
+        NavigationBar.setBorderColorAsync('#00000000'),
+      ]).then((results) => {
+        if (!__DEV__) return;
+        const rejected = results.find((result) => result.status === 'rejected');
+        if (rejected) {
+          console.warn('[system-ui] navigation-bar-policy-partial-failure', rejected.reason);
+        }
+      });
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[system-ui] navigation-bar-policy-failed', error);
+      }
+    }
+  }, [bootReady, scheme]);
 
   if (!bootReady) {
     return <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND }]} />;

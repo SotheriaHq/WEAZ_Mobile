@@ -31,7 +31,18 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-navigation-bar",
+        {
+          "position": "absolute",
+          "backgroundColor": "#00000000",
+          "borderColor": "#00000000",
+          "barStyle": "dark",
+          "visibility": "visible",
+          "enforceContrast": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
