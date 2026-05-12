@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
@@ -19,8 +19,8 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { resolveIdentity } from '@/src/utils/identity';
-import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 import { profileDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 
@@ -140,9 +140,9 @@ function EmptyState({
   );
 }
 
-function ProfileSkeleton() {
+function ProfileSkeleton({ bottomPadding }: { bottomPadding: number }) {
   return (
-    <View style={styles.skeletonWrap}>
+    <View style={[styles.skeletonWrap, { paddingBottom: bottomPadding }]}>
       <View style={styles.skeletonHeader}>
         <Skeleton width={80} height={80} borderRadius={40} />
         <View style={styles.skeletonHeaderText}>
@@ -353,7 +353,8 @@ function OrderRow({ order }: { order: Order }) {
 
 export default function BuyerProfileScreen() {
   const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { standardScreenBottomPadding } = useScreenChrome();
+  const contentBottomPadding = standardScreenBottomPadding;
   const { status, user, updateUser, signOut } = useAuth();
   const toast = useToast();
   const params = useLocalSearchParams<{ tab?: string | string[] }>();
@@ -684,7 +685,7 @@ export default function BuyerProfileScreen() {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <BrandHeader />
-        <ProfileSkeleton />
+        <ProfileSkeleton bottomPadding={contentBottomPadding} />
       </SafeAreaView>
     );
   }
@@ -707,7 +708,9 @@ export default function BuyerProfileScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + NATIVE_ISLAND_NAV.contentClearance }]}
+        contentInset={{ bottom: standardScreenBottomPadding }}
+        scrollIndicatorInsets={{ bottom: standardScreenBottomPadding }}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primary} />}
       >
         <View style={styles.headerActionsRow}>

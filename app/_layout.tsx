@@ -32,6 +32,7 @@ import {
   getInitialAndroidSystemScheme,
   useAndroidSystemBars,
 } from '@/src/system/AndroidSystemBars';
+import { ScreenChromeProvider } from '@/src/system/ScreenChrome';
 
 
 export {
@@ -49,7 +50,7 @@ void SplashScreen.preventAutoHideAsync();
 const THEME_MODE_KEY = 'threadly.theme.mode';
 const BOOT_BACKGROUND = '#0b0710';
 
-applyAndroidSystemBarsPolicy(getInitialAndroidSystemScheme(), 'module-load');
+void applyAndroidSystemBarsPolicy(getInitialAndroidSystemScheme(), 'module-load');
 
 let rootLayoutMountCount = 0;
 let rootBootstrapMountCount = 0;
@@ -236,7 +237,7 @@ export default function RootLayout() {
   useEffect(() => {
     rootLayoutMountCount += 1;
     devBootLog('root-layout-mounted', { rootLayoutMountCount });
-    applyAndroidSystemBarsPolicy(getInitialAndroidSystemScheme(), 'root-layout-first-render');
+    void applyAndroidSystemBarsPolicy(getInitialAndroidSystemScheme(), 'root-layout-first-render');
   }, []);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
@@ -292,7 +293,9 @@ function RootLayoutNav({
           <ThemeBackendSync />
           <BagCountProvider>
             <BagFlowProvider>
-              <RootBootstrap fontsLoaded={fontsLoaded} />
+              <ScreenChromeProvider>
+                <RootBootstrap fontsLoaded={fontsLoaded} />
+              </ScreenChromeProvider>
             </BagFlowProvider>
           </BagCountProvider>
         </AuthProvider>

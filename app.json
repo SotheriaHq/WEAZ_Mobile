@@ -24,6 +24,9 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
+    "androidNavigationBar": {
+      "enforceContrast": false
+    },
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -36,13 +39,14 @@
         "expo-navigation-bar",
         {
           "position": "absolute",
-          "backgroundColor": "#00000000",
-          "borderColor": "#00000000",
+          "backgroundColor": "#00000001",
+          "borderColor": "#00000001",
           "barStyle": "light",
           "visibility": "visible",
           "enforceContrast": false
         }
-      ]
+      ],
+      "./plugins/with-android-system-bars"
     ],
     "experiments": {
       "typedRoutes": true

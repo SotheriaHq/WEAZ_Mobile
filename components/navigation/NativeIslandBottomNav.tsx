@@ -1,23 +1,19 @@
 import React from 'react';
-import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View, useWindowDimensions } from 'react-native';
+import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { usePathname } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
+import {
+  getNativeIslandContentClearance,
+  getNativeIslandLayout,
+  NATIVE_ISLAND_NAV,
+  useScreenChrome,
+} from '@/src/system/ScreenChrome';
 
-export const NATIVE_ISLAND_NAV = {
-  height: 56,
-  radius: 28,
-  maxWidth: 420,
-  minSideOffset: 16,
-  safeAreaGap: 10,
-  minBottomOffset: 14,
-  horizontalPadding: 4,
-  contentClearance: 88,
-} as const;
+export { getNativeIslandContentClearance, getNativeIslandLayout, NATIVE_ISLAND_NAV };
 
 export type NativeIslandNavItem = {
   key: string;
@@ -35,23 +31,6 @@ type NativeIslandBottomNavProps = {
   collapsed?: boolean;
   onCollapsedPress?: () => void;
 };
-
-export function getNativeIslandLayout(windowWidth: number, bottomInset: number) {
-  const islandWidth = Math.min(
-    Math.max(windowWidth - NATIVE_ISLAND_NAV.minSideOffset * 2, 0),
-    NATIVE_ISLAND_NAV.maxWidth,
-  );
-  const sideOffset = Math.max(
-    NATIVE_ISLAND_NAV.minSideOffset,
-    Math.round((windowWidth - islandWidth) / 2),
-  );
-  const bottomOffset = Math.max(
-    NATIVE_ISLAND_NAV.minBottomOffset,
-    bottomInset + NATIVE_ISLAND_NAV.safeAreaGap,
-  );
-
-  return { bottomOffset, sideOffset, islandWidth };
-}
 
 export function NativeIslandTabIcon({
   label,
@@ -130,10 +109,10 @@ export function NativeIslandBottomNav({
   onCollapsedPress,
 }: NativeIslandBottomNavProps) {
   const { scheme, theme } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { windowWidth, islandLayout } = useScreenChrome();
   const pathname = usePathname();
-  const { width: windowWidth } = useWindowDimensions();
-  const { bottomOffset, sideOffset, islandWidth } = getNativeIslandLayout(windowWidth, insets.bottom);
+  const { bottomOffset, sideOffset, islandWidth } = islandLayout;
+  const [itemLayouts, setItemLayouts] = React.useState<Record<string, { x: number; width: number }>>({});
   const compact = items.length >= 6 || windowWidth < 380;
   const orderedItems = items;
   const activeIndex = Math.max(0, orderedItems.findIndex((item) => item.active && !item.disabled));
@@ -141,8 +120,32 @@ export function NativeIslandBottomNav({
   const visibleLeftItems = orderedItems.slice(0, activeIndex).filter((item) => !item.disabled);
   const visibleRightItems = orderedItems.slice(activeIndex + 1).filter((item) => !item.disabled);
   const deckItems = [...visibleLeftItems, ...visibleRightItems];
-  const collapsedWidth = Math.min(islandWidth, Math.max(172, Math.min(238, Math.round(windowWidth * 0.52))));
-  const collapsedSideOffset = Math.max(NATIVE_ISLAND_NAV.minSideOffset, Math.round((windowWidth - collapsedWidth) / 2));
+  const collapsedWidth = Math.min(islandWidth, Math.max(144, Math.min(196, Math.round(windowWidth * 0.44))));
+  const collapsedDeckOffset = Math.max(74, Math.min(98, collapsedWidth - 42));
+  const measuredActiveLayout = activeItem ? itemLayouts[activeItem.key] : null;
+  const fallbackItemWidth = orderedItems.length > 0 ? islandWidth / orderedItems.length : islandWidth;
+  const activeTabCenterX = measuredActiveLayout
+    ? sideOffset + measuredActiveLayout.x + measuredActiveLayout.width / 2
+    : sideOffset + fallbackItemWidth * activeIndex + fallbackItemWidth / 2;
+  const collapsedLeft = Math.min(
+    Math.max(
+      NATIVE_ISLAND_NAV.minSideOffset,
+      Math.round(activeTabCenterX - collapsedWidth / 2),
+    ),
+    Math.max(NATIVE_ISLAND_NAV.minSideOffset, windowWidth - NATIVE_ISLAND_NAV.minSideOffset - collapsedWidth),
+  );
+  const handleItemLayout = React.useCallback((key: string, x: number, width: number) => {
+    setItemLayouts((current) => {
+      const previous = current[key];
+      const nextX = Math.round(x);
+      const nextWidth = Math.round(width);
+      if (previous?.x === nextX && previous.width === nextWidth) return current;
+      return {
+        ...current,
+        [key]: { x: nextX, width: nextWidth },
+      };
+    });
+  }, []);
 
   React.useEffect(() => {
     if (Platform.OS === 'android') {
@@ -169,6 +172,10 @@ export function NativeIslandBottomNav({
       collapsed,
       windowWidth,
       islandWidth,
+      collapsedWidth,
+      collapsedLeft,
+      activeTabCenterX: Math.round(activeTabCenterX),
+      measured: Boolean(measuredActiveLayout),
       activeKey: items.find((item) => item.active)?.key ?? null,
     });
     navDevLog('collapsed-layout', {
@@ -178,9 +185,12 @@ export function NativeIslandBottomNav({
       visibleLeftKeys: visibleLeftItems.map((item) => item.key),
       visibleRightKeys: visibleRightItems.map((item) => item.key),
       deckKeys: deckItems.map((item) => item.key),
+      collapsedWidth,
+      collapsedLeft,
+      activeTabCenterX: Math.round(activeTabCenterX),
       collapsed,
     });
-  }, [activeIndex, activeItem?.key, collapsed, compact, deckItems, islandWidth, items, pathname, visibleLeftItems, visibleRightItems, windowWidth]);
+  }, [activeIndex, activeItem?.key, activeTabCenterX, collapsed, collapsedLeft, collapsedWidth, compact, deckItems, islandWidth, items, measuredActiveLayout, pathname, visibleLeftItems, visibleRightItems, windowWidth]);
   if (items.length === 0) {
     return null;
   }
@@ -191,14 +201,8 @@ export function NativeIslandBottomNav({
         style={[
           styles.navWrap,
           {
-            left: sideOffset,
-            right: sideOffset,
-            ...(collapsed
-              ? {
-                  left: collapsedSideOffset,
-                  right: collapsedSideOffset,
-                }
-              : null),
+            left: collapsed ? collapsedLeft : sideOffset,
+            width: collapsed ? collapsedWidth : islandWidth,
             bottom: bottomOffset,
             height: NATIVE_ISLAND_NAV.height,
             borderRadius: NATIVE_ISLAND_NAV.radius,
@@ -246,7 +250,7 @@ export function NativeIslandBottomNav({
               }}
               style={({ pressed }) => [styles.collapsedButton, pressed && styles.navItemPressed]}
             >
-              <View style={styles.collapsedSideDeck} pointerEvents="none">
+              <View style={[styles.collapsedSideDeck, { right: collapsedDeckOffset }]} pointerEvents="none">
                 {visibleLeftItems.map((item, index) => {
                   return (
                     <View
@@ -272,7 +276,7 @@ export function NativeIslandBottomNav({
                   {activeItem?.label ?? 'Menu'}
                 </AppText>
               </View>
-              <View style={styles.collapsedSideDeck} pointerEvents="none">
+              <View style={[styles.collapsedSideDeck, { left: collapsedDeckOffset }]} pointerEvents="none">
                 {visibleRightItems.map((item, index) => {
                   return (
                     <View
@@ -303,6 +307,9 @@ export function NativeIslandBottomNav({
                 disabled={item.disabled}
                 onPressIn={item.disabled ? undefined : () => onPressIn?.(item)}
                 onPress={item.disabled ? undefined : () => onSelect(item)}
+                onLayout={(event) => {
+                  handleItemLayout(item.key, event.nativeEvent.layout.x, event.nativeEvent.layout.width);
+                }}
                 style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
               >
                 <NativeIslandTabIcon
@@ -353,11 +360,10 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     minWidth: 0,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
     paddingHorizontal: 6,
+    position: 'relative',
   },
   collapsedActiveChip: {
     minWidth: 78,
@@ -369,6 +375,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
     paddingHorizontal: 8,
+    zIndex: 2,
   },
   collapsedActiveEmoji: {
     fontSize: 18,
@@ -379,12 +386,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   collapsedSideDeck: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 1,
-    minWidth: 36,
-    flexShrink: 1,
+    zIndex: 1,
   },
   collapsedDeckItem: {
     width: 16,

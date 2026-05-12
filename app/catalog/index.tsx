@@ -7,11 +7,11 @@
 
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { BackHandler, LayoutChangeEvent, Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import Reanimated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
+import { useSharedValue } from 'react-native-reanimated';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
@@ -35,7 +35,6 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
 import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
-import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 import { BrandSwitcherSheet } from '@/components/brand/BrandSwitcherSheet';
 import {
   pickDesignEditorMediaAssets,
@@ -44,6 +43,7 @@ import {
 } from '@/src/features/design-editor/designEditorMediaFlow';
 import { tokens } from '@/src/styles/tokens';
 import { catalogDevLog } from '@/src/features/feed/utils/feedDiagnostics';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -53,14 +53,17 @@ type TabType = 'Collections' | 'Shop' | 'Reviews';
 type VisibilityType = 'Public' | 'Private' | 'Drafts';
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
 
-function CatalogLoadingSkeleton() {
+function CatalogLoadingSkeleton({ bottomPadding }: { bottomPadding: number }) {
   const { theme } = useTheme();
 
   return (
     <ScrollView
       style={styles.scrollView}
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.skeletonScrollContent}
+      contentContainerStyle={[
+        styles.skeletonScrollContent,
+        { paddingBottom: bottomPadding + tokens.spacing.xl },
+      ]}
     >
       <View style={[styles.skeletonHero, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         <Skeleton width="100%" height={168} borderRadius={tokens.radius.xl} />
@@ -68,7 +71,7 @@ function CatalogLoadingSkeleton() {
           <Skeleton width={68} height={68} borderRadius={tokens.radius.xl} />
           <View style={styles.skeletonHeroCopy}>
             <Skeleton width="58%" height={18} borderRadius={tokens.radius.sm} />
-            <SkeletonText lines={2} lineHeight={12} spacing={tokens.spacing.sm} lastLineWidth="72%" />
+            <SkeletonText lines={2} lineHeight={tokens.typography.caption.lineHeight} spacing={tokens.spacing.sm} lastLineWidth="72%" />
           </View>
         </View>
       </View>
@@ -103,7 +106,7 @@ const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => 
       <AppText variant="subtitle" style={styles.emptyTitle}>
         {isOwner ? 'No Content Yet' : 'No Public Content'}
       </AppText>
-      <AppText variant="body" tone="muted" style={styles.emptySubtitle}>
+      <AppText variant="bodyRegular" tone="muted" style={styles.emptySubtitle}>
         {isOwner
           ? 'Start showcasing your fashion by creating your first design'
           : "This brand hasn't published any content yet"}
@@ -127,7 +130,7 @@ export default function CatalogScreen() {
     productId?: string | string[];
   }>();
   const { theme, scheme } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { standardScreenBottomPadding } = useScreenChrome();
   const { user } = useAuth();
   const { status, userId, userEmailVerified, updateUser } = useAuthSession();
   const toast = useToast();
@@ -171,7 +174,6 @@ export default function CatalogScreen() {
     width: number;
     height: number;
   } | null>(null);
-  const horizontalScrollRef = useRef<ScrollView>(null);
   const createMenuAnchorRef = useRef<View>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
 
@@ -248,6 +250,7 @@ export default function CatalogScreen() {
       } else {
         const { items } = await brandApi.getCollections({
           brandId: targetBrandId,
+          scope: 'all',
           visibility,
           status: statusFilter,
         });
@@ -255,7 +258,7 @@ export default function CatalogScreen() {
           tab: visibilityFilter,
           brandId: targetBrandId,
           ownerId: userId,
-          endpoint: `/designs/user/${targetBrandId}`,
+          endpoint: `/collections/user/${targetBrandId}`,
           itemCount: items.length,
           status: statusFilter,
           visibility: visibility ?? null,
@@ -336,32 +339,10 @@ export default function CatalogScreen() {
 
   useEffect(() => {
     const idx = TAB_ORDER.indexOf(activeTab);
-    if (idx >= 0 && containerWidth <= 0) {
+    if (idx >= 0) {
       tabSwipeProgress.value = idx;
     }
-    if (idx >= 0 && horizontalScrollRef.current && containerWidth > 0) {
-      horizontalScrollRef.current.scrollTo({ x: idx * containerWidth, animated: true });
-    }
-  }, [activeTab, containerWidth, tabSwipeProgress]);
-
-  const handleHorizontalScroll = useAnimatedScrollHandler(
-    {
-      onScroll: (event) => {
-        if (containerWidth <= 0) return;
-        tabSwipeProgress.value = event.contentOffset.x / containerWidth;
-      },
-    },
-    [containerWidth],
-  );
-
-  const handleHorizontalScrollEnd = useCallback((e: any) => {
-    if (containerWidth <= 0) return;
-    const offsetX = e.nativeEvent.contentOffset.x;
-    const idx = Math.round(offsetX / containerWidth);
-    if (TAB_ORDER[idx] && TAB_ORDER[idx] !== activeTab) {
-      setActiveTab(TAB_ORDER[idx]);
-    }
-  }, [containerWidth, activeTab]);
+  }, [activeTab, tabSwipeProgress]);
 
   // Refresh
   const handleRefresh = async () => {
@@ -459,10 +440,7 @@ export default function CatalogScreen() {
 
   const currentCollections = visibilityFilter === 'Drafts' ? drafts : collections;
   const showInitialSkeleton = isLoading && !profile && collections.length === 0 && drafts.length === 0;
-  const overlayScrollPadding = useMemo(
-    () => NATIVE_ISLAND_NAV.contentClearance + insets.bottom,
-    [insets.bottom],
-  );
+  const overlayScrollPadding = standardScreenBottomPadding;
 
   // Tab configuration
   const tabs = [
@@ -546,22 +524,25 @@ export default function CatalogScreen() {
 
   if (showInitialSkeleton) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
-        <CatalogLoadingSkeleton />
+        <CatalogLoadingSkeleton bottomPadding={overlayScrollPadding} />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
       <ScrollView
         style={styles.scrollView}
         contentInset={{ bottom: overlayScrollPadding }}
         scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: overlayScrollPadding }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: overlayScrollPadding + tokens.spacing.xl },
+        ]}
         showsVerticalScrollIndicator={false}
         onLayout={(e: LayoutChangeEvent) => setContainerWidth(e.nativeEvent.layout.width)}
         refreshControl={
@@ -635,66 +616,55 @@ export default function CatalogScreen() {
 
 
 
-        {/* Tab Content inside Horizontal ScrollView */}
-        <Reanimated.ScrollView
-          ref={horizontalScrollRef as any}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={handleHorizontalScroll}
-          onMomentumScrollEnd={handleHorizontalScrollEnd}
-          onScrollEndDrag={handleHorizontalScrollEnd}
-          scrollEventThrottle={16}
-        >
-          {/* Collections Tab */}
-          <View style={{ width: containerWidth || '100%' }}>
-            <View style={styles.catalogControls}>
-              <VisibilityFilter
-                selected={visibilityFilter}
-                onChange={setVisibilityFilter}
-                showDrafts={isOwner}
-                draftsCount={drafts.length}
-              />
-
-              {isOwner && (
-                <View ref={createMenuAnchorRef} onLayout={handleCreateAnchorLayout} collapsable={false}>
-                  <Pressable
-                    onPress={handleCreatePress}
-                    style={({ pressed }) => [
-                      styles.addButton,
-                      pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
-                    ]}
-                    accessibilityLabel="Create menu"
-                  >
-                    <View style={[styles.addButtonSolid, { backgroundColor: theme.colors.primary }]}>
-                      <AppText variant="subtitle" tone="inverse">+</AppText>
-                    </View>
-                  </Pressable>
-                </View>
-              )}
-            </View>
-
-            {/* Collections Grid */}
-              <CollectionsGrid
-              collections={currentCollections}
-              isLoading={false}
-              isOwner={isOwner}
-              showDrafts={visibilityFilter === 'Drafts'}
-              onCollectionPress={handleCollectionPress}
-              onEdit={handleEditCollection}
-              onDelete={handleDeleteCollection}
-              emptyComponent={
-                <EmptyCollections
-                  isOwner={isOwner}
-                  onAdd={handleCreatePress}
+        <View style={styles.tabPane}>
+          {activeTab === 'Collections' ? (
+            <>
+              <View style={styles.catalogControls}>
+                <VisibilityFilter
+                  selected={visibilityFilter}
+                  onChange={setVisibilityFilter}
+                  showDrafts={isOwner}
+                  draftsCount={drafts.length}
                 />
-              }
-            />
-          </View>
 
-          {/* Shop Tab */}
-          <View style={{ width: containerWidth || '100%' }}>
-            {containerWidth > 0 && targetBrandId ? (
+                {isOwner && (
+                  <View ref={createMenuAnchorRef} onLayout={handleCreateAnchorLayout} collapsable={false}>
+                    <Pressable
+                      onPress={handleCreatePress}
+                      style={({ pressed }) => [
+                        styles.addButton,
+                        pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
+                      ]}
+                      accessibilityLabel="Create menu"
+                    >
+                      <View style={[styles.addButtonSolid, { backgroundColor: theme.colors.primary }]}>
+                        <AppText variant="subtitle" tone="inverse">+</AppText>
+                      </View>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+
+              <CollectionsGrid
+                collections={currentCollections}
+                isLoading={false}
+                isOwner={isOwner}
+                showDrafts={visibilityFilter === 'Drafts'}
+                onCollectionPress={handleCollectionPress}
+                onEdit={handleEditCollection}
+                onDelete={handleDeleteCollection}
+                emptyComponent={
+                  <EmptyCollections
+                    isOwner={isOwner}
+                    onAdd={handleCreatePress}
+                  />
+                }
+              />
+            </>
+          ) : null}
+
+          {activeTab === 'Shop' ? (
+            containerWidth > 0 && targetBrandId ? (
               <BrandShopTab
                 brandId={targetBrandId}
                 isOwner={isOwner}
@@ -703,14 +673,17 @@ export default function CatalogScreen() {
               />
             ) : (
               <View style={styles.tabContent} />
-            )}
-          </View>
+            )
+          ) : null}
 
-          {/* Reviews Tab */}
-          <View style={{ width: containerWidth || '100%' }}>
-            {targetBrandId ? <BrandReviewsTab brandId={targetBrandId} /> : <View style={styles.tabContent} />}
-          </View>
-        </Reanimated.ScrollView>
+          {activeTab === 'Reviews' ? (
+            targetBrandId ? (
+              <BrandReviewsTab brandId={targetBrandId} />
+            ) : (
+              <View style={styles.tabContent} />
+            )
+          ) : null}
+        </View>
       </ScrollView>
 
       <MobileProfileImageModal
@@ -769,7 +742,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: tokens.spacing.xl,
   },
   skeletonScrollContent: {
     paddingHorizontal: tokens.spacing.lg,
@@ -815,52 +788,35 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   brandSwitcherWrap: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 6,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
+    paddingBottom: tokens.spacing.xs,
   },
   catalogControls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    gap: 10,
-  },
-  searchBox: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    paddingVertical: 0,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
+    gap: tokens.spacing.md,
   },
   addButton: {
-    borderRadius: 12,
+    borderRadius: tokens.radius.md,
     overflow: 'hidden',
   },
-  addButtonGradient: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   addButtonSolid: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: tokens.button.md.height,
+    height: tokens.button.md.height,
+    borderRadius: tokens.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   // Tab content
+  tabPane: {
+    width: '100%',
+    minHeight: 300,
+  },
   tabContent: {
     flex: 1,
     minHeight: 300,
@@ -871,109 +827,20 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 48,
+    paddingHorizontal: tokens.spacing['2xl'],
+    paddingVertical: tokens.spacing['4xl'],
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 16,
+    marginTop: tokens.spacing.lg,
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: 14,
-    marginTop: 8,
+    marginTop: tokens.spacing.sm,
     textAlign: 'center',
-    lineHeight: 20,
   },
   emptyButton: {
-    marginTop: 24,
-    borderRadius: 12,
+    marginTop: tokens.spacing.xl,
+    borderRadius: tokens.radius.md,
     overflow: 'hidden',
   },
-
-  // About tab
-  aboutContent: {
-    padding: 16,
-    gap: 16,
-  },
-  aboutCard: {
-    borderRadius: 16,
-    padding: 16,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  infoGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  infoCard: {
-    flex: 1,
-    borderRadius: 16,
-    padding: 16,
-  },
-  infoIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  infoLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  infoValue: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tagsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-  },
-  tagChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  tagChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  socialLinks: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
-  },
-  socialButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  contactGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  contactCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: 12,
-    padding: 14,
-  },
-  contactText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-
 });

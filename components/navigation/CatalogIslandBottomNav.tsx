@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, useWindowDimensions } from 'react-native';
+import { AppState } from 'react-native';
 import { router, usePathname } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  getNativeIslandLayout,
   NativeIslandBottomNav,
   NATIVE_ISLAND_NAV,
   type NativeIslandNavItem,
@@ -18,6 +16,7 @@ import {
 } from '@/src/realtime/notifications';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 const NAV_EMOJI = {
@@ -41,8 +40,7 @@ export function CatalogIslandBottomNav() {
   const { scheme, theme } = useTheme();
   const { status, token, user } = useAuth();
   const pathname = usePathname();
-  const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
+  const { islandLayout } = useScreenChrome();
   const unreadNotificationCount = useUnreadNotificationCount();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [isIslandExpanded, setIsIslandExpanded] = useState(false);
@@ -53,7 +51,7 @@ export function CatalogIslandBottomNav() {
 
   const isBrand = hasActiveBrandMembership(user);
   const canOpenProfileMenu = status === 'authenticated';
-  const { bottomOffset } = getNativeIslandLayout(windowWidth, insets.bottom);
+  const { bottomOffset } = islandLayout;
   const activeIslandKey = useMemo(() => {
     if (profileMenuVisible) return 'profile';
     return mapPathnameToIslandKey(pathname);
