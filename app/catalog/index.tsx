@@ -68,7 +68,7 @@ function CatalogLoadingSkeleton() {
           <Skeleton width={68} height={68} borderRadius={tokens.radius.xl} />
           <View style={styles.skeletonHeroCopy}>
             <Skeleton width="58%" height={18} borderRadius={tokens.radius.sm} />
-            <SkeletonText lines={2} lineHeight={12} spacing={tokens.spacing.sm} lastLineWidth="72%" />
+            <SkeletonText lines={2} lineHeight={tokens.typography.caption.lineHeight} spacing={tokens.spacing.sm} lastLineWidth="72%" />
           </View>
         </View>
       </View>
@@ -103,7 +103,7 @@ const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => 
       <AppText variant="subtitle" style={styles.emptyTitle}>
         {isOwner ? 'No Content Yet' : 'No Public Content'}
       </AppText>
-      <AppText variant="body" tone="muted" style={styles.emptySubtitle}>
+      <AppText variant="bodyRegular" tone="muted" style={styles.emptySubtitle}>
         {isOwner
           ? 'Start showcasing your fashion by creating your first design'
           : "This brand hasn't published any content yet"}
@@ -736,7 +736,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: tokens.spacing.xl,
   },
   skeletonScrollContent: {
     paddingHorizontal: tokens.spacing.lg,
@@ -782,47 +782,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   brandSwitcherWrap: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 6,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
+    paddingBottom: tokens.spacing.xs,
   },
   catalogControls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    gap: 10,
-  },
-  searchBox: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    paddingVertical: 0,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
+    gap: tokens.spacing.md,
   },
   addButton: {
-    borderRadius: 12,
+    borderRadius: tokens.radius.md,
     overflow: 'hidden',
   },
-  addButtonGradient: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   addButtonSolid: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: tokens.button.md.height,
+    height: tokens.button.md.height,
+    borderRadius: tokens.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -842,109 +821,20 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 48,
+    paddingHorizontal: tokens.spacing['2xl'],
+    paddingVertical: tokens.spacing['4xl'],
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 16,
+    marginTop: tokens.spacing.lg,
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: 14,
-    marginTop: 8,
+    marginTop: tokens.spacing.sm,
     textAlign: 'center',
-    lineHeight: 20,
   },
   emptyButton: {
-    marginTop: 24,
-    borderRadius: 12,
+    marginTop: tokens.spacing.xl,
+    borderRadius: tokens.radius.md,
     overflow: 'hidden',
   },
-
-  // About tab
-  aboutContent: {
-    padding: 16,
-    gap: 16,
-  },
-  aboutCard: {
-    borderRadius: 16,
-    padding: 16,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  infoGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  infoCard: {
-    flex: 1,
-    borderRadius: 16,
-    padding: 16,
-  },
-  infoIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  infoLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  infoValue: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tagsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-  },
-  tagChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  tagChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  socialLinks: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
-  },
-  socialButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  contactGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  contactCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: 12,
-    padding: 14,
-  },
-  contactText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-
 });

@@ -1,25 +1,14 @@
-/**
- * ProfileHeader - Mobile
- * Brand profile header with banner, avatar, info, and action buttons
- * Layout: Avatar overlays banner, info beside avatar, action buttons at far right
- */
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
-import React, { useRef, useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-
-import { useTheme } from '@/src/theme/ThemeProvider';
-import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { AppText } from '@/components/ui/AppText';
+import { Button, type ButtonVariant } from '@/components/ui/Button';
+import { Chip } from '@/components/ui/Chip';
 import { Skeleton, SkeletonAvatar } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
-import { AppText } from '@/components/ui/AppText';
-import { Button } from '@/components/ui/Button';
-import { Chip } from '@/components/ui/Chip';
-import { ScrollView } from 'react-native';
-
-// ─────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────
+import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { tokens } from '@/src/styles/tokens';
+import { useTheme } from '@/src/theme/ThemeProvider';
 
 interface ProfileHeaderProps {
   brandName: string;
@@ -47,16 +36,80 @@ interface ProfileHeaderProps {
   onBack?: () => void;
 }
 
+const PROFILE_LAYOUT = {
+  bannerMinHeight: 136,
+  bannerMaxHeight: 176,
+  bannerWidthRatio: 0.42,
+  avatarSize: 84,
+  avatarInnerRadius: tokens.radius.md,
+  avatarOuterRadius: tokens.radius.lg,
+  avatarBorderWidth: 3,
+  editBadgeSize: 28,
+  heroControlSize: 44,
+  qrSize: 48,
+  overlayLift: tokens.spacing.xl,
+  descriptionPreviewLength: 150,
+};
 
+type ProfileActionItem = {
+  key: string;
+  title: string;
+  variant: ButtonVariant;
+  onPress: () => void;
+  loading?: boolean;
+};
 
+const ProfileHeaderSkeleton = () => {
+  const { width } = useWindowDimensions();
+  const { theme } = useTheme();
+  const bannerHeight = getBannerHeight(width);
+
+  return (
+    <View style={styles.container}>
+      <Skeleton width={width} height={bannerHeight} borderRadius={0} />
+      <View style={[styles.contentShell, styles.contentShellRaised, { backgroundColor: theme.colors.bg }]}>
+        <View style={styles.identityRow}>
+          <View style={[styles.avatarWrapper, { borderColor: theme.colors.bg }]}>
+            <SkeletonAvatar size={PROFILE_LAYOUT.avatarSize} />
+          </View>
+          <View style={styles.identityCopy}>
+            <Skeleton width="70%" height={tokens.typography.subtitle.lineHeight} borderRadius={tokens.radius.sm} />
+            <Skeleton width="46%" height={tokens.typography.caption.lineHeight} borderRadius={tokens.radius.sm} />
+            <Skeleton width="62%" height={tokens.typography.caption.lineHeight} borderRadius={tokens.radius.sm} />
+          </View>
+        </View>
+        <View style={styles.actionRow}>
+          <View style={styles.actionSlot}>
+            <Skeleton width="100%" height={tokens.button.md.height} borderRadius={tokens.radius.lg} />
+          </View>
+          <View style={styles.actionSlot}>
+            <Skeleton width="100%" height={tokens.button.md.height} borderRadius={tokens.radius.lg} />
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+};
 
 const BannerFallback = ({ isOwner, onEditBanner }: { isOwner: boolean; onEditBanner?: () => void }) => {
   const { theme } = useTheme();
+
   return (
     <View style={[styles.bannerFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
       {isOwner ? (
-        <Pressable onPress={onEditBanner} style={[styles.bannerFallbackButton, { borderColor: theme.colors.border }]}>
-          <AppText variant="caption" tone="muted">Edit Banner</AppText>
+        <Pressable
+          onPress={onEditBanner}
+          style={({ pressed }) => [
+            styles.bannerFallbackButton,
+            { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+            pressed ? styles.pressed : null,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Edit banner"
+        >
+          <AppText variant="captionBold" tone="secondary">
+            Edit banner
+          </AppText>
         </Pressable>
       ) : null}
     </View>
@@ -65,51 +118,322 @@ const BannerFallback = ({ isOwner, onEditBanner }: { isOwner: boolean; onEditBan
 
 const AvatarFallback = ({ initials }: { initials: string }) => {
   const { theme } = useTheme();
+
   return (
     <View style={[styles.avatarFallback, { backgroundColor: theme.colors.primary }]}>
-      <AppText variant="title" tone="inverse">{initials}</AppText>
+      <AppText variant="title" tone="inverse">
+        {initials}
+      </AppText>
     </View>
   );
 };
 
-// ─────────────────────────────────────────────────────────────
-// Skeleton Component
-// ─────────────────────────────────────────────────────────────
+function getBannerHeight(width: number) {
+  return Math.round(
+    Math.min(
+      PROFILE_LAYOUT.bannerMaxHeight,
+      Math.max(PROFILE_LAYOUT.bannerMinHeight, width * PROFILE_LAYOUT.bannerWidthRatio),
+    ),
+  );
+}
 
-const ProfileHeaderSkeleton = () => {
-  const { width } = useWindowDimensions();
+function ProfileHero({
+  bannerHeight,
+  bannerLoading,
+  isOwner,
+  onBack,
+  onEditBanner,
+  pulseAnim,
+  showBannerImage,
+  bannerUri,
+  onBannerError,
+}: {
+  bannerHeight: number;
+  bannerLoading: boolean;
+  isOwner: boolean;
+  onBack?: () => void;
+  onEditBanner?: () => void;
+  pulseAnim: Animated.Value;
+  showBannerImage: boolean;
+  bannerUri?: string | null;
+  onBannerError: () => void;
+}) {
   const { theme } = useTheme();
 
   return (
-    <View style={styles.container}>
-      <Skeleton width={width} height={180} borderRadius={0} />
-      <View style={[styles.overlayContainer, { backgroundColor: theme.colors.bg }]}>
-        <View style={styles.mainRow}>
-          <View style={[styles.avatarWrapper, { borderColor: theme.colors.bg }]}>
-            <SkeletonAvatar size={84} />
-          </View>
-          <View style={styles.infoSection}>
-            <Skeleton width={120} height={20} borderRadius={6} />
-            <View style={{ height: 6 }} />
-            <Skeleton width={100} height={14} borderRadius={4} />
-          </View>
-          <View style={styles.actionsColumn}>
-            <Skeleton width={100} height={36} borderRadius={10} />
-            <View style={{ height: 8 }} />
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Skeleton width={36} height={36} borderRadius={10} />
-              <Skeleton width={36} height={36} borderRadius={10} />
-            </View>
-          </View>
+    <View style={[styles.bannerContainer, { height: bannerHeight }]}>
+      {showBannerImage && bannerUri ? (
+        <Animated.View style={[styles.flexFill, { opacity: bannerLoading ? pulseAnim : 1 }]}>
+          <StableImage
+            uri={bannerUri}
+            containerStyle={styles.bannerImage}
+            imageStyle={styles.bannerImage}
+            onError={onBannerError}
+            fallback={<BannerFallback isOwner={isOwner} onEditBanner={onEditBanner} />}
+          />
+        </Animated.View>
+      ) : (
+        <BannerFallback isOwner={isOwner} onEditBanner={onEditBanner} />
+      )}
+
+      <View style={styles.topLeftNavContainer}>
+        {onBack ? (
+          <Pressable
+            onPress={onBack}
+            style={({ pressed }) => [
+              styles.heroControl,
+              { backgroundColor: theme.colors.glassSurfaceStrong },
+              pressed ? styles.pressed : null,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <AppText variant="subtitle" tone="inverse">
+              {'<'}
+            </AppText>
+          </Pressable>
+        ) : null}
+      </View>
+
+      <View style={styles.qrContainer}>
+        <View style={[styles.qrBox, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
+          <AppText variant="captionBold" tone="inverse">
+            QR
+          </AppText>
         </View>
       </View>
     </View>
   );
-};
+}
 
-// ─────────────────────────────────────────────────────────────
-// Main Component
-// ─────────────────────────────────────────────────────────────
+function ProfileAvatar({
+  displayName,
+  handleAvatarPress,
+  isOwner,
+  onEditAvatar,
+  pulseAnim,
+  showAvatarImage,
+  avatarUri,
+  avatarLoading,
+  onAvatarError,
+}: {
+  displayName: string;
+  handleAvatarPress?: () => void;
+  isOwner: boolean;
+  onEditAvatar?: () => void;
+  pulseAnim: Animated.Value;
+  showAvatarImage: boolean;
+  avatarUri?: string | null;
+  avatarLoading: boolean;
+  onAvatarError: () => void;
+}) {
+  const { theme } = useTheme();
+  const initials = displayName.trim().charAt(0).toUpperCase() || 'T';
+
+  return (
+    <Pressable
+      onPress={handleAvatarPress}
+      onLongPress={isOwner ? onEditAvatar : undefined}
+      delayLongPress={220}
+      disabled={!handleAvatarPress}
+      style={({ pressed }) => [
+        styles.avatarWrapper,
+        { borderColor: theme.colors.bg },
+        pressed ? styles.pressedScale : null,
+      ]}
+      accessibilityRole={handleAvatarPress ? 'button' : undefined}
+      accessibilityLabel={isOwner ? 'Edit profile photo' : 'View profile photo'}
+    >
+      <Animated.View style={[styles.flexFill, { opacity: avatarLoading ? pulseAnim : 1 }]}>
+        {showAvatarImage && avatarUri ? (
+          <StableImage
+            uri={avatarUri}
+            containerStyle={styles.avatarImage}
+            imageStyle={styles.avatarImage}
+            onError={onAvatarError}
+            fallback={<AvatarFallback initials={initials} />}
+          />
+        ) : (
+          <AvatarFallback initials={initials} />
+        )}
+      </Animated.View>
+
+      {isOwner ? (
+        <View style={[styles.avatarEditBadge, { backgroundColor: theme.colors.primary }]}>
+          <AppText variant="captionBold" tone="inverse">
+            Edit
+          </AppText>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+function ProfileIdentityRow({
+  displayName,
+  username,
+  location,
+  children,
+}: {
+  displayName: string;
+  username?: string | null;
+  location?: string | null;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.identityRow}>
+      {children}
+      <View style={styles.identityCopy}>
+        <AppText variant="title" numberOfLines={2}>
+          {displayName}
+        </AppText>
+        {username ? (
+          <AppText variant="captionBold" tone="muted" numberOfLines={1}>
+            @{username}
+          </AppText>
+        ) : null}
+        {location ? (
+          <View style={styles.locationRow}>
+            <AppText variant="captionBold" tone="muted">
+              Pin
+            </AppText>
+            <AppText variant="captionRegular" tone="muted" numberOfLines={2} style={styles.locationText}>
+              {location}
+            </AppText>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function ProfileActionRow({
+  isOwner,
+  isPatched,
+  patchLoading,
+  onPatch,
+  onMessage,
+  onEditProfile,
+  onShare,
+}: {
+  isOwner: boolean;
+  isPatched: boolean;
+  patchLoading: boolean;
+  onPatch?: () => void;
+  onMessage?: () => void;
+  onEditProfile?: () => void;
+  onShare?: () => void;
+}) {
+  const actions = useMemo<ProfileActionItem[]>(() => {
+    if (isOwner) {
+      const ownerActions: ProfileActionItem[] = [];
+      if (onEditProfile) {
+        ownerActions.push({ key: 'edit', title: 'Edit Profile', variant: 'primary', onPress: onEditProfile });
+      }
+      if (onShare) {
+        ownerActions.push({ key: 'share', title: 'Share', variant: 'outline', onPress: onShare });
+      }
+      return ownerActions;
+    }
+
+    const visitorActions: ProfileActionItem[] = [];
+    if (onPatch) {
+      visitorActions.push({
+        key: 'patch',
+        title: isPatched ? 'Patched' : 'Patch',
+        variant: isPatched ? 'outline' : 'primary',
+        onPress: onPatch,
+        loading: patchLoading,
+      });
+    }
+    if (onMessage) {
+      visitorActions.push({ key: 'message', title: 'Message', variant: 'secondary', onPress: onMessage });
+    }
+    if (onShare) {
+      visitorActions.push({ key: 'share', title: 'Share', variant: 'outline', onPress: onShare });
+    }
+    return visitorActions;
+  }, [isOwner, isPatched, onEditProfile, onMessage, onPatch, onShare, patchLoading]);
+
+  if (actions.length === 0) return null;
+
+  return (
+    <View style={styles.actionRow}>
+      {actions.map((action) => (
+        <View key={action.key} style={styles.actionSlot}>
+          <Button
+            title={action.title}
+            variant={action.variant}
+            size="md"
+            fullWidth
+            onPress={action.onPress}
+            loading={action.loading}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function ProfileTagRail({ tags }: { tags: string[] }) {
+  if (tags.length === 0) return null;
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.tagsScroll}
+      contentContainerStyle={styles.tagsContainer}
+    >
+      {tags.map((tag) => (
+        <Chip key={tag} label={`#${tag}`} selected={false} variant="profile" />
+      ))}
+    </ScrollView>
+  );
+}
+
+function ProfileAbout({
+  description,
+  descriptionExpanded,
+  isOwner,
+  onEditProfile,
+  onToggleDescription,
+}: {
+  description: string;
+  descriptionExpanded: boolean;
+  isOwner: boolean;
+  onEditProfile?: () => void;
+  onToggleDescription: () => void;
+}) {
+  const canToggle = description.length > PROFILE_LAYOUT.descriptionPreviewLength;
+
+  if (description) {
+    return (
+      <View style={styles.descriptionWrap}>
+        <AppText variant="bodyRegular" numberOfLines={!descriptionExpanded && canToggle ? 3 : undefined}>
+          {description}
+        </AppText>
+        {canToggle ? (
+          <Pressable onPress={onToggleDescription} accessibilityRole="button">
+            <AppText variant="captionBold" tone="primary">
+              {descriptionExpanded ? 'See less' : 'See more'}
+            </AppText>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
+
+  if (!isOwner) return null;
+
+  return (
+    <Pressable onPress={onEditProfile} style={styles.descriptionWrap} accessibilityRole="button">
+      <AppText variant="captionBold" tone="primary">
+        Add a description
+      </AppText>
+    </Pressable>
+  );
+}
 
 export const ProfileHeader = React.memo(function ProfileHeader({
   brandName,
@@ -137,286 +461,116 @@ export const ProfileHeader = React.memo(function ProfileHeader({
   onBack,
 }: ProfileHeaderProps) {
   const { width } = useWindowDimensions();
-  const { scheme, theme } = useTheme();
-  const isDark = scheme === 'dark';
+  const { theme } = useTheme();
   const [bannerFailed, setBannerFailed] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const resolvedAvatarUrl = useResolvedImageUri({ src: avatarUrl, fileId: avatarFileId });
   const resolvedBannerUrl = useResolvedImageUri({ src: bannerUrl, fileId: bannerFileId });
-  
-  // Actually on mobile the backend may return signed urls or we just use avatarUrl for now
-  // but adding this param matches the index shape.
-
-  // Subtle pulse animation for loading states
+  const displayName = brandName.trim() || 'Your Brand';
+  const trimmedDescription = (description ?? '').trim();
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (avatarLoading || bannerLoading) {
-      const animation = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 0.7,
-            duration: 800,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 800,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ])
-      );
-      animation.start();
-      return () => animation.stop();
-    }
+    setDescriptionExpanded(false);
+  }, [trimmedDescription]);
+
+  useEffect(() => {
+    if (!avatarLoading && !bannerLoading) return undefined;
+
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.7,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    animation.start();
+    return () => animation.stop();
   }, [avatarLoading, bannerLoading, pulseAnim]);
 
   if (isLoading) {
     return <ProfileHeaderSkeleton />;
   }
 
-  const displayName = brandName || 'Your Brand';
-  const initials = displayName.charAt(0).toUpperCase();
+  const bannerHeight = getBannerHeight(width);
   const handleAvatarPress = onViewAvatar ?? (isOwner ? onEditAvatar : undefined);
-  const trimmedDescription = (description ?? '').trim();
-
-  useEffect(() => {
-    setDescriptionExpanded(false);
-  }, [trimmedDescription]);
-
-  // Text colors that work on all themes
-  const brandNameColor = theme.colors.primary;
-  const showBannerImage = Boolean((resolvedBannerUrl ?? bannerUrl) && !bannerFailed);
-  const showAvatarImage = Boolean((resolvedAvatarUrl ?? avatarUrl) && !avatarFailed);
+  const bannerUri = resolvedBannerUrl ?? bannerUrl;
+  const avatarUri = resolvedAvatarUrl ?? avatarUrl;
+  const showBannerImage = Boolean(bannerUri && !bannerFailed);
+  const showAvatarImage = Boolean(avatarUri && !avatarFailed);
 
   return (
     <View style={styles.container}>
-      {/* Banner Section */}
-      <View style={styles.bannerContainer}>
-        {showBannerImage ? (
-          <Animated.View style={{ opacity: bannerLoading ? pulseAnim : 1, width: '100%', height: '100%' }}>
-            <StableImage
-              uri={resolvedBannerUrl ?? bannerUrl}
-              containerStyle={styles.bannerImage}
-              imageStyle={styles.bannerImage}
-              onError={() => setBannerFailed(true)}
-              fallback={<BannerFallback isOwner={isOwner} onEditBanner={onEditBanner} />}
-            />
-          </Animated.View>
-        ) : (
-          <BannerFallback isOwner={isOwner} onEditBanner={onEditBanner} />
-        )}
+      <ProfileHero
+        bannerHeight={bannerHeight}
+        bannerLoading={bannerLoading}
+        isOwner={isOwner}
+        onBack={onBack}
+        onEditBanner={onEditBanner}
+        pulseAnim={pulseAnim}
+        showBannerImage={showBannerImage}
+        bannerUri={bannerUri}
+        onBannerError={() => setBannerFailed(true)}
+      />
 
-        {/* Banner gradient overlay for text readability */}
-        <View style={styles.bannerOverlay} />
+      <View style={[styles.contentShell, styles.contentShellRaised, { backgroundColor: theme.colors.bg }]}>
+        <ProfileIdentityRow displayName={displayName} username={username} location={location}>
+          <ProfileAvatar
+            displayName={displayName}
+            handleAvatarPress={handleAvatarPress}
+            isOwner={isOwner}
+            onEditAvatar={onEditAvatar}
+            pulseAnim={pulseAnim}
+            showAvatarImage={showAvatarImage}
+            avatarUri={avatarUri}
+            avatarLoading={avatarLoading}
+            onAvatarError={() => setAvatarFailed(true)}
+          />
+        </ProfileIdentityRow>
 
-        {/* Top Left Navigation Area (Back Arrow & Edit Banner) */}
-        <View style={styles.topLeftNavContainer}>
-          {onBack && (
-            <Pressable
-              onPress={onBack}
-              style={({ pressed }) => [
-                styles.navButtonWrapper,
-                pressed && { opacity: 0.8 },
-              ]}
-              accessibilityLabel="Go back"
-            >
-              <View style={styles.navBlurButton}>
-                <AppText style={styles.backButtonEmoji}>←</AppText>
-              </View>
-            </Pressable>
-          )}
+        <ProfileActionRow
+          isOwner={isOwner}
+          isPatched={isPatched}
+          patchLoading={patchLoading}
+          onPatch={onPatch}
+          onMessage={onMessage}
+          onEditProfile={onEditProfile}
+          onShare={onShare}
+        />
 
+        <ProfileTagRail tags={tags} />
 
-        </View>
-
-        {/* QR Code - Top Right */}
-        <View style={styles.qrContainer}>
-          <View style={styles.qrBox}>
-            <AppText style={styles.qrEmoji}>▦</AppText>
-          </View>
-        </View>
-      </View>
-
-      {/* Profile Content - Overlapping Banner */}
-      <View style={[styles.overlayContainer, { backgroundColor: theme.colors.bg }]}>
-        {/* Main Row: Avatar + Info + Actions (all on same row) */}
-        <View style={styles.mainRow}>
-          {/* Avatar - Overlapping Banner */}
-          <Pressable
-            onPress={handleAvatarPress}
-            onLongPress={isOwner ? onEditAvatar : undefined}
-            delayLongPress={220}
-            style={({ pressed }) => [
-              styles.avatarWrapper,
-              { borderColor: theme.colors.bg },
-              pressed && isOwner && { transform: [{ scale: 0.98 }] },
-            ]}
-          >
-            <Animated.View style={{ opacity: avatarLoading ? pulseAnim : 1 }}>
-              {showAvatarImage ? (
-                <StableImage
-                  uri={resolvedAvatarUrl ?? avatarUrl}
-                  containerStyle={styles.avatarImage}
-                  imageStyle={styles.avatarImage}
-                  onError={() => setAvatarFailed(true)}
-                  fallback={<AvatarFallback initials={initials} />}
-                />
-              ) : (
-                <AvatarFallback initials={initials} />
-              )}
-            </Animated.View>
-            
-            {/* Edit avatar badge (owner only) */}
-            {isOwner && (
-              <View style={styles.avatarEditBadge}>
-                <LinearGradient colors={['#9333EA', '#7e22ce']} style={styles.avatarEditGradient}>
-                  <AppText style={styles.avatarEditEmoji}>✏️</AppText>
-                </LinearGradient>
-              </View>
-            )}
-          </Pressable>
-
-          {/* Info - Beside Avatar */}
-          <View style={styles.infoSection}>
-            {/* Brand Name - Bold and visible */}
-            <AppText variant="subtitle" style={styles.brandName} tone="primary" numberOfLines={1}>
-              {displayName}
-            </AppText>
-            
-            {/* Username */}
-            {username && (
-              <AppText variant="captionBold" style={styles.username} tone="muted" numberOfLines={1}>
-                @{username}
-              </AppText>
-            )}
-
-            {/* Location */}
-            {location && (
-              <View style={styles.locationRow}>
-                <AppText variant="caption" style={styles.locationEmoji}>📍</AppText>
-                <AppText variant="small" style={styles.location} tone="muted" numberOfLines={2}>
-                  {location}
-                </AppText>
-              </View>
-            )}
-          </View>
-
-          {/* Action Buttons - At far right, vertically stacked */}
-          <View style={styles.actionsColumn}>
-            {/* Edit & Share buttons row */}
-            <View style={styles.smallButtonsRow}>
-              {isOwner && (
-                <Button title="Edit Profile" variant="outline" size="sm" onPress={onEditProfile} />
-              )}
-              <Button title="Share" variant="outline" size="sm" onPress={onShare} />
-            </View>
-
-            {/* ---------- VISITOR ACTIONS ---------- */}
-            {!isOwner && (onPatch || onMessage) && (
-              <View style={[styles.smallButtonsRow, { marginTop: 8 }]}>
-                {onPatch && (
-                  <Pressable
-                    onPress={onPatch}
-                    disabled={patchLoading}
-                    style={({ pressed }) => [
-                      styles.sleekPatchBtn,
-                      isPatched
-                        ? { backgroundColor: brandNameColor, shadowColor: brandNameColor }
-                        : { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
-                      !isPatched && !isDark && { shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
-                      isPatched && { shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
-                      pressed && { transform: [{ scale: 0.96 }] },
-                      patchLoading && { opacity: 0.6 },
-                    ]}
-                    accessibilityLabel={isPatched ? 'Unpatch brand' : 'Patch brand'}
-                  >
-                    {patchLoading ? (
-                      <AppText variant="captionBold" style={styles.sleekPatchBtnText} tone={isPatched ? 'inverse' : 'primary'}>...</AppText>
-                    ) : (
-                      <AppText
-                        variant="captionBold"
-                        style={styles.sleekPatchBtnText}
-                        tone={isPatched ? 'inverse' : 'default'}
-                      >
-                        {isPatched ? '🪡 Patched' : '🪡 Patch'}
-                      </AppText>
-                    )}
-                  </Pressable>
-                )}
-
-                {onMessage && (
-                  <Pressable
-                    onPress={onMessage}
-                    style={({ pressed }) => [
-                      styles.sleekMessageBtn,
-                      { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
-                      pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
-                    ]}
-                    accessibilityLabel="Message brand"
-                  >
-                    <AppText style={styles.sleekMessageEmoji}>💬</AppText>
-                  </Pressable>
-                )}
-              </View>
-            )}
-          </View>
-        </View>
-
-        {/* Tags - Below the main row */}
-        {tags.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.tagsScroll}
-            contentContainerStyle={styles.tagsContainer}
-          >
-            {tags.map((tag) => (
-              <Chip key={tag} label={`#${tag}`} selected={false} />
-            ))}
-          </ScrollView>
-        )}
-        {trimmedDescription ? (
-          <View style={styles.descriptionWrap}>
-            <AppText
-              variant="bodyBold"
-              numberOfLines={descriptionExpanded ? undefined : 3}
-            >
-              {trimmedDescription}
-            </AppText>
-            <Pressable onPress={() => setDescriptionExpanded((value) => !value)}>
-              <AppText variant="smallBold" tone="primary">
-                {descriptionExpanded ? 'see less' : 'see more'}
-              </AppText>
-            </Pressable>
-          </View>
-        ) : isOwner ? (
-          <Pressable onPress={onEditProfile} style={styles.descriptionWrap}>
-            <AppText variant="smallBold" tone="primary">
-              Add a description
-            </AppText>
-          </Pressable>
-        ) : null}
+        <ProfileAbout
+          description={trimmedDescription}
+          descriptionExpanded={descriptionExpanded}
+          isOwner={isOwner}
+          onEditProfile={onEditProfile}
+          onToggleDescription={() => setDescriptionExpanded((value) => !value)}
+        />
       </View>
     </View>
   );
 });
 
-// ─────────────────────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   container: {
     width: '100%',
   },
-
-  // Banner
+  flexFill: {
+    flex: 1,
+  },
   bannerContainer: {
-    height: 180,
     width: '100%',
     position: 'relative',
     overflow: 'hidden',
@@ -425,264 +579,132 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  bannerPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
   bannerFallback: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bannerFallbackButton: {
-    minHeight: 36,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 16,
+    minHeight: tokens.button.sm.height,
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  bannerCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#273244',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  bannerPlaceholderTitle: {
-    color: '#F8FAFC',
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  bannerPlaceholderSub: {
-    color: '#CBD5E1',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  bannerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    pointerEvents: 'none',
-    backgroundColor: 'transparent',
   },
   topLeftNavContainer: {
     position: 'absolute',
-    top: 12,
-    left: 12,
-    flexDirection: 'row',
-    gap: 8,
+    top: tokens.spacing.md,
+    left: tokens.spacing.md,
   },
-  navButtonWrapper: {
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  navBlurButton: {
-    flexDirection: 'row',
+  heroControl: {
+    width: PROFILE_LAYOUT.heroControlSize,
+    height: PROFILE_LAYOUT.heroControlSize,
+    borderRadius: tokens.radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
-    height: 44,
-    minWidth: 44,
-    borderRadius: 20,
-  },
-  backButtonEmoji: {
-    fontSize: 16,
-    color: '#F8FAFC',
-    fontWeight: '800',
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
-  },
-  editBannerText: {
-    color: '#1f2937',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    overflow: 'hidden',
   },
   qrContainer: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: tokens.spacing.md,
+    right: tokens.spacing.md,
   },
   qrBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 8,
+    width: PROFILE_LAYOUT.qrSize,
+    height: PROFILE_LAYOUT.qrSize,
+    borderRadius: tokens.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  qrEmoji: {
-    fontSize: 30,
-    lineHeight: 34,
-    color: '#F8FAFC',
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
-  },
-
-  // Overlay section - overlaps banner
-  overlayContainer: {
-    marginTop: -32,
-    paddingHorizontal: 12,
-    paddingBottom: 10,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-
-  // Main row: avatar, info, actions all horizontal
-  mainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-
-  // Avatar - overlaps banner
-  avatarWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: 14,
-    borderWidth: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 10,
     overflow: 'hidden',
-    marginTop: -16,
+  },
+  contentShell: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingBottom: tokens.spacing.lg,
+    gap: tokens.spacing.md,
+    borderTopLeftRadius: tokens.radius.xl,
+    borderTopRightRadius: tokens.radius.xl,
+  },
+  contentShellRaised: {
+    marginTop: -PROFILE_LAYOUT.overlayLift,
+  },
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: tokens.spacing.md,
+  },
+  avatarWrapper: {
+    width: PROFILE_LAYOUT.avatarSize,
+    height: PROFILE_LAYOUT.avatarSize,
+    borderRadius: PROFILE_LAYOUT.avatarOuterRadius,
+    borderWidth: PROFILE_LAYOUT.avatarBorderWidth,
+    overflow: 'hidden',
+    ...tokens.elevation.md,
   },
   avatarImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 11,
+    borderRadius: PROFILE_LAYOUT.avatarInnerRadius,
   },
   avatarFallback: {
     width: '100%',
     height: '100%',
+    borderRadius: PROFILE_LAYOUT.avatarInnerRadius,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 11,
-  },
-  avatarInitials: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '700',
   },
   avatarEditBadge: {
     position: 'absolute',
-    bottom: -2,
-    right: -2,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  avatarEditGradient: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    right: tokens.spacing.xs,
+    bottom: tokens.spacing.xs,
+    minWidth: PROFILE_LAYOUT.editBadgeSize,
+    height: PROFILE_LAYOUT.editBadgeSize,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarEditEmoji: {
-    fontSize: 12,
-  },
-
-  // Info section - beside avatar, takes remaining space
-  infoSection: {
+  identityCopy: {
     flex: 1,
-    paddingTop: 0,
-    gap: 2,
     minWidth: 0,
-  },
-  brandName: {
-    fontStyle: 'italic',
-  },
-  username: {
-    fontStyle: 'italic',
+    gap: tokens.spacing.xs,
+    paddingBottom: tokens.spacing.xs,
   },
   locationRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
+    alignItems: 'flex-start',
+    gap: tokens.spacing.xs,
   },
-  location: {
+  locationText: {
     flex: 1,
+    minWidth: 0,
   },
-  locationEmoji: {
-    paddingTop: 1,
-  },
-  storeEmoji: {
-    fontSize: 12,
-  },
-  storeButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  smallButtonsRow: {
+  actionRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: tokens.spacing.sm,
   },
-  actionsColumn: {
-    alignItems: 'flex-end',
-    justifyContent: 'flex-start',
-    paddingTop: 0,
-    maxWidth: 168,
+  actionSlot: {
+    flex: 1,
+    minWidth: 0,
   },
-  emojiButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonEmoji: {
-    fontSize: 14,
-  },
-  
-  // Sleek Visitor Actions
-  sleekPatchBtn: {
-    height: 44,
-    paddingHorizontal: 16,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderCurve: 'continuous',
-    borderWidth: 1,
-  },
-  sleekPatchBtnText: {
-    letterSpacing: 0.3,
-  },
-  sleekMessageBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderCurve: 'continuous',
-    borderWidth: 1,
-  },
-  sleekMessageEmoji: {
-    fontSize: 15,
-  },
-
-  // Tags
   tagsScroll: {
-    marginTop: 10,
+    marginHorizontal: -tokens.spacing.lg,
   },
   tagsContainer: {
     flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 4,
-    paddingBottom: 4,
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.xs,
   },
   descriptionWrap: {
-    paddingHorizontal: 4,
-    paddingTop: 6,
-    gap: 4,
+    gap: tokens.spacing.xs,
+  },
+  pressed: {
+    opacity: 0.82,
+  },
+  pressedScale: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
   },
 });
 

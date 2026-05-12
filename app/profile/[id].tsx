@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { ProfileHeader } from '@/components/catalog/ProfileHeader';
@@ -15,6 +15,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { resolveIdentity } from '@/src/utils/identity';
 import { tokens } from '@/src/styles/tokens';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 
 function formatJoinLabel(value?: string | null): string | null {
   if (!value) return null;
@@ -75,7 +76,7 @@ export default function PublicProfileScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const { theme, scheme } = useTheme();
   const toast = useToast();
-  const insets = useSafeAreaInsets();
+  const { standardScreenBottomPadding } = useScreenChrome();
 
   const profileId = Array.isArray(params.id) ? params.id[0] : params.id;
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -170,7 +171,7 @@ export default function PublicProfileScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={theme.colors.primary} />}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing.lg }]}
+        contentContainerStyle={[styles.content, { paddingBottom: standardScreenBottomPadding }]}
       >
         <ProfileHeader
           brandName={displayName}
@@ -242,11 +243,11 @@ const styles = StyleSheet.create({
   },
   summaryCell: {
     flex: 1,
-    gap: 4,
+    gap: tokens.spacing.xs,
   },
   sectionHeader: {
     paddingHorizontal: tokens.spacing.lg,
-    gap: 2,
+    gap: tokens.spacing.xs,
   },
   patchList: {
     paddingHorizontal: tokens.spacing.lg,

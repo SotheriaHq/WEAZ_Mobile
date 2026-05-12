@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Animated, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -235,7 +234,7 @@ export const CollectionCard = React.memo(function CollectionCard({
             </View>
           </View>
 
-          <AppText variant="title" numberOfLines={2}>
+          <AppText variant="bodyBold" numberOfLines={2}>
             {displayTitle}
           </AppText>
           <AppText variant="caption" tone="muted">
@@ -265,18 +264,16 @@ export const CollectionCard = React.memo(function CollectionCard({
 });
 
 function ImageFallback({ title }: { title: string }) {
-  const { scheme } = useTheme();
-  const isDark = scheme === 'dark';
+  const { theme } = useTheme();
   return (
-    <LinearGradient
-      colors={isDark ? ['#1e1e24', '#111'] : ['#f3f4f6', '#e5e7eb']}
-      style={styles.imageFallback}
+    <View
+      style={[styles.imageFallback, { backgroundColor: theme.colors.surfaceAlt }]}
     >
-      <AppText variant="h1" style={styles.imageFallbackEmoji}>🖼️</AppText>
+      <AppText variant="subtitle" style={styles.imageFallbackEmoji}>Image</AppText>
       <AppText variant="caption" tone="muted" numberOfLines={1}>
         {title.trim() ? 'Image unavailable' : 'No image'}
       </AppText>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -304,7 +301,7 @@ function RailButton({ emoji, label, onPress }: { emoji: string; label?: string; 
         tint={scheme === 'dark' ? 'dark' : 'light'}
         style={StyleSheet.absoluteFillObject}
       />
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+      <View style={styles.railContent}>
         <AppText variant="caption">{emoji}</AppText>
         {label ? (
           <AppText variant="caption" tone="muted">
@@ -371,6 +368,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.xs,
     overflow: 'hidden',
+  },
+  railContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
   },
   menuButton: {
     position: 'absolute',

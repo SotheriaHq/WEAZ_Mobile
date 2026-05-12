@@ -15,6 +15,7 @@ import {
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { CollectionCard, CollectionCardSkeleton } from './CollectionCard';
 import type { CollectionDto } from '@/src/api/BrandApi';
+import { tokens } from '@/src/styles/tokens';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -37,6 +38,13 @@ interface CollectionsGridProps {
   emptyComponent?: React.ReactNode;
   numColumns?: number;
 }
+
+const GRID_LAYOUT = {
+  screenPadding: tokens.spacing.lg,
+  columnGap: tokens.spacing.md,
+  rowGap: tokens.spacing.md,
+  verticalPadding: tokens.spacing.lg,
+};
 
 // ─────────────────────────────────────────────────────────────
 // Main Component
@@ -62,17 +70,21 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   const { width: screenWidth } = useWindowDimensions();
   const { theme } = useTheme();
   
-  const cardWidth = useMemo(
-    () => (screenWidth - 16 * 2 - 12 * (numColumns - 1)) / numColumns,
-    [numColumns, screenWidth],
-  );
+  const screenPadding = GRID_LAYOUT.screenPadding;
+  const columnGap = GRID_LAYOUT.columnGap;
+  const rowGap = GRID_LAYOUT.rowGap;
+  const cardWidth = useMemo(() => {
+    const totalColumnGap = columnGap * Math.max(0, numColumns - 1);
+    const availableWidth = screenWidth - screenPadding * 2 - totalColumnGap;
+    return availableWidth / numColumns;
+  }, [columnGap, numColumns, screenPadding, screenWidth]);
 
   const renderItem = useCallback(
     ({ item, index }: { item: CollectionDto; index: number }) => {
       const isDraft = item.status === 'DRAFT' || showDrafts;
 
       return (
-        <View style={[styles.cardWrapper, { marginLeft: index % numColumns === 0 ? 0 : 12 }]}>
+        <View style={[styles.cardWrapper, { width: cardWidth }]}>
           <CollectionCard
             collection={item}
             cardWidth={cardWidth}
@@ -88,7 +100,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
         </View>
       );
     },
-    [cardWidth, isOwner, numColumns, onCollectionPress, onComment, onDelete, onEdit, onLike, onShare, showDrafts],
+    [cardWidth, isOwner, onCollectionPress, onComment, onDelete, onEdit, onLike, onShare, showDrafts],
   );
 
   const keyExtractor = useCallback((item: CollectionDto) => item.id, []);
@@ -96,7 +108,16 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   // Loading skeleton
   if (isLoading && collections.length === 0) {
     return (
-      <View style={styles.skeletonGrid}>
+      <View
+        style={[
+          styles.skeletonGrid,
+          {
+            paddingHorizontal: screenPadding,
+            paddingVertical: GRID_LAYOUT.verticalPadding,
+            gap: columnGap,
+          },
+        ]}
+      >
         {Array.from({ length: 4 }).map((_, i) => (
           <CollectionCardSkeleton key={i} width={cardWidth} />
         ))}
@@ -116,8 +137,14 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
       keyExtractor={keyExtractor}
       numColumns={numColumns}
       scrollEnabled={false}
-      contentContainerStyle={styles.grid}
-      columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
+      contentContainerStyle={[
+        styles.grid,
+        {
+          paddingHorizontal: screenPadding,
+          paddingVertical: GRID_LAYOUT.verticalPadding,
+        },
+      ]}
+      columnWrapperStyle={numColumns > 1 ? [styles.row, { gap: columnGap, marginBottom: rowGap }] : undefined}
       showsVerticalScrollIndicator={false}
       onEndReached={onEndReached}
       onEndReachedThreshold={0.5}
@@ -140,20 +167,14 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
 
 const styles = StyleSheet.create({
   grid: {
-    padding: 16,
-    paddingBottom: 100,
   },
   row: {
-    marginBottom: 12,
   },
   cardWrapper: {
-    flex: 1,
   },
   skeletonGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: 16,
-    gap: 12,
   },
 });
 
