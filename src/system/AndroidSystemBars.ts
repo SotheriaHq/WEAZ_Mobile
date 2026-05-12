@@ -13,19 +13,19 @@ export function getAndroidNavigationButtonStyle(scheme: ResolvedTheme) {
 export async function applyAndroidSystemBarsPolicy(scheme: ResolvedTheme, reason: string) {
   if (Platform.OS !== 'android') return;
 
+  // With edge-to-edge enabled, most NavigationBar API calls are not supported.
+  // The expo-navigation-bar plugin in app.json handles static configuration.
+  // However, setButtonStyleAsync might still work for dynamic theming.
+
   try {
-    // Sequential calls - position must be set before colors
-    await NavigationBar.setVisibilityAsync('visible');
-    await NavigationBar.setPositionAsync('absolute');
-    await NavigationBar.setBehaviorAsync('overlay-swipe');
-    await NavigationBar.setBackgroundColorAsync(TRANSPARENT);
-    await NavigationBar.setBorderColorAsync(TRANSPARENT);
     await NavigationBar.setButtonStyleAsync(getAndroidNavigationButtonStyle(scheme));
   } catch (error) {
-    console.warn('[system-ui]', {
-      event: 'android-system-bars-policy-failure',
+    // If this fails, the plugin's static barStyle will be used
+    console.log('[system-ui]', {
+      event: 'android-navigation-bar-button-style-fallback',
       reason,
-      error,
+      scheme,
+      error: error.message,
     });
   }
 }
