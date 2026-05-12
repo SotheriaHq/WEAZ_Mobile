@@ -504,7 +504,9 @@ export default function InboxScreen() {
             data={filteredConversations}
             keyExtractor={keyExtractor}
             renderItem={renderConversation}
-            contentContainerStyle={[styles.listContent, { paddingBottom: bottomPadding }]}
+            contentInset={{ bottom: bottomPadding }}
+            scrollIndicatorInsets={{ bottom: bottomPadding }}
+            contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primary} />

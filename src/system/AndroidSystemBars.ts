@@ -10,27 +10,24 @@ export function getAndroidNavigationButtonStyle(scheme: ResolvedTheme) {
   return scheme === 'dark' ? 'light' : 'dark';
 }
 
-export function applyAndroidSystemBarsPolicy(scheme: ResolvedTheme, reason: string) {
+export async function applyAndroidSystemBarsPolicy(scheme: ResolvedTheme, reason: string) {
   if (Platform.OS !== 'android') return;
 
-  void Promise.allSettled([
-    NavigationBar.setVisibilityAsync('visible'),
-    NavigationBar.setPositionAsync('absolute'),
-    NavigationBar.setBehaviorAsync('overlay-swipe'),
-    NavigationBar.setBackgroundColorAsync(TRANSPARENT),
-    NavigationBar.setBorderColorAsync(TRANSPARENT),
-    NavigationBar.setButtonStyleAsync(getAndroidNavigationButtonStyle(scheme)),
-  ]).then((results) => {
-    if (!__DEV__) return;
-    const rejected = results.find((result) => result.status === 'rejected');
-    if (rejected) {
-      console.warn('[system-ui]', {
-        event: 'android-system-bars-policy-partial-failure',
-        reason,
-        error: rejected.reason,
-      });
-    }
-  });
+  try {
+    // Sequential calls - position must be set before colors
+    await NavigationBar.setVisibilityAsync('visible');
+    await NavigationBar.setPositionAsync('absolute');
+    await NavigationBar.setBehaviorAsync('overlay-swipe');
+    await NavigationBar.setBackgroundColorAsync(TRANSPARENT);
+    await NavigationBar.setBorderColorAsync(TRANSPARENT);
+    await NavigationBar.setButtonStyleAsync(getAndroidNavigationButtonStyle(scheme));
+  } catch (error) {
+    console.warn('[system-ui]', {
+      event: 'android-system-bars-policy-failure',
+      reason,
+      error,
+    });
+  }
 }
 
 export function getInitialAndroidSystemScheme(): ResolvedTheme {
@@ -39,7 +36,7 @@ export function getInitialAndroidSystemScheme(): ResolvedTheme {
 
 export function useAndroidSystemBars(scheme: ResolvedTheme, reasonKey: string) {
   useEffect(() => {
-    applyAndroidSystemBarsPolicy(scheme, `effect:${reasonKey}`);
+    void applyAndroidSystemBarsPolicy(scheme, `effect:${reasonKey}`);
   }, [reasonKey, scheme]);
 
   useEffect(() => {
@@ -47,7 +44,7 @@ export function useAndroidSystemBars(scheme: ResolvedTheme, reasonKey: string) {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        applyAndroidSystemBarsPolicy(scheme, `app-state-active:${reasonKey}`);
+        void applyAndroidSystemBarsPolicy(scheme, `app-state-active:${reasonKey}`);
       }
     });
 

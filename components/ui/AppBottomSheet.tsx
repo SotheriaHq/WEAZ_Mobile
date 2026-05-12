@@ -64,11 +64,11 @@ export function AppBottomSheet({
 
   useEffect(() => {
     if (visible) {
-      applyAndroidSystemBarsPolicy(scheme, 'bottom-sheet-open');
+      void applyAndroidSystemBarsPolicy(scheme, 'bottom-sheet-open');
       translateY.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
       opacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
     } else {
-      applyAndroidSystemBarsPolicy(scheme, 'bottom-sheet-closed');
+      void applyAndroidSystemBarsPolicy(scheme, 'bottom-sheet-closed');
       translateY.value = 28;
       opacity.value = 0;
     }

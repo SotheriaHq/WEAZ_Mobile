@@ -707,7 +707,9 @@ export default function BuyerProfileScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: standardScreenBottomPadding }]}
+        contentInset={{ bottom: standardScreenBottomPadding }}
+        scrollIndicatorInsets={{ bottom: standardScreenBottomPadding }}
+        contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primary} />}
       >
         <View style={styles.headerActionsRow}>

@@ -488,7 +488,9 @@ export function MarketScreen() {
           )
         }
         ItemSeparatorComponent={() => <View style={styles.rowSpacer} />}
-        contentContainerStyle={[styles.content, { paddingBottom: bottomClearance }]}
+        contentInset={{ bottom: bottomClearance }}
+        scrollIndicatorInsets={{ bottom: bottomClearance }}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         onEndReached={() => {

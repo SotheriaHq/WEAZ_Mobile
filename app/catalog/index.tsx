@@ -536,7 +536,7 @@ export default function CatalogScreen() {
         style={styles.scrollView}
         contentInset={{ bottom: overlayScrollPadding }}
         scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: overlayScrollPadding }]}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         onLayout={(e: LayoutChangeEvent) => setContainerWidth(e.nativeEvent.layout.width)}
         refreshControl={
