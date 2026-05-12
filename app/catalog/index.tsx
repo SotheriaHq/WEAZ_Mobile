@@ -7,11 +7,11 @@
 
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { BackHandler, LayoutChangeEvent, Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import Reanimated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
+import { useSharedValue } from 'react-native-reanimated';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
@@ -35,7 +35,6 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
 import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
-import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 import { BrandSwitcherSheet } from '@/components/brand/BrandSwitcherSheet';
 import {
   pickDesignEditorMediaAssets,
@@ -44,6 +43,7 @@ import {
 } from '@/src/features/design-editor/designEditorMediaFlow';
 import { tokens } from '@/src/styles/tokens';
 import { catalogDevLog } from '@/src/features/feed/utils/feedDiagnostics';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -127,7 +127,7 @@ export default function CatalogScreen() {
     productId?: string | string[];
   }>();
   const { theme, scheme } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { standardScreenBottomPadding } = useScreenChrome();
   const { user } = useAuth();
   const { status, userId, userEmailVerified, updateUser } = useAuthSession();
   const toast = useToast();
@@ -171,7 +171,6 @@ export default function CatalogScreen() {
     width: number;
     height: number;
   } | null>(null);
-  const horizontalScrollRef = useRef<ScrollView>(null);
   const createMenuAnchorRef = useRef<View>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
 
@@ -248,6 +247,7 @@ export default function CatalogScreen() {
       } else {
         const { items } = await brandApi.getCollections({
           brandId: targetBrandId,
+          scope: 'all',
           visibility,
           status: statusFilter,
         });
@@ -255,7 +255,7 @@ export default function CatalogScreen() {
           tab: visibilityFilter,
           brandId: targetBrandId,
           ownerId: userId,
-          endpoint: `/designs/user/${targetBrandId}`,
+          endpoint: `/collections/user/${targetBrandId}`,
           itemCount: items.length,
           status: statusFilter,
           visibility: visibility ?? null,
@@ -336,32 +336,10 @@ export default function CatalogScreen() {
 
   useEffect(() => {
     const idx = TAB_ORDER.indexOf(activeTab);
-    if (idx >= 0 && containerWidth <= 0) {
+    if (idx >= 0) {
       tabSwipeProgress.value = idx;
     }
-    if (idx >= 0 && horizontalScrollRef.current && containerWidth > 0) {
-      horizontalScrollRef.current.scrollTo({ x: idx * containerWidth, animated: true });
-    }
-  }, [activeTab, containerWidth, tabSwipeProgress]);
-
-  const handleHorizontalScroll = useAnimatedScrollHandler(
-    {
-      onScroll: (event) => {
-        if (containerWidth <= 0) return;
-        tabSwipeProgress.value = event.contentOffset.x / containerWidth;
-      },
-    },
-    [containerWidth],
-  );
-
-  const handleHorizontalScrollEnd = useCallback((e: any) => {
-    if (containerWidth <= 0) return;
-    const offsetX = e.nativeEvent.contentOffset.x;
-    const idx = Math.round(offsetX / containerWidth);
-    if (TAB_ORDER[idx] && TAB_ORDER[idx] !== activeTab) {
-      setActiveTab(TAB_ORDER[idx]);
-    }
-  }, [containerWidth, activeTab]);
+  }, [activeTab, tabSwipeProgress]);
 
   // Refresh
   const handleRefresh = async () => {
@@ -459,10 +437,7 @@ export default function CatalogScreen() {
 
   const currentCollections = visibilityFilter === 'Drafts' ? drafts : collections;
   const showInitialSkeleton = isLoading && !profile && collections.length === 0 && drafts.length === 0;
-  const overlayScrollPadding = useMemo(
-    () => NATIVE_ISLAND_NAV.contentClearance + insets.bottom,
-    [insets.bottom],
-  );
+  const overlayScrollPadding = standardScreenBottomPadding;
 
   // Tab configuration
   const tabs = [
@@ -546,7 +521,7 @@ export default function CatalogScreen() {
 
   if (showInitialSkeleton) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
         <CatalogLoadingSkeleton />
       </SafeAreaView>
@@ -554,7 +529,7 @@ export default function CatalogScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
       <ScrollView
@@ -635,66 +610,55 @@ export default function CatalogScreen() {
 
 
 
-        {/* Tab Content inside Horizontal ScrollView */}
-        <Reanimated.ScrollView
-          ref={horizontalScrollRef as any}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={handleHorizontalScroll}
-          onMomentumScrollEnd={handleHorizontalScrollEnd}
-          onScrollEndDrag={handleHorizontalScrollEnd}
-          scrollEventThrottle={16}
-        >
-          {/* Collections Tab */}
-          <View style={{ width: containerWidth || '100%' }}>
-            <View style={styles.catalogControls}>
-              <VisibilityFilter
-                selected={visibilityFilter}
-                onChange={setVisibilityFilter}
-                showDrafts={isOwner}
-                draftsCount={drafts.length}
-              />
-
-              {isOwner && (
-                <View ref={createMenuAnchorRef} onLayout={handleCreateAnchorLayout} collapsable={false}>
-                  <Pressable
-                    onPress={handleCreatePress}
-                    style={({ pressed }) => [
-                      styles.addButton,
-                      pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
-                    ]}
-                    accessibilityLabel="Create menu"
-                  >
-                    <View style={[styles.addButtonSolid, { backgroundColor: theme.colors.primary }]}>
-                      <AppText variant="subtitle" tone="inverse">+</AppText>
-                    </View>
-                  </Pressable>
-                </View>
-              )}
-            </View>
-
-            {/* Collections Grid */}
-              <CollectionsGrid
-              collections={currentCollections}
-              isLoading={false}
-              isOwner={isOwner}
-              showDrafts={visibilityFilter === 'Drafts'}
-              onCollectionPress={handleCollectionPress}
-              onEdit={handleEditCollection}
-              onDelete={handleDeleteCollection}
-              emptyComponent={
-                <EmptyCollections
-                  isOwner={isOwner}
-                  onAdd={handleCreatePress}
+        <View style={styles.tabPane}>
+          {activeTab === 'Collections' ? (
+            <>
+              <View style={styles.catalogControls}>
+                <VisibilityFilter
+                  selected={visibilityFilter}
+                  onChange={setVisibilityFilter}
+                  showDrafts={isOwner}
+                  draftsCount={drafts.length}
                 />
-              }
-            />
-          </View>
 
-          {/* Shop Tab */}
-          <View style={{ width: containerWidth || '100%' }}>
-            {containerWidth > 0 && targetBrandId ? (
+                {isOwner && (
+                  <View ref={createMenuAnchorRef} onLayout={handleCreateAnchorLayout} collapsable={false}>
+                    <Pressable
+                      onPress={handleCreatePress}
+                      style={({ pressed }) => [
+                        styles.addButton,
+                        pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
+                      ]}
+                      accessibilityLabel="Create menu"
+                    >
+                      <View style={[styles.addButtonSolid, { backgroundColor: theme.colors.primary }]}>
+                        <AppText variant="subtitle" tone="inverse">+</AppText>
+                      </View>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+
+              <CollectionsGrid
+                collections={currentCollections}
+                isLoading={false}
+                isOwner={isOwner}
+                showDrafts={visibilityFilter === 'Drafts'}
+                onCollectionPress={handleCollectionPress}
+                onEdit={handleEditCollection}
+                onDelete={handleDeleteCollection}
+                emptyComponent={
+                  <EmptyCollections
+                    isOwner={isOwner}
+                    onAdd={handleCreatePress}
+                  />
+                }
+              />
+            </>
+          ) : null}
+
+          {activeTab === 'Shop' ? (
+            containerWidth > 0 && targetBrandId ? (
               <BrandShopTab
                 brandId={targetBrandId}
                 isOwner={isOwner}
@@ -703,14 +667,17 @@ export default function CatalogScreen() {
               />
             ) : (
               <View style={styles.tabContent} />
-            )}
-          </View>
+            )
+          ) : null}
 
-          {/* Reviews Tab */}
-          <View style={{ width: containerWidth || '100%' }}>
-            {targetBrandId ? <BrandReviewsTab brandId={targetBrandId} /> : <View style={styles.tabContent} />}
-          </View>
-        </Reanimated.ScrollView>
+          {activeTab === 'Reviews' ? (
+            targetBrandId ? (
+              <BrandReviewsTab brandId={targetBrandId} />
+            ) : (
+              <View style={styles.tabContent} />
+            )
+          ) : null}
+        </View>
       </ScrollView>
 
       <MobileProfileImageModal
@@ -861,6 +828,10 @@ const styles = StyleSheet.create({
   },
 
   // Tab content
+  tabPane: {
+    width: '100%',
+    minHeight: 300,
+  },
   tabContent: {
     flex: 1,
     minHeight: 300,

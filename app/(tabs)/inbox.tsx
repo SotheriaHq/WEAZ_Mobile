@@ -9,7 +9,7 @@ import {
   type ListRenderItemInfo,
 } from 'react-native';
 import { router } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { AppText } from '@/components/ui/AppText';
@@ -18,13 +18,13 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { Tabs } from '@/components/catalog/Tabs';
-import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 import { MessagingApi } from '@/src/api/MessagingApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import type { ConversationListResponse, ConversationSummary } from '@/src/types/messaging';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 
 type FilterKey = 'all' | 'unread' | 'orders';
 type InboxCursor = ConversationListResponse['endCursor'];
@@ -267,7 +267,7 @@ function MessagesSkeleton() {
 
 export default function InboxScreen() {
   const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { standardScreenBottomPadding } = useScreenChrome();
   const { status, user } = useAuth();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
@@ -433,7 +433,7 @@ export default function InboxScreen() {
 
   const isSearching = searchQuery.trim().length > 0;
   const hasLoadedConversations = conversations.length > 0;
-  const bottomPadding = insets.bottom + NATIVE_ISLAND_NAV.height + tokens.spacing['3xl'];
+  const bottomPadding = standardScreenBottomPadding;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>

@@ -32,6 +32,7 @@ import {
   getInitialAndroidSystemScheme,
   useAndroidSystemBars,
 } from '@/src/system/AndroidSystemBars';
+import { ScreenChromeProvider } from '@/src/system/ScreenChrome';
 
 
 export {
@@ -292,7 +293,9 @@ function RootLayoutNav({
           <ThemeBackendSync />
           <BagCountProvider>
             <BagFlowProvider>
-              <RootBootstrap fontsLoaded={fontsLoaded} />
+              <ScreenChromeProvider>
+                <RootBootstrap fontsLoaded={fontsLoaded} />
+              </ScreenChromeProvider>
             </BagFlowProvider>
           </BagCountProvider>
         </AuthProvider>

@@ -1,13 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 
 import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
 import { AppText } from '@/components/ui/AppText';
 import { Input } from '@/components/ui/Input';
-import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 import { MobileStoreApi, type StoreProduct } from '@/src/api/StoreApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
 import { getMarketFeed } from '@/src/api/MarketApi';
@@ -28,6 +27,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import type { MarketItem } from '@/src/types/market';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 
 const GRID_GAP = tokens.spacing.sm;
 const SIDE_PADDING = tokens.spacing.md;
@@ -79,7 +79,7 @@ export function MarketScreen() {
   const { theme, scheme } = useTheme();
   const { status } = useAuth();
   const toast = useToast();
-  const insets = useSafeAreaInsets();
+  const { insets, standardScreenBottomPadding } = useScreenChrome();
   const { width } = useWindowDimensions();
   const { bagProduct, bagSource, refreshGlobalBagCount } = useMobileBagging();
   const [products, setProducts] = useState<StoreProduct[]>([]);
@@ -101,7 +101,7 @@ export function MarketScreen() {
 
   const columnCount = width >= 760 ? 5 : width >= 620 ? 4 : width >= 330 ? 3 : 2;
   const cardWidth = Math.floor((width - SIDE_PADDING * 2 - GRID_GAP * (columnCount - 1)) / columnCount);
-  const bottomClearance = NATIVE_ISLAND_NAV.contentClearance + insets.bottom;
+  const bottomClearance = standardScreenBottomPadding;
   const allItems = useMemo(() => buildContentItems(products, designs), [designs, products]);
 
   const categoryOptions = useMemo(() => {

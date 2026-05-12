@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Animated, Easing, FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { BlurView } from 'expo-blur';
@@ -34,8 +34,8 @@ import { prefetchResolvedImageAsset, useResolvedImageAsset } from '@/src/hooks/u
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
-import { NATIVE_ISLAND_NAV } from '@/components/navigation/NativeIslandBottomNav';
 import { requestNativeIslandCollapse } from '@/components/navigation/nativeIslandEvents';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
 import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
@@ -527,8 +527,12 @@ export function MarketFeedScreen() {
   const { status, user } = useAuth();
   const toast = useToast();
   const requireAuth = useAuthAction();
-  const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const {
+    insets,
+    windowHeight,
+    immersiveOverlayBottomClearance,
+    getImmersivePageHeight,
+  } = useScreenChrome();
   const feedListRef = useRef<FlatList<FeedListEntry> | null>(null);
   const initializedLoopKeyRef = useRef<string | null>(null);
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>([{ id: 'all', label: 'All', tag: null }]);
@@ -607,8 +611,9 @@ export function MarketFeedScreen() {
     }
   }, [status, user?.id, user?.type]);
 
-  const fallbackPageHeight = useMemo(() => Math.max(1, Math.round(windowHeight)), [windowHeight]);
-  const pageHeight = fallbackPageHeight;
+  const fallbackPageHeight = useMemo(() => getImmersivePageHeight(windowHeight), [getImmersivePageHeight, windowHeight]);
+  const measuredBasePageHeight = measuredFeedViewportHeight > 0 ? measuredFeedViewportHeight : windowHeight;
+  const pageHeight = getImmersivePageHeight(measuredBasePageHeight);
   const feedViewportHeight = pageHeight;
   const feedViewportReady = pageHeight > 0;
 
@@ -682,7 +687,7 @@ export function MarketFeedScreen() {
     () => `${activeTag ?? 'all'}-${items.length}-${pageHeight}`,
     [activeTag, items.length, pageHeight],
   );
-  const bottomClearance = useMemo(() => NATIVE_ISLAND_NAV.contentClearance + insets.bottom, [insets.bottom]);
+  const bottomClearance = immersiveOverlayBottomClearance;
   const overlayScrollPadding = bottomClearance;
   const overlaySurface = useMemo(
     () => ({
@@ -1734,7 +1739,7 @@ export function MarketFeedScreen() {
         </ScrollView>
       ) : (
         <View
-          style={[styles.feedListContainer, { height: pageHeight }]}
+          style={styles.feedListContainer}
           onLayout={(event) => {
             const nextHeight = Math.round(event.nativeEvent.layout.height);
             if (nextHeight > 0 && measuredFeedViewportHeight !== nextHeight) {
