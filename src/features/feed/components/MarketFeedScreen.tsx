@@ -531,7 +531,6 @@ export function MarketFeedScreen() {
     insets,
     windowHeight,
     immersiveOverlayBottomClearance,
-    getImmersivePageHeight,
   } = useScreenChrome();
   const feedListRef = useRef<FlatList<FeedListEntry> | null>(null);
   const initializedLoopKeyRef = useRef<string | null>(null);
@@ -611,9 +610,9 @@ export function MarketFeedScreen() {
     }
   }, [status, user?.id, user?.type]);
 
-  const fallbackPageHeight = useMemo(() => getImmersivePageHeight(windowHeight), [getImmersivePageHeight, windowHeight]);
-  const measuredBasePageHeight = measuredFeedViewportHeight > 0 ? measuredFeedViewportHeight : windowHeight;
-  const pageHeight = getImmersivePageHeight(measuredBasePageHeight);
+  const fallbackPageHeight = useMemo(() => Math.max(1, Math.round(windowHeight || 0)), [windowHeight]);
+  const measuredBasePageHeight = measuredFeedViewportHeight > 0 ? measuredFeedViewportHeight : fallbackPageHeight;
+  const pageHeight = Math.max(1, Math.round(measuredBasePageHeight || fallbackPageHeight));
   const feedViewportHeight = pageHeight;
   const feedViewportReady = pageHeight > 0;
 
@@ -725,7 +724,7 @@ export function MarketFeedScreen() {
       snapToInterval: pageHeight || null,
       itemLayoutLength: pageHeight || null,
       bottomClearance,
-      model: 'immersive-full-screen',
+      model: 'measured-visible-viewport',
     });
   }, [bottomClearance, fallbackPageHeight, feedViewportHeight, insets.bottom, insets.top, measuredFeedViewportHeight, pageHeight, windowHeight]);
 
@@ -742,7 +741,7 @@ export function MarketFeedScreen() {
       snapToInterval: pageHeight,
       itemHeight: pageHeight,
       bottomClearance,
-      model: 'immersive-full-screen',
+      model: 'measured-visible-viewport',
     });
   }, [bottomClearance, feedViewportHeight, insets.bottom, insets.top, measuredFeedViewportHeight, pageHeight, windowHeight]);
 
@@ -1733,7 +1732,7 @@ export function MarketFeedScreen() {
       ) : items.length === 0 && !showBlockingLoader ? (
         <ScrollView
           contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: Platform.OS === 'android' ? overlayScrollPadding : 0 }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: overlayScrollPadding }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}>
           <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? 'all')} />
         </ScrollView>

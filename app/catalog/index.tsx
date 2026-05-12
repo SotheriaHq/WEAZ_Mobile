@@ -53,14 +53,17 @@ type TabType = 'Collections' | 'Shop' | 'Reviews';
 type VisibilityType = 'Public' | 'Private' | 'Drafts';
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
 
-function CatalogLoadingSkeleton() {
+function CatalogLoadingSkeleton({ bottomPadding }: { bottomPadding: number }) {
   const { theme } = useTheme();
 
   return (
     <ScrollView
       style={styles.scrollView}
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.skeletonScrollContent}
+      contentContainerStyle={[
+        styles.skeletonScrollContent,
+        { paddingBottom: bottomPadding + tokens.spacing.xl },
+      ]}
     >
       <View style={[styles.skeletonHero, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         <Skeleton width="100%" height={168} borderRadius={tokens.radius.xl} />
@@ -523,7 +526,7 @@ export default function CatalogScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
-        <CatalogLoadingSkeleton />
+        <CatalogLoadingSkeleton bottomPadding={overlayScrollPadding} />
       </SafeAreaView>
     );
   }
@@ -536,7 +539,10 @@ export default function CatalogScreen() {
         style={styles.scrollView}
         contentInset={{ bottom: overlayScrollPadding }}
         scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: overlayScrollPadding + tokens.spacing.xl },
+        ]}
         showsVerticalScrollIndicator={false}
         onLayout={(e: LayoutChangeEvent) => setContainerWidth(e.nativeEvent.layout.width)}
         refreshControl={

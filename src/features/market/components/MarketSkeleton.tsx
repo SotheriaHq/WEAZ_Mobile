@@ -5,7 +5,7 @@ import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
-export function MarketSkeleton() {
+export function MarketSkeleton({ bottomPadding = tokens.spacing.md }: { bottomPadding?: number }) {
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
   const gap = tokens.spacing.sm;
@@ -14,7 +14,7 @@ export function MarketSkeleton() {
   const cardWidth = Math.floor((width - side * 2 - gap * (columnCount - 1)) / columnCount);
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>
+    <View style={[styles.root, { backgroundColor: theme.colors.bg, paddingBottom: bottomPadding }]}>
       <View style={styles.header}>
         <Skeleton width={112} height={30} borderRadius={8} />
         <View style={styles.headerActions}>

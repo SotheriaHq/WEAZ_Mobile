@@ -173,7 +173,7 @@ export default function PublicProfileScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={theme.colors.primary} />}
         contentInset={{ bottom: standardScreenBottomPadding }}
         scrollIndicatorInsets={{ bottom: standardScreenBottomPadding }}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: standardScreenBottomPadding }]}
       >
         <ProfileHeader
           brandName={displayName}
