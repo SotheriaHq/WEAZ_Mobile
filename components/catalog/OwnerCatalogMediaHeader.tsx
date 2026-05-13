@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, type View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 import { BrandProfileHeader, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
@@ -15,7 +15,10 @@ type OwnerCatalogMediaHeaderProps = {
   isLoading?: boolean;
   onEditProfile?: () => void;
   onCreate?: () => void;
+  createAnchorRef?: React.RefObject<View | null>;
+  onCreateAnchorLayout?: () => void;
   onShare?: () => void;
+  onEmailPress?: () => void;
   onBack?: () => void;
   onSearch?: () => void;
   onViewAvatar?: () => void;
@@ -43,7 +46,10 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   isLoading = false,
   onEditProfile,
   onCreate,
+  createAnchorRef,
+  onCreateAnchorLayout,
   onShare,
+  onEmailPress,
   onBack,
   onSearch,
   onViewAvatar,
@@ -191,6 +197,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       brandName={brandName}
       username={username}
       location={location}
+      email={profile?.email ?? user?.email ?? null}
       description={profile?.brandDescription ?? null}
       tags={profile?.brandTags || []}
       stats={stats}
@@ -207,7 +214,10 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       onEditBanner={handleEditBanner}
       onEditProfile={onEditProfile}
       onCreate={onCreate}
+      createAnchorRef={createAnchorRef}
+      onCreateAnchorLayout={onCreateAnchorLayout}
       onShare={onShare}
+      onEmailPress={onEmailPress}
       onBack={onBack}
       onSearch={onSearch}
       onViewAvatar={onViewAvatar}

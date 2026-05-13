@@ -12,13 +12,14 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
-  Pressable,
   RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
   View,
+  useWindowDimensions,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -48,6 +49,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
 import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
+import { AppActionSheet } from '@/components/ui/AppActionSheet';
+import { AppQrSheet } from '@/components/ui/AppQrSheet';
 import { BrandSwitcherSheet } from '@/components/brand/BrandSwitcherSheet';
 import {
   pickDesignEditorMediaAssets,
@@ -58,6 +61,7 @@ import { tokens } from '@/src/styles/tokens';
 import { catalogDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { formatCount } from '@/src/utils/formatCount';
+import { env } from '@/src/config/env';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -66,6 +70,42 @@ import { formatCount } from '@/src/utils/formatCount';
 type TabType = 'Collections' | 'Shop' | 'Reviews';
 type VisibilityType = 'Public' | 'Private' | 'Drafts';
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
+
+function readMetricNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getStoreMetricValue(
+  status: BrandProfileDto['storeStatus'],
+  isStoreOpen?: boolean | null,
+): string | null {
+  const normalized = String(status ?? '').toUpperCase();
+
+  if (normalized === 'PENDING_VERIFICATION') return 'Pending';
+  if (normalized === 'OPEN' || isStoreOpen === true) return 'Open';
+  if (normalized === 'CLOSED' || isStoreOpen === false) return 'Closed';
+
+  return null;
+}
+
+function buildProfileUrlFromConfig(brandId: string | null, username?: string | null): string | null {
+  if (!brandId) return null;
+
+  const baseUrl = env.webAppUrl.trim().replace(/\/+$/, '');
+  if (!baseUrl) return null;
+
+  if (!__DEV__ && /(?:localhost|127\.0\.0\.1)/i.test(baseUrl)) {
+    return null;
+  }
+
+  const cleanUsername = username?.trim();
+  const path = cleanUsername
+    ? `/u/${encodeURIComponent(cleanUsername)}`
+    : `/profile/${encodeURIComponent(brandId)}`;
+
+  return `${baseUrl}${path}`;
+}
 
 function CatalogLoadingSkeleton() {
   const { theme } = useTheme();
@@ -106,12 +146,12 @@ const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => 
     <View style={styles.emptyState}>
       <AppText variant="display" tone="muted">+</AppText>
       <AppText variant="subtitle" style={styles.emptyTitle}>
-        {isOwner ? 'No Content Yet' : 'No Public Content'}
+        No Content Yet
       </AppText>
       <AppText variant="body" tone="muted" style={styles.emptySubtitle}>
         {isOwner
-          ? 'Start showcasing your fashion by creating your first design'
-          : "This brand hasn't published any content yet"}
+          ? 'Start showcasing your fashion by creating your first design.'
+          : 'This brand has not published content yet.'}
       </AppText>
       {isOwner && onAdd && (
         <Button title="Create Design" onPress={onAdd} size="md" style={styles.emptyButton} />
@@ -132,6 +172,7 @@ export default function CatalogScreen() {
     productId?: string | string[];
   }>();
   const { theme, scheme } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
   const { standardScreenBottomPadding } = useScreenChrome();
   const { user } = useAuth();
   const { status, userId, userEmailVerified, updateUser } = useAuthSession();
@@ -170,6 +211,9 @@ export default function CatalogScreen() {
   const [draftDeletePhrase, setDraftDeletePhrase] = useState('');
   const [draftDeleteBusy, setDraftDeleteBusy] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [emailActionsOpen, setEmailActionsOpen] = useState(false);
+  const [shareActionsOpen, setShareActionsOpen] = useState(false);
+  const [brandQrOpen, setBrandQrOpen] = useState(false);
   const [createMenuAnchorMetrics, setCreateMenuAnchorMetrics] = useState<{
     pageX: number;
     pageY: number;
@@ -406,18 +450,6 @@ export default function CatalogScreen() {
     }
   };
 
-  // Handle share
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        message: `Check out ${profile?.brandFullName || 'this brand'} on Threadly!`,
-        url: `https://threadly.app/brand/${targetBrandId}`,
-      });
-    } catch (error) {
-      console.error('Error sharing:', error);
-    }
-  };
-
   // Handle collection actions
   const handleCollectionPress = useCallback((collection: CollectionDto) => {
     router.push({
@@ -477,48 +509,112 @@ export default function CatalogScreen() {
     profile?.location ||
     [profile?.brandCity, profile?.brandState, profile?.brandCountry].filter(Boolean).join(', ') ||
     undefined;
+  const profileEmail = useMemo(() => {
+    const profileValue = typeof profile?.email === 'string' ? profile.email.trim() : '';
+    const ownerValue = isOwner && typeof user?.email === 'string' ? user.email.trim() : '';
+    return profileValue || ownerValue || null;
+  }, [isOwner, profile?.email, user?.email]);
+  const profileShareUrl = useMemo(
+    () =>
+      profile?.shareUrl ??
+      profile?.publicProfileUrl ??
+      profile?.qrTargetUrl ??
+      buildProfileUrlFromConfig(targetBrandId, profile?.username ?? user?.username ?? null),
+    [
+      profile?.publicProfileUrl,
+      profile?.qrTargetUrl,
+      profile?.shareUrl,
+      profile?.username,
+      targetBrandId,
+      user?.username,
+    ],
+  );
+  const profileQrTargetUrl = useMemo(
+    () =>
+      profile?.qrTargetUrl ??
+      profile?.publicProfileUrl ??
+      profile?.shareUrl ??
+      profileShareUrl,
+    [profile?.publicProfileUrl, profile?.qrTargetUrl, profile?.shareUrl, profileShareUrl],
+  );
+  const profileShareMessage = useMemo(() => {
+    if (!profileShareUrl) return undefined;
+    return `Check out ${profile?.brandFullName || 'this brand'} on Threadly: ${profileShareUrl}`;
+  }, [profile?.brandFullName, profileShareUrl]);
+
+  // Handle share
+  const handleNativeShareProfile = useCallback(async () => {
+    if (!profileShareUrl || !profileShareMessage) {
+      toast.error('Profile link is not available yet.');
+      return;
+    }
+
+    try {
+      await Share.share({
+        message: profileShareMessage,
+        url: profileShareUrl,
+      });
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  }, [profileShareMessage, profileShareUrl, toast]);
+
+  const handleCopyProfileLink = useCallback(async () => {
+    if (!profileShareUrl) {
+      toast.error('Profile link is not available yet.');
+      return;
+    }
+
+    await Clipboard.setStringAsync(profileShareUrl);
+    toast.success('Profile link copied.');
+  }, [profileShareUrl, toast]);
 
   const currentCollections = visibilityFilter === 'Drafts' ? drafts : collections;
   const headerStats = useMemo<BrandHeaderStat[]>(() => {
-    const backendDesigns = Number(profile?.collectionsCount);
+    const backendDesigns = readMetricNumber(profile?.designsCount) ?? readMetricNumber(profile?.collectionsCount);
     const localDesigns = Math.max(collections.length, currentCollections.length);
-    const designsCount = Number.isFinite(backendDesigns) ? backendDesigns : localDesigns;
-    const productsCount = Number(profile?.productsCount);
-    const followersCount = Number(profile?.followersCount ?? profile?.patchesCount);
-    const totalLikes = Number(profile?.totalLikes);
-    const averageRating = Number(profile?.averageRating);
-    const totalReviews = Number(profile?.totalReviews);
+    const designsCount = backendDesigns ?? localDesigns;
+    const followersCount = readMetricNumber(profile?.followersCount) ?? readMetricNumber(profile?.patchesCount);
+    const totalThreads = readMetricNumber(profile?.totalThreads) ?? readMetricNumber(profile?.totalLikes);
+    const averageRating = readMetricNumber(profile?.averageRating);
+    const totalReviews = readMetricNumber(profile?.totalReviews);
+    const storeMetric = getStoreMetricValue(profile?.storeStatus, profile?.isStoreOpen);
+    const metricLimit = windowWidth < 390 ? 3 : 4;
     const stats: BrandHeaderStat[] = [];
 
-    if (designsCount > 0 || !Number.isFinite(productsCount) || productsCount <= 0) {
+    if (Number.isFinite(designsCount)) {
       stats.push({ value: formatCount(designsCount), label: designsCount === 1 ? 'Design' : 'Designs' });
-    } else {
-      stats.push({ value: formatCount(productsCount), label: productsCount === 1 ? 'Product' : 'Products' });
     }
 
-    if (Number.isFinite(followersCount)) {
+    if (followersCount !== null) {
       stats.push({ value: formatCount(followersCount), label: followersCount === 1 ? 'Follower' : 'Followers' });
     }
 
-    if (Number.isFinite(totalLikes)) {
-      stats.push({ value: formatCount(totalLikes), label: totalLikes === 1 ? 'Like' : 'Likes' });
+    if (totalThreads !== null) {
+      stats.push({ value: formatCount(totalThreads), label: totalThreads === 1 ? 'Thread' : 'Threads' });
     }
 
-    if (Number.isFinite(averageRating) && averageRating > 0 && Number.isFinite(totalReviews) && totalReviews > 0) {
+    if (storeMetric) {
+      stats.push({ value: storeMetric, label: 'Store' });
+    } else if (averageRating !== null && averageRating > 0 && totalReviews !== null && totalReviews > 0) {
       stats.push({ value: `⭐ ${averageRating.toFixed(1)}`, label: 'Rating' });
     }
 
-    return stats.slice(0, 4);
+    return stats.slice(0, metricLimit);
   }, [
     collections.length,
     currentCollections.length,
     profile?.averageRating,
     profile?.collectionsCount,
+    profile?.designsCount,
     profile?.followersCount,
+    profile?.isStoreOpen,
     profile?.patchesCount,
-    profile?.productsCount,
+    profile?.storeStatus,
     profile?.totalLikes,
+    profile?.totalThreads,
     profile?.totalReviews,
+    windowWidth,
   ]);
   const headerBadges = useMemo(
     () =>
@@ -567,6 +663,82 @@ export default function CatalogScreen() {
       setCreateMenuAnchorMetrics({ pageX, pageY, width, height });
     });
   }, []);
+
+  const handleMessageBrand = useCallback(() => {
+    if (!targetBrandId) {
+      toast.error('Brand profile is not ready yet.');
+      return;
+    }
+
+    if (status !== 'authenticated') {
+      router.push({ pathname: '/(auth)/login', params: { next: `/catalog/${targetBrandId}` } } as any);
+      return;
+    }
+
+    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'brand', brandId: targetBrandId } } as any);
+  }, [status, targetBrandId, toast]);
+
+  const handleCopyBrandEmail = useCallback(async () => {
+    if (!profileEmail) {
+      toast.error('Brand email is not available.');
+      return;
+    }
+
+    await Clipboard.setStringAsync(profileEmail);
+    toast.success('Email copied.');
+  }, [profileEmail, toast]);
+
+  const emailActionOptions = useMemo(
+    () => [
+      {
+        key: 'message',
+        icon: '💬',
+        title: 'Message brand',
+        description: 'Start a conversation inside Threadly.',
+        onPress: handleMessageBrand,
+        disabled: !targetBrandId,
+      },
+      {
+        key: 'copy',
+        icon: '✉️',
+        title: 'Copy email',
+        description: profileEmail ?? undefined,
+        onPress: () => void handleCopyBrandEmail(),
+        disabled: !profileEmail,
+      },
+    ],
+    [handleCopyBrandEmail, handleMessageBrand, profileEmail, targetBrandId],
+  );
+
+  const shareActionOptions = useMemo(
+    () => [
+      {
+        key: 'share-profile',
+        icon: '↗',
+        title: 'Share profile',
+        description: profileShareUrl ?? undefined,
+        onPress: () => void handleNativeShareProfile(),
+        disabled: !profileShareUrl,
+      },
+      {
+        key: 'copy-profile-link',
+        icon: '🔗',
+        title: 'Copy profile link',
+        description: profileShareUrl ?? undefined,
+        onPress: () => void handleCopyProfileLink(),
+        disabled: !profileShareUrl,
+      },
+      {
+        key: 'show-qr-code',
+        icon: '▦',
+        title: 'Show QR code',
+        description: 'Open a scannable public brand profile QR.',
+        onPress: () => setBrandQrOpen(true),
+        disabled: !profileQrTargetUrl,
+      },
+    ],
+    [handleCopyProfileLink, handleNativeShareProfile, profileQrTargetUrl, profileShareUrl],
+  );
 
   const handleLaunchCreateDesign = useCallback(
     async (source: DesignEditorMediaSource) => {
@@ -664,12 +836,15 @@ export default function CatalogScreen() {
               router.push({ pathname: '/catalog/edit-profile', params: { brandId: targetBrandId } } as any);
             }}
             onCreate={handleCreatePress}
+            createAnchorRef={createMenuAnchorRef}
+            onCreateAnchorLayout={handleCreateAnchorLayout}
             onViewAvatar={() => {
               if (ownerAvatarUri || ownerAvatar.src) {
                 setIsAvatarModalOpen(true);
               }
             }}
-            onShare={handleShare}
+            onShare={() => setShareActionsOpen(true)}
+            onEmailPress={profileEmail ? () => setEmailActionsOpen(true) : undefined}
             onBack={handleBackNavigation}
             onSearch={() => router.push('/search')}
           />
@@ -678,6 +853,7 @@ export default function CatalogScreen() {
             brandName={profile?.brandFullName || 'Your Brand'}
             username={profile?.username || undefined}
             location={profileLocation}
+            email={profileEmail}
             description={profile?.brandDescription ?? null}
             tags={profile?.brandTags || []}
             stats={headerStats}
@@ -696,7 +872,9 @@ export default function CatalogScreen() {
                 setIsAvatarModalOpen(true);
               }
             }}
-            onShare={handleShare}
+            onShare={() => setShareActionsOpen(true)}
+            onEmailPress={profileEmail ? () => setEmailActionsOpen(true) : undefined}
+            onMessage={handleMessageBrand}
             onBack={handleBackNavigation}
             onSearch={() => router.push('/search')}
           />
@@ -740,23 +918,6 @@ export default function CatalogScreen() {
                   showDrafts={isOwner}
                   draftsCount={drafts.length}
                 />
-
-                {isOwner && (
-                  <View ref={createMenuAnchorRef} onLayout={handleCreateAnchorLayout} collapsable={false}>
-                    <Pressable
-                      onPress={handleCreatePress}
-                      style={({ pressed }) => [
-                        styles.addButton,
-                        pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
-                      ]}
-                      accessibilityLabel="Create menu"
-                    >
-                      <View style={[styles.addButtonSolid, { backgroundColor: theme.colors.primary }]}>
-                        <AppText variant="subtitle" tone="inverse">+</AppText>
-                      </View>
-                    </Pressable>
-                  </View>
-                )}
               </View>
 
               <CollectionsGrid
@@ -811,6 +972,32 @@ export default function CatalogScreen() {
         anchorMetrics={createMenuAnchorMetrics}
         onClose={() => setCreateMenuOpen(false)}
         options={createMenuOptions}
+      />
+
+      <AppActionSheet
+        visible={emailActionsOpen}
+        title="Contact brand"
+        subtitle={profileEmail ?? 'Brand email is not available.'}
+        options={emailActionOptions}
+        onClose={() => setEmailActionsOpen(false)}
+      />
+
+      <AppActionSheet
+        visible={shareActionsOpen}
+        title="Share brand"
+        subtitle={profileShareUrl ?? 'Profile link is not available yet.'}
+        options={shareActionOptions}
+        onClose={() => setShareActionsOpen(false)}
+      />
+
+      <AppQrSheet
+        visible={brandQrOpen}
+        title={`${profile?.brandFullName || 'Brand'} QR code`}
+        subtitle="Scan to open this public brand profile."
+        qrValue={profileQrTargetUrl}
+        displayUrl={profileShareUrl}
+        shareMessage={profileShareMessage}
+        onClose={() => setBrandQrOpen(false)}
       />
 
       <AppConfirmDialog
@@ -893,10 +1080,10 @@ const styles = StyleSheet.create({
   catalogControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    gap: 10,
+    justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
+    gap: tokens.spacing.sm,
   },
   searchBox: {
     flex: 1,
@@ -913,24 +1100,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingVertical: 0,
   },
-  addButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  addButtonGradient: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButtonSolid: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   // Tab content
   tabPager: {
     width: '100%',
@@ -939,31 +1108,29 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   tabPage: {
-    minHeight: 300,
   },
   tabContent: {
-    minHeight: 300,
+    paddingVertical: tokens.spacing.lg,
   },
 
   // Empty state
   emptyState: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 48,
+    paddingHorizontal: tokens.spacing.xl,
+    paddingVertical: tokens.spacing.xl,
   },
   emptyTitle: {
-    marginTop: 16,
+    marginTop: tokens.spacing.md,
     textAlign: 'center',
   },
   emptySubtitle: {
-    marginTop: 8,
+    marginTop: tokens.spacing.sm,
     textAlign: 'center',
   },
   emptyButton: {
-    marginTop: 24,
-    borderRadius: 12,
+    marginTop: tokens.spacing.lg,
+    borderRadius: tokens.radius.md,
     overflow: 'hidden',
   },
 

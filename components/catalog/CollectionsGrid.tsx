@@ -15,6 +15,7 @@ import {
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { CollectionCard, CollectionCardSkeleton } from './CollectionCard';
 import type { CollectionDto } from '@/src/api/BrandApi';
+import { tokens } from '@/src/styles/tokens';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -141,7 +142,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
 const styles = StyleSheet.create({
   grid: {
     padding: 16,
-    paddingBottom: 100,
+    paddingBottom: tokens.spacing.xl,
   },
   row: {
     marginBottom: 12,

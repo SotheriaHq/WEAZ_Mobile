@@ -161,7 +161,9 @@ export function ProfileBadge({
       ]}
       accessibilityLabel={badge.accessibilityLabel}
     >
-      <View style={[styles.seal, { backgroundColor: tint }]}>
+      <View style={styles.sealStack}>
+        <View style={[styles.sealBack, { backgroundColor: tint }]} />
+        <View style={[styles.sealFront, { backgroundColor: tint }]} />
         <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.sealText}>
           {badge.icon}
         </AppText>
@@ -208,17 +210,26 @@ const styles = StyleSheet.create({
     minHeight: 24,
     paddingHorizontal: tokens.spacing.xs,
   },
-  seal: {
+  sealStack: {
     width: 18,
     height: 18,
-    borderRadius: tokens.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sealBack: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    borderRadius: tokens.spacing.xs,
     transform: [{ rotate: '45deg' }],
   },
+  sealFront: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    borderRadius: tokens.spacing.xs,
+  },
   sealText: {
-    transform: [{ rotate: '-45deg' }],
     textAlign: 'center',
   },
 });
-

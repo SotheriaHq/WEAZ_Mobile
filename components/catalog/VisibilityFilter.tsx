@@ -54,7 +54,7 @@ function VisibilitySegment({ label, isActive, onPress, badge }: SegmentProps) {
         accessibilityState={{ selected: isActive }}
       >
         <AppText
-          variant={isActive ? 'bodyBold' : 'bodyRegular'}
+          variant={isActive ? 'captionBold' : 'captionRegular'}
           tone={isActive ? 'default' : 'muted'}
           numberOfLines={1}
         >
@@ -121,19 +121,19 @@ const styles = StyleSheet.create({
     padding: tokens.spacing.xs,
   },
   segment: {
-    minHeight: 38,
-    minWidth: 74,
+    minHeight: 32,
+    minWidth: 62,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: tokens.spacing.xs,
     borderRadius: tokens.radius.full,
     borderWidth: 1,
-    paddingHorizontal: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.sm,
   },
   badge: {
-    minWidth: 22,
-    height: 22,
+    minWidth: 18,
+    height: 18,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.xs,
     alignItems: 'center',

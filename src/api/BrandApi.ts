@@ -14,7 +14,7 @@ export interface BrandProfileDto {
   brandFullName: string | null;
   brandDescription: string | null;
   description?: string | null;
-  isStoreOpen?: boolean;
+  isStoreOpen?: boolean | null;
   storeStatus?: 'OPEN' | 'CLOSED' | 'PENDING_VERIFICATION' | 'UNAVAILABLE' | null;
   emailVerified?: boolean | null;
   verified?: boolean | null;
@@ -24,11 +24,16 @@ export interface BrandProfileDto {
   averageRating?: number | null;
   totalReviews?: number | null;
   collectionsCount?: number | null;
+  designsCount?: number | null;
   productsCount?: number | null;
   patchesCount?: number | null;
   followersCount?: number | null;
+  totalThreads?: number | null;
   totalLikes?: number | null;
   totalShares?: number | null;
+  publicProfileUrl?: string | null;
+  qrTargetUrl?: string | null;
+  shareUrl?: string | null;
   brandCountry: string | null;
   brandState: string | null;
   brandCity: string | null;
@@ -354,6 +359,14 @@ function asNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function asNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function normalizeVisibility(value: unknown): 'PUBLIC' | 'PRIVATE' {
   return String(value ?? '').toUpperCase() === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC';
 }
@@ -425,6 +438,10 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
   const derivedLocation = [brandCity, brandState, brandCountry]
     .filter(Boolean)
     .join(', ');
+  const collectionsCount = asNullableNumber(source.collectionsCount);
+  const designsCount = asNullableNumber(source.designsCount) ?? collectionsCount;
+  const totalLikes = asNullableNumber(source.totalLikes);
+  const totalThreads = asNullableNumber(source.totalThreads) ?? totalLikes;
 
   return {
     id,
@@ -441,7 +458,11 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
     isStoreOpen:
       typeof source.isStoreOpen === 'boolean'
         ? source.isStoreOpen
-        : storeStatus === 'OPEN',
+        : storeStatus === 'OPEN'
+          ? true
+          : storeStatus === 'CLOSED'
+            ? false
+            : null,
     storeStatus,
     emailVerified:
       typeof source.emailVerified === 'boolean'
@@ -461,17 +482,22 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
         ? source.verificationBadgeVisible
         : null,
     verifiedExplanationUrl: asString(source.verifiedExplanationUrl),
-    averageRating: asNumber(source.averageRating ?? source.avgRating, 0),
-    totalReviews: asNumber(source.totalReviews, 0),
-    collectionsCount: asNumber(source.collectionsCount, 0),
-    productsCount: asNumber(source.productsCount, 0),
-    patchesCount: asNumber(source.patchesCount, 0),
-    followersCount: asNumber(source.followersCount ?? source.patchesCount, 0),
-    totalLikes: asNumber(source.totalLikes, 0),
+    averageRating: asNullableNumber(source.averageRating ?? source.avgRating),
+    totalReviews: asNullableNumber(source.totalReviews),
+    collectionsCount,
+    designsCount,
+    productsCount: asNullableNumber(source.productsCount),
+    patchesCount: asNullableNumber(source.patchesCount),
+    followersCount: asNullableNumber(source.followersCount ?? source.patchesCount),
+    totalThreads,
+    totalLikes,
     totalShares:
       source.totalShares === null || source.totalShares === undefined
         ? null
-        : asNumber(source.totalShares, 0),
+        : asNullableNumber(source.totalShares),
+    publicProfileUrl: asString(source.publicProfileUrl),
+    qrTargetUrl: asString(source.qrTargetUrl),
+    shareUrl: asString(source.shareUrl),
     brandCountry,
     brandState,
     brandCity,

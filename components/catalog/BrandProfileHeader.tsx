@@ -21,6 +21,7 @@ export type BrandProfileHeaderProps = {
   brandName: string;
   username?: string;
   location?: string | null;
+  email?: string | null;
   description?: string | null;
   tags?: string[];
   stats?: BrandHeaderStat[];
@@ -39,7 +40,10 @@ export type BrandProfileHeaderProps = {
   onMessage?: () => void;
   onEditProfile?: () => void;
   onCreate?: () => void;
+  createAnchorRef?: React.RefObject<View | null>;
+  onCreateAnchorLayout?: () => void;
   onShare?: () => void;
+  onEmailPress?: () => void;
   onBack?: () => void;
   onSearch?: () => void;
   onViewAvatar?: () => void;
@@ -66,10 +70,12 @@ function HeaderIconButton({
   label,
   value,
   onPress,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onPress?: () => void;
+  disabled?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -78,12 +84,13 @@ function HeaderIconButton({
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.headerIconButton,
         {
           backgroundColor: theme.colors.glassSurfaceStrong,
           borderColor: theme.colors.glassBorder,
-          opacity: pressed ? 0.78 : 1,
+          opacity: disabled ? 0.55 : pressed ? 0.78 : 1,
         },
       ]}
       accessibilityRole="button"
@@ -142,26 +149,21 @@ function BannerHeader({
       <View style={[styles.bannerShade, { backgroundColor: theme.colors.backdrop }]} />
 
       <View style={styles.bannerControls}>
-        <HeaderIconButton label="Go back" value={'\u2039'} onPress={onBack} />
+        <HeaderIconButton label="Go back" value="👈" onPress={onBack} />
         <View style={styles.bannerRightControls}>
-          <HeaderIconButton label="Search" value={'\u2315'} onPress={onSearch} />
-          <HeaderIconButton label="Share brand" value={'\u22ef'} onPress={onShare} />
+          {isOwner ? (
+            <HeaderIconButton
+              label="Edit banner"
+              value={bannerLoading ? '…' : '✎'}
+              onPress={onEditBanner}
+              disabled={bannerLoading}
+            />
+          ) : (
+            <HeaderIconButton label="Search" value="🔍" onPress={onSearch} />
+          )}
+          <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} />
         </View>
       </View>
-
-      {isOwner && onEditBanner ? (
-        <View style={styles.editBannerWrap}>
-          <Button
-            title={bannerLoading ? 'Saving...' : 'Edit banner'}
-            size="xs"
-            variant="outline"
-            loading={bannerLoading}
-            onPress={onEditBanner}
-            disabled={bannerLoading}
-            style={styles.editBannerButton}
-          />
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -232,8 +234,8 @@ function OverlayAvatar({
           accessibilityRole="button"
           accessibilityLabel="Edit brand logo"
         >
-          <AppText variant="captionBold" tone="inverse">
-            Edit
+          <AppText variant="subtitle" tone="inverse">
+            ✎
           </AppText>
         </Pressable>
       ) : null}
@@ -251,11 +253,11 @@ function BrandStatsRow({ stats }: { stats: BrandHeaderStat[] }) {
         <React.Fragment key={`${stat.label}-${index}`}>
           {index > 0 ? <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} /> : null}
           <View style={styles.statItem}>
-            <AppText variant="bodyBold" numberOfLines={1}>
-              {stat.value}
-            </AppText>
-            <AppText variant="captionBold" tone="muted" numberOfLines={1}>
+            <AppText variant="captionBold" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>
               {stat.label.toUpperCase()}
+            </AppText>
+            <AppText variant="captionRegular" tone="muted" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>
+              {stat.value}
             </AppText>
           </View>
         </React.Fragment>
@@ -288,15 +290,19 @@ function BrandTextTags({ tags }: { tags: string[] }) {
 function SideBrandMetaBlock({
   brandName,
   location,
+  email,
   stats,
   tags,
   badges,
+  onEmailPress,
 }: {
   brandName: string;
   location?: string | null;
+  email?: string | null;
   stats: BrandHeaderStat[];
   tags: string[];
   badges: ProfileBadgeModel[];
+  onEmailPress?: () => void;
 }) {
   const { scheme, theme } = useTheme();
   const primaryBadge = badges.find((badge) =>
@@ -310,32 +316,59 @@ function SideBrandMetaBlock({
     : badges;
 
   return (
-    <View
-      style={[
-        styles.metaBlock,
-        {
-          backgroundColor: theme.colors.glassSurfaceStrong,
-          borderColor: theme.colors.glassBorder,
-        },
-      ]}
-    >
-      <BlurView
-        intensity={theme.colors.glassBlur}
-        tint={scheme === 'dark' ? 'dark' : 'light'}
-        style={StyleSheet.absoluteFillObject}
-        pointerEvents="none"
-      />
-      <View style={styles.brandNameRow}>
-        <AppText variant="title" numberOfLines={1} style={styles.brandNameText}>
-          {brandName}
-        </AppText>
-        {primaryBadge ? <ProfileBadge badge={primaryBadge} compact /> : null}
+    <View style={styles.metaBlock}>
+      <View
+        style={[
+          styles.brandNamePill,
+          {
+            backgroundColor: theme.colors.glassSurfaceStrong,
+            borderColor: theme.colors.glassBorder,
+          },
+        ]}
+      >
+        <BlurView
+          intensity={theme.colors.glassBlur}
+          tint={scheme === 'dark' ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFillObject}
+          pointerEvents="none"
+        />
+        <View style={styles.brandNameRow}>
+          <AppText
+            variant="title"
+            adjustsFontSizeToFit
+            minimumFontScale={0.82}
+            style={styles.brandNameText}
+          >
+            {brandName}
+          </AppText>
+          {primaryBadge ? <ProfileBadge badge={primaryBadge} compact /> : null}
+        </View>
       </View>
 
       {location ? (
         <AppText variant="small" tone="muted" numberOfLines={1} style={styles.locationText}>
           📍 {location}
         </AppText>
+      ) : null}
+
+      {email && onEmailPress ? (
+        <Pressable
+          onPress={onEmailPress}
+          style={({ pressed }) => [
+            styles.emailAction,
+            {
+              backgroundColor: theme.colors.surfaceAlt,
+              borderColor: theme.colors.border,
+              opacity: pressed ? 0.76 : 1,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Open brand email actions"
+        >
+          <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+            Email
+          </AppText>
+        </Pressable>
       ) : null}
 
       <BrandBadgeRail badges={secondaryBadges} />
@@ -378,6 +411,13 @@ function BrandDescription({ description }: { description?: string | null }) {
           </AppText>
         </Pressable>
       ) : null}
+      {canExpand && expanded ? (
+        <Pressable onPress={() => setExpanded(false)} accessibilityRole="button" accessibilityLabel="Collapse brand description">
+          <AppText variant="bodyBold" tone="primary">
+            See less
+          </AppText>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -390,10 +430,21 @@ function BrandProfileActions({
   onMessage,
   onEditProfile,
   onCreate,
+  createAnchorRef,
+  onCreateAnchorLayout,
   onShare,
 }: Pick<
   BrandProfileHeaderProps,
-  'isOwner' | 'isPatched' | 'patchLoading' | 'onPatch' | 'onMessage' | 'onEditProfile' | 'onCreate' | 'onShare'
+  | 'isOwner'
+  | 'isPatched'
+  | 'patchLoading'
+  | 'onPatch'
+  | 'onMessage'
+  | 'onEditProfile'
+  | 'onCreate'
+  | 'createAnchorRef'
+  | 'onCreateAnchorLayout'
+  | 'onShare'
 >) {
   const { theme } = useTheme();
 
@@ -415,23 +466,25 @@ function BrandProfileActions({
           <Button title="Share" size="md" variant="outline" onPress={onShare} disabled={!onShare} fullWidth style={styles.actionButton} />
         </View>
         {onCreate ? (
-          <Pressable
-            onPress={onCreate}
-            style={({ pressed }) => [
-              styles.squareAction,
-              {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border,
-                opacity: pressed ? 0.75 : 1,
-              },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Create catalog content"
-          >
-            <AppText variant="title" tone="primary">
-              +
-            </AppText>
-          </Pressable>
+          <View ref={createAnchorRef} onLayout={onCreateAnchorLayout} collapsable={false}>
+            <Pressable
+              onPress={onCreate}
+              style={({ pressed }) => [
+                styles.squareAction,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  opacity: pressed ? 0.75 : 1,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Create catalog content"
+            >
+              <AppText variant="title" tone="primary">
+                +
+              </AppText>
+            </Pressable>
+          </View>
         ) : null}
       </View>
     );
@@ -492,6 +545,7 @@ export function BrandProfileHeader({
   brandName,
   username,
   location,
+  email,
   description,
   tags = [],
   stats = [],
@@ -510,7 +564,10 @@ export function BrandProfileHeader({
   onMessage,
   onEditProfile,
   onCreate,
+  createAnchorRef,
+  onCreateAnchorLayout,
   onShare,
+  onEmailPress,
   onBack,
   onSearch,
   onViewAvatar,
@@ -551,9 +608,11 @@ export function BrandProfileHeader({
         <SideBrandMetaBlock
           brandName={effectiveName}
           location={location}
+          email={email}
           stats={stats}
           tags={tags}
           badges={badges}
+          onEmailPress={onEmailPress}
         />
       </View>
 
@@ -567,6 +626,8 @@ export function BrandProfileHeader({
         onMessage={onMessage}
         onEditProfile={onEditProfile}
         onCreate={onCreate}
+        createAnchorRef={createAnchorRef}
+        onCreateAnchorLayout={onCreateAnchorLayout}
         onShare={onShare}
       />
     </View>
@@ -615,18 +676,10 @@ const styles = StyleSheet.create({
   headerIconText: {
     textAlign: 'center',
   },
-  editBannerWrap: {
-    position: 'absolute',
-    alignSelf: 'center',
-    bottom: tokens.spacing.lg,
-  },
-  editBannerButton: {
-    borderRadius: tokens.radius.full,
-  },
   identityRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: tokens.spacing.lg,
+    gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
     marginTop: -46,
   },
@@ -661,48 +714,61 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: -tokens.spacing.xs,
     bottom: -tokens.spacing.xs,
-    minHeight: 28,
-    minWidth: 48,
+    width: 34,
+    height: 34,
     borderRadius: tokens.radius.full,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.sm,
   },
   metaBlock: {
     flex: 1,
     minWidth: 0,
+    gap: tokens.spacing.sm,
+  },
+  brandNamePill: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.md,
-    gap: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.sm,
   },
   brandNameRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: tokens.spacing.sm,
     minWidth: 0,
   },
   brandNameText: {
+    minWidth: 0,
     flexShrink: 1,
   },
   locationText: {
     maxWidth: '100%',
   },
+  emailAction: {
+    alignSelf: 'flex-start',
+    minHeight: 30,
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.md,
+    justifyContent: 'center',
+  },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.md,
+    gap: tokens.spacing.xs,
     flexWrap: 'nowrap',
   },
   statItem: {
-    minWidth: 42,
+    flex: 1,
+    minWidth: 0,
   },
   statDivider: {
     width: StyleSheet.hairlineWidth,
-    height: 28,
+    height: 24,
   },
   textTagsRow: {
     flexDirection: 'row',
