@@ -1,36 +1,146 @@
 import * as NavigationBar from 'expo-navigation-bar';
-import { AppState, Appearance, Platform } from 'react-native';
+import { requireNativeModule } from 'expo-modules-core';
+import { AppState, Appearance, Platform, processColor } from 'react-native';
 import { useEffect } from 'react';
 
 import type { ResolvedTheme } from '@/src/types/theme';
 
 const TRANSPARENT = '#00000000';
 
+type NavigationBarOperation = {
+  name: string;
+  run: () => Promise<void> | void;
+};
+
+type NativeNavigationBarModule = {
+  setBackgroundColorAsync?: (color: ReturnType<typeof processColor>) => Promise<void>;
+  setBorderColorAsync?: (color: ReturnType<typeof processColor>) => Promise<void>;
+  setButtonStyleAsync?: (style: 'light' | 'dark') => Promise<void>;
+  setPositionAsync?: (position: 'absolute' | 'relative') => Promise<void>;
+  setVisibilityAsync?: (visibility: 'visible' | 'hidden') => Promise<void>;
+};
+
+let nativeNavigationBarModule: NativeNavigationBarModule | null | undefined;
+
+function getNativeNavigationBarModule() {
+  if (Platform.OS !== 'android') return null;
+  if (nativeNavigationBarModule !== undefined) return nativeNavigationBarModule;
+
+  try {
+    nativeNavigationBarModule =
+      requireNativeModule<NativeNavigationBarModule>('ExpoNavigationBar');
+  } catch {
+    nativeNavigationBarModule = null;
+  }
+
+  return nativeNavigationBarModule;
+}
+
 export function getAndroidNavigationButtonStyle(scheme: ResolvedTheme) {
   return scheme === 'dark' ? 'light' : 'dark';
 }
 
-export function applyAndroidSystemBarsPolicy(scheme: ResolvedTheme, reason: string) {
+function getAndroidNavigationBarStyle(scheme: ResolvedTheme) {
+  return scheme === 'dark' ? 'dark' : 'light';
+}
+
+function getUnsupportedReason(result: PromiseSettledResult<void>) {
+  if (result.status === 'fulfilled') return null;
+  const error = result.reason;
+  return error instanceof Error ? error.message : String(error);
+}
+
+export async function applyAndroidSystemBarsPolicy(scheme: ResolvedTheme, reason: string) {
   if (Platform.OS !== 'android') return;
 
-  void Promise.allSettled([
-    NavigationBar.setVisibilityAsync('visible'),
-    NavigationBar.setPositionAsync('absolute'),
-    NavigationBar.setBehaviorAsync('overlay-swipe'),
-    NavigationBar.setBackgroundColorAsync(TRANSPARENT),
-    NavigationBar.setBorderColorAsync(TRANSPARENT),
-    NavigationBar.setButtonStyleAsync(getAndroidNavigationButtonStyle(scheme)),
-  ]).then((results) => {
-    if (!__DEV__) return;
-    const rejected = results.find((result) => result.status === 'rejected');
-    if (rejected) {
+  const buttonStyle = getAndroidNavigationButtonStyle(scheme);
+  const nativeNavigationBar = getNativeNavigationBarModule();
+  const transparentColor = processColor(TRANSPARENT);
+  const operations: NavigationBarOperation[] = [
+    {
+      name: 'visibility',
+      run: () => NavigationBar.setVisibilityAsync('visible'),
+    },
+    {
+      name: 'button-style',
+      run: () => NavigationBar.setButtonStyleAsync(buttonStyle),
+    },
+  ];
+
+  if (typeof NavigationBar.setStyle === 'function') {
+    operations.push({
+      name: 'edge-to-edge-style',
+      run: () => NavigationBar.setStyle(getAndroidNavigationBarStyle(scheme)),
+    });
+  }
+
+  // Expo's public wrapper intentionally no-ops these mutators after edge-to-edge
+  // is detected. Calling the same native module directly keeps already-installed
+  // dev-client/Expo Go hosts and rebuilt apps on the same transparent policy.
+  if (nativeNavigationBar) {
+    operations.push(
+      ...(nativeNavigationBar.setVisibilityAsync
+        ? [
+            {
+              name: 'native-visibility',
+              run: () => nativeNavigationBar.setVisibilityAsync?.('visible'),
+            },
+          ]
+        : []),
+      ...(nativeNavigationBar.setPositionAsync
+        ? [
+            {
+              name: 'native-position',
+              run: () => nativeNavigationBar.setPositionAsync?.('absolute'),
+            },
+          ]
+        : []),
+      ...(nativeNavigationBar.setBackgroundColorAsync && transparentColor != null
+        ? [
+            {
+              name: 'native-background',
+              run: () => nativeNavigationBar.setBackgroundColorAsync?.(transparentColor),
+            },
+          ]
+        : []),
+      ...(nativeNavigationBar.setBorderColorAsync && transparentColor != null
+        ? [
+            {
+              name: 'native-border',
+              run: () => nativeNavigationBar.setBorderColorAsync?.(transparentColor),
+            },
+          ]
+        : []),
+      ...(nativeNavigationBar.setButtonStyleAsync
+        ? [
+            {
+              name: 'native-button-style',
+              run: () => nativeNavigationBar.setButtonStyleAsync?.(buttonStyle),
+            },
+          ]
+        : []),
+    );
+  }
+
+  const results = await Promise.allSettled(operations.map((operation) => operation.run()));
+
+  if (__DEV__) {
+    const failed = results
+      .map((result, index) => ({
+        operation: operations[index]?.name,
+        error: getUnsupportedReason(result),
+      }))
+      .filter((entry) => entry.error);
+
+    if (failed.length > 0) {
       console.warn('[system-ui]', {
-        event: 'android-system-bars-policy-partial-failure',
+        event: 'android-navigation-bar-policy-fallback',
         reason,
-        error: rejected.reason,
+        scheme,
+        failed,
       });
     }
-  });
+  }
 }
 
 export function getInitialAndroidSystemScheme(): ResolvedTheme {
@@ -39,7 +149,7 @@ export function getInitialAndroidSystemScheme(): ResolvedTheme {
 
 export function useAndroidSystemBars(scheme: ResolvedTheme, reasonKey: string) {
   useEffect(() => {
-    applyAndroidSystemBarsPolicy(scheme, `effect:${reasonKey}`);
+    void applyAndroidSystemBarsPolicy(scheme, `effect:${reasonKey}`);
   }, [reasonKey, scheme]);
 
   useEffect(() => {
@@ -47,7 +157,7 @@ export function useAndroidSystemBars(scheme: ResolvedTheme, reasonKey: string) {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        applyAndroidSystemBarsPolicy(scheme, `app-state-active:${reasonKey}`);
+        void applyAndroidSystemBarsPolicy(scheme, `app-state-active:${reasonKey}`);
       }
     });
 

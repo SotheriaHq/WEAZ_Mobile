@@ -52,7 +52,7 @@ export default function StoreTabScreen() {
       >
         {containerWidth > 0 ? (
           <BrandShopTab
-            brandId={activeBrandId ?? user?.id}
+            brandId={activeBrandId ?? undefined}
             isOwner
             containerWidth={containerWidth}
             scrollEnabled

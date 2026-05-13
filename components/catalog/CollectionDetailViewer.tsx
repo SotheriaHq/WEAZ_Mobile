@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 
 import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
-import ThreadRailAction from '@/components/catalog/ThreadRailAction';
+import ThreadRailAction from './ThreadRailAction';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { Button } from '@/components/ui/Button';
 import { ThreadlyLogoLoader } from '@/components/ui/ThreadlyLogoLoader';
@@ -558,14 +558,16 @@ export function CollectionDetailViewer({
         count: optimisticCount,
       };
 
-      threadStateByMediaRef.current = {
-        ...threadStateByMediaRef.current,
-        [mediaId]: optimisticState,
-      };
-      setThreadStateByMedia((prev) => ({
-        ...prev,
-        [mediaId]: optimisticState,
-      }));
+      if (!nextThreaded) {
+        threadStateByMediaRef.current = {
+          ...threadStateByMediaRef.current,
+          [mediaId]: optimisticState,
+        };
+        setThreadStateByMedia((prev) => ({
+          ...prev,
+          [mediaId]: optimisticState,
+        }));
+      }
 
       threadingMediaByIdRef.current = {
         ...threadingMediaByIdRef.current,

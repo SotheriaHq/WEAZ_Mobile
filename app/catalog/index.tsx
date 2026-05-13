@@ -6,7 +6,19 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { BackHandler, LayoutChangeEvent, Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import {
+  BackHandler,
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Share,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -18,12 +30,12 @@ import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
 import { canManageCatalog, getActiveBrandId } from '@/src/auth/brandAccess';
 import { brandApi, type BrandProfileDto, type CollectionDto } from '@/src/api/BrandApi';
 import { OwnerCatalogMediaHeader } from '@/components/catalog/OwnerCatalogMediaHeader';
-import { ProfileHeader } from '@/components/catalog/ProfileHeader';
+import { BrandProfileHeader, BrandProfileHeaderSkeleton, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
 import MobileProfileImageModal from '@/components/profile/ProfileImageModal';
 import { Tabs } from '@/components/catalog/Tabs';
 import { CollectionsGrid } from '@/components/catalog/CollectionsGrid';
 import { VisibilityFilter } from '@/components/catalog/VisibilityFilter';
-import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/src/toast/ToastContext';
 import { useBrandPatchStatus } from '@/src/hooks/useBrandPatchStatus';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
@@ -53,6 +65,13 @@ type TabType = 'Collections' | 'Shop' | 'Reviews';
 type VisibilityType = 'Public' | 'Private' | 'Drafts';
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
 
+function formatCompactStat(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K`;
+  return String(value);
+}
+
 function CatalogLoadingSkeleton() {
   const { theme } = useTheme();
 
@@ -62,16 +81,7 @@ function CatalogLoadingSkeleton() {
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.skeletonScrollContent}
     >
-      <View style={[styles.skeletonHero, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-        <Skeleton width="100%" height={168} borderRadius={tokens.radius.xl} />
-        <View style={styles.skeletonHeroRow}>
-          <Skeleton width={68} height={68} borderRadius={tokens.radius.xl} />
-          <View style={styles.skeletonHeroCopy}>
-            <Skeleton width="58%" height={18} borderRadius={tokens.radius.sm} />
-            <SkeletonText lines={2} lineHeight={12} spacing={tokens.spacing.sm} lastLineWidth="72%" />
-          </View>
-        </View>
-      </View>
+      <BrandProfileHeaderSkeleton />
 
       <View style={styles.skeletonTabsRow}>
         <Skeleton width={72} height={32} borderRadius={tokens.radius.full} />
@@ -172,12 +182,13 @@ export default function CatalogScreen() {
     height: number;
   } | null>(null);
   const createMenuAnchorRef = useRef<View>(null);
+  const tabPagerRef = useRef<ScrollView>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
 
   // Determine if owner view
   const activeBrandId = getActiveBrandId(user);
   const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
-  const targetBrandId = routeBrandId || activeBrandId || userId;
+  const targetBrandId = routeBrandId || activeBrandId || null;
   const patchEnabled = Boolean(!isOwner && status === 'authenticated' && targetBrandId);
   const {
     isPatched,
@@ -338,8 +349,11 @@ export default function CatalogScreen() {
     const idx = TAB_ORDER.indexOf(activeTab);
     if (idx >= 0) {
       tabSwipeProgress.value = idx;
+      if (containerWidth > 0) {
+        tabPagerRef.current?.scrollTo({ x: idx * containerWidth, animated: true });
+      }
     }
-  }, [activeTab, tabSwipeProgress]);
+  }, [activeTab, containerWidth, tabSwipeProgress]);
 
   // Refresh
   const handleRefresh = async () => {
@@ -351,6 +365,40 @@ export default function CatalogScreen() {
     ]);
     setIsRefreshing(false);
   };
+
+  const handleMainTabChange = useCallback(
+    (key: string) => {
+      const nextTab = key as TabType;
+      const index = TAB_ORDER.indexOf(nextTab);
+      if (index < 0) return;
+      setActiveTab(nextTab);
+      if (containerWidth > 0) {
+        tabPagerRef.current?.scrollTo({ x: index * containerWidth, animated: true });
+      }
+    },
+    [containerWidth],
+  );
+
+  const handleTabPagerScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (containerWidth <= 0) return;
+      tabSwipeProgress.value = event.nativeEvent.contentOffset.x / containerWidth;
+    },
+    [containerWidth, tabSwipeProgress],
+  );
+
+  const handleTabPagerMomentumEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (containerWidth <= 0) return;
+      const nextIndex = Math.max(0, Math.min(TAB_ORDER.length - 1, Math.round(event.nativeEvent.contentOffset.x / containerWidth)));
+      const nextTab = TAB_ORDER[nextIndex];
+      tabSwipeProgress.value = nextIndex;
+      if (nextTab && nextTab !== activeTab) {
+        setActiveTab(nextTab);
+      }
+    },
+    [activeTab, containerWidth, tabSwipeProgress],
+  );
 
   // Handle patch/unpatch
   const handlePatch = async () => {
@@ -433,9 +481,28 @@ export default function CatalogScreen() {
   const profileLocation =
     [profile?.brandCity, profile?.brandState, profile?.brandCountry].filter(Boolean).join(', ') || undefined;
 
-  const isStoreOpen = Boolean(profile?.isStoreOpen);
-
   const currentCollections = visibilityFilter === 'Drafts' ? drafts : collections;
+  const headerStats = useMemo<BrandHeaderStat[]>(() => {
+    const contentCount = Math.max(collections.length, currentCollections.length);
+    const stats: BrandHeaderStat[] = [
+      { value: formatCompactStat(contentCount), label: contentCount === 1 ? 'Design' : 'Designs' },
+    ];
+
+    if (isOwner && drafts.length > 0) {
+      stats.push({ value: formatCompactStat(drafts.length), label: drafts.length === 1 ? 'Draft' : 'Drafts' });
+    }
+
+    if (typeof profile?.isStoreOpen === 'boolean') {
+      stats.push({ value: profile.isStoreOpen ? 'Open' : 'Closed', label: 'Store' });
+    }
+
+    const tagCount = profile?.brandTags?.length ?? 0;
+    if (stats.length < 3 && tagCount > 0) {
+      stats.push({ value: formatCompactStat(tagCount), label: tagCount === 1 ? 'Tag' : 'Tags' });
+    }
+
+    return stats.slice(0, 3);
+  }, [collections.length, currentCollections.length, drafts.length, isOwner, profile?.brandTags?.length, profile?.isStoreOpen]);
   const showInitialSkeleton = isLoading && !profile && collections.length === 0 && drafts.length === 0;
   const overlayScrollPadding = standardScreenBottomPadding;
 
@@ -552,10 +619,12 @@ export default function CatalogScreen() {
           <OwnerCatalogMediaHeader
             profile={profile}
             isLoading={false}
+            stats={headerStats}
             onEditProfile={() => {
               if (!targetBrandId) return;
               router.push({ pathname: '/catalog/edit-profile', params: { brandId: targetBrandId } } as any);
             }}
+            onCreate={handleCreatePress}
             onViewAvatar={() => {
               if (ownerAvatarUri || ownerAvatar.src) {
                 setIsAvatarModalOpen(true);
@@ -563,14 +632,16 @@ export default function CatalogScreen() {
             }}
             onShare={handleShare}
             onBack={handleBackNavigation}
+            onSearch={() => router.push('/search')}
           />
         ) : (
-          <ProfileHeader
+          <BrandProfileHeader
             brandName={profile?.brandFullName || 'Your Brand'}
             username={profile?.username || undefined}
             location={profileLocation}
             description={profile?.brandDescription ?? null}
             tags={profile?.brandTags || []}
+            stats={headerStats}
             avatarUrl={visitorAvatarUri ?? visitorAvatar.src ?? undefined}
             avatarFileId={visitorAvatar.fileId ?? undefined}
             bannerUrl={visitorBanner.src ?? undefined}
@@ -587,6 +658,7 @@ export default function CatalogScreen() {
             }}
             onShare={handleShare}
             onBack={handleBackNavigation}
+            onSearch={() => router.push('/search')}
           />
         )}
 
@@ -601,18 +673,26 @@ export default function CatalogScreen() {
           <Tabs
             tabs={tabs}
             activeTab={activeTab}
-            onTabChange={(key) => {
-              setActiveTab(key as TabType);
-            }}
+            onTabChange={handleMainTabChange}
             swipeProgress={tabSwipeProgress}
           />
         </View>
 
 
 
-        <View style={styles.tabPane}>
-          {activeTab === 'Collections' ? (
-            <>
+        <ScrollView
+          ref={tabPagerRef}
+          horizontal
+          pagingEnabled
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={handleTabPagerScroll}
+          onMomentumScrollEnd={handleTabPagerMomentumEnd}
+          style={styles.tabPager}
+          contentContainerStyle={styles.tabPagerContent}
+        >
+          <View style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}>
               <View style={styles.catalogControls}>
                 <VisibilityFilter
                   selected={visibilityFilter}
@@ -654,11 +734,10 @@ export default function CatalogScreen() {
                   />
                 }
               />
-            </>
-          ) : null}
+          </View>
 
-          {activeTab === 'Shop' ? (
-            containerWidth > 0 && targetBrandId ? (
+          <View style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}>
+            {containerWidth > 0 && targetBrandId ? (
               <BrandShopTab
                 brandId={targetBrandId}
                 isOwner={isOwner}
@@ -667,17 +746,17 @@ export default function CatalogScreen() {
               />
             ) : (
               <View style={styles.tabContent} />
-            )
-          ) : null}
+            )}
+          </View>
 
-          {activeTab === 'Reviews' ? (
-            targetBrandId ? (
+          <View style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}>
+            {targetBrandId ? (
               <BrandReviewsTab brandId={targetBrandId} />
             ) : (
               <View style={styles.tabContent} />
-            )
-          ) : null}
-        </View>
+            )}
+          </View>
+        </ScrollView>
       </ScrollView>
 
       <MobileProfileImageModal
@@ -739,34 +818,19 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   skeletonScrollContent: {
-    paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.lg,
     paddingBottom: tokens.spacing.xl,
     gap: tokens.spacing.lg,
-  },
-  skeletonHero: {
-    borderWidth: 1,
-    borderRadius: tokens.radius.xl,
-    padding: tokens.spacing.lg,
-    gap: tokens.spacing.lg,
-  },
-  skeletonHeroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.lg,
-  },
-  skeletonHeroCopy: {
-    flex: 1,
-    gap: tokens.spacing.md,
   },
   skeletonTabsRow: {
     flexDirection: 'row',
     gap: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.lg,
   },
   skeletonGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.lg,
   },
   skeletonCard: {
     width: '48%',
@@ -828,12 +892,16 @@ const styles = StyleSheet.create({
   },
 
   // Tab content
-  tabPane: {
+  tabPager: {
     width: '100%',
+  },
+  tabPagerContent: {
+    alignItems: 'flex-start',
+  },
+  tabPage: {
     minHeight: 300,
   },
   tabContent: {
-    flex: 1,
     minHeight: 300,
   },
 
@@ -846,16 +914,12 @@ const styles = StyleSheet.create({
     paddingVertical: 48,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
     marginTop: 16,
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: 14,
     marginTop: 8,
     textAlign: 'center',
-    lineHeight: 20,
   },
   emptyButton: {
     marginTop: 24,

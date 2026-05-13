@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
-import { ProfileHeader } from '@/components/catalog/ProfileHeader';
+import { BrandProfileHeader, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
 import { brandApi, type BrandProfileDto } from '@/src/api/BrandApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
@@ -13,9 +13,12 @@ type OwnerCatalogMediaHeaderProps = {
   profile: BrandProfileDto | null;
   isLoading?: boolean;
   onEditProfile?: () => void;
+  onCreate?: () => void;
   onShare?: () => void;
   onBack?: () => void;
+  onSearch?: () => void;
   onViewAvatar?: () => void;
+  stats?: BrandHeaderStat[];
 };
 
 type PendingMediaState = {
@@ -37,9 +40,12 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   profile,
   isLoading = false,
   onEditProfile,
+  onCreate,
   onShare,
   onBack,
+  onSearch,
   onViewAvatar,
+  stats = [],
 }: OwnerCatalogMediaHeaderProps) {
   const { user, updateUser } = useAuth();
   const toast = useToast();
@@ -177,12 +183,13 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   }, [toast, updateUser]);
 
   return (
-    <ProfileHeader
+    <BrandProfileHeader
       brandName={brandName}
       username={username}
       location={location}
       description={profile?.brandDescription ?? null}
       tags={profile?.brandTags || []}
+      stats={stats}
       avatarUrl={avatarUri ?? undefined}
       avatarFileId={pendingAvatar?.fileId ?? baseAvatar.fileId ?? undefined}
       bannerUrl={bannerUri ?? undefined}
@@ -194,8 +201,10 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       onEditAvatar={handleEditAvatar}
       onEditBanner={handleEditBanner}
       onEditProfile={onEditProfile}
+      onCreate={onCreate}
       onShare={onShare}
       onBack={onBack}
+      onSearch={onSearch}
       onViewAvatar={onViewAvatar}
     />
   );

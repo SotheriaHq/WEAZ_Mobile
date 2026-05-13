@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/Button';
 import { Skeleton, SkeletonAvatar, SkeletonText } from '@/components/ui/Skeleton';
 import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
 import ThreadlyLogoLoader from '@/components/ui/ThreadlyLogoLoader';
-import ThreadRailAction from '@/components/catalog/ThreadRailAction';
+import ThreadRailAction from '../../../../components/catalog/ThreadRailAction';
 import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
 import { brandApi, type CollectionDetailMediaDto } from '@/src/api/BrandApi';
 import { ProfileApi } from '@/src/api/ProfileApi';
@@ -59,6 +59,15 @@ const toCompactCount = (value: number | null | undefined) => {
   if (n < 1000) return String(n);
   if (n < 1000000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
   return `${(n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1)}m`;
+};
+
+const formatMetricCountLabel = (
+  value: number | null | undefined,
+  singular: string,
+  plural: string,
+) => {
+  const n = typeof value === 'number' ? value : 0;
+  return `${toCompactCount(n)} ${n === 1 ? singular : plural}`;
 };
 
 const toFeedMediaType = (rawType?: string | null): 'image' | 'video' => {
@@ -367,7 +376,14 @@ const FeedActionRail = React.memo(function FeedActionRail({
         <IconButton size={44} onPress={handleCommentsPress}>
           <AppText variant="subtitle">💬</AppText>
         </IconButton>
-        <AppText variant="captionBold" tone="inverse">{comments}</AppText>
+        <AppText
+          variant="captionBold"
+          tone="inverse"
+          style={styles.railCountLabel}
+          numberOfLines={1}
+        >
+          {comments}
+        </AppText>
       </View>
 
       <View style={styles.railItem}>
@@ -1173,15 +1189,17 @@ export function MarketFeedScreen() {
         count: optimisticCount,
       };
 
-      threadStateByMediaRef.current = {
-        ...threadStateByMediaRef.current,
-        [mediaId]: optimisticState,
-      };
+      if (!nextThreaded) {
+        threadStateByMediaRef.current = {
+          ...threadStateByMediaRef.current,
+          [mediaId]: optimisticState,
+        };
 
-      setThreadStateByMedia((prev) => ({
-        ...prev,
-        [mediaId]: optimisticState,
-      }));
+        setThreadStateByMedia((prev) => ({
+          ...prev,
+          [mediaId]: optimisticState,
+        }));
+      }
 
       threadingMediaByIdRef.current = {
         ...threadingMediaByIdRef.current,
@@ -1399,13 +1417,14 @@ export function MarketFeedScreen() {
         : Boolean(item.isThreaded);
       const isThreading = Boolean(threadingMediaById[currentMediaId]);
       const likes = toCompactCount(item.likesCount ?? 0);
-      const comments = toCompactCount(item.combinedCommentsCount ?? item.commentsCount ?? 0);
+      const commentCountRaw = item.combinedCommentsCount ?? item.commentsCount ?? 0;
+      const comments = formatMetricCountLabel(commentCountRaw, 'comment', 'comments');
       const threadCountRaw =
         currentMediaThreadState?.count ??
         currentMedia?.threadsCount ??
         item.threadsCount ??
         0;
-      const threads = toCompactCount(threadCountRaw);
+      const threads = formatMetricCountLabel(threadCountRaw, 'thread', 'threads');
 
       return (
         <MarketFeedItem
@@ -2076,8 +2095,19 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   railItem: {
+    width: 88,
     alignItems: 'center',
     gap: 6,
+  },
+  railCountLabel: {
+    width: 88,
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '900',
+    textShadowColor: 'rgba(0, 0, 0, 0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   meta: {
     position: 'absolute',

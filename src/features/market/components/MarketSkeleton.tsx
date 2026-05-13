@@ -5,39 +5,84 @@ import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
+const SIDE_PADDING = tokens.spacing.lg;
+const CARD_GAP = tokens.spacing.md;
+
+function getSkeletonColumns(width: number) {
+  const availableWidth = width - SIDE_PADDING * 2;
+  const threeColumnWidth = Math.floor((availableWidth - CARD_GAP * 2) / 3);
+  return threeColumnWidth >= 168 ? 3 : 2;
+}
+
 export function MarketSkeleton() {
   const { theme } = useTheme();
-  const { width } = useWindowDimensions();
-  const gap = tokens.spacing.sm;
-  const side = tokens.spacing.md;
-  const columnCount = width >= 620 ? 4 : width >= 330 ? 3 : 2;
-  const cardWidth = Math.floor((width - side * 2 - gap * (columnCount - 1)) / columnCount);
+  const { width, height } = useWindowDimensions();
+  const columnCount = getSkeletonColumns(width);
+  const cardWidth = Math.floor((width - SIDE_PADDING * 2 - CARD_GAP * (columnCount - 1)) / columnCount);
+  const heroHeight = Math.min(236, Math.max(176, Math.round(height * 0.24)));
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>
       <View style={styles.header}>
-        <Skeleton width={112} height={30} borderRadius={8} />
-        <View style={styles.headerActions}>
-          <Skeleton width={44} height={44} borderRadius={tokens.radius.md} />
-          <Skeleton width={44} height={44} borderRadius={tokens.radius.md} />
+        <Skeleton width={44} height={44} borderRadius={tokens.radius.md} />
+        <View style={styles.headerTitle}>
+          <Skeleton width={118} height={26} borderRadius={tokens.radius.sm} />
+          <Skeleton width={188} height={14} borderRadius={tokens.radius.sm} />
         </View>
+        <Skeleton width={44} height={44} borderRadius={tokens.radius.md} />
       </View>
-      <Skeleton width="100%" height={52} borderRadius={16} />
+
+      <Skeleton width="100%" height={52} borderRadius={tokens.radius.lg} />
+
       <View style={styles.chips}>
-        <Skeleton width={58} height={36} borderRadius={999} />
-        <Skeleton width={112} height={36} borderRadius={999} />
-        <Skeleton width={92} height={36} borderRadius={999} />
+        <Skeleton width={58} height={36} borderRadius={tokens.radius.full} />
+        <Skeleton width={132} height={36} borderRadius={tokens.radius.full} />
+        <Skeleton width={96} height={36} borderRadius={tokens.radius.full} />
       </View>
-      <View style={styles.hero}>
-        <Skeleton width={140} height={20} borderRadius={6} />
-        <SkeletonText lines={2} lineHeight={14} spacing={8} lastLineWidth="58%" />
+
+      <Skeleton width="100%" height={heroHeight} borderRadius={tokens.radius.lg} />
+
+      <View style={styles.sectionHeader}>
+        <Skeleton width={156} height={22} borderRadius={tokens.radius.sm} />
+        <Skeleton width={52} height={14} borderRadius={tokens.radius.sm} />
       </View>
+
+      <View style={styles.blazingRow}>
+        <Skeleton width={176} height={62} borderRadius={tokens.radius.lg} />
+        <Skeleton width={176} height={62} borderRadius={tokens.radius.lg} />
+      </View>
+
+      <View style={styles.sectionHeader}>
+        <View style={styles.headerTitle}>
+          <Skeleton width={152} height={22} borderRadius={tokens.radius.sm} />
+          <Skeleton width={214} height={14} borderRadius={tokens.radius.sm} />
+        </View>
+        <Skeleton width={52} height={14} borderRadius={tokens.radius.sm} />
+      </View>
+
+      <View style={styles.horizontalRow}>
+        <Skeleton width={Math.min(184, Math.max(150, Math.round(width * 0.42)))} height={230} borderRadius={tokens.radius.lg} />
+        <Skeleton width={Math.min(184, Math.max(150, Math.round(width * 0.42)))} height={230} borderRadius={tokens.radius.lg} />
+      </View>
+
+      <View style={styles.sectionHeader}>
+        <Skeleton width={132} height={22} borderRadius={tokens.radius.sm} />
+      </View>
+
       <View style={styles.grid}>
-        {Array.from({ length: 9 }).map((_, index) => (
-          <View key={index} style={[styles.card, { width: cardWidth, backgroundColor: theme.colors.surface }]}>
-            <Skeleton width="100%" height={Math.round(cardWidth / 0.82)} borderRadius={12} />
-          </View>
+        {Array.from({ length: columnCount * 2 }).map((_, index) => (
+          <Skeleton
+            key={index}
+            width={cardWidth}
+            height={Math.round(cardWidth * 1.58)}
+            borderRadius={tokens.radius.lg}
+          />
         ))}
+      </View>
+
+      <View style={styles.editorial}>
+        <Skeleton width={108} height={24} borderRadius={tokens.radius.full} />
+        <SkeletonText lines={2} lineHeight={18} spacing={8} lastLineWidth="58%" />
       </View>
     </View>
   );
@@ -46,34 +91,48 @@ export function MarketSkeleton() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    paddingHorizontal: tokens.spacing.md,
+    paddingHorizontal: SIDE_PADDING,
     gap: tokens.spacing.md,
   },
   header: {
-    minHeight: 44,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: tokens.spacing.md,
   },
-  headerActions: {
-    flexDirection: 'row',
-    gap: tokens.spacing.sm,
+  headerTitle: {
+    flex: 1,
+    minWidth: 0,
+    gap: tokens.spacing.xs,
   },
   chips: {
     flexDirection: 'row',
     gap: tokens.spacing.sm,
   },
-  hero: {
-    borderRadius: tokens.radius.lg,
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.md,
+  },
+  blazingRow: {
+    flexDirection: 'row',
     gap: tokens.spacing.sm,
+  },
+  horizontalRow: {
+    flexDirection: 'row',
+    gap: CARD_GAP,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
+    gap: CARD_GAP,
   },
-  card: {
-    borderRadius: tokens.radius.md,
-    overflow: 'hidden',
+  editorial: {
+    minHeight: 148,
+    borderRadius: tokens.radius.lg,
+    gap: tokens.spacing.md,
+    justifyContent: 'flex-end',
+    padding: tokens.spacing.lg,
   },
 });

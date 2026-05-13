@@ -14,7 +14,7 @@ import {
 import { LoaderBlock } from '@/components/ui/AppLoader';
 import { AppText } from '@/components/ui/AppText';
 import { Chip } from '@/components/ui/Chip';
-import { CatalogCardSurface } from '@/components/catalog/CatalogCardSurface';
+import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
 import { AppSelectSheet } from '@/components/ui/AppSelectSheet';
 import { BagPulseIcon, type BagPulseStatus } from '@/components/ui/BagPulseIcon';
@@ -120,7 +120,6 @@ const getBagPulseStatus = (args: {
 function ProductCard({
   product,
   width,
-  primary,
   wishlisted,
   standardBagged,
   customBagged,
@@ -130,7 +129,6 @@ function ProductCard({
 }: {
   product: StoreProduct;
   width: number;
-  primary: string;
   wishlisted: boolean;
   standardBagged: boolean;
   customBagged: boolean;
@@ -143,86 +141,39 @@ function ProductCard({
   const isOutOfStock = stock <= 0;
   const hasDiscount =
     typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
+  const discountLabel = hasDiscount
+    ? `-${Math.round((1 - product.price / Number(product.compareAtPrice || product.price || 1)) * 100)}%`
+    : null;
+  const typeLabel = isOutOfStock
+    ? 'Out'
+    : discountLabel ?? (product.customOrderEnabled ? 'Custom' : 'Product');
+  const metaLabel = product.categoryName ?? (product.customOrderEnabled ? 'Custom-ready' : 'Ready to wear');
 
   return (
-    <CatalogCardSurface
+    <UnifiedProductCard
       width={width}
       onPress={onPress}
+      title={product.name}
+      brandName={metaLabel}
+      priceLabel={formatPrice(product.price, product.currency)}
       mediaSrc={product.coverImage}
       mediaFileId={product.coverImageId}
-      style={[
-        styles.productCard,
-        {
-          backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.border,
-        },
-      ]}
-      bodyStyle={styles.productInfo}
-      fallback={
-        <View
-          style={[
-            styles.imageFallback,
-            { backgroundColor: theme.colors.surfaceAlt },
-          ]}
-        >
-          <AppText variant="h1">🛍️</AppText>
+      typeLabel={typeLabel}
+      metaLabel={wishlisted ? 'Saved' : metaLabel}
+      actionLabel="View"
+      actionBusy={busy}
+      onActionPress={onPress}
+      topRightSlot={
+        <View style={[styles.cardBagAffordance, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
+          <BagPulseIcon
+            status={pulseStatus}
+            context="multi"
+            mode={customBagged && !standardBagged ? 'custom' : 'standard'}
+            size={34}
+          />
         </View>
       }
-      topOverlay={
-        <View style={styles.cardTopOverlay}>
-          <View style={styles.topBadgeRow}>
-            {isOutOfStock ? (
-              <View style={[styles.outOfStockBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
-                <AppText variant="captionBold" tone="danger">Out of stock</AppText>
-              </View>
-            ) : null}
-
-            {hasDiscount ? (
-              <View style={[styles.saleBadge, { backgroundColor: primary }]}>
-                <AppText variant="captionBold" tone="inverse">
-                  -
-                  {Math.round(
-                    (1 - product.price / Number(product.compareAtPrice || product.price || 1)) * 100,
-                  )}
-                  %
-                </AppText>
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.cardBagAffordance}>
-            <BagPulseIcon
-              status={pulseStatus}
-              context="multi"
-              mode={customBagged && !standardBagged ? 'custom' : 'standard'}
-              size={36}
-            />
-          </View>
-        </View>
-      }
-    >
-      <AppText variant="captionBold" numberOfLines={2}>
-        {product.name}
-      </AppText>
-
-      <View style={styles.priceRow}>
-        <AppText variant="captionBold" tone="primary">
-          {formatPrice(product.price, product.currency)}
-        </AppText>
-        {hasDiscount ? (
-          <AppText variant="caption" tone="muted" style={styles.comparePrice}>
-            {formatPrice(Number(product.compareAtPrice), product.currency)}
-          </AppText>
-        ) : null}
-      </View>
-
-      <View style={styles.statusRow}>
-        {wishlisted ? <AppText variant="captionBold" tone="muted">🧵 Saved</AppText> : null}
-        {standardBagged ? <AppText variant="captionBold" tone="muted">🛍️ In bag</AppText> : null}
-        {customBagged ? <AppText variant="captionBold" tone="muted">✂️ Custom bagged</AppText> : null}
-        {product.customOrderEnabled ? <AppText variant="captionBold" tone="muted">✂️ Custom-ready</AppText> : null}
-      </View>
-    </CatalogCardSurface>
+    />
   );
 }
 
@@ -301,6 +252,13 @@ export function BrandShopTab({
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
 
   const openedInitialProductIdRef = useRef<string | null>(null);
+  const normalizedBrandId = useMemo(() => {
+    const value = String(brandId ?? '').trim();
+    return value.length > 0 ? value : null;
+  }, [brandId]);
+  const brandIdIssue = normalizedBrandId
+    ? null
+    : 'No active brand ID is available for this store view. Switch to a brand workspace or sign in again.';
 
   const CARD_GAP = 10;
   const SIDE_PADDING = 16;
@@ -360,16 +318,34 @@ export function BrandShopTab({
   }, [isOwner, status]);
 
   const fetchProducts = useCallback(async () => {
-    if (!brandId) {
+    if (!normalizedBrandId) {
+      if (__DEV__) {
+        console.warn('[brand-shop]', {
+          event: 'missing-brand-id',
+          isOwner,
+          userId: user?.id ?? null,
+          activeBrandId: user?.activeBrandId ?? null,
+          storeId: user?.storeId ?? null,
+          activeMembershipCount: user?.brandMemberships?.filter((membership) => membership.status === 'ACTIVE').length ?? 0,
+        });
+      }
       setProducts([]);
       setLoading(false);
       setRefreshing(false);
+      setError(null);
       return;
     }
 
     setError(null);
     try {
-      const items = await MobileStoreApi.getBrandProducts(brandId, 80);
+      if (__DEV__) {
+        console.log('[brand-shop]', {
+          event: 'load-products',
+          brandId: normalizedBrandId,
+          isOwner,
+        });
+      }
+      const items = await MobileStoreApi.getBrandProducts(normalizedBrandId, 80);
       setProducts(items);
     } catch (err) {
       setError(toApiErrorMessage(err, 'Could not load products right now.'));
@@ -377,7 +353,7 @@ export function BrandShopTab({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [brandId]);
+  }, [isOwner, normalizedBrandId, user?.activeBrandId, user?.brandMemberships, user?.id, user?.storeId]);
 
   useEffect(() => {
     setLoading(true);
@@ -558,7 +534,7 @@ export function BrandShopTab({
       return;
     }
 
-    if (!brandId || loading) {
+    if (!normalizedBrandId || loading) {
       return;
     }
 
@@ -579,7 +555,7 @@ export function BrandShopTab({
     return () => {
       cancelled = true;
     };
-  }, [brandId, initialProductId, loading, openProductDetail, products]);
+  }, [initialProductId, loading, normalizedBrandId, openProductDetail, products]);
 
   const ensureAuth = useCallback(
     (action: () => Promise<void>, message: string) => {
@@ -685,6 +661,49 @@ export function BrandShopTab({
     setRefreshing(false);
   }, [fetchProducts, refreshCommerceState]);
 
+  const hasActiveProductFilters = Boolean(
+    query.trim() ||
+      selectedCategory !== 'all' ||
+      selectedFilter !== 'all',
+  );
+
+  const clearProductFilters = useCallback(() => {
+    setQuery('');
+    setSelectedCategory('all');
+    setSelectedFilter('all');
+    setSelectedSort('newest');
+  }, []);
+
+  const renderEmptyState = (args: {
+    marker: string;
+    title: string;
+    body: string;
+    actionLabel?: string;
+    onAction?: () => void;
+  }) => (
+    <View style={styles.emptyState}>
+      <AppText variant="display">{args.marker}</AppText>
+      <AppText variant="subtitle" style={styles.emptyTitle}>{args.title}</AppText>
+      <AppText variant="body" tone="muted" style={styles.emptyBody}>{args.body}</AppText>
+      {args.actionLabel && args.onAction ? (
+        <Pressable
+          onPress={args.onAction}
+          style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
+        >
+          <AppText variant="bodyBold" tone="inverse">{args.actionLabel}</AppText>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+
+  if (brandIdIssue) {
+    return renderEmptyState({
+      marker: '⚠️',
+      title: 'Store identity missing',
+      body: brandIdIssue,
+    });
+  }
+
   if (loading) {
     return (
       <View style={styles.shopSkeleton}>
@@ -698,22 +717,16 @@ export function BrandShopTab({
   }
 
   if (error) {
-    return (
-      <View style={styles.emptyState}>
-        <AppText variant="display">⚠️</AppText>
-        <AppText variant="subtitle" style={styles.emptyTitle}>Could not load products</AppText>
-        <AppText variant="body" tone="muted" style={styles.emptyBody}>{error}</AppText>
-        <Pressable
-          onPress={() => {
-            setLoading(true);
-            void fetchProducts();
-          }}
-          style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
-        >
-          <AppText variant="bodyBold" tone="inverse">Retry</AppText>
-        </Pressable>
-      </View>
-    );
+    return renderEmptyState({
+      marker: '⚠️',
+      title: 'Could not load products',
+      body: error,
+      actionLabel: 'Retry',
+      onAction: () => {
+        setLoading(true);
+        void fetchProducts();
+      },
+    });
   }
 
   const listHeader = (
@@ -785,11 +798,23 @@ export function BrandShopTab({
       {filteredProducts.length === 0 ? listHeader : null}
 
       {filteredProducts.length === 0 ? (
-        <View style={styles.emptyState}>
-          <AppText variant="display">🧵</AppText>
-          <AppText variant="subtitle" style={styles.emptyTitle}>No products match this view</AppText>
-          <AppText variant="body" tone="muted" style={styles.emptyBody}>Try a different filter or search phrase.</AppText>
-        </View>
+        renderEmptyState(
+          products.length > 0
+            ? {
+                marker: '🧵',
+                title: 'Filters hide all products',
+                body: 'Products loaded for this brand, but the current search or filters hide them.',
+                actionLabel: hasActiveProductFilters ? 'Clear filters' : undefined,
+                onAction: hasActiveProductFilters ? clearProductFilters : undefined,
+              }
+            : {
+                marker: '🛍️',
+                title: isOwner ? 'No products yet' : 'No products available',
+                body: isOwner
+                  ? 'This brand store has no products yet. Products created in Studio will appear here after the brand-products endpoint returns them.'
+                  : 'This brand has not published any store products yet.',
+              },
+        )
       ) : (
         <FlatList
           data={filteredProducts}
@@ -806,7 +831,6 @@ export function BrandShopTab({
             <ProductCard
               product={item}
               width={cardWidth}
-              primary={theme.colors.primary}
               wishlisted={Boolean(wishlistByProductId[item.id])}
               standardBagged={Boolean(cartByProductId[item.id])}
               customBagged={Boolean(customBagByProductId[item.id])}
@@ -1071,67 +1095,18 @@ const styles = StyleSheet.create({
   gridContainer: {
     paddingTop: 14,
   },
-  productCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
   imageFallback: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  imageFallbackEmoji: {
-    fontSize: 34,
-    opacity: 0.6,
-  },
-  topBadgeRow: {
-    gap: 5,
-  },
-  cardTopOverlay: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    right: 8,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
   cardBagAffordance: {
+    width: 38,
+    height: 38,
+    borderRadius: tokens.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  outOfStockBadge: {
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  saleBadge: {
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  productInfo: {
-    padding: 10,
-    gap: 6,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  comparePrice: {
-    textDecorationLine: 'line-through',
-  },
-  statusRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
   },
   loadingWrap: {
     paddingVertical: 80,
