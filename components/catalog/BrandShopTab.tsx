@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { FlatList, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
@@ -22,6 +23,7 @@ import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useProductBagging } from '@/src/hooks/useProductBagging';
+import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 
 type SortKey = 'newest' | 'price_low_high' | 'price_high_low';
 type FilterKey = 'all' | 'in_stock' | 'custom_only' | 'bagged' | 'saved';
@@ -224,6 +226,8 @@ export function BrandShopTab({
   scrollEnabled = false,
 }: BrandShopTabProps) {
   const { scheme, theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const modalBottomGap = Platform.OS === 'android' ? Math.max(0, insets.bottom) : 0;
   const { status, user } = useAuth();
   const requireAuth = useAuthAction();
   const toast = useToast();
@@ -250,6 +254,8 @@ export function BrandShopTab({
   const [activeProduct, setActiveProduct] = useState<StoreProduct | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
+
+  useAndroidOverlaySystemBars(detailVisible, scheme, 'brand-shop-detail');
 
   const openedInitialProductIdRef = useRef<string | null>(null);
   const normalizedBrandId = useMemo(() => {
@@ -849,11 +855,13 @@ export function BrandShopTab({
         visible={detailVisible}
         transparent
         animationType="slide"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={closeProductDetail}
       >
         <View style={styles.modalRoot}>
           <Pressable style={[styles.modalBackdrop, { backgroundColor: theme.colors.overlay }]} onPress={closeProductDetail} />
-          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
+          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, marginBottom: modalBottomGap }]}>
             <View style={[styles.modalHandle, { backgroundColor: theme.colors.border }]} />
 
             {detailLoading || !activeProduct ? (

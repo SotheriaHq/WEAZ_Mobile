@@ -32,6 +32,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
+import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 
 type LoadState = 'booting' | 'loading' | 'ready' | 'error';
 
@@ -192,7 +193,8 @@ function StudioProfileMenu({
   onOpenHelp: () => void;
   onSignOut: () => void;
 }) {
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
+  useAndroidOverlaySystemBars(visible, scheme, 'studio-profile-menu');
   const { height, width } = useWindowDimensions();
   const displayName = getDisplayName(user);
   const handle = user?.username ? `@${user.username}` : null;
@@ -250,7 +252,14 @@ function StudioProfileMenu({
   ];
 
   return (
-    <Modal transparent visible={visible} animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
           <View style={styles.menuBackdrop} />

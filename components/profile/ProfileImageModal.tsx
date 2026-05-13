@@ -4,6 +4,8 @@ import { BlurView } from 'expo-blur';
 
 import { StableImage } from '@/components/ui/StableImage';
 import { AppText } from '@/components/ui/AppText';
+import { useTheme } from '@/src/theme/ThemeProvider';
+import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 
 type ProfileImageModalProps = {
   visible: boolean;
@@ -12,7 +14,10 @@ type ProfileImageModalProps = {
 };
 
 export function ProfileImageModal({ visible, imageUrl, onClose }: ProfileImageModalProps) {
+  const { scheme } = useTheme();
   const hasImage = typeof imageUrl === 'string' && imageUrl.trim().length > 0;
+
+  useAndroidOverlaySystemBars(visible && hasImage, scheme, 'profile-image-modal');
 
   if (!visible || !hasImage) {
     return null;
@@ -26,6 +31,7 @@ export function ProfileImageModal({ visible, imageUrl, onClose }: ProfileImageMo
       onRequestClose={onClose}
       presentationStyle="overFullScreen"
       statusBarTranslucent
+      navigationBarTranslucent
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
@@ -33,7 +39,7 @@ export function ProfileImageModal({ visible, imageUrl, onClose }: ProfileImageMo
         <View style={styles.centerWrap} pointerEvents="box-none">
           <BlurView intensity={35} tint="dark" style={styles.panel}>
             <Pressable onPress={onClose} style={styles.closeButton} accessibilityLabel="Close profile image">
-              <AppText style={styles.closeText}>✖️</AppText>
+              <AppText variant="smallBold">✖️</AppText>
             </Pressable>
 
             <View style={styles.imageWrap}>
@@ -84,9 +90,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  closeText: {
-    fontSize: 14,
   },
   imageWrap: {
     marginTop: 6,

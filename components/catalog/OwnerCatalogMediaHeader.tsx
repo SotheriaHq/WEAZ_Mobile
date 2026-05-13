@@ -18,7 +18,6 @@ type OwnerCatalogMediaHeaderProps = {
   createAnchorRef?: React.RefObject<View | null>;
   onCreateAnchorLayout?: () => void;
   onShare?: () => void;
-  onEmailPress?: () => void;
   onBack?: () => void;
   onSearch?: () => void;
   onViewAvatar?: () => void;
@@ -49,7 +48,6 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   createAnchorRef,
   onCreateAnchorLayout,
   onShare,
-  onEmailPress,
   onBack,
   onSearch,
   onViewAvatar,
@@ -197,7 +195,6 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       brandName={brandName}
       username={username}
       location={location}
-      email={profile?.email ?? user?.email ?? null}
       description={profile?.brandDescription ?? null}
       tags={profile?.brandTags || []}
       stats={stats}
@@ -217,7 +214,6 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       createAnchorRef={createAnchorRef}
       onCreateAnchorLayout={onCreateAnchorLayout}
       onShare={onShare}
-      onEmailPress={onEmailPress}
       onBack={onBack}
       onSearch={onSearch}
       onViewAvatar={onViewAvatar}

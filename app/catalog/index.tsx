@@ -211,9 +211,9 @@ export default function CatalogScreen() {
   const [draftDeletePhrase, setDraftDeletePhrase] = useState('');
   const [draftDeleteBusy, setDraftDeleteBusy] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
-  const [emailActionsOpen, setEmailActionsOpen] = useState(false);
   const [shareActionsOpen, setShareActionsOpen] = useState(false);
   const [brandQrOpen, setBrandQrOpen] = useState(false);
+  const [tabHeights, setTabHeights] = useState<Partial<Record<TabType, number>>>({});
   const [createMenuAnchorMetrics, setCreateMenuAnchorMetrics] = useState<{
     pageX: number;
     pageY: number;
@@ -223,6 +223,7 @@ export default function CatalogScreen() {
   const createMenuAnchorRef = useRef<View>(null);
   const tabPagerRef = useRef<ScrollView>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
+  const activeTabPagerHeight = tabHeights[activeTab];
 
   // Determine if owner view
   const activeBrandId = getActiveBrandId(user);
@@ -439,6 +440,15 @@ export default function CatalogScreen() {
     [activeTab, containerWidth, tabSwipeProgress],
   );
 
+  const handleTabPageLayout = useCallback((tab: TabType, event: LayoutChangeEvent) => {
+    const height = Math.ceil(event.nativeEvent.layout.height);
+    if (height <= 0) return;
+
+    setTabHeights((current) => (
+      current[tab] === height ? current : { ...current, [tab]: height }
+    ));
+  }, []);
+
   // Handle patch/unpatch
   const handlePatch = async () => {
     if (!targetBrandId || patchLoading) return;
@@ -509,11 +519,6 @@ export default function CatalogScreen() {
     profile?.location ||
     [profile?.brandCity, profile?.brandState, profile?.brandCountry].filter(Boolean).join(', ') ||
     undefined;
-  const profileEmail = useMemo(() => {
-    const profileValue = typeof profile?.email === 'string' ? profile.email.trim() : '';
-    const ownerValue = isOwner && typeof user?.email === 'string' ? user.email.trim() : '';
-    return profileValue || ownerValue || null;
-  }, [isOwner, profile?.email, user?.email]);
   const profileShareUrl = useMemo(
     () =>
       profile?.shareUrl ??
@@ -619,7 +624,6 @@ export default function CatalogScreen() {
   const headerBadges = useMemo(
     () =>
       getBrandBadges({
-        emailVerified: profile?.emailVerified ?? (isOwner ? userEmailVerified : null),
         brandVerified: Boolean(profile?.verified || profile?.verificationBadgeVisible),
         storeVerified: profile?.verificationStatus === 'APPROVED',
         isStoreOpen: profile?.isStoreOpen,
@@ -627,14 +631,11 @@ export default function CatalogScreen() {
         verificationStatus: profile?.verificationStatus,
       }),
     [
-      isOwner,
-      profile?.emailVerified,
       profile?.isStoreOpen,
       profile?.storeStatus,
       profile?.verificationBadgeVisible,
       profile?.verificationStatus,
       profile?.verified,
-      userEmailVerified,
     ],
   );
   const showInitialSkeleton = isLoading && !profile && collections.length === 0 && drafts.length === 0;
@@ -677,38 +678,6 @@ export default function CatalogScreen() {
 
     router.push({ pathname: '/messages/[threadId]', params: { threadId: 'brand', brandId: targetBrandId } } as any);
   }, [status, targetBrandId, toast]);
-
-  const handleCopyBrandEmail = useCallback(async () => {
-    if (!profileEmail) {
-      toast.error('Brand email is not available.');
-      return;
-    }
-
-    await Clipboard.setStringAsync(profileEmail);
-    toast.success('Email copied.');
-  }, [profileEmail, toast]);
-
-  const emailActionOptions = useMemo(
-    () => [
-      {
-        key: 'message',
-        icon: '💬',
-        title: 'Message brand',
-        description: 'Start a conversation inside Threadly.',
-        onPress: handleMessageBrand,
-        disabled: !targetBrandId,
-      },
-      {
-        key: 'copy',
-        icon: '✉️',
-        title: 'Copy email',
-        description: profileEmail ?? undefined,
-        onPress: () => void handleCopyBrandEmail(),
-        disabled: !profileEmail,
-      },
-    ],
-    [handleCopyBrandEmail, handleMessageBrand, profileEmail, targetBrandId],
-  );
 
   const shareActionOptions = useMemo(
     () => [
@@ -844,7 +813,6 @@ export default function CatalogScreen() {
               }
             }}
             onShare={() => setShareActionsOpen(true)}
-            onEmailPress={profileEmail ? () => setEmailActionsOpen(true) : undefined}
             onBack={handleBackNavigation}
             onSearch={() => router.push('/search')}
           />
@@ -853,7 +821,6 @@ export default function CatalogScreen() {
             brandName={profile?.brandFullName || 'Your Brand'}
             username={profile?.username || undefined}
             location={profileLocation}
-            email={profileEmail}
             description={profile?.brandDescription ?? null}
             tags={profile?.brandTags || []}
             stats={headerStats}
@@ -873,7 +840,6 @@ export default function CatalogScreen() {
               }
             }}
             onShare={() => setShareActionsOpen(true)}
-            onEmailPress={profileEmail ? () => setEmailActionsOpen(true) : undefined}
             onMessage={handleMessageBrand}
             onBack={handleBackNavigation}
             onSearch={() => router.push('/search')}
@@ -907,10 +873,13 @@ export default function CatalogScreen() {
           scrollEventThrottle={16}
           onScroll={handleTabPagerScroll}
           onMomentumScrollEnd={handleTabPagerMomentumEnd}
-          style={styles.tabPager}
+          style={[styles.tabPager, activeTabPagerHeight ? { height: activeTabPagerHeight } : null]}
           contentContainerStyle={styles.tabPagerContent}
         >
-          <View style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}>
+          <View
+            onLayout={(event) => handleTabPageLayout('Collections', event)}
+            style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
+          >
               <View style={styles.catalogControls}>
                 <VisibilityFilter
                   selected={visibilityFilter}
@@ -937,7 +906,10 @@ export default function CatalogScreen() {
               />
           </View>
 
-          <View style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}>
+          <View
+            onLayout={(event) => handleTabPageLayout('Shop', event)}
+            style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
+          >
             {containerWidth > 0 && targetBrandId ? (
               <BrandShopTab
                 brandId={targetBrandId}
@@ -950,7 +922,10 @@ export default function CatalogScreen() {
             )}
           </View>
 
-          <View style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}>
+          <View
+            onLayout={(event) => handleTabPageLayout('Reviews', event)}
+            style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
+          >
             {targetBrandId ? (
               <BrandReviewsTab brandId={targetBrandId} />
             ) : (
@@ -972,14 +947,6 @@ export default function CatalogScreen() {
         anchorMetrics={createMenuAnchorMetrics}
         onClose={() => setCreateMenuOpen(false)}
         options={createMenuOptions}
-      />
-
-      <AppActionSheet
-        visible={emailActionsOpen}
-        title="Contact brand"
-        subtitle={profileEmail ?? 'Brand email is not available.'}
-        options={emailActionOptions}
-        onClose={() => setEmailActionsOpen(false)}
       />
 
       <AppActionSheet
@@ -1108,6 +1075,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   tabPage: {
+    overflow: 'hidden',
   },
   tabContent: {
     paddingVertical: tokens.spacing.lg,
@@ -1118,7 +1086,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.xl,
-    paddingVertical: tokens.spacing.xl,
+    paddingVertical: tokens.spacing.lg,
   },
   emptyTitle: {
     marginTop: tokens.spacing.md,

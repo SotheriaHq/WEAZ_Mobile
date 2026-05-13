@@ -21,6 +21,7 @@ import {
 } from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
@@ -57,7 +58,7 @@ export default function CreateDesignPreviewScreen() {
     filterSelection,
     customMeasurementKeys,
   } = useDesignEditor();
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
   const insets = useSafeAreaInsets();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deletePhrase, setDeletePhrase] = React.useState('');
@@ -70,6 +71,8 @@ export default function CreateDesignPreviewScreen() {
   const selectedFilterCount = Object.values(filterSelection).reduce((sum, values) => sum + values.length, 0);
   const canDelete = deletePhrase === 'DELETE' && saveState.action !== 'draft';
   const selectedPreviewAsset = assets[selectedPreviewIndex] ?? null;
+
+  useAndroidOverlaySystemBars(deleteOpen, scheme, 'create-design-delete');
 
   React.useEffect(() => {
     if (assets.length === 0) {
@@ -244,7 +247,14 @@ export default function CreateDesignPreviewScreen() {
         </View>
       </ScrollView>
 
-      <Modal transparent visible={deleteOpen} animationType="fade" onRequestClose={() => setDeleteOpen(false)}>
+      <Modal
+        transparent
+        visible={deleteOpen}
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setDeleteOpen(false)}
+      >
         <View style={[styles.modalRoot, { backgroundColor: theme.colors.overlay }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setDeleteOpen(false)} />
           <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>

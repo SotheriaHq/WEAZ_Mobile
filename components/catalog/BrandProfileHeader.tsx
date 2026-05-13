@@ -21,7 +21,6 @@ export type BrandProfileHeaderProps = {
   brandName: string;
   username?: string;
   location?: string | null;
-  email?: string | null;
   description?: string | null;
   tags?: string[];
   stats?: BrandHeaderStat[];
@@ -43,7 +42,6 @@ export type BrandProfileHeaderProps = {
   createAnchorRef?: React.RefObject<View | null>;
   onCreateAnchorLayout?: () => void;
   onShare?: () => void;
-  onEmailPress?: () => void;
   onBack?: () => void;
   onSearch?: () => void;
   onViewAvatar?: () => void;
@@ -253,11 +251,25 @@ function BrandStatsRow({ stats }: { stats: BrandHeaderStat[] }) {
         <React.Fragment key={`${stat.label}-${index}`}>
           {index > 0 ? <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} /> : null}
           <View style={styles.statItem}>
-            <AppText variant="captionBold" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>
-              {stat.label.toUpperCase()}
-            </AppText>
-            <AppText variant="captionRegular" tone="muted" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>
+            <AppText
+              variant="smallBold"
+              tone="secondary"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+              style={styles.statValue}
+            >
               {stat.value}
+            </AppText>
+            <AppText
+              variant="captionBold"
+              tone="muted"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+              style={styles.statLabel}
+            >
+              {stat.label.toUpperCase()}
             </AppText>
           </View>
         </React.Fragment>
@@ -290,21 +302,20 @@ function BrandTextTags({ tags }: { tags: string[] }) {
 function SideBrandMetaBlock({
   brandName,
   location,
-  email,
   stats,
   tags,
   badges,
-  onEmailPress,
 }: {
   brandName: string;
   location?: string | null;
-  email?: string | null;
   stats: BrandHeaderStat[];
   tags: string[];
   badges: ProfileBadgeModel[];
-  onEmailPress?: () => void;
 }) {
   const { scheme, theme } = useTheme();
+  const normalizedBrandName = brandName.trim();
+  const brandWordCount = normalizedBrandName.split(/\s+/).filter(Boolean).length;
+  const brandNameLines = brandWordCount > 5 || normalizedBrandName.length > 28 ? 2 : 1;
   const primaryBadge = badges.find((badge) =>
     badge.variant === 'brand_verified' ||
     badge.variant === 'store_verified' ||
@@ -321,13 +332,13 @@ function SideBrandMetaBlock({
         style={[
           styles.brandNamePill,
           {
-            backgroundColor: theme.colors.glassSurfaceStrong,
+            backgroundColor: theme.colors.glassSurface,
             borderColor: theme.colors.glassBorder,
           },
         ]}
       >
         <BlurView
-          intensity={theme.colors.glassBlur}
+          intensity={Math.max(12, Math.round(theme.colors.glassBlur * 0.55))}
           tint={scheme === 'dark' ? 'dark' : 'light'}
           style={StyleSheet.absoluteFillObject}
           pointerEvents="none"
@@ -335,8 +346,10 @@ function SideBrandMetaBlock({
         <View style={styles.brandNameRow}>
           <AppText
             variant="title"
+            numberOfLines={brandNameLines}
+            ellipsizeMode="clip"
             adjustsFontSizeToFit
-            minimumFontScale={0.82}
+            minimumFontScale={brandNameLines === 1 ? 0.7 : 0.82}
             style={styles.brandNameText}
           >
             {brandName}
@@ -349,26 +362,6 @@ function SideBrandMetaBlock({
         <AppText variant="small" tone="muted" numberOfLines={1} style={styles.locationText}>
           📍 {location}
         </AppText>
-      ) : null}
-
-      {email && onEmailPress ? (
-        <Pressable
-          onPress={onEmailPress}
-          style={({ pressed }) => [
-            styles.emailAction,
-            {
-              backgroundColor: theme.colors.surfaceAlt,
-              borderColor: theme.colors.border,
-              opacity: pressed ? 0.76 : 1,
-            },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Open brand email actions"
-        >
-          <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-            Email
-          </AppText>
-        </Pressable>
       ) : null}
 
       <BrandBadgeRail badges={secondaryBadges} />
@@ -545,7 +538,6 @@ export function BrandProfileHeader({
   brandName,
   username,
   location,
-  email,
   description,
   tags = [],
   stats = [],
@@ -567,7 +559,6 @@ export function BrandProfileHeader({
   createAnchorRef,
   onCreateAnchorLayout,
   onShare,
-  onEmailPress,
   onBack,
   onSearch,
   onViewAvatar,
@@ -608,11 +599,9 @@ export function BrandProfileHeader({
         <SideBrandMetaBlock
           brandName={effectiveName}
           location={location}
-          email={email}
           stats={stats}
           tags={tags}
           badges={badges}
-          onEmailPress={onEmailPress}
         />
       </View>
 
@@ -731,9 +720,9 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.lg,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
   },
   brandNameRow: {
     flexDirection: 'row',
@@ -748,14 +737,6 @@ const styles = StyleSheet.create({
   locationText: {
     maxWidth: '100%',
   },
-  emailAction: {
-    alignSelf: 'flex-start',
-    minHeight: 30,
-    borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.md,
-    justifyContent: 'center',
-  },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -765,6 +746,15 @@ const styles = StyleSheet.create({
   statItem: {
     flex: 1,
     minWidth: 0,
+    alignItems: 'center',
+  },
+  statValue: {
+    textAlign: 'center',
+    maxWidth: '100%',
+  },
+  statLabel: {
+    textAlign: 'center',
+    maxWidth: '100%',
   },
   statDivider: {
     width: StyleSheet.hairlineWidth,

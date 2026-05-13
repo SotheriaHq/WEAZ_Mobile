@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiClient } from '@/src/api/httpClient';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { AppText } from '@/components/ui/AppText';
+import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 
 type Comment = {
   id: string;
@@ -177,6 +178,7 @@ export default function CollectionCommentsSheet({
   const { theme, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const isDark = scheme === 'dark';
+  const androidBottomGap = Platform.OS === 'android' ? Math.max(0, insets.bottom) : 0;
   const translateY = useRef(new Animated.Value(480)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(visible);
@@ -185,6 +187,8 @@ export default function CollectionCommentsSheet({
   const [commentText, setCommentText] = useState('');
   const [sendingComment, setSendingComment] = useState(false);
   const commentsListRef = useRef<FlatList<Comment> | null>(null);
+
+  useAndroidOverlaySystemBars(visible, scheme, 'collection-comments');
 
   const loadComments = useMemo(
     () => async (targetCollectionId: string) => {
@@ -270,6 +274,7 @@ export default function CollectionCommentsSheet({
       visible={mounted}
       animationType="none"
       statusBarTranslucent
+      navigationBarTranslucent
       presentationStyle="overFullScreen"
       onRequestClose={onClose}
     >
@@ -284,7 +289,8 @@ export default function CollectionCommentsSheet({
             {
               backgroundColor: isDark ? '#0f0b18' : '#ffffff',
               borderTopColor: theme.colors.border,
-              paddingBottom: insets.bottom,
+              marginBottom: androidBottomGap,
+              paddingBottom: Platform.OS === 'android' ? 0 : insets.bottom,
               transform: [{ translateY }],
             },
           ]}

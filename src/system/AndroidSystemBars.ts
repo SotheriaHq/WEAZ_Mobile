@@ -164,3 +164,32 @@ export function useAndroidSystemBars(scheme: ResolvedTheme, reasonKey: string) {
     return () => subscription.remove();
   }, [reasonKey, scheme]);
 }
+
+export function useAndroidOverlaySystemBars(
+  visible: boolean,
+  scheme: ResolvedTheme,
+  reasonKey: string,
+) {
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+
+    const reason = visible ? `overlay-open:${reasonKey}` : `overlay-closed:${reasonKey}`;
+    void applyAndroidSystemBarsPolicy(scheme, reason);
+
+    if (!visible) return undefined;
+
+    const refreshTimers = [
+      setTimeout(() => {
+        void applyAndroidSystemBarsPolicy(scheme, `overlay-open-settled:${reasonKey}`);
+      }, 80),
+      setTimeout(() => {
+        void applyAndroidSystemBarsPolicy(scheme, `overlay-open-after-animation:${reasonKey}`);
+      }, 280),
+    ];
+
+    return () => {
+      refreshTimers.forEach(clearTimeout);
+      void applyAndroidSystemBarsPolicy(scheme, `overlay-cleanup:${reasonKey}`);
+    };
+  }, [reasonKey, scheme, visible]);
+}
