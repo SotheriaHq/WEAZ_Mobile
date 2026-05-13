@@ -101,7 +101,7 @@ export default function CreateDesignPreviewScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <View style={styles.header}>
         <AppBackButton fallbackHref="/catalog/create-design/composer" />
         <View style={styles.headerCopy}>
@@ -114,7 +114,7 @@ export default function CreateDesignPreviewScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing.xl }]}
+        contentContainerStyle={styles.content}
       >
         {selectedPreviewAsset ? (
           <View style={styles.heroWrap}>
@@ -217,35 +217,36 @@ export default function CreateDesignPreviewScreen() {
           </Card>
         ) : null}
 
-        <View style={[styles.footerActions, { paddingHorizontal: tokens.spacing.lg, paddingBottom: insets.bottom }]}>
-          {!canSaveDraft ? (
-            <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-              Add at least one field or one media item to save a draft.
-            </AppText>
-          ) : null}
-          <Button title="Back to edit" variant="outline" onPress={() => router.replace('/catalog/create-design/composer' as any)} fullWidth />
-          <View style={styles.actionRow}>
-            <Button
-              title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
-              variant="secondary"
-              loading={saveState.action === 'draft'}
-              disabled={!canSaveDraft}
-              onPress={() => void save('draft')}
-              style={styles.actionButton}
-            />
-            <Button
-              title={saveState.action === 'publish' ? 'Publishing...' : 'Publish'}
-              loading={saveState.action === 'publish'}
-              disabled={!canPublish}
-              onPress={() => void save('publish')}
-              style={styles.actionButton}
-            />
-          </View>
-          {activeDesignId && isDraft ? (
-            <Button title="Delete draft" variant="danger" onPress={() => setDeleteOpen(true)} fullWidth />
-          ) : null}
-        </View>
       </ScrollView>
+
+      <View style={[styles.footerActions, { paddingHorizontal: tokens.spacing.lg, paddingBottom: Math.max(insets.bottom, tokens.spacing.md) }]}>
+        {!canSaveDraft ? (
+          <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+            Add at least one field or one media item to save a draft.
+          </AppText>
+        ) : null}
+        <Button title="Back to edit" variant="outline" onPress={() => router.replace('/catalog/create-design/composer' as any)} fullWidth />
+        <View style={styles.actionRow}>
+          <Button
+            title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
+            variant="secondary"
+            loading={saveState.action === 'draft'}
+            disabled={!canSaveDraft}
+            onPress={() => void save('draft')}
+            style={styles.actionButton}
+          />
+          <Button
+            title={saveState.action === 'publish' ? 'Publishing...' : 'Publish'}
+            loading={saveState.action === 'publish'}
+            disabled={!canPublish}
+            onPress={() => void save('publish')}
+            style={styles.actionButton}
+          />
+        </View>
+        {activeDesignId && isDraft ? (
+          <Button title="Delete draft" variant="danger" onPress={() => setDeleteOpen(true)} fullWidth />
+        ) : null}
+      </View>
 
       <Modal
         transparent

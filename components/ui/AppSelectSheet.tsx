@@ -25,6 +25,7 @@ type BaseProps = {
   onClose: () => void;
   loading?: boolean;
   errorMessage?: string | null;
+  onRetry?: () => void;
   emptyMessage?: string;
 };
 
@@ -113,6 +114,7 @@ export function AppMultiSelectSheet({
   onClose,
   loading,
   errorMessage,
+  onRetry,
   emptyMessage = 'No options available.',
   maxSelected,
 }: MultiProps) {
@@ -202,7 +204,13 @@ export function AppMultiSelectSheet({
       }}
       doneLabel="Done"
     >
-      <SelectSheetState loading={loading || isSearching} errorMessage={errorMessage} empty={displayedOptions.length === 0} emptyMessage={searchText.trim() ? "No suggestions found. Type a tag and tap Add." : emptyMessage} />
+      <SelectSheetState
+        loading={loading || isSearching}
+        errorMessage={errorMessage}
+        onRetry={onRetry}
+        empty={displayedOptions.length === 0}
+        emptyMessage={searchText.trim() ? "No suggestions found. Type a tag and tap Add." : emptyMessage}
+      />
       <Input
         label="Search tags"
         hideLabel
@@ -255,16 +263,25 @@ export function AppMultiSelectSheet({
 function SelectSheetState({
   loading,
   errorMessage,
+  onRetry,
   empty,
   emptyMessage,
 }: {
   loading?: boolean;
   errorMessage?: string | null;
+  onRetry?: () => void;
   empty: boolean;
   emptyMessage: string;
 }) {
   if (loading) return <AppText variant="body" tone="muted">Loading options...</AppText>;
-  if (errorMessage) return <AppText variant="body" tone="danger">{errorMessage}</AppText>;
+  if (errorMessage) {
+    return (
+      <View style={styles.stateBlock}>
+        <AppText variant="body" tone="danger">{errorMessage}</AppText>
+        {onRetry ? <Button title="Retry" size="sm" variant="secondary" onPress={onRetry} /> : null}
+      </View>
+    );
+  }
   if (empty) return <AppText variant="body" tone="muted">{emptyMessage}</AppText>;
   return null;
 }
@@ -273,6 +290,10 @@ const styles = StyleSheet.create({
   optionWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  stateBlock: {
+    alignItems: 'flex-start',
     gap: tokens.spacing.sm,
   },
   optionCard: {

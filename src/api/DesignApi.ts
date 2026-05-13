@@ -177,7 +177,7 @@ type PresignedUpload = {
   expectedKey: string;
   uploadUrl: string;
   uploadFields?: Record<string, string> | null;
-  method: 'POST' | 'PUT';
+  method?: 'POST' | 'PUT';
 };
 
 type InitializeDesignResponse = {
@@ -445,11 +445,17 @@ const buildMetadata = (payload: DesignSavePayload) => ({
   targetAgeGroup: payload.targetAgeGroup,
 });
 
+export function resolvePresignedUploadMethod(upload: Pick<PresignedUpload, 'method' | 'uploadFields'>): 'POST' | 'PUT' {
+  return upload.method ?? (upload.uploadFields ? 'POST' : 'PUT');
+}
+
 async function uploadDesignAsset(
   upload: PresignedUpload,
   asset: MobileDesignAsset,
 ): Promise<UploadCompletion> {
-  if (upload.method === 'POST') {
+  const method = resolvePresignedUploadMethod(upload);
+
+  if (method === 'POST') {
     const formData = new FormData();
     for (const [key, value] of Object.entries(upload.uploadFields ?? {})) {
       formData.append(key, value);
