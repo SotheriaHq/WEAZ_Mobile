@@ -7,6 +7,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
+import { BrandBadgeRail, ProfileBadge, type ProfileBadgeModel } from '@/components/catalog/ProfileBadge';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -23,6 +24,7 @@ export type BrandProfileHeaderProps = {
   description?: string | null;
   tags?: string[];
   stats?: BrandHeaderStat[];
+  badges?: ProfileBadgeModel[];
   avatarUrl?: string;
   avatarFileId?: string | null;
   bannerUrl?: string;
@@ -140,10 +142,10 @@ function BannerHeader({
       <View style={[styles.bannerShade, { backgroundColor: theme.colors.backdrop }]} />
 
       <View style={styles.bannerControls}>
-        <HeaderIconButton label="Go back" value="‹" onPress={onBack} />
+        <HeaderIconButton label="Go back" value={'\u2039'} onPress={onBack} />
         <View style={styles.bannerRightControls}>
-          <HeaderIconButton label="Search" value="⌕" onPress={onSearch} />
-          <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} />
+          <HeaderIconButton label="Search" value={'\u2315'} onPress={onSearch} />
+          <HeaderIconButton label="Share brand" value={'\u22ef'} onPress={onShare} />
         </View>
       </View>
 
@@ -288,13 +290,24 @@ function SideBrandMetaBlock({
   location,
   stats,
   tags,
+  badges,
 }: {
   brandName: string;
   location?: string | null;
   stats: BrandHeaderStat[];
   tags: string[];
+  badges: ProfileBadgeModel[];
 }) {
   const { scheme, theme } = useTheme();
+  const primaryBadge = badges.find((badge) =>
+    badge.variant === 'brand_verified' ||
+    badge.variant === 'store_verified' ||
+    badge.variant === 'user_verified' ||
+    badge.variant === 'pending_verification'
+  ) ?? null;
+  const secondaryBadges = primaryBadge
+    ? badges.filter((badge) => badge.variant !== primaryBadge.variant)
+    : badges;
 
   return (
     <View
@@ -316,11 +329,7 @@ function SideBrandMetaBlock({
         <AppText variant="title" numberOfLines={1} style={styles.brandNameText}>
           {brandName}
         </AppText>
-        <View style={[styles.verifiedBadge, { backgroundColor: theme.colors.primary }]}>
-          <AppText variant="captionBold" tone="inverse">
-            ✓
-          </AppText>
-        </View>
+        {primaryBadge ? <ProfileBadge badge={primaryBadge} compact /> : null}
       </View>
 
       {location ? (
@@ -329,6 +338,7 @@ function SideBrandMetaBlock({
         </AppText>
       ) : null}
 
+      <BrandBadgeRail badges={secondaryBadges} />
       <BrandStatsRow stats={stats} />
       <BrandTextTags tags={tags} />
     </View>
@@ -485,6 +495,7 @@ export function BrandProfileHeader({
   description,
   tags = [],
   stats = [],
+  badges = [],
   avatarUrl,
   avatarFileId,
   bannerUrl,
@@ -542,6 +553,7 @@ export function BrandProfileHeader({
           location={location}
           stats={stats}
           tags={tags}
+          badges={badges}
         />
       </View>
 
@@ -675,13 +687,6 @@ const styles = StyleSheet.create({
   },
   brandNameText: {
     flexShrink: 1,
-  },
-  verifiedBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: tokens.radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   locationText: {
     maxWidth: '100%',

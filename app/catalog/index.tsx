@@ -42,6 +42,7 @@ import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { resolveBannerImageSource, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { BrandShopTab } from '@/components/catalog/BrandShopTab';
 import { BrandReviewsTab } from '@/components/catalog/BrandReviewsTab';
+import { getBrandBadges } from '@/components/catalog/ProfileBadge';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -56,6 +57,7 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { catalogDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { formatCount } from '@/src/utils/formatCount';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -64,13 +66,6 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 type TabType = 'Collections' | 'Shop' | 'Reviews';
 type VisibilityType = 'Public' | 'Private' | 'Drafts';
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
-
-function formatCompactStat(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return '0';
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K`;
-  return String(value);
-}
 
 function CatalogLoadingSkeleton() {
   const { theme } = useTheme();
@@ -479,30 +474,73 @@ export default function CatalogScreen() {
     ? ownerAvatarUri ?? ownerAvatar.src ?? null
     : visitorAvatarUri ?? visitorAvatar.src ?? null;
   const profileLocation =
-    [profile?.brandCity, profile?.brandState, profile?.brandCountry].filter(Boolean).join(', ') || undefined;
+    profile?.location ||
+    [profile?.brandCity, profile?.brandState, profile?.brandCountry].filter(Boolean).join(', ') ||
+    undefined;
 
   const currentCollections = visibilityFilter === 'Drafts' ? drafts : collections;
   const headerStats = useMemo<BrandHeaderStat[]>(() => {
-    const contentCount = Math.max(collections.length, currentCollections.length);
-    const stats: BrandHeaderStat[] = [
-      { value: formatCompactStat(contentCount), label: contentCount === 1 ? 'Design' : 'Designs' },
-    ];
+    const backendDesigns = Number(profile?.collectionsCount);
+    const localDesigns = Math.max(collections.length, currentCollections.length);
+    const designsCount = Number.isFinite(backendDesigns) ? backendDesigns : localDesigns;
+    const productsCount = Number(profile?.productsCount);
+    const followersCount = Number(profile?.followersCount ?? profile?.patchesCount);
+    const totalLikes = Number(profile?.totalLikes);
+    const averageRating = Number(profile?.averageRating);
+    const totalReviews = Number(profile?.totalReviews);
+    const stats: BrandHeaderStat[] = [];
 
-    if (isOwner && drafts.length > 0) {
-      stats.push({ value: formatCompactStat(drafts.length), label: drafts.length === 1 ? 'Draft' : 'Drafts' });
+    if (designsCount > 0 || !Number.isFinite(productsCount) || productsCount <= 0) {
+      stats.push({ value: formatCount(designsCount), label: designsCount === 1 ? 'Design' : 'Designs' });
+    } else {
+      stats.push({ value: formatCount(productsCount), label: productsCount === 1 ? 'Product' : 'Products' });
     }
 
-    if (typeof profile?.isStoreOpen === 'boolean') {
-      stats.push({ value: profile.isStoreOpen ? 'Open' : 'Closed', label: 'Store' });
+    if (Number.isFinite(followersCount)) {
+      stats.push({ value: formatCount(followersCount), label: followersCount === 1 ? 'Follower' : 'Followers' });
     }
 
-    const tagCount = profile?.brandTags?.length ?? 0;
-    if (stats.length < 3 && tagCount > 0) {
-      stats.push({ value: formatCompactStat(tagCount), label: tagCount === 1 ? 'Tag' : 'Tags' });
+    if (Number.isFinite(totalLikes)) {
+      stats.push({ value: formatCount(totalLikes), label: totalLikes === 1 ? 'Like' : 'Likes' });
     }
 
-    return stats.slice(0, 3);
-  }, [collections.length, currentCollections.length, drafts.length, isOwner, profile?.brandTags?.length, profile?.isStoreOpen]);
+    if (Number.isFinite(averageRating) && averageRating > 0 && Number.isFinite(totalReviews) && totalReviews > 0) {
+      stats.push({ value: `⭐ ${averageRating.toFixed(1)}`, label: 'Rating' });
+    }
+
+    return stats.slice(0, 4);
+  }, [
+    collections.length,
+    currentCollections.length,
+    profile?.averageRating,
+    profile?.collectionsCount,
+    profile?.followersCount,
+    profile?.patchesCount,
+    profile?.productsCount,
+    profile?.totalLikes,
+    profile?.totalReviews,
+  ]);
+  const headerBadges = useMemo(
+    () =>
+      getBrandBadges({
+        emailVerified: profile?.emailVerified ?? (isOwner ? userEmailVerified : null),
+        brandVerified: Boolean(profile?.verified || profile?.verificationBadgeVisible),
+        storeVerified: profile?.verificationStatus === 'APPROVED',
+        isStoreOpen: profile?.isStoreOpen,
+        storeStatus: profile?.storeStatus,
+        verificationStatus: profile?.verificationStatus,
+      }),
+    [
+      isOwner,
+      profile?.emailVerified,
+      profile?.isStoreOpen,
+      profile?.storeStatus,
+      profile?.verificationBadgeVisible,
+      profile?.verificationStatus,
+      profile?.verified,
+      userEmailVerified,
+    ],
+  );
   const showInitialSkeleton = isLoading && !profile && collections.length === 0 && drafts.length === 0;
   const overlayScrollPadding = standardScreenBottomPadding;
 
@@ -620,6 +658,7 @@ export default function CatalogScreen() {
             profile={profile}
             isLoading={false}
             stats={headerStats}
+            badges={headerBadges}
             onEditProfile={() => {
               if (!targetBrandId) return;
               router.push({ pathname: '/catalog/edit-profile', params: { brandId: targetBrandId } } as any);
@@ -642,6 +681,7 @@ export default function CatalogScreen() {
             description={profile?.brandDescription ?? null}
             tags={profile?.brandTags || []}
             stats={headerStats}
+            badges={headerBadges}
             avatarUrl={visitorAvatarUri ?? visitorAvatar.src ?? undefined}
             avatarFileId={visitorAvatar.fileId ?? undefined}
             bannerUrl={visitorBanner.src ?? undefined}

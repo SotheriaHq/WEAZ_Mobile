@@ -15,6 +15,20 @@ export interface BrandProfileDto {
   brandDescription: string | null;
   description?: string | null;
   isStoreOpen?: boolean;
+  storeStatus?: 'OPEN' | 'CLOSED' | 'PENDING_VERIFICATION' | 'UNAVAILABLE' | null;
+  emailVerified?: boolean | null;
+  verified?: boolean | null;
+  verificationStatus?: string | null;
+  verificationBadgeVisible?: boolean | null;
+  verifiedExplanationUrl?: string | null;
+  averageRating?: number | null;
+  totalReviews?: number | null;
+  collectionsCount?: number | null;
+  productsCount?: number | null;
+  patchesCount?: number | null;
+  followersCount?: number | null;
+  totalLikes?: number | null;
+  totalShares?: number | null;
   brandCountry: string | null;
   brandState: string | null;
   brandCity: string | null;
@@ -387,6 +401,15 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
     asString(source.bannerImageId) ??
     asString(bannerMeta.fileId) ??
     asString(bannerMeta.id);
+  const storeStatusRaw = asString(source.storeStatus);
+  const storeStatus: BrandProfileDto['storeStatus'] =
+    storeStatusRaw === 'OPEN' || storeStatusRaw === 'CLOSED' || storeStatusRaw === 'PENDING_VERIFICATION'
+      ? storeStatusRaw
+      : typeof source.isStoreOpen === 'boolean'
+        ? source.isStoreOpen
+          ? 'OPEN'
+          : 'CLOSED'
+        : null;
 
   const tagSource = Array.isArray(source.brandTags)
     ? source.brandTags
@@ -415,7 +438,40 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
     description:
       asString(source.description) ??
       asString(source.brandDescription),
-    isStoreOpen: Boolean(source.isStoreOpen),
+    isStoreOpen:
+      typeof source.isStoreOpen === 'boolean'
+        ? source.isStoreOpen
+        : storeStatus === 'OPEN',
+    storeStatus,
+    emailVerified:
+      typeof source.emailVerified === 'boolean'
+        ? source.emailVerified
+        : typeof source.isEmailVerified === 'boolean'
+          ? source.isEmailVerified
+          : null,
+    verified:
+      typeof source.verified === 'boolean'
+        ? source.verified
+        : typeof source.isVerifiedBrand === 'boolean'
+          ? source.isVerifiedBrand
+          : null,
+    verificationStatus: asString(source.verificationStatus),
+    verificationBadgeVisible:
+      typeof source.verificationBadgeVisible === 'boolean'
+        ? source.verificationBadgeVisible
+        : null,
+    verifiedExplanationUrl: asString(source.verifiedExplanationUrl),
+    averageRating: asNumber(source.averageRating ?? source.avgRating, 0),
+    totalReviews: asNumber(source.totalReviews, 0),
+    collectionsCount: asNumber(source.collectionsCount, 0),
+    productsCount: asNumber(source.productsCount, 0),
+    patchesCount: asNumber(source.patchesCount, 0),
+    followersCount: asNumber(source.followersCount ?? source.patchesCount, 0),
+    totalLikes: asNumber(source.totalLikes, 0),
+    totalShares:
+      source.totalShares === null || source.totalShares === undefined
+        ? null
+        : asNumber(source.totalShares, 0),
     brandCountry,
     brandState,
     brandCity,

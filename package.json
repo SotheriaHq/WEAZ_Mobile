@@ -9,6 +9,7 @@
     "web": "expo start --web",
     "audit:design-system": "node ../scripts/audit-mobile-design-system.js",
     "test:store-api-contract": "node scripts/test-store-api-contract.js",
+    "test:brand-profile-contract": "node scripts/test-brand-profile-contract.js",
     "ci:design-system": "npm exec tsc -- --noEmit && node ../scripts/audit-mobile-design-system.js",
     "audit:theme": "node scripts/audit-theme-system.js"
   },
