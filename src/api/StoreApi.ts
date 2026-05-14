@@ -1,4 +1,6 @@
 import { apiClient } from '@/src/api/httpClient';
+import type { CatalogEntityType } from '@/src/features/catalog/catalogDomain';
+import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
 
 export interface StoreProductVariant {
   id?: string;
@@ -9,6 +11,7 @@ export interface StoreProductVariant {
 
 export interface StoreProduct {
   id: string;
+  entityType?: CatalogEntityType;
   brandId?: string | null;
   brandName?: string | null;
   brandLogo?: string | null;
@@ -364,6 +367,7 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
 
   return {
     id,
+    entityType: resolveCatalogEntityType(raw, 'PRODUCT') ?? 'PRODUCT',
     brandId: asString(item.brandId),
     brandName: asString(item.brandName) ?? asString(rawBrand.name),
     brandLogo:

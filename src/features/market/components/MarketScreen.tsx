@@ -115,8 +115,18 @@ function normalizeSearch(value: string) {
 
 function buildContentItems(products: StoreProduct[], designs: MarketItem[]): MarketContentItem[] {
   return [
-    ...products.map((product) => ({ key: `product:${product.id}`, kind: 'product' as const, product })),
-    ...designs.map((design) => ({ key: `design:${design.collectionId}`, kind: 'design' as const, design })),
+    ...products.map((product) => ({
+      key: `product:${product.id}`,
+      entityType: 'PRODUCT' as const,
+      kind: 'product' as const,
+      product,
+    })),
+    ...designs.map((design) => ({
+      key: `design:${design.collectionId}`,
+      entityType: 'DESIGN' as const,
+      kind: 'design' as const,
+      design,
+    })),
   ];
 }
 

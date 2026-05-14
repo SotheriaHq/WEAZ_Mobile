@@ -4,6 +4,8 @@
  */
 
 import { apiClient } from './httpClient';
+import type { CatalogEntityType } from '@/src/features/catalog/catalogDomain';
+import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -79,6 +81,7 @@ export interface BrandProfileDto {
 
 export interface CollectionDto {
   id: string;
+  entityType?: CatalogEntityType;
   title: string;
   description: string | null;
   visibility: 'PUBLIC' | 'PRIVATE';
@@ -625,6 +628,16 @@ function normalizeCollectionItem(payload: unknown): CollectionDto | null {
 
   return {
     id,
+    entityType:
+      resolveCatalogEntityType(
+        item,
+        Boolean(item.isAvailableInStore) || String(item.domain ?? '').toUpperCase() === 'STORE'
+          ? 'COLLECTION'
+          : 'DESIGN',
+      ) ??
+      (Boolean(item.isAvailableInStore) || String(item.domain ?? '').toUpperCase() === 'STORE'
+        ? 'COLLECTION'
+        : 'DESIGN'),
     title: asString(item.title) ?? 'Untitled',
     description: asString(item.description),
     visibility: normalizeVisibility(item.visibility),
