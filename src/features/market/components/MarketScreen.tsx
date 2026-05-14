@@ -1158,7 +1158,7 @@ export function MarketScreen() {
     return (
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} translucent backgroundColor="transparent" />
-        <MarketSkeleton />
+        <MarketSkeleton bottomPadding={bottomClearance} />
       </SafeAreaView>
     );
   }
@@ -1171,7 +1171,8 @@ export function MarketScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderRow}
         ListHeaderComponent={renderHeader}
-        contentContainerStyle={[styles.feedContent, { paddingBottom: bottomClearance }]}
+        scrollIndicatorInsets={{ bottom: bottomClearance }}
+        contentContainerStyle={[styles.feedContent, { paddingBottom: bottomClearance + tokens.spacing.md }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         onEndReached={() => {

@@ -107,14 +107,17 @@ function buildProfileUrlFromConfig(brandId: string | null, username?: string | n
   return `${baseUrl}${path}`;
 }
 
-function CatalogLoadingSkeleton() {
+function CatalogLoadingSkeleton({ bottomPadding }: { bottomPadding: number }) {
   const { theme } = useTheme();
 
   return (
     <ScrollView
       style={styles.scrollView}
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.skeletonScrollContent}
+      contentContainerStyle={[
+        styles.skeletonScrollContent,
+        { paddingBottom: bottomPadding + tokens.spacing.xl },
+      ]}
     >
       <BrandProfileHeaderSkeleton />
 
@@ -148,7 +151,7 @@ const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => 
       <AppText variant="subtitle" style={styles.emptyTitle}>
         No Content Yet
       </AppText>
-      <AppText variant="body" tone="muted" style={styles.emptySubtitle}>
+      <AppText variant="bodyRegular" tone="muted" style={styles.emptySubtitle}>
         {isOwner
           ? 'Start showcasing your fashion by creating your first design.'
           : 'This brand has not published content yet.'}
@@ -769,7 +772,7 @@ export default function CatalogScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
-        <CatalogLoadingSkeleton />
+        <CatalogLoadingSkeleton bottomPadding={overlayScrollPadding} />
       </SafeAreaView>
     );
   }
@@ -781,7 +784,10 @@ export default function CatalogScreen() {
       <ScrollView
         style={styles.scrollView}
         scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: overlayScrollPadding }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: overlayScrollPadding + tokens.spacing.xl },
+        ]}
         showsVerticalScrollIndicator={false}
         onLayout={(e: LayoutChangeEvent) => setContainerWidth(e.nativeEvent.layout.width)}
         refreshControl={
@@ -1008,7 +1014,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: tokens.spacing.xl,
   },
   skeletonScrollContent: {
     paddingBottom: tokens.spacing.xl,
@@ -1039,9 +1045,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   brandSwitcherWrap: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 6,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
+    paddingBottom: tokens.spacing.xs,
   },
   catalogControls: {
     flexDirection: 'row',
@@ -1100,89 +1106,4 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
     overflow: 'hidden',
   },
-
-  // About tab
-  aboutContent: {
-    padding: 16,
-    gap: 16,
-  },
-  aboutCard: {
-    borderRadius: 16,
-    padding: 16,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  infoGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  infoCard: {
-    flex: 1,
-    borderRadius: 16,
-    padding: 16,
-  },
-  infoIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  infoLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  infoValue: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tagsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-  },
-  tagChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  tagChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  socialLinks: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
-  },
-  socialButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  contactGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  contactCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: 12,
-    padding: 14,
-  },
-  contactText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-
 });

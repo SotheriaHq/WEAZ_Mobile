@@ -12,7 +12,7 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   swatchColor?: string;
   disabled?: boolean;
-  variant?: 'default' | 'nav';
+  variant?: 'default' | 'nav' | 'profile';
 };
 
 export function Chip({ label, selected, onPress, style, swatchColor, disabled, variant = 'default' }: Props) {
@@ -20,6 +20,7 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
   const isSwatch = Boolean(swatchColor);
   const scale = React.useRef(new Animated.Value(1)).current;
   const isNav = variant === 'nav';
+  const isProfile = variant === 'profile';
 
   const animatePress = React.useCallback(
     (toValue: number, duration: number) => {
@@ -44,6 +45,7 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
           styles.base,
           isSwatch && styles.swatchBase,
           isNav && styles.navBase,
+          isProfile && styles.profileBase,
           isNav && selected && styles.navSelected,
           isNav && !selected && styles.navInactive,
           {
@@ -73,7 +75,7 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
         ) : (
           <View style={styles.labelWrap}>
             <AppText
-              variant={isNav ? 'captionBold' : 'smallBold'}
+              variant={isNav || isProfile ? 'captionBold' : 'smallBold'}
               tone={isNav ? (selected ? 'primary' : 'default') : selected ? 'inverse' : 'secondary'}
               numberOfLines={1}
             >
@@ -116,6 +118,12 @@ const styles = StyleSheet.create({
   },
   navInactive: {
     backgroundColor: 'transparent',
+  },
+  profileBase: {
+    minHeight: tokens.button.xs.height,
+    maxWidth: 168,
+    paddingHorizontal: tokens.spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   swatch: {
     width: 32,

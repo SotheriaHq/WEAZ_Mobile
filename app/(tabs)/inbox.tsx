@@ -245,9 +245,9 @@ const ConversationRow = memo(function ConversationRow({
   );
 });
 
-function MessagesSkeleton() {
+function MessagesSkeleton({ bottomPadding }: { bottomPadding: number }) {
   return (
-    <View style={styles.skeletonWrap}>
+    <View style={[styles.skeletonWrap, { paddingBottom: bottomPadding }]}>
       {Array.from({ length: 8 }).map((_, index) => (
         <View key={index} style={styles.skeletonRow}>
           <Skeleton width={52} height={52} borderRadius={16} />
@@ -467,7 +467,7 @@ export default function InboxScreen() {
           />
         </View>
       ) : loading ? (
-        <MessagesSkeleton />
+        <MessagesSkeleton bottomPadding={bottomPadding} />
       ) : error && !hasLoadedConversations ? (
         <View style={styles.stateWrap}>
           <AppText variant="subtitle">Could not load messages</AppText>
@@ -504,6 +504,8 @@ export default function InboxScreen() {
             data={filteredConversations}
             keyExtractor={keyExtractor}
             renderItem={renderConversation}
+            contentInset={{ bottom: bottomPadding }}
+            scrollIndicatorInsets={{ bottom: bottomPadding }}
             contentContainerStyle={[styles.listContent, { paddingBottom: bottomPadding }]}
             showsVerticalScrollIndicator={false}
             refreshControl={

@@ -24,6 +24,7 @@ import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useProductBagging } from '@/src/hooks/useProductBagging';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 
 type SortKey = 'newest' | 'price_low_high' | 'price_high_low';
 type FilterKey = 'all' | 'in_stock' | 'custom_only' | 'bagged' | 'saved';
@@ -229,6 +230,7 @@ export function BrandShopTab({
   const insets = useSafeAreaInsets();
   const modalBottomGap = Platform.OS === 'android' ? Math.max(0, insets.bottom) : 0;
   const { status, user } = useAuth();
+  const { standardScreenBottomPadding } = useScreenChrome();
   const requireAuth = useAuthAction();
   const toast = useToast();
 
@@ -269,6 +271,9 @@ export function BrandShopTab({
   const CARD_GAP = 10;
   const SIDE_PADDING = 16;
   const cardWidth = (containerWidth - SIDE_PADDING * 2 - CARD_GAP) / 2;
+  const gridBottomPadding = scrollEnabled
+    ? standardScreenBottomPadding + tokens.spacing.xl
+    : tokens.spacing.xl;
 
   const setBusy = useCallback((productId: string, busy: boolean) => {
     setBusyByProductId((prev) => {
@@ -712,7 +717,7 @@ export function BrandShopTab({
 
   if (loading) {
     return (
-      <View style={styles.shopSkeleton}>
+      <View style={[styles.shopSkeleton, { paddingBottom: gridBottomPadding }]}>
         <View style={styles.skeletonGrid}>
           {[0, 1, 2, 3].map((item) => (
             <SkeletonProductCard key={item} />
@@ -829,7 +834,10 @@ export function BrandShopTab({
           scrollEnabled={scrollEnabled}
           ListHeaderComponent={listHeader}
           columnWrapperStyle={{ gap: CARD_GAP }}
-          contentContainerStyle={[styles.gridContainer, { paddingHorizontal: SIDE_PADDING, paddingBottom: 110 }]}
+          contentContainerStyle={[
+            styles.gridContainer,
+            { paddingHorizontal: SIDE_PADDING, paddingBottom: gridBottomPadding },
+          ]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primary} />}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews={false}

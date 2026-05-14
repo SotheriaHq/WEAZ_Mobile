@@ -140,9 +140,9 @@ function EmptyState({
   );
 }
 
-function ProfileSkeleton() {
+function ProfileSkeleton({ bottomPadding }: { bottomPadding: number }) {
   return (
-    <View style={styles.skeletonWrap}>
+    <View style={[styles.skeletonWrap, { paddingBottom: bottomPadding }]}>
       <View style={styles.skeletonHeader}>
         <Skeleton width={80} height={80} borderRadius={40} />
         <View style={styles.skeletonHeaderText}>
@@ -354,6 +354,7 @@ function OrderRow({ order }: { order: Order }) {
 export default function BuyerProfileScreen() {
   const { theme } = useTheme();
   const { standardScreenBottomPadding } = useScreenChrome();
+  const contentBottomPadding = standardScreenBottomPadding;
   const { status, user, updateUser, signOut } = useAuth();
   const toast = useToast();
   const params = useLocalSearchParams<{ tab?: string | string[] }>();
@@ -684,7 +685,7 @@ export default function BuyerProfileScreen() {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <BrandHeader />
-        <ProfileSkeleton />
+        <ProfileSkeleton bottomPadding={contentBottomPadding} />
       </SafeAreaView>
     );
   }
@@ -707,7 +708,9 @@ export default function BuyerProfileScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: standardScreenBottomPadding }]}
+        contentInset={{ bottom: standardScreenBottomPadding }}
+        scrollIndicatorInsets={{ bottom: standardScreenBottomPadding }}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primary} />}
       >
         <View style={styles.headerActionsRow}>

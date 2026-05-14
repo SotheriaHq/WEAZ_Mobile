@@ -250,7 +250,7 @@ export default function TabLayout() {
     if (profileMenuVisible) {
       void refreshUnreadNotificationCount();
     }
-    applyAndroidSystemBarsPolicy(scheme, profileMenuVisible ? 'profile-dropup-open' : 'profile-dropup-closed');
+    void applyAndroidSystemBarsPolicy(scheme, profileMenuVisible ? 'profile-dropup-open' : 'profile-dropup-closed');
   }, [profileMenuVisible, refreshUnreadNotificationCount, scheme]);
 
   useNotificationRealtimeChannel({

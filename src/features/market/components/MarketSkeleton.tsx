@@ -14,7 +14,7 @@ function getSkeletonColumns(width: number) {
   return threeColumnWidth >= 168 ? 3 : 2;
 }
 
-export function MarketSkeleton() {
+export function MarketSkeleton({ bottomPadding = tokens.spacing.md }: { bottomPadding?: number }) {
   const { theme } = useTheme();
   const { width, height } = useWindowDimensions();
   const columnCount = getSkeletonColumns(width);
@@ -22,7 +22,7 @@ export function MarketSkeleton() {
   const heroHeight = Math.min(236, Math.max(176, Math.round(height * 0.24)));
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>
+    <View style={[styles.root, { backgroundColor: theme.colors.bg, paddingBottom: bottomPadding }]}>
       <View style={styles.header}>
         <Skeleton width={44} height={44} borderRadius={tokens.radius.md} />
         <View style={styles.headerTitle}>

@@ -160,12 +160,9 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, swipePr
               accessibilityState={{ selected: isActive }}
             >
               <AppText
-                variant="caption"
-                style={[
-                  styles.tabLabel,
-                  { color: isActive ? theme.colors.primary : theme.colors.textMuted },
-                  isActive && styles.tabLabelActive,
-                ]}
+                variant={isActive ? 'captionBold' : 'captionRegular'}
+                tone={isActive ? 'primary' : 'muted'}
+                style={styles.tabLabel}
               >
                 {tab.label}
               </AppText>
@@ -225,10 +222,6 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     textAlign: 'center',
-  },
-  tabLabelActive: {
-    fontWeight: '700',
-    letterSpacing: 0.2,
   },
   badge: {
     minWidth: 18,
