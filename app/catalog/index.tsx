@@ -62,6 +62,7 @@ import { catalogDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { formatCount } from '@/src/utils/formatCount';
 import { env } from '@/src/config/env';
+import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -465,18 +466,16 @@ export default function CatalogScreen() {
 
   // Handle collection actions
   const handleCollectionPress = useCallback((collection: CollectionDto) => {
-    router.push({
-      pathname: '/catalog/view/[collectionId]',
-      params: {
-        collectionId: collection.id,
-        scope: collection.isAvailableInStore ? 'store' : 'design',
-      },
-    } as any);
+    router.push(
+      collection.isAvailableInStore
+        ? routeForStoreCollectionTarget(collection.id)
+        : routeForDesignTarget(collection.id, { legacyCollectionId: collection.id }) as any,
+    );
   }, []);
 
   const handleEditCollection = useCallback((id: string) => {
     router.push({
-      pathname: '/catalog/create-design',
+      pathname: '/designs/[designId]/edit',
       params: { designId: id },
     } as any);
   }, []);

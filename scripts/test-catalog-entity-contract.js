@@ -14,6 +14,8 @@ const marketScreenSource = read('src/features/market/components/MarketScreen.tsx
 const catalogCardBranchSource = read('src/features/catalog/catalogCardBranch.ts');
 const catalogEntityCardSource = read('components/catalog/CatalogEntityCard.tsx');
 const collectionCardSource = read('components/catalog/CollectionCard.tsx');
+const mobileRoutingSource = read('src/utils/mobileRouting.ts');
+const studioNavigationBridgeSource = read('src/features/studio/studioNavigationBridge.ts');
 
 assert.match(catalogEntitySource, /SOURCE_TYPE_TO_ENTITY_TYPE/);
 assert.match(catalogEntitySource, /COLLECTION_MEDIA:\s*'DESIGN'/);
@@ -44,5 +46,14 @@ assert.match(catalogEntityCardSource, /export const CatalogCollectionCard/);
 assert.match(catalogEntityCardSource, /resolveCatalogCardBranch/);
 assert.match(collectionCardSource, /testID=\{`catalog-card-\$\{cardBranch\}`\}/);
 assert.match(collectionCardSource, /accessibilityLabel=\{copy\.ownerActionsLabel\}/);
+
+assert.match(mobileRoutingSource, /export function routeForDesignTarget/);
+assert.match(mobileRoutingSource, /pathname:\s*'\/designs\/\[designId\]'/);
+assert.match(mobileRoutingSource, /export function routeForStoreCollectionTarget/);
+assert.match(mobileRoutingSource, /pathname:\s*'\/collections\/\[collectionId\]'/);
+assert.match(mobileRoutingSource, /routeForLegacyCollectionBackedDesignTarget/);
+assert.match(studioNavigationBridgeSource, /pathname === '\/designs\/create'/);
+assert.match(studioNavigationBridgeSource, /pathname:\s*'\/designs\/\[designId\]\/edit'/);
+assert.match(studioNavigationBridgeSource, /routeForStoreCollectionTarget\(collectionId\)/);
 
 console.log('Catalog entity contract checks passed.');

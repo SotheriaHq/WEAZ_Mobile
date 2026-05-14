@@ -21,6 +21,7 @@ import { useToast } from '@/src/toast/ToastContext';
 import { resolveIdentity } from '@/src/utils/identity';
 import { profileDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { routeForDesignTarget } from '@/src/utils/mobileRouting';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 
@@ -262,10 +263,7 @@ function SavedDesignCard({ item }: { item: SavedItem }) {
   return (
     <Pressable
       onPress={() =>
-        router.push({
-          pathname: '/catalog/view/[collectionId]',
-          params: { collectionId: destinationId, scope: 'design' },
-        } as any)
+        router.push(routeForDesignTarget(destinationId, { legacyCollectionId: destinationId }) as any)
       }
       accessibilityRole="button"
       style={({ pressed }) => [styles.savedCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, pressed ? styles.pressed : null]}

@@ -44,15 +44,9 @@ export function routeForSearchItem(item: SearchItem): RouterTarget {
       return { pathname: '/products/[productId]', params: { productId: item.id } } as Href;
     }
     case 'collection':
-      return {
-        pathname: '/catalog/view/[collectionId]',
-        params: { collectionId: item.id, scope: 'store' },
-      } as Href;
+      return routeForStoreCollectionTarget(item.id);
     case 'design':
-      return {
-        pathname: '/catalog/view/[collectionId]',
-        params: { collectionId: item.id, scope: 'design' },
-      } as Href;
+      return routeForDesignTarget(item.id, { legacyCollectionId: item.id });
     case 'tag':
       return {
         pathname: '/search',
@@ -65,21 +59,54 @@ export function routeForSearchItem(item: SearchItem): RouterTarget {
   return '/search' as Href;
 }
 
-function routeForCollectionTarget(
-  targetId: string,
-  scope: 'design' | 'store',
+export function routeForDesignTarget(
+  designId: string,
+  options: {
+    legacyCollectionId?: string | null;
+    openComments?: boolean;
+    commentId?: string | null;
+  } = {},
+): RouterTarget {
+  return {
+    pathname: '/designs/[designId]',
+    params: {
+      designId,
+      ...(options.legacyCollectionId && options.legacyCollectionId !== designId
+        ? { legacyCollectionId: options.legacyCollectionId }
+        : null),
+      ...(options.openComments ? { openComments: '1' } : null),
+      ...(options.commentId ? { commentId: options.commentId } : null),
+    },
+  } as unknown as Href;
+}
+
+export function routeForStoreCollectionTarget(
+  collectionId: string,
+  options: {
+    openComments?: boolean;
+    commentId?: string | null;
+  } = {},
+): RouterTarget {
+  return {
+    pathname: '/collections/[collectionId]',
+    params: {
+      collectionId,
+      ...(options.openComments ? { openComments: '1' } : null),
+      ...(options.commentId ? { commentId: options.commentId } : null),
+    },
+  } as unknown as Href;
+}
+
+function routeForLegacyCollectionBackedDesignTarget(
+  legacyCollectionId: string,
   openComments?: boolean,
   commentId?: string | null,
 ): RouterTarget {
-  return {
-    pathname: '/catalog/view/[collectionId]',
-    params: {
-      collectionId: targetId,
-      scope,
-      ...(openComments ? { openComments: '1' } : null),
-      ...(commentId ? { commentId } : null),
-    },
-  } as Href;
+  return routeForDesignTarget(legacyCollectionId, {
+    legacyCollectionId,
+    openComments,
+    commentId,
+  });
 }
 
 function routeForProductTarget(notification: MobileNotification): RouterTarget {
@@ -124,12 +151,15 @@ export function routeForNotification(notification: MobileNotification): RouterTa
   if (targetType === 'COLLECTION_MEDIA') {
     const collectionId = typeof payload.collectionId === 'string' ? payload.collectionId : null;
     if (collectionId) {
-      return routeForCollectionTarget(collectionId, 'design', true, commentId);
+      return routeForLegacyCollectionBackedDesignTarget(collectionId, true, commentId);
     }
   }
 
   if (targetType === 'COLLECTION' && targetId) {
-    return routeForCollectionTarget(targetId, 'design', Boolean(commentId), commentId);
+    // Backend notifications still use COLLECTION for legacy collection-backed
+    // design alerts. Keep routing to the design alias until explicit backend
+    // DESIGN targets are available across saves/comments/threads.
+    return routeForLegacyCollectionBackedDesignTarget(targetId, Boolean(commentId), commentId);
   }
 
   if (targetType === 'PRODUCT') {
@@ -165,7 +195,7 @@ export function routeForNotification(notification: MobileNotification): RouterTa
     type === 'COLLECTION_UPLOAD'
   ) {
     if (typeof payload.collectionId === 'string') {
-      return routeForCollectionTarget(payload.collectionId, 'design', Boolean(commentId));
+      return routeForLegacyCollectionBackedDesignTarget(payload.collectionId, Boolean(commentId));
     }
   }
 
@@ -211,13 +241,23 @@ export function routeForNotification(notification: MobileNotification): RouterTa
   if (typeof notification.targetUrl === 'string' && notification.targetUrl.trim().length > 0) {
     const targetUrl = notification.targetUrl.trim();
     const path = parseTargetUrlPath(targetUrl);
+    const designId = parseHrefId(targetUrl, /\/designs\/([^/?#]+)/);
     const collectionId = parseHrefId(targetUrl, /\/collections\/([^/?#]+)/);
     const productId = parseHrefId(targetUrl, /\/products\/([^/?#]+)/);
     const profileId = parseHrefId(targetUrl, /\/profile\/([^/?#]+)/);
     const draftId = parseHrefId(targetUrl, /\/studio\/drafts\/([^/?#]+)/);
 
+    if (designId) {
+      return routeForDesignTarget(designId, {
+        legacyCollectionId: typeof payload.legacyCollectionId === 'string' ? payload.legacyCollectionId : null,
+        openComments: Boolean(commentId),
+        commentId,
+      });
+    }
     if (collectionId) {
-      return routeForCollectionTarget(collectionId, 'design', Boolean(commentId), commentId);
+      // Historical shared links used /collections/:id for design-backed rows.
+      // Keep that compatibility path until backend target URLs are fully typed.
+      return routeForLegacyCollectionBackedDesignTarget(collectionId, Boolean(commentId), commentId);
     }
     if (productId) {
       return { pathname: '/products/[productId]', params: { productId } } as Href;
@@ -226,7 +266,7 @@ export function routeForNotification(notification: MobileNotification): RouterTa
       return { pathname: '/catalog/[brandId]', params: { brandId: profileId } } as Href;
     }
     if (draftId) {
-      return { pathname: '/catalog/create-design', params: { designId: draftId } } as Href;
+      return { pathname: '/designs/[designId]/edit', params: { designId: draftId } } as unknown as Href;
     }
     if (path === '/profile') {
       const tab = new URL(targetUrl, 'https://threadly.mobile').searchParams.get('tab')?.toLowerCase();

@@ -31,6 +31,7 @@ import {
 } from '@/src/api/DesignApi';
 import { useAuthSession } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
+import { routeForDesignTarget } from '@/src/utils/mobileRouting';
 import {
   consumeDesignEditorAssetBundle,
   DESIGN_EDITOR_MAX_MEDIA,
@@ -660,13 +661,7 @@ export function DesignEditorProvider({
         setDraftVersion(result.detail.draftVersion);
         toast.success(action === 'publish' ? 'Design published.' : 'Draft saved.');
         if (action === 'publish') {
-          router.replace({
-            pathname: '/catalog/view/[collectionId]',
-            params: {
-              collectionId: result.id,
-              scope: 'design',
-            },
-          } as any);
+          router.replace(routeForDesignTarget(result.id, { legacyCollectionId: result.id }) as any);
           return;
         }
         router.replace({

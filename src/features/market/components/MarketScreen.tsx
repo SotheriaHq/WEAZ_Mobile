@@ -42,6 +42,7 @@ import { useToast } from '@/src/toast/ToastContext';
 import type { MarketItem } from '@/src/types/market';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { routeForDesignTarget } from '@/src/utils/mobileRouting';
 
 const SIDE_PADDING = tokens.spacing.lg;
 const SECTION_GAP = tokens.spacing.xl;
@@ -959,10 +960,7 @@ export function MarketScreen() {
       router.push({ pathname: '/products/[productId]', params: { productId: item.product.id } } as any);
       return;
     }
-    router.push({
-      pathname: '/catalog/view/[collectionId]',
-      params: { collectionId: item.design.collectionId, scope: 'design' },
-    } as any);
+    router.push(routeForDesignTarget(item.design.collectionId, { legacyCollectionId: item.design.collectionId }) as any);
   }, []);
 
   const setBusy = useCallback((key: string, busy: boolean) => {
