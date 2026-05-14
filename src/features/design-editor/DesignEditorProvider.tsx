@@ -16,6 +16,7 @@ import {
   getDesignFilterDimensions,
   getActiveDesignCustomConfiguration,
   getMeasurementPoints,
+  deleteDesign,
   saveDesignEditor,
   startDesignDraftSession,
   type DesignCustomOrderConfigurationInput,
@@ -28,7 +29,6 @@ import {
   type FilterDimensionOption,
   type MeasurementPointOption,
 } from '@/src/api/DesignApi';
-import { brandApi } from '@/src/api/BrandApi';
 import { useAuthSession } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
 import {
@@ -326,7 +326,7 @@ export function DesignEditorProvider({
         setFilterDimensions(
           nextFilters.filter(
             (dimension) =>
-              dimension.appliesTo.includes('COLLECTION') &&
+              (dimension.appliesTo.includes('DESIGN') || dimension.appliesTo.includes('COLLECTION')) &&
               dimension.slug !== 'designer-location',
           ),
         );
@@ -719,7 +719,7 @@ export function DesignEditorProvider({
     setSaveProgress(0);
     setSaveMessage('Deleting draft...');
     try {
-      await brandApi.deleteCollection(activeDesignId);
+      await deleteDesign(activeDesignId);
       toast.success('Draft deleted.');
       router.replace({
         pathname: '/catalog',

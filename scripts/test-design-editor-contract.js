@@ -45,7 +45,10 @@ function loadDesignApi() {
 }
 
 function main() {
-  const { resolvePresignedUploadMethod } = loadDesignApi();
+  const {
+    resolveDesignIdFromInitializeResponse,
+    resolvePresignedUploadMethod,
+  } = loadDesignApi();
 
   assert.equal(
     resolvePresignedUploadMethod({ uploadFields: { key: 'uploads/design.jpg' } }),
@@ -59,14 +62,33 @@ function main() {
   assert.match(designApiSource, /apiClient\.post\('\/designs\/initialize'/);
   assert.match(designApiSource, /draftOnly:\s*payload\.action === 'draft'/);
   assert.ok(designApiSource.includes('`/designs/${designId}/finalize`'));
+  assert.match(designApiSource, /designMetadata:\s*buildMetadata\(payload\)/);
+  assert.doesNotMatch(designApiSource, /collectionMetadata:\s*buildMetadata\(payload\)/);
   assert.match(designApiSource, /const method = resolvePresignedUploadMethod\(upload\)/);
   assert.doesNotMatch(designApiSource, /if\s*\(upload\.method === 'POST'\)/);
+  assert.equal(
+    resolveDesignIdFromInitializeResponse({
+      designId: 'design-primary',
+      id: 'id-secondary',
+      legacyCollectionId: 'legacy-third',
+      collectionId: 'collection-last',
+    }),
+    'design-primary',
+    'Mobile design upload should prefer designId over legacy collection identifiers.',
+  );
+  assert.equal(resolveDesignIdFromInitializeResponse({ legacyCollectionId: 'legacy-1' }), 'legacy-1');
+  assert.equal(resolveDesignIdFromInitializeResponse({ collectionId: 'collection-1' }), 'collection-1');
 
   const providerSource = fs.readFileSync(providerPath, 'utf8');
   assert.doesNotMatch(
     providerSource,
     /subCategoryId:\s*selectedCategory\.subCategories\[0\]\?\.id/,
     'Provider must not auto-select the first subcategory.',
+  );
+  assert.doesNotMatch(
+    providerSource,
+    /deleteCollection\(activeDesignId\)/,
+    'Draft deletion should use design API language, not collection deletion.',
   );
 
   const composerSource = fs.readFileSync(composerPath, 'utf8');
