@@ -5,6 +5,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const repoRoot = path.resolve(__dirname, '..');
+const appConfigPath = path.join(repoRoot, 'app.config.js');
 const pushRegistrationPath = path.join(repoRoot, 'src', 'notifications', 'pushTokenRegistration.ts');
 
 function compile(filePath) {
@@ -75,6 +76,29 @@ function loadPushRegistration(options = {}) {
   return { exports: module.exports, store, deletedKeys };
 }
 
+function loadAppConfigWithProjectId(projectId) {
+  const previousProjectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+
+  try {
+    if (projectId) {
+      process.env.EXPO_PUBLIC_EAS_PROJECT_ID = projectId;
+    } else {
+      delete process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+    }
+
+    delete require.cache[require.resolve(appConfigPath)];
+    const appConfig = require(appConfigPath);
+    return appConfig();
+  } finally {
+    if (previousProjectId === undefined) {
+      delete process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+    } else {
+      process.env.EXPO_PUBLIC_EAS_PROJECT_ID = previousProjectId;
+    }
+    delete require.cache[require.resolve(appConfigPath)];
+  }
+}
+
 async function main() {
   const { exports: pushRegistration } = loadPushRegistration();
 
@@ -102,6 +126,16 @@ async function main() {
     null,
     'FCM sender IDs must not be passed as Expo project IDs.',
   );
+
+  const configuredApp = loadAppConfigWithProjectId('configured-eas-project');
+  assert.equal(configuredApp.extra.eas.projectId, 'configured-eas-project');
+  assert.equal(
+    pushRegistration.resolveExpoProjectId({ expoConfig: configuredApp }, {}),
+    'configured-eas-project',
+  );
+
+  const unconfiguredApp = loadAppConfigWithProjectId(null);
+  assert.equal(unconfiguredApp.extra.eas, undefined);
 
   const previous = {
     userId: 'user-1',
