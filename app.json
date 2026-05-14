@@ -50,6 +50,20 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "expo-navigation-bar": {
+        "position": "absolute",
+        "backgroundColor": "#00000001",
+        "borderColor": "#00000001",
+        "barStyle": "light",
+        "visibility": "visible",
+        "enforceContrast": false
+      },
+      "eas": {
+        "projectId": "7a977582-8fd7-4eb5-b652-e914734702d5"
+      }
     }
   }
 }
