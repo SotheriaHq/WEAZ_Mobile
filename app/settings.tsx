@@ -153,7 +153,7 @@ export default function SettingsScreen() {
             icon: '🔔',
             title: 'Push notifications',
             subtitle: 'Likes, comments, messages',
-            onPress: () => router.push('/notifications' as never),
+            onPress: () => router.push('/settings/notifications' as never),
           },
           {
             icon: '📨',

@@ -1,4 +1,8 @@
 import { apiClient } from '@/src/api/httpClient';
+import type {
+  NotificationSettings,
+  NotificationSettingsPatch,
+} from '@/src/notifications/notificationSettings';
 
 type NotificationActor = {
   id?: string | null;
@@ -104,6 +108,16 @@ export const NotificationsApi = {
       success: Boolean(payload?.success),
       count: Number(payload?.count ?? 0),
     };
+  },
+
+  async getSettings(): Promise<NotificationSettings> {
+    const response = await apiClient.get('/notifications/settings');
+    return unwrap<NotificationSettings>(response.data);
+  },
+
+  async updateSettings(settingsPatch: NotificationSettingsPatch): Promise<NotificationSettings> {
+    const response = await apiClient.patch('/notifications/settings', settingsPatch);
+    return unwrap<NotificationSettings>(response.data);
   },
 
   async registerPushToken(payload: RegisterPushTokenPayload): Promise<{ success: boolean }> {

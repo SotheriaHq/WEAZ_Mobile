@@ -6,6 +6,7 @@ const ts = require('typescript');
 
 const repoRoot = path.resolve(__dirname, '..');
 const appConfigPath = path.join(repoRoot, 'app.config.js');
+const appJsonPath = path.join(repoRoot, 'app.json');
 const pushRegistrationPath = path.join(repoRoot, 'src', 'notifications', 'pushTokenRegistration.ts');
 
 function compile(filePath) {
@@ -135,7 +136,16 @@ async function main() {
   );
 
   const unconfiguredApp = loadAppConfigWithProjectId(null);
-  assert.equal(unconfiguredApp.extra.eas, undefined);
+  const checkedInProjectId = require(appJsonPath).expo?.extra?.eas?.projectId;
+  if (checkedInProjectId) {
+    assert.deepEqual(unconfiguredApp.extra.eas, { projectId: checkedInProjectId });
+    assert.equal(
+      pushRegistration.resolveExpoProjectId({ expoConfig: unconfiguredApp }, {}),
+      checkedInProjectId,
+    );
+  } else {
+    assert.equal(unconfiguredApp.extra.eas, undefined);
+  }
 
   const previous = {
     userId: 'user-1',
@@ -150,12 +160,22 @@ async function main() {
     true,
   );
 
-  const skipped = await pushRegistration.registerAuthenticatedPushToken({
-    userId: 'user-1',
-    authToken: 'token',
-  });
-  assert.equal(skipped.status, 'skipped');
-  assert.equal(skipped.reason, 'expo-project-id-missing');
+  const previousEnvProjectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+  try {
+    delete process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+    const skipped = await pushRegistration.registerAuthenticatedPushToken({
+      userId: 'user-1',
+      authToken: 'token',
+    });
+    assert.equal(skipped.status, 'skipped');
+    assert.equal(skipped.reason, 'expo-project-id-missing');
+  } finally {
+    if (previousEnvProjectId === undefined) {
+      delete process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+    } else {
+      process.env.EXPO_PUBLIC_EAS_PROJECT_ID = previousEnvProjectId;
+    }
+  }
 
   const storedRecord = JSON.stringify(previous);
   const failingApi = {
