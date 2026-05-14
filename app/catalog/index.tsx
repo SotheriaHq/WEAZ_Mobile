@@ -780,7 +780,6 @@ export default function CatalogScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentInset={{ bottom: overlayScrollPadding }}
         scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: overlayScrollPadding }]}
         showsVerticalScrollIndicator={false}

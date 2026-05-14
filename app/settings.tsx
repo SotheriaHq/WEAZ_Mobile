@@ -283,7 +283,7 @@ export default function SettingsScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['3xl'] }]}
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, tokens.spacing.lg) }]}
       >
         {sections.map((section) => (
           <SettingsSectionBlock key={section.title} section={section} />

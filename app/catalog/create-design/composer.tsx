@@ -257,7 +257,12 @@ export default function CreateDesignComposerScreen() {
       </View>
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          style={styles.flex}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.mediaSection}>
             <View style={styles.sectionTopRow}>
               <View style={styles.sectionTitleCopy}>
@@ -387,7 +392,17 @@ export default function CreateDesignComposerScreen() {
           ) : null}
 
         </ScrollView>
-        <View style={[styles.footerActions, { paddingBottom: Math.max(insets.bottom, tokens.spacing.md), paddingHorizontal: tokens.spacing.lg }]}>
+        <View
+          style={[
+            styles.footerActions,
+            {
+              backgroundColor: theme.colors.bg,
+              borderTopColor: theme.colors.border,
+              paddingBottom: Math.max(insets.bottom, tokens.spacing.md),
+              paddingHorizontal: tokens.spacing.lg,
+            },
+          ]}
+        >
           {!canSaveDraft ? (
             <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
               Add at least one field or one media item to save a draft.
@@ -819,7 +834,7 @@ const styles = StyleSheet.create({
   content: {
     gap: tokens.spacing.lg,
     paddingHorizontal: tokens.spacing.lg,
-    paddingBottom: tokens.spacing.xl,
+    paddingBottom: tokens.spacing.md,
     paddingTop: tokens.spacing.sm,
   },
   sectionTopRow: {
@@ -951,6 +966,7 @@ const styles = StyleSheet.create({
   },
   footerActions: {
     gap: tokens.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: tokens.spacing.md,
   },
   actionRow: {
