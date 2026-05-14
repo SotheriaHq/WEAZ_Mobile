@@ -1007,9 +1007,17 @@ export function MarketScreen() {
           if (currentlyFavorite) await MobileStoreApi.removeFromWishlist(item.product.id);
           else await MobileStoreApi.addToWishlist(item.product.id);
         } else if (currentlyFavorite) {
-          await SavedItemsApi.unsaveItem('COLLECTION', item.design.collectionId);
+          await SavedItemsApi.unsaveCatalogTarget({
+            targetType: 'DESIGN',
+            designId: item.design.collectionId,
+            legacyCollectionId: item.design.collectionId,
+          });
         } else {
-          await SavedItemsApi.saveItem('COLLECTION', item.design.collectionId);
+          await SavedItemsApi.saveCatalogTarget({
+            targetType: 'DESIGN',
+            designId: item.design.collectionId,
+            legacyCollectionId: item.design.collectionId,
+          });
         }
       } catch (error) {
         setFavoriteByKey((current) => ({ ...current, [item.key]: currentlyFavorite }));

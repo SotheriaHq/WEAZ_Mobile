@@ -155,10 +155,18 @@ export function routeForNotification(notification: MobileNotification): RouterTa
     }
   }
 
+  if (targetType === 'DESIGN' && targetId) {
+    return routeForDesignTarget(targetId, {
+      legacyCollectionId: typeof payload.legacyCollectionId === 'string' ? payload.legacyCollectionId : null,
+      openComments: Boolean(commentId),
+      commentId,
+    });
+  }
+
   if (targetType === 'COLLECTION' && targetId) {
-    // Backend notifications still use COLLECTION for legacy collection-backed
-    // design alerts. Keep routing to the design alias until explicit backend
-    // DESIGN targets are available across saves/comments/threads.
+    // Backend notifications can still use COLLECTION for legacy
+    // collection-backed design alerts. Keep routing old payloads to the
+    // design alias until Phase D separates persistence.
     return routeForLegacyCollectionBackedDesignTarget(targetId, Boolean(commentId), commentId);
   }
 

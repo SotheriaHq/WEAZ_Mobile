@@ -13,7 +13,7 @@ type NotificationActor = {
 };
 
 type NotificationTarget = {
-  type: 'POST' | 'COLLECTION' | 'COLLECTION_MEDIA' | 'PRODUCT' | 'USER' | 'SYSTEM';
+  type: 'DESIGN' | 'POST' | 'COLLECTION' | 'COLLECTION_MEDIA' | 'PRODUCT' | 'USER' | 'SYSTEM';
   id: string;
   preview?: string;
 };
