@@ -34,6 +34,32 @@ type NotificationListResponse = {
   endCursor: string | null;
 };
 
+export type PushProvider = 'EXPO' | 'FCM' | 'APNS';
+export type PushPlatform = 'IOS' | 'ANDROID' | 'WEB' | 'UNKNOWN';
+
+export type RegisterPushTokenPayload = {
+  token: string;
+  provider?: PushProvider;
+  platform?: PushPlatform;
+  deviceId?: string;
+  deviceName?: string;
+  appVersion?: string;
+  expoProjectId?: string;
+};
+
+export type PushTokenDevice = {
+  id: string;
+  provider: PushProvider;
+  platform: PushPlatform;
+  deviceName?: string | null;
+  appVersion?: string | null;
+  isActive: boolean;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+  maskedToken?: string | null;
+};
+
 function unwrap<T>(payload: unknown): T {
   if (payload && typeof payload === 'object' && 'data' in (payload as any)) {
     return (payload as any).data as T;
@@ -78,5 +104,26 @@ export const NotificationsApi = {
       success: Boolean(payload?.success),
       count: Number(payload?.count ?? 0),
     };
+  },
+
+  async registerPushToken(payload: RegisterPushTokenPayload): Promise<{ success: boolean }> {
+    const response = await apiClient.post('/notifications/push-tokens', payload);
+    const body = unwrap<any>(response.data);
+    return { success: body?.success !== false };
+  },
+
+  async deactivateCurrentPushToken(token: string): Promise<{ success: boolean }> {
+    const response = await apiClient.delete('/notifications/push-tokens/current', {
+      data: { token },
+    });
+    const payload = unwrap<any>(response.data);
+    return { success: payload?.success !== false };
+  },
+
+  async listPushTokens(): Promise<{ items: PushTokenDevice[] }> {
+    const response = await apiClient.get('/notifications/push-tokens');
+    const payload = unwrap<any>(response.data);
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    return { items: items as PushTokenDevice[] };
   },
 };

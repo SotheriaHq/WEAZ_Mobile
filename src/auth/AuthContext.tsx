@@ -15,6 +15,7 @@ import {
   setAccessToken,
   setRefreshToken,
 } from '@/src/storage/secureStorage';
+import { deactivateRegisteredPushTokenForLogout } from '@/src/notifications/pushTokenRegistration';
 import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
 
@@ -442,6 +443,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async (options?: { notifyServer?: boolean }) => {
     const notifyServer = options?.notifyServer ?? true;
     const refreshToken = refreshTokenState ?? (await getRefreshToken());
+
+    await deactivateRegisteredPushTokenForLogout().catch(() => undefined);
 
     if (notifyServer) {
       try {
