@@ -233,6 +233,8 @@ const signedUrlMissingCache = new Map<string, number>();
 
 export type SignedFileUrlDebugContext = {
   designId?: string | null;
+  productId?: string | null;
+  collectionId?: string | null;
   mediaIndex?: number | null;
   fileId?: string | null;
   sourceField?: string | null;
@@ -331,6 +333,8 @@ function logSignedFileUrlFailure(
   if (process.env.NODE_ENV === 'production') return;
   console.warn('[media-resolution] signed URL failed', {
     designId: context?.designId ?? null,
+    productId: context?.productId ?? null,
+    collectionId: context?.collectionId ?? null,
     mediaIndex: context?.mediaIndex ?? null,
     fileId: context?.fileId ?? fileId,
     sourceField: context?.sourceField ?? null,
@@ -347,6 +351,8 @@ function logSignedFileUrlNetworkError(
   console.warn('[media-resolution]', {
     event: label,
     designId: context?.designId ?? null,
+    productId: context?.productId ?? null,
+    collectionId: context?.collectionId ?? null,
     mediaIndex: context?.mediaIndex ?? null,
     fileId: context?.fileId ?? null,
     status: error?.response?.status ?? null,
@@ -1132,8 +1138,35 @@ export const brandApi = {
     categoryId?: string;
   }): Promise<CollectionDto | null> {
     try {
-      const response = await apiClient.post('/collections', payload);
-      return unwrapData<CollectionDto>(response.data);
+      const visibility = payload.visibility ?? 'PUBLIC';
+      const initializeResponse = await apiClient.post('/store-collections/initialize', {
+        mode: 'existing',
+        title: payload.title,
+        description: payload.description,
+        visibility,
+        categoryId: payload.categoryId,
+        isAvailableInStore: true,
+      });
+      const initialized = unwrapData<Record<string, any>>(initializeResponse.data);
+      const collectionId =
+        asString(initialized.sessionId) ??
+        asString(initialized.collectionId) ??
+        asString(initialized.id);
+      if (!collectionId) {
+        throw new Error('Collection draft could not be initialized.');
+      }
+
+      const finalized = await apiClient.post(`/store-collections/${collectionId}/finalize`, {
+        action: 'draft',
+        collectionMetadata: {
+          title: payload.title,
+          description: payload.description,
+          visibility,
+          categoryId: payload.categoryId,
+          isAvailableInStore: true,
+        },
+      });
+      return unwrapData<CollectionDto>(finalized.data);
     } catch (error) {
       console.error('Error creating collection:', error);
       throw error;

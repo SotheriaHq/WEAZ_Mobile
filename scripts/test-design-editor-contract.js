@@ -6,8 +6,10 @@ const ts = require('typescript');
 
 const repoRoot = path.resolve(__dirname, '..');
 const designApiPath = path.join(repoRoot, 'src', 'api', 'DesignApi.ts');
+const brandApiPath = path.join(repoRoot, 'src', 'api', 'BrandApi.ts');
 const providerPath = path.join(repoRoot, 'src', 'features', 'design-editor', 'DesignEditorProvider.tsx');
 const composerPath = path.join(repoRoot, 'app', 'catalog', 'create-design', 'composer.tsx');
+const productRoutePath = path.join(repoRoot, 'app', 'products', '[productId].tsx');
 
 function compile(filePath) {
   return ts.transpileModule(fs.readFileSync(filePath, 'utf8'), {
@@ -97,6 +99,31 @@ function main() {
   assert.match(composerSource, /draftCategoryId/);
   assert.match(composerSource, /Use selection/);
   assert.match(composerSource, /loading=\{tagsLoading\}/);
+
+  const brandApiSource = fs.readFileSync(brandApiPath, 'utf8');
+  assert.match(
+    brandApiSource,
+    /apiClient\.post\('\/store-collections\/initialize'/,
+    'Mobile collection creation should use store collection initialization.',
+  );
+  assert.match(
+    brandApiSource,
+    /`\/store-collections\/\$\{collectionId\}\/finalize`/,
+    'Mobile collection creation should finalize through store collection endpoints.',
+  );
+  assert.doesNotMatch(
+    brandApiSource,
+    /apiClient\.post\('\/collections', payload\)/,
+    'Mobile collection creation must not call the missing legacy root /collections POST route.',
+  );
+
+  const productRouteSource = fs.readFileSync(productRoutePath, 'utf8');
+  assert.doesNotMatch(
+    productRouteSource,
+    /designId:\s*productId/,
+    'Product image resolution debug context must not label product ids as design ids.',
+  );
+  assert.match(productRouteSource, /productId,\s*\n\s*mediaIndex/);
 
   console.log('Design editor contract tests passed.');
 }
