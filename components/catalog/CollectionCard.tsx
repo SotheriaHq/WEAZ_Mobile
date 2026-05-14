@@ -10,9 +10,11 @@ import type { CollectionDto } from '@/src/api/BrandApi';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { getCatalogCardCopy, resolveCatalogCardBranch } from '@/src/features/catalog/catalogCardBranch';
 
-interface CollectionCardProps {
+export interface CollectionCardProps {
   collection: CollectionDto;
+  cardKind?: 'design' | 'collection';
   onPress?: () => void;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
@@ -62,6 +64,7 @@ export const CollectionCardSkeleton = ({ width = 180 }: { width?: number }) => {
 
 export const CollectionCard = React.memo(function CollectionCard({
   collection,
+  cardKind,
   onPress,
   onEdit,
   onDelete,
@@ -86,9 +89,13 @@ export const CollectionCard = React.memo(function CollectionCard({
     fileId: collection.coverFileId,
   });
 
-  const displayTitle = collection.title?.trim() || 'Untitled collection';
+  const inferredBranch = resolveCatalogCardBranch(collection, collection.isAvailableInStore ? 'COLLECTION' : 'DESIGN');
+  const cardBranch = cardKind ?? (inferredBranch === 'collection' ? 'collection' : 'design');
+  const copy = getCatalogCardCopy(cardBranch);
+  const displayTitle = collection.title?.trim() || copy.titleFallback;
   const brandName = collection.brandName?.trim() || 'Brand';
   const pieceCount = collection.itemCount || collection.postsCount || 0;
+  const countLabel = pieceCount === 1 ? copy.countSingular : copy.countPlural;
   const priceLabel = useMemo(
     () => priceRange(collection.saleMinPrice ?? collection.minPrice, collection.saleMaxPrice ?? collection.maxPrice),
     [collection.maxPrice, collection.minPrice, collection.saleMaxPrice, collection.saleMinPrice],
@@ -111,6 +118,7 @@ export const CollectionCard = React.memo(function CollectionCard({
 
   return (
     <Animated.View
+      testID={`catalog-card-${cardBranch}`}
       style={[
         styles.card,
         {
@@ -128,7 +136,7 @@ export const CollectionCard = React.memo(function CollectionCard({
         onPressOut={() => animate(1)}
         style={styles.pressable}
         accessibilityRole="button"
-        accessibilityLabel={`Open ${displayTitle}`}
+        accessibilityLabel={`Open ${copy.badgeLabel.toLowerCase()} ${displayTitle}`}
       >
         <View style={[styles.coverFrame, { height: imageHeight, backgroundColor: theme.colors.surfaceAlt }]}>
           {showImage ? (
@@ -144,13 +152,11 @@ export const CollectionCard = React.memo(function CollectionCard({
             <ImageFallback title={displayTitle} />
           )}
 
-          {collection.isAvailableInStore ? (
-            <View style={[styles.storeBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
-              <AppText variant="captionBold" tone="primary">
-                Store
-              </AppText>
-            </View>
-          ) : null}
+          <View style={[styles.storeBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
+            <AppText variant="captionBold" tone="primary">
+              {copy.badgeLabel}
+            </AppText>
+          </View>
 
           {showActions && !isDraft ? (
             <View style={styles.actionRail}>
@@ -166,7 +172,7 @@ export const CollectionCard = React.memo(function CollectionCard({
               style={[styles.menuButton, { backgroundColor: theme.colors.surfaceOverlay }]}
               hitSlop={tokens.spacing.sm}
               accessibilityRole="button"
-              accessibilityLabel="Collection actions"
+              accessibilityLabel={copy.ownerActionsLabel}
             >
               <AppText variant="captionBold">⋯</AppText>
             </Pressable>
@@ -182,7 +188,7 @@ export const CollectionCard = React.memo(function CollectionCard({
                   }}
                   style={styles.menuItem}
                 >
-                  <AppText variant="captionBold">Edit</AppText>
+                  <AppText variant="captionBold">{copy.editLabel}</AppText>
                 </Pressable>
               ) : null}
               {onDelete ? (
@@ -194,7 +200,7 @@ export const CollectionCard = React.memo(function CollectionCard({
                   style={styles.menuItem}
                 >
                   <AppText variant="captionBold" tone="danger">
-                    Delete
+                    {copy.deleteLabel}
                   </AppText>
                 </Pressable>
               ) : null}
@@ -230,7 +236,7 @@ export const CollectionCard = React.memo(function CollectionCard({
               </AppText>
               <View style={styles.cardMetaRow}>
                 <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
-                  {pieceCount} piece{pieceCount === 1 ? '' : 's'}
+                  {pieceCount} {countLabel}
                 </AppText>
                 <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.priceText}>
                   {priceLabel}

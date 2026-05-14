@@ -74,6 +74,9 @@ type BlazingTrend = {
   item: MarketContentItem | null;
 };
 
+type ProductMarketItem = Extract<MarketContentItem, { entityType: 'PRODUCT' }>;
+type DesignMarketItem = Extract<MarketContentItem, { entityType: 'DESIGN' }>;
+
 const toErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to load market right now.';
 
 function getItemTitle(item: MarketContentItem) {
@@ -157,10 +160,9 @@ function hasDisplayMedia(item: MarketContentItem) {
 }
 
 function getItemTypeLabel(item: MarketContentItem) {
-  if (item.kind === 'design') return 'Design';
-  if (productStock(item.product) <= 0 && !item.product.customOrderEnabled) return 'Out';
-  if (item.product.customOrderEnabled) return 'Custom';
-  return item.product.categoryName ?? 'Product';
+  if (item.entityType === 'DESIGN') return 'Design';
+  if (item.entityType === 'PRODUCT') return 'Product';
+  return 'Catalog item';
 }
 
 function isCustomReady(item: MarketContentItem) {
@@ -310,17 +312,7 @@ function buildRows(args: {
   return rows;
 }
 
-function MarketCard({
-  item,
-  width,
-  height,
-  favorite,
-  bagBusy,
-  favoriteBusy,
-  onOpen,
-  onBag,
-  onFavorite,
-}: {
+type MarketCardProps = {
   item: MarketContentItem;
   width: number;
   height?: number;
@@ -330,9 +322,21 @@ function MarketCard({
   onOpen: (item: MarketContentItem) => void;
   onBag: (item: MarketContentItem) => void;
   onFavorite: (item: MarketContentItem) => void;
-}) {
+};
+
+function MarketProductCard({
+  item,
+  width,
+  height,
+  favorite,
+  bagBusy,
+  favoriteBusy,
+  onOpen,
+  onBag,
+  onFavorite,
+}: Omit<MarketCardProps, 'item'> & { item: ProductMarketItem }) {
   const media = getItemMedia(item);
-  const unavailable = item.kind === 'product' ? productStock(item.product) <= 0 && !item.product.customOrderEnabled : false;
+  const unavailable = productStock(item.product) <= 0 && !item.product.customOrderEnabled;
 
   return (
     <UnifiedProductCard
@@ -343,7 +347,7 @@ function MarketCard({
       priceLabel={getItemPriceLabel(item)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
-      typeLabel={getItemTypeLabel(item)}
+      typeLabel="Product"
       unavailable={unavailable}
       favorite={favorite}
       favoriteBusy={favoriteBusy}
@@ -355,6 +359,50 @@ function MarketCard({
       onFavoritePress={() => onFavorite(item)}
     />
   );
+}
+
+function MarketDesignCard({
+  item,
+  width,
+  height,
+  favorite,
+  bagBusy,
+  favoriteBusy,
+  onOpen,
+  onBag,
+  onFavorite,
+}: Omit<MarketCardProps, 'item'> & { item: DesignMarketItem }) {
+  const media = getItemMedia(item);
+  const canRequestCustomOrder = isCustomReady(item);
+
+  return (
+    <UnifiedProductCard
+      width={width}
+      height={height}
+      title={getItemTitle(item)}
+      brandName={getItemBrand(item) ?? 'Threadly brand'}
+      priceLabel={getItemPriceLabel(item)}
+      mediaSrc={media.mediaSrc}
+      mediaFileId={media.mediaFileId}
+      typeLabel="Design"
+      favorite={favorite}
+      favoriteBusy={favoriteBusy}
+      actionLabel={canRequestCustomOrder ? 'Request' : undefined}
+      actionBusy={bagBusy}
+      actionDisabled={!canRequestCustomOrder}
+      onPress={() => onOpen(item)}
+      onActionPress={canRequestCustomOrder ? () => onBag(item) : undefined}
+      onFavoritePress={() => onFavorite(item)}
+    />
+  );
+}
+
+function MarketCard(props: MarketCardProps) {
+  if (props.item.entityType === 'PRODUCT') {
+    return <MarketProductCard {...props} item={props.item} />;
+  }
+
+  return <MarketDesignCard {...props} item={props.item} />;
 }
 
 function MarketHeroSlide({

@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { CollectionCard, CollectionCardSkeleton } from './CollectionCard';
+import { CollectionCardSkeleton } from './CollectionCard';
+import { CatalogEntityCard } from './CatalogEntityCard';
 import type { CollectionDto } from '@/src/api/BrandApi';
 import { tokens } from '@/src/styles/tokens';
 
@@ -85,7 +86,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
 
       return (
         <View style={[styles.cardWrapper, { width: cardWidth }]}>
-          <CollectionCard
+          <CatalogEntityCard
             collection={item}
             cardWidth={cardWidth}
             isDraft={isDraft}

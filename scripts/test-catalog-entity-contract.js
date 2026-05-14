@@ -11,6 +11,9 @@ const storeApiSource = read('src/api/StoreApi.ts');
 const brandApiSource = read('src/api/BrandApi.ts');
 const marketTypesSource = read('src/features/market/types.ts');
 const marketScreenSource = read('src/features/market/components/MarketScreen.tsx');
+const catalogCardBranchSource = read('src/features/catalog/catalogCardBranch.ts');
+const catalogEntityCardSource = read('components/catalog/CatalogEntityCard.tsx');
+const collectionCardSource = read('components/catalog/CollectionCard.tsx');
 
 assert.match(catalogEntitySource, /SOURCE_TYPE_TO_ENTITY_TYPE/);
 assert.match(catalogEntitySource, /COLLECTION_MEDIA:\s*'DESIGN'/);
@@ -26,5 +29,20 @@ assert.match(marketTypesSource, /entityType:\s*'PRODUCT'/);
 assert.match(marketTypesSource, /entityType:\s*'DESIGN'/);
 assert.match(marketScreenSource, /entityType:\s*'PRODUCT' as const/);
 assert.match(marketScreenSource, /entityType:\s*'DESIGN' as const/);
+assert.match(marketScreenSource, /function MarketProductCard/);
+assert.match(marketScreenSource, /function MarketDesignCard/);
+assert.match(marketScreenSource, /typeLabel="Product"/);
+assert.match(marketScreenSource, /typeLabel="Design"/);
+assert.match(marketScreenSource, /actionLabel=\{canRequestCustomOrder \? 'Request' : undefined\}/);
+
+assert.match(catalogCardBranchSource, /resolveCatalogCardBranch/);
+assert.match(catalogCardBranchSource, /primaryActionKind:\s*'view-design'/);
+assert.match(catalogCardBranchSource, /primaryActionKind:\s*'view-product'/);
+assert.match(catalogCardBranchSource, /primaryActionKind:\s*'view-collection'/);
+assert.match(catalogEntityCardSource, /export const DesignCard/);
+assert.match(catalogEntityCardSource, /export const CatalogCollectionCard/);
+assert.match(catalogEntityCardSource, /resolveCatalogCardBranch/);
+assert.match(collectionCardSource, /testID=\{`catalog-card-\$\{cardBranch\}`\}/);
+assert.match(collectionCardSource, /accessibilityLabel=\{copy\.ownerActionsLabel\}/);
 
 console.log('Catalog entity contract checks passed.');
