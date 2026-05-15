@@ -28,6 +28,9 @@ function loadStoreApiWithMock(mockApiClient) {
       if (request === '@/src/api/httpClient') {
         return { apiClient: mockApiClient };
       }
+      if (request === '@/src/features/catalog/catalogEntity') {
+        return { resolveCatalogEntityType: (item) => item?.entityType ?? 'PRODUCT' };
+      }
       return require(request);
     },
     URL,
@@ -87,6 +90,8 @@ async function main() {
   assert.equal(brandProducts[0].coverImageId, 'cover-file');
   assert.equal(brandProducts[0].brandLogo, 'https://cdn.test/logo.jpg');
   assert.equal(brandProducts[0].brandLogoFileId, 'brand-logo-file');
+  assert.equal(brandProducts[0].categoryName, 'Ready to Wear');
+  assert.equal(brandProducts[0].categorySlug, 'ready-to-wear');
 
   calls.length = 0;
   nextPayload = { items: [rawProduct], nextCursor: 'cursor-2', total: 1 };

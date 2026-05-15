@@ -9,6 +9,7 @@
     "web": "expo start --web",
     "audit:design-system": "node ../scripts/audit-mobile-design-system.js",
     "test:store-api-contract": "node scripts/test-store-api-contract.js",
+    "test:product-collection-management-contract": "node scripts/test-product-collection-management-contract.js",
     "test:brand-profile-contract": "node scripts/test-brand-profile-contract.js",
     "test:design-editor-contract": "node scripts/test-design-editor-contract.js",
     "test:notification-settings-contract": "node scripts/test-notification-settings-contract.js",
