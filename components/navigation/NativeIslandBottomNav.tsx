@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { usePathname } from 'expo-router';
 
@@ -31,6 +31,59 @@ type NativeIslandBottomNavProps = {
   collapsed?: boolean;
   onCollapsedPress?: () => void;
 };
+
+const COLLAPSED_MIN_WIDTH = 144;
+const COLLAPSED_MAX_WIDTH = 216;
+const COLLAPSED_ACTIVE_CHIP_WIDTH = 96;
+const COLLAPSED_ACTIVE_CHIP_COMPACT_WIDTH = 88;
+const COLLAPSED_PREVIEW_WIDTH = 24;
+const COLLAPSED_PREVIEW_COMPACT_WIDTH = 22;
+const COLLAPSED_ITEM_GAP = 4;
+const COLLAPSED_HORIZONTAL_PADDING = 10;
+const COLLAPSED_MAX_PREVIEW_ITEMS = 3;
+const COLLAPSED_MAX_PREVIEW_ITEMS_COMPACT = 2;
+
+function getCollapsedPreviewItems({
+  items,
+  activeIndex,
+  previewLimit,
+}: {
+  items: NativeIslandNavItem[];
+  activeIndex: number;
+  previewLimit: number;
+}) {
+  const before = items.slice(0, activeIndex).filter((item) => !item.disabled);
+  const after = items.slice(activeIndex + 1).filter((item) => !item.disabled);
+  const targetCount = Math.min(previewLimit, before.length + after.length);
+
+  if (targetCount <= 0) {
+    return { leftItems: [], rightItems: [] };
+  }
+
+  let leftCount = before.length > 0 && after.length > 0
+    ? Math.min(before.length, Math.floor(targetCount / 2))
+    : Math.min(before.length, targetCount);
+  let rightCount = Math.min(after.length, targetCount - leftCount);
+
+  const remaining = targetCount - leftCount - rightCount;
+  if (remaining > 0) {
+    const extraLeft = Math.min(before.length - leftCount, remaining);
+    leftCount += extraLeft;
+    rightCount += Math.min(after.length - rightCount, remaining - extraLeft);
+  }
+
+  return {
+    leftItems: before.slice(-leftCount),
+    rightItems: after.slice(0, rightCount),
+  };
+}
+
+function getCenteredLeft(windowWidth: number, width: number) {
+  const minLeft = NATIVE_ISLAND_NAV.minSideOffset;
+  const maxLeft = Math.max(minLeft, windowWidth - minLeft - width);
+  const centeredLeft = Math.round((windowWidth - width) / 2);
+  return Math.min(Math.max(minLeft, centeredLeft), maxLeft);
+}
 
 export function NativeIslandTabIcon({
   label,
@@ -112,55 +165,90 @@ export function NativeIslandBottomNav({
   const { windowWidth, islandLayout } = useScreenChrome();
   const pathname = usePathname();
   const { bottomOffset, sideOffset, islandWidth } = islandLayout;
-  const [itemLayouts, setItemLayouts] = React.useState<Record<string, { x: number; width: number }>>({});
   const compact = items.length >= 6 || windowWidth < 380;
   const orderedItems = items;
   const activeIndex = Math.max(0, orderedItems.findIndex((item) => item.active && !item.disabled));
   const activeItem = orderedItems[activeIndex] ?? orderedItems[0];
-  const visibleLeftItems = orderedItems.slice(0, activeIndex).filter((item) => !item.disabled);
-  const visibleRightItems = orderedItems.slice(activeIndex + 1).filter((item) => !item.disabled);
-  const deckItems = [...visibleLeftItems, ...visibleRightItems];
-  const collapsedWidth = Math.min(islandWidth, Math.max(144, Math.min(196, Math.round(windowWidth * 0.44))));
-  const collapsedDeckOffset = Math.max(74, Math.min(98, collapsedWidth - 42));
-  const measuredActiveLayout = activeItem ? itemLayouts[activeItem.key] : null;
-  const fallbackItemWidth = orderedItems.length > 0 ? islandWidth / orderedItems.length : islandWidth;
-  const activeTabCenterX = measuredActiveLayout
-    ? sideOffset + measuredActiveLayout.x + measuredActiveLayout.width / 2
-    : sideOffset + fallbackItemWidth * activeIndex + fallbackItemWidth / 2;
-  const collapsedLeft = Math.min(
-    Math.max(
-      NATIVE_ISLAND_NAV.minSideOffset,
-      Math.round(activeTabCenterX - collapsedWidth / 2),
-    ),
-    Math.max(NATIVE_ISLAND_NAV.minSideOffset, windowWidth - NATIVE_ISLAND_NAV.minSideOffset - collapsedWidth),
+  const collapsedPreviewLimit = compact ? COLLAPSED_MAX_PREVIEW_ITEMS_COMPACT : COLLAPSED_MAX_PREVIEW_ITEMS;
+  const { leftItems: collapsedLeftItems, rightItems: collapsedRightItems } = React.useMemo(
+    () => getCollapsedPreviewItems({ items: orderedItems, activeIndex, previewLimit: collapsedPreviewLimit }),
+    [activeIndex, collapsedPreviewLimit, orderedItems],
   );
-  const handleItemLayout = React.useCallback((key: string, x: number, width: number) => {
-    setItemLayouts((current) => {
-      const previous = current[key];
-      const nextX = Math.round(x);
-      const nextWidth = Math.round(width);
-      if (previous?.x === nextX && previous.width === nextWidth) return current;
-      return {
-        ...current,
-        [key]: { x: nextX, width: nextWidth },
-      };
-    });
-  }, []);
+  const collapsedPreviewCount = collapsedLeftItems.length + collapsedRightItems.length;
+  const collapsedActiveChipWidth = compact ? COLLAPSED_ACTIVE_CHIP_COMPACT_WIDTH : COLLAPSED_ACTIVE_CHIP_WIDTH;
+  const collapsedPreviewWidth = compact ? COLLAPSED_PREVIEW_COMPACT_WIDTH : COLLAPSED_PREVIEW_WIDTH;
+  const collapsedContentWidth =
+    collapsedActiveChipWidth +
+    collapsedPreviewCount * collapsedPreviewWidth +
+    collapsedPreviewCount * COLLAPSED_ITEM_GAP +
+    COLLAPSED_HORIZONTAL_PADDING * 2;
+  const collapsedMaxWidth = Math.min(
+    islandWidth,
+    COLLAPSED_MAX_WIDTH,
+    Math.max(COLLAPSED_MIN_WIDTH, Math.round(windowWidth * 0.58)),
+  );
+  const collapsedWidth = Math.min(collapsedMaxWidth, Math.max(COLLAPSED_MIN_WIDTH, collapsedContentWidth));
+  const collapsedLeft = getCenteredLeft(windowWidth, collapsedWidth);
+  const navLeft = collapsed ? collapsedLeft : sideOffset;
+  const navWidth = collapsed ? collapsedWidth : islandWidth;
+  const navLeftAnim = React.useRef(new Animated.Value(navLeft)).current;
+  const navWidthAnim = React.useRef(new Animated.Value(navWidth)).current;
+  const collapsedOpacityAnim = React.useRef(new Animated.Value(collapsed ? 1 : 0)).current;
+  const expandedOpacityAnim = React.useRef(new Animated.Value(collapsed ? 0 : 1)).current;
+  const collapsedScaleAnim = React.useRef(new Animated.Value(collapsed ? 1 : 0.96)).current;
+  const expandedScaleAnim = React.useRef(new Animated.Value(collapsed ? 0.98 : 1)).current;
 
   React.useEffect(() => {
-    if (Platform.OS === 'android') {
-      UIManager.setLayoutAnimationEnabledExperimental?.(true);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    LayoutAnimation.configureNext({
-      duration: 180,
-      update: {
-        type: LayoutAnimation.Types.easeInEaseOut,
-      },
-    });
-  }, [collapsed]);
+    const easing = Easing.out(Easing.cubic);
+    Animated.parallel([
+      Animated.timing(navLeftAnim, {
+        toValue: navLeft,
+        duration: 220,
+        easing,
+        useNativeDriver: false,
+      }),
+      Animated.timing(navWidthAnim, {
+        toValue: navWidth,
+        duration: 220,
+        easing,
+        useNativeDriver: false,
+      }),
+      Animated.timing(collapsedOpacityAnim, {
+        toValue: collapsed ? 1 : 0,
+        duration: collapsed ? 180 : 120,
+        easing,
+        useNativeDriver: true,
+      }),
+      Animated.timing(expandedOpacityAnim, {
+        toValue: collapsed ? 0 : 1,
+        duration: collapsed ? 120 : 180,
+        easing,
+        useNativeDriver: true,
+      }),
+      Animated.timing(collapsedScaleAnim, {
+        toValue: collapsed ? 1 : 0.96,
+        duration: 220,
+        easing,
+        useNativeDriver: true,
+      }),
+      Animated.timing(expandedScaleAnim, {
+        toValue: collapsed ? 0.98 : 1,
+        duration: 220,
+        easing,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [
+    collapsed,
+    collapsedOpacityAnim,
+    collapsedScaleAnim,
+    expandedOpacityAnim,
+    expandedScaleAnim,
+    navLeft,
+    navLeftAnim,
+    navWidth,
+    navWidthAnim,
+  ]);
 
   React.useEffect(() => {
     navDevLog('island-layout', {
@@ -174,35 +262,31 @@ export function NativeIslandBottomNav({
       islandWidth,
       collapsedWidth,
       collapsedLeft,
-      activeTabCenterX: Math.round(activeTabCenterX),
-      measured: Boolean(measuredActiveLayout),
       activeKey: items.find((item) => item.active)?.key ?? null,
     });
     navDevLog('collapsed-layout', {
       pathname,
       activeKey: activeItem?.key ?? null,
       activeIndex,
-      visibleLeftKeys: visibleLeftItems.map((item) => item.key),
-      visibleRightKeys: visibleRightItems.map((item) => item.key),
-      deckKeys: deckItems.map((item) => item.key),
+      leftPreviewKeys: collapsedLeftItems.map((item) => item.key),
+      rightPreviewKeys: collapsedRightItems.map((item) => item.key),
       collapsedWidth,
       collapsedLeft,
-      activeTabCenterX: Math.round(activeTabCenterX),
       collapsed,
     });
-  }, [activeIndex, activeItem?.key, activeTabCenterX, collapsed, collapsedLeft, collapsedWidth, compact, deckItems, islandWidth, items, measuredActiveLayout, pathname, visibleLeftItems, visibleRightItems, windowWidth]);
+  }, [activeIndex, activeItem?.key, collapsed, collapsedLeft, collapsedLeftItems, collapsedRightItems, collapsedWidth, compact, islandWidth, items, pathname, windowWidth]);
   if (items.length === 0) {
     return null;
   }
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFillObject}>
-      <View
+      <Animated.View
         style={[
           styles.navWrap,
           {
-            left: collapsed ? collapsedLeft : sideOffset,
-            width: collapsed ? collapsedWidth : islandWidth,
+            left: navLeftAnim,
+            width: navWidthAnim,
             bottom: bottomOffset,
             height: NATIVE_ISLAND_NAV.height,
             borderRadius: NATIVE_ISLAND_NAV.radius,
@@ -241,7 +325,18 @@ export function NativeIslandBottomNav({
           ]}
         />
         <View style={styles.navItems}>
-          {collapsed ? (
+          <Animated.View
+            pointerEvents={collapsed ? 'auto' : 'none'}
+            accessibilityElementsHidden={!collapsed}
+            importantForAccessibility={collapsed ? 'auto' : 'no-hide-descendants'}
+            style={[
+              styles.navModeLayer,
+              {
+                opacity: collapsedOpacityAnim,
+                transform: [{ scale: collapsedScaleAnim }],
+              },
+            ]}
+          >
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Expand navigation. Current tab: ${activeItem?.label ?? 'Threadly'}`}
@@ -250,55 +345,64 @@ export function NativeIslandBottomNav({
               }}
               style={({ pressed }) => [styles.collapsedButton, pressed && styles.navItemPressed]}
             >
-              <View style={[styles.collapsedSideDeck, { right: collapsedDeckOffset }]} pointerEvents="none">
-                {visibleLeftItems.map((item, index) => {
-                  return (
-                    <View
-                      key={item.key}
-                      style={[
-                        styles.collapsedDeckItem,
-                        { transform: [{ translateX: Math.max(-18, -6 * (visibleLeftItems.length - index)) }] },
-                      ]}
-                    >
-                      <Text style={styles.collapsedDeckEmoji}>
-                        {item.emoji}
-                      </Text>
-                      {typeof item.badge === 'number' && item.badge > 0 ? (
-                        <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </View>
-              <View style={[styles.collapsedActiveChip, { backgroundColor: theme.colors.primarySoft }]}>
-                <Text style={styles.collapsedActiveEmoji}>{activeItem?.emoji ?? String.fromCodePoint(0x2022)}</Text>
-                <AppText variant="captionBold" tone="primary" numberOfLines={1} style={styles.collapsedActiveLabel}>
-                  {activeItem?.label ?? 'Menu'}
-                </AppText>
-              </View>
-              <View style={[styles.collapsedSideDeck, { left: collapsedDeckOffset }]} pointerEvents="none">
-                {visibleRightItems.map((item, index) => {
-                  return (
-                    <View
-                      key={item.key}
-                      style={[
-                        styles.collapsedDeckItem,
-                        { transform: [{ translateX: Math.min(18, 6 * (index + 1)) }] },
-                      ]}
-                    >
-                      <Text style={styles.collapsedDeckEmoji}>
-                        {item.emoji}
-                      </Text>
-                      {typeof item.badge === 'number' && item.badge > 0 ? (
-                        <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
-                      ) : null}
-                    </View>
-                  );
-                })}
+              <View style={styles.collapsedContentRow} pointerEvents="none">
+                {collapsedLeftItems.map((item) => (
+                  <View key={item.key} style={[styles.collapsedDeckItem, { width: collapsedPreviewWidth }]}>
+                    <Text style={styles.collapsedDeckEmoji}>
+                      {item.emoji}
+                    </Text>
+                    {typeof item.badge === 'number' && item.badge > 0 ? (
+                      <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
+                    ) : null}
+                  </View>
+                ))}
+                <View
+                  style={[
+                    styles.collapsedActiveChip,
+                    {
+                      backgroundColor: theme.colors.primarySoft,
+                      width: collapsedActiveChipWidth,
+                    },
+                  ]}
+                >
+                  <Text style={styles.collapsedActiveEmoji}>{activeItem?.emoji ?? String.fromCodePoint(0x2022)}</Text>
+                  <AppText
+                    variant="captionBold"
+                    tone="primary"
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    style={styles.collapsedActiveLabel}
+                  >
+                    {activeItem?.label ?? 'Menu'}
+                  </AppText>
+                </View>
+                {collapsedRightItems.map((item) => (
+                  <View key={item.key} style={[styles.collapsedDeckItem, { width: collapsedPreviewWidth }]}>
+                    <Text style={styles.collapsedDeckEmoji}>
+                      {item.emoji}
+                    </Text>
+                    {typeof item.badge === 'number' && item.badge > 0 ? (
+                      <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
+                    ) : null}
+                  </View>
+                ))}
               </View>
             </Pressable>
-          ) : (
-            items.map((item) => (
+          </Animated.View>
+          <Animated.View
+            pointerEvents={collapsed ? 'none' : 'auto'}
+            accessibilityElementsHidden={collapsed}
+            importantForAccessibility={collapsed ? 'no-hide-descendants' : 'auto'}
+            style={[
+              styles.navModeLayer,
+              styles.expandedItemsLayer,
+              {
+                opacity: expandedOpacityAnim,
+                transform: [{ scale: expandedScaleAnim }],
+              },
+            ]}
+          >
+            {items.map((item) => (
               <Pressable
                 key={item.key}
                 accessibilityRole="tab"
@@ -307,9 +411,6 @@ export function NativeIslandBottomNav({
                 disabled={item.disabled}
                 onPressIn={item.disabled ? undefined : () => onPressIn?.(item)}
                 onPress={item.disabled ? undefined : () => onSelect(item)}
-                onLayout={(event) => {
-                  handleItemLayout(item.key, event.nativeEvent.layout.x, event.nativeEvent.layout.width);
-                }}
                 style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
               >
                 <NativeIslandTabIcon
@@ -320,10 +421,10 @@ export function NativeIslandBottomNav({
                   compact={compact}
                 />
               </Pressable>
-            ))
-          )}
+            ))}
+          </Animated.View>
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -350,11 +451,17 @@ const styles = StyleSheet.create({
   },
   navItems: {
     flex: 1,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  navModeLayer: {
+    ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  expandedItemsLayer: {
     paddingHorizontal: NATIVE_ISLAND_NAV.horizontalPadding,
-    overflow: 'hidden',
   },
   collapsedButton: {
     flex: 1,
@@ -362,41 +469,37 @@ const styles = StyleSheet.create({
     minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: COLLAPSED_HORIZONTAL_PADDING,
     position: 'relative',
   },
-  collapsedActiveChip: {
-    minWidth: 78,
-    maxWidth: 110,
-    height: 38,
-    borderRadius: 19,
+  collapsedContentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
+    gap: COLLAPSED_ITEM_GAP,
+    maxWidth: '100%',
+  },
+  collapsedActiveChip: {
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 1,
+    paddingHorizontal: 6,
     zIndex: 2,
+    overflow: 'hidden',
   },
   collapsedActiveEmoji: {
     fontSize: 18,
     lineHeight: 20,
   },
   collapsedActiveLabel: {
-    flexShrink: 1,
+    maxWidth: '100%',
     minWidth: 0,
-  },
-  collapsedSideDeck: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 1,
-    zIndex: 1,
+    textAlign: 'center',
   },
   collapsedDeckItem: {
-    width: 16,
+    width: COLLAPSED_PREVIEW_WIDTH,
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',

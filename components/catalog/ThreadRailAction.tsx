@@ -1,16 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
-import { tokens } from '@/src/styles/tokens';
 import Animated, {
   Easing,
   cancelAnimation,
-  interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+
+import { tokens } from '@/src/styles/tokens';
 
 type ThreadRailActionProps = {
   threaded: boolean;
@@ -20,6 +19,15 @@ type ThreadRailActionProps = {
 };
 
 const THREAD_EMOJI = String.fromCodePoint(0x1f9f5);
+const THREAD_SPIN_DURATION_MS = 680;
+const THREAD_COUNT_REVEAL_DELAY_MS = 520;
+
+function formatThreadCountLabel(count: string) {
+  const value = count.trim();
+  if (value.length === 0) return '0 threads';
+  if (/\bthreads?\b/i.test(value)) return value;
+  return `${value} ${value === '1' ? 'thread' : 'threads'}`;
+}
 
 export default function ThreadRailAction({
   threaded,
@@ -30,19 +38,17 @@ export default function ThreadRailAction({
   const [reduceMotion, setReduceMotion] = useState(false);
 
   const pressScale = useSharedValue(1);
-  const iconScale = useSharedValue(1);
-  const threadGlyphOpacity = useSharedValue(threaded ? 1 : 0);
-  const idleThreadGlyphOpacity = useSharedValue(threaded ? 0 : 1);
-
-  const stitchProgress = useSharedValue(0);
-  const stitchOpacity = useSharedValue(0);
-  const trailOpacity = useSharedValue(0);
-
-  const countScale = useSharedValue(1);
-  const countTranslateY = useSharedValue(0);
-  const countOpacity = useSharedValue(1);
+  const feedbackScale = useSharedValue(1);
+  const rotation = useSharedValue(0);
 
   const previousThreadedRef = useRef(threaded);
+  const previousBusyRef = useRef(busy);
+  const pendingAddRequestRef = useRef(false);
+  const countRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countRevealAtRef = useRef(0);
+
+  const countLabel = useMemo(() => formatThreadCountLabel(count), [count]);
+  const [displayedCountLabel, setDisplayedCountLabel] = useState(countLabel);
 
   useEffect(() => {
     let mounted = true;
@@ -59,234 +65,119 @@ export default function ThreadRailAction({
 
     return () => {
       mounted = false;
+      if (countRevealTimerRef.current) {
+        clearTimeout(countRevealTimerRef.current);
+        countRevealTimerRef.current = null;
+      }
       subscription?.remove?.();
     };
   }, []);
 
   const stopAnimations = useCallback(() => {
     cancelAnimation(pressScale);
-    cancelAnimation(iconScale);
-    cancelAnimation(threadGlyphOpacity);
-    cancelAnimation(idleThreadGlyphOpacity);
-    cancelAnimation(stitchProgress);
-    cancelAnimation(stitchOpacity);
-    cancelAnimation(trailOpacity);
-    cancelAnimation(countScale);
-    cancelAnimation(countTranslateY);
-    cancelAnimation(countOpacity);
-  }, [
-    countOpacity,
-    countScale,
-    countTranslateY,
-    iconScale,
-    idleThreadGlyphOpacity,
-    pressScale,
-    stitchOpacity,
-    stitchProgress,
-    threadGlyphOpacity,
-    trailOpacity,
-  ]);
+    cancelAnimation(feedbackScale);
+    cancelAnimation(rotation);
+  }, [feedbackScale, pressScale, rotation]);
 
-  const runAddAnimation = useCallback(() => {
+  const revealCountAfterFeedback = useCallback((nextCountLabel: string) => {
+    if (countRevealTimerRef.current) {
+      clearTimeout(countRevealTimerRef.current);
+    }
+
+    const remainingDelay = Math.max(0, countRevealAtRef.current - Date.now());
+
+    countRevealTimerRef.current = setTimeout(() => {
+      countRevealTimerRef.current = null;
+      setDisplayedCountLabel(nextCountLabel);
+    }, remainingDelay);
+  }, []);
+
+  const runAddRequestFeedback = useCallback(() => {
     stopAnimations();
+    countRevealAtRef.current = Date.now() + (reduceMotion ? 180 : THREAD_COUNT_REVEAL_DELAY_MS);
 
-    iconScale.value = reduceMotion ? 0.98 : 0.94;
-    threadGlyphOpacity.value = reduceMotion ? 1 : 0.18;
-    idleThreadGlyphOpacity.value = 1;
-    stitchProgress.value = 0;
-    stitchOpacity.value = 0;
-    trailOpacity.value = 0;
-    countScale.value = 0.98;
-    countTranslateY.value = 6;
-    countOpacity.value = 0.72;
+    rotation.value = 0;
+    pressScale.value = 1;
+    feedbackScale.value = 1;
 
     if (reduceMotion) {
-      threadGlyphOpacity.value = withTiming(1, {
-        duration: 120,
-        easing: Easing.out(Easing.quad),
-      });
-      idleThreadGlyphOpacity.value = withTiming(0, {
-        duration: 120,
-        easing: Easing.out(Easing.quad),
-      });
-      iconScale.value = withSequence(
-        withTiming(1.03, { duration: 90, easing: Easing.out(Easing.quad) }),
-        withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) }),
+      feedbackScale.value = withSequence(
+        withTiming(1.28, {
+          duration: 100,
+          easing: Easing.out(Easing.quad),
+        }),
+        withTiming(1, {
+          duration: 120,
+          easing: Easing.out(Easing.quad),
+        }),
       );
-      countOpacity.value = withTiming(1, {
-        duration: 140,
-        easing: Easing.out(Easing.quad),
-      });
-      countTranslateY.value = withTiming(0, {
-        duration: 140,
-        easing: Easing.out(Easing.quad),
-      });
-      countScale.value = withTiming(1, {
-        duration: 140,
-        easing: Easing.out(Easing.quad),
-      });
       return;
     }
 
-    threadGlyphOpacity.value = withTiming(1, {
-      duration: 90,
-      easing: Easing.out(Easing.quad),
-    });
-    idleThreadGlyphOpacity.value = withTiming(0, {
-      duration: 90,
-      easing: Easing.out(Easing.quad),
-    });
-    iconScale.value = withSequence(
+    rotation.value = withSequence(
+      withTiming(360, {
+        duration: THREAD_SPIN_DURATION_MS,
+        easing: Easing.bezier(0.16, 0.86, 0.2, 1),
+      }),
+      withTiming(0, { duration: 0 }),
+    );
+    feedbackScale.value = withSequence(
+      withTiming(1.72, {
+        duration: 150,
+        easing: Easing.bezier(0.16, 0.95, 0.28, 1.12),
+      }),
       withTiming(1.16, {
-        duration: 170,
-        easing: Easing.bezier(0.2, 0.9, 0.2, 1.15),
+        duration: 130,
+        easing: Easing.out(Easing.quad),
       }),
-      withTiming(1.02, {
-        duration: 120,
+      withTiming(1.34, {
+        duration: 100,
         easing: Easing.out(Easing.quad),
       }),
       withTiming(1, {
-        duration: 120,
+        duration: 190,
         easing: Easing.out(Easing.quad),
       }),
     );
-    stitchProgress.value = withDelay(
-      110,
-      withTiming(1, {
-        duration: 220,
-        easing: Easing.bezier(0.2, 0.8, 0.2, 1),
-      }),
-    );
-    stitchOpacity.value = withDelay(
-      110,
-      withSequence(
-        withTiming(1, { duration: 60, easing: Easing.out(Easing.quad) }),
-        withDelay(90, withTiming(0, { duration: 70, easing: Easing.in(Easing.quad) })),
-      ),
-    );
-    trailOpacity.value = withDelay(
-      110,
-      withSequence(
-        withTiming(0.75, { duration: 80, easing: Easing.out(Easing.quad) }),
-        withDelay(80, withTiming(0, { duration: 80, easing: Easing.in(Easing.quad) })),
-      ),
-    );
-    countOpacity.value = withDelay(
-      340,
-      withTiming(1, { duration: 140, easing: Easing.out(Easing.quad) }),
-    );
-    countTranslateY.value = withDelay(
-      340,
-      withTiming(0, { duration: 140, easing: Easing.out(Easing.quad) }),
-    );
-    countScale.value = withDelay(
-      340,
-      withTiming(1, { duration: 140, easing: Easing.out(Easing.quad) }),
-    );
-  }, [
-    countOpacity,
-    countScale,
-    countTranslateY,
-    iconScale,
-    idleThreadGlyphOpacity,
-    reduceMotion,
-    stitchOpacity,
-    stitchProgress,
-    stopAnimations,
-    threadGlyphOpacity,
-    trailOpacity,
-  ]);
-
-  const runRemoveAnimation = useCallback(() => {
-    stopAnimations();
-
-    iconScale.value = 1;
-    threadGlyphOpacity.value = 1;
-    idleThreadGlyphOpacity.value = 0;
-    stitchProgress.value = 0;
-    stitchOpacity.value = 0;
-    trailOpacity.value = 0;
-    countScale.value = 1;
-    countTranslateY.value = 0;
-    countOpacity.value = 1;
-
-    if (reduceMotion) {
-      threadGlyphOpacity.value = withTiming(0, {
-        duration: 120,
-        easing: Easing.out(Easing.quad),
-      });
-      idleThreadGlyphOpacity.value = withTiming(1, {
-        duration: 120,
-        easing: Easing.out(Easing.quad),
-      });
-      iconScale.value = withSequence(
-        withTiming(0.98, { duration: 80, easing: Easing.out(Easing.quad) }),
-        withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) }),
-      );
-      countOpacity.value = withSequence(
-        withTiming(0.86, { duration: 90, easing: Easing.out(Easing.quad) }),
-        withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) }),
-      );
-      return;
-    }
-
-    threadGlyphOpacity.value = withTiming(0, {
-      duration: 120,
-      easing: Easing.out(Easing.quad),
-    });
-    idleThreadGlyphOpacity.value = withTiming(1, {
-      duration: 120,
-      easing: Easing.out(Easing.quad),
-    });
-    iconScale.value = withSequence(
-      withTiming(0.95, {
-        duration: 80,
-        easing: Easing.out(Easing.quad),
-      }),
-      withTiming(1, {
-        duration: 140,
-        easing: Easing.out(Easing.quad),
-      }),
-    );
-    countTranslateY.value = withSequence(
-      withDelay(80, withTiming(4, { duration: 70, easing: Easing.out(Easing.quad) })),
-      withTiming(0, { duration: 90, easing: Easing.out(Easing.quad) }),
-    );
-    countOpacity.value = withSequence(
-      withDelay(80, withTiming(0.84, { duration: 70, easing: Easing.out(Easing.quad) })),
-      withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) }),
-    );
-    countScale.value = withSequence(
-      withDelay(80, withTiming(0.98, { duration: 70, easing: Easing.out(Easing.quad) })),
-      withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) }),
-    );
-  }, [
-    countOpacity,
-    countScale,
-    countTranslateY,
-    iconScale,
-    idleThreadGlyphOpacity,
-    reduceMotion,
-    stitchOpacity,
-    stitchProgress,
-    stopAnimations,
-    threadGlyphOpacity,
-    trailOpacity,
-  ]);
+  }, [feedbackScale, pressScale, reduceMotion, rotation, stopAnimations]);
 
   useEffect(() => {
-    if (previousThreadedRef.current === threaded) {
-      return;
+    const wasThreaded = previousThreadedRef.current;
+    const wasBusy = previousBusyRef.current;
+
+    if (!wasBusy && busy && !threaded) {
+      pendingAddRequestRef.current = true;
+      runAddRequestFeedback();
     }
 
-    if (threaded) {
-      runAddAnimation();
-    } else {
-      runRemoveAnimation();
+    if (wasThreaded && !threaded) {
+      pendingAddRequestRef.current = false;
+      countRevealAtRef.current = 0;
+      if (countRevealTimerRef.current) {
+        clearTimeout(countRevealTimerRef.current);
+        countRevealTimerRef.current = null;
+      }
+      setDisplayedCountLabel(countLabel);
+    }
+
+    if (!wasThreaded && threaded && pendingAddRequestRef.current) {
+      revealCountAfterFeedback(countLabel);
+      pendingAddRequestRef.current = false;
+    }
+
+    if (wasBusy && !busy && !threaded) {
+      pendingAddRequestRef.current = false;
     }
 
     previousThreadedRef.current = threaded;
-  }, [runAddAnimation, runRemoveAnimation, threaded]);
+    previousBusyRef.current = busy;
+  }, [busy, countLabel, revealCountAfterFeedback, runAddRequestFeedback, threaded]);
+
+  useEffect(() => {
+    if (!countRevealTimerRef.current) {
+      setDisplayedCountLabel(countLabel);
+    }
+  }, [countLabel]);
 
   const handlePressIn = useCallback(() => {
     pressScale.value = withTiming(0.92, {
@@ -302,42 +193,11 @@ export default function ThreadRailAction({
     });
   }, [pressScale]);
 
-  const buttonInnerStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pressScale.value }],
-  }));
-
-  const iconWrapStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: iconScale.value }],
-  }));
-
-  const threadGlyphStyle = useAnimatedStyle(() => ({
-    opacity: threadGlyphOpacity.value,
-  }));
-
-  const idleThreadGlyphStyle = useAnimatedStyle(() => ({
-    opacity: idleThreadGlyphOpacity.value,
-  }));
-
-  const stitchThreadHeadStyle = useAnimatedStyle(() => ({
-    opacity: stitchOpacity.value,
+  const iconStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: interpolate(stitchProgress.value, [0, 1], [-13, 13]) },
-      { translateY: interpolate(stitchProgress.value, [0, 0.5, 1], [4, -4, 4]) },
-      { scale: interpolate(stitchProgress.value, [0, 1], [0.88, 1.05]) },
+      { scale: pressScale.value * feedbackScale.value },
+      { rotate: `${rotation.value}deg` },
     ],
-  }));
-
-  const stitchTrailStyle = useAnimatedStyle(() => ({
-    opacity: trailOpacity.value,
-    transform: [
-      { translateX: interpolate(stitchProgress.value, [0, 1], [-6, 3]) },
-      { scaleX: interpolate(stitchProgress.value, [0, 1], [0.18, 1]) },
-    ],
-  }));
-
-  const countStyle = useAnimatedStyle(() => ({
-    opacity: countOpacity.value,
-    transform: [{ translateY: countTranslateY.value }, { scale: countScale.value }],
   }));
 
   return (
@@ -346,184 +206,83 @@ export default function ThreadRailAction({
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
+        disabled={busy}
+        hitSlop={8}
         style={({ pressed }) => [
           styles.button,
-          threaded && styles.buttonActive,
           busy && styles.buttonBusy,
-          pressed && styles.buttonPressed,
+          pressed && !busy && styles.buttonPressed,
         ]}
         accessibilityRole="button"
         accessibilityLabel={threaded ? 'Remove thread' : 'Thread this design'}
+        accessibilityState={{ selected: threaded, disabled: busy }}
       >
-        <Animated.View
-          style={[
-            styles.buttonInner,
-            buttonInnerStyle,
-          ]}
-        >
-          <Animated.View style={[styles.stitchIcon, iconWrapStyle]}>
-            <View style={[styles.fabricPatch, threaded && styles.fabricPatchActive]}>
-              <Text style={styles.threadEmoji}>{THREAD_EMOJI}</Text>
-            </View>
-            {!reduceMotion ? (
-              <View pointerEvents="none" style={styles.overlayLayer}>
-                <Animated.View
-                  style={[
-                    styles.trail,
-                    stitchTrailStyle,
-                  ]}
-                />
-                <Animated.View
-                  style={[
-                    styles.threadHeadWrap,
-                    stitchThreadHeadStyle,
-                  ]}
-                >
-                  <View style={styles.threadHead} />
-                  <View style={styles.threadHeadCore} />
-                </Animated.View>
-              </View>
-            ) : null}
-            <Animated.View style={[styles.threadStateOverlay, threadGlyphStyle]}>
-              <View style={styles.activeThreadLine} />
-            </Animated.View>
-            <Animated.View style={[styles.idleThreadOverlay, idleThreadGlyphStyle]} />
-          </Animated.View>
+        <Animated.View style={[styles.iconWrap, iconStyle]}>
+          <Text style={[styles.threadEmoji, threaded && styles.threadEmojiActive]}>
+            {THREAD_EMOJI}
+          </Text>
         </Animated.View>
       </Pressable>
-      <Animated.Text
-        style={[
-          styles.count,
-          threaded && styles.countActive,
-          countStyle,
-        ]}
+      <Text
+        style={[styles.count, threaded && styles.countActive]}
+        numberOfLines={1}
       >
-        {busy ? '...' : count}
-      </Animated.Text>
+        {displayedCountLabel}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   item: {
+    width: 88,
     alignItems: 'center',
     gap: 2,
   },
   button: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 52,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  buttonInner: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonActive: {
     backgroundColor: 'transparent',
   },
   buttonBusy: {
-    opacity: 0.8,
+    opacity: 0.72,
   },
   buttonPressed: {
-    opacity: 0.9,
+    opacity: 0.88,
   },
-  stitchIcon: {
-    width: 34,
-    height: 30,
-    overflow: 'visible',
+  iconWrap: {
+    width: 46,
+    height: 46,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  fabricPatch: {
-    width: 28,
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: 'rgba(15, 23, 42, 0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.44)',
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fabricPatchActive: {
-    backgroundColor: 'rgba(204, 251, 241, 0.92)',
-    borderColor: '#0F766E',
   },
   threadEmoji: {
-    fontSize: 18,
-    lineHeight: 22,
+    color: '#fff',
+    fontSize: 32,
+    lineHeight: 38,
     textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
-  overlayLayer: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trail: {
-    position: 'absolute',
-    width: 30,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#0f766e',
-  },
-  threadHeadWrap: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  threadHead: {
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-    backgroundColor: '#CCFBF1',
-    borderWidth: 2,
-    borderColor: '#0F766E',
-  },
-  threadHeadCore: {
-    position: 'absolute',
-    width: 4,
-    height: 4,
-    borderRadius: 3,
-    backgroundColor: '#0F766E',
-  },
-  threadStateOverlay: {
-    position: 'absolute',
-    left: 4,
-    right: 4,
-    top: 13,
-  },
-  activeThreadLine: {
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#0F766E',
-  },
-  idleThreadOverlay: {
-    position: 'absolute',
-    right: 2,
-    top: 4,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    borderWidth: 1,
-    borderColor: '#F59E0B',
+  threadEmojiActive: {
+    textShadowColor: 'rgba(126, 34, 206, 0.55)',
   },
   count: {
+    width: 88,
     color: '#fff',
     fontSize: 12,
-    fontWeight: '700',
+    lineHeight: 15,
+    fontWeight: '900',
     fontFamily: tokens.fontFamily.bold,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   countActive: {
-    color: '#CCFBF1',
+    color: '#F5D0FE',
   },
 });

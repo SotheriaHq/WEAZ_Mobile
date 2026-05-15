@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -13,6 +13,7 @@ import {
 import { BlurView } from 'expo-blur';
 import Animated, {
   Easing,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -23,7 +24,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
-import { applyAndroidSystemBarsPolicy } from '@/src/system/AndroidSystemBars';
+import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 
 type Props = {
   visible: boolean;
@@ -60,23 +61,47 @@ export function AppBottomSheet({
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(28);
   const opacity = useSharedValue(0);
+  const [mounted, setMounted] = useState(visible);
   const isDark = scheme === 'dark';
+  const androidBottomGap = Platform.OS === 'android' ? Math.max(0, insets.bottom) : 0;
+  const sheetPaddingBottom =
+    Platform.OS === 'android'
+      ? tokens.spacing.lg
+      : Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm);
+
+  useAndroidOverlaySystemBars(visible, scheme, 'bottom-sheet');
 
   useEffect(() => {
     if (visible) {
-      void applyAndroidSystemBarsPolicy(scheme, 'bottom-sheet-open');
+      setMounted(true);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    if (visible) {
+      translateY.value = 28;
+      opacity.value = 0;
       translateY.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
       opacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
     } else {
-      void applyAndroidSystemBarsPolicy(scheme, 'bottom-sheet-closed');
-      translateY.value = 28;
-      opacity.value = 0;
+      translateY.value = withTiming(28, { duration: 180, easing: Easing.in(Easing.cubic) });
+      opacity.value = withTiming(0, { duration: 160, easing: Easing.in(Easing.cubic) }, (finished) => {
+        if (finished) {
+          runOnJS(setMounted)(false);
+        }
+      });
     }
-  }, [opacity, scheme, translateY, visible]);
+  }, [mounted, opacity, translateY, visible]);
 
   const sheetStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
     transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
   }));
 
   const Body = scrollable ? ScrollView : View;
@@ -88,26 +113,30 @@ export function AppBottomSheet({
       }
     : { style: styles.bodyContent };
 
+  if (!mounted) return null;
+
   return (
     <Modal
       transparent
-      visible={visible}
-      animationType="fade"
+      visible={mounted}
+      animationType="none"
       statusBarTranslucent
       navigationBarTranslucent
       onRequestClose={onClose}
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close sheet">
-          <BlurView
-            tint={isDark ? 'dark' : 'light'}
-            intensity={Platform.OS === 'android' ? 24 : 38}
-            style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdrop }]}
-          />
+          <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
+            <BlurView
+              tint={isDark ? 'dark' : 'light'}
+              intensity={Platform.OS === 'android' ? 24 : 38}
+              style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdrop }]}
+            />
+          </Animated.View>
         </Pressable>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardWrap}
         >
           <Animated.View
@@ -116,7 +145,8 @@ export function AppBottomSheet({
               {
                 backgroundColor: theme.colors.bottomSheetSurface,
                 borderColor: theme.colors.border,
-                paddingBottom: Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm),
+                marginBottom: androidBottomGap,
+                paddingBottom: sheetPaddingBottom,
               },
               sheetStyle,
               style,

@@ -60,7 +60,10 @@ export type MeasurementPointOption = {
 export type DesignFilterSelection = Record<string, string[]>;
 
 export type DraftSessionResponse = {
-  collectionId: string;
+  designId?: string;
+  id?: string;
+  legacyCollectionId?: string;
+  collectionId?: string;
   sessionToken: string;
   hasConflict: boolean;
   conflictDetails?: {
@@ -177,11 +180,14 @@ type PresignedUpload = {
   expectedKey: string;
   uploadUrl: string;
   uploadFields?: Record<string, string> | null;
-  method: 'POST' | 'PUT';
+  method?: 'POST' | 'PUT';
 };
 
-type InitializeDesignResponse = {
-  collectionId: string;
+export type InitializeDesignResponse = {
+  designId?: string;
+  id?: string;
+  legacyCollectionId?: string;
+  collectionId?: string;
   uploads: PresignedUpload[];
 };
 
@@ -249,6 +255,17 @@ const asStringList = (value: unknown): string[] =>
         .map((entry) => asString(entry))
         .filter((entry): entry is string => Boolean(entry))
     : [];
+
+export function resolveDesignIdFromInitializeResponse(
+  response: Partial<InitializeDesignResponse> | null | undefined,
+): string | null {
+  return (
+    asString(response?.designId) ??
+    asString(response?.id) ??
+    asString(response?.legacyCollectionId) ??
+    asString(response?.collectionId)
+  );
+}
 
 const normalizeSizingMode = (value: unknown): DesignDetail['sizingMode'] => {
   const raw = String(value ?? '').toUpperCase();
@@ -380,9 +397,15 @@ const mapFilterSelection = (raw: unknown): DesignFilterSelection => {
 const normalizeDetail = (payload: unknown): DesignDetail => {
   const source = asRecord(unwrapData(payload));
   const medias = Array.isArray(source.medias) ? source.medias : [];
+  const designId =
+    asString(source.designId) ??
+    asString(source.id) ??
+    asString(source.legacyCollectionId) ??
+    asString(source.collectionId) ??
+    '';
 
   return {
-    id: String(source.id ?? ''),
+    id: designId,
     title: asString(source.title) ?? 'Untitled design',
     description: asString(source.description) ?? '',
     visibility: String(source.visibility ?? '').toUpperCase() === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC',
@@ -445,11 +468,17 @@ const buildMetadata = (payload: DesignSavePayload) => ({
   targetAgeGroup: payload.targetAgeGroup,
 });
 
+export function resolvePresignedUploadMethod(upload: Pick<PresignedUpload, 'method' | 'uploadFields'>): 'POST' | 'PUT' {
+  return upload.method ?? (upload.uploadFields ? 'POST' : 'PUT');
+}
+
 async function uploadDesignAsset(
   upload: PresignedUpload,
   asset: MobileDesignAsset,
 ): Promise<UploadCompletion> {
-  if (upload.method === 'POST') {
+  const method = resolvePresignedUploadMethod(upload);
+
+  if (method === 'POST') {
     const formData = new FormData();
     for (const [key, value] of Object.entries(upload.uploadFields ?? {})) {
       formData.append(key, value);
@@ -813,7 +842,7 @@ export async function finalizeExistingDesign(
       completions,
       shouldPublish: payload.action === 'publish',
       action: payload.action,
-      collectionMetadata: buildMetadata(payload),
+      designMetadata: buildMetadata(payload),
       coverMediaId: undefined,
       coverIndex: 0,
       draftSessionToken: payload.draftSessionToken,
@@ -841,6 +870,10 @@ export async function deleteDesignMedia(designId: string, mediaId: string) {
   await apiClient.delete(`/designs/${designId}/media/${mediaId}`);
 }
 
+export async function deleteDesign(designId: string) {
+  await apiClient.delete(`/designs/${designId}`);
+}
+
 export async function saveDesignEditor(
   payload: DesignSavePayload,
   onProgress?: (value: number, message: string) => void,
@@ -859,7 +892,7 @@ export async function saveDesignEditor(
       title: trimmedTitle,
       assets: filteredAssets,
     });
-    const designId = asString(initialized?.collectionId);
+    const designId = resolveDesignIdFromInitializeResponse(initialized);
 
     if (!designId) {
       throw new Error('The design draft could not be created.');
@@ -919,7 +952,7 @@ export async function saveDesignEditor(
   const initialized =
     localAssets.length > 0
       ? await initializeExistingDesignMediaUploads(payload.designId, localAssets)
-      : { collectionId: payload.designId, uploads: [] };
+      : { designId: payload.designId, id: payload.designId, uploads: [] };
 
   const uploads = Array.isArray(initialized.uploads) ? initialized.uploads : [];
   const completions: UploadCompletion[] = [];

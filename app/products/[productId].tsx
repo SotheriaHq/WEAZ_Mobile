@@ -60,7 +60,7 @@ function ProductMediaSlide({
   const [imageFailed, setImageFailed] = useState(false);
   const primaryDebugContext = useMemo(
     () => ({
-      designId: productId,
+      productId,
       mediaIndex: index,
       fileId: item.fileId,
       sourceField: item.sourceField,
@@ -69,7 +69,7 @@ function ProductMediaSlide({
   );
   const fallbackDebugContext = useMemo(
     () => ({
-      designId: productId,
+      productId,
       mediaIndex: 0,
       fileId: fallbackItem?.fileId ?? null,
       sourceField: fallbackItem?.sourceField ?? 'product.coverImage',

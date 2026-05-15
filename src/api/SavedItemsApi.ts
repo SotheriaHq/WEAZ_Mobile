@@ -1,4 +1,8 @@
 import { apiClient } from '@/src/api/httpClient';
+import {
+  mapCatalogTargetForLegacyApi,
+  type CatalogTargetInput,
+} from '@/src/features/catalog/catalogTarget';
 
 export type SavedItemTargetType = 'COLLECTION' | 'COLLECTION_MEDIA';
 
@@ -9,13 +13,29 @@ const unwrapData = <T,>(payload: unknown): T => {
   return payload as T;
 };
 
+const savedPayloadForCatalogTarget = (target: CatalogTargetInput) => {
+  const legacyTarget = mapCatalogTargetForLegacyApi(target);
+  if (legacyTarget.targetType === 'PRODUCT') {
+    throw new Error('Product favorites use the wishlist API, not /saved.');
+  }
+  return legacyTarget;
+};
+
 export const SavedItemsApi = {
   async saveItem(targetType: SavedItemTargetType, targetId: string): Promise<void> {
     await apiClient.post('/saved', { targetType, targetId });
   },
 
+  async saveCatalogTarget(target: CatalogTargetInput): Promise<void> {
+    await apiClient.post('/saved', savedPayloadForCatalogTarget(target));
+  },
+
   async unsaveItem(targetType: SavedItemTargetType, targetId: string): Promise<void> {
     await apiClient.delete('/saved', { data: { targetType, targetId } });
+  },
+
+  async unsaveCatalogTarget(target: CatalogTargetInput): Promise<void> {
+    await apiClient.delete('/saved', { data: savedPayloadForCatalogTarget(target) });
   },
 
   async checkBatch(targetType: SavedItemTargetType, targetIds: string[]): Promise<Record<string, boolean>> {
@@ -34,6 +54,12 @@ export const SavedItemsApi = {
       }
       return acc;
     }, {});
+  },
+
+  async checkCatalogTargetBatch(target: CatalogTargetInput, targetIds: string[]): Promise<Record<string, boolean>> {
+    if (targetIds.length === 0) return {};
+    const legacyTarget = savedPayloadForCatalogTarget(target);
+    return this.checkBatch(legacyTarget.targetType as SavedItemTargetType, targetIds);
   },
 };
 

@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import { apiClient } from '@/src/api/httpClient';
 import { feedContractDevLog } from '@/src/features/feed/utils/feedDiagnostics';
+import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
 import type { MarketFeedResponse } from '@/src/types/market';
 import type { FeedMediaAsset, MarketFeedBrand, MarketItem, MarketMediaType } from '@/src/types/market';
 
@@ -223,6 +224,7 @@ export const parseStrictMarketFeedItem = (raw: RawMarketItem): MarketItem | null
 
   return {
     id,
+    entityType: resolveCatalogEntityType(raw, 'DESIGN') ?? 'DESIGN',
     collectionId,
     sourceType: asString(raw.sourceType) as MarketItem['sourceType'],
     title: asString(raw.title) ?? '',
@@ -353,6 +355,7 @@ export const normalizeLegacyMarketFeedItem = (raw: RawMarketItem): MarketItem | 
 
   return {
     id: String(raw.id ?? mediaFileId ?? ''),
+    entityType: resolveCatalogEntityType(raw, 'DESIGN') ?? 'DESIGN',
     collectionId: String(raw.collectionId ?? collection.id ?? ''),
     collectionTitle: String((collection as any).title ?? raw.collectionTitle ?? ''),
     collectionDescription:

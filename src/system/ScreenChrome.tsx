@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import { Platform, useWindowDimensions } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets, type EdgeInsets } from 'react-native-safe-area-context';
 
 export const NATIVE_ISLAND_NAV = {
@@ -56,11 +56,9 @@ export function getNativeIslandContentClearance(bottomInset: number) {
   return NATIVE_ISLAND_NAV.contentClearance + normalizeInset(bottomInset);
 }
 
-export function getImmersiveViewportPageHeight(viewportHeight: number, bottomInset: number) {
+export function getImmersiveViewportPageHeight(viewportHeight: number, _bottomInset: number) {
   const baseHeight = Math.max(1, Math.round(viewportHeight || 0));
-  if (Platform.OS !== 'android') return baseHeight;
-
-  return baseHeight + normalizeInset(bottomInset);
+  return baseHeight;
 }
 
 export function ScreenChromeProvider({ children }: { children: React.ReactNode }) {

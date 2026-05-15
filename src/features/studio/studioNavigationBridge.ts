@@ -2,7 +2,11 @@ import type { Href } from 'expo-router';
 
 import { env } from '@/src/config/env';
 import { getTrustedStudioOrigins } from '@/src/features/studio/studioRoutes';
-import { getMessageNotificationTarget } from '@/src/utils/mobileRouting';
+import {
+  getMessageNotificationTarget,
+  routeForDesignTarget,
+  routeForStoreCollectionTarget,
+} from '@/src/utils/mobileRouting';
 
 export type StudioWebNavigationClassification =
   | { type: 'studio'; path: string }
@@ -141,7 +145,7 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
   }
 
   if (pathname === '/profile/collections/create') {
-    return { type: 'native', path, nativeRoute: '/catalog/create-design' as Href };
+    return { type: 'native', path, nativeRoute: '/designs/create' as Href };
   }
 
   const designEditId = singleSegmentAfter(pathname, '/profile/collections/edit/');
@@ -149,7 +153,36 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
     return {
       type: 'native',
       path,
-      nativeRoute: { pathname: '/catalog/create-design', params: { designId: designEditId } } as Href,
+      nativeRoute: { pathname: '/designs/[designId]/edit', params: { designId: designEditId } } as unknown as Href,
+    };
+  }
+
+  if (pathname === '/designs/create') {
+    return { type: 'native', path, nativeRoute: '/designs/create' as Href };
+  }
+
+  const designEditAliasMatch = pathname.match(/^\/designs\/([^/]+)\/edit$/);
+  if (designEditAliasMatch?.[1]) {
+    return {
+      type: 'native',
+      path,
+      nativeRoute: {
+        pathname: '/designs/[designId]/edit',
+        params: { designId: decodeURIComponent(designEditAliasMatch[1]) },
+      } as unknown as Href,
+    };
+  }
+
+  const designId = singleSegmentAfter(pathname, '/designs/');
+  if (designId) {
+    return {
+      type: 'native',
+      path,
+      nativeRoute: routeForDesignTarget(designId, {
+        legacyCollectionId: url.searchParams.get('legacyCollectionId'),
+        openComments: Boolean(url.searchParams.get('commentId') || url.searchParams.get('openComments')),
+        commentId: url.searchParams.get('commentId'),
+      }),
     };
   }
 
@@ -161,7 +194,19 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
       nativeRoute: {
         pathname: '/catalog/[brandId]',
         params: { brandId: profileId, tab: url.searchParams.get('tab') || undefined },
-      } as Href,
+      } as unknown as Href,
+    };
+  }
+
+  if (pathname === '/products/create') {
+    return { type: 'studio', path: '/studio/store/products/new' };
+  }
+
+  const productEditMatch = pathname.match(/^\/products\/([^/]+)\/edit$/);
+  if (productEditMatch?.[1]) {
+    return {
+      type: 'studio',
+      path: `/studio/store/products/${encodeURIComponent(decodeURIComponent(productEditMatch[1]))}/edit`,
     };
   }
 
@@ -174,12 +219,28 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
     };
   }
 
+  if (pathname === '/collections/create') {
+    return { type: 'native', path, nativeRoute: '/collections/create' as Href };
+  }
+
+  const collectionEditMatch = pathname.match(/^\/collections\/([^/]+)\/edit$/);
+  if (collectionEditMatch?.[1]) {
+    return {
+      type: 'native',
+      path,
+      nativeRoute: {
+        pathname: '/collections/[collectionId]/edit',
+        params: { collectionId: decodeURIComponent(collectionEditMatch[1]) },
+      } as unknown as Href,
+    };
+  }
+
   const collectionId = singleSegmentAfter(pathname, '/collections/');
   if (collectionId) {
     return {
       type: 'native',
       path,
-      nativeRoute: { pathname: '/catalog/view/[collectionId]', params: { collectionId } } as Href,
+      nativeRoute: routeForStoreCollectionTarget(collectionId),
     };
   }
 

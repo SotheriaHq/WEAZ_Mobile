@@ -16,6 +16,7 @@ import {
   getDesignFilterDimensions,
   getActiveDesignCustomConfiguration,
   getMeasurementPoints,
+  deleteDesign,
   saveDesignEditor,
   startDesignDraftSession,
   type DesignCustomOrderConfigurationInput,
@@ -28,9 +29,9 @@ import {
   type FilterDimensionOption,
   type MeasurementPointOption,
 } from '@/src/api/DesignApi';
-import { brandApi } from '@/src/api/BrandApi';
 import { useAuthSession } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
+import { routeForDesignTarget } from '@/src/utils/mobileRouting';
 import {
   consumeDesignEditorAssetBundle,
   DESIGN_EDITOR_MAX_MEDIA,
@@ -111,7 +112,6 @@ type ContextValue = {
   pickMedia: (source?: 'camera' | 'library') => Promise<boolean>;
   clearPermissionIssue: () => void;
   openMediaPermissionSettings: () => Promise<void>;
-  moveAsset: (assetId: string, direction: 'left' | 'right') => void;
   removeAsset: (assetId: string) => void;
   setCoverAssetId: (assetId: string | null) => void;
   save: (action: SaveAction) => Promise<void>;
@@ -327,7 +327,7 @@ export function DesignEditorProvider({
         setFilterDimensions(
           nextFilters.filter(
             (dimension) =>
-              dimension.appliesTo.includes('COLLECTION') &&
+              (dimension.appliesTo.includes('DESIGN') || dimension.appliesTo.includes('COLLECTION')) &&
               dimension.slug !== 'designer-location',
           ),
         );
@@ -446,14 +446,13 @@ export function DesignEditorProvider({
         form.fallbackOutputYards.trim().length > 0));
 
   useEffect(() => {
-    if (!selectedCategory) return;
-    if (selectedCategory.subCategories.some((entry) => entry.id === form.subCategoryId)) {
+    if (!form.subCategoryId) return;
+    if (
+      selectedCategory?.subCategories.some((entry) => entry.id === form.subCategoryId)
+    ) {
       return;
     }
-    setForm((prev) => ({
-      ...prev,
-      subCategoryId: selectedCategory.subCategories[0]?.id ?? '',
-    }));
+    setForm((prev) => ({ ...prev, subCategoryId: '' }));
   }, [form.subCategoryId, selectedCategory]);
 
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
@@ -537,21 +536,6 @@ export function DesignEditorProvider({
     }
   }, [toast]);
 
-  const moveAsset = useCallback((assetId: string, direction: 'left' | 'right') => {
-    setAssets((prev) => {
-      const index = prev.findIndex((asset) => asset.id === assetId);
-      if (index < 0) return prev;
-      const nextIndex = direction === 'left' ? index - 1 : index + 1;
-      if (nextIndex < 0 || nextIndex >= prev.length) {
-        return prev;
-      }
-      const next = [...prev];
-      const [item] = next.splice(index, 1);
-      next.splice(nextIndex, 0, item);
-      return next;
-    });
-  }, []);
-
   const setCoverAssetId = useCallback((assetId: string | null) => {
     setCoverAssetIdState(assetId);
   }, []);
@@ -581,7 +565,11 @@ export function DesignEditorProvider({
         toast.error('Another device still owns this draft. Take over the draft before saving.');
         return;
       }
-      if (!activeDesignId && hasActiveBrandMembership && userEmailVerified === false) {
+      if (!activeDesignId && !hasActiveBrandMembership) {
+        toast.error('Sign in with a brand account before creating designs.');
+        return;
+      }
+      if (!activeDesignId && userEmailVerified !== true) {
         toast.error('Verify your email before creating designs.');
         return;
       }
@@ -673,13 +661,7 @@ export function DesignEditorProvider({
         setDraftVersion(result.detail.draftVersion);
         toast.success(action === 'publish' ? 'Design published.' : 'Draft saved.');
         if (action === 'publish') {
-          router.replace({
-            pathname: '/catalog/view/[collectionId]',
-            params: {
-              collectionId: result.id,
-              scope: 'design',
-            },
-          } as any);
+          router.replace(routeForDesignTarget(result.id, { legacyCollectionId: result.id }) as any);
           return;
         }
         router.replace({
@@ -732,7 +714,7 @@ export function DesignEditorProvider({
     setSaveProgress(0);
     setSaveMessage('Deleting draft...');
     try {
-      await brandApi.deleteCollection(activeDesignId);
+      await deleteDesign(activeDesignId);
       toast.success('Draft deleted.');
       router.replace({
         pathname: '/catalog',
@@ -796,7 +778,6 @@ export function DesignEditorProvider({
       pickMedia,
       clearPermissionIssue,
       openMediaPermissionSettings,
-      moveAsset,
       removeAsset,
       setCoverAssetId,
       save,
@@ -822,7 +803,6 @@ export function DesignEditorProvider({
       form,
       loadingError,
       measurementPoints,
-      moveAsset,
       originalMediaIds,
       openMediaPermissionSettings,
       permissionIssue,

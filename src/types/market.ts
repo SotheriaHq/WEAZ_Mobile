@@ -1,3 +1,5 @@
+import type { CatalogEntityType } from '@/src/features/catalog/catalogDomain';
+
 export type MarketMediaType = 'POST_IMAGE' | 'POST_VIDEO' | string;
 
 export type FeedMediaAsset = {
@@ -49,6 +51,7 @@ export type MarketMedia = {
 
 export type MarketItem = {
   id: string;
+  entityType: CatalogEntityType;
   collectionId: string;
   sourceType?: 'DESIGN' | 'STORE_COLLECTION' | 'COLLECTION_MEDIA';
   title?: string;

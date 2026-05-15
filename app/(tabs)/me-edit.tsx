@@ -13,7 +13,7 @@ import { useToast } from '@/src/toast/ToastContext';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { AppText } from '@/components/ui/AppText';
-import { Card } from '@/components/ui/Card';
+import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { tokens } from '@/src/styles/tokens';
@@ -57,10 +57,9 @@ function statusLabel(state: SaveState, savedAt: Date | null): string {
 
 export default function MeEditScreen() {
   const { user, updateUser } = useAuth();
-  const { theme, scheme } = useTheme();
+  const { theme } = useTheme();
   const toast = useToast();
   const navigation = useNavigation();
-  const isDark = scheme === 'dark';
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [form, setForm] = useState<ProfileFormState | null>(null);
@@ -281,15 +280,8 @@ export default function MeEditScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: theme.colors.border },
-        ]}
-      >
-        <Pressable onPress={handleBack} style={styles.backButton}>
-          <AppText variant="bodyBold">Back</AppText>
-        </Pressable>
+      <View style={styles.header}>
+        <AppBackButton onPress={handleBack} style={styles.backButton} />
         <View style={styles.headerTextWrap}>
           <AppText variant="bodyBold">Edit Profile</AppText>
           <AppText variant="caption" tone={statusTone} style={styles.status}>
@@ -305,16 +297,13 @@ export default function MeEditScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Card
-            variant="surface"
-            style={[
-              styles.avatarCard,
-              {
-                backgroundColor: theme.colors.surfaceAlt,
-              },
-            ]}
-          >
-            <Pressable onPress={handlePickAvatar} style={styles.avatarButton}>
+          <View style={styles.avatarSection}>
+            <Pressable
+              onPress={handlePickAvatar}
+              style={({ pressed }) => [styles.avatarButton, pressed && styles.avatarPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Update profile image"
+            >
               {avatarUri ? (
                 <StableImage uri={avatarUri} containerStyle={styles.avatarImage} imageStyle={styles.avatarImage} />
               ) : (
@@ -322,14 +311,19 @@ export default function MeEditScreen() {
                   <AppText variant="title" tone="primary">{avatarFallback}</AppText>
                 </View>
               )}
+              <View
+                style={[
+                  styles.avatarEditBadge,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
+                <AppText variant="captionBold">✏️</AppText>
+              </View>
             </Pressable>
-            <View style={styles.avatarTextWrap}>
-              <AppText variant="bodyBold">Tap profile image to update</AppText>
-              <AppText variant="body" tone="muted">
-                Email and password stay in account settings. This screen only edits profile details.
-              </AppText>
-            </View>
-          </Card>
+            <AppText variant="body" tone="muted" style={styles.avatarHelp}>
+              Email and password stay in account settings. This screen only edits profile details.
+            </AppText>
+          </View>
 
           <View style={styles.group}>
             <Input
@@ -391,7 +385,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: tokens.spacing.md,
   },
   backButton: {
@@ -408,14 +401,18 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.spacing['4xl'],
     gap: tokens.spacing.md,
   },
-  avatarCard: {
-    flexDirection: 'row',
+  avatarSection: {
     alignItems: 'center',
-    gap: tokens.spacing.lg,
+    gap: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.md,
   },
   avatarButton: {
-    width: 84,
-    height: 84,
+    width: 96,
+    height: 96,
+    position: 'relative',
+  },
+  avatarPressed: {
+    opacity: 0.82,
   },
   avatarImage: {
     width: '100%',
@@ -429,9 +426,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarTextWrap: {
-    flex: 1,
-    gap: tokens.spacing.xs,
+  avatarEditBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarHelp: {
+    textAlign: 'center',
+    maxWidth: 280,
   },
   group: {
     gap: tokens.spacing.sm,

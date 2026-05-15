@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
+import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { brandApi } from '@/src/api/BrandApi';
+import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 
@@ -45,7 +48,10 @@ export default function CreateCollectionScreen() {
   }, []);
 
   const canSave = useMemo(() => title.trim().length > 0 && !saving, [saving, title]);
-  
+
+  const openStudioBuilder = () => {
+    router.push({ pathname: '/studio/webview', params: { routeKey: 'createCollection' } } as any);
+  };
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -77,7 +83,15 @@ export default function CreateCollectionScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <AppText variant="captionBold" tone="muted">🗂️ Collection Builder</AppText>
+        <View style={styles.headerRow}>
+          <AppBackButton emoji={'\u{1F448}'} fallbackHref="/catalog" />
+          <View style={styles.headerText}>
+            <AppText variant="title">Create Collection</AppText>
+            <AppText variant="body" tone="muted">
+              Group products for a drop, edit product membership in Studio, or save a quick draft here.
+            </AppText>
+          </View>
+        </View>
 
         {booting ? (
           <View style={styles.skeletonWrap}>
@@ -92,21 +106,27 @@ export default function CreateCollectionScreen() {
             </View>
           </View>
         ) : (
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: theme.colors.controlSurface,
-                borderColor: theme.colors.controlSurfaceActive,
-              },
-            ]}
-          >
-            <AppText variant="title">Create New Collection</AppText>
-            <AppText variant="small" tone="muted"> 
-              Start with a title, add optional details, and save as a draft.
+          <View style={styles.formSurface}>
+            <Button
+              title="Open Studio Builder"
+              variant="secondary"
+              fullWidth
+              onPress={openStudioBuilder}
+              style={styles.studioButton}
+            />
+
+            <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+
+            <AppText variant="subtitle">Quick draft</AppText>
+            <AppText variant="body" tone="muted">
+              Use this lightweight native form when you only need the collection shell.
             </AppText>
 
-            {loadError && <AppText variant="captionBold" tone="danger">{loadError}</AppText>}
+            {loadError ? (
+              <AppText variant="captionBold" tone="danger" style={styles.statusText}>
+                {loadError}
+              </AppText>
+            ) : null}
 
             <Input
               label="Title"
@@ -126,62 +146,25 @@ export default function CreateCollectionScreen() {
             />
 
             <View style={styles.visibilityRow}>
-              <Pressable
+              <VisibilityOption
+                label="Public"
+                selected={visibility === 'PUBLIC'}
                 onPress={() => setVisibility('PUBLIC')}
-                style={[
-                  styles.visibilityButton,
-                  visibility === 'PUBLIC' && styles.visibilityActive,
-                  {
-                    borderColor: visibility === 'PUBLIC' ? '#7C3AED' : theme.colors.border,
-                    backgroundColor:
-                      visibility === 'PUBLIC'
-                        ? 'rgba(124,58,237,0.12)'
-                        : theme.colors.surface,
-                  },
-                ]}
-              >
-                <AppText variant="smallBold" tone={visibility === 'PUBLIC' ? 'primary' : 'default'}>
-                  🌍 Public
-                </AppText>
-              </Pressable>
-              <Pressable
+              />
+              <VisibilityOption
+                label="Private"
+                selected={visibility === 'PRIVATE'}
                 onPress={() => setVisibility('PRIVATE')}
-                style={[
-                  styles.visibilityButton,
-                  visibility === 'PRIVATE' && styles.visibilityActive,
-                  {
-                    borderColor: visibility === 'PRIVATE' ? '#7C3AED' : theme.colors.border,
-                    backgroundColor:
-                      visibility === 'PRIVATE'
-                        ? 'rgba(124,58,237,0.12)'
-                        : theme.colors.surface,
-                  },
-                ]}
-              >
-                <AppText variant="smallBold" tone={visibility === 'PRIVATE' ? 'primary' : 'default'}>
-                  🔒 Private
-                </AppText>
-              </Pressable>
+              />
             </View>
 
             <View style={styles.actions}>
-              <Pressable
-                onPress={() => router.back()}
-                style={[styles.secondaryButton, { borderColor: theme.colors.border }]}
-              >
-                <AppText variant="smallBold">Cancel</AppText>
-              </Pressable>
-              <Pressable
-                onPress={handleCreate}
-                disabled={!canSave}
-                style={[styles.primaryButton, !canSave && styles.primaryDisabled]}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <AppText variant="smallBold" tone="inverse">Create</AppText>
-                )}
-              </Pressable>
+              <View style={styles.actionButton}>
+                <Button title="Cancel" variant="outline" fullWidth onPress={() => router.back()} />
+              </View>
+              <View style={styles.actionButton}>
+                <Button title="Create" fullWidth onPress={handleCreate} disabled={!canSave} loading={saving} />
+              </View>
             </View>
           </View>
         )}
@@ -190,103 +173,100 @@ export default function CreateCollectionScreen() {
   );
 }
 
+function VisibilityOption({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { theme } = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      style={({ pressed }) => [
+        styles.visibilityButton,
+        {
+          borderColor: selected ? theme.colors.primary : theme.colors.border,
+          backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
+          opacity: pressed ? 0.78 : 1,
+        },
+      ]}
+    >
+      <AppText variant="smallBold" tone={selected ? 'primary' : 'default'}>
+        {label}
+      </AppText>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  content: {
-    paddingHorizontal: 18,
-    paddingBottom: 24,
-    paddingTop: 14,
+  root: {
+    flex: 1,
   },
-  eyebrow: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
+  content: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingBottom: tokens.spacing.xl,
+    paddingTop: tokens.spacing.md,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: tokens.spacing.md,
+  },
+  headerText: {
+    flex: 1,
+    gap: tokens.spacing.xs,
+    minWidth: 0,
   },
   skeletonWrap: {
-    marginTop: 10,
+    marginTop: tokens.spacing.xl,
   },
   skeletonTextWrap: {
-    marginTop: 16,
+    marginTop: tokens.spacing.lg,
   },
   skeletonCard: {
-    marginTop: 20,
+    marginTop: tokens.spacing.xl2,
   },
-  card: {
-    marginTop: 10,
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: 16,
+  formSurface: {
+    marginTop: tokens.spacing.xl,
+    gap: tokens.spacing.md,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '800',
+  studioButton: {
+    marginTop: tokens.spacing.xs,
   },
-  subtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 20,
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: tokens.spacing.sm,
   },
-  error: {
-    marginTop: 10,
-    fontSize: 12,
-    color: '#EF4444',
-    fontWeight: '700',
+  statusText: {
+    marginTop: tokens.spacing.xs,
   },
   fieldWrap: {
-    marginTop: 14,
+    marginTop: tokens.spacing.xs,
   },
   visibilityRow: {
-    marginTop: 14,
     flexDirection: 'row',
-    gap: 10,
+    gap: tokens.spacing.sm,
   },
   visibilityButton: {
     flex: 1,
-    minHeight: 42,
-    borderRadius: 12,
+    minHeight: tokens.button.md.height,
+    borderRadius: tokens.radius.md,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  visibilityActive: {
-    borderWidth: 1.2,
-  },
-  visibilityText: {
-    fontSize: 13,
-    fontWeight: '700',
   },
   actions: {
-    marginTop: 18,
     flexDirection: 'row',
-    gap: 10,
+    gap: tokens.spacing.sm,
   },
-  secondaryButton: {
+  actionButton: {
     flex: 1,
-    borderWidth: 1,
-    borderRadius: 12,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  primaryButton: {
-    flex: 1,
-    borderRadius: 12,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#7C3AED',
-  },
-  primaryDisabled: {
-    opacity: 0.55,
-  },
-  primaryText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#ffffff',
   },
 });

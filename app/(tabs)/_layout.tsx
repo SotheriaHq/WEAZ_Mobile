@@ -185,7 +185,6 @@ export default function TabLayout() {
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
       if (item.key === 'profile') {
-        setIsIslandExpanded(false);
         handleProfilePress();
         return;
       }

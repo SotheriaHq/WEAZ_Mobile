@@ -59,9 +59,12 @@ export interface OrderItem {
 
 export interface SavedItem {
   id: string;
-  targetType: 'COLLECTION' | 'COLLECTION_MEDIA';
+  targetType: 'DESIGN' | 'PRODUCT' | 'COLLECTION' | 'COLLECTION_MEDIA';
   targetId: string;
+  designId?: string;
+  productId?: string;
   collectionId?: string;
+  legacyCollectionId?: string;
   title: string;
   thumbnail?: string;
   price?: number;
@@ -174,11 +177,21 @@ function normalizeSaved(raw: unknown): SavedItem[] {
     .map((entry: any) => {
       if (!entry?.id || !entry?.targetId) return null;
       const brand = entry.brand ?? {};
+      const rawTargetType = String(entry.targetType ?? '').toUpperCase();
+      const targetType: SavedItem['targetType'] =
+        rawTargetType === 'DESIGN' ||
+        rawTargetType === 'PRODUCT' ||
+        rawTargetType === 'COLLECTION_MEDIA'
+          ? rawTargetType
+          : 'COLLECTION';
       return {
         id: String(entry.id),
-        targetType: entry.targetType === 'COLLECTION_MEDIA' ? 'COLLECTION_MEDIA' : 'COLLECTION',
+        targetType,
         targetId: String(entry.targetId),
+        designId: entry.designId ? String(entry.designId) : undefined,
+        productId: entry.productId ? String(entry.productId) : undefined,
         collectionId: entry.collectionId ? String(entry.collectionId) : undefined,
+        legacyCollectionId: entry.legacyCollectionId ? String(entry.legacyCollectionId) : undefined,
         title: String(entry.title ?? 'Untitled'),
         thumbnail: typeof entry.thumbnail === 'string' ? entry.thumbnail : undefined,
         price: typeof entry.price === 'number' ? entry.price : undefined,

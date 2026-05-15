@@ -1,18 +1,9 @@
-/**
- * VisibilityFilter - Mobile
- * Filter chips for collection visibility (Public/Private/Drafts)
- */
-
 import React from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 
-import { useTheme } from '@/src/theme/ThemeProvider';
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
-
-// ─────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────
+import { useTheme } from '@/src/theme/ThemeProvider';
 
 type VisibilityOption = 'Public' | 'Private' | 'Drafts';
 
@@ -23,21 +14,17 @@ interface VisibilityFilterProps {
   draftsCount?: number;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Filter Chip
-// ─────────────────────────────────────────────────────────────
-
-interface FilterChipProps {
-  label: string;
-  icon: string;
+interface SegmentProps {
+  label: VisibilityOption;
   isActive: boolean;
   onPress: () => void;
   badge?: number;
 }
 
-const FilterChip = ({ label, icon, isActive, onPress, badge }: FilterChipProps) => {
+function VisibilitySegment({ label, isActive, onPress, badge }: SegmentProps) {
   const { theme } = useTheme();
   const scale = React.useRef(new Animated.Value(1)).current;
+
   const animatePress = React.useCallback(
     (toValue: number, duration: number) => {
       Animated.timing(scale, {
@@ -57,32 +44,33 @@ const FilterChip = ({ label, icon, isActive, onPress, badge }: FilterChipProps) 
         onPressIn={() => animatePress(0.96, 90)}
         onPressOut={() => animatePress(1, 140)}
         style={[
-          styles.chip,
+          styles.segment,
           {
-            borderBottomColor: isActive ? theme.colors.primary : 'transparent',
+            backgroundColor: isActive ? theme.colors.surface : 'transparent',
+            borderColor: isActive ? theme.colors.border : 'transparent',
           },
         ]}
         accessibilityRole="button"
         accessibilityState={{ selected: isActive }}
       >
-        <AppText variant={isActive ? 'captionBold' : 'captionRegular'} tone={isActive ? 'primary' : 'muted'}>
-          {icon} {label}
+        <AppText
+          variant={isActive ? 'captionBold' : 'captionRegular'}
+          tone={isActive ? 'default' : 'muted'}
+          numberOfLines={1}
+        >
+          {label}
         </AppText>
-        {typeof badge === 'number' && badge > 0 && (
-          <View style={[styles.badge, { backgroundColor: isActive ? theme.colors.primarySoft : theme.colors.surfaceAlt }]}>
-            <AppText variant="captionBold" tone={isActive ? 'primary' : 'secondary'}>
-              {badge}
+        {typeof badge === 'number' && badge > 0 ? (
+          <View style={[styles.badge, { backgroundColor: isActive ? theme.colors.primary : theme.colors.surface }]}>
+            <AppText variant="captionBold" tone={isActive ? 'inverse' : 'primary'} numberOfLines={1}>
+              {badge > 99 ? '99+' : badge}
             </AppText>
           </View>
-        )}
+        ) : null}
       </Pressable>
     </Animated.View>
   );
-};
-
-// ─────────────────────────────────────────────────────────────
-// Main Component
-// ─────────────────────────────────────────────────────────────
+}
 
 export function VisibilityFilter({
   selected,
@@ -90,62 +78,62 @@ export function VisibilityFilter({
   showDrafts = false,
   draftsCount = 0,
 }: VisibilityFilterProps) {
+  const { theme } = useTheme();
+
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.container}
-    >
-      <FilterChip
-        label="Public"
-        icon="🌐"
-        isActive={selected === 'Public'}
-        onPress={() => onChange('Public')}
-      />
-      <FilterChip
-        label="Private"
-        icon="🔒"
-        isActive={selected === 'Private'}
-        onPress={() => onChange('Private')}
-      />
-      {showDrafts && (
-        <FilterChip
-          label="Drafts"
-          icon="📝"
-          isActive={selected === 'Drafts'}
-          onPress={() => onChange('Drafts')}
-          badge={draftsCount}
+    <View style={styles.outer}>
+      <View style={[styles.container, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}>
+        <VisibilitySegment
+          label="Public"
+          isActive={selected === 'Public'}
+          onPress={() => onChange('Public')}
         />
-      )}
-    </ScrollView>
+        <VisibilitySegment
+          label="Private"
+          isActive={selected === 'Private'}
+          onPress={() => onChange('Private')}
+        />
+        {showDrafts ? (
+          <VisibilitySegment
+            label="Drafts"
+            isActive={selected === 'Drafts'}
+            onPress={() => onChange('Drafts')}
+            badge={draftsCount}
+          />
+        ) : null}
+      </View>
+    </View>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    gap: tokens.spacing.sm,
-    paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: tokens.spacing.sm,
+  outer: {
+    flex: 1,
+    alignItems: 'center',
   },
-  chip: {
+  container: {
+    maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
-    minHeight: 36,
-    paddingHorizontal: tokens.spacing.md,
-    paddingTop: tokens.spacing.xs,
-    paddingBottom: tokens.spacing.sm,
-    borderBottomWidth: 2,
-    overflow: 'hidden',
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: tokens.spacing.xs,
+  },
+  segment: {
+    minHeight: 32,
+    minWidth: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.spacing.xs,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    paddingHorizontal: tokens.spacing.sm,
   },
   badge: {
-    minWidth: 20,
-    height: 20,
+    minWidth: 18,
+    height: 18,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.xs,
     alignItems: 'center',

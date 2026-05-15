@@ -21,14 +21,33 @@ import {
 } from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.summaryRow}>
-      <AppText variant="captionRegular" tone="muted">{label}</AppText>
+      <View style={styles.summaryLabelColumn}>
+        <AppText variant="captionBold" tone="muted">{label}</AppText>
+      </View>
       <AppText variant="bodyBold" style={styles.summaryValue}>{value}</AppText>
     </View>
   );
+}
+
+function formatAmount(value: string) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || value.trim().length === 0) return null;
+  return `NGN ${Math.round(parsed).toLocaleString('en-NG')}`;
+}
+
+function formatPriceRange(minPrice: string, maxPrice: string) {
+  const min = formatAmount(minPrice);
+  const max = formatAmount(maxPrice);
+
+  if (min && max) return `${min} - ${max}`;
+  if (min) return `From ${min}`;
+  if (max) return `Up to ${max}`;
+  return 'Not set';
 }
 
 function toPrettyLabel(value: string) {
@@ -57,7 +76,7 @@ export default function CreateDesignPreviewScreen() {
     filterSelection,
     customMeasurementKeys,
   } = useDesignEditor();
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
   const insets = useSafeAreaInsets();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deletePhrase, setDeletePhrase] = React.useState('');
@@ -68,8 +87,12 @@ export default function CreateDesignPreviewScreen() {
   const categorySummary =
     selectedCategory && subCategory ? `${selectedCategory.name} / ${subCategory.name}` : 'Not selected';
   const selectedFilterCount = Object.values(filterSelection).reduce((sum, values) => sum + values.length, 0);
-  const canDelete = deletePhrase === 'DELETE' && saveState.action !== 'draft';
+  const isSaving = Boolean(saveState.action);
+  const canDelete = deletePhrase === 'DELETE' && !isSaving;
   const selectedPreviewAsset = assets[selectedPreviewIndex] ?? null;
+  const saveProgressPercent = Math.max(0, Math.min(100, Math.round(saveState.progress * 100)));
+
+  useAndroidOverlaySystemBars(deleteOpen, scheme, 'create-design-delete');
 
   React.useEffect(() => {
     if (assets.length === 0) {
@@ -98,7 +121,7 @@ export default function CreateDesignPreviewScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <View style={styles.header}>
         <AppBackButton fallbackHref="/catalog/create-design/composer" />
         <View style={styles.headerCopy}>
@@ -110,8 +133,9 @@ export default function CreateDesignPreviewScreen() {
       </View>
 
       <ScrollView
+        style={styles.scroll}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing.xl }]}
+        contentContainerStyle={styles.content}
       >
         {selectedPreviewAsset ? (
           <View style={styles.heroWrap}>
@@ -169,7 +193,8 @@ export default function CreateDesignPreviewScreen() {
           <AppText variant="body" tone="muted">{form.description.trim() || 'No description yet.'}</AppText>
         </Card>
 
-        <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
+        <Card padding="lg" style={[styles.section, styles.receiptSection, { borderColor: theme.colors.border }]}>
+          <AppText variant="bodyBold">Details</AppText>
           <SummaryRow label="Privacy" value={DESIGN_VISIBILITY_LABELS[form.visibility]} />
           <SummaryRow label="Category" value={categorySummary} />
           <SummaryRow label="Audience" value={DESIGN_AUDIENCE_LABELS[form.audience]} />
@@ -177,7 +202,7 @@ export default function CreateDesignPreviewScreen() {
           <SummaryRow label="Fit" value={DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference]} />
           <SummaryRow label="Age group" value={DESIGN_TARGET_AGE_LABELS[form.targetAgeGroup]} />
           <SummaryRow label="Custom orders" value={form.customOrderEnabled ? 'Enabled' : 'Disabled'} />
-          <SummaryRow label="Price" value={form.minPrice || form.maxPrice ? `NGN ${form.minPrice || '0'} - NGN ${form.maxPrice || '0'}` : 'Not set'} />
+          <SummaryRow label="Price" value={formatPriceRange(form.minPrice, form.maxPrice)} />
           <SummaryRow label="Assets" value={String(assets.length)} />
           <SummaryRow label="Discovery filters" value={selectedFilterCount > 0 ? `${selectedFilterCount} selected` : 'None'} />
         </Card>
@@ -206,45 +231,77 @@ export default function CreateDesignPreviewScreen() {
           </Card>
         ) : null}
 
-        {saveState.action ? (
-          <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
-            <AppText variant="bodyBold">Current save progress</AppText>
-            <AppText variant="subtitle">{Math.round(saveState.progress * 100)}%</AppText>
-            <AppText variant="body" tone="muted">{saveState.message}</AppText>
-          </Card>
-        ) : null}
-
-        <View style={[styles.footerActions, { paddingHorizontal: tokens.spacing.lg, paddingBottom: insets.bottom }]}>
-          {!canSaveDraft ? (
-            <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-              Add at least one field or one media item to save a draft.
-            </AppText>
-          ) : null}
-          <Button title="Back to edit" variant="outline" onPress={() => router.replace('/catalog/create-design/composer' as any)} fullWidth />
-          <View style={styles.actionRow}>
-            <Button
-              title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
-              variant="secondary"
-              loading={saveState.action === 'draft'}
-              disabled={!canSaveDraft}
-              onPress={() => void save('draft')}
-              style={styles.actionButton}
-            />
-            <Button
-              title={saveState.action === 'publish' ? 'Publishing...' : 'Publish'}
-              loading={saveState.action === 'publish'}
-              disabled={!canPublish}
-              onPress={() => void save('publish')}
-              style={styles.actionButton}
-            />
-          </View>
-          {activeDesignId && isDraft ? (
-            <Button title="Delete draft" variant="danger" onPress={() => setDeleteOpen(true)} fullWidth />
-          ) : null}
-        </View>
       </ScrollView>
 
-      <Modal transparent visible={deleteOpen} animationType="fade" onRequestClose={() => setDeleteOpen(false)}>
+      <View
+        style={[
+          styles.footerActions,
+          {
+            backgroundColor: theme.colors.bg,
+            borderTopColor: theme.colors.border,
+            paddingHorizontal: tokens.spacing.lg,
+            paddingBottom: Math.max(insets.bottom, tokens.spacing.md),
+          },
+        ]}
+      >
+        {saveState.action ? (
+          <View style={[styles.progressPanel, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+            <View style={styles.progressCopyRow}>
+              <View style={styles.progressCopy}>
+                <AppText variant="bodyBold">Current save progress</AppText>
+                <AppText variant="captionRegular" tone="muted">{saveState.message}</AppText>
+              </View>
+              <AppText variant="subtitle">{saveProgressPercent}%</AppText>
+            </View>
+            <View style={[styles.progressTrack, { backgroundColor: theme.colors.surface }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    width: `${saveProgressPercent}%`,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+        ) : null}
+        {!canSaveDraft ? (
+          <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+            Add at least one field or one media item to save a draft.
+          </AppText>
+        ) : null}
+        <Button title="Back to edit" variant="outline" onPress={() => router.replace('/catalog/create-design/composer' as any)} fullWidth />
+        <View style={styles.actionRow}>
+          <Button
+            title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
+            variant="secondary"
+            loading={saveState.action === 'draft'}
+            disabled={!canSaveDraft || isSaving}
+            onPress={() => void save('draft')}
+            style={styles.actionButton}
+          />
+          <Button
+            title={saveState.action === 'publish' ? 'Publishing...' : 'Publish'}
+            loading={saveState.action === 'publish'}
+            disabled={!canPublish || isSaving}
+            onPress={() => void save('publish')}
+            style={styles.actionButton}
+          />
+        </View>
+        {activeDesignId && isDraft ? (
+          <Button title="Delete draft" variant="danger" onPress={() => setDeleteOpen(true)} fullWidth />
+        ) : null}
+      </View>
+
+      <Modal
+        transparent
+        visible={deleteOpen}
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setDeleteOpen(false)}
+      >
         <View style={[styles.modalRoot, { backgroundColor: theme.colors.overlay }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setDeleteOpen(false)} />
           <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
@@ -291,10 +348,13 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
     minWidth: 0,
   },
+  scroll: {
+    flex: 1,
+  },
   content: {
     gap: tokens.spacing.lg,
     paddingHorizontal: tokens.spacing.lg,
-    paddingBottom: tokens.spacing.xl,
+    paddingBottom: tokens.spacing.md,
     paddingTop: tokens.spacing.sm,
   },
   assetStrip: {
@@ -340,19 +400,55 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     borderWidth: 1,
   },
+  receiptSection: {
+    gap: tokens.spacing.md,
+  },
   summaryRow: {
     flexDirection: 'row',
-    gap: tokens.spacing.md,
+    alignItems: 'flex-start',
+    gap: tokens.spacing.sm,
+  },
+  summaryLabelColumn: {
+    width: 118,
+    flexShrink: 0,
   },
   summaryValue: {
     flex: 1,
-    textAlign: 'left',
+    minWidth: 0,
+    textAlign: 'right',
   },
   draftHelper: {
     textAlign: 'center',
   },
   footerActions: {
     gap: tokens.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: tokens.spacing.md,
+  },
+  progressPanel: {
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    gap: tokens.spacing.sm,
+    padding: tokens.spacing.md,
+  },
+  progressCopyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+  },
+  progressCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: tokens.spacing.xs,
+  },
+  progressTrack: {
+    height: 6,
+    overflow: 'hidden',
+    borderRadius: tokens.radius.full,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: tokens.radius.full,
   },
   actionRow: {
     flexDirection: 'row',

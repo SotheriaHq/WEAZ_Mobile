@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, type View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
-import { ProfileHeader } from '@/components/catalog/ProfileHeader';
+import { BrandProfileHeader, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
+import type { ProfileBadgeModel } from '@/components/catalog/ProfileBadge';
 import { brandApi, type BrandProfileDto } from '@/src/api/BrandApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
@@ -13,9 +14,15 @@ type OwnerCatalogMediaHeaderProps = {
   profile: BrandProfileDto | null;
   isLoading?: boolean;
   onEditProfile?: () => void;
+  onCreate?: () => void;
+  createAnchorRef?: React.RefObject<View | null>;
+  onCreateAnchorLayout?: () => void;
   onShare?: () => void;
   onBack?: () => void;
+  onSearch?: () => void;
   onViewAvatar?: () => void;
+  stats?: BrandHeaderStat[];
+  badges?: ProfileBadgeModel[];
 };
 
 type PendingMediaState = {
@@ -37,9 +44,15 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   profile,
   isLoading = false,
   onEditProfile,
+  onCreate,
+  createAnchorRef,
+  onCreateAnchorLayout,
   onShare,
   onBack,
+  onSearch,
   onViewAvatar,
+  stats = [],
+  badges = [],
 }: OwnerCatalogMediaHeaderProps) {
   const { user, updateUser } = useAuth();
   const toast = useToast();
@@ -58,13 +71,13 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   const baseAvatar = useMemo(
     () =>
       resolveProfileImageSource({
-        ...(profile as any),
-        ...(user as any),
-        avatarUrl: profile?.logoImage ?? user?.profileImage ?? null,
+        profileImage: profile?.profileImage ?? profile?.logoImage ?? user?.profileImage ?? null,
+        profileImageId: profile?.profileImageId ?? profile?.logoImageId ?? user?.profileImageId ?? null,
+        profileImageFile: profile?.profileImageFile ?? profile?.logoImageMeta ?? user?.profileImageFile ?? null,
+        logoImage: profile?.logoImage ?? null,
         logoImageId: profile?.logoImageId ?? null,
-        profileImage: user?.profileImage ?? null,
-        profileImageId: user?.profileImageId ?? null,
-        profileImageFile: user?.profileImageFile ?? null,
+        logoImageMeta: profile?.logoImageMeta ?? null,
+        avatarUrl: profile?.logoImage ?? profile?.profileImage ?? user?.profileImage ?? null,
       }),
     [profile, user],
   );
@@ -92,6 +105,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   const brandName = profile?.brandFullName || user?.brandFullName || 'Your Brand';
   const username = profile?.username || user?.username || undefined;
   const location =
+    profile?.location ||
     [profile?.brandCity, profile?.brandState, profile?.brandCountry].filter(Boolean).join(', ') || undefined;
 
   const handleEditAvatar = useCallback(async () => {
@@ -177,12 +191,14 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   }, [toast, updateUser]);
 
   return (
-    <ProfileHeader
+    <BrandProfileHeader
       brandName={brandName}
       username={username}
       location={location}
       description={profile?.brandDescription ?? null}
       tags={profile?.brandTags || []}
+      stats={stats}
+      badges={badges}
       avatarUrl={avatarUri ?? undefined}
       avatarFileId={pendingAvatar?.fileId ?? baseAvatar.fileId ?? undefined}
       bannerUrl={bannerUri ?? undefined}
@@ -194,8 +210,12 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       onEditAvatar={handleEditAvatar}
       onEditBanner={handleEditBanner}
       onEditProfile={onEditProfile}
+      onCreate={onCreate}
+      createAnchorRef={createAnchorRef}
+      onCreateAnchorLayout={onCreateAnchorLayout}
       onShare={onShare}
       onBack={onBack}
+      onSearch={onSearch}
       onViewAvatar={onViewAvatar}
     />
   );

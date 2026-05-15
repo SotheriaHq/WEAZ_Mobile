@@ -1,6 +1,5 @@
 import * as NavigationBar from 'expo-navigation-bar';
 import { requireNativeModule } from 'expo-modules-core';
-import { isEdgeToEdge } from 'react-native-is-edge-to-edge';
 import { AppState, Appearance, Platform, processColor } from 'react-native';
 import { useEffect } from 'react';
 
@@ -55,7 +54,6 @@ export async function applyAndroidSystemBarsPolicy(scheme: ResolvedTheme, reason
   if (Platform.OS !== 'android') return;
 
   const buttonStyle = getAndroidNavigationButtonStyle(scheme);
-  const edgeToEdgeActive = isEdgeToEdge();
   const nativeNavigationBar = getNativeNavigationBarModule();
   const transparentColor = processColor(TRANSPARENT);
   const operations: NavigationBarOperation[] = [
@@ -122,21 +120,6 @@ export async function applyAndroidSystemBarsPolicy(scheme: ResolvedTheme, reason
           ]
         : []),
     );
-  } else if (!edgeToEdgeActive) {
-    operations.push(
-      {
-        name: 'position',
-        run: () => NavigationBar.setPositionAsync('absolute'),
-      },
-      {
-        name: 'background',
-        run: () => NavigationBar.setBackgroundColorAsync(TRANSPARENT),
-      },
-      {
-        name: 'border',
-        run: () => NavigationBar.setBorderColorAsync(TRANSPARENT),
-      },
-    );
   }
 
   const results = await Promise.allSettled(operations.map((operation) => operation.run()));
@@ -180,4 +163,33 @@ export function useAndroidSystemBars(scheme: ResolvedTheme, reasonKey: string) {
 
     return () => subscription.remove();
   }, [reasonKey, scheme]);
+}
+
+export function useAndroidOverlaySystemBars(
+  visible: boolean,
+  scheme: ResolvedTheme,
+  reasonKey: string,
+) {
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+
+    const reason = visible ? `overlay-open:${reasonKey}` : `overlay-closed:${reasonKey}`;
+    void applyAndroidSystemBarsPolicy(scheme, reason);
+
+    if (!visible) return undefined;
+
+    const refreshTimers = [
+      setTimeout(() => {
+        void applyAndroidSystemBarsPolicy(scheme, `overlay-open-settled:${reasonKey}`);
+      }, 80),
+      setTimeout(() => {
+        void applyAndroidSystemBarsPolicy(scheme, `overlay-open-after-animation:${reasonKey}`);
+      }, 280),
+    ];
+
+    return () => {
+      refreshTimers.forEach(clearTimeout);
+      void applyAndroidSystemBarsPolicy(scheme, `overlay-cleanup:${reasonKey}`);
+    };
+  }, [reasonKey, scheme, visible]);
 }

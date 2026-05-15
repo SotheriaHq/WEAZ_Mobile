@@ -4,6 +4,8 @@
  */
 
 import { apiClient } from './httpClient';
+import type { CatalogEntityType } from '@/src/features/catalog/catalogDomain';
+import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -14,7 +16,26 @@ export interface BrandProfileDto {
   brandFullName: string | null;
   brandDescription: string | null;
   description?: string | null;
-  isStoreOpen?: boolean;
+  isStoreOpen?: boolean | null;
+  storeStatus?: 'OPEN' | 'CLOSED' | 'PENDING_VERIFICATION' | 'UNAVAILABLE' | null;
+  emailVerified?: boolean | null;
+  verified?: boolean | null;
+  verificationStatus?: string | null;
+  verificationBadgeVisible?: boolean | null;
+  verifiedExplanationUrl?: string | null;
+  averageRating?: number | null;
+  totalReviews?: number | null;
+  collectionsCount?: number | null;
+  designsCount?: number | null;
+  productsCount?: number | null;
+  patchesCount?: number | null;
+  followersCount?: number | null;
+  totalThreads?: number | null;
+  totalLikes?: number | null;
+  totalShares?: number | null;
+  publicProfileUrl?: string | null;
+  qrTargetUrl?: string | null;
+  shareUrl?: string | null;
   brandCountry: string | null;
   brandState: string | null;
   brandCity: string | null;
@@ -60,6 +81,7 @@ export interface BrandProfileDto {
 
 export interface CollectionDto {
   id: string;
+  entityType?: CatalogEntityType;
   title: string;
   description: string | null;
   visibility: 'PUBLIC' | 'PRIVATE';
@@ -214,6 +236,8 @@ const signedUrlMissingCache = new Map<string, number>();
 
 export type SignedFileUrlDebugContext = {
   designId?: string | null;
+  productId?: string | null;
+  collectionId?: string | null;
   mediaIndex?: number | null;
   fileId?: string | null;
   sourceField?: string | null;
@@ -312,6 +336,8 @@ function logSignedFileUrlFailure(
   if (process.env.NODE_ENV === 'production') return;
   console.warn('[media-resolution] signed URL failed', {
     designId: context?.designId ?? null,
+    productId: context?.productId ?? null,
+    collectionId: context?.collectionId ?? null,
     mediaIndex: context?.mediaIndex ?? null,
     fileId: context?.fileId ?? fileId,
     sourceField: context?.sourceField ?? null,
@@ -328,6 +354,8 @@ function logSignedFileUrlNetworkError(
   console.warn('[media-resolution]', {
     event: label,
     designId: context?.designId ?? null,
+    productId: context?.productId ?? null,
+    collectionId: context?.collectionId ?? null,
     mediaIndex: context?.mediaIndex ?? null,
     fileId: context?.fileId ?? null,
     status: error?.response?.status ?? null,
@@ -338,6 +366,14 @@ function logSignedFileUrlNetworkError(
 function asNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function asNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function normalizeVisibility(value: unknown): 'PUBLIC' | 'PRIVATE' {
@@ -387,6 +423,15 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
     asString(source.bannerImageId) ??
     asString(bannerMeta.fileId) ??
     asString(bannerMeta.id);
+  const storeStatusRaw = asString(source.storeStatus);
+  const storeStatus: BrandProfileDto['storeStatus'] =
+    storeStatusRaw === 'OPEN' || storeStatusRaw === 'CLOSED' || storeStatusRaw === 'PENDING_VERIFICATION'
+      ? storeStatusRaw
+      : typeof source.isStoreOpen === 'boolean'
+        ? source.isStoreOpen
+          ? 'OPEN'
+          : 'CLOSED'
+        : null;
 
   const tagSource = Array.isArray(source.brandTags)
     ? source.brandTags
@@ -402,6 +447,10 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
   const derivedLocation = [brandCity, brandState, brandCountry]
     .filter(Boolean)
     .join(', ');
+  const collectionsCount = asNullableNumber(source.collectionsCount);
+  const designsCount = asNullableNumber(source.designsCount) ?? collectionsCount;
+  const totalLikes = asNullableNumber(source.totalLikes);
+  const totalThreads = asNullableNumber(source.totalThreads) ?? totalLikes;
 
   return {
     id,
@@ -415,7 +464,49 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
     description:
       asString(source.description) ??
       asString(source.brandDescription),
-    isStoreOpen: Boolean(source.isStoreOpen),
+    isStoreOpen:
+      typeof source.isStoreOpen === 'boolean'
+        ? source.isStoreOpen
+        : storeStatus === 'OPEN'
+          ? true
+          : storeStatus === 'CLOSED'
+            ? false
+            : null,
+    storeStatus,
+    emailVerified:
+      typeof source.emailVerified === 'boolean'
+        ? source.emailVerified
+        : typeof source.isEmailVerified === 'boolean'
+          ? source.isEmailVerified
+          : null,
+    verified:
+      typeof source.verified === 'boolean'
+        ? source.verified
+        : typeof source.isVerifiedBrand === 'boolean'
+          ? source.isVerifiedBrand
+          : null,
+    verificationStatus: asString(source.verificationStatus),
+    verificationBadgeVisible:
+      typeof source.verificationBadgeVisible === 'boolean'
+        ? source.verificationBadgeVisible
+        : null,
+    verifiedExplanationUrl: asString(source.verifiedExplanationUrl),
+    averageRating: asNullableNumber(source.averageRating ?? source.avgRating),
+    totalReviews: asNullableNumber(source.totalReviews),
+    collectionsCount,
+    designsCount,
+    productsCount: asNullableNumber(source.productsCount),
+    patchesCount: asNullableNumber(source.patchesCount),
+    followersCount: asNullableNumber(source.followersCount ?? source.patchesCount),
+    totalThreads,
+    totalLikes,
+    totalShares:
+      source.totalShares === null || source.totalShares === undefined
+        ? null
+        : asNullableNumber(source.totalShares),
+    publicProfileUrl: asString(source.publicProfileUrl),
+    qrTargetUrl: asString(source.qrTargetUrl),
+    shareUrl: asString(source.shareUrl),
     brandCountry,
     brandState,
     brandCity,
@@ -537,6 +628,16 @@ function normalizeCollectionItem(payload: unknown): CollectionDto | null {
 
   return {
     id,
+    entityType:
+      resolveCatalogEntityType(
+        item,
+        Boolean(item.isAvailableInStore) || String(item.domain ?? '').toUpperCase() === 'STORE'
+          ? 'COLLECTION'
+          : 'DESIGN',
+      ) ??
+      (Boolean(item.isAvailableInStore) || String(item.domain ?? '').toUpperCase() === 'STORE'
+        ? 'COLLECTION'
+        : 'DESIGN'),
     title: asString(item.title) ?? 'Untitled',
     description: asString(item.description),
     visibility: normalizeVisibility(item.visibility),
@@ -1050,8 +1151,35 @@ export const brandApi = {
     categoryId?: string;
   }): Promise<CollectionDto | null> {
     try {
-      const response = await apiClient.post('/collections', payload);
-      return unwrapData<CollectionDto>(response.data);
+      const visibility = payload.visibility ?? 'PUBLIC';
+      const initializeResponse = await apiClient.post('/store-collections/initialize', {
+        mode: 'existing',
+        title: payload.title,
+        description: payload.description,
+        visibility,
+        categoryId: payload.categoryId,
+        isAvailableInStore: true,
+      });
+      const initialized = unwrapData<Record<string, any>>(initializeResponse.data);
+      const collectionId =
+        asString(initialized.sessionId) ??
+        asString(initialized.collectionId) ??
+        asString(initialized.id);
+      if (!collectionId) {
+        throw new Error('Collection draft could not be initialized.');
+      }
+
+      const finalized = await apiClient.post(`/store-collections/${collectionId}/finalize`, {
+        action: 'draft',
+        collectionMetadata: {
+          title: payload.title,
+          description: payload.description,
+          visibility,
+          categoryId: payload.categoryId,
+          isAvailableInStore: true,
+        },
+      });
+      return unwrapData<CollectionDto>(finalized.data);
     } catch (error) {
       console.error('Error creating collection:', error);
       throw error;

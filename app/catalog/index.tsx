@@ -6,7 +6,20 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { BackHandler, LayoutChangeEvent, Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import {
+  BackHandler,
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  Share,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -18,23 +31,26 @@ import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
 import { canManageCatalog, getActiveBrandId } from '@/src/auth/brandAccess';
 import { brandApi, type BrandProfileDto, type CollectionDto } from '@/src/api/BrandApi';
 import { OwnerCatalogMediaHeader } from '@/components/catalog/OwnerCatalogMediaHeader';
-import { ProfileHeader } from '@/components/catalog/ProfileHeader';
+import { BrandProfileHeader, BrandProfileHeaderSkeleton, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
 import MobileProfileImageModal from '@/components/profile/ProfileImageModal';
 import { Tabs } from '@/components/catalog/Tabs';
 import { CollectionsGrid } from '@/components/catalog/CollectionsGrid';
 import { VisibilityFilter } from '@/components/catalog/VisibilityFilter';
-import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/src/toast/ToastContext';
 import { useBrandPatchStatus } from '@/src/hooks/useBrandPatchStatus';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { resolveBannerImageSource, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { BrandShopTab } from '@/components/catalog/BrandShopTab';
 import { BrandReviewsTab } from '@/components/catalog/BrandReviewsTab';
+import { getBrandBadges } from '@/components/catalog/ProfileBadge';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
 import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
+import { AppActionSheet } from '@/components/ui/AppActionSheet';
+import { AppQrSheet } from '@/components/ui/AppQrSheet';
 import { BrandSwitcherSheet } from '@/components/brand/BrandSwitcherSheet';
 import {
   pickDesignEditorMediaAssets,
@@ -44,6 +60,9 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { catalogDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { formatCount } from '@/src/utils/formatCount';
+import { env } from '@/src/config/env';
+import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -52,6 +71,42 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 type TabType = 'Collections' | 'Shop' | 'Reviews';
 type VisibilityType = 'Public' | 'Private' | 'Drafts';
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
+
+function readMetricNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getStoreMetricValue(
+  status: BrandProfileDto['storeStatus'],
+  isStoreOpen?: boolean | null,
+): string | null {
+  const normalized = String(status ?? '').toUpperCase();
+
+  if (normalized === 'PENDING_VERIFICATION') return 'Pending';
+  if (normalized === 'OPEN' || isStoreOpen === true) return 'Open';
+  if (normalized === 'CLOSED' || isStoreOpen === false) return 'Closed';
+
+  return null;
+}
+
+function buildProfileUrlFromConfig(brandId: string | null, username?: string | null): string | null {
+  if (!brandId) return null;
+
+  const baseUrl = env.webAppUrl.trim().replace(/\/+$/, '');
+  if (!baseUrl) return null;
+
+  if (!__DEV__ && /(?:localhost|127\.0\.0\.1)/i.test(baseUrl)) {
+    return null;
+  }
+
+  const cleanUsername = username?.trim();
+  const path = cleanUsername
+    ? `/u/${encodeURIComponent(cleanUsername)}`
+    : `/profile/${encodeURIComponent(brandId)}`;
+
+  return `${baseUrl}${path}`;
+}
 
 function CatalogLoadingSkeleton({ bottomPadding }: { bottomPadding: number }) {
   const { theme } = useTheme();
@@ -65,16 +120,7 @@ function CatalogLoadingSkeleton({ bottomPadding }: { bottomPadding: number }) {
         { paddingBottom: bottomPadding + tokens.spacing.xl },
       ]}
     >
-      <View style={[styles.skeletonHero, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-        <Skeleton width="100%" height={168} borderRadius={tokens.radius.xl} />
-        <View style={styles.skeletonHeroRow}>
-          <Skeleton width={68} height={68} borderRadius={tokens.radius.xl} />
-          <View style={styles.skeletonHeroCopy}>
-            <Skeleton width="58%" height={18} borderRadius={tokens.radius.sm} />
-            <SkeletonText lines={2} lineHeight={tokens.typography.caption.lineHeight} spacing={tokens.spacing.sm} lastLineWidth="72%" />
-          </View>
-        </View>
-      </View>
+      <BrandProfileHeaderSkeleton />
 
       <View style={styles.skeletonTabsRow}>
         <Skeleton width={72} height={32} borderRadius={tokens.radius.full} />
@@ -104,12 +150,12 @@ const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => 
     <View style={styles.emptyState}>
       <AppText variant="display" tone="muted">+</AppText>
       <AppText variant="subtitle" style={styles.emptyTitle}>
-        {isOwner ? 'No Content Yet' : 'No Public Content'}
+        No Content Yet
       </AppText>
       <AppText variant="bodyRegular" tone="muted" style={styles.emptySubtitle}>
         {isOwner
-          ? 'Start showcasing your fashion by creating your first design'
-          : "This brand hasn't published any content yet"}
+          ? 'Start showcasing your fashion by creating your first design.'
+          : 'This brand has not published content yet.'}
       </AppText>
       {isOwner && onAdd && (
         <Button title="Create Design" onPress={onAdd} size="md" style={styles.emptyButton} />
@@ -130,6 +176,7 @@ export default function CatalogScreen() {
     productId?: string | string[];
   }>();
   const { theme, scheme } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
   const { standardScreenBottomPadding } = useScreenChrome();
   const { user } = useAuth();
   const { status, userId, userEmailVerified, updateUser } = useAuthSession();
@@ -168,6 +215,9 @@ export default function CatalogScreen() {
   const [draftDeletePhrase, setDraftDeletePhrase] = useState('');
   const [draftDeleteBusy, setDraftDeleteBusy] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [shareActionsOpen, setShareActionsOpen] = useState(false);
+  const [brandQrOpen, setBrandQrOpen] = useState(false);
+  const [tabHeights, setTabHeights] = useState<Partial<Record<TabType, number>>>({});
   const [createMenuAnchorMetrics, setCreateMenuAnchorMetrics] = useState<{
     pageX: number;
     pageY: number;
@@ -175,12 +225,14 @@ export default function CatalogScreen() {
     height: number;
   } | null>(null);
   const createMenuAnchorRef = useRef<View>(null);
+  const tabPagerRef = useRef<ScrollView>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
+  const activeTabPagerHeight = tabHeights[activeTab];
 
   // Determine if owner view
   const activeBrandId = getActiveBrandId(user);
   const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
-  const targetBrandId = routeBrandId || activeBrandId || userId;
+  const targetBrandId = routeBrandId || activeBrandId || null;
   const patchEnabled = Boolean(!isOwner && status === 'authenticated' && targetBrandId);
   const {
     isPatched,
@@ -341,8 +393,11 @@ export default function CatalogScreen() {
     const idx = TAB_ORDER.indexOf(activeTab);
     if (idx >= 0) {
       tabSwipeProgress.value = idx;
+      if (containerWidth > 0) {
+        tabPagerRef.current?.scrollTo({ x: idx * containerWidth, animated: true });
+      }
     }
-  }, [activeTab, tabSwipeProgress]);
+  }, [activeTab, containerWidth, tabSwipeProgress]);
 
   // Refresh
   const handleRefresh = async () => {
@@ -355,6 +410,49 @@ export default function CatalogScreen() {
     setIsRefreshing(false);
   };
 
+  const handleMainTabChange = useCallback(
+    (key: string) => {
+      const nextTab = key as TabType;
+      const index = TAB_ORDER.indexOf(nextTab);
+      if (index < 0) return;
+      setActiveTab(nextTab);
+      if (containerWidth > 0) {
+        tabPagerRef.current?.scrollTo({ x: index * containerWidth, animated: true });
+      }
+    },
+    [containerWidth],
+  );
+
+  const handleTabPagerScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (containerWidth <= 0) return;
+      tabSwipeProgress.value = event.nativeEvent.contentOffset.x / containerWidth;
+    },
+    [containerWidth, tabSwipeProgress],
+  );
+
+  const handleTabPagerMomentumEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (containerWidth <= 0) return;
+      const nextIndex = Math.max(0, Math.min(TAB_ORDER.length - 1, Math.round(event.nativeEvent.contentOffset.x / containerWidth)));
+      const nextTab = TAB_ORDER[nextIndex];
+      tabSwipeProgress.value = nextIndex;
+      if (nextTab && nextTab !== activeTab) {
+        setActiveTab(nextTab);
+      }
+    },
+    [activeTab, containerWidth, tabSwipeProgress],
+  );
+
+  const handleTabPageLayout = useCallback((tab: TabType, event: LayoutChangeEvent) => {
+    const height = Math.ceil(event.nativeEvent.layout.height);
+    if (height <= 0) return;
+
+    setTabHeights((current) => (
+      current[tab] === height ? current : { ...current, [tab]: height }
+    ));
+  }, []);
+
   // Handle patch/unpatch
   const handlePatch = async () => {
     if (!targetBrandId || patchLoading) return;
@@ -366,32 +464,18 @@ export default function CatalogScreen() {
     }
   };
 
-  // Handle share
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        message: `Check out ${profile?.brandFullName || 'this brand'} on Threadly!`,
-        url: `https://threadly.app/brand/${targetBrandId}`,
-      });
-    } catch (error) {
-      console.error('Error sharing:', error);
-    }
-  };
-
   // Handle collection actions
   const handleCollectionPress = useCallback((collection: CollectionDto) => {
-    router.push({
-      pathname: '/catalog/view/[collectionId]',
-      params: {
-        collectionId: collection.id,
-        scope: collection.isAvailableInStore ? 'store' : 'design',
-      },
-    } as any);
+    router.push(
+      collection.isAvailableInStore
+        ? routeForStoreCollectionTarget(collection.id)
+        : routeForDesignTarget(collection.id, { legacyCollectionId: collection.id }) as any,
+    );
   }, []);
 
   const handleEditCollection = useCallback((id: string) => {
     router.push({
-      pathname: '/catalog/create-design',
+      pathname: '/designs/[designId]/edit',
       params: { designId: id },
     } as any);
   }, []);
@@ -434,11 +518,128 @@ export default function CatalogScreen() {
     ? ownerAvatarUri ?? ownerAvatar.src ?? null
     : visitorAvatarUri ?? visitorAvatar.src ?? null;
   const profileLocation =
-    [profile?.brandCity, profile?.brandState, profile?.brandCountry].filter(Boolean).join(', ') || undefined;
+    profile?.location ||
+    [profile?.brandCity, profile?.brandState, profile?.brandCountry].filter(Boolean).join(', ') ||
+    undefined;
+  const profileShareUrl = useMemo(
+    () =>
+      profile?.shareUrl ??
+      profile?.publicProfileUrl ??
+      profile?.qrTargetUrl ??
+      buildProfileUrlFromConfig(targetBrandId, profile?.username ?? user?.username ?? null),
+    [
+      profile?.publicProfileUrl,
+      profile?.qrTargetUrl,
+      profile?.shareUrl,
+      profile?.username,
+      targetBrandId,
+      user?.username,
+    ],
+  );
+  const profileQrTargetUrl = useMemo(
+    () =>
+      profile?.qrTargetUrl ??
+      profile?.publicProfileUrl ??
+      profile?.shareUrl ??
+      profileShareUrl,
+    [profile?.publicProfileUrl, profile?.qrTargetUrl, profile?.shareUrl, profileShareUrl],
+  );
+  const profileShareMessage = useMemo(() => {
+    if (!profileShareUrl) return undefined;
+    return `Check out ${profile?.brandFullName || 'this brand'} on Threadly: ${profileShareUrl}`;
+  }, [profile?.brandFullName, profileShareUrl]);
 
-  const isStoreOpen = Boolean(profile?.isStoreOpen);
+  // Handle share
+  const handleNativeShareProfile = useCallback(async () => {
+    if (!profileShareUrl || !profileShareMessage) {
+      toast.error('Profile link is not available yet.');
+      return;
+    }
+
+    try {
+      await Share.share({
+        message: profileShareMessage,
+        url: profileShareUrl,
+      });
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  }, [profileShareMessage, profileShareUrl, toast]);
+
+  const handleCopyProfileLink = useCallback(async () => {
+    if (!profileShareUrl) {
+      toast.error('Profile link is not available yet.');
+      return;
+    }
+
+    await Clipboard.setStringAsync(profileShareUrl);
+    toast.success('Profile link copied.');
+  }, [profileShareUrl, toast]);
 
   const currentCollections = visibilityFilter === 'Drafts' ? drafts : collections;
+  const headerStats = useMemo<BrandHeaderStat[]>(() => {
+    const backendDesigns = readMetricNumber(profile?.designsCount) ?? readMetricNumber(profile?.collectionsCount);
+    const localDesigns = Math.max(collections.length, currentCollections.length);
+    const designsCount = backendDesigns ?? localDesigns;
+    const followersCount = readMetricNumber(profile?.followersCount) ?? readMetricNumber(profile?.patchesCount);
+    const totalThreads = readMetricNumber(profile?.totalThreads) ?? readMetricNumber(profile?.totalLikes);
+    const averageRating = readMetricNumber(profile?.averageRating);
+    const totalReviews = readMetricNumber(profile?.totalReviews);
+    const storeMetric = getStoreMetricValue(profile?.storeStatus, profile?.isStoreOpen);
+    const metricLimit = windowWidth < 390 ? 3 : 4;
+    const stats: BrandHeaderStat[] = [];
+
+    if (Number.isFinite(designsCount)) {
+      stats.push({ value: formatCount(designsCount), label: designsCount === 1 ? 'Design' : 'Designs' });
+    }
+
+    if (followersCount !== null) {
+      stats.push({ value: formatCount(followersCount), label: followersCount === 1 ? 'Follower' : 'Followers' });
+    }
+
+    if (totalThreads !== null) {
+      stats.push({ value: formatCount(totalThreads), label: totalThreads === 1 ? 'Thread' : 'Threads' });
+    }
+
+    if (storeMetric) {
+      stats.push({ value: storeMetric, label: 'Store' });
+    } else if (averageRating !== null && averageRating > 0 && totalReviews !== null && totalReviews > 0) {
+      stats.push({ value: `⭐ ${averageRating.toFixed(1)}`, label: 'Rating' });
+    }
+
+    return stats.slice(0, metricLimit);
+  }, [
+    collections.length,
+    currentCollections.length,
+    profile?.averageRating,
+    profile?.collectionsCount,
+    profile?.designsCount,
+    profile?.followersCount,
+    profile?.isStoreOpen,
+    profile?.patchesCount,
+    profile?.storeStatus,
+    profile?.totalLikes,
+    profile?.totalThreads,
+    profile?.totalReviews,
+    windowWidth,
+  ]);
+  const headerBadges = useMemo(
+    () =>
+      getBrandBadges({
+        brandVerified: Boolean(profile?.verified || profile?.verificationBadgeVisible),
+        storeVerified: profile?.verificationStatus === 'APPROVED',
+        isStoreOpen: profile?.isStoreOpen,
+        storeStatus: profile?.storeStatus,
+        verificationStatus: profile?.verificationStatus,
+      }),
+    [
+      profile?.isStoreOpen,
+      profile?.storeStatus,
+      profile?.verificationBadgeVisible,
+      profile?.verificationStatus,
+      profile?.verified,
+    ],
+  );
   const showInitialSkeleton = isLoading && !profile && collections.length === 0 && drafts.length === 0;
   const overlayScrollPadding = standardScreenBottomPadding;
 
@@ -465,6 +666,50 @@ export default function CatalogScreen() {
       setCreateMenuAnchorMetrics({ pageX, pageY, width, height });
     });
   }, []);
+
+  const handleMessageBrand = useCallback(() => {
+    if (!targetBrandId) {
+      toast.error('Brand profile is not ready yet.');
+      return;
+    }
+
+    if (status !== 'authenticated') {
+      router.push({ pathname: '/(auth)/login', params: { next: `/catalog/${targetBrandId}` } } as any);
+      return;
+    }
+
+    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'brand', brandId: targetBrandId } } as any);
+  }, [status, targetBrandId, toast]);
+
+  const shareActionOptions = useMemo(
+    () => [
+      {
+        key: 'share-profile',
+        icon: '↗',
+        title: 'Share profile',
+        description: profileShareUrl ?? undefined,
+        onPress: () => void handleNativeShareProfile(),
+        disabled: !profileShareUrl,
+      },
+      {
+        key: 'copy-profile-link',
+        icon: '🔗',
+        title: 'Copy profile link',
+        description: profileShareUrl ?? undefined,
+        onPress: () => void handleCopyProfileLink(),
+        disabled: !profileShareUrl,
+      },
+      {
+        key: 'show-qr-code',
+        icon: '▦',
+        title: 'Show QR code',
+        description: 'Open a scannable public brand profile QR.',
+        onPress: () => setBrandQrOpen(true),
+        disabled: !profileQrTargetUrl,
+      },
+    ],
+    [handleCopyProfileLink, handleNativeShareProfile, profileQrTargetUrl, profileShareUrl],
+  );
 
   const handleLaunchCreateDesign = useCallback(
     async (source: DesignEditorMediaSource) => {
@@ -537,7 +782,6 @@ export default function CatalogScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentInset={{ bottom: overlayScrollPadding }}
         scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
         contentContainerStyle={[
           styles.scrollContent,
@@ -558,25 +802,33 @@ export default function CatalogScreen() {
           <OwnerCatalogMediaHeader
             profile={profile}
             isLoading={false}
+            stats={headerStats}
+            badges={headerBadges}
             onEditProfile={() => {
               if (!targetBrandId) return;
               router.push({ pathname: '/catalog/edit-profile', params: { brandId: targetBrandId } } as any);
             }}
+            onCreate={handleCreatePress}
+            createAnchorRef={createMenuAnchorRef}
+            onCreateAnchorLayout={handleCreateAnchorLayout}
             onViewAvatar={() => {
               if (ownerAvatarUri || ownerAvatar.src) {
                 setIsAvatarModalOpen(true);
               }
             }}
-            onShare={handleShare}
+            onShare={() => setShareActionsOpen(true)}
             onBack={handleBackNavigation}
+            onSearch={() => router.push('/search')}
           />
         ) : (
-          <ProfileHeader
+          <BrandProfileHeader
             brandName={profile?.brandFullName || 'Your Brand'}
             username={profile?.username || undefined}
             location={profileLocation}
             description={profile?.brandDescription ?? null}
             tags={profile?.brandTags || []}
+            stats={headerStats}
+            badges={headerBadges}
             avatarUrl={visitorAvatarUri ?? visitorAvatar.src ?? undefined}
             avatarFileId={visitorAvatar.fileId ?? undefined}
             bannerUrl={visitorBanner.src ?? undefined}
@@ -591,8 +843,10 @@ export default function CatalogScreen() {
                 setIsAvatarModalOpen(true);
               }
             }}
-            onShare={handleShare}
+            onShare={() => setShareActionsOpen(true)}
+            onMessage={handleMessageBrand}
             onBack={handleBackNavigation}
+            onSearch={() => router.push('/search')}
           />
         )}
 
@@ -607,18 +861,29 @@ export default function CatalogScreen() {
           <Tabs
             tabs={tabs}
             activeTab={activeTab}
-            onTabChange={(key) => {
-              setActiveTab(key as TabType);
-            }}
+            onTabChange={handleMainTabChange}
             swipeProgress={tabSwipeProgress}
           />
         </View>
 
 
 
-        <View style={styles.tabPane}>
-          {activeTab === 'Collections' ? (
-            <>
+        <ScrollView
+          ref={tabPagerRef}
+          horizontal
+          pagingEnabled
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={handleTabPagerScroll}
+          onMomentumScrollEnd={handleTabPagerMomentumEnd}
+          style={[styles.tabPager, activeTabPagerHeight ? { height: activeTabPagerHeight } : null]}
+          contentContainerStyle={styles.tabPagerContent}
+        >
+          <View
+            onLayout={(event) => handleTabPageLayout('Collections', event)}
+            style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
+          >
               <View style={styles.catalogControls}>
                 <VisibilityFilter
                   selected={visibilityFilter}
@@ -626,23 +891,6 @@ export default function CatalogScreen() {
                   showDrafts={isOwner}
                   draftsCount={drafts.length}
                 />
-
-                {isOwner && (
-                  <View ref={createMenuAnchorRef} onLayout={handleCreateAnchorLayout} collapsable={false}>
-                    <Pressable
-                      onPress={handleCreatePress}
-                      style={({ pressed }) => [
-                        styles.addButton,
-                        pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
-                      ]}
-                      accessibilityLabel="Create menu"
-                    >
-                      <View style={[styles.addButtonSolid, { backgroundColor: theme.colors.primary }]}>
-                        <AppText variant="subtitle" tone="inverse">+</AppText>
-                      </View>
-                    </Pressable>
-                  </View>
-                )}
               </View>
 
               <CollectionsGrid
@@ -660,11 +908,13 @@ export default function CatalogScreen() {
                   />
                 }
               />
-            </>
-          ) : null}
+          </View>
 
-          {activeTab === 'Shop' ? (
-            containerWidth > 0 && targetBrandId ? (
+          <View
+            onLayout={(event) => handleTabPageLayout('Shop', event)}
+            style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
+          >
+            {containerWidth > 0 && targetBrandId ? (
               <BrandShopTab
                 brandId={targetBrandId}
                 isOwner={isOwner}
@@ -673,17 +923,20 @@ export default function CatalogScreen() {
               />
             ) : (
               <View style={styles.tabContent} />
-            )
-          ) : null}
+            )}
+          </View>
 
-          {activeTab === 'Reviews' ? (
-            targetBrandId ? (
+          <View
+            onLayout={(event) => handleTabPageLayout('Reviews', event)}
+            style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
+          >
+            {targetBrandId ? (
               <BrandReviewsTab brandId={targetBrandId} />
             ) : (
               <View style={styles.tabContent} />
-            )
-          ) : null}
-        </View>
+            )}
+          </View>
+        </ScrollView>
       </ScrollView>
 
       <MobileProfileImageModal
@@ -698,6 +951,24 @@ export default function CatalogScreen() {
         anchorMetrics={createMenuAnchorMetrics}
         onClose={() => setCreateMenuOpen(false)}
         options={createMenuOptions}
+      />
+
+      <AppActionSheet
+        visible={shareActionsOpen}
+        title="Share brand"
+        subtitle={profileShareUrl ?? 'Profile link is not available yet.'}
+        options={shareActionOptions}
+        onClose={() => setShareActionsOpen(false)}
+      />
+
+      <AppQrSheet
+        visible={brandQrOpen}
+        title={`${profile?.brandFullName || 'Brand'} QR code`}
+        subtitle="Scan to open this public brand profile."
+        qrValue={profileQrTargetUrl}
+        displayUrl={profileShareUrl}
+        shareMessage={profileShareMessage}
+        onClose={() => setBrandQrOpen(false)}
       />
 
       <AppConfirmDialog
@@ -745,34 +1016,19 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.spacing.xl,
   },
   skeletonScrollContent: {
-    paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.lg,
     paddingBottom: tokens.spacing.xl,
     gap: tokens.spacing.lg,
-  },
-  skeletonHero: {
-    borderWidth: 1,
-    borderRadius: tokens.radius.xl,
-    padding: tokens.spacing.lg,
-    gap: tokens.spacing.lg,
-  },
-  skeletonHeroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.lg,
-  },
-  skeletonHeroCopy: {
-    flex: 1,
-    gap: tokens.spacing.md,
   },
   skeletonTabsRow: {
     flexDirection: 'row',
     gap: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.lg,
   },
   skeletonGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.lg,
   },
   skeletonCard: {
     width: '48%',
@@ -795,43 +1051,49 @@ const styles = StyleSheet.create({
   catalogControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: tokens.spacing.lg,
     paddingTop: tokens.spacing.md,
-    gap: tokens.spacing.md,
+    gap: tokens.spacing.sm,
   },
-  addButton: {
-    borderRadius: tokens.radius.md,
+  searchBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 0,
+  },
+  // Tab content
+  tabPager: {
+    width: '100%',
+  },
+  tabPagerContent: {
+    alignItems: 'flex-start',
+  },
+  tabPage: {
     overflow: 'hidden',
   },
-  addButtonSolid: {
-    width: tokens.button.md.height,
-    height: tokens.button.md.height,
-    borderRadius: tokens.radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Tab content
-  tabPane: {
-    width: '100%',
-    minHeight: 300,
-  },
   tabContent: {
-    flex: 1,
-    minHeight: 300,
+    paddingVertical: tokens.spacing.lg,
   },
 
   // Empty state
   emptyState: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing['2xl'],
-    paddingVertical: tokens.spacing['4xl'],
+    paddingHorizontal: tokens.spacing.xl,
+    paddingVertical: tokens.spacing.lg,
   },
   emptyTitle: {
-    marginTop: tokens.spacing.lg,
+    marginTop: tokens.spacing.md,
     textAlign: 'center',
   },
   emptySubtitle: {
@@ -839,7 +1101,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   emptyButton: {
-    marginTop: tokens.spacing.xl,
+    marginTop: tokens.spacing.lg,
     borderRadius: tokens.radius.md,
     overflow: 'hidden',
   },

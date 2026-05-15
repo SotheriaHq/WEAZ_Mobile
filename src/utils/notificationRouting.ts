@@ -4,6 +4,7 @@ import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import type * as Notifications from 'expo-notifications';
+import { resolveExpoProjectId } from '@/src/notifications/pushTokenRegistration';
 
 /**
  * Check if running in Expo Go on Android
@@ -270,7 +271,7 @@ async function configurePushNotificationsOnce(): Promise<{
       });
     }
 
-    const projectId = process.env.EXPO_PUBLIC_FCM_SENDER_ID;
+    const projectId = resolveExpoProjectId();
 
     if (!isExpoGo() && projectId) {
       try {
@@ -281,6 +282,10 @@ async function configurePushNotificationsOnce(): Promise<{
       } catch (tokenError) {
         console.warn('Failed to get push token:', tokenError);
       }
+    } else if (!isExpoGo() && __DEV__) {
+      console.warn(
+        'Skipping push token acquisition: missing Expo EAS project ID. Set extra.eas.projectId or EXPO_PUBLIC_EAS_PROJECT_ID.',
+      );
     }
 
     // Configure notification handlers

@@ -7,11 +7,13 @@ export type MarketAvailabilityKey = 'all' | 'in_stock' | 'custom_ready';
 export type MarketContentItem =
   | {
       key: string;
+      entityType: 'PRODUCT';
       kind: 'product';
       product: StoreProduct;
     }
   | {
       key: string;
+      entityType: 'DESIGN';
       kind: 'design';
       design: MarketItem;
     };

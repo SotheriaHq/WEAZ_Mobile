@@ -1,4 +1,8 @@
 import { apiClient } from '@/src/api/httpClient';
+import type {
+  NotificationSettings,
+  NotificationSettingsPatch,
+} from '@/src/notifications/notificationSettings';
 
 type NotificationActor = {
   id?: string | null;
@@ -9,7 +13,7 @@ type NotificationActor = {
 };
 
 type NotificationTarget = {
-  type: 'POST' | 'COLLECTION' | 'COLLECTION_MEDIA' | 'PRODUCT' | 'USER' | 'SYSTEM';
+  type: 'DESIGN' | 'POST' | 'COLLECTION' | 'COLLECTION_MEDIA' | 'PRODUCT' | 'USER' | 'SYSTEM';
   id: string;
   preview?: string;
 };
@@ -32,6 +36,32 @@ type NotificationListResponse = {
   items: MobileNotification[];
   hasNextPage: boolean;
   endCursor: string | null;
+};
+
+export type PushProvider = 'EXPO' | 'FCM' | 'APNS';
+export type PushPlatform = 'IOS' | 'ANDROID' | 'WEB' | 'UNKNOWN';
+
+export type RegisterPushTokenPayload = {
+  token: string;
+  provider?: PushProvider;
+  platform?: PushPlatform;
+  deviceId?: string;
+  deviceName?: string;
+  appVersion?: string;
+  expoProjectId?: string;
+};
+
+export type PushTokenDevice = {
+  id: string;
+  provider: PushProvider;
+  platform: PushPlatform;
+  deviceName?: string | null;
+  appVersion?: string | null;
+  isActive: boolean;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+  maskedToken?: string | null;
 };
 
 function unwrap<T>(payload: unknown): T {
@@ -78,5 +108,36 @@ export const NotificationsApi = {
       success: Boolean(payload?.success),
       count: Number(payload?.count ?? 0),
     };
+  },
+
+  async getSettings(): Promise<NotificationSettings> {
+    const response = await apiClient.get('/notifications/settings');
+    return unwrap<NotificationSettings>(response.data);
+  },
+
+  async updateSettings(settingsPatch: NotificationSettingsPatch): Promise<NotificationSettings> {
+    const response = await apiClient.patch('/notifications/settings', settingsPatch);
+    return unwrap<NotificationSettings>(response.data);
+  },
+
+  async registerPushToken(payload: RegisterPushTokenPayload): Promise<{ success: boolean }> {
+    const response = await apiClient.post('/notifications/push-tokens', payload);
+    const body = unwrap<any>(response.data);
+    return { success: body?.success !== false };
+  },
+
+  async deactivateCurrentPushToken(token: string): Promise<{ success: boolean }> {
+    const response = await apiClient.delete('/notifications/push-tokens/current', {
+      data: { token },
+    });
+    const payload = unwrap<any>(response.data);
+    return { success: payload?.success !== false };
+  },
+
+  async listPushTokens(): Promise<{ items: PushTokenDevice[] }> {
+    const response = await apiClient.get('/notifications/push-tokens');
+    const payload = unwrap<any>(response.data);
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    return { items: items as PushTokenDevice[] };
   },
 };

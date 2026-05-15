@@ -4,6 +4,7 @@ import { BackHandler, Dimensions, Modal, Pressable, StyleSheet, View } from 'rea
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 
 export type FloatingMenuOption = {
   key: string;
@@ -50,9 +51,11 @@ function resolveMenuPosition({
 }
 
 export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, onClose }: Props) {
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const menuWidth = 188;
+
+  useAndroidOverlaySystemBars(visible, scheme, 'floating-menu');
 
   const updateMenuPosition = useCallback(
     (metrics: { pageX: number; pageY: number; width: number; height: number }) => {
@@ -96,7 +99,14 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
   if (!visible || !menuPosition) return null;
 
   return (
-    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
         <View
           style={[

@@ -25,8 +25,9 @@ import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
 import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
 
-import { configurePushNotifications, handleInitialNotification, setupNotificationListeners } from '@/src/utils/notificationRouting';
+import { handleInitialNotification, setupNotificationListeners } from '@/src/utils/notificationRouting';
 import { useNotificationRouting } from '@/src/utils/notificationRouting';
+import { useAuthenticatedPushTokenRegistration } from '@/src/notifications/pushTokenRegistration';
 import {
   applyAndroidSystemBarsPolicy,
   getInitialAndroidSystemScheme,
@@ -94,15 +95,6 @@ function NotificationSetup() {
       }, delay);
       timers.add(timer);
     };
-
-    // Configure push notifications on app start
-    configurePushNotifications().then((result) => {
-      if (result.error && !result.unsupported) {
-        console.warn('Failed to configure push notifications:', result.error);
-      }
-    }).catch((error) => {
-      console.warn('Failed to configure push notifications:', error);
-    });
 
     // Handle initial notification (cold start from notification tap)
     const initializeNotificationHandling = async () => {
@@ -178,6 +170,18 @@ function NotificationSetup() {
   return null;
 }
 
+function PushTokenRegistrationGate() {
+  const { status, token, user } = useAuth();
+
+  useAuthenticatedPushTokenRegistration({
+    authenticated: status === 'authenticated',
+    userId: user?.id ?? null,
+    authToken: token,
+  });
+
+  return null;
+}
+
 function RootBootstrap({
   fontsLoaded,
 }: {
@@ -217,6 +221,7 @@ function RootBootstrap({
       }}
     >
       <NotificationSetup />
+      <PushTokenRegistrationGate />
       <RootStack />
     </View>
   );

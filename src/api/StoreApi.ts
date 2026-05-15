@@ -1,4 +1,6 @@
 import { apiClient } from '@/src/api/httpClient';
+import type { CatalogEntityType } from '@/src/features/catalog/catalogDomain';
+import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
 
 export interface StoreProductVariant {
   id?: string;
@@ -9,6 +11,7 @@ export interface StoreProductVariant {
 
 export interface StoreProduct {
   id: string;
+  entityType?: CatalogEntityType;
   brandId?: string | null;
   brandName?: string | null;
   brandLogo?: string | null;
@@ -219,6 +222,55 @@ const isLoopbackHttpUrl = (value: string) => {
 
 const toIdempotencyKey = () => `mob_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
+const appendArray = (target: unknown[], value: unknown) => {
+  if (Array.isArray(value)) {
+    target.push(...value);
+  }
+};
+
+const unwrapProductListPayload = (payload: unknown): {
+  items: unknown[];
+  hasNextPage: boolean;
+  nextCursor: string | null;
+  total: number;
+} => {
+  let current = payload;
+
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (!current || typeof current !== 'object' || !('data' in (current as Record<string, unknown>))) {
+      break;
+    }
+    current = (current as Record<string, unknown>).data;
+  }
+
+  if (Array.isArray(current)) {
+    return {
+      items: current,
+      hasNextPage: false,
+      nextCursor: null,
+      total: current.length,
+    };
+  }
+
+  const record = asRecord(current);
+  const nestedProducts = asRecord(record.products);
+  const candidateItems = [
+    record.items,
+    record.results,
+    record.products,
+    record.data,
+    nestedProducts.items,
+  ].find((candidate) => Array.isArray(candidate));
+  const items = Array.isArray(candidateItems) ? candidateItems : [];
+
+  return {
+    items,
+    hasNextPage: Boolean(record.hasNextPage ?? record.hasMore ?? nestedProducts.hasNextPage),
+    nextCursor: asString(record.nextCursor ?? record.cursor ?? nestedProducts.nextCursor),
+    total: asNumber(record.total ?? record.count ?? nestedProducts.total, items.length),
+  };
+};
+
 const normalizeProduct = (raw: unknown): StoreProduct | null => {
   const item = asRecord(raw);
   const id = asString(item.id);
@@ -228,12 +280,13 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
   const rawCategory = asRecord(item.category);
   const rawCategoryType = asRecord(item.categoryType);
   const rawBrand = asRecord(item.brand);
+  const rawBrandLogoFile = asRecord(item.brandLogoFile ?? rawBrand.logoFile ?? rawBrand.logoImageFile);
 
-  const rawImages = Array.isArray(item.images)
-    ? item.images
-    : Array.isArray(item.media)
-      ? item.media
-      : [];
+  const rawImages: unknown[] = [];
+  appendArray(rawImages, item.images);
+  appendArray(rawImages, item.media);
+  appendArray(rawImages, item.mediaItems);
+  appendArray(rawImages, item.productMedia);
 
   const images = rawImages
     .map((entry) => {
@@ -250,6 +303,7 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
         asString(media.secureUrl) ??
         asString(media.s3Url) ??
         asString(media.previewUrl) ??
+        asString(media.thumbnailUrl) ??
         asString(file.secureUrl) ??
         asString(file.s3Url) ??
         asString(file.url) ??
@@ -258,7 +312,10 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
         asString(media.fileId) ??
         asString(media.fileUploadId) ??
         asString(media.uploadFileId) ??
+        asString(media.coverImageId) ??
+        asString(media.thumbnailFileId) ??
         asString(file.fileId) ??
+        asString(file.fileUploadId) ??
         asString(file.id) ??
         (isFileLikeRecord(media) ? asString(media.id) : null) ??
         null;
@@ -273,8 +330,10 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
       asString(item.coverImage),
       asString(item.thumbnail),
       asString(item.thumbnailUrl),
+      asString(item.imageUrl),
       asString(rawImage.url),
       asString(rawImage.s3Url),
+      asString(rawImage.secureUrl),
       imageUrls.find((url) => !isLoopbackHttpUrl(url)),
       imageUrls[0],
     ].find((candidate): candidate is string => typeof candidate === 'string' && !isLoopbackHttpUrl(candidate)) ??
@@ -282,8 +341,10 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
       asString(item.coverImage),
       asString(item.thumbnail),
       asString(item.thumbnailUrl),
+      asString(item.imageUrl),
       asString(rawImage.url),
       asString(rawImage.s3Url),
+      asString(rawImage.secureUrl),
       imageUrls[0],
     ].find((candidate): candidate is string => Boolean(candidate)) ??
     null;
@@ -306,10 +367,26 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
 
   return {
     id,
+    entityType: resolveCatalogEntityType(raw, 'PRODUCT') ?? 'PRODUCT',
     brandId: asString(item.brandId),
     brandName: asString(item.brandName) ?? asString(rawBrand.name),
-    brandLogo: asString(item.brandLogo) ?? asString(rawBrand.logo),
-    brandLogoFileId: asString(item.brandLogoFileId) ?? null,
+    brandLogo:
+      asString(item.brandLogo) ??
+      asString(item.logoUrl) ??
+      asString(rawBrand.logo) ??
+      asString(rawBrand.logoUrl) ??
+      asString(rawBrand.profileImage) ??
+      asString(rawBrandLogoFile.url) ??
+      asString(rawBrandLogoFile.s3Url) ??
+      null,
+    brandLogoFileId:
+      asString(item.brandLogoFileId) ??
+      asString(item.brandLogoId) ??
+      asString(rawBrand.logoFileId) ??
+      asString(rawBrand.logoImageId) ??
+      asString(rawBrandLogoFile.id) ??
+      asString(rawBrandLogoFile.fileId) ??
+      null,
     name: asString(item.name ?? item.title) ?? 'Untitled product',
     description: asString(item.description),
     price: asNumber(item.price),
@@ -323,11 +400,14 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
     coverImage: preferredCoverUrl,
     coverImageId:
       asString(item.coverImageId) ??
+      asString(item.coverImageFileId) ??
+      asString(item.thumbnailId) ??
       asString(item.thumbnailFileId) ??
       asString(rawImage.fileId) ??
       asString(rawImage.fileUploadId) ??
       asString(rawImage.uploadFileId) ??
       (isFileLikeRecord(rawImage) ? asString(rawImage.id) : null) ??
+      images.find((entry) => entry.fileId && entry.url === preferredCoverUrl)?.fileId ??
       images.find((entry) => entry.fileId && !isLoopbackHttpUrl(entry.url ?? ''))?.fileId ??
       images[0]?.fileId ??
       null,
@@ -526,31 +606,33 @@ export const MobileStoreApi = {
       },
     });
 
-    const payload = unwrapData<Record<string, unknown>>(response.data);
-    const items = Array.isArray(payload?.items) ? payload.items : [];
+    const payload = unwrapProductListPayload(response.data);
 
     return {
-      items: items
+      items: payload.items
         .map((entry) => normalizeProduct(entry))
         .filter((entry): entry is StoreProduct => Boolean(entry)),
-      hasNextPage: Boolean(payload?.hasNextPage),
-      nextCursor: asString(payload?.nextCursor),
-      total: asNumber(payload?.total, 0),
+      hasNextPage: payload.hasNextPage,
+      nextCursor: payload.nextCursor,
+      total: payload.total,
     };
   },
 
   async getBrandProducts(brandId: string, limit = 60): Promise<StoreProduct[]> {
-    const response = await apiClient.get('/products/market', {
+    const normalizedBrandId = asString(brandId);
+    if (!normalizedBrandId) {
+      return [];
+    }
+
+    const response = await apiClient.get(`/store/brands/${encodeURIComponent(normalizedBrandId)}/products`, {
       params: {
-        brandId,
         limit,
       },
     });
 
-    const payload = unwrapData<Record<string, unknown>>(response.data);
-    const items = Array.isArray(payload?.items) ? payload.items : [];
+    const payload = unwrapProductListPayload(response.data);
 
-    return items
+    return payload.items
       .map((entry) => normalizeProduct(entry))
       .filter((entry): entry is StoreProduct => Boolean(entry));
   },

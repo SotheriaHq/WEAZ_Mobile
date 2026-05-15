@@ -1,18 +1,20 @@
 import React, { useMemo, useState } from 'react';
 import { Animated, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { AppText } from '@/components/ui/AppText';
-import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import type { CollectionDto } from '@/src/api/BrandApi';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { getCatalogCardCopy, resolveCatalogCardBranch } from '@/src/features/catalog/catalogCardBranch';
 
-interface CollectionCardProps {
+export interface CollectionCardProps {
   collection: CollectionDto;
+  cardKind?: 'design' | 'collection';
   onPress?: () => void;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
@@ -36,8 +38,8 @@ const formatPrice = (price?: number | null): string | null => {
 };
 
 const formatCount = (count: number): string => {
-  if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
-  if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
   return String(count);
 };
 
@@ -51,22 +53,18 @@ const priceRange = (minPrice?: number | null, maxPrice?: number | null) => {
 };
 
 export const CollectionCardSkeleton = ({ width = 180 }: { width?: number }) => {
-  const imageHeight = Math.round(width * 0.86);
+  const imageHeight = Math.round(width * 1.14);
 
   return (
     <View style={[styles.card, { width }]}>
       <Skeleton width={width} height={imageHeight} borderRadius={tokens.radius.lg} />
-      <View style={styles.skeletonBody}>
-        <Skeleton width="70%" height={14} borderRadius={tokens.radius.sm} />
-        <Skeleton width="45%" height={12} borderRadius={tokens.radius.sm} />
-        <Skeleton width="52%" height={32} borderRadius={tokens.radius.md} />
-      </View>
     </View>
   );
 };
 
 export const CollectionCard = React.memo(function CollectionCard({
   collection,
+  cardKind,
   onPress,
   onEdit,
   onDelete,
@@ -85,20 +83,19 @@ export const CollectionCard = React.memo(function CollectionCard({
   const scale = React.useRef(new Animated.Value(1)).current;
 
   const width = Math.round(cardWidth ?? (screenWidth - tokens.spacing.lg * 2 - tokens.spacing.md) / 2);
-  const imageHeight = Math.round(width * 0.88);
+  const imageHeight = Math.round(width * 1.14);
   const coverUri = useResolvedImageUri({
     src: collection.coverImage,
     fileId: collection.coverFileId,
   });
-  const brandLogoUri = useResolvedImageUri({
-    src: collection.brandLogo,
-    fileId: collection.brandLogoFileId,
-  });
 
-  const displayTitle = collection.title?.trim() || 'Untitled collection';
+  const inferredBranch = resolveCatalogCardBranch(collection, collection.isAvailableInStore ? 'COLLECTION' : 'DESIGN');
+  const cardBranch = cardKind ?? (inferredBranch === 'collection' ? 'collection' : 'design');
+  const copy = getCatalogCardCopy(cardBranch);
+  const displayTitle = collection.title?.trim() || copy.titleFallback;
   const brandName = collection.brandName?.trim() || 'Brand';
-  const handle = collection.username ? `@${collection.username}` : null;
   const pieceCount = collection.itemCount || collection.postsCount || 0;
+  const countLabel = pieceCount === 1 ? copy.countSingular : copy.countPlural;
   const priceLabel = useMemo(
     () => priceRange(collection.saleMinPrice ?? collection.minPrice, collection.saleMaxPrice ?? collection.maxPrice),
     [collection.maxPrice, collection.minPrice, collection.saleMaxPrice, collection.saleMinPrice],
@@ -121,12 +118,14 @@ export const CollectionCard = React.memo(function CollectionCard({
 
   return (
     <Animated.View
+      testID={`catalog-card-${cardBranch}`}
       style={[
         styles.card,
         {
           width,
           backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border,
+          opacity: disabled ? 0.82 : 1,
           transform: [{ scale }],
         },
       ]}
@@ -136,6 +135,8 @@ export const CollectionCard = React.memo(function CollectionCard({
         onPressIn={() => animate(0.98)}
         onPressOut={() => animate(1)}
         style={styles.pressable}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${copy.badgeLabel.toLowerCase()} ${displayTitle}`}
       >
         <View style={[styles.coverFrame, { height: imageHeight, backgroundColor: theme.colors.surfaceAlt }]}>
           {showImage ? (
@@ -151,13 +152,11 @@ export const CollectionCard = React.memo(function CollectionCard({
             <ImageFallback title={displayTitle} />
           )}
 
-          {collection.isAvailableInStore ? (
-            <View style={[styles.storeBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
-              <AppText variant="caption" tone="primary">
-                Store
-              </AppText>
-            </View>
-          ) : null}
+          <View style={[styles.storeBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
+            <AppText variant="captionBold" tone="primary">
+              {copy.badgeLabel}
+            </AppText>
+          </View>
 
           {showActions && !isDraft ? (
             <View style={styles.actionRail}>
@@ -173,9 +172,9 @@ export const CollectionCard = React.memo(function CollectionCard({
               style={[styles.menuButton, { backgroundColor: theme.colors.surfaceOverlay }]}
               hitSlop={tokens.spacing.sm}
               accessibilityRole="button"
-              accessibilityLabel="Collection actions"
+              accessibilityLabel={copy.ownerActionsLabel}
             >
-              <AppText variant="caption">⋯</AppText>
+              <AppText variant="captionBold">⋯</AppText>
             </Pressable>
           ) : null}
 
@@ -189,7 +188,7 @@ export const CollectionCard = React.memo(function CollectionCard({
                   }}
                   style={styles.menuItem}
                 >
-                  <AppText variant="caption">Edit</AppText>
+                  <AppText variant="captionBold">{copy.editLabel}</AppText>
                 </Pressable>
               ) : null}
               {onDelete ? (
@@ -200,63 +199,51 @@ export const CollectionCard = React.memo(function CollectionCard({
                   }}
                   style={styles.menuItem}
                 >
-                  <AppText variant="caption" tone="danger">
-                    Delete
+                  <AppText variant="captionBold" tone="danger">
+                    {copy.deleteLabel}
                   </AppText>
                 </Pressable>
               ) : null}
             </View>
           ) : null}
-        </View>
 
-        <View style={styles.body}>
-          <View style={styles.brandRow}>
-            {brandLogoUri ? (
-              <StableImage
-                uri={brandLogoUri}
-                resizeMode="cover"
-                containerStyle={styles.avatar}
-                imageStyle={styles.avatar}
-                fallback={<AvatarFallback label={brandName} />}
-              />
-            ) : (
-              <AvatarFallback label={brandName} />
-            )}
-            <View style={styles.brandText}>
-              <AppText variant="caption" numberOfLines={1}>
+          <LinearGradient
+            colors={['transparent', theme.colors.backdropStrong] as [string, string]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.metadataGradient}
+          >
+            <View style={styles.metadataPanel}>
+              {collection.clientStatus ? (
+                <View style={[styles.statusPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
+                  <AppText variant="captionBold" tone={collection.clientStatus === 'publish-failed' ? 'danger' : 'primary'} numberOfLines={1}>
+                    {collection.clientStatusMessage || (collection.clientStatus === 'publish-failed' ? 'Publish failed' : 'Publishing')}
+                  </AppText>
+                </View>
+              ) : isDraft ? (
+                <View style={[styles.statusPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
+                  <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+                    Draft
+                  </AppText>
+                </View>
+              ) : null}
+
+              <AppText variant="smallBold" tone="inverse" numberOfLines={2}>
+                {displayTitle}
+              </AppText>
+              <AppText variant="caption" tone="inverse" numberOfLines={1}>
                 {brandName}
               </AppText>
-              {handle ? (
-                <AppText variant="caption" tone="muted" numberOfLines={1}>
-                  {handle}
+              <View style={styles.cardMetaRow}>
+                <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+                  {pieceCount} {countLabel}
                 </AppText>
-              ) : null}
+                <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.priceText}>
+                  {priceLabel}
+                </AppText>
+              </View>
             </View>
-          </View>
-
-          <AppText variant="bodyBold" numberOfLines={2}>
-            {displayTitle}
-          </AppText>
-          <AppText variant="caption" tone="muted">
-            {pieceCount} piece{pieceCount === 1 ? '' : 's'}
-          </AppText>
-          <AppText variant="caption" tone="muted" numberOfLines={1}>
-            {priceLabel}
-          </AppText>
-
-          {collection.clientStatus ? (
-            <View style={[styles.statusPill, { backgroundColor: theme.colors.surfaceAlt }]}>
-              <AppText variant="caption" tone={collection.clientStatus === 'publish-failed' ? 'danger' : 'primary'}>
-                {collection.clientStatusMessage || (collection.clientStatus === 'publish-failed' ? 'Publish failed' : 'Publishing')}
-              </AppText>
-            </View>
-          ) : null}
-
-          {isDraft ? (
-            <Button title="Continue" variant="outline" size="sm" onPress={onPress} />
-          ) : (
-            <Button title="View" variant="outline" size="sm" onPress={onPress} />
-          )}
+          </LinearGradient>
         </View>
       </Pressable>
     </Animated.View>
@@ -265,46 +252,38 @@ export const CollectionCard = React.memo(function CollectionCard({
 
 function ImageFallback({ title }: { title: string }) {
   const { theme } = useTheme();
+
   return (
-    <View
-      style={[styles.imageFallback, { backgroundColor: theme.colors.surfaceAlt }]}
+    <LinearGradient
+      colors={[theme.colors.surfaceAlt, theme.colors.surface] as [string, string]}
+      style={styles.imageFallback}
     >
-      <AppText variant="subtitle" style={styles.imageFallbackEmoji}>Image</AppText>
-      <AppText variant="caption" tone="muted" numberOfLines={1}>
+      <AppText variant="captionBold" tone="muted" numberOfLines={1}>
         {title.trim() ? 'Image unavailable' : 'No image'}
       </AppText>
-    </View>
-  );
-}
-
-function AvatarFallback({ label }: { label: string }) {
-  const { theme } = useTheme();
-  return (
-    <View style={[styles.avatar, { backgroundColor: theme.colors.primary }]}>
-      <AppText variant="caption" tone="inverse">
-        {label.trim().charAt(0).toUpperCase() || 'B'}
-      </AppText>
-    </View>
+    </LinearGradient>
   );
 }
 
 function RailButton({ emoji, label, onPress }: { emoji: string; label?: string; onPress?: () => void }) {
   const { theme, scheme } = useTheme();
+
   return (
     <Pressable
       onPress={onPress}
       style={[styles.railButton, { backgroundColor: theme.colors.glassSurface }]}
       hitSlop={tokens.spacing.xs}
+      accessibilityRole="button"
     >
       <BlurView
         intensity={theme.colors.glassBlur as number}
         tint={scheme === 'dark' ? 'dark' : 'light'}
         style={StyleSheet.absoluteFillObject}
       />
-      <View style={styles.railContent}>
+      <View style={styles.railButtonContent}>
         <AppText variant="caption">{emoji}</AppText>
         {label ? (
-          <AppText variant="caption" tone="muted">
+          <AppText variant="captionBold" tone="secondary">
             {label}
           </AppText>
         ) : null}
@@ -340,9 +319,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  imageFallbackEmoji: {
-    marginBottom: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.md,
   },
   storeBadge: {
     position: 'absolute',
@@ -357,8 +334,9 @@ const styles = StyleSheet.create({
   actionRail: {
     position: 'absolute',
     right: tokens.spacing.sm,
-    bottom: tokens.spacing.sm,
+    bottom: 92,
     gap: tokens.spacing.xs,
+    zIndex: 2,
   },
   railButton: {
     minWidth: 36,
@@ -369,7 +347,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.xs,
     overflow: 'hidden',
   },
-  railContent: {
+  railButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
@@ -383,6 +361,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.full,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 4,
   },
   menu: {
     position: 'absolute',
@@ -392,32 +371,36 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     minWidth: 96,
+    zIndex: 5,
   },
   menuItem: {
     minHeight: 36,
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.md,
   },
-  body: {
-    gap: tokens.spacing.sm,
-    padding: tokens.spacing.md,
+  metadataGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    minHeight: 118,
+    justifyContent: 'flex-end',
+    paddingTop: tokens.spacing['3xl'],
   },
-  brandRow: {
+  metadataPanel: {
+    gap: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.md,
+    paddingBottom: tokens.spacing.md,
+  },
+  cardMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: tokens.spacing.sm,
   },
-  brandText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: tokens.radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+  priceText: {
+    flexShrink: 1,
+    textAlign: 'right',
   },
   statusPill: {
     minHeight: 28,
@@ -425,10 +408,6 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.sm,
     alignSelf: 'flex-start',
-  },
-  skeletonBody: {
-    gap: tokens.spacing.sm,
-    padding: tokens.spacing.md,
   },
 });
 

@@ -153,7 +153,7 @@ export default function SettingsScreen() {
             icon: '🔔',
             title: 'Push notifications',
             subtitle: 'Likes, comments, messages',
-            onPress: () => router.push('/notifications' as never),
+            onPress: () => router.push('/settings/notifications' as never),
           },
           {
             icon: '📨',
@@ -283,7 +283,7 @@ export default function SettingsScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['3xl'] }]}
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, tokens.spacing.lg) }]}
       >
         {sections.map((section) => (
           <SettingsSectionBlock key={section.title} section={section} />

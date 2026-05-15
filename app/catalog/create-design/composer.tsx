@@ -12,7 +12,6 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
-import { ComposerSection } from '@/components/ui/ComposerSection';
 import { Input } from '@/components/ui/Input';
 import { OptionRow } from '@/components/ui/OptionRow';
 import { RequiredFieldLabel } from '@/components/ui/RequiredFieldLabel';
@@ -61,7 +60,6 @@ export default function CreateDesignComposerScreen() {
     updateField,
     toggleFilterValue,
     toggleMeasurementKey,
-    moveAsset,
     removeAsset,
     setCoverAssetId,
     save,
@@ -86,8 +84,11 @@ export default function CreateDesignComposerScreen() {
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [categoryStep, setCategoryStep] = useState<'category' | 'subcategory'>('category');
+  const [draftCategoryId, setDraftCategoryId] = useState('');
+  const [draftSubCategoryId, setDraftSubCategoryId] = useState('');
   const [tagSuggestions, setTagSuggestions] = useState<{ name: string; usageCount: number }[]>([]);
   const [tagError, setTagError] = useState<string | null>(null);
+  const [tagsLoading, setTagsLoading] = useState(false);
 
   const audienceLabel = DESIGN_AUDIENCE_LABELS[form.audience];
   const sizingLabel = DESIGN_SIZING_LABELS[form.sizingMode];
@@ -103,6 +104,11 @@ export default function CreateDesignComposerScreen() {
     () => categories.map((category) => ({ value: category.id, label: category.name })),
     [categories],
   );
+  const draftSelectedCategory = useMemo(
+    () => categories.find((entry) => entry.id === draftCategoryId) ?? null,
+    [categories, draftCategoryId],
+  );
+  const draftSubCategories = draftSelectedCategory?.subCategories ?? [];
 
   const discoveryDimensions = filterDimensions;
   const selectedDiscoveryFilterCount = Object.entries(filterSelection).reduce((sum, [dimensionId, values]) => {
@@ -128,6 +134,13 @@ export default function CreateDesignComposerScreen() {
         .map((tag) => ({ value: tag.name, label: `#${tag.name}`, usageCount: tag.usageCount })),
     [selectedTags, tagSuggestions],
   );
+  const priceError = useMemo(() => {
+    if (!form.minPrice || !form.maxPrice) return null;
+    const min = Number(form.minPrice);
+    const max = Number(form.maxPrice);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    return max < min ? 'Maximum price must be greater than or equal to minimum price.' : null;
+  }, [form.maxPrice, form.minPrice]);
   const missingRequiredFields = useMemo(() => {
     const missing: string[] = [];
     if (assets.length === 0) missing.push('Media');
@@ -156,28 +169,61 @@ export default function CreateDesignComposerScreen() {
     [pickMedia],
   );
 
-  useEffect(() => {
-    if (!tagsOpen) return;
-    let isActive = true;
+  const loadTags = useCallback(async (isActive: () => boolean = () => true) => {
+    setTagsLoading(true);
+    setTagError(null);
 
-    void TagsApi.getTags(50)
+    await TagsApi.getTags(50)
       .then((items) => {
-        if (isActive) {
+        if (isActive()) {
           setTagSuggestions(items);
           setTagError(null);
         }
       })
-      .catch((error) => {
-        if (isActive) {
+      .catch(() => {
+        if (isActive()) {
           setTagSuggestions([]);
           setTagError('Could not load tags. You can still add your own.');
         }
+      })
+      .finally(() => {
+        if (isActive()) {
+          setTagsLoading(false);
+        }
       });
+  }, []);
 
+  useEffect(() => {
+    if (!tagsOpen) return;
+    let active = true;
+    void loadTags(() => active);
     return () => {
-      isActive = false;
+      active = false;
     };
-  }, [tagsOpen]);
+  }, [loadTags, tagsOpen]);
+
+  const closeCategorySheet = useCallback(() => {
+    setCategoryOpen(false);
+    setCategoryStep('category');
+  }, []);
+
+  const handleCategoryDone = useCallback(() => {
+    if (!draftSelectedCategory) return;
+    if (draftSubCategories.length > 0 && !draftSubCategoryId) {
+      setCategoryStep('subcategory');
+      return;
+    }
+    updateField('categoryId', draftCategoryId);
+    updateField('subCategoryId', draftSubCategoryId);
+    closeCategorySheet();
+  }, [
+    closeCategorySheet,
+    draftCategoryId,
+    draftSelectedCategory,
+    draftSubCategories.length,
+    draftSubCategoryId,
+    updateField,
+  ]);
 
   useEffect(() => {
     if (assets.length > 0) {
@@ -211,12 +257,20 @@ export default function CreateDesignComposerScreen() {
       </View>
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing.xl }]} keyboardShouldPersistTaps="handled">
-          <ComposerSection title="Selected media">
+        <ScrollView
+          style={styles.flex}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.mediaSection}>
             <View style={styles.sectionTopRow}>
-              <AppText variant="captionRegular" tone="muted">
-                {assets.length > 0 ? `${assets.length}/${DESIGN_EDITOR_MAX_MEDIA} selected` : 'No media selected yet'}
-              </AppText>
+              <View style={styles.sectionTitleCopy}>
+                <AppText variant="bodyBold">Selected media</AppText>
+                <AppText variant="captionRegular" tone="muted">
+                  {assets.length > 0 ? `${assets.length}/${DESIGN_EDITOR_MAX_MEDIA} selected` : 'No media selected yet'}
+                </AppText>
+              </View>
               <View ref={plusRef}>
                 <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
               </View>
@@ -230,12 +284,6 @@ export default function CreateDesignComposerScreen() {
                       <AppText variant="captionBold">{DESIGN_MEDIA_SLOTS[index]}</AppText>
                     </View>
                     <View style={styles.assetActionRow}>
-                      <Pressable onPress={() => moveAsset(asset.id, 'left')} disabled={index === 0}>
-                        <AppText variant="captionBold" tone={index === 0 ? 'muted' : 'primary'}>Left</AppText>
-                      </Pressable>
-                      <Pressable onPress={() => moveAsset(asset.id, 'right')} disabled={index === assets.length - 1}>
-                        <AppText variant="captionBold" tone={index === assets.length - 1 ? 'muted' : 'primary'}>Right</AppText>
-                      </Pressable>
                       <Pressable onPress={() => setCoverAssetId(asset.id)}>
                         <AppText variant="captionBold" tone={asset.id === coverAssetId ? 'muted' : 'primary'}>Set Cover</AppText>
                       </Pressable>
@@ -247,7 +295,7 @@ export default function CreateDesignComposerScreen() {
                 ))}
               </ScrollView>
             )}
-          </ComposerSection>
+          </View>
 
           <View style={styles.copyBlock}>
                 <RequiredFieldLabel required>Title</RequiredFieldLabel>
@@ -287,6 +335,8 @@ export default function CreateDesignComposerScreen() {
                   subtitle="Choose category and subcategory."
                   value={categoryValue}
                   onPress={() => {
+                    setDraftCategoryId(form.categoryId);
+                    setDraftSubCategoryId(form.subCategoryId);
                     setCategoryStep('category');
                     setCategoryOpen(true);
                   }}
@@ -341,30 +391,40 @@ export default function CreateDesignComposerScreen() {
             </Card>
           ) : null}
 
-          <View style={[styles.footerActions, { paddingBottom: insets.bottom, paddingHorizontal: tokens.spacing.lg }]}>
-            {!canSaveDraft ? (
-              <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-                Add at least one field or one media item to save a draft.
-              </AppText>
-            ) : null}
-            <View style={styles.actionRow}>
-              <Button
-                title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
-                variant="secondary"
-                loading={saveState.action === 'draft'}
-                disabled={!canSaveDraft}
-                onPress={() => void save('draft')}
-                style={styles.actionButton}
-              />
-              <Button
-                title="Preview"
-                disabled={!canPreview}
-                onPress={() => router.push('/catalog/create-design/preview' as any)}
-                style={styles.actionButton}
-              />
-            </View>
-          </View>
         </ScrollView>
+        <View
+          style={[
+            styles.footerActions,
+            {
+              backgroundColor: theme.colors.bg,
+              borderTopColor: theme.colors.border,
+              paddingBottom: Math.max(insets.bottom, tokens.spacing.md),
+              paddingHorizontal: tokens.spacing.lg,
+            },
+          ]}
+        >
+          {!canSaveDraft ? (
+            <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+              Add at least one field or one media item to save a draft.
+            </AppText>
+          ) : null}
+          <View style={styles.actionRow}>
+            <Button
+              title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
+              variant="secondary"
+              loading={saveState.action === 'draft'}
+              disabled={!canSaveDraft}
+              onPress={() => void save('draft')}
+              style={styles.actionButton}
+            />
+            <Button
+              title="Preview"
+              disabled={!canPreview}
+              onPress={() => router.push('/catalog/create-design/preview' as any)}
+              style={styles.actionButton}
+            />
+          </View>
+        </View>
       </KeyboardAvoidingView>
 
       <AppSelectSheet
@@ -377,36 +437,69 @@ export default function CreateDesignComposerScreen() {
         onClose={() => setPrivacyOpen(false)}
       />
 
-      <AppSelectSheet
+      <AppBottomSheet
         visible={categoryOpen}
         title="Category"
-        subtitle={categoryStep === 'category' ? 'Pick the main category.' : `Pick a subcategory in ${selectedCategory?.name ?? 'this category'}.`}
-        options={
-          categoryStep === 'category'
-            ? categoryOptions
-            : subCategories.map((subCategory) => ({
-                value: subCategory.id,
-                label: subCategory.name,
-              }))
-        }
-        value={categoryStep === 'category' ? form.categoryId : form.subCategoryId}
-        onChange={(value) => {
-          if (categoryStep === 'category') {
-            updateField('categoryId', value);
-            updateField('subCategoryId', '');
-            setCategoryStep('subcategory');
-            return;
-          }
-          updateField('subCategoryId', value);
-          setCategoryOpen(false);
-          setCategoryStep('category');
-        }}
-        onClose={() => {
-          setCategoryOpen(false);
-          setCategoryStep('category');
-        }}
-        emptyMessage={categoryStep === 'category' ? 'No categories are configured yet.' : 'No subcategories available.'}
-      />
+        subtitle={categoryStep === 'category' ? 'Pick the main category.' : `Pick a subcategory in ${draftSelectedCategory?.name ?? 'this category'}.`}
+        onClose={closeCategorySheet}
+        onDone={handleCategoryDone}
+        doneLabel="Use selection"
+        doneDisabled={!draftSelectedCategory || (draftSubCategories.length > 0 && !draftSubCategoryId)}
+        showCloseButton
+      >
+        {categoryStep === 'subcategory' && draftSelectedCategory ? (
+          <Pressable onPress={() => setCategoryStep('category')} style={styles.sheetBackRow}>
+            <AppText variant="captionBold" tone="primary">&lt; Change category</AppText>
+          </Pressable>
+        ) : null}
+        <View style={styles.optionCardList}>
+          {(categoryStep === 'category' ? categoryOptions : draftSubCategories.map((subCategory) => ({
+            value: subCategory.id,
+            label: subCategory.name,
+          }))).map((option) => {
+            const selected = categoryStep === 'category'
+              ? option.value === draftCategoryId
+              : option.value === draftSubCategoryId;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => {
+                  if (categoryStep === 'category') {
+                    setDraftCategoryId(option.value);
+                    setDraftSubCategoryId('');
+                    setCategoryStep('subcategory');
+                    return;
+                  }
+                  setDraftSubCategoryId(option.value);
+                }}
+                style={({ pressed }) => [
+                  styles.categoryOption,
+                  {
+                    backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surfaceAlt,
+                    borderColor: selected ? theme.colors.primary : theme.colors.border,
+                  },
+                  pressed ? styles.optionPressed : null,
+                ]}
+              >
+                <AppText variant="bodyBold" tone={selected ? 'primary' : 'default'}>
+                  {option.label}
+                </AppText>
+              </Pressable>
+            );
+          })}
+        </View>
+        {categoryStep === 'category' && categoryOptions.length === 0 ? (
+          <AppText variant="body" tone="muted">No categories are configured yet.</AppText>
+        ) : null}
+        {categoryStep === 'subcategory' && draftSelectedCategory && draftSubCategories.length === 0 ? (
+          <Card padding="md" style={[styles.inlineNotice, { borderColor: theme.colors.border }]}>
+            <AppText variant="bodyBold">No subcategories yet</AppText>
+            <AppText variant="captionRegular" tone="muted">
+              You can save a draft with this category. Publishing requires a configured subcategory.
+            </AppText>
+          </Card>
+        ) : null}
+      </AppBottomSheet>
 
       <AppMultiSelectSheet
         visible={tagsOpen}
@@ -420,6 +513,8 @@ export default function CreateDesignComposerScreen() {
         onClose={() => setTagsOpen(false)}
         emptyMessage="No suggestions found. Type a tag and tap Add."
         errorMessage={tagError}
+        loading={tagsLoading}
+        onRetry={() => void loadTags()}
         maxSelected={10}
       />
 
@@ -429,7 +524,17 @@ export default function CreateDesignComposerScreen() {
         subtitle="Set the indicative range buyers will see."
         onClose={() => setPriceOpen(false)}
         showCloseButton
+        footer={
+          <View style={styles.sheetActionRow}>
+            <Button title="Cancel" variant="outline" onPress={() => setPriceOpen(false)} style={styles.actionButton} />
+            <Button title="Done" disabled={Boolean(priceError)} onPress={() => setPriceOpen(false)} style={styles.actionButton} />
+          </View>
+        }
       >
+        <View style={[styles.priceSummaryCard, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+          <AppText variant="captionBold" tone="muted">Displayed price</AppText>
+          <AppText variant="subtitle">{formatPriceSummary(form.minPrice, form.maxPrice)}</AppText>
+        </View>
         <View style={styles.priceRow}>
           <Input
             label="Minimum"
@@ -448,6 +553,13 @@ export default function CreateDesignComposerScreen() {
             containerStyle={styles.priceInput}
           />
         </View>
+        {priceError ? (
+          <AppText variant="captionRegular" tone="danger">{priceError}</AppText>
+        ) : (
+          <AppText variant="captionRegular" tone="muted">
+            Leave either field empty if the design only needs a starting or maximum reference price.
+          </AppText>
+        )}
       </AppBottomSheet>
 
       <AppBottomSheet
@@ -722,7 +834,7 @@ const styles = StyleSheet.create({
   content: {
     gap: tokens.spacing.lg,
     paddingHorizontal: tokens.spacing.lg,
-    paddingBottom: tokens.spacing.xl,
+    paddingBottom: tokens.spacing.md,
     paddingTop: tokens.spacing.sm,
   },
   sectionTopRow: {
@@ -732,17 +844,25 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
     minHeight: tokens.button.sm.height,
   },
+  sectionTitleCopy: {
+    flex: 1,
+    gap: tokens.spacing.xs,
+    minWidth: 0,
+  },
+  mediaSection: {
+    gap: tokens.spacing.md,
+  },
   mediaStrip: {
     gap: tokens.spacing.sm,
     paddingRight: tokens.spacing.sm,
   },
   assetCard: {
-    width: 144,
+    width: 172,
     gap: tokens.spacing.sm,
   },
   assetPreview: {
-    width: 144,
-    height: 192,
+    width: 172,
+    height: 224,
     borderRadius: tokens.radius.xl,
   },
   assetBadge: {
@@ -788,6 +908,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: tokens.spacing.md,
   },
+  priceSummaryCard: {
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    gap: tokens.spacing.xs,
+    padding: tokens.spacing.md,
+  },
   priceInput: {
     flex: 1,
   },
@@ -811,8 +937,37 @@ const styles = StyleSheet.create({
   permissionActions: {
     gap: tokens.spacing.sm,
   },
+  optionCardList: {
+    gap: tokens.spacing.sm,
+  },
+  categoryOption: {
+    minHeight: tokens.button.md.height,
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  optionPressed: {
+    opacity: 0.76,
+  },
+  sheetBackRow: {
+    alignSelf: 'flex-start',
+    paddingVertical: tokens.spacing.xs,
+  },
+  inlineNotice: {
+    borderWidth: 1,
+    gap: tokens.spacing.xs,
+  },
+  sheetActionRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.md,
+    alignItems: 'stretch',
+  },
   footerActions: {
     gap: tokens.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: tokens.spacing.md,
   },
   actionRow: {
     flexDirection: 'row',
