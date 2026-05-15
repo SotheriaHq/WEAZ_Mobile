@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -11,6 +11,9 @@ import { BrandBadgeRail, ProfileBadge, type ProfileBadgeModel } from '@/componen
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+
+const BRAND_DESCRIPTION_PREVIEW_LINES = 2;
+const BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH = 120;
 
 export type BrandHeaderStat = {
   label: string;
@@ -378,22 +381,35 @@ function BrandDescription({ description }: { description?: string | null }) {
 
   useEffect(() => {
     setExpanded(false);
-    setCanExpand(false);
+    setCanExpand((copy?.length ?? 0) > BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH);
   }, [copy]);
 
   if (!copy) return null;
+
+  const handleMeasuredTextLayout = (event: NativeSyntheticEvent<TextLayoutEventData>) => {
+    const hasHiddenLines = event.nativeEvent.lines.length > BRAND_DESCRIPTION_PREVIEW_LINES;
+    const hasLongCopy = copy.length > BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH;
+    const nextCanExpand = hasHiddenLines || hasLongCopy;
+    setCanExpand((current) => (current === nextCanExpand ? current : nextCanExpand));
+  };
 
   return (
     <View style={styles.descriptionWrap}>
       <AppText
         variant="bodyRegular"
         tone="secondary"
-        numberOfLines={expanded ? undefined : 2}
-        onTextLayout={(event) => {
-          if (!expanded && event.nativeEvent.lines.length > 2) {
-            setCanExpand(true);
-          }
-        }}
+        numberOfLines={expanded ? undefined : BRAND_DESCRIPTION_PREVIEW_LINES}
+      >
+        {copy}
+      </AppText>
+      <AppText
+        variant="bodyRegular"
+        tone="secondary"
+        style={styles.descriptionMeasureText}
+        onTextLayout={handleMeasuredTextLayout}
+        accessible={false}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
       >
         {copy}
       </AppText>
@@ -773,6 +789,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.lg,
     marginTop: tokens.spacing.lg,
     gap: tokens.spacing.sm,
+  },
+  descriptionMeasureText: {
+    position: 'absolute',
+    left: tokens.spacing.lg,
+    right: tokens.spacing.lg,
+    top: 0,
+    opacity: 0,
   },
   actionRow: {
     flexDirection: 'row',

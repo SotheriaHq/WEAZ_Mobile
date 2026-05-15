@@ -9,6 +9,7 @@ const brandApiPath = path.join(repoRoot, 'src', 'api', 'BrandApi.ts');
 const formatCountPath = path.join(repoRoot, 'src', 'utils', 'formatCount.ts');
 const catalogPath = path.join(repoRoot, 'app', 'catalog', 'index.tsx');
 const badgePath = path.join(repoRoot, 'components', 'catalog', 'ProfileBadge.tsx');
+const brandHeaderPath = path.join(repoRoot, 'components', 'catalog', 'BrandProfileHeader.tsx');
 
 function compile(filePath) {
   return ts.transpileModule(fs.readFileSync(filePath, 'utf8'), {
@@ -30,6 +31,16 @@ function loadBrandApiWithMock(mockApiClient) {
     require: (request) => {
       if (request === './httpClient' || request === '@/src/api/httpClient') {
         return { apiClient: mockApiClient };
+      }
+      if (request === '@/src/features/catalog/catalogEntity') {
+        return {
+          resolveCatalogEntityType: (value, fallback = null) => {
+            if (value && typeof value === 'object' && typeof value.entityType === 'string') {
+              return value.entityType;
+            }
+            return fallback;
+          },
+        };
       }
       return require(request);
     },
@@ -158,6 +169,13 @@ async function main() {
   assert.match(badgeSource, /store_open/);
   assert.match(badgeSource, /pending_verification/);
   assert.match(badgeSource, /transform:\s*\[\{\s*rotate:\s*'45deg'\s*\}\]/);
+
+  const brandHeaderSource = fs.readFileSync(brandHeaderPath, 'utf8');
+  assert.match(brandHeaderSource, /BRAND_DESCRIPTION_PREVIEW_LINES\s*=\s*2/);
+  assert.match(brandHeaderSource, /BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH/);
+  assert.match(brandHeaderSource, /descriptionMeasureText/);
+  assert.match(brandHeaderSource, /See more/);
+  assert.match(brandHeaderSource, /See less/);
 
   console.log('Brand profile contract tests passed.');
 }
