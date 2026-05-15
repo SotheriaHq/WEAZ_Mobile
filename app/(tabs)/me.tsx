@@ -21,7 +21,7 @@ import { useToast } from '@/src/toast/ToastContext';
 import { resolveIdentity } from '@/src/utils/identity';
 import { profileDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
-import { routeForDesignTarget } from '@/src/utils/mobileRouting';
+import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 
@@ -259,12 +259,32 @@ function MeasurementCard({
 
 function SavedDesignCard({ item }: { item: SavedItem }) {
   const { theme } = useTheme();
-  const destinationId = item.targetType === 'COLLECTION_MEDIA' ? item.collectionId ?? item.targetId : item.targetId;
+  const destinationId =
+    item.targetType === 'DESIGN'
+      ? item.designId ?? item.targetId
+      : item.targetType === 'PRODUCT'
+        ? item.productId ?? item.targetId
+        : item.targetType === 'COLLECTION_MEDIA'
+          ? item.collectionId ?? item.targetId
+          : item.collectionId ?? item.targetId;
+  const onPress = () => {
+    if (item.targetType === 'PRODUCT') {
+      router.push({ pathname: '/products/[productId]', params: { productId: destinationId } } as any);
+      return;
+    }
+    if (item.targetType === 'COLLECTION') {
+      router.push(routeForStoreCollectionTarget(destinationId) as any);
+      return;
+    }
+    router.push(
+      routeForDesignTarget(destinationId, {
+        legacyCollectionId: item.legacyCollectionId ?? item.collectionId ?? destinationId,
+      }) as any,
+    );
+  };
   return (
     <Pressable
-      onPress={() =>
-        router.push(routeForDesignTarget(destinationId, { legacyCollectionId: destinationId }) as any)
-      }
+      onPress={onPress}
       accessibilityRole="button"
       style={({ pressed }) => [styles.savedCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, pressed ? styles.pressed : null]}
     >
