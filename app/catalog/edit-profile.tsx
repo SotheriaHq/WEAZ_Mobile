@@ -13,15 +13,24 @@ import { useToast } from '@/src/toast/ToastContext';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { AppText } from '@/components/ui/AppText';
-import { Card } from '@/components/ui/Card';
+import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { tokens } from '@/src/styles/tokens';
 import { BRAND_TAG_OPTIONS } from '@/src/data/brandTags';
-import { AppMultiSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
+import { AppMultiSelectSheet, AppSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
 import { Chip } from '@/components/ui/Chip';
+import { locationService, type CountryOption, type StateOption } from '@/src/services/locationService';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type LocationSheet = 'country' | 'state' | 'city' | null;
+
+const BUSINESS_TYPE_OPTIONS: SelectSheetOption[] = [
+  { value: 'Retailer', label: 'Retailer' },
+  { value: 'Designer', label: 'Designer' },
+  { value: 'Wholesaler', label: 'Wholesaler' },
+  { value: 'Boutique', label: 'Boutique' },
+];
 
 type BrandFormState = {
   brandFullName: string;
@@ -98,6 +107,67 @@ function statusLabel(state: SaveState, savedAt: Date | null): string {
   return 'Changes save when you leave';
 }
 
+function withCurrentOption(options: SelectSheetOption[], currentValue: string): SelectSheetOption[] {
+  const trimmed = currentValue.trim();
+  if (!trimmed || options.some((option) => option.value === trimmed)) {
+    return options;
+  }
+  return [{ value: trimmed, label: trimmed }, ...options];
+}
+
+function getOptionLabel(options: SelectSheetOption[], value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return options.find((option) => option.value === trimmed)?.label ?? trimmed;
+}
+
+function ProfileSelectField({
+  label,
+  value,
+  placeholder,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  const { theme } = useTheme();
+  return (
+    <View style={styles.group}>
+      <AppText variant="captionBold" tone="muted">
+        {label}
+      </AppText>
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={({ pressed }) => [
+          styles.selectField,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+          },
+          disabled && styles.selectFieldDisabled,
+          pressed && !disabled && styles.selectFieldPressed,
+        ]}
+      >
+        <View style={styles.selectValueRow}>
+          <AppText variant="body" tone={value ? 'default' : 'muted'} style={styles.selectValue}>
+            {value || placeholder}
+          </AppText>
+          <AppText variant="captionBold" tone={disabled ? 'muted' : 'primary'}>
+            Choose
+          </AppText>
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
 export default function BrandProfileEditScreen() {
   const { brandId: routeBrandId } = useLocalSearchParams<{ brandId?: string }>();
   const { user, updateUser } = useAuth();
@@ -117,6 +187,13 @@ export default function BrandProfileEditScreen() {
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [tagsSheetOpen, setTagsSheetOpen] = useState(false);
+  const [businessTypeSheetOpen, setBusinessTypeSheetOpen] = useState(false);
+  const [locationSheet, setLocationSheet] = useState<LocationSheet>(null);
+  const [countries, setCountries] = useState<CountryOption[]>([]);
+  const [states, setStates] = useState<StateOption[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const latestFormRef = useRef<BrandFormState | null>(null);
   const pendingChangesRef = useRef(false);
@@ -164,6 +241,65 @@ export default function BrandProfileEditScreen() {
   useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
+
+  const loadCountries = useCallback(async () => {
+    setLocationLoading(true);
+    setLocationError(null);
+    const nextCountries = await locationService.getCountries();
+    setCountries(nextCountries);
+    if (nextCountries.length === 0) {
+      setLocationError('Location options are unavailable. Your saved location is preserved.');
+    }
+    setLocationLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      void loadCountries();
+    }
+  }, [loadCountries, loading]);
+
+  useEffect(() => {
+    const country = form?.brandCountry.trim() ?? '';
+    if (!country) {
+      setStates([]);
+      setCities([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLocationLoading(true);
+    void locationService.getStates(country).then((nextStates) => {
+      if (cancelled) return;
+      setStates(nextStates);
+      setLocationLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form?.brandCountry]);
+
+  useEffect(() => {
+    const country = form?.brandCountry.trim() ?? '';
+    const state = form?.brandState.trim() ?? '';
+    if (!country || !state) {
+      setCities([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLocationLoading(true);
+    void locationService.getCities(country, state).then((nextCities) => {
+      if (cancelled) return;
+      setCities(nextCities);
+      setLocationLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form?.brandCountry, form?.brandState]);
 
   const persistDraft = useCallback(
     async (draft: BrandFormState) => {
@@ -330,6 +466,22 @@ export default function BrandProfileEditScreen() {
     });
     return Array.from(byValue.values());
   }, [form?.brandTags]);
+  const businessTypeOptions = useMemo(
+    () => withCurrentOption(BUSINESS_TYPE_OPTIONS, form?.businessType ?? ''),
+    [form?.businessType],
+  );
+  const countryOptions = useMemo(
+    () => withCurrentOption(countries.map((country) => ({ label: country.name, value: country.name })), form?.brandCountry ?? ''),
+    [countries, form?.brandCountry],
+  );
+  const stateOptions = useMemo(
+    () => withCurrentOption(states.map((state) => ({ label: state.name, value: state.name })), form?.brandState ?? ''),
+    [states, form?.brandState],
+  );
+  const cityOptions = useMemo(
+    () => withCurrentOption(cities.map((city) => ({ label: city, value: city })), form?.brandCity ?? ''),
+    [cities, form?.brandCity],
+  );
 
   if (loading || !form) {
     return <AppLoaderScreen message="Loading profile editor" />;
@@ -337,15 +489,8 @@ export default function BrandProfileEditScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: theme.colors.border },
-        ]}
-      >
-        <Pressable onPress={handleBack} style={styles.backButton}>
-          <AppText variant="bodyBold">Back</AppText>
-        </Pressable>
+      <View style={styles.header}>
+        <AppBackButton onPress={handleBack} style={styles.backButton} />
         <View style={styles.headerTextWrap}>
           <AppText variant="bodyBold">Edit Brand Profile</AppText>
           <AppText variant="caption" tone={statusTone} style={styles.status}>
@@ -361,16 +506,13 @@ export default function BrandProfileEditScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Card
-            variant="surface"
-            style={[
-              styles.avatarCard,
-              {
-                backgroundColor: theme.colors.surfaceAlt,
-              },
-            ]}
-          >
-            <Pressable onPress={handlePickAvatar} style={styles.avatarButton}>
+          <View style={styles.avatarSection}>
+            <Pressable
+              onPress={handlePickAvatar}
+              style={({ pressed }) => [styles.avatarButton, pressed && styles.avatarPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Update brand image"
+            >
               {avatarUri ? (
                 <StableImage uri={avatarUri} containerStyle={styles.avatarImage} imageStyle={styles.avatarImage} />
               ) : (
@@ -378,14 +520,19 @@ export default function BrandProfileEditScreen() {
                   <AppText variant="title" tone="primary">{avatarFallback}</AppText>
                 </View>
               )}
+              <View
+                style={[
+                  styles.avatarEditBadge,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
+                <AppText variant="captionBold">✏️</AppText>
+              </View>
             </Pressable>
-            <View style={styles.avatarTextWrap}>
-              <AppText variant="bodyBold">Tap brand image to update</AppText>
-              <AppText variant="body" tone="muted">
-                Brand details save when you leave. Email and password are managed elsewhere.
-              </AppText>
-            </View>
-          </Card>
+            <AppText variant="body" tone="muted" style={styles.avatarHelp}>
+              Brand details save when you leave. Email and password are managed elsewhere.
+            </AppText>
+          </View>
 
           <View style={styles.group}>
             <Input
@@ -410,45 +557,48 @@ export default function BrandProfileEditScreen() {
 
           <View style={styles.row}>
             <View style={[styles.group, styles.rowItem]}>
-              <Input
+              <ProfileSelectField
                 label="Business Type"
-                value={form.businessType}
-                onChangeText={(value) => setForm((prev) => (prev ? { ...prev, businessType: value } : prev))}
-                placeholder="Ready-to-wear"
-                containerStyle={styles.group}
+                value={getOptionLabel(businessTypeOptions, form.businessType)}
+                placeholder="Select business type"
+                onPress={() => setBusinessTypeSheetOpen(true)}
               />
             </View>
           </View>
 
           <View style={styles.row}>
             <View style={[styles.group, styles.rowItem]}>
-              <Input
-                label="City"
-                value={form.brandCity}
-                onChangeText={(value) => setForm((prev) => (prev ? { ...prev, brandCity: value } : prev))}
-                placeholder="City"
-                containerStyle={styles.group}
+              <ProfileSelectField
+                label="Country"
+                value={getOptionLabel(countryOptions, form.brandCountry)}
+                placeholder="Select country"
+                onPress={() => setLocationSheet('country')}
               />
             </View>
             <View style={[styles.group, styles.rowItem]}>
-              <Input
+              <ProfileSelectField
                 label="State"
-                value={form.brandState}
-                onChangeText={(value) => setForm((prev) => (prev ? { ...prev, brandState: value } : prev))}
-                placeholder="State"
-                containerStyle={styles.group}
+                value={getOptionLabel(stateOptions, form.brandState)}
+                placeholder={form.brandCountry ? 'Select state' : 'Select country first'}
+                onPress={() => setLocationSheet('state')}
+                disabled={!form.brandCountry}
               />
             </View>
           </View>
 
           <View style={styles.group}>
-            <Input
-              label="Country"
-              value={form.brandCountry}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, brandCountry: value } : prev))}
-              placeholder="Country"
-              containerStyle={styles.group}
+            <ProfileSelectField
+              label="City"
+              value={getOptionLabel(cityOptions, form.brandCity)}
+              placeholder={form.brandState ? 'Select city' : 'Select state first'}
+              onPress={() => setLocationSheet('city')}
+              disabled={!form.brandState}
             />
+            {locationError ? (
+              <AppText variant="caption" tone="warning">
+                {locationError}
+              </AppText>
+            ) : null}
           </View>
 
           <View style={styles.group}>
@@ -521,6 +671,61 @@ export default function BrandProfileEditScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      <AppSelectSheet
+        visible={businessTypeSheetOpen}
+        title="Business Type"
+        subtitle="Use the same business category shown on web."
+        options={businessTypeOptions}
+        value={form.businessType || null}
+        onChange={(value) => setForm((prev) => (prev ? { ...prev, businessType: value } : prev))}
+        onClose={() => setBusinessTypeSheetOpen(false)}
+      />
+
+      <AppSelectSheet
+        visible={locationSheet === 'country'}
+        title="Country"
+        subtitle="Choose the country shown on your public brand profile."
+        options={countryOptions}
+        value={form.brandCountry || null}
+        loading={locationLoading && countries.length === 0}
+        errorMessage={locationError}
+        emptyMessage="No countries available."
+        onChange={(value) =>
+          setForm((prev) =>
+            prev ? { ...prev, brandCountry: value, brandState: '', brandCity: '' } : prev,
+          )
+        }
+        onClose={() => setLocationSheet(null)}
+      />
+
+      <AppSelectSheet
+        visible={locationSheet === 'state'}
+        title="State"
+        subtitle="Choose the state or province for this brand."
+        options={stateOptions}
+        value={form.brandState || null}
+        loading={locationLoading && states.length === 0}
+        emptyMessage="No states available for the selected country."
+        onChange={(value) =>
+          setForm((prev) =>
+            prev ? { ...prev, brandState: value, brandCity: '' } : prev,
+          )
+        }
+        onClose={() => setLocationSheet(null)}
+      />
+
+      <AppSelectSheet
+        visible={locationSheet === 'city'}
+        title="City"
+        subtitle="Choose the city for this brand."
+        options={cityOptions}
+        value={form.brandCity || null}
+        loading={locationLoading && cities.length === 0}
+        emptyMessage="No cities available for the selected state."
+        onChange={(value) => setForm((prev) => (prev ? { ...prev, brandCity: value } : prev))}
+        onClose={() => setLocationSheet(null)}
+      />
+
       <AppMultiSelectSheet
         visible={tagsSheetOpen}
         title="Brand Tags"
@@ -555,7 +760,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: tokens.spacing.md,
   },
   backButton: {
@@ -572,14 +776,18 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.spacing['4xl'],
     gap: tokens.spacing.md,
   },
-  avatarCard: {
-    flexDirection: 'row',
+  avatarSection: {
     alignItems: 'center',
-    gap: tokens.spacing.lg,
+    gap: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.md,
   },
   avatarButton: {
-    width: 84,
-    height: 84,
+    width: 96,
+    height: 96,
+    position: 'relative',
+  },
+  avatarPressed: {
+    opacity: 0.82,
   },
   avatarImage: {
     width: '100%',
@@ -593,9 +801,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarTextWrap: {
-    flex: 1,
-    gap: tokens.spacing.xs,
+  avatarEditBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarHelp: {
+    textAlign: 'center',
+    maxWidth: 280,
   },
   row: {
     flexDirection: 'row',
@@ -607,9 +826,30 @@ const styles = StyleSheet.create({
   group: {
     gap: tokens.spacing.sm,
   },
+  selectField: {
+    minHeight: 52,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.lg,
+    paddingHorizontal: tokens.spacing.md,
+    justifyContent: 'center',
+  },
+  selectFieldDisabled: {
+    opacity: 0.56,
+  },
+  selectFieldPressed: {
+    opacity: 0.88,
+  },
+  selectValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  selectValue: {
+    flex: 1,
+  },
   tagField: {
     minHeight: 56,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
