@@ -31,6 +31,11 @@ import {
 } from '@/src/api/DesignApi';
 import { useAuthSession } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
+import {
+  getSelectedFilterValueIds,
+  isLegacyDiscoveryDimensionSlug,
+  mapCreatorMetadataError,
+} from '@/src/utils/creatorMetadata';
 import { routeForDesignTarget } from '@/src/utils/mobileRouting';
 import {
   consumeDesignEditorAssetBundle,
@@ -228,6 +233,38 @@ function hasMeaningfulDraftContent(form: FormState, tags: string[], filterSelect
   return Object.values(filterSelection).some((values) => values.length > 0);
 }
 
+function getPublishValidationMessage({
+  assetsCount,
+  form,
+  tags,
+  filterValueIds,
+  customMeasurementKeys,
+}: {
+  assetsCount: number;
+  form: FormState;
+  tags: string[];
+  filterValueIds: string[];
+  customMeasurementKeys: string[];
+}) {
+  if (assetsCount === 0) return 'Add Front, Back, Left, and Right media before previewing.';
+  if (assetsCount < DESIGN_REQUIRED_MEDIA_COUNT) return 'Add Front, Back, Left, and Right media before previewing.';
+  if (assetsCount > DESIGN_EDITOR_MAX_MEDIA) return 'Remove extra media before previewing.';
+  if (form.title.trim().length === 0) return 'Add a title before previewing.';
+  if (!form.categoryId) return 'Choose what this item is.';
+  if (!form.subCategoryId) return 'Choose a garment type.';
+  if (!form.audience) return 'Choose who this item is for.';
+  if (filterValueIds.length === 0) return 'Add at least one style detail.';
+  if (tags.length === 0) return 'Add at least one hashtag.';
+  if (form.customOrderEnabled && customMeasurementKeys.length === 0) return 'Choose required custom-order fields.';
+  if (
+    form.customOrderEnabled &&
+    (!form.baseProductionCharge.trim() || !form.fabricCostPerYard.trim() || !form.fallbackOutputYards.trim())
+  ) {
+    return 'Add custom-order pricing before previewing.';
+  }
+  return null;
+}
+
 function extractApiErrorMessage(error: any, fallback: string) {
   const responseData = error?.response?.data;
   const responseMessage = responseData?.message;
@@ -319,18 +356,37 @@ export function DesignEditorProvider({
       setBooting(true);
       setLoadingError(null);
       try {
-        const [nextCategories, nextFilters] = await Promise.all([
+        const [categoriesResult, filtersResult] = await Promise.allSettled([
           getDesignCategories(),
           getDesignFilterDimensions(),
         ]);
-        setCategories(nextCategories);
-        setFilterDimensions(
-          nextFilters.filter(
-            (dimension) =>
-              (dimension.appliesTo.includes('DESIGN') || dimension.appliesTo.includes('COLLECTION')) &&
-              dimension.slug !== 'designer-location',
-          ),
-        );
+
+        const metadataWarnings: string[] = [];
+
+        if (categoriesResult.status === 'fulfilled') {
+          setCategories(categoriesResult.value);
+        } else {
+          setCategories([]);
+          metadataWarnings.push('Could not load garment categories.');
+        }
+
+        if (filtersResult.status === 'fulfilled') {
+          setFilterDimensions(
+            filtersResult.value.filter(
+              (dimension) =>
+                (dimension.appliesTo.includes('DESIGN') || dimension.appliesTo.includes('COLLECTION')) &&
+                !isLegacyDiscoveryDimensionSlug(dimension.slug),
+            ),
+          );
+        } else {
+          setFilterDimensions([]);
+          metadataWarnings.push('Could not load style details.');
+        }
+
+        if (metadataWarnings.length > 0) {
+          setLoadingError(`${metadataWarnings.join(' ')} You can still save a draft, but going live needs metadata.`);
+        }
+
         setCustomOrderConfigurations([]);
 
         if (!activeDesignId && normalizedAssetHandoffToken) {
@@ -430,30 +486,39 @@ export function DesignEditorProvider({
 
   const subCategories = selectedCategory?.subCategories ?? [];
   const tags = useMemo(() => parseTags(form.tagsInput), [form.tagsInput]);
+  const activeFilterValueIdSet = useMemo(
+    () => new Set(filterDimensions.flatMap((dimension) => dimension.values.map((value) => value.id))),
+    [filterDimensions],
+  );
+  const selectedFilterValueIds = useMemo(
+    () => getSelectedFilterValueIds(filterSelection).filter((valueId) => activeFilterValueIdSet.has(valueId)),
+    [activeFilterValueIdSet, filterSelection],
+  );
+  const publishValidationMessage = useMemo(
+    () =>
+      getPublishValidationMessage({
+        assetsCount: assets.length,
+        form,
+        tags,
+        filterValueIds: selectedFilterValueIds,
+        customMeasurementKeys,
+      }),
+    [assets.length, customMeasurementKeys, form, selectedFilterValueIds, tags],
+  );
   const canSaveDraft =
     assets.length > 0 || hasMeaningfulDraftContent(form, tags, filterSelection);
-  const canPublish =
-    assets.length >= DESIGN_REQUIRED_MEDIA_COUNT &&
-    assets.length <= DESIGN_EDITOR_MAX_MEDIA &&
-    form.title.trim().length > 0 &&
-    Boolean(form.categoryId) &&
-    Boolean(form.subCategoryId) &&
-    tags.length > 0 &&
-    (!form.customOrderEnabled ||
-      (customMeasurementKeys.length > 0 &&
-        form.baseProductionCharge.trim().length > 0 &&
-        form.fabricCostPerYard.trim().length > 0 &&
-        form.fallbackOutputYards.trim().length > 0));
+  const canPublish = publishValidationMessage === null;
 
   useEffect(() => {
     if (!form.subCategoryId) return;
+    if (categories.length === 0) return;
     if (
       selectedCategory?.subCategories.some((entry) => entry.id === form.subCategoryId)
     ) {
       return;
     }
     setForm((prev) => ({ ...prev, subCategoryId: '' }));
-  }, [form.subCategoryId, selectedCategory]);
+  }, [categories.length, form.subCategoryId, selectedCategory]);
 
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -573,8 +638,8 @@ export function DesignEditorProvider({
         toast.error('Verify your email before creating designs.');
         return;
       }
-      if (action === 'publish' && !canPublish) {
-        toast.error('Fill Front, Back, Left, and Right media plus title, category, and tags before publishing.');
+      if (action === 'publish' && publishValidationMessage) {
+        toast.error(publishValidationMessage);
         return;
       }
       if (!canSaveDraft) {
@@ -584,15 +649,15 @@ export function DesignEditorProvider({
 
       setSaveAction(action);
       setSaveProgress(0);
-      setSaveMessage(action === 'publish' ? 'Preparing design...' : 'Preparing draft...');
+      setSaveMessage(action === 'publish' ? 'Preparing to go live...' : 'Preparing draft...');
 
       try {
         const allowedFilterDimensionIds = new Set(filterDimensions.map((dimension) => dimension.id));
-        const filterValueIds = Array.from(
-          new Set(
-            Object.entries(filterSelection)
-              .filter(([dimensionId]) => allowedFilterDimensionIds.has(dimensionId))
-              .flatMap(([, values]) => values),
+        const filterValueIds = selectedFilterValueIds.filter((valueId) =>
+          filterDimensions.some(
+            (dimension) =>
+              allowedFilterDimensionIds.has(dimension.id) &&
+              (filterSelection[dimension.id] ?? []).includes(valueId),
           ),
         );
         const customOrderConfiguration: DesignCustomOrderConfigurationInput | undefined = form.customOrderEnabled
@@ -659,7 +724,7 @@ export function DesignEditorProvider({
         hydrateFromDetail(result.detail);
         setActiveDesignId(result.id);
         setDraftVersion(result.detail.draftVersion);
-        toast.success(action === 'publish' ? 'Design published.' : 'Draft saved.');
+        toast.success(action === 'publish' ? 'Design is live.' : 'Draft saved.');
         if (action === 'publish') {
           router.replace(routeForDesignTarget(result.id, { legacyCollectionId: result.id }) as any);
           return;
@@ -673,7 +738,7 @@ export function DesignEditorProvider({
           error,
           action === 'publish' ? 'Failed to publish design.' : 'Failed to save draft.',
         );
-        toast.error(message);
+        toast.error(action === 'publish' ? mapCreatorMetadataError(message, 'Failed to publish design.') : message);
       } finally {
         setSaveAction(null);
       }
@@ -681,18 +746,20 @@ export function DesignEditorProvider({
     [
       activeDesignId,
       assets,
-      canPublish,
       canSaveDraft,
       customMeasurementKeys,
       draftConflict,
       draftSessionToken,
       draftVersion,
+      filterDimensions,
       filterSelection,
       form,
       hydrateFromDetail,
       originalMediaIds,
+      publishValidationMessage,
       saveAction,
       selectedCustomOrderConfigurationId,
+      selectedFilterValueIds,
       tags,
       toast,
       userEmailVerified,
@@ -706,7 +773,7 @@ export function DesignEditorProvider({
       return;
     }
     if (activeDesignStatus !== 'DRAFT') {
-      toast.error('Published designs cannot be deleted as drafts.');
+      toast.error('Live designs cannot be deleted as drafts.');
       return;
     }
 

@@ -16,10 +16,10 @@ import { Input } from '@/components/ui/Input';
 import { OptionRow } from '@/components/ui/OptionRow';
 import { RequiredFieldLabel } from '@/components/ui/RequiredFieldLabel';
 import { StableImage } from '@/components/ui/StableImage';
+import type { FilterDimensionOption } from '@/src/api/DesignApi';
 import TagsApi from '@/src/api/TagsApi';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
 import {
-  DESIGN_AUDIENCE_LABELS,
   DESIGN_EDITOR_MAX_MEDIA,
   DESIGN_FIT_PREFERENCE_LABELS,
   DESIGN_MEDIA_SLOTS,
@@ -30,11 +30,24 @@ import {
 } from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import {
+  CREATOR_AUDIENCE_OPTIONS,
+  CREATOR_METADATA_HELP,
+  getAudienceLabel,
+  getDiscoveryDimensionHelp,
+  getDiscoveryDimensionLabel,
+  getDiscoveryDimensionSortIndex,
+  isLegacyDiscoveryDimensionSlug,
+  normalizeHashtagLabel,
+} from '@/src/utils/creatorMetadata';
 
 const PRIVACY_OPTIONS = [
   { value: 'PUBLIC', label: DESIGN_VISIBILITY_LABELS.PUBLIC },
   { value: 'PRIVATE', label: DESIGN_VISIBILITY_LABELS.PRIVATE },
 ] as const;
+
+const STYLE_DETAIL_DIMENSION_SLUGS = new Set(['style', 'fabric', 'color-family', 'fit']);
+const STANDALONE_DISCOVERY_DIMENSION_SLUGS = new Set(['heritage', 'occasion']);
 
 function formatPriceSummary(minPrice: string, maxPrice: string) {
   if (minPrice && maxPrice) return `NGN ${minPrice} - NGN ${maxPrice}`;
@@ -46,6 +59,7 @@ function formatPriceSummary(minPrice: string, maxPrice: string) {
 export default function CreateDesignComposerScreen() {
   const {
     booting,
+    loadingError,
     assets,
     coverAssetId,
     form,
@@ -69,6 +83,7 @@ export default function CreateDesignComposerScreen() {
     pickMedia,
     clearPermissionIssue,
     openMediaPermissionSettings,
+    retryBootstrap,
   } = useDesignEditor();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -81,7 +96,10 @@ export default function CreateDesignComposerScreen() {
   const [priceOpen, setPriceOpen] = useState(false);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [customOrdersOpen, setCustomOrdersOpen] = useState(false);
-  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+  const [audienceOpen, setAudienceOpen] = useState(false);
+  const [styleDetailsOpen, setStyleDetailsOpen] = useState(false);
+  const [heritageOpen, setHeritageOpen] = useState(false);
+  const [occasionOpen, setOccasionOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [categoryStep, setCategoryStep] = useState<'category' | 'subcategory'>('category');
   const [draftCategoryId, setDraftCategoryId] = useState('');
@@ -90,15 +108,14 @@ export default function CreateDesignComposerScreen() {
   const [tagError, setTagError] = useState<string | null>(null);
   const [tagsLoading, setTagsLoading] = useState(false);
 
-  const audienceLabel = DESIGN_AUDIENCE_LABELS[form.audience];
+  const audienceLabel = getAudienceLabel(form.audience);
   const sizingLabel = DESIGN_SIZING_LABELS[form.sizingMode];
   const fitPreferenceLabel = DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference];
   const targetAgeLabel = DESIGN_TARGET_AGE_LABELS[form.targetAgeGroup];
   const selectedSubCategory =
     selectedCategory?.subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
-  const categoryValue = selectedCategory && selectedSubCategory
-    ? `${selectedCategory.name} / ${selectedSubCategory.name}`
-    : selectedCategory?.name ?? 'Select category';
+  const categoryValue = selectedCategory?.name ?? 'Required';
+  const garmentTypeValue = selectedSubCategory?.name ?? (selectedCategory ? 'Required' : 'Choose item first');
 
   const categoryOptions = useMemo(
     () => categories.map((category) => ({ value: category.id, label: category.name })),
@@ -110,10 +127,53 @@ export default function CreateDesignComposerScreen() {
   );
   const draftSubCategories = draftSelectedCategory?.subCategories ?? [];
 
-  const discoveryDimensions = filterDimensions;
-  const selectedDiscoveryFilterCount = Object.entries(filterSelection).reduce((sum, [dimensionId, values]) => {
-    return sum + values.length;
-  }, 0);
+  const discoveryDimensions = useMemo(
+    () =>
+      [...filterDimensions]
+        .filter(
+          (dimension) =>
+            (dimension.appliesTo.includes('DESIGN') || dimension.appliesTo.includes('COLLECTION')) &&
+            !isLegacyDiscoveryDimensionSlug(dimension.slug),
+        )
+        .sort((a, b) => {
+          const orderDelta = getDiscoveryDimensionSortIndex(a.slug) - getDiscoveryDimensionSortIndex(b.slug);
+          return orderDelta || a.name.localeCompare(b.name);
+        }),
+    [filterDimensions],
+  );
+  const styleDetailDimensions = useMemo(
+    () =>
+      discoveryDimensions.filter(
+        (dimension) =>
+          STYLE_DETAIL_DIMENSION_SLUGS.has(dimension.slug) ||
+          !STANDALONE_DISCOVERY_DIMENSION_SLUGS.has(dimension.slug),
+      ),
+    [discoveryDimensions],
+  );
+  const heritageDimensions = useMemo(
+    () => discoveryDimensions.filter((dimension) => dimension.slug === 'heritage'),
+    [discoveryDimensions],
+  );
+  const occasionDimensions = useMemo(
+    () => discoveryDimensions.filter((dimension) => dimension.slug === 'occasion'),
+    [discoveryDimensions],
+  );
+  const selectedDiscoveryFilterCount = discoveryDimensions.reduce(
+    (sum, dimension) => sum + (filterSelection[dimension.id]?.length ?? 0),
+    0,
+  );
+  const styleDetailsCount = styleDetailDimensions.reduce(
+    (sum, dimension) => sum + (filterSelection[dimension.id]?.length ?? 0),
+    0,
+  );
+  const heritageCount = heritageDimensions.reduce(
+    (sum, dimension) => sum + (filterSelection[dimension.id]?.length ?? 0),
+    0,
+  );
+  const occasionCount = occasionDimensions.reduce(
+    (sum, dimension) => sum + (filterSelection[dimension.id]?.length ?? 0),
+    0,
+  );
 
   const selectedTags = useMemo(
     () =>
@@ -131,7 +191,7 @@ export default function CreateDesignComposerScreen() {
     () =>
       tagSuggestions
         .filter((tag) => !selectedTags.includes(tag.name))
-        .map((tag) => ({ value: tag.name, label: `#${tag.name}`, usageCount: tag.usageCount })),
+        .map((tag) => ({ value: tag.name, label: normalizeHashtagLabel(tag.name), usageCount: tag.usageCount })),
     [selectedTags, tagSuggestions],
   );
   const priceError = useMemo(() => {
@@ -143,21 +203,28 @@ export default function CreateDesignComposerScreen() {
   }, [form.maxPrice, form.minPrice]);
   const missingRequiredFields = useMemo(() => {
     const missing: string[] = [];
-    if (assets.length === 0) missing.push('Media');
-    if (assets.length > 0 && assets.length < DESIGN_REQUIRED_MEDIA_COUNT) missing.push('Front, Back, Left, Right media');
-    if (form.title.trim().length === 0) missing.push('Title');
-    if (!form.categoryId || !form.subCategoryId) missing.push('Category');
-    if (selectedTags.length === 0) missing.push('Tags');
-    if (form.customOrderEnabled && customMeasurementKeys.length === 0) missing.push('Custom order fields');
-    if (form.customOrderEnabled && (!form.baseProductionCharge || !form.fabricCostPerYard)) missing.push('Custom order pricing');
+    if (assets.length === 0) missing.push('Add Front, Back, Left, and Right media.');
+    if (assets.length > 0 && assets.length < DESIGN_REQUIRED_MEDIA_COUNT) missing.push('Add Front, Back, Left, and Right media.');
+    if (form.title.trim().length === 0) missing.push('Add a title.');
+    if (!form.categoryId) missing.push('Choose what this item is.');
+    if (!form.subCategoryId) missing.push('Choose a garment type.');
+    if (!form.audience) missing.push('Choose who this item is for.');
+    if (selectedDiscoveryFilterCount === 0) missing.push('Add at least one style detail.');
+    if (selectedTags.length === 0) missing.push('Add at least one hashtag.');
+    if (form.customOrderEnabled && customMeasurementKeys.length === 0) missing.push('Choose required custom-order fields.');
+    if (form.customOrderEnabled && (!form.baseProductionCharge || !form.fabricCostPerYard)) missing.push('Add custom-order pricing.');
     return missing;
   }, [
     assets.length,
     customMeasurementKeys.length,
+    form.audience,
+    form.baseProductionCharge,
     form.categoryId,
     form.customOrderEnabled,
+    form.fabricCostPerYard,
     form.subCategoryId,
     form.title,
+    selectedDiscoveryFilterCount,
     selectedTags.length,
   ]);
   const canPreview = missingRequiredFields.length === 0;
@@ -183,7 +250,7 @@ export default function CreateDesignComposerScreen() {
       .catch(() => {
         if (isActive()) {
           setTagSuggestions([]);
-          setTagError('Could not load tags. You can still add your own.');
+          setTagError('Could not load hashtags. You can still add your own.');
         }
       })
       .finally(() => {
@@ -206,6 +273,16 @@ export default function CreateDesignComposerScreen() {
     setCategoryOpen(false);
     setCategoryStep('category');
   }, []);
+
+  const openCategorySheet = useCallback(
+    (step: 'category' | 'subcategory') => {
+      setDraftCategoryId(form.categoryId);
+      setDraftSubCategoryId(form.subCategoryId);
+      setCategoryStep(step === 'subcategory' && form.categoryId ? 'subcategory' : 'category');
+      setCategoryOpen(true);
+    },
+    [form.categoryId, form.subCategoryId],
+  );
 
   const handleCategoryDone = useCallback(() => {
     if (!draftSelectedCategory) return;
@@ -239,6 +316,52 @@ export default function CreateDesignComposerScreen() {
       router.replace('/catalog' as any);
     }
   }, [shouldRedirectEmptyCreate]);
+
+  const renderDiscoverySections = useCallback(
+    (dimensions: FilterDimensionOption[], emptyMessage: string) => {
+      if (dimensions.length === 0) {
+        return <AppText variant="body" tone="muted">{emptyMessage}</AppText>;
+      }
+
+      return dimensions.map((dimension) => {
+        const help = getDiscoveryDimensionHelp(dimension.slug);
+        const values = [...dimension.values].sort((a, b) => {
+          const orderDelta = (a.order ?? 0) - (b.order ?? 0);
+          return orderDelta || a.name.localeCompare(b.name);
+        });
+
+        return (
+          <View key={dimension.id} style={styles.sheetSection}>
+            <View style={styles.sheetSectionHeader}>
+              <AppText variant="bodyBold">{getDiscoveryDimensionLabel(dimension.slug, dimension.name)}</AppText>
+              {help ? (
+                <AppText variant="captionRegular" tone="muted">
+                  {help}
+                </AppText>
+              ) : null}
+            </View>
+            {values.length > 0 ? (
+              <View style={styles.sheetChipWrap}>
+                {values.map((value) => (
+                  <Chip
+                    key={value.id}
+                    label={value.name}
+                    selected={(filterSelection[dimension.id] ?? []).includes(value.id)}
+                    onPress={() => toggleFilterValue(dimension.id, value.id, dimension.isMulti)}
+                  />
+                ))}
+              </View>
+            ) : (
+              <AppText variant="body" tone="muted">
+                No options available yet.
+              </AppText>
+            )}
+          </View>
+        );
+      });
+    },
+    [filterSelection, toggleFilterValue],
+  );
 
   if (booting || shouldRedirectEmptyCreate) {
     return <AppLoaderScreen message="Loading composer" />;
@@ -325,24 +448,49 @@ export default function CreateDesignComposerScreen() {
           <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
                 <OptionRow
                   leading="🌍"
-                  title="Privacy"
+                  title="Who can see this?"
                   value={PRIVACY_OPTIONS.find((entry) => entry.value === form.visibility)?.label ?? 'Everyone'}
                   onPress={() => setPrivacyOpen(true)}
                 />
                 <OptionRow
                   leading="🏷️"
-                  title="Category"
-                  subtitle="Choose category and subcategory."
+                  title="What is it?"
+                  subtitle="Choose the garment or item family."
                   value={categoryValue}
-                  onPress={() => {
-                    setDraftCategoryId(form.categoryId);
-                    setDraftSubCategoryId(form.subCategoryId);
-                    setCategoryStep('category');
-                    setCategoryOpen(true);
-                  }}
+                  onPress={() => openCategorySheet('category')}
                 />
                 <OptionRow
                   leading="💸"
+                  title="Garment type"
+                  subtitle="Choose the specific garment type."
+                  value={garmentTypeValue}
+                  onPress={() => openCategorySheet('subcategory')}
+                />
+                <OptionRow
+                  title="Who is it for?"
+                  subtitle="Helps buyers discover styles that fit them."
+                  value={audienceLabel}
+                  onPress={() => setAudienceOpen(true)}
+                />
+                <OptionRow
+                  title="Style details"
+                  subtitle="Style, fabric, color family, and fit."
+                  value={styleDetailsCount > 0 ? `${styleDetailsCount} selected` : selectedDiscoveryFilterCount > 0 ? 'Optional' : 'Required'}
+                  onPress={() => setStyleDetailsOpen(true)}
+                />
+                <OptionRow
+                  title="Cultural vibe"
+                  subtitle="Heritage signals like Ankara, Aso Ebi, or Adire."
+                  value={heritageCount > 0 ? `${heritageCount} selected` : 'Optional'}
+                  onPress={() => setHeritageOpen(true)}
+                />
+                <OptionRow
+                  title="Where would you wear it?"
+                  subtitle="Wedding, office, party, church, or everyday wear."
+                  value={occasionCount > 0 ? `${occasionCount} selected` : 'Optional'}
+                  onPress={() => setOccasionOpen(true)}
+                />
+                <OptionRow
                   title="Price"
                   value={formatPriceSummary(form.minPrice, form.maxPrice)}
                   onPress={() => setPriceOpen(true)}
@@ -367,27 +515,34 @@ export default function CreateDesignComposerScreen() {
                 />
                 <OptionRow
                   leading="⚙️"
-                  title="More options"
-                  subtitle={`${audienceLabel} audience · ${selectedDiscoveryFilterCount} discovery filter${selectedDiscoveryFilterCount === 1 ? '' : 's'}`}
-                  value="Open"
-                  onPress={() => setMoreOptionsOpen(true)}
-                />
-                <OptionRow
-                  leading="🏷️"
-                  title="Tags"
-                  subtitle="Choose tags for your design"
+                  title="Hashtags"
+                  subtitle="Add searchable social tags."
                   value={selectedTags.length > 0 ? `${selectedTags.length} selected` : 'Required'}
                   divider={false}
                   onPress={() => setTagsOpen(true)}
                 />
           </Card>
 
+          {loadingError ? (
+            <Card padding="md" style={[styles.requiredCard, { borderColor: theme.colors.border }]}>
+              <AppText variant="bodyBold">Metadata could not fully load</AppText>
+              <AppText variant="captionRegular" tone="muted">
+                {loadingError}
+              </AppText>
+              <Button title="Retry metadata" size="sm" variant="secondary" onPress={() => void retryBootstrap()} />
+            </Card>
+          ) : null}
+
           {missingRequiredFields.length > 0 ? (
             <Card padding="md" style={[styles.requiredCard, { borderColor: theme.colors.border }]}>
               <AppText variant="bodyBold">Required before preview</AppText>
-              <AppText variant="captionRegular" tone="muted">
-                Missing: {missingRequiredFields.join(', ')}
-              </AppText>
+              <View style={styles.requiredList}>
+                {missingRequiredFields.map((message) => (
+                  <AppText key={message} variant="captionRegular" tone="muted">
+                    {message}
+                  </AppText>
+                ))}
+              </View>
             </Card>
           ) : null}
 
@@ -429,8 +584,8 @@ export default function CreateDesignComposerScreen() {
 
       <AppSelectSheet
         visible={privacyOpen}
-        title="Privacy settings"
-        subtitle="Choose who can view this design."
+        title="Who can see this?"
+        subtitle={CREATOR_METADATA_HELP.visibility}
         options={PRIVACY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
         value={form.visibility}
         onChange={(value) => updateField('visibility', value as 'PUBLIC' | 'PRIVATE')}
@@ -439,8 +594,8 @@ export default function CreateDesignComposerScreen() {
 
       <AppBottomSheet
         visible={categoryOpen}
-        title="Category"
-        subtitle={categoryStep === 'category' ? 'Pick the main category.' : `Pick a subcategory in ${draftSelectedCategory?.name ?? 'this category'}.`}
+        title={categoryStep === 'category' ? 'What is it?' : 'Garment type'}
+        subtitle={categoryStep === 'category' ? 'Choose the garment or item family.' : 'Choose the specific garment type.'}
         onClose={closeCategorySheet}
         onDone={handleCategoryDone}
         doneLabel="Use selection"
@@ -449,7 +604,7 @@ export default function CreateDesignComposerScreen() {
       >
         {categoryStep === 'subcategory' && draftSelectedCategory ? (
           <Pressable onPress={() => setCategoryStep('category')} style={styles.sheetBackRow}>
-            <AppText variant="captionBold" tone="primary">&lt; Change category</AppText>
+            <AppText variant="captionBold" tone="primary">&lt; Change item family</AppText>
           </Pressable>
         ) : null}
         <View style={styles.optionCardList}>
@@ -489,13 +644,13 @@ export default function CreateDesignComposerScreen() {
           })}
         </View>
         {categoryStep === 'category' && categoryOptions.length === 0 ? (
-          <AppText variant="body" tone="muted">No categories are configured yet.</AppText>
+          <AppText variant="body" tone="muted">No item families are configured yet.</AppText>
         ) : null}
         {categoryStep === 'subcategory' && draftSelectedCategory && draftSubCategories.length === 0 ? (
           <Card padding="md" style={[styles.inlineNotice, { borderColor: theme.colors.border }]}>
-            <AppText variant="bodyBold">No subcategories yet</AppText>
+            <AppText variant="bodyBold">No garment types yet</AppText>
             <AppText variant="captionRegular" tone="muted">
-              You can save a draft with this category. Publishing requires a configured subcategory.
+              You can save a draft with this item family. Going live requires a configured garment type.
             </AppText>
           </Card>
         ) : null}
@@ -503,19 +658,25 @@ export default function CreateDesignComposerScreen() {
 
       <AppMultiSelectSheet
         visible={tagsOpen}
-        title="Tags"
-        subtitle="Choose existing tags or add your own."
+        title="Hashtags"
+        subtitle={CREATOR_METADATA_HELP.hashtags}
         options={tagOptions}
         values={selectedTags}
         onChange={(values) => {
           updateField('tagsInput', values.join(', '));
         }}
         onClose={() => setTagsOpen(false)}
-        emptyMessage="No suggestions found. Type a tag and tap Add."
+        emptyMessage="No suggestions found. Type a hashtag and tap Add."
         errorMessage={tagError}
         loading={tagsLoading}
         onRetry={() => void loadTags()}
         maxSelected={10}
+        popularLabel="Popular Hashtags:"
+        searchInputLabel="Search hashtags"
+        searchPlaceholder="Search or create a hashtag..."
+        searchEmptyMessage="No suggestions found. Type a hashtag and tap Add."
+        customInputLabel="Custom hashtag"
+        customPlaceholder="Add custom hashtag"
       />
 
       <AppBottomSheet
@@ -725,36 +886,44 @@ export default function CreateDesignComposerScreen() {
         ) : null}
       </AppBottomSheet>
 
+      <AppSelectSheet
+        visible={audienceOpen}
+        title="Who is it for?"
+        subtitle={CREATOR_METADATA_HELP.audience}
+        options={CREATOR_AUDIENCE_OPTIONS}
+        value={form.audience}
+        onChange={(value) => updateField('audience', value as typeof form.audience)}
+        onClose={() => setAudienceOpen(false)}
+      />
+
       <AppBottomSheet
-        visible={moreOptionsOpen}
-        title="More options"
-        subtitle="Keep audience and discovery tuning in one place."
-        onClose={() => setMoreOptionsOpen(false)}
+        visible={styleDetailsOpen}
+        title="Style details"
+        subtitle={CREATOR_METADATA_HELP.style}
+        onClose={() => setStyleDetailsOpen(false)}
         showCloseButton
       >
-        <View style={styles.sheetSection}>
-          <AppText variant="bodyBold">Audience</AppText>
-          <View style={styles.sheetChipWrap}>
-            {(['EVERYBODY', 'FEMALE', 'MALE'] as const).map((value) => (
-              <Chip key={value} label={DESIGN_AUDIENCE_LABELS[value]} selected={form.audience === value} onPress={() => updateField('audience', value)} />
-            ))}
-          </View>
-        </View>
-        {discoveryDimensions.map((dimension) => (
-          <View key={dimension.id} style={styles.sheetSection}>
-            <AppText variant="bodyBold">{dimension.name}</AppText>
-            <View style={styles.sheetChipWrap}>
-              {dimension.values.map((value) => (
-                <Chip
-                  key={value.id}
-                  label={value.name}
-                  selected={(filterSelection[dimension.id] ?? []).includes(value.id)}
-                  onPress={() => toggleFilterValue(dimension.id, value.id, dimension.isMulti)}
-                />
-              ))}
-            </View>
-          </View>
-        ))}
+        {renderDiscoverySections(styleDetailDimensions, 'Style details could not load. You can still save a draft.')}
+      </AppBottomSheet>
+
+      <AppBottomSheet
+        visible={heritageOpen}
+        title="Cultural vibe"
+        subtitle={CREATOR_METADATA_HELP.heritage}
+        onClose={() => setHeritageOpen(false)}
+        showCloseButton
+      >
+        {renderDiscoverySections(heritageDimensions, 'Cultural vibe options could not load. You can still save a draft.')}
+      </AppBottomSheet>
+
+      <AppBottomSheet
+        visible={occasionOpen}
+        title="Where would you wear it?"
+        subtitle={CREATOR_METADATA_HELP.occasion}
+        onClose={() => setOccasionOpen(false)}
+        showCloseButton
+      >
+        {renderDiscoverySections(occasionDimensions, 'Occasion options could not load. You can still save a draft.')}
       </AppBottomSheet>
 
       <AppFloatingMenu
@@ -904,6 +1073,9 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
     borderWidth: 1,
   },
+  requiredList: {
+    gap: tokens.spacing.xs,
+  },
   priceRow: {
     flexDirection: 'row',
     gap: tokens.spacing.md,
@@ -919,6 +1091,9 @@ const styles = StyleSheet.create({
   },
   sheetSection: {
     gap: tokens.spacing.sm,
+  },
+  sheetSectionHeader: {
+    gap: tokens.spacing.xs,
   },
   sheetChipWrap: {
     flexDirection: 'row',

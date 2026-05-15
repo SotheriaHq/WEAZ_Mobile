@@ -13,7 +13,6 @@ import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
 import {
-  DESIGN_AUDIENCE_LABELS,
   DESIGN_FIT_PREFERENCE_LABELS,
   DESIGN_SIZING_LABELS,
   DESIGN_TARGET_AGE_LABELS,
@@ -22,6 +21,12 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
+import {
+  getAudienceLabel,
+  getDiscoveryDimensionSortIndex,
+  isLegacyDiscoveryDimensionSlug,
+  normalizeHashtagLabel,
+} from '@/src/utils/creatorMetadata';
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
@@ -73,6 +78,7 @@ export default function CreateDesignPreviewScreen() {
     deleteDraft,
     selectedCategory,
     subCategories,
+    filterDimensions,
     filterSelection,
     customMeasurementKeys,
   } = useDesignEditor();
@@ -84,9 +90,41 @@ export default function CreateDesignPreviewScreen() {
   const hasInitializedPreviewRef = React.useRef(false);
 
   const subCategory = subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
-  const categorySummary =
-    selectedCategory && subCategory ? `${selectedCategory.name} / ${subCategory.name}` : 'Not selected';
-  const selectedFilterCount = Object.values(filterSelection).reduce((sum, values) => sum + values.length, 0);
+  const categorySummary = selectedCategory?.name ?? 'Not selected';
+  const garmentTypeSummary = subCategory?.name ?? 'Not selected';
+  const discoveryDimensions = React.useMemo(
+    () =>
+      [...filterDimensions]
+        .filter(
+          (dimension) =>
+            (dimension.appliesTo.includes('DESIGN') || dimension.appliesTo.includes('COLLECTION')) &&
+            !isLegacyDiscoveryDimensionSlug(dimension.slug),
+        )
+        .sort((a, b) => {
+          const orderDelta = getDiscoveryDimensionSortIndex(a.slug) - getDiscoveryDimensionSortIndex(b.slug);
+          return orderDelta || a.name.localeCompare(b.name);
+        }),
+    [filterDimensions],
+  );
+  const discoveryCounts = React.useMemo(
+    () =>
+      discoveryDimensions.reduce(
+        (acc, dimension) => {
+          const count = filterSelection[dimension.id]?.length ?? 0;
+          if (dimension.slug === 'heritage') {
+            acc.heritage += count;
+          } else if (dimension.slug === 'occasion') {
+            acc.occasion += count;
+          } else {
+            acc.style += count;
+          }
+          acc.total += count;
+          return acc;
+        },
+        { style: 0, heritage: 0, occasion: 0, total: 0 },
+      ),
+    [discoveryDimensions, filterSelection],
+  );
   const isSaving = Boolean(saveState.action);
   const canDelete = deletePhrase === 'DELETE' && !isSaving;
   const selectedPreviewAsset = assets[selectedPreviewIndex] ?? null;
@@ -127,7 +165,7 @@ export default function CreateDesignPreviewScreen() {
         <View style={styles.headerCopy}>
           <AppText variant="title">Preview</AppText>
           <AppText variant="captionRegular" tone="muted">
-            Review before saving or publishing.
+            Review before saving or going live.
           </AppText>
         </View>
       </View>
@@ -195,24 +233,28 @@ export default function CreateDesignPreviewScreen() {
 
         <Card padding="lg" style={[styles.section, styles.receiptSection, { borderColor: theme.colors.border }]}>
           <AppText variant="bodyBold">Details</AppText>
-          <SummaryRow label="Privacy" value={DESIGN_VISIBILITY_LABELS[form.visibility]} />
-          <SummaryRow label="Category" value={categorySummary} />
-          <SummaryRow label="Audience" value={DESIGN_AUDIENCE_LABELS[form.audience]} />
+          <SummaryRow label="Who can see this?" value={DESIGN_VISIBILITY_LABELS[form.visibility]} />
+          <SummaryRow label="What is it?" value={categorySummary} />
+          <SummaryRow label="Garment type" value={garmentTypeSummary} />
+          <SummaryRow label="Who is it for?" value={getAudienceLabel(form.audience)} />
+          <SummaryRow label="Style details" value={discoveryCounts.style > 0 ? `${discoveryCounts.style} selected` : 'None'} />
+          <SummaryRow label="Cultural vibe" value={discoveryCounts.heritage > 0 ? `${discoveryCounts.heritage} selected` : 'None'} />
+          <SummaryRow label="Where would you wear it?" value={discoveryCounts.occasion > 0 ? `${discoveryCounts.occasion} selected` : 'None'} />
           <SummaryRow label="Sizing" value={DESIGN_SIZING_LABELS[form.sizingMode]} />
           <SummaryRow label="Fit" value={DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference]} />
           <SummaryRow label="Age group" value={DESIGN_TARGET_AGE_LABELS[form.targetAgeGroup]} />
           <SummaryRow label="Custom orders" value={form.customOrderEnabled ? 'Enabled' : 'Disabled'} />
           <SummaryRow label="Price" value={formatPriceRange(form.minPrice, form.maxPrice)} />
           <SummaryRow label="Assets" value={String(assets.length)} />
-          <SummaryRow label="Discovery filters" value={selectedFilterCount > 0 ? `${selectedFilterCount} selected` : 'None'} />
+          <SummaryRow label="Metadata selected" value={discoveryCounts.total > 0 ? `${discoveryCounts.total} selected` : 'None'} />
         </Card>
 
         {tags.length > 0 ? (
           <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
-            <AppText variant="bodyBold">Tags</AppText>
+            <AppText variant="bodyBold">Hashtags</AppText>
             <View style={styles.tagsWrap}>
               {tags.map((tag) => (
-                <Chip key={tag} label={`#${tag}`} />
+                <Chip key={tag} label={normalizeHashtagLabel(tag)} />
               ))}
             </View>
           </Card>
@@ -282,7 +324,7 @@ export default function CreateDesignPreviewScreen() {
             style={styles.actionButton}
           />
           <Button
-            title={saveState.action === 'publish' ? 'Publishing...' : 'Publish'}
+            title={saveState.action === 'publish' ? 'Going live...' : 'Go live'}
             loading={saveState.action === 'publish'}
             disabled={!canPublish || isSaving}
             onPress={() => void save('publish')}

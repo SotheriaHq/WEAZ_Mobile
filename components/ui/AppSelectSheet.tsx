@@ -38,6 +38,12 @@ type MultiProps = BaseProps & {
   values: string[];
   onChange: (values: string[]) => void;
   maxSelected?: number;
+  popularLabel?: string;
+  searchInputLabel?: string;
+  searchPlaceholder?: string;
+  searchEmptyMessage?: string;
+  customInputLabel?: string;
+  customPlaceholder?: string;
 };
 
 export function AppSelectSheet({
@@ -117,6 +123,12 @@ export function AppMultiSelectSheet({
   onRetry,
   emptyMessage = 'No options available.',
   maxSelected,
+  popularLabel = 'Popular Tags:',
+  searchInputLabel = 'Search tags',
+  searchPlaceholder = 'Search or create a tag...',
+  searchEmptyMessage = 'No suggestions found. Type a tag and tap Add.',
+  customInputLabel = 'Custom tag',
+  customPlaceholder = 'Add custom tag',
 }: MultiProps) {
   const [draft, setDraft] = useState<string[]>(values);
   const [customTag, setCustomTag] = useState('');
@@ -209,14 +221,14 @@ export function AppMultiSelectSheet({
         errorMessage={errorMessage}
         onRetry={onRetry}
         empty={displayedOptions.length === 0}
-        emptyMessage={searchText.trim() ? "No suggestions found. Type a tag and tap Add." : emptyMessage}
+        emptyMessage={searchText.trim() ? searchEmptyMessage : emptyMessage}
       />
       <Input
-        label="Search tags"
+        label={searchInputLabel}
         hideLabel
         value={searchText}
         onChangeText={setSearchText}
-        placeholder="Search or create a tag..."
+        placeholder={searchPlaceholder}
         containerStyle={styles.searchInput}
       />
       {typeof maxSelected === 'number' ? (
@@ -225,7 +237,7 @@ export function AppMultiSelectSheet({
         </AppText>
       ) : null}
       {!searchText.trim() && options.length > 0 ? (
-        <AppText variant="bodyBold" style={styles.sectionTitle}>Popular Tags:</AppText>
+        <AppText variant="bodyBold" style={styles.sectionTitle}>{popularLabel}</AppText>
       ) : null}
       <View style={styles.optionWrap}>
         {displayedOptions.map((option) => (
@@ -242,11 +254,11 @@ export function AppMultiSelectSheet({
       </View>
       <View style={styles.customTagRow}>
         <Input
-          label="Custom tag"
+          label={customInputLabel}
           hideLabel
           value={customTag}
           onChangeText={setCustomTag}
-          placeholder="Add custom tag"
+          placeholder={customPlaceholder}
           containerStyle={styles.customTagInput}
         />
         <Button
