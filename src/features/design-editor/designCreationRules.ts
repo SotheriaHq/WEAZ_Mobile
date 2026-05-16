@@ -16,9 +16,9 @@ export const DESIGN_SIZING_LABELS = {
 } as const;
 
 export const DESIGN_AUDIENCE_LABELS = {
-  EVERYBODY: 'Everybody',
-  FEMALE: 'Women',
-  MALE: 'Men',
+  EVERYBODY: 'Unisex / Everybody',
+  FEMALE: 'Womenswear',
+  MALE: 'Menswear',
 } as const;
 
 export const DESIGN_VISIBILITY_LABELS = {
@@ -35,5 +35,5 @@ export const DESIGN_FIT_PREFERENCE_LABELS = {
 
 export const DESIGN_TARGET_AGE_LABELS = {
   ADULT: 'Adult',
-  CHILD: 'Child',
+  CHILD: 'Kids',
 } as const;

@@ -1,9 +1,9 @@
 export type CreatorAudience = 'FEMALE' | 'MALE' | 'EVERYBODY';
 
 export const CREATOR_AUDIENCE_OPTIONS: Array<{ value: CreatorAudience; label: string }> = [
-  { value: 'EVERYBODY', label: 'Everyone / Unisex' },
-  { value: 'FEMALE', label: 'Women' },
-  { value: 'MALE', label: 'Men' },
+  { value: 'EVERYBODY', label: 'Unisex / Everybody' },
+  { value: 'FEMALE', label: 'Womenswear' },
+  { value: 'MALE', label: 'Menswear' },
 ];
 
 export const CREATOR_FILTER_DIMENSION_ORDER = [
@@ -77,7 +77,7 @@ const TECHNICAL_ERROR_LABELS: Array<{ keywords: string[]; message: string }> = [
 ];
 
 export function getAudienceLabel(value?: string | null) {
-  return CREATOR_AUDIENCE_OPTIONS.find((option) => option.value === value)?.label ?? 'Everyone / Unisex';
+  return CREATOR_AUDIENCE_OPTIONS.find((option) => option.value === value)?.label ?? 'Unisex / Everybody';
 }
 
 export function getDiscoveryDimensionLabel(slug?: string | null, fallbackName?: string | null) {

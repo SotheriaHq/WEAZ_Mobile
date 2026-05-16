@@ -59,6 +59,48 @@ export type MeasurementPointOption = {
 
 export type DesignFilterSelection = Record<string, string[]>;
 
+const V1_EXCLUDED_CATEGORY_SLUGS = new Set([
+  'accessories',
+  'accessory',
+  'footwear',
+  'shoes',
+  'shoe',
+  'bags',
+  'bag',
+  'jewelry',
+  'jewellery',
+  'watches',
+  'watch',
+  'cosmetics',
+  'beauty',
+  'perfume',
+  'perfumes',
+]);
+
+const normalizeTaxonomyToken = (value?: string | null) =>
+  String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+function filterV1GarmentCategories<T extends { slug?: string | null; name?: string | null; id?: string | null }>(
+  categories: T[],
+): T[] {
+  return categories.filter((category) => {
+    const slug = normalizeTaxonomyToken(category.slug);
+    const name = normalizeTaxonomyToken(category.name);
+    const id = normalizeTaxonomyToken(category.id);
+    return !(
+      V1_EXCLUDED_CATEGORY_SLUGS.has(slug) ||
+      V1_EXCLUDED_CATEGORY_SLUGS.has(name) ||
+      V1_EXCLUDED_CATEGORY_SLUGS.has(id)
+    );
+  });
+}
+
 export type DraftSessionResponse = {
   designId?: string;
   id?: string;
@@ -545,7 +587,7 @@ export async function getDesignCategories(): Promise<DesignCategoryOption[]> {
       ? asRecord(payload).items
       : [];
 
-  return items.map((entry: any) => ({
+  return filterV1GarmentCategories(items.map((entry: any) => ({
     id: String(entry?.id ?? ''),
     slug: String(entry?.slug ?? ''),
     name: String(entry?.name ?? ''),
@@ -558,7 +600,7 @@ export async function getDesignCategories(): Promise<DesignCategoryOption[]> {
           description: typeof item?.description === 'string' ? item.description : null,
         }))
       : [],
-  }));
+  })));
 }
 
 export async function getDesignFilterDimensions(): Promise<FilterDimensionOption[]> {

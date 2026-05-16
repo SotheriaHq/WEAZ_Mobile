@@ -46,6 +46,11 @@ const PRIVACY_OPTIONS = [
   { value: 'PRIVATE', label: DESIGN_VISIBILITY_LABELS.PRIVATE },
 ] as const;
 
+const TARGET_AGE_OPTIONS: Array<{ value: 'ADULT' | 'CHILD'; label: string }> = [
+  { value: 'ADULT', label: DESIGN_TARGET_AGE_LABELS.ADULT },
+  { value: 'CHILD', label: DESIGN_TARGET_AGE_LABELS.CHILD },
+];
+
 const STYLE_DETAIL_DIMENSION_SLUGS = new Set(['style', 'fabric', 'color-family', 'fit']);
 const STANDALONE_DISCOVERY_DIMENSION_SLUGS = new Set(['heritage', 'occasion']);
 
@@ -97,6 +102,7 @@ export default function CreateDesignComposerScreen() {
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [customOrdersOpen, setCustomOrdersOpen] = useState(false);
   const [audienceOpen, setAudienceOpen] = useState(false);
+  const [ageGroupOpen, setAgeGroupOpen] = useState(false);
   const [styleDetailsOpen, setStyleDetailsOpen] = useState(false);
   const [heritageOpen, setHeritageOpen] = useState(false);
   const [occasionOpen, setOccasionOpen] = useState(false);
@@ -473,6 +479,12 @@ export default function CreateDesignComposerScreen() {
                   onPress={() => setAudienceOpen(true)}
                 />
                 <OptionRow
+                  title="Age group"
+                  subtitle="Choose whether this is designed for adults or kids."
+                  value={targetAgeLabel}
+                  onPress={() => setAgeGroupOpen(true)}
+                />
+                <OptionRow
                   title="Style details"
                   subtitle="Style, fabric, color family, and fit."
                   value={styleDetailsCount > 0 ? `${styleDetailsCount} selected` : selectedDiscoveryFilterCount > 0 ? 'Optional' : 'Required'}
@@ -498,7 +510,7 @@ export default function CreateDesignComposerScreen() {
                 <OptionRow
                   leading="📦"
                   title="Availability"
-                  subtitle={`${sizingLabel} · ${fitPreferenceLabel} · ${targetAgeLabel}`}
+                  subtitle={`${sizingLabel} · ${fitPreferenceLabel}`}
                   value="Open"
                   onPress={() => setAvailabilityOpen(true)}
                 />
@@ -748,14 +760,6 @@ export default function CreateDesignComposerScreen() {
           </View>
         </View>
 
-        <View style={styles.sheetSection}>
-          <AppText variant="bodyBold">Target age group</AppText>
-          <View style={styles.sheetChipWrap}>
-            {(['ADULT', 'CHILD'] as const).map((value) => (
-              <Chip key={value} label={DESIGN_TARGET_AGE_LABELS[value]} selected={form.targetAgeGroup === value} onPress={() => updateField('targetAgeGroup', value)} />
-            ))}
-          </View>
-        </View>
       </AppBottomSheet>
 
       <AppBottomSheet
@@ -894,6 +898,16 @@ export default function CreateDesignComposerScreen() {
         value={form.audience}
         onChange={(value) => updateField('audience', value as typeof form.audience)}
         onClose={() => setAudienceOpen(false)}
+      />
+
+      <AppSelectSheet
+        visible={ageGroupOpen}
+        title="Age group"
+        subtitle="Choose whether this design is made for adults or kids."
+        options={TARGET_AGE_OPTIONS}
+        value={form.targetAgeGroup}
+        onChange={(value) => updateField('targetAgeGroup', value as typeof form.targetAgeGroup)}
+        onClose={() => setAgeGroupOpen(false)}
       />
 
       <AppBottomSheet

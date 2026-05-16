@@ -253,6 +253,7 @@ function getPublishValidationMessage({
   if (!form.categoryId) return 'Choose what this item is.';
   if (!form.subCategoryId) return 'Choose a garment type.';
   if (!form.audience) return 'Choose who this item is for.';
+  if (!form.targetAgeGroup) return 'Choose an age group.';
   if (filterValueIds.length === 0) return 'Add at least one style detail.';
   if (tags.length === 0) return 'Add at least one hashtag.';
   if (form.customOrderEnabled && customMeasurementKeys.length === 0) return 'Choose required custom-order fields.';
