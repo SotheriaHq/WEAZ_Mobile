@@ -44,6 +44,7 @@ import {
   getMessageNotificationTarget,
   normalizeNotificationContext,
 } from './mobileRouting';
+import { resolveMobileAuthRoute } from './authLinkRouting';
 
 /**
  * Notification routing handler for message notifications.
@@ -153,6 +154,12 @@ export function useNotificationRouting() {
     if (!url) return;
 
     try {
+      const authRoute = resolveMobileAuthRoute(url);
+      if (authRoute) {
+        router.replace(authRoute as any);
+        return;
+      }
+
       const parsed = Linking.parse(url);
       const path = parsed.path || '';
 

@@ -133,7 +133,7 @@ export default function ForgotPasswordScreen() {
                   Check your inbox
                 </AppText>
                 <AppText variant="body" muted style={styles.successBody}>
-                  If that address exists, the reset email is on the way. Follow the link in the message to choose a new password.
+                  If that address exists, the reset email is on the way. Open the secure link on this device or in a browser; the web page still works if the app cannot open it.
                 </AppText>
 
                 <Button
