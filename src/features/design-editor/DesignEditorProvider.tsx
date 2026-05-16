@@ -36,7 +36,6 @@ import {
   isLegacyDiscoveryDimensionSlug,
   mapCreatorMetadataError,
 } from '@/src/utils/creatorMetadata';
-import { routeForDesignTarget } from '@/src/utils/mobileRouting';
 import {
   consumeDesignEditorAssetBundle,
   DESIGN_EDITOR_MAX_MEDIA,
@@ -44,6 +43,10 @@ import {
   type MediaPermissionIssue,
 } from './designEditorMediaFlow';
 import { DESIGN_REQUIRED_MEDIA_COUNT } from './designCreationRules';
+import {
+  createDesignEditorBackgroundTask,
+  updateDesignEditorBackgroundTask,
+} from './designEditorBackgroundTasks';
 
 type Visibility = 'PUBLIC' | 'PRIVATE';
 type Audience = 'MALE' | 'FEMALE' | 'EVERYBODY';
@@ -328,7 +331,15 @@ export function DesignEditorProvider({
   const [permissionIssue, setPermissionIssue] = useState<MediaPermissionIssue | null>(null);
 
   const bootstrappedRef = useRef(false);
+  const mountedRef = useRef(true);
   const normalizedAssetHandoffToken = assetHandoffToken?.trim() || undefined;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const hydrateFromDetail = useCallback((detail: DesignDetail) => {
     setForm(syncFormFromDetail(detail));
@@ -688,59 +699,110 @@ export function DesignEditorProvider({
               ],
             }
           : undefined;
-        const result = await saveDesignEditor(
-          {
-            title: form.title,
-            description: form.description,
-            visibility: form.visibility,
-            categoryId: form.categoryId || undefined,
-            subCategoryId: form.subCategoryId || undefined,
-            type: form.audience,
-            tags,
-            minPrice: form.minPrice ? Number(form.minPrice) : undefined,
-            maxPrice: form.maxPrice ? Number(form.maxPrice) : undefined,
-            sizingMode: form.sizingMode,
-            customOrderEnabled: form.customOrderEnabled,
-            customMeasurementKeys,
-            customOrderConfiguration,
-            productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : undefined,
-            buyerInstructionText: form.buyerInstructionText || undefined,
-            fitPreference: form.fitPreference,
-            targetAgeGroup: form.targetAgeGroup,
-            filterValueIds,
-            assets,
-            coverMediaId: coverAssetId ?? undefined,
-            action,
-            designId: activeDesignId ?? undefined,
-            originalMediaIds,
-            draftSessionToken,
-            draftVersion,
-          },
-          (value, message) => {
-            setSaveProgress(value);
-            setSaveMessage(message);
-          },
-        );
+        const payload = {
+          title: form.title,
+          description: form.description,
+          visibility: form.visibility,
+          categoryId: form.categoryId || undefined,
+          subCategoryId: form.subCategoryId || undefined,
+          type: form.audience,
+          tags,
+          minPrice: form.minPrice ? Number(form.minPrice) : undefined,
+          maxPrice: form.maxPrice ? Number(form.maxPrice) : undefined,
+          sizingMode: form.sizingMode,
+          customOrderEnabled: form.customOrderEnabled,
+          customMeasurementKeys,
+          customOrderConfiguration,
+          productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : undefined,
+          buyerInstructionText: form.buyerInstructionText || undefined,
+          fitPreference: form.fitPreference,
+          targetAgeGroup: form.targetAgeGroup,
+          filterValueIds,
+          assets,
+          coverMediaId: coverAssetId ?? undefined,
+          action,
+          designId: activeDesignId ?? undefined,
+          originalMediaIds,
+          draftSessionToken,
+          draftVersion,
+        };
+        const titleForTask = form.title.trim() || (action === 'draft' ? 'Untitled draft' : 'Untitled design');
+        const coverPreviewUri =
+          assets.find((asset) => asset.id === coverAssetId)?.uri ??
+          assets[0]?.uri ??
+          null;
+        const task = createDesignEditorBackgroundTask({
+          action,
+          title: titleForTask,
+          visibility: form.visibility,
+          previewUri: coverPreviewUri,
+          designId: activeDesignId,
+          message: action === 'publish' ? 'Going live...' : 'Saving draft...',
+        });
+        const targetVisibility = action === 'draft'
+          ? 'Drafts'
+          : form.visibility === 'PRIVATE'
+            ? 'Private'
+            : 'Public';
 
-        hydrateFromDetail(result.detail);
-        setActiveDesignId(result.id);
-        setDraftVersion(result.detail.draftVersion);
-        toast.success(action === 'publish' ? 'Design is live.' : 'Draft saved.');
-        if (action === 'publish') {
-          router.replace(routeForDesignTarget(result.id, { legacyCollectionId: result.id }) as any);
-          return;
-        }
         router.replace({
           pathname: '/catalog',
-          params: { tab: 'Collections' },
+          params: { tab: 'Collections', visibility: targetVisibility },
         } as any);
+
+        void (async () => {
+          try {
+            const result = await saveDesignEditor(
+              payload,
+              (value, message) => {
+                updateDesignEditorBackgroundTask(task.id, {
+                  progress: value,
+                  message,
+                });
+                if (mountedRef.current) {
+                  setSaveProgress(value);
+                  setSaveMessage(message);
+                }
+              },
+            );
+
+            updateDesignEditorBackgroundTask(task.id, {
+              status: 'complete',
+              progress: 1,
+              designId: result.id,
+              message: action === 'publish' ? 'Design is live.' : 'Draft saved.',
+            });
+            toast.success(action === 'publish' ? 'Design is live.' : 'Draft saved.');
+
+            if (mountedRef.current) {
+              hydrateFromDetail(result.detail);
+              setActiveDesignId(result.id);
+              setDraftVersion(result.detail.draftVersion);
+            }
+          } catch (error: any) {
+            const message = extractApiErrorMessage(
+              error,
+              action === 'publish' ? 'Failed to publish design.' : 'Failed to save draft.',
+            );
+            updateDesignEditorBackgroundTask(task.id, {
+              status: 'failed',
+              progress: 1,
+              message: action === 'publish' ? 'Publish failed.' : 'Draft save failed.',
+              error: message,
+            });
+            toast.error(action === 'publish' ? mapCreatorMetadataError(message, 'Failed to publish design.') : message);
+          } finally {
+            if (mountedRef.current) {
+              setSaveAction(null);
+            }
+          }
+        })();
       } catch (error: any) {
         const message = extractApiErrorMessage(
           error,
           action === 'publish' ? 'Failed to publish design.' : 'Failed to save draft.',
         );
         toast.error(action === 'publish' ? mapCreatorMetadataError(message, 'Failed to publish design.') : message);
-      } finally {
         setSaveAction(null);
       }
     },

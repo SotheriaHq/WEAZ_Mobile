@@ -92,6 +92,26 @@ function main() {
     /deleteCollection\(activeDesignId\)/,
     'Draft deletion should use design API language, not collection deletion.',
   );
+  assert.match(
+    providerSource,
+    /createDesignEditorBackgroundTask/,
+    'Design saves should create a background task before leaving the editor.',
+  );
+  assert.match(
+    providerSource,
+    /pathname:\s*'\/catalog'/,
+    'Design saves should route creators back to the catalog after validation.',
+  );
+  assert.match(
+    providerSource,
+    /visibility:\s*targetVisibility/,
+    'Design saves should route to the matching public, private, or draft catalog filter.',
+  );
+  assert.doesNotMatch(
+    providerSource,
+    /routeForDesignTarget\(result\.id/,
+    'Publishing should not trap mobile creators on the editor before routing to the design detail.',
+  );
 
   const composerSource = fs.readFileSync(composerPath, 'utf8');
   assert.doesNotMatch(composerSource, />Left<\/AppText>/);

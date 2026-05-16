@@ -101,7 +101,7 @@ export const CollectionCard = React.memo(function CollectionCard({
     [collection.maxPrice, collection.minPrice, collection.saleMaxPrice, collection.saleMinPrice],
   );
 
-  const disabled = collection.clientStatus === 'publishing';
+  const disabled = Boolean(collection.clientStatus);
 
   const animate = React.useCallback(
     (next: number) => {
@@ -132,9 +132,10 @@ export const CollectionCard = React.memo(function CollectionCard({
     >
       <Pressable
         onPress={disabled ? undefined : onPress}
-        onPressIn={() => animate(0.98)}
-        onPressOut={() => animate(1)}
+        onPressIn={disabled ? undefined : () => animate(0.98)}
+        onPressOut={disabled ? undefined : () => animate(1)}
         style={styles.pressable}
+        disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel={`Open ${copy.badgeLabel.toLowerCase()} ${displayTitle}`}
       >
@@ -166,7 +167,7 @@ export const CollectionCard = React.memo(function CollectionCard({
             </View>
           ) : null}
 
-          {isOwner ? (
+          {isOwner && !collection.clientStatus ? (
             <Pressable
               onPress={() => setMenuVisible((current) => !current)}
               style={[styles.menuButton, { backgroundColor: theme.colors.surfaceOverlay }]}

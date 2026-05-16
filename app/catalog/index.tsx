@@ -57,6 +57,12 @@ import {
   stageDesignEditorAssetBundle,
   type DesignEditorMediaSource,
 } from '@/src/features/design-editor/designEditorMediaFlow';
+import {
+  readDesignEditorBackgroundTasks,
+  removeDesignEditorBackgroundTask,
+  subscribeDesignEditorBackgroundTasks,
+  type DesignEditorBackgroundTask,
+} from '@/src/features/design-editor/designEditorBackgroundTasks';
 import { tokens } from '@/src/styles/tokens';
 import { catalogDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
@@ -203,6 +209,9 @@ export default function CatalogScreen() {
   const [profile, setProfile] = useState<BrandProfileDto | null>(null);
   const [collections, setCollections] = useState<CollectionDto[]>([]);
   const [drafts, setDrafts] = useState<CollectionDto[]>([]);
+  const [designBackgroundTasks, setDesignBackgroundTasks] = useState<DesignEditorBackgroundTask[]>(
+    () => readDesignEditorBackgroundTasks(),
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -343,6 +352,16 @@ export default function CatalogScreen() {
     }, [fetchProfile]),
   );
 
+  useEffect(() => subscribeDesignEditorBackgroundTasks(() => {
+    setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
+  }), []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
+    }, []),
+  );
+
   useEffect(() => {
     setActiveTab(normalizeTab(routeTab));
   }, [routeTab]);
@@ -466,6 +485,10 @@ export default function CatalogScreen() {
 
   // Handle collection actions
   const handleCollectionPress = useCallback((collection: CollectionDto) => {
+    if (collection.clientStatus) {
+      return;
+    }
+
     router.push(
       collection.isAvailableInStore
         ? routeForStoreCollectionTarget(collection.id)
@@ -577,9 +600,87 @@ export default function CatalogScreen() {
   }, [profileShareUrl, toast]);
 
   const currentCollections = visibilityFilter === 'Drafts' ? drafts : collections;
+  const visibleDesignBackgroundTasks = useMemo(() => {
+    if (!isOwner || activeTab !== 'Collections') return [];
+
+    return designBackgroundTasks.filter((task) => {
+      if (task.action === 'draft') return visibilityFilter === 'Drafts';
+      if (task.visibility === 'PRIVATE') return visibilityFilter === 'Private';
+      return visibilityFilter === 'Public';
+    });
+  }, [activeTab, designBackgroundTasks, isOwner, visibilityFilter]);
+  const backgroundTaskCollections = useMemo<CollectionDto[]>(
+    () =>
+      visibleDesignBackgroundTasks.map((task) => ({
+        id: task.id,
+        entityType: 'DESIGN',
+        title: task.title,
+        description: task.error ?? task.message,
+        visibility: task.visibility,
+        status: task.action === 'draft' ? 'DRAFT' : 'PUBLISHED',
+        coverImage: task.previewUri ?? null,
+        coverFileId: null,
+        likesCount: 0,
+        commentsCount: 0,
+        itemCount: task.previewUri ? 1 : 0,
+        postsCount: task.previewUri ? 1 : 0,
+        minPrice: 0,
+        maxPrice: 0,
+        saleMinPrice: null,
+        saleMaxPrice: null,
+        saleStartAt: null,
+        saleEndAt: null,
+        brandName: profile?.brandFullName ?? profile?.username ?? null,
+        username: profile?.username ?? null,
+        brandLogo: ownerAvatarUri ?? profile?.profileImage ?? null,
+        brandLogoFileId: profile?.profileImageId ?? profile?.logoImageId ?? null,
+        isAvailableInStore: false,
+        ownerId: userId ?? targetBrandId ?? '',
+        createdAt: new Date(task.startedAt).toISOString(),
+        updatedAt: new Date(task.updatedAt).toISOString(),
+        clientStatus: task.status === 'failed' ? 'publish-failed' : 'publishing',
+        clientStatusMessage:
+          task.status === 'failed'
+            ? task.error ?? (task.action === 'draft' ? 'Draft save failed' : 'Publish failed')
+            : task.message,
+      })),
+    [ownerAvatarUri, profile, targetBrandId, userId, visibleDesignBackgroundTasks],
+  );
+  const currentCollectionsWithBackgroundTasks = useMemo(() => {
+    if (backgroundTaskCollections.length === 0) return currentCollections;
+
+    const taskDesignIds = new Set(
+      visibleDesignBackgroundTasks
+        .map((task) => task.designId)
+        .filter((id): id is string => Boolean(id)),
+    );
+
+    return [
+      ...backgroundTaskCollections,
+      ...currentCollections.filter((collection) => !taskDesignIds.has(collection.id)),
+    ];
+  }, [backgroundTaskCollections, currentCollections, visibleDesignBackgroundTasks]);
+
+  useEffect(() => {
+    const completedVisibleTasks = visibleDesignBackgroundTasks.filter((task) => task.status === 'complete');
+    if (completedVisibleTasks.length === 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      await fetchCollections();
+      if (cancelled) return;
+      completedVisibleTasks.forEach((task) => removeDesignEditorBackgroundTask(task.id));
+      setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchCollections, visibleDesignBackgroundTasks]);
+
   const headerStats = useMemo<BrandHeaderStat[]>(() => {
     const backendDesigns = readMetricNumber(profile?.designsCount) ?? readMetricNumber(profile?.collectionsCount);
-    const localDesigns = Math.max(collections.length, currentCollections.length);
+    const localDesigns = Math.max(collections.length, currentCollectionsWithBackgroundTasks.length);
     const designsCount = backendDesigns ?? localDesigns;
     const followersCount = readMetricNumber(profile?.followersCount) ?? readMetricNumber(profile?.patchesCount);
     const totalThreads = readMetricNumber(profile?.totalThreads) ?? readMetricNumber(profile?.totalLikes);
@@ -610,7 +711,7 @@ export default function CatalogScreen() {
     return stats.slice(0, metricLimit);
   }, [
     collections.length,
-    currentCollections.length,
+    currentCollectionsWithBackgroundTasks.length,
     profile?.averageRating,
     profile?.collectionsCount,
     profile?.designsCount,
@@ -894,7 +995,7 @@ export default function CatalogScreen() {
               </View>
 
               <CollectionsGrid
-                collections={currentCollections}
+                collections={currentCollectionsWithBackgroundTasks}
                 isLoading={false}
                 isOwner={isOwner}
                 showDrafts={visibilityFilter === 'Drafts'}
