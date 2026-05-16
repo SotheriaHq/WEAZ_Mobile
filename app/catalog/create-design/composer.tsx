@@ -533,6 +533,20 @@ export default function CreateDesignComposerScreen() {
                   divider={false}
                   onPress={() => setTagsOpen(true)}
                 />
+                {selectedTags.length > 0 ? (
+                  <View style={styles.selectedTagPreview}>
+                    {selectedTags.map((tag) => (
+                      <Chip
+                        key={tag}
+                        label={normalizeHashtagLabel(tag)}
+                        selected
+                        onPress={() => {
+                          updateField('tagsInput', selectedTags.filter((entry) => entry !== tag).join(', '));
+                        }}
+                      />
+                    ))}
+                  </View>
+                ) : null}
           </Card>
 
           {loadingError ? (
@@ -1081,6 +1095,12 @@ const styles = StyleSheet.create({
   quickChipRow: {
     flexDirection: 'row',
     gap: tokens.spacing.sm,
+  },
+  selectedTagPreview: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+    paddingTop: tokens.spacing.xs,
   },
 
   requiredCard: {

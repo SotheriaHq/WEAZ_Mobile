@@ -46,6 +46,14 @@ type MultiProps = BaseProps & {
   customPlaceholder?: string;
 };
 
+const normalizeCustomTagValue = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/^#+/, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
 export function AppSelectSheet({
   visible,
   title,
@@ -136,6 +144,19 @@ export function AppMultiSelectSheet({
   const [searchResults, setSearchResults] = useState<TagSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const selectedSet = useMemo(() => new Set(draft), [draft]);
+  const optionLabelByValue = useMemo(() => {
+    const labels = new Map<string, string>();
+    options.forEach((option) => labels.set(option.value, option.label));
+    return labels;
+  }, [options]);
+  const selectedOptions = useMemo(
+    () =>
+      draft.map((value) => ({
+        value,
+        label: optionLabelByValue.get(value) ?? `#${value}`,
+      })),
+    [draft, optionLabelByValue],
+  );
 
   useEffect(() => {
     if (visible) {
@@ -196,7 +217,7 @@ export function AppMultiSelectSheet({
   }, [searchText, searchResults, options, selectedSet]);
 
   const addCustomTag = () => {
-    const normalized = customTag.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normalized = normalizeCustomTagValue(customTag);
     if (!normalized || draft.includes(normalized) || (typeof maxSelected === 'number' && draft.length >= maxSelected)) {
       return;
     }
@@ -220,7 +241,7 @@ export function AppMultiSelectSheet({
         loading={loading || isSearching}
         errorMessage={errorMessage}
         onRetry={onRetry}
-        empty={displayedOptions.length === 0}
+        empty={displayedOptions.length === 0 && selectedOptions.length === 0}
         emptyMessage={searchText.trim() ? searchEmptyMessage : emptyMessage}
       />
       <Input
@@ -235,6 +256,21 @@ export function AppMultiSelectSheet({
         <AppText variant="captionRegular" tone="muted">
           {draft.length}/{maxSelected} selected
         </AppText>
+      ) : null}
+      {selectedOptions.length > 0 ? (
+        <View style={styles.selectedSection}>
+          <AppText variant="bodyBold" style={styles.sectionTitle}>Selected</AppText>
+          <View style={styles.optionWrap}>
+            {selectedOptions.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                selected
+                onPress={() => toggle(option.value)}
+              />
+            ))}
+          </View>
+        </View>
       ) : null}
       {!searchText.trim() && options.length > 0 ? (
         <AppText variant="bodyBold" style={styles.sectionTitle}>{popularLabel}</AppText>
@@ -264,7 +300,7 @@ export function AppMultiSelectSheet({
         <Button
           title="Add"
           size="sm"
-          disabled={!customTag.trim() || draft.includes(customTag.trim().toLowerCase().replace(/[^a-z0-9]/g, ''))}
+          disabled={!normalizeCustomTagValue(customTag) || draft.includes(normalizeCustomTagValue(customTag))}
           onPress={addCustomTag}
         />
       </View>
@@ -328,6 +364,10 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     marginBottom: tokens.spacing.sm,
+  },
+  selectedSection: {
+    gap: tokens.spacing.xs,
+    marginTop: tokens.spacing.xs,
   },
   customTagRow: {
     flexDirection: 'row',
