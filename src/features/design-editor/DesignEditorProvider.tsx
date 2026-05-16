@@ -42,7 +42,7 @@ import {
   pickDesignEditorMediaAssets,
   type MediaPermissionIssue,
 } from './designEditorMediaFlow';
-import { DESIGN_REQUIRED_MEDIA_COUNT } from './designCreationRules';
+import { DESIGN_REQUIRED_MEDIA_COUNT, normalizeDesignCreationSizingMode } from './designCreationRules';
 import {
   createDesignEditorBackgroundTask,
   updateDesignEditorBackgroundTask,
@@ -138,7 +138,7 @@ const INITIAL_FORM: FormState = {
   subCategoryId: '',
   minPrice: '',
   maxPrice: '',
-  sizingMode: 'RTW_PLUS_FITTINGS',
+  sizingMode: 'NONE',
   customOrderEnabled: false,
   productionLeadDays: '',
   buyerInstructionText: '',
@@ -177,8 +177,8 @@ function syncFormFromDetail(detail: DesignDetail): FormState {
     subCategoryId: detail.subCategoryId ?? '',
     minPrice: typeof detail.minPrice === 'number' ? String(detail.minPrice) : '',
     maxPrice: typeof detail.maxPrice === 'number' ? String(detail.maxPrice) : '',
-    sizingMode: detail.sizingMode,
-    customOrderEnabled: detail.customOrderEnabled,
+    sizingMode: normalizeDesignCreationSizingMode(detail.sizingMode),
+    customOrderEnabled: detail.customOrderEnabled || normalizeDesignCreationSizingMode(detail.sizingMode) === 'CUSTOM',
     productionLeadDays: '',
     buyerInstructionText: '',
     baseProductionCharge: '',
@@ -225,7 +225,7 @@ function hasMeaningfulDraftContent(form: FormState, tags: string[], filterSelect
   if (form.minPrice.trim().length > 0 || form.maxPrice.trim().length > 0) return true;
   if (form.visibility !== 'PUBLIC') return true;
   if (form.audience !== 'EVERYBODY') return true;
-  if (form.sizingMode !== 'RTW_PLUS_FITTINGS') return true;
+  if (form.sizingMode !== 'NONE') return true;
   if (form.customOrderEnabled) return true;
   if (form.productionLeadDays.trim().length > 0) return true;
   if (form.buyerInstructionText.trim().length > 0) return true;

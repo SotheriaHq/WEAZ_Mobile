@@ -21,6 +21,7 @@ import TagsApi from '@/src/api/TagsApi';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
 import {
   DESIGN_EDITOR_MAX_MEDIA,
+  DESIGN_CREATION_SIZING_OPTIONS,
   DESIGN_FIT_PREFERENCE_LABELS,
   DESIGN_MEDIA_SLOTS,
   DESIGN_REQUIRED_MEDIA_COUNT,
@@ -759,8 +760,16 @@ export default function CreateDesignComposerScreen() {
         <View style={styles.sheetSection}>
           <AppText variant="bodyBold">Sizing mode</AppText>
           <View style={styles.sheetChipWrap}>
-            {(['RTW_PLUS_FITTINGS', 'RTW', 'CUSTOM', 'NONE'] as const).map((value) => (
-              <Chip key={value} label={DESIGN_SIZING_LABELS[value]} selected={form.sizingMode === value} onPress={() => updateField('sizingMode', value)} />
+            {DESIGN_CREATION_SIZING_OPTIONS.map((value) => (
+              <Chip
+                key={value}
+                label={DESIGN_SIZING_LABELS[value]}
+                selected={form.sizingMode === value}
+                onPress={() => {
+                  updateField('sizingMode', value);
+                  updateField('customOrderEnabled', value === 'CUSTOM');
+                }}
+              />
             ))}
           </View>
         </View>
@@ -794,6 +803,7 @@ export default function CreateDesignComposerScreen() {
             value={form.customOrderEnabled}
             onValueChange={(value) => {
               updateField('customOrderEnabled', value);
+              updateField('sizingMode', value ? 'CUSTOM' : 'NONE');
             }}
           />
         </View>
