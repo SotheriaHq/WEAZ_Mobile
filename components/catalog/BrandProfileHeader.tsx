@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -126,28 +126,45 @@ function BannerHeader({
   | 'onShare'
   | 'onEditBanner'
 >) {
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
   const resolvedBanner = useResolvedImageUri({ src: bannerUrl, fileId: bannerFileId ?? undefined });
 
   return (
     <View style={[styles.bannerWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
-      {resolvedBanner ? (
-        <StableImage
-          uri={resolvedBanner}
-          containerStyle={styles.bannerImage}
-          imageStyle={styles.bannerImage}
-          resizeMode="cover"
-        />
-      ) : (
-        <LinearGradient
-          colors={[theme.colors.surfaceAlt, theme.colors.primarySoft, theme.colors.surface] as [string, string, string]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.bannerImage}
-        />
-      )}
+      <View style={[styles.bannerImage, bannerLoading ? styles.uploadPreviewDim : null]}>
+        {resolvedBanner ? (
+          <StableImage
+            uri={resolvedBanner}
+            containerStyle={styles.bannerImage}
+            imageStyle={styles.bannerImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <LinearGradient
+            colors={[theme.colors.surfaceAlt, theme.colors.primarySoft, theme.colors.surface] as [string, string, string]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.bannerImage}
+          />
+        )}
+      </View>
 
       <View style={[styles.bannerShade, { backgroundColor: theme.colors.backdrop }]} />
+      {bannerLoading ? (
+        <View style={styles.bannerLoadingOverlay} pointerEvents="none">
+          <BlurView
+            intensity={18}
+            tint={scheme === 'dark' ? 'dark' : 'light'}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View style={[styles.loadingPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+            <AppText variant="captionBold" tone="default">
+              Uploading
+            </AppText>
+          </View>
+        </View>
+      ) : null}
 
       <View style={styles.bannerControls}>
         <HeaderIconButton label="Go back" value="👈" onPress={onBack} />
@@ -207,24 +224,31 @@ function OverlayAvatar({
       accessibilityRole={avatarAction ? 'button' : undefined}
       accessibilityLabel={isOwner ? 'View or edit brand logo' : 'View brand logo'}
     >
-      {resolvedAvatar ? (
-        <StableImage
-          uri={resolvedAvatar}
-          containerStyle={styles.avatarImage}
-          imageStyle={styles.avatarImage}
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={[styles.avatarFallback, { backgroundColor: theme.colors.primarySoft }]}>
-          <AppText variant="title" tone="primary" numberOfLines={1}>
-            {initials}
-          </AppText>
-        </View>
-      )}
+      <View style={[styles.avatarImage, avatarLoading ? styles.uploadPreviewDim : null]}>
+        {resolvedAvatar ? (
+          <StableImage
+            uri={resolvedAvatar}
+            containerStyle={styles.avatarImage}
+            imageStyle={styles.avatarImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={[styles.avatarFallback, { backgroundColor: theme.colors.primarySoft }]}>
+            <AppText variant="title" tone="primary" numberOfLines={1}>
+              {initials}
+            </AppText>
+          </View>
+        )}
+      </View>
 
       {avatarLoading ? (
-        <View style={[styles.avatarLoading, { backgroundColor: theme.colors.overlay }]}>
-          <Skeleton width={42} height={12} borderRadius={tokens.radius.sm} />
+        <View style={[styles.avatarLoading, { backgroundColor: theme.colors.overlay }]} pointerEvents="none">
+          <BlurView
+            intensity={16}
+            tint="dark"
+            style={StyleSheet.absoluteFillObject}
+          />
+          <ActivityIndicator size="small" color={theme.colors.primary} />
         </View>
       ) : null}
 
@@ -653,8 +677,25 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  uploadPreviewDim: {
+    opacity: 0.56,
+  },
   bannerShade: {
     ...StyleSheet.absoluteFillObject,
+  },
+  bannerLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    borderRadius: tokens.radius.full,
+    overflow: 'hidden',
   },
   bannerControls: {
     position: 'absolute',

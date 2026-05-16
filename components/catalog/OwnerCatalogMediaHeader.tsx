@@ -127,6 +127,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       }
 
       const asset = result.assets[0];
+      setPendingAvatar({ src: asset.uri, fileId: null });
       setAvatarLoading(true);
 
       const uploaded = await brandApi.uploadAvatar(asset.uri, asset.mimeType || 'image/jpeg');
@@ -143,6 +144,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       toast.success('Profile photo updated');
     } catch (error) {
       console.error('Avatar upload error:', error);
+      setPendingAvatar(null);
       toast.error('Failed to upload avatar. Please try again.');
     } finally {
       setAvatarLoading(false);
@@ -168,6 +170,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       }
 
       const asset = result.assets[0];
+      setPendingBanner({ src: asset.uri, fileId: null });
       setBannerLoading(true);
 
       const uploaded = await brandApi.uploadBanner(asset.uri, asset.mimeType || 'image/jpeg');
@@ -184,6 +187,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       toast.success('Banner image updated');
     } catch (error) {
       console.error('Banner upload error:', error);
+      setPendingBanner(null);
       toast.error('Failed to upload banner. Please try again.');
     } finally {
       setBannerLoading(false);
