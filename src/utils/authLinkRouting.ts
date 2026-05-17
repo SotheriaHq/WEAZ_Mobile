@@ -4,10 +4,18 @@ export type MobileAuthRoute =
       params?: {
         token?: string;
       };
+    }
+  | {
+      pathname: '/(auth)/verify-email';
+      params?: {
+        token?: string;
+      };
     };
 
 const RESET_PASSWORD_ROUTE = '/reset-password';
 const GROUPED_RESET_PASSWORD_ROUTE = '/(auth)/reset-password';
+const VERIFY_EMAIL_ROUTE = '/verify-email';
+const GROUPED_VERIFY_EMAIL_ROUTE = '/(auth)/verify-email';
 
 const normalizePath = (value: string): string => {
   const trimmed = String(value ?? '').trim();
@@ -37,16 +45,25 @@ export function resolveMobileAuthRoute(url: string | null | undefined): MobileAu
     const parsed = new URL(url);
     const routePath = getRoutePath(parsed);
 
-    if (routePath !== RESET_PASSWORD_ROUTE && routePath !== GROUPED_RESET_PASSWORD_ROUTE) {
-      return null;
+    if (routePath === RESET_PASSWORD_ROUTE || routePath === GROUPED_RESET_PASSWORD_ROUTE) {
+      const token = getQueryValue(parsed.searchParams, 'token');
+
+      return {
+        pathname: GROUPED_RESET_PASSWORD_ROUTE,
+        ...(token ? { params: { token } } : null),
+      };
     }
 
-    const token = getQueryValue(parsed.searchParams, 'token');
+    if (routePath === VERIFY_EMAIL_ROUTE || routePath === GROUPED_VERIFY_EMAIL_ROUTE) {
+      const token = getQueryValue(parsed.searchParams, 'token');
 
-    return {
-      pathname: GROUPED_RESET_PASSWORD_ROUTE,
-      ...(token ? { params: { token } } : null),
-    };
+      return {
+        pathname: GROUPED_VERIFY_EMAIL_ROUTE,
+        ...(token ? { params: { token } } : null),
+      };
+    }
+
+    return null;
   } catch {
     return null;
   }

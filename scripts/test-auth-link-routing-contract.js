@@ -7,7 +7,9 @@ const ts = require('typescript');
 const repoRoot = path.resolve(__dirname, '..');
 const authLinkRoutingPath = path.join(repoRoot, 'src', 'utils', 'authLinkRouting.ts');
 const notificationRoutingPath = path.join(repoRoot, 'src', 'utils', 'notificationRouting.ts');
+const authApiPath = path.join(repoRoot, 'src', 'api', 'AuthApi.ts');
 const resetPasswordRoutePath = path.join(repoRoot, 'app', '(auth)', 'reset-password.tsx');
+const verifyEmailRoutePath = path.join(repoRoot, 'app', '(auth)', 'verify-email.tsx');
 const authLayoutPath = path.join(repoRoot, 'app', '(auth)', '_layout.tsx');
 const forgotPasswordPath = path.join(repoRoot, 'app', '(auth)', 'forgot-password.tsx');
 const appJsonPath = path.join(repoRoot, 'app.json');
@@ -45,12 +47,18 @@ function toJson(value) {
 
 function main() {
   assert.equal(fs.existsSync(resetPasswordRoutePath), true, 'Mobile reset-password route must exist.');
+  assert.equal(fs.existsSync(verifyEmailRoutePath), true, 'Mobile verify-email route must exist.');
 
   const authLayoutSource = fs.readFileSync(authLayoutPath, 'utf8');
   assert.match(
     authLayoutSource,
     /<Stack\.Screen\s+name="reset-password"\s*\/>/,
     'Auth stack must register reset-password.',
+  );
+  assert.match(
+    authLayoutSource,
+    /<Stack\.Screen\s+name="verify-email"\s*\/>/,
+    'Auth stack must register verify-email.',
   );
 
   const resetRouteSource = fs.readFileSync(resetPasswordRoutePath, 'utf8');
@@ -64,6 +72,26 @@ function main() {
   assert.match(resetRouteSource, /router\.replace\('\/login'/, 'Reset route must send the user back to login after success.');
   assert.doesNotMatch(resetRouteSource, /console\.(log|warn|error).*token/, 'Reset route must not log raw tokens.');
   assert.doesNotMatch(resetRouteSource, /\b(useAuth|signIn)\b/, 'Reset route must not automatically log the user in.');
+
+  const verifyEmailRouteSource = fs.readFileSync(verifyEmailRoutePath, 'utf8');
+  assert.match(verifyEmailRouteSource, /useLocalSearchParams/, 'Verify route must read query params.');
+  assert.match(verifyEmailRouteSource, /firstParamValue\(params\.token\)\.trim\(\)/, 'Verify route must trim route tokens.');
+  assert.match(verifyEmailRouteSource, /verifyEmail\(token\)/, 'Verify route must call the verify-email API with the route token.');
+  assert.match(verifyEmailRouteSource, /renderMissingToken/, 'Verify route must include a missing-token state.');
+  assert.match(verifyEmailRouteSource, /renderVerifying/, 'Verify route must include a verifying/loading state.');
+  assert.match(verifyEmailRouteSource, /renderSuccess/, 'Verify route must include a success state.');
+  assert.match(verifyEmailRouteSource, /renderError/, 'Verify route must include an invalid-or-expired error state.');
+  assert.match(
+    verifyEmailRouteSource,
+    /router\.replace\(\(isAuthenticated \? '\/\(tabs\)\/me' : '\/login'\)/,
+    'Verify route must send authenticated users to profile and guests to login.',
+  );
+  assert.doesNotMatch(verifyEmailRouteSource, /console\.(log|warn|error).*token/, 'Verify route must not log raw tokens.');
+  assert.doesNotMatch(verifyEmailRouteSource, /\bsignIn\b/, 'Verify route must not automatically log the user in.');
+
+  const authApiSource = fs.readFileSync(authApiPath, 'utf8');
+  assert.match(authApiSource, /export async function verifyEmail/, 'Mobile AuthApi must expose verifyEmail.');
+  assert.match(authApiSource, /apiClient\.get<VerifyEmailResponse>\('\/auth\/verify-email'/, 'Mobile verifyEmail must use the backend verify-email endpoint.');
 
   const notificationRoutingSource = fs.readFileSync(notificationRoutingPath, 'utf8');
   assert.match(notificationRoutingSource, /resolveMobileAuthRoute/, 'Deep-link handling must check auth links explicitly.');
@@ -114,8 +142,37 @@ function main() {
       pathname: '/(auth)/reset-password',
     },
   );
-  assert.equal(resolveMobileAuthRoute('threadlymobile://verify-email?token=abc123'), null);
+  assert.deepEqual(
+    toJson(resolveMobileAuthRoute('threadlymobile://verify-email?token=%20abc123%20')),
+    {
+      pathname: '/(auth)/verify-email',
+      params: { token: 'abc123' },
+    },
+  );
+  assert.deepEqual(
+    toJson(resolveMobileAuthRoute('threadlymobile:///verify-email?token=abc123')),
+    {
+      pathname: '/(auth)/verify-email',
+      params: { token: 'abc123' },
+    },
+  );
+  assert.deepEqual(
+    toJson(resolveMobileAuthRoute('https://threadly.example/verify-email?token=web-token')),
+    {
+      pathname: '/(auth)/verify-email',
+      params: { token: 'web-token' },
+    },
+  );
+  assert.deepEqual(
+    toJson(resolveMobileAuthRoute('threadlymobile://verify-email')),
+    {
+      pathname: '/(auth)/verify-email',
+    },
+  );
   assert.equal(resolveMobileAuthRoute('threadlymobile://settings?tab=account-security&emailChangeToken=abc123'), null);
+  assert.equal(resolveMobileAuthRoute('threadlymobile://change-email/confirm?token=abc123'), null);
+  assert.equal(resolveMobileAuthRoute('threadlymobile://admin/reset-password?token=abc123'), null);
+  assert.equal(resolveMobileAuthRoute('threadlymobile://brand/staff/invite?token=abc123'), null);
 
   const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
   assert.equal(appJson.expo.scheme, 'threadlymobile', 'Expo scheme must remain configured.');
