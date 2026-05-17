@@ -222,6 +222,20 @@ const isLoopbackHttpUrl = (value: string) => {
 
 const toIdempotencyKey = () => `mob_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
+const shouldLogBagTiming = () =>
+  __DEV__ ||
+  process.env.NODE_ENV === 'test' ||
+  process.env.EXPO_PUBLIC_BAGGING_OBSERVABILITY === 'true';
+
+const logBagTiming = (label: string, startedAt: number, context: Record<string, unknown>) => {
+  if (!shouldLogBagTiming()) return;
+  console.debug('[bagging:timing]', {
+    event: `mobile.${label}.duration`,
+    durationMs: Date.now() - startedAt,
+    ...context,
+  });
+};
+
 const appendArray = (target: unknown[], value: unknown) => {
   if (Array.isArray(value)) {
     target.push(...value);
@@ -772,8 +786,16 @@ export const MobileStoreApi = {
 
   async getSourceBagStatus(sourceType: BagSourceType, sourceId: string): Promise<ProductBagStatus> {
     const normalizedSourceType = sourceType.toUpperCase() as BagSourceType;
-    const response = await apiClient.get(`/bag/sources/${normalizedSourceType}/${sourceId}/status`);
-    return normalizeBagStatus(response.data, sourceId, normalizedSourceType, sourceId);
+    const startedAt = Date.now();
+    try {
+      const response = await apiClient.get(`/bag/sources/${normalizedSourceType}/${sourceId}/status`);
+      return normalizeBagStatus(response.data, sourceId, normalizedSourceType, sourceId);
+    } finally {
+      logBagTiming('source_status_request', startedAt, {
+        sourceType: normalizedSourceType,
+        sourceId,
+      });
+    }
   },
 
   async getBagCount(): Promise<BagCount> {
