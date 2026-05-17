@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useProductBagging } from '@/src/hooks/useProductBagging';
+import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 
@@ -819,7 +820,7 @@ export function BrandShopTab({
                 onAction: hasActiveProductFilters ? clearProductFilters : undefined,
               }
             : {
-                marker: '🛍️',
+                marker: BAG_IT_EMOJI,
                 title: isOwner ? 'No products yet' : 'No products available',
                 body: isOwner
                   ? 'This brand store has no products yet. Products created in Studio will appear here after the brand-products endpoint returns them.'
@@ -886,7 +887,7 @@ export function BrandShopTab({
                     />
                   ) : (
                     <View style={[styles.imageFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
-                      <AppText variant="h1">🛍️</AppText>
+                      <AppText variant="h1">{BAG_IT_EMOJI}</AppText>
                     </View>
                   )}
                 </View>
@@ -1001,7 +1002,9 @@ export function BrandShopTab({
                         size={34}
                       />
                       <AppText variant="bodyBold" tone="primary" style={styles.actionButtonText}>
-                        {cartByProductId[activeProduct.id] ? '🛍️ In bag • Tap to unbag' : '🛍️ Bag this item'}
+                        {cartByProductId[activeProduct.id]
+                          ? `${BAG_IT_EMOJI} In bag • Tap to unbag`
+                          : `${BAG_IT_EMOJI} ${BAG_IT_LABEL}`}
                       </AppText>
                     </Pressable>
 
@@ -1026,8 +1029,8 @@ export function BrandShopTab({
                         />
                         <AppText variant="bodyBold" tone="primary" style={styles.actionButtonText}>
                           {customBagByProductId[activeProduct.id]
-                            ? '✂️ Custom bagged • Tap to remove'
-                            : '✂️ Bag as custom request'}
+                            ? `${BAG_IT_EMOJI} Custom bagged • Tap to remove`
+                            : `${BAG_IT_EMOJI} ${BAG_IT_LABEL} as custom request`}
                         </AppText>
                       </Pressable>
                     ) : null}

@@ -31,6 +31,7 @@ const THEME_UNIONS_ALLOWLIST = [
 
 const APPEARANCE_API_ALLOWLIST = [
   path.join('src', 'theme', 'ThemeProvider.tsx'),
+  path.join('src', 'system', 'AndroidSystemBars.ts'), // Protected app-shell bridge for native system bar color scheme.
 ];
 
 // Files allowed to have binary scheme ternaries when they do not mutate
@@ -40,6 +41,9 @@ const BINARY_TOGGLE_ALLOWLIST = [
   path.join('app', '(tabs)', 'store.tsx'),   // StatusBar contrast only
   path.join('app', 'profile', '[id].tsx'),   // StatusBar contrast only
   path.join('app', 'studio', 'webview.tsx'), // Intentional resolved scheme bridge
+  path.join('src', 'features', 'feed', 'components', 'MarketFeedScreen.tsx'), // StatusBar/BlurView contrast only
+  path.join('src', 'features', 'market', 'components', 'MarketScreen.tsx'),   // StatusBar contrast only
+  path.join('src', 'system', 'AndroidSystemBars.ts'),                         // Protected native system bar bridge
 ];
 
 // Files allowed to have hardcoded surface/text/border colors.
@@ -62,6 +66,7 @@ const COLOR_ALLOWLIST = [
   path.join('components', 'navigation', 'ProfileMenuDropup.tsx'),    // Intentional glass surface rgba
   path.join('components', 'profile', 'ProfileImageModal.tsx'),       // Full-screen media backdrop
   path.join('components', 'ui', 'Chip.tsx'),                         // 'transparent' keyword, not a theme color
+  path.join('src', 'features', 'feed', 'components', 'MarketFeedScreen.tsx'), // Full-screen media overlay/shadow contrast
 ];
 
 const RESOLVED_THEME_LEAKAGE_ALLOWLIST = [

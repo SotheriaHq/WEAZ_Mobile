@@ -12,6 +12,7 @@ import { StableImage } from '@/components/ui/StableImage';
 import { MobileStoreApi, type ProductBagStatus, type StoreProduct } from '@/src/api/StoreApi';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -304,7 +305,7 @@ export default function ProductRouteScreen() {
 
           <View style={styles.actionStack}>
             <Button
-              title={bagStatus?.standard.inBag ? 'View item in bag' : 'Bag this item'}
+              title={bagStatus?.standard.inBag ? 'View item in bag' : BAG_IT_LABEL}
               onPress={handleStandardBag}
               loading={isBusy}
               disabled={Boolean(bagStatus && !bagStatus.standard.enabled && bagStatus.ui.defaultAction !== 'OPEN_SELECTOR')}
@@ -312,7 +313,7 @@ export default function ProductRouteScreen() {
               fullWidth
             />
             <Button
-              title={bagStatus?.custom.alreadyBagged ? 'View custom bag' : 'Bag as custom request'}
+              title={bagStatus?.custom.alreadyBagged ? 'View custom bag' : `${BAG_IT_LABEL} as custom request`}
               onPress={handleCustomBag}
               loading={isBusy}
               disabled={!product.customOrderEnabled && !bagStatus?.custom.available}

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { BAG_IT_EMOJI } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
@@ -38,14 +39,13 @@ const resolveScale = (status: BagPulseStatus, context: BagPulseContext) => {
 export function BagPulseIcon({
   status,
   context = 'single',
-  mode = 'standard',
   size = 42,
   style,
 }: Props) {
   const { theme } = useTheme();
   const pulse = useRef(new Animated.Value(0)).current;
   const maxScale = useMemo(() => resolveScale(status, context), [context, status]);
-  const icon = mode === 'custom' ? '✂️' : '🛍️';
+  const icon = BAG_IT_EMOJI;
 
   useEffect(() => {
     if (status === 'disabled') {

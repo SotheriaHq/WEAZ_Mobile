@@ -37,6 +37,7 @@ import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
 import { requestNativeIslandCollapse } from '@/components/navigation/nativeIslandEvents';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
+import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
 import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
 import type { FeedListEntry, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
@@ -309,7 +310,7 @@ const FeedBagAction = React.memo(function FeedBagAction({ item }: FeedBagActionP
           size={38}
         />
       </IconButton>
-      <AppText variant="captionBold" tone="inverse">Bag</AppText>
+      <AppText variant="captionBold" tone="inverse">{BAG_IT_LABEL}</AppText>
     </View>
   );
 });

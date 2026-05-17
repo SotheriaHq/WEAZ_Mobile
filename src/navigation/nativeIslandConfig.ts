@@ -1,4 +1,5 @@
 import type { NativeIslandNavItem } from '@/components/navigation/NativeIslandBottomNav';
+import { MY_BAG_EMOJI } from '@/src/constants/bagging';
 
 export const NATIVE_ISLAND_KEYS = {
   designs: 'designs',
@@ -15,7 +16,7 @@ export const NATIVE_ISLAND_ICONS: Record<NativeIslandKey | 'signIn', string> = {
   designs: String.fromCodePoint(0x1f9f5),
   market: String.fromCodePoint(0x1f6cd, 0xfe0f),
   store: String.fromCodePoint(0x1f3ea),
-  bag: String.fromCodePoint(0x1f6cd, 0xfe0f),
+  bag: MY_BAG_EMOJI,
   inbox: String.fromCodePoint(0x2709, 0xfe0f),
   profile: String.fromCodePoint(0x1f464),
   signIn: String.fromCodePoint(0x1f510),

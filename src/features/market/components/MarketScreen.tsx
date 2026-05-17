@@ -43,6 +43,7 @@ import type { MarketItem } from '@/src/types/market';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { routeForDesignTarget } from '@/src/utils/mobileRouting';
+import { BAG_IT_LABEL } from '@/src/constants/bagging';
 
 const SIDE_PADDING = tokens.spacing.lg;
 const SECTION_GAP = tokens.spacing.xl;
@@ -352,7 +353,7 @@ function MarketProductCard({
       unavailable={unavailable}
       favorite={favorite}
       favoriteBusy={favoriteBusy}
-      actionLabel={unavailable ? 'Out' : 'Bag'}
+      actionLabel={unavailable ? 'Out' : BAG_IT_LABEL}
       actionBusy={bagBusy}
       actionDisabled={unavailable}
       onPress={() => onOpen(item)}
@@ -388,7 +389,7 @@ function MarketDesignCard({
       typeLabel="Design"
       favorite={favorite}
       favoriteBusy={favoriteBusy}
-      actionLabel={canRequestCustomOrder ? 'Request' : undefined}
+      actionLabel={canRequestCustomOrder ? BAG_IT_LABEL : undefined}
       actionBusy={bagBusy}
       actionDisabled={!canRequestCustomOrder}
       onPress={() => onOpen(item)}
