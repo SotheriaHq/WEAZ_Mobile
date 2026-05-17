@@ -15,6 +15,7 @@ import {
   setAccessToken,
   setRefreshToken,
 } from '@/src/storage/secureStorage';
+import { googleAuth, type GoogleAuthParams } from '@/src/api/AuthApi';
 import { deactivateRegisteredPushTokenForLogout } from '@/src/notifications/pushTokenRegistration';
 import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
@@ -104,6 +105,7 @@ type AuthContextValue = {
   validateToken: () => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
   signUp: (params: SignUpParams) => Promise<void>;
+  signInWithGoogle: (params: GoogleAuthParams) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -121,6 +123,7 @@ type AuthSessionContextValue = {
   validateToken: () => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
   signUp: (params: SignUpParams) => Promise<void>;
+  signInWithGoogle: (params: GoogleAuthParams) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -533,6 +536,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyActiveBrandSelection, signOut, token]);
 
+  const applyAuthResponse = useCallback(async (rawData: unknown) => {
+    const data = unwrapData<any>(rawData);
+    const accessToken: string | null = (data as any)?.accessToken ?? (data as any)?.token ?? null;
+    const refreshToken: string | null = (data as any)?.refreshToken ?? null;
+
+    if (!accessToken) {
+      throw new Error('Authentication failed: missing access token');
+    }
+
+    await setAccessToken(accessToken);
+    setApiAuthToken(accessToken);
+    setToken(accessToken);
+    setStatus('authenticated');
+
+    if (refreshToken) {
+      await setRefreshToken(refreshToken);
+      setApiRefreshToken(refreshToken);
+      setRefreshTokenState(refreshToken);
+    }
+
+    const rawUser = (data as any)?.user;
+    const mappedUser = normalizeAuthUser(rawUser);
+    if (mappedUser?.id) {
+      setUser(applyActiveBrandSelection(mappedUser));
+    } else {
+      await validateToken();
+    }
+  }, [applyActiveBrandSelection, validateToken]);
+
   const signIn = useCallback(async ({ email, password }: SignInParams) => {
     try {
       const rawIdentifier = String(email ?? '');
@@ -641,33 +673,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
-      const data = unwrapData<any>(response.data);
-      const accessToken: string | null = (data as any)?.accessToken ?? (data as any)?.token ?? null;
-      const refreshToken: string | null = (data as any)?.refreshToken ?? null;
-
-      if (!accessToken) {
-        throw new Error('Login failed: missing access token');
-      }
-
-      await setAccessToken(accessToken);
-      setApiAuthToken(accessToken);
-      setToken(accessToken);
-      setStatus('authenticated');
-
-      if (refreshToken) {
-        await setRefreshToken(refreshToken);
-        setApiRefreshToken(refreshToken);
-        setRefreshTokenState(refreshToken);
-      }
-
-      // Prefer server-provided user; else validate with /auth/profile.
-      const rawUser = (data as any)?.user;
-      const mappedUser = normalizeAuthUser(rawUser);
-      if (mappedUser?.id) {
-        setUser(applyActiveBrandSelection(mappedUser));
-      } else {
-        await validateToken();
-      }
+      await applyAuthResponse(response.data);
     } catch (error: any) {
       throw new Error(
         normalizeAuthErrorMessage(
@@ -676,7 +682,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ),
       );
     }
-  }, [applyActiveBrandSelection, validateToken]);
+  }, [applyAuthResponse]);
 
   const signUp = useCallback(async (params: SignUpParams) => {
     try {
@@ -691,28 +697,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const response = await apiClient.post('/auth/signup', payload);
       const data = unwrapData<any>(response.data);
-
-      // Backend may return token + user. If not, fall back to signIn.
       const accessToken: string | null = (data as any)?.accessToken ?? (data as any)?.token ?? null;
-      const refreshToken: string | null = (data as any)?.refreshToken ?? null;
 
       if (accessToken) {
-        await setAccessToken(accessToken);
-        setApiAuthToken(accessToken);
-        setToken(accessToken);
-        setStatus('authenticated');
-        if (refreshToken) {
-          await setRefreshToken(refreshToken);
-          setApiRefreshToken(refreshToken);
-          setRefreshTokenState(refreshToken);
-        }
-        const rawUser = (data as any)?.user;
-        const mappedUser = normalizeAuthUser(rawUser);
-        if (mappedUser?.id) {
-          setUser(applyActiveBrandSelection(mappedUser));
-        } else {
-          await validateToken();
-        }
+        await applyAuthResponse(data);
         return;
       }
 
@@ -725,7 +713,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ),
       );
     }
-  }, [applyActiveBrandSelection, signIn, validateToken]);
+  }, [applyAuthResponse, signIn]);
+
+  const signInWithGoogle = useCallback(async (params: GoogleAuthParams) => {
+    try {
+      const data = await googleAuth(params);
+      await applyAuthResponse(data);
+    } catch (error: any) {
+      throw new Error(extractAuthErrorMessage(error) ?? 'Google sign-in could not be completed. Please try again.');
+    }
+  }, [applyAuthResponse]);
 
   useEffect(() => {
     if (bootstrappedRef.current) return;
@@ -834,9 +831,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       validateToken,
       signIn,
       signUp,
+      signInWithGoogle,
       signOut,
     }),
-    [status, token, user, updateUser, setActiveBrandId, validateToken, signIn, signUp, signOut],
+    [status, token, user, updateUser, setActiveBrandId, validateToken, signIn, signUp, signInWithGoogle, signOut],
   );
 
   const sessionValue = useMemo<AuthSessionContextValue>(
@@ -858,9 +856,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       validateToken,
       signIn,
       signUp,
+      signInWithGoogle,
       signOut,
     }),
-    [status, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, selectedActiveBrandId, setActiveBrandId, updateUser, validateToken, signIn, signUp, signOut],
+    [status, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, selectedActiveBrandId, setActiveBrandId, updateUser, validateToken, signIn, signUp, signInWithGoogle, signOut],
   );
 
   return (

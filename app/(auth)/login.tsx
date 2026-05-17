@@ -1,62 +1,94 @@
-/**
- * Login Screen — Theme-Aware Redesign
- *
- * Fully respects the active theme (dark / light / time-based):
- * - Background: LinearGradient using theme tokens (no hardcoded dark hex)
- * - Form panel: theme.colors.surface with theme.colors.border
- * - Text: theme.colors.text / theme.colors.textMuted throughout
- * - No image background (images are always dark, incompatible with light theme)
- *
- * The gradient creates a premium, editorial atmosphere without locking to dark.
- * Fashion · Social identity is maintained through typography and accent colors.
- */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useTheme } from '@/src/theme/ThemeProvider';
-import { tokens } from '@/src/styles/tokens';
-import { useAuth } from '@/src/auth/AuthContext';
-import { useToast } from '@/src/toast/ToastContext';
-import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
-import { Button } from '@/components/ui/Button';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
+import { Button } from '@/components/ui/Button';
+import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
+import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
+import {
+  confirmEmailLoginCode,
+  getLoginOptions,
+  requestEmailLoginCode,
+  setupPassword as setupAccountPassword,
+  type LoginOptionsResponse,
+} from '@/src/api/AuthApi';
+import { tokens } from '@/src/styles/tokens';
+import { useTheme } from '@/src/theme/ThemeProvider';
+import { useToast } from '@/src/toast/ToastContext';
 
-// ─── Invisible-character sanitizer (logic unchanged from original) ─────────────
 const INVISIBLE_AUTH_SPACING_REGEX =
   /[\u00A0\u1680\u180E\u2000-\u200D\u202F\u205F\u2060\u3000\uFEFF]/g;
-
-function stripInvisibleAuthSpacing(value: string): string {
-  return String(value ?? '').normalize('NFKC').replace(INVISIBLE_AUTH_SPACING_REGEX, '');
-}
-// ──────────────────────────────────────────────────────────────────────────────
-
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PASSWORD_MIN_LENGTH = 12;
+const PASSWORD_SETUP_PURPOSE = 'PASSWORD_SETUP' as const;
 const STAGGER_LOGO = 0;
 const STAGGER_HEADLINE = 80;
 const STAGGER_FORM = 200;
 
-export default function LoginScreen() {
-  const { theme, scheme } = useTheme();
-  const isDark = scheme === 'dark';
+type LoginStep =
+  | 'email'
+  | 'password'
+  | 'google-only'
+  | 'generic'
+  | 'code'
+  | 'password-setup'
+  | 'setup-success';
 
-  const { signIn, status, user } = useAuth();
+function stripInvisibleAuthSpacing(value: string): string {
+  return String(value ?? '').normalize('NFKC').replace(INVISIBLE_AUTH_SPACING_REGEX, '');
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  const candidates = [
+    (error as any)?.response?.data?.message,
+    (error as any)?.response?.data?.error,
+    (error as any)?.message,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return fallback;
+}
+
+export default function LoginScreen() {
+  const { theme } = useTheme();
+  const { signIn, signInWithGoogle, status, user } = useAuth();
   const toast = useToast();
   const params = useLocalSearchParams<{ reason?: string; next?: string }>();
   const insets = useSafeAreaInsets();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [loginStep, setLoginStep] = useState<LoginStep>('email');
+  const [loginOptions, setLoginOptions] = useState<LoginOptionsResponse | null>(null);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [flowError, setFlowError] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [emailCodeLoading, setEmailCodeLoading] = useState(false);
+  const [passwordSetupToken, setPasswordSetupToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordSetupLoading, setPasswordSetupLoading] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState(false);
 
-  // ── Staggered entrance ──
+  const googleTokenRequest = useGoogleIdTokenRequest({
+    loginHint: stripInvisibleAuthSpacing(email).trim() || undefined,
+  });
+
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const headlineOpacity = useRef(new Animated.Value(0)).current;
   const headlineSlide = useRef(new Animated.Value(24)).current;
@@ -66,36 +98,47 @@ export default function LoginScreen() {
   useEffect(() => {
     Animated.parallel([
       Animated.timing(logoOpacity, {
-        toValue: 1, duration: 500, delay: STAGGER_LOGO,
-        easing: Easing.out(Easing.cubic), useNativeDriver: true,
+        toValue: 1,
+        duration: 500,
+        delay: STAGGER_LOGO,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
       }),
       Animated.timing(headlineOpacity, {
-        toValue: 1, duration: 500, delay: STAGGER_HEADLINE,
-        easing: Easing.out(Easing.cubic), useNativeDriver: true,
+        toValue: 1,
+        duration: 500,
+        delay: STAGGER_HEADLINE,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
       }),
       Animated.timing(headlineSlide, {
-        toValue: 0, duration: 500, delay: STAGGER_HEADLINE,
-        easing: Easing.out(Easing.cubic), useNativeDriver: true,
+        toValue: 0,
+        duration: 500,
+        delay: STAGGER_HEADLINE,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
       }),
       Animated.timing(formOpacity, {
-        toValue: 1, duration: 500, delay: STAGGER_FORM,
-        easing: Easing.out(Easing.cubic), useNativeDriver: true,
+        toValue: 1,
+        duration: 500,
+        delay: STAGGER_FORM,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
       }),
       Animated.timing(formSlide, {
-        toValue: 0, duration: 500, delay: STAGGER_FORM,
-        easing: Easing.out(Easing.cubic), useNativeDriver: true,
+        toValue: 0,
+        duration: 500,
+        delay: STAGGER_FORM,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [formOpacity, formSlide, headlineOpacity, headlineSlide, logoOpacity]);
 
-  // ── Post-login navigation ──
   const nextPath = useMemo(() => {
     const next = typeof params.next === 'string' ? params.next : undefined;
     return next || '/(tabs)/me';
   }, [params.next]);
-
-  const [pendingNavigation, setPendingNavigation] = useState(false);
-  const showAuthRequired = params.reason === 'auth_required';
 
   useEffect(() => {
     if (pendingNavigation && status === 'authenticated' && user) {
@@ -115,22 +158,67 @@ export default function LoginScreen() {
     }
   }, [pendingNavigation, status, user, params.next, nextPath]);
 
-  const onSubmit = async () => {
-    const rawIdentifier = String(email ?? '');
-    const rawPassword = String(password ?? '');
-    const normalizedIdentifier = stripInvisibleAuthSpacing(rawIdentifier).trim();
-    const normalizedPassword = stripInvisibleAuthSpacing(rawPassword);
+  const normalizedEmail = stripInvisibleAuthSpacing(email).trim().toLowerCase();
+  const showAuthRequired = params.reason === 'auth_required';
+  const canRequestPasswordSetup = Boolean(loginOptions?.methods.passwordSetupAvailable);
+  const showGoogleAction =
+    loginStep === 'email' ||
+    loginStep === 'google-only' ||
+    loginStep === 'generic' ||
+    Boolean(loginOptions?.methods.google);
 
+  const resetProgressiveFlow = () => {
+    setLoginStep('email');
+    setLoginOptions(null);
+    setPassword('');
+    setPasswordError('');
+    setFlowError('');
+    setEmailCode('');
+    setPasswordSetupToken('');
+    setNewPassword('');
+    setConfirmNewPassword('');
+  };
+
+  const continueWithEmail = async () => {
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      setEmailError('Enter a valid email address.');
+      return;
+    }
+
+    setEmailError('');
+    setPasswordError('');
+    setFlowError('');
+    setOptionsLoading(true);
+    try {
+      const options = await getLoginOptions(normalizedEmail);
+      setLoginOptions(options);
+      if (options.methods.password) {
+        setLoginStep('password');
+      } else if (options.methods.google || options.methods.passwordSetupAvailable) {
+        setLoginStep('google-only');
+      } else {
+        setLoginStep('generic');
+      }
+    } catch (error) {
+      setFlowError(getErrorMessage(error, 'Unable to check sign-in options. Try again.'));
+    } finally {
+      setOptionsLoading(false);
+    }
+  };
+
+  const submitPasswordLogin = async () => {
+    const normalizedPassword = stripInvisibleAuthSpacing(password);
     let hasError = false;
-    if (!normalizedIdentifier) {
-      setEmailError('Email or username is required');
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      setEmailError('Enter a valid email address.');
       hasError = true;
     } else {
       setEmailError('');
     }
 
     if (!normalizedPassword.trim()) {
-      setPasswordError('Password is required');
+      setPasswordError('Password is required.');
       hasError = true;
     } else {
       setPasswordError('');
@@ -140,35 +228,127 @@ export default function LoginScreen() {
 
     setSubmitting(true);
     try {
-      await signIn({ email: normalizedIdentifier, password: normalizedPassword });
-      toast.success('Welcome back! 🎉');
+      await signIn({ email: normalizedEmail, password: normalizedPassword });
+      toast.success('Welcome back!');
       setPendingNavigation(true);
-    } catch (e: any) {
-      const message = typeof e?.message === 'string' ? e.message : 'Login failed. Please try again.';
-      toast.error(message);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Login failed. Please try again.'));
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Theme-derived gradient colors — premium aesthetic for both light and dark
+  const handleGoogleSignIn = async () => {
+    setFlowError('');
+    setGoogleLoading(true);
+    try {
+      const idToken = await googleTokenRequest.requestGoogleIdToken();
+      await signInWithGoogle({ idToken });
+      toast.success('Welcome back!');
+      setPendingNavigation(true);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Google sign-in could not be completed.'));
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const requestPasswordSetupCode = async () => {
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      setEmailError('Enter a valid email address.');
+      return;
+    }
+
+    setEmailError('');
+    setFlowError('');
+    setEmailCodeLoading(true);
+    try {
+      await requestEmailLoginCode({
+        email: normalizedEmail,
+        purpose: PASSWORD_SETUP_PURPOSE,
+        requestId: loginOptions?.requestId,
+      });
+      setEmailCode('');
+      setLoginStep('code');
+      toast.success('If eligible, a password setup code has been sent.');
+    } catch (error) {
+      setFlowError(getErrorMessage(error, 'Unable to send a password setup code.'));
+    } finally {
+      setEmailCodeLoading(false);
+    }
+  };
+
+  const confirmPasswordSetupCode = async () => {
+    const code = emailCode.trim();
+    if (!code) {
+      setFlowError('Enter the verification code from your email.');
+      return;
+    }
+
+    setFlowError('');
+    setEmailCodeLoading(true);
+    try {
+      const result = await confirmEmailLoginCode({
+        email: normalizedEmail,
+        code,
+        purpose: PASSWORD_SETUP_PURPOSE,
+      });
+      setPasswordSetupToken(result.passwordSetupToken);
+      setEmailCode('');
+      setLoginStep('password-setup');
+    } catch (error) {
+      setFlowError(getErrorMessage(error, 'Invalid or expired verification code.'));
+    } finally {
+      setEmailCodeLoading(false);
+    }
+  };
+
+  const submitPasswordSetup = async () => {
+    setFlowError('');
+    if (!passwordSetupToken) {
+      setFlowError('Your password setup session expired. Request a new code.');
+      setLoginStep('code');
+      return;
+    }
+    if (newPassword.length < PASSWORD_MIN_LENGTH) {
+      setFlowError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setFlowError('Passwords do not match.');
+      return;
+    }
+
+    setPasswordSetupLoading(true);
+    try {
+      await setupAccountPassword({
+        passwordSetupToken,
+        newPassword,
+      });
+      setPasswordSetupToken('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPassword('');
+      setLoginStep('setup-success');
+      toast.success('Password created. Sign in with your new password.');
+    } catch (error) {
+      setFlowError(getErrorMessage(error, 'Unable to create your password.'));
+    } finally {
+      setPasswordSetupLoading(false);
+    }
+  };
+
   const bgGradient = [theme.colors.bg, theme.colors.bg, theme.colors.bg] as const;
-
   const accentGradient = [theme.colors.surface, theme.colors.surfaceAlt, theme.colors.surface] as const;
-
-  const formBg = theme.colors.surface;
-  const formBorder = theme.colors.border;
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>
-      {/* ── Theme-adaptive gradient background ── */}
       <LinearGradient
         colors={bgGradient}
         start={{ x: 0.2, y: 0 }}
         end={{ x: 0.8, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      {/* Purple-gold accent sweep in top-right corner */}
       <LinearGradient
         colors={accentGradient}
         start={{ x: 1, y: 0 }}
@@ -177,7 +357,7 @@ export default function LoginScreen() {
       />
 
       <KeyboardAwareScrollView
-        enableOnAndroid={true}
+        enableOnAndroid
         extraScrollHeight={tokens.spacing['2xl']}
         enableResetScrollToCoords={false}
         showsVerticalScrollIndicator={false}
@@ -187,7 +367,6 @@ export default function LoginScreen() {
           { paddingTop: insets.top + tokens.spacing.lg, paddingBottom: insets.bottom + tokens.spacing['3xl'] },
         ]}
       >
-        {/* ── Logo — icon only, top left ── */}
         <Animated.View style={[styles.logoRow, { opacity: logoOpacity }]}>
           <Pressable
             onPress={() => router.replace('/')}
@@ -199,7 +378,6 @@ export default function LoginScreen() {
           </Pressable>
         </Animated.View>
 
-        {/* ── Editorial Headline ── */}
         <Animated.View
           style={[
             styles.headlineBlock,
@@ -207,7 +385,7 @@ export default function LoginScreen() {
           ]}
         >
           <AppText variant="caption" tone="primary" style={styles.editorialTag}>
-            FASHION · SOCIAL
+            FASHION SOCIAL
           </AppText>
           <AppText variant="display">
             Welcome{'\n'}
@@ -218,7 +396,6 @@ export default function LoginScreen() {
           </AppText>
         </Animated.View>
 
-        {/* ── Form Panel ── */}
         <Animated.View
           style={[
             styles.formPanel,
@@ -226,63 +403,256 @@ export default function LoginScreen() {
           ]}
         >
           <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.surfaceAlt }]} />
-
-          {/* Panel border */}
-          <View style={[styles.formPanelBorder, { borderColor: formBorder }]} />
-
-          {/* Gold top accent line */}
+          <View style={[styles.formPanelBorder, { borderColor: theme.colors.border }]} />
           <View style={styles.goldAccentLine} />
 
-          <View style={[styles.formInner, { backgroundColor: formBg }]}>
-            {showAuthRequired && (
+          <View style={[styles.formInner, { backgroundColor: theme.colors.surface }]}>
+            {showAuthRequired ? (
               <View style={styles.notice}>
-                <AppText style={styles.noticeText}>🔒 Please sign in to continue</AppText>
+                <AppText style={styles.noticeText}>Please sign in to continue</AppText>
               </View>
-            )}
+            ) : null}
 
             <View style={styles.fieldsContainer}>
               <FloatingLabelInput
-                label="Email or username"
-                icon="📧"
+                label="Email Address"
+                icon="@"
                 value={email}
-                onChangeText={(v) => setEmail(stripInvisibleAuthSpacing(v))}
-                keyboardType="default"
+                onChangeText={(value) => {
+                  setEmail(stripInvisibleAuthSpacing(value));
+                  setEmailError('');
+                  if (loginStep !== 'email') {
+                    resetProgressiveFlow();
+                  }
+                }}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
                 error={emailError}
                 testID="login-email-input"
               />
 
-              <FloatingLabelInput
-                label="Password"
-                icon="🔑"
-                value={password}
-                onChangeText={(v) => setPassword(stripInvisibleAuthSpacing(v))}
-                isPassword
-                error={passwordError}
-                testID="login-password-input"
-              />
+              {loginStep === 'password' ? (
+                <FloatingLabelInput
+                  label="Password"
+                  icon="*"
+                  value={password}
+                  onChangeText={(value) => {
+                    setPassword(stripInvisibleAuthSpacing(value));
+                    setPasswordError('');
+                  }}
+                  isPassword
+                  error={passwordError}
+                  testID="login-password-input"
+                />
+              ) : null}
             </View>
 
-            <Button
-              title="Forgot password?"
-              variant="ghost"
-              size="xs"
-              onPress={() =>
-                router.push({
-                  pathname: '/forgot-password',
-                  params: { email: stripInvisibleAuthSpacing(email).trim() },
-                })
-              }
-              style={styles.forgotBtn}
-            />
+            {loginStep === 'google-only' ? (
+              <View style={styles.statePanel}>
+                <AppText variant="bodyBold">This account uses Google sign-in.</AppText>
+                <AppText variant="caption" tone="muted" style={styles.statePanelText}>
+                  Continue with Google, or verify your email to create a Threadly password.
+                </AppText>
+              </View>
+            ) : null}
 
-            <View style={{ marginTop: tokens.spacing.sm }}>
-              <PrimaryAuthButton
-                title="SIGN IN"
-                onPress={onSubmit}
-                loading={submitting || status === 'loading'}
-                disabled={submitting || status === 'loading'}
+            {loginStep === 'generic' ? (
+              <View style={styles.statePanel}>
+                <AppText variant="bodyBold">Choose a sign-in path</AppText>
+                <AppText variant="caption" tone="muted" style={styles.statePanelText}>
+                  Continue with Google or create an account if you are new to Threadly.
+                </AppText>
+              </View>
+            ) : null}
+
+            {loginStep === 'code' ? (
+              <View style={styles.inlineFlow}>
+                <AppText variant="bodyBold">Enter your email code</AppText>
+                <AppText variant="caption" tone="muted">
+                  Use the code sent to your inbox to create your first password.
+                </AppText>
+                <FloatingLabelInput
+                  label="Verification Code"
+                  value={emailCode}
+                  onChangeText={(value) => {
+                    setEmailCode(value);
+                    setFlowError('');
+                  }}
+                  keyboardType="numeric"
+                  testID="password-setup-code-input"
+                />
+                <View style={styles.inlineActions}>
+                  <Button
+                    title="Verify code"
+                    onPress={confirmPasswordSetupCode}
+                    loading={emailCodeLoading}
+                    disabled={emailCodeLoading}
+                    fullWidth
+                  />
+                  <Button
+                    title="Resend code"
+                    variant="outline"
+                    onPress={requestPasswordSetupCode}
+                    disabled={emailCodeLoading}
+                    fullWidth
+                  />
+                </View>
+              </View>
+            ) : null}
+
+            {loginStep === 'password-setup' ? (
+              <View style={styles.inlineFlow}>
+                <AppText variant="bodyBold">Create your password</AppText>
+                <AppText variant="caption" tone="muted">
+                  This creates your first Threadly password. You will sign in after it is saved.
+                </AppText>
+                <FloatingLabelInput
+                  label="New Password"
+                  value={newPassword}
+                  onChangeText={(value) => {
+                    setNewPassword(value);
+                    setFlowError('');
+                  }}
+                  isPassword
+                  testID="password-setup-new-password-input"
+                />
+                <FloatingLabelInput
+                  label="Confirm Password"
+                  value={confirmNewPassword}
+                  onChangeText={(value) => {
+                    setConfirmNewPassword(value);
+                    setFlowError('');
+                  }}
+                  isPassword
+                  testID="password-setup-confirm-password-input"
+                />
+                <AppText variant="caption" tone="muted">
+                  Use at least {PASSWORD_MIN_LENGTH} characters.
+                </AppText>
+                <PrimaryAuthButton
+                  title="CREATE PASSWORD"
+                  onPress={submitPasswordSetup}
+                  loading={passwordSetupLoading}
+                  disabled={passwordSetupLoading}
+                />
+              </View>
+            ) : null}
+
+            {loginStep === 'setup-success' ? (
+              <View style={styles.successPanel}>
+                <AppText variant="bodyBold">Password created</AppText>
+                <AppText variant="caption" tone="muted" style={styles.statePanelText}>
+                  Sign in with your email and new password, or continue with Google.
+                </AppText>
+                <Button
+                  title="Back to sign in"
+                  variant="outline"
+                  onPress={() => {
+                    setLoginOptions({
+                      requestId: '',
+                      methods: {
+                        password: true,
+                        google: Boolean(loginOptions?.methods.google),
+                        passwordSetupAvailable: false,
+                      },
+                      message: '',
+                    });
+                    setLoginStep('password');
+                  }}
+                  fullWidth
+                />
+              </View>
+            ) : null}
+
+            {flowError ? (
+              <View style={styles.errorPanel}>
+                <AppText variant="caption" tone="danger">
+                  {flowError}
+                </AppText>
+              </View>
+            ) : null}
+
+            {loginStep === 'password' ? (
+              <Button
+                title="Forgot password?"
+                variant="ghost"
+                size="xs"
+                onPress={() =>
+                  router.push({
+                    pathname: '/forgot-password',
+                    params: { email: normalizedEmail },
+                  })
+                }
+                style={styles.forgotBtn}
               />
-            </View>
+            ) : null}
+
+            {loginStep === 'email' || loginStep === 'generic' ? (
+              <View style={styles.primaryAction}>
+                <PrimaryAuthButton
+                  title="CONTINUE"
+                  onPress={continueWithEmail}
+                  loading={optionsLoading}
+                  disabled={optionsLoading}
+                />
+              </View>
+            ) : null}
+
+            {loginStep === 'password' ? (
+              <View style={styles.primaryAction}>
+                <PrimaryAuthButton
+                  title="SIGN IN"
+                  onPress={submitPasswordLogin}
+                  loading={submitting || status === 'loading'}
+                  disabled={submitting || status === 'loading'}
+                />
+              </View>
+            ) : null}
+
+            {showGoogleAction ? (
+              <View style={styles.googleAction}>
+                <Button
+                  title={loginStep === 'email' ? 'CONTINUE WITH GOOGLE' : 'GOOGLE'}
+                  variant="outline"
+                  onPress={handleGoogleSignIn}
+                  loading={googleLoading}
+                  disabled={!googleTokenRequest.configured || !googleTokenRequest.ready || googleLoading}
+                  fullWidth
+                  testID="login-google-button"
+                />
+                {!googleTokenRequest.configured ? (
+                  <AppText variant="caption" tone="warning" style={styles.googleConfigText}>
+                    Google sign-in needs public Google client IDs in this build.
+                  </AppText>
+                ) : null}
+              </View>
+            ) : null}
+
+            {canRequestPasswordSetup &&
+            loginStep !== 'code' &&
+            loginStep !== 'password-setup' &&
+            loginStep !== 'setup-success' ? (
+              <Button
+                title="Create a password with email code"
+                variant="outline"
+                onPress={requestPasswordSetupCode}
+                loading={emailCodeLoading}
+                disabled={emailCodeLoading}
+                fullWidth
+                style={styles.passwordSetupButton}
+              />
+            ) : null}
+
+            {loginStep !== 'email' ? (
+              <Button
+                title="Use a different email"
+                variant="ghost"
+                size="xs"
+                onPress={resetProgressiveFlow}
+                style={styles.changeEmailButton}
+              />
+            ) : null}
 
             <View style={styles.footerRow}>
               <AppText variant="body" tone="muted">
@@ -294,7 +664,7 @@ export default function LoginScreen() {
                 accessibilityLabel="Create account"
               >
                 <AppText variant="bodyBold" tone="primary" style={styles.footerLink}>
-                  {'  '}CREATE ACCOUNT →
+                  {'  '}CREATE ACCOUNT
                 </AppText>
               </Pressable>
             </View>
@@ -376,12 +746,69 @@ const styles = StyleSheet.create({
   fieldsContainer: {
     gap: tokens.spacing.md,
   },
+  statePanel: {
+    marginTop: tokens.spacing.lg,
+    gap: tokens.spacing.xs,
+    padding: tokens.spacing.lg,
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.35)',
+    backgroundColor: 'rgba(212,175,55,0.08)',
+  },
+  statePanelText: {
+    lineHeight: 19,
+  },
+  inlineFlow: {
+    marginTop: tokens.spacing.lg,
+    gap: tokens.spacing.md,
+    padding: tokens.spacing.lg,
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(147,51,234,0.3)',
+    backgroundColor: 'rgba(147,51,234,0.08)',
+  },
+  inlineActions: {
+    gap: tokens.spacing.sm,
+  },
+  successPanel: {
+    marginTop: tokens.spacing.lg,
+    gap: tokens.spacing.md,
+    padding: tokens.spacing.lg,
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.35)',
+    backgroundColor: 'rgba(34,197,94,0.08)',
+  },
+  errorPanel: {
+    marginTop: tokens.spacing.md,
+    padding: tokens.spacing.md,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.35)',
+    backgroundColor: 'rgba(239,68,68,0.08)',
+  },
   forgotBtn: {
     alignSelf: 'flex-end',
-    marginTop: -tokens.spacing.sm,
-    marginBottom: tokens.spacing.xl2,
+    marginTop: tokens.spacing.xs,
     paddingVertical: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.xs,
+  },
+  primaryAction: {
+    marginTop: tokens.spacing.sm,
+  },
+  googleAction: {
+    marginTop: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+  },
+  googleConfigText: {
+    textAlign: 'center',
+  },
+  passwordSetupButton: {
+    marginTop: tokens.spacing.md,
+  },
+  changeEmailButton: {
+    alignSelf: 'center',
+    marginTop: tokens.spacing.sm,
   },
   footerRow: {
     marginTop: tokens.spacing['2xl'],

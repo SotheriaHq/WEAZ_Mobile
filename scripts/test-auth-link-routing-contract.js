@@ -12,7 +12,11 @@ const resetPasswordRoutePath = path.join(repoRoot, 'app', '(auth)', 'reset-passw
 const verifyEmailRoutePath = path.join(repoRoot, 'app', '(auth)', 'verify-email.tsx');
 const authLayoutPath = path.join(repoRoot, 'app', '(auth)', '_layout.tsx');
 const forgotPasswordPath = path.join(repoRoot, 'app', '(auth)', 'forgot-password.tsx');
+const loginPath = path.join(repoRoot, 'app', '(auth)', 'login.tsx');
+const signupPath = path.join(repoRoot, 'app', '(auth)', 'signup.tsx');
+const googleHookPath = path.join(repoRoot, 'src', 'auth', 'useGoogleIdTokenRequest.ts');
 const appJsonPath = path.join(repoRoot, 'app.json');
+const packageJsonPath = path.join(repoRoot, 'package.json');
 
 function compile(filePath) {
   return ts.transpileModule(fs.readFileSync(filePath, 'utf8'), {
@@ -92,6 +96,16 @@ function main() {
   const authApiSource = fs.readFileSync(authApiPath, 'utf8');
   assert.match(authApiSource, /export async function verifyEmail/, 'Mobile AuthApi must expose verifyEmail.');
   assert.match(authApiSource, /apiClient\.get<VerifyEmailResponse>\('\/auth\/verify-email'/, 'Mobile verifyEmail must use the backend verify-email endpoint.');
+  assert.match(authApiSource, /export async function googleAuth/, 'Mobile AuthApi must expose Google auth.');
+  assert.match(authApiSource, /'\/auth\/google'/, 'Mobile Google auth must call the backend Google endpoint.');
+  assert.match(authApiSource, /export async function getLoginOptions/, 'Mobile AuthApi must expose login-options.');
+  assert.match(authApiSource, /'\/auth\/login-options'/, 'Mobile login-options must call the backend endpoint.');
+  assert.match(authApiSource, /export async function requestEmailLoginCode/, 'Mobile AuthApi must expose email login code request.');
+  assert.match(authApiSource, /'\/auth\/email-login-code\/request'/, 'Mobile email-code request must call the backend endpoint.');
+  assert.match(authApiSource, /export async function confirmEmailLoginCode/, 'Mobile AuthApi must expose email login code confirm.');
+  assert.match(authApiSource, /'\/auth\/email-login-code\/confirm'/, 'Mobile email-code confirm must call the backend endpoint.');
+  assert.match(authApiSource, /export async function setupPassword/, 'Mobile AuthApi must expose Google-only password setup.');
+  assert.match(authApiSource, /'\/auth\/password\/setup'/, 'Mobile password setup must call the backend endpoint.');
 
   const notificationRoutingSource = fs.readFileSync(notificationRoutingPath, 'utf8');
   assert.match(notificationRoutingSource, /resolveMobileAuthRoute/, 'Deep-link handling must check auth links explicitly.');
@@ -112,6 +126,55 @@ function main() {
     mobileEnvExampleSource,
     /EXPO_PUBLIC_API_WITH_CREDENTIALS=/,
     'Mobile env example must document API credential mode.',
+  );
+  assert.match(
+    mobileEnvExampleSource,
+    /EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=<google-web-client-id>/,
+    'Mobile env example must document the public Google web client ID placeholder.',
+  );
+  assert.match(
+    mobileEnvExampleSource,
+    /EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=<google-ios-client-id>/,
+    'Mobile env example must document the public Google iOS client ID placeholder.',
+  );
+  assert.match(
+    mobileEnvExampleSource,
+    /EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=<google-android-client-id>/,
+    'Mobile env example must document the public Google Android client ID placeholder.',
+  );
+
+  const loginSource = fs.readFileSync(loginPath, 'utf8');
+  assert.match(loginSource, /getLoginOptions\(normalizedEmail\)/, 'Mobile login must resolve options only after Continue.');
+  assert.match(loginSource, /loginStep === 'email'/, 'Mobile login must start in the email-first state.');
+  assert.match(loginSource, /loginStep === 'password'/, 'Mobile login must render a password state.');
+  assert.match(loginSource, /loginStep === 'google-only'/, 'Mobile login must render a Google-only state.');
+  assert.match(loginSource, /loginStep === 'generic'/, 'Mobile login must render a generic unknown state.');
+  assert.match(loginSource, /requestEmailLoginCode/, 'Mobile login must support email-code request.');
+  assert.match(loginSource, /confirmEmailLoginCode/, 'Mobile login must support email-code confirmation.');
+  assert.match(loginSource, /setupAccountPassword/, 'Mobile login must support first-password setup.');
+  assert.match(loginSource, /useGoogleIdTokenRequest/, 'Mobile login must request a Google ID token through AuthSession.');
+  assert.match(loginSource, /signInWithGoogle\(\{\s*idToken\s*\}\)/, 'Mobile login must send only ID token for Google login.');
+  assert.doesNotMatch(loginSource, /onChangeText=\{(?:(?!\n\s*\})[\s\S])*getLoginOptions/, 'Mobile login must not call login-options while typing.');
+  assert.doesNotMatch(loginSource, /console\.(log|warn|error).*token/, 'Mobile login must not log raw Google/password setup tokens.');
+
+  const signupSource = fs.readFileSync(signupPath, 'utf8');
+  assert.match(signupSource, /signup-google-button/, 'Mobile signup must render a Google signup action.');
+  assert.match(signupSource, /signInWithGoogle\(\{\s*idToken,/s, 'Mobile signup must send Google ID token to backend auth.');
+  assert.match(signupSource, /brandFullName: trimmedBrandName/, 'Mobile Google brand signup must send brand full name.');
+
+  const googleHookSource = fs.readFileSync(googleHookPath, 'utf8');
+  assert.match(googleHookSource, /expo-auth-session\/providers\/google/, 'Mobile Google auth must use Expo AuthSession Google provider.');
+  assert.match(googleHookSource, /useIdTokenAuthRequest/, 'Mobile Google auth must request ID tokens.');
+  assert.doesNotMatch(
+    [mobileEnvExampleSource, authApiSource, loginSource, signupSource, googleHookSource].join('\n'),
+    /GOOGLE_CLIENT_SECRET|google-client-secret|client_secret/i,
+    'Mobile source and env example must not contain a Google client secret.',
+  );
+
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  assert.ok(
+    packageJson.dependencies?.['expo-auth-session'],
+    'Mobile package must include expo-auth-session for Google ID-token auth.',
   );
 
   const { resolveMobileAuthRoute } = loadAuthLinkRouting();

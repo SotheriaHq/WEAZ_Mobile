@@ -28,6 +28,8 @@ import { AccountTypeSelector } from '@/components/auth/AccountTypeSelector';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { Button } from '@/components/ui/Button';
+import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -54,7 +56,7 @@ function clearError(
 export default function SignupScreen() {
   const { theme, scheme } = useTheme();
   const isDark = scheme === 'dark';
-  const { signUp, status, user } = useAuth();
+  const { signUp, signInWithGoogle, status, user } = useAuth();
   const toast = useToast();
   const params = useLocalSearchParams<{ next?: string }>();
   const insets = useSafeAreaInsets();
@@ -68,6 +70,8 @@ export default function SignupScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const googleTokenRequest = useGoogleIdTokenRequest();
 
   // Field errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -219,6 +223,45 @@ export default function SignupScreen() {
       toast.error(message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onGoogleSignup = async () => {
+    const newErrors: Record<string, string> = {};
+    const trimmedBrandName = brandName.trim();
+
+    if (!userType) {
+      newErrors.userType = 'Choose an account type.';
+    }
+    if (userType === 'BRAND' && trimmedBrandName.length < 2) {
+      newErrors.brandName = 'Brand name must be at least 2 characters.';
+    }
+    if (!acceptedTerms) {
+      newErrors.acceptedTerms = 'Accept the Terms and Privacy Policy to continue.';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setErrors({});
+    setGoogleSubmitting(true);
+    try {
+      const idToken = await googleTokenRequest.requestGoogleIdToken();
+      await signInWithGoogle({
+        idToken,
+        type: userType ?? 'REGULAR',
+        ...(userType === 'BRAND' ? { brandFullName: trimmedBrandName } : {}),
+      });
+      toast.success('Welcome to Threadly!');
+      setPendingNavigation(true);
+    } catch (e: any) {
+      const message =
+        typeof e?.message === 'string' ? e.message : 'Google signup could not be completed.';
+      toast.error(message);
+    } finally {
+      setGoogleSubmitting(false);
     }
   };
 
@@ -455,6 +498,23 @@ export default function SignupScreen() {
               />
             </View>
 
+            <View style={styles.googleAction}>
+              <Button
+                title="CONTINUE WITH GOOGLE"
+                variant="outline"
+                onPress={onGoogleSignup}
+                loading={googleSubmitting}
+                disabled={!googleTokenRequest.configured || !googleTokenRequest.ready || googleSubmitting}
+                fullWidth
+                testID="signup-google-button"
+              />
+              {!googleTokenRequest.configured ? (
+                <AppText variant="caption" tone="warning" style={styles.googleConfigText}>
+                  Google signup needs public Google client IDs in this build.
+                </AppText>
+              ) : null}
+            </View>
+
             {/* Back to Login */}
             <View style={styles.footerRow}>
               <AppText variant="body" tone="muted">Already a member?</AppText>
@@ -562,6 +622,13 @@ const styles = StyleSheet.create({
   inlineError: {
     marginTop: -tokens.spacing.xs,
     marginBottom: tokens.spacing.xs,
+  },
+  googleAction: {
+    marginTop: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+  },
+  googleConfigText: {
+    textAlign: 'center',
   },
   footerRow: {
     marginTop: tokens.spacing['2xl'],
