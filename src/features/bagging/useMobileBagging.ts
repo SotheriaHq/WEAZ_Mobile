@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
@@ -26,6 +27,69 @@ type BagFlowBagOptions = {
   suppressAuthPrompt?: boolean;
 };
 
+const BAG_STATUS_CACHE_TTL_MS = 8_000;
+
+const cachedBagStatusByKey = new Map<string, { status: ProductBagStatus; expiresAt: number }>();
+const inflightBagStatusByKey = new Map<string, Promise<ProductBagStatus>>();
+
+const toSourceKey = (sourceType: BagSourceType, sourceId: string) => `${sourceType}:${sourceId}`;
+const toProductKey = (productId: string) => toSourceKey('PRODUCT', productId);
+
+const getCachedBagStatus = (key: string) => {
+  const cached = cachedBagStatusByKey.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    cachedBagStatusByKey.delete(key);
+    return null;
+  }
+  return cached.status;
+};
+
+const setCachedBagStatus = (key: string, status: ProductBagStatus) => {
+  cachedBagStatusByKey.set(key, {
+    status,
+    expiresAt: Date.now() + BAG_STATUS_CACHE_TTL_MS,
+  });
+};
+
+const clearCachedBagStatus = (key?: string) => {
+  if (key) {
+    cachedBagStatusByKey.delete(key);
+    inflightBagStatusByKey.delete(key);
+    return;
+  }
+  cachedBagStatusByKey.clear();
+  inflightBagStatusByKey.clear();
+};
+
+const resolveBagStatus = (
+  key: string,
+  fetcher: () => Promise<ProductBagStatus>,
+  options?: { forceRefresh?: boolean },
+) => {
+  if (options?.forceRefresh) {
+    clearCachedBagStatus(key);
+  } else {
+    const cached = getCachedBagStatus(key);
+    if (cached) return Promise.resolve(cached);
+
+    const inflight = inflightBagStatusByKey.get(key);
+    if (inflight) return inflight;
+  }
+
+  const request = fetcher().then((status) => {
+    setCachedBagStatus(key, status);
+    return status;
+  });
+  inflightBagStatusByKey.set(key, request);
+  void request.finally(() => {
+    if (inflightBagStatusByKey.get(key) === request) {
+      inflightBagStatusByKey.delete(key);
+    }
+  });
+  return request;
+};
+
 export function useMobileBagging() {
   const { status: authStatus } = useAuth();
   const toast = useToast();
@@ -37,8 +101,9 @@ export function useMobileBagging() {
   const [statusBySourceKey, setStatusBySourceKey] = useState<Record<string, ProductBagStatus>>({});
   const [loadingByProductId, setLoadingByProductId] = useState<Record<string, boolean>>({});
   const [errorByProductId, setErrorByProductId] = useState<Record<string, string | null>>({});
+  const authStatusRef = useRef(authStatus);
 
-  const sourceKey = useCallback((sourceType: BagSourceType, sourceId: string) => `${sourceType}:${sourceId}`, []);
+  const sourceKey = useCallback((sourceType: BagSourceType, sourceId: string) => toSourceKey(sourceType, sourceId), []);
 
   const setLoading = useCallback((productId: string, loading: boolean) => {
     setLoadingByProductId((prev) => {
@@ -60,12 +125,33 @@ export function useMobileBagging() {
     return { cart, custom };
   }, [refreshGlobalBagCount]);
 
+  useEffect(() => {
+    if (authStatusRef.current !== authStatus) {
+      clearCachedBagStatus();
+      authStatusRef.current = authStatus;
+    }
+  }, [authStatus]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        clearCachedBagStatus();
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
   const prepareBag = useCallback(
-    async (productId: string) => {
+    async (productId: string, options?: { forceRefresh?: boolean }) => {
       setLoading(productId, true);
       setErrorByProductId((prev) => ({ ...prev, [productId]: null }));
       try {
-        const status = await baggingService.prepareBag(productId);
+        const status = await resolveBagStatus(
+          toProductKey(productId),
+          () => baggingService.prepareBag(productId),
+          options,
+        );
         setStatusByProductId((prev) => ({ ...prev, [productId]: status }));
         const nextSourceType = status.sourceType;
         const nextSourceId = status.sourceId;
@@ -85,12 +171,16 @@ export function useMobileBagging() {
   );
 
   const prepareSourceBag = useCallback(
-    async (sourceType: BagSourceType, sourceId: string) => {
+    async (sourceType: BagSourceType, sourceId: string, options?: { forceRefresh?: boolean }) => {
       const key = sourceKey(sourceType, sourceId);
       setLoading(key, true);
       setErrorByProductId((prev) => ({ ...prev, [key]: null }));
       try {
-        const status = await baggingService.prepareSourceBag(sourceType, sourceId);
+        const status = await resolveBagStatus(
+          key,
+          () => baggingService.prepareSourceBag(sourceType, sourceId),
+          options,
+        );
         setStatusBySourceKey((prev) => ({ ...prev, [key]: status }));
         if (sourceType === 'PRODUCT') {
           setStatusByProductId((prev) => ({ ...prev, [sourceId]: status }));
@@ -112,10 +202,16 @@ export function useMobileBagging() {
       setLoading(payload.productId, true);
       setErrorByProductId((prev) => ({ ...prev, [payload.productId]: null }));
       try {
+        clearCachedBagStatus(toProductKey(payload.productId));
         const result = await baggingService.addStandard(payload);
         await refreshBagState();
-        const status = await baggingService.prepareBag(payload.productId);
+        const status = await prepareBag(payload.productId, { forceRefresh: true });
         setStatusByProductId((prev) => ({ ...prev, [payload.productId]: status }));
+        const nextSourceType = status.sourceType;
+        const nextSourceId = status.sourceId;
+        if (nextSourceType && nextSourceId) {
+          setStatusBySourceKey((prev) => ({ ...prev, [sourceKey(nextSourceType, nextSourceId)]: status }));
+        }
         return result;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to update standard bag.';
@@ -126,7 +222,7 @@ export function useMobileBagging() {
         setLoading(payload.productId, false);
       }
     },
-    [refreshBagState, refreshGlobalBagCount, setLoading, toast],
+    [prepareBag, refreshBagState, setLoading, sourceKey, toast],
   );
 
   const addCustomOrder = useCallback(
@@ -135,11 +231,12 @@ export function useMobileBagging() {
       setLoading(key, true);
       setErrorByProductId((prev) => ({ ...prev, [key]: null }));
       try {
+        clearCachedBagStatus(key);
         await baggingService.addCustomOrder(payload);
         await refreshBagState();
         const status = sourceType === 'PRODUCT'
-          ? await baggingService.prepareBag(productId)
-          : await baggingService.prepareSourceBag(sourceType, sourceId);
+          ? await prepareBag(productId, { forceRefresh: true })
+          : await prepareSourceBag(sourceType, sourceId, { forceRefresh: true });
         if (sourceType === 'PRODUCT') {
           setStatusByProductId((prev) => ({ ...prev, [productId]: status }));
         }
@@ -153,7 +250,7 @@ export function useMobileBagging() {
         setLoading(key, false);
       }
     },
-    [refreshBagState, refreshGlobalBagCount, setLoading, sourceKey, toast],
+    [prepareBag, prepareSourceBag, refreshBagState, setLoading, sourceKey, toast],
   );
 
   const getStatus = useCallback(

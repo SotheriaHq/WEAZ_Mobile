@@ -662,6 +662,7 @@ export const MobileStoreApi = {
   },
 
   async getProductBagStatus(productId: string): Promise<ProductBagStatus> {
+    const startedAt = Date.now();
     try {
       const response = await apiClient.get(`/store/products/${productId}/bag-status`);
       return normalizeBagStatus(response.data, productId);
@@ -781,6 +782,11 @@ export const MobileStoreApi = {
           disabledReason: null,
         },
       };
+    } finally {
+      logBagTiming('product_status_request', startedAt, {
+        sourceType: 'PRODUCT',
+        sourceId: productId,
+      });
     }
   },
 
@@ -799,15 +805,20 @@ export const MobileStoreApi = {
   },
 
   async getBagCount(): Promise<BagCount> {
-    const response = await apiClient.get('/bag/count');
-    const payload = unwrapData<Record<string, unknown>>(response.data);
-    const standardQuantity = asNumber(payload?.standardQuantity);
-    const customLineCount = asNumber(payload?.customLineCount);
-    return {
-      standardQuantity,
-      customLineCount,
-      combinedCount: asNumber(payload?.combinedCount, standardQuantity + customLineCount),
-    };
+    const startedAt = Date.now();
+    try {
+      const response = await apiClient.get('/bag/count');
+      const payload = unwrapData<Record<string, unknown>>(response.data);
+      const standardQuantity = asNumber(payload?.standardQuantity);
+      const customLineCount = asNumber(payload?.customLineCount);
+      return {
+        standardQuantity,
+        customLineCount,
+        combinedCount: asNumber(payload?.combinedCount, standardQuantity + customLineCount),
+      };
+    } finally {
+      logBagTiming('count_request', startedAt, {});
+    }
   },
 
   async getCart(): Promise<CartState> {

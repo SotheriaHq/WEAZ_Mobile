@@ -42,7 +42,6 @@ import { useToast } from '@/src/toast/ToastContext';
 import type { MarketItem } from '@/src/types/market';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
-import { routeForDesignTarget } from '@/src/utils/mobileRouting';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 
 const SIDE_PADDING = tokens.spacing.lg;
@@ -764,7 +763,7 @@ export function MarketScreen() {
   const toast = useToast();
   const { insets, standardScreenBottomPadding } = useScreenChrome();
   const { width, height } = useWindowDimensions();
-  const { bagProduct, bagSource, refreshGlobalBagCount } = useMobileBagging();
+  const { bagProduct, bagSource } = useMobileBagging();
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [designs, setDesigns] = useState<MarketItem[]>([]);
   const [productCursor, setProductCursor] = useState<string | null>(null);
@@ -961,7 +960,17 @@ export function MarketScreen() {
       router.push({ pathname: '/products/[productId]', params: { productId: item.product.id } } as any);
       return;
     }
-    router.push(routeForDesignTarget(item.design.collectionId, { legacyCollectionId: item.design.collectionId }) as any);
+    router.push({
+      pathname: '/market-viewer',
+      params: {
+        sourceType: 'DESIGN',
+        sourceId: item.design.collectionId,
+        brandId: item.design.brandId,
+        title: item.design.collectionTitle,
+        brandName: item.design.brandName ?? item.design.username ?? '',
+        priceLabel: getItemPriceLabel(item),
+      },
+    } as any);
   }, []);
 
   const setBusy = useCallback((key: string, busy: boolean) => {
@@ -987,14 +996,13 @@ export function MarketScreen() {
             name: item.design.collectionTitle,
           });
         }
-        await refreshGlobalBagCount();
       } catch (error) {
         toast.error(toErrorMessage(error));
       } finally {
         setBusy(item.key, false);
       }
     },
-    [bagProduct, bagSource, refreshGlobalBagCount, requireAuth, setBusy, toast],
+    [bagProduct, bagSource, requireAuth, setBusy, toast],
   );
 
   const handleFavorite = useCallback(

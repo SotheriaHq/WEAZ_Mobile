@@ -323,6 +323,7 @@ function RootStack() {
       <Stack.Screen name="catalog" options={{ headerShown: false }} />
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
       <Stack.Screen name="messages/[threadId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="market-viewer" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="search" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="products/[productId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="studio" options={{ headerShown: false, animation: 'slide_from_right' }} />

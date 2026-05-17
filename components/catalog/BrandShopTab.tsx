@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
@@ -250,7 +251,7 @@ export function BrandShopTab({
   const [cartByProductId, setCartByProductId] = useState<Record<string, string>>({});
   const [customBagByProductId, setCustomBagByProductId] = useState<Record<string, string>>({});
   const [busyByProductId, setBusyByProductId] = useState<Record<string, boolean>>({});
-  const { prepareBag, loadingByProductId, getPulseStatus, bagProduct, beginCustomFlow } = useProductBagging();
+  const { loadingByProductId, getPulseStatus, bagProduct, beginCustomFlow } = useProductBagging();
 
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -491,23 +492,9 @@ export function BrandShopTab({
 
   const openProductDetail = useCallback(
     async (product: StoreProduct) => {
-      setDetailVisible(true);
-      setDetailLoading(true);
-      setActiveProduct(product);
-
-      try {
-        const [detail] = await Promise.all([
-          MobileStoreApi.getProductById(product.id),
-          status === 'authenticated' && !isOwner ? prepareBag(product.id).catch(() => null) : Promise.resolve(null),
-        ]);
-        setActiveProduct(detail);
-      } catch {
-        // Keep card payload as fallback.
-      } finally {
-        setDetailLoading(false);
-      }
+      router.push({ pathname: '/products/[productId]', params: { productId: product.id } } as any);
     },
-    [isOwner, prepareBag, status],
+    [],
   );
 
   useEffect(() => {
