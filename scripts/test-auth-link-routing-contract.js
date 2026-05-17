@@ -55,8 +55,15 @@ function main() {
 
   const resetRouteSource = fs.readFileSync(resetPasswordRoutePath, 'utf8');
   assert.match(resetRouteSource, /useLocalSearchParams/, 'Reset route must read query params.');
+  assert.match(resetRouteSource, /const PASSWORD_MIN_LENGTH = 12;/, 'Reset route must enforce the 12-character password floor.');
+  assert.match(resetRouteSource, /passwordIsLongEnough/, 'Reset route must keep short-password validation.');
+  assert.match(resetRouteSource, /passwordsMatch/, 'Reset route must keep mismatch validation.');
+  assert.match(resetRouteSource, /renderMissingToken/, 'Reset route must include a missing-token state.');
+  assert.match(resetRouteSource, /renderSuccess/, 'Reset route must include a success state.');
   assert.match(resetRouteSource, /confirmPasswordReset\(token,\s*newPassword\)/, 'Reset route must call the reset API with the route token.');
+  assert.match(resetRouteSource, /router\.replace\('\/login'/, 'Reset route must send the user back to login after success.');
   assert.doesNotMatch(resetRouteSource, /console\.(log|warn|error).*token/, 'Reset route must not log raw tokens.');
+  assert.doesNotMatch(resetRouteSource, /\b(useAuth|signIn)\b/, 'Reset route must not automatically log the user in.');
 
   const notificationRoutingSource = fs.readFileSync(notificationRoutingPath, 'utf8');
   assert.match(notificationRoutingSource, /resolveMobileAuthRoute/, 'Deep-link handling must check auth links explicitly.');
@@ -64,6 +71,20 @@ function main() {
   const forgotPasswordSource = fs.readFileSync(forgotPasswordPath, 'utf8');
   assert.match(forgotPasswordSource, /browser/i, 'Forgot-password success copy must mention browser fallback.');
   assert.match(forgotPasswordSource, /web page still works/i, 'Forgot-password success copy must preserve web fallback.');
+
+  const mobileEnvExampleSource = fs.readFileSync(path.join(repoRoot, '.env.example'), 'utf8');
+  assert.match(mobileEnvExampleSource, /EXPO_PUBLIC_API_BASE_URL=/, 'Mobile env example must document API base URL.');
+  assert.match(mobileEnvExampleSource, /EXPO_PUBLIC_WEB_APP_URL=/, 'Mobile env example must document web fallback URL.');
+  assert.match(
+    mobileEnvExampleSource,
+    /EXPO_PUBLIC_TRUSTED_WEB_ORIGINS=/,
+    'Mobile env example must document trusted web origins.',
+  );
+  assert.match(
+    mobileEnvExampleSource,
+    /EXPO_PUBLIC_API_WITH_CREDENTIALS=/,
+    'Mobile env example must document API credential mode.',
+  );
 
   const { resolveMobileAuthRoute } = loadAuthLinkRouting();
   assert.deepEqual(
