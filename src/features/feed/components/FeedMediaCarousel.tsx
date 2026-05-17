@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { prefetchResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { feedMediaDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { FeedMediaSlide } from '@/src/features/feed/components/FeedMediaSlide';
-import type { FeedCarouselMedia, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
+import type { FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
 
 const normalizeStableUri = (value?: string | null) => {
   const normalized = typeof value === 'string' ? value.trim() : '';
@@ -20,6 +20,17 @@ type FeedMediaCarouselProps = {
   onContentPress?: () => void;
 };
 
+/**
+ * Horizontal image carousel for a single feed item.
+ *
+ * Uses ScrollView (not FlatList) so Android's NestedScrollingChild3
+ * protocol is exercised directly. This prevents the outer vertical FlatList
+ * from stealing horizontal gestures on low-end Android devices.
+ *
+ * The onScroll handler is intentionally omitted: dot-indicator position updates
+ * only on momentum end, keeping the JS thread free during the drag so the
+ * native scroll layer can respond instantly to touch on budget CPUs.
+ */
 export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   collectionId,
   mediaItems,
@@ -29,7 +40,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
 }: FeedMediaCarouselProps) {
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
-  const carouselRef = useRef<FlatList<FeedCarouselMedia>>(null);
+  const carouselRef = useRef<ScrollView>(null);
   const previousIndexRef = useRef(initialActiveIndex);
   const initialActiveIndexRef = useRef(initialActiveIndex);
   const prevCollectionIdRef = useRef<string>(collectionId);
@@ -37,8 +48,8 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   const prevWidthRef = useRef<number>(width);
   const hasMultipleItems = mediaItems.length > 1;
   const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
-  const [scrollProgressIndex, setScrollProgressIndex] = useState(initialActiveIndex);
   const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
+
   const stableMediaItems = useMemo(
     () =>
       mediaItems.map((item) => ({
@@ -49,22 +60,17 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       })),
     [mediaItems],
   );
-  const carouselItems = useMemo<FeedCarouselMedia[]>(
-    () =>
-      stableMediaItems.map((item) => ({
-        ...item,
-        virtualKey: item.id,
-      })),
-    [stableMediaItems],
-  );
+
   const mediaIdentity = useMemo(
     () => stableMediaItems.map((item) => `${item.id}:${item.fileId ?? ''}:${item.displayUrl ?? item.url}`).join('|'),
     [stableMediaItems],
   );
+
   const uniqueMediaIds = useMemo(
     () => Array.from(new Set(stableMediaItems.map((item) => item.id))),
     [stableMediaItems],
   );
+
   const uniqueDisplayUrls = useMemo(
     () => Array.from(new Set(stableMediaItems.map((item) => normalizeStableUri(item.displayUrl) ?? normalizeStableUri(item.url)).filter(Boolean))),
     [stableMediaItems],
@@ -82,6 +88,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     });
   }, [collectionId, safeActiveIndex, stableMediaItems.length, uniqueDisplayUrls, uniqueMediaIds]);
 
+  // Prefetch next image to eliminate loading lag on swipe.
   useEffect(() => {
     if (stableMediaItems.length < 2) return;
     const nextIndex = Math.min(stableMediaItems.length - 1, safeActiveIndex + 1);
@@ -99,13 +106,13 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     });
   }, [safeActiveIndex, stableMediaItems]);
 
-  // Sync prop to ref so reset effect can read latest value without it being a dep
+  // Keep initialActiveIndex accessible in the reset effect without making it a dep.
   useEffect(() => {
     initialActiveIndexRef.current = initialActiveIndex;
   }, [initialActiveIndex]);
 
-  // Reset carousel ONLY when collection identity, media identity, or layout width truly changes.
-  // Never fires just because the parent re-renders with a new activeIndex after a user swipe.
+  // Reset carousel when collection identity, media identity, or screen width changes.
+  // Never fires on a normal parent re-render with a new activeIndex after a user swipe.
   useEffect(() => {
     const collectionChanged = prevCollectionIdRef.current !== collectionId;
     const identityChanged = prevMediaIdentityRef.current !== mediaIdentity;
@@ -121,13 +128,12 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     const targetIndex = Math.max(0, Math.min(stableMediaItems.length - 1, initialActiveIndexRef.current));
     previousIndexRef.current = targetIndex;
     setActiveIndex(targetIndex);
-    setScrollProgressIndex(targetIndex);
     requestAnimationFrame(() => {
-      carouselRef.current?.scrollToIndex({ index: targetIndex, animated: false });
+      carouselRef.current?.scrollTo({ x: targetIndex * width, y: 0, animated: false });
     });
   }, [collectionId, mediaIdentity, stableMediaItems.length, width]);
 
-  // Clamp active index when media items shrink beneath current position
+  // Clamp active index when media item count shrinks below current position.
   useEffect(() => {
     if (!stableMediaItems.length) return;
     setActiveIndex((prev) => {
@@ -135,20 +141,16 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       if (clamped !== prev) previousIndexRef.current = clamped;
       return clamped;
     });
-    setScrollProgressIndex((current) => Math.min(current, stableMediaItems.length - 1));
   }, [stableMediaItems.length]);
 
-  const handleScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (!width || stableMediaItems.length < 2) return;
-      const nextProgress = Math.max(
-        0,
-        Math.min(stableMediaItems.length - 1, event.nativeEvent.contentOffset.x / width),
-      );
-      setScrollProgressIndex((current) => (Math.abs(current - nextProgress) < 0.03 ? current : nextProgress));
-    },
-    [stableMediaItems.length, width],
-  );
+  // Scroll to initial position after mount when starting beyond index 0.
+  useEffect(() => {
+    if (initialActiveIndex <= 0 || !stableMediaItems.length) return;
+    requestAnimationFrame(() => {
+      carouselRef.current?.scrollTo({ x: initialActiveIndex * width, y: 0, animated: false });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleMomentumEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -158,17 +160,18 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       );
       const previousIndex = previousIndexRef.current;
       const jumpDistance = Math.abs(measuredIndex - previousIndex);
+
+      // Limit to one page per gesture even if the device let momentum carry farther.
       const nextIndex =
         jumpDistance > 1
           ? Math.max(0, Math.min(stableMediaItems.length - 1, previousIndex + Math.sign(measuredIndex - previousIndex)))
           : measuredIndex;
 
       if (nextIndex !== measuredIndex) {
-        carouselRef.current?.scrollToIndex({ index: nextIndex, animated: true });
+        carouselRef.current?.scrollTo({ x: nextIndex * width, y: 0, animated: false });
       }
 
       previousIndexRef.current = nextIndex;
-      setScrollProgressIndex(nextIndex);
       scrollDevLog('horizontal-carousel-index', {
         collectionId: stableMediaItems[nextIndex]?.collectionId ?? null,
         mediaId: stableMediaItems[nextIndex]?.id ?? null,
@@ -201,41 +204,29 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
 
   return (
     <View style={StyleSheet.absoluteFillObject}>
-      <FlatList
+      <ScrollView
         ref={carouselRef}
         horizontal
         pagingEnabled
-        data={carouselItems}
-        keyExtractor={(item, index) => `${item.id}:${index}`}
-        renderItem={({ item, index }) => (
-          <View style={[styles.pageImage, { width }]}>
-            <FeedMediaSlide media={item} imageIndex={index} onPress={onContentPress} />
-          </View>
-        )}
-        getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
-        initialScrollIndex={safeActiveIndex > 0 ? safeActiveIndex : undefined}
-        directionalLockEnabled
-        nestedScrollEnabled
         bounces={false}
         decelerationRate="fast"
         disableIntervalMomentum
-        windowSize={5}
-        initialNumToRender={Math.min(2, carouselItems.length)}
-        maxToRenderPerBatch={3}
-        removeClippedSubviews={false}
+        directionalLockEnabled
+        nestedScrollEnabled
         overScrollMode="never"
         showsHorizontalScrollIndicator={false}
         scrollEnabled
-        scrollEventThrottle={16}
-        onScroll={handleScroll}
         onMomentumScrollEnd={handleMomentumEnd}
-        onScrollToIndexFailed={({ index }) => {
-          requestAnimationFrame(() => {
-            carouselRef.current?.scrollToOffset({ offset: index * width, animated: false });
-          });
-        }}
-      />
+      >
+        {stableMediaItems.map((item, index) => (
+          <View key={item.id} style={[styles.slide, { width }]}>
+            <FeedMediaSlide media={item} imageIndex={index} onPress={onContentPress} />
+          </View>
+        ))}
+      </ScrollView>
 
+      {/* Dots update on momentum end only; no JS state during drag keeps the
+          thread free and touch fully responsive on low-end Android devices. */}
       <View style={styles.dotRow} pointerEvents="none">
         {stableMediaItems.map((_, index) => (
           <View
@@ -244,8 +235,8 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
               styles.dot,
               {
                 backgroundColor: theme.colors.textInverse,
-                opacity: 0.38 + Math.max(0, 1 - Math.min(1, Math.abs(scrollProgressIndex - index))) * 0.62,
-                width: 6 + Math.max(0, 1 - Math.min(1, Math.abs(scrollProgressIndex - index))) * 12,
+                opacity: index === safeActiveIndex ? 1.0 : 0.38,
+                width: index === safeActiveIndex ? 18 : 6,
               },
             ]}
           />
@@ -256,7 +247,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
 });
 
 const styles = StyleSheet.create({
-  pageImage: {
+  slide: {
     height: '100%',
     position: 'relative',
   },
@@ -274,8 +265,5 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-  },
-  dotActive: {
-    width: 18,
   },
 });

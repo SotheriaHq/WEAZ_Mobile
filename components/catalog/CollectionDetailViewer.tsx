@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, FlatList, Image, Pressable, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Image, Pressable, ScrollView, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -204,7 +204,7 @@ function LoopCarousel({
   onDoubleTap?: () => void;
 }) {
   const { width } = useWindowDimensions();
-  const carouselRef = useRef<FlatList<CarouselMedia>>(null);
+  const carouselRef = useRef<ScrollView>(null);
   const hasMultipleItems = mediaItems.length > 1;
   const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
   const tapHandlers = useDiscreteTapGesture({
@@ -212,20 +212,20 @@ function LoopCarousel({
     onDoubleTap,
   });
 
+  // Layout: [ghost-last, ...real items..., ghost-first] for seamless loop.
   const carouselItems = useMemo<CarouselMedia[]>(() => {
     if (!hasMultipleItems) {
       return mediaItems.map((item, index) => ({ ...item, virtualKey: `real-${item.id}-${index}` }));
     }
-
     const first = mediaItems[0];
     const last = mediaItems[mediaItems.length - 1];
-
     return [
       { ...last, virtualKey: `loop-last-${last.id}` },
       ...mediaItems.map((item, index) => ({ ...item, virtualKey: `real-${item.id}-${index}` })),
       { ...first, virtualKey: `loop-first-${first.id}` },
     ];
   }, [hasMultipleItems, mediaItems]);
+
   const fallbackMedia = useMemo(
     () => mediaItems.find((item) => item.type === 'image' && Boolean(item.url || item.fileId)) ?? null,
     [mediaItems],
@@ -234,14 +234,8 @@ function LoopCarousel({
   const internalIndex = hasMultipleItems ? safeActiveIndex + 1 : safeActiveIndex;
 
   useEffect(() => {
-    if (!carouselRef.current || !carouselItems.length) {
-      return;
-    }
-
-    carouselRef.current.scrollToOffset({
-      offset: internalIndex * width,
-      animated: false,
-    });
+    if (!carouselRef.current || !carouselItems.length) return;
+    carouselRef.current.scrollTo({ x: internalIndex * width, y: 0, animated: false });
   }, [carouselItems.length, internalIndex, width]);
 
   if (!mediaItems.length) {
@@ -254,11 +248,8 @@ function LoopCarousel({
 
   return (
     <View style={StyleSheet.absoluteFillObject} {...tapHandlers}>
-      <FlatList
+      <ScrollView
         ref={carouselRef}
-        data={carouselItems}
-        key={`${mediaItems.length}-${width}`}
-        keyExtractor={(item) => item.virtualKey}
         horizontal
         pagingEnabled
         directionalLockEnabled
@@ -269,13 +260,6 @@ function LoopCarousel({
         overScrollMode="never"
         showsHorizontalScrollIndicator={false}
         scrollEnabled={hasMultipleItems}
-        initialNumToRender={Math.min(carouselItems.length, 4)}
-        windowSize={3}
-        getItemLayout={(_, index) => ({
-          length: width,
-          offset: width * index,
-          index,
-        })}
         onMomentumScrollEnd={(event) => {
           const rawIndex = Math.max(
             0,
@@ -287,37 +271,34 @@ function LoopCarousel({
             return;
           }
 
+          // Teleport from ghost-last (index 0) to real last item.
           if (rawIndex === 0) {
             const loopIndex = mediaItems.length - 1;
             onActiveIndexChange(loopIndex);
             requestAnimationFrame(() => {
-              carouselRef.current?.scrollToOffset({
-                offset: mediaItems.length * width,
-                animated: false,
-              });
+              carouselRef.current?.scrollTo({ x: mediaItems.length * width, y: 0, animated: false });
             });
             return;
           }
 
+          // Teleport from ghost-first (last index) to real first item.
           if (rawIndex === carouselItems.length - 1) {
             onActiveIndexChange(0);
             requestAnimationFrame(() => {
-              carouselRef.current?.scrollToOffset({
-                offset: width,
-                animated: false,
-              });
+              carouselRef.current?.scrollTo({ x: width, y: 0, animated: false });
             });
             return;
           }
 
           onActiveIndexChange(rawIndex - 1);
         }}
-        renderItem={({ item }) => (
-          <View style={{ width }}>
+      >
+        {carouselItems.map((item) => (
+          <View key={item.virtualKey} style={{ width }}>
             <ViewerMediaSlide media={item} fallbackMedia={fallbackMedia} />
           </View>
-        )}
-      />
+        ))}
+      </ScrollView>
 
       {hasMultipleItems ? (
         <View style={styles.dotRow} pointerEvents="none">

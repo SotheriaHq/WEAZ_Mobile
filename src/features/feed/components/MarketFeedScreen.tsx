@@ -1529,7 +1529,7 @@ export function MarketFeedScreen() {
       if (shouldCorrectJump) {
         const correctedListIndex = feedItems.findIndex((entry) => entry.realIndex === correctedRealIndex && !entry.isGhost);
         if (correctedListIndex >= 0) {
-          feedListRef.current?.scrollToIndex({ index: correctedListIndex, animated: true });
+          feedListRef.current?.scrollToIndex({ index: correctedListIndex, animated: false });
         }
       }
 
@@ -1782,16 +1782,17 @@ export function MarketFeedScreen() {
             snapToAlignment="start"
             disableIntervalMomentum
             getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
-            decelerationRate="normal"
+            decelerationRate="fast"
             directionalLockEnabled
             nestedScrollEnabled={false}
-            scrollEventThrottle={16}
+            scrollEventThrottle={32}
             bounces={false}
             overScrollMode="never"
             removeClippedSubviews={Platform.OS === 'android'}
             initialNumToRender={3}
-            maxToRenderPerBatch={3}
-            windowSize={5}
+            maxToRenderPerBatch={2}
+            updateCellsBatchingPeriod={100}
+            windowSize={3}
             initialScrollIndex={feedActiveIndex > 0 ? Math.min(feedActiveIndex, feedItems.length - 1) : undefined}
             scrollEnabled={!commentsTarget}
             showsVerticalScrollIndicator={false}
