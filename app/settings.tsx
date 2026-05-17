@@ -109,6 +109,12 @@ export default function SettingsScreen() {
             onPress: () => router.push('/(tabs)/me-edit' as never),
           },
           {
+            icon: '📍',
+            title: 'Location',
+            subtitle: 'Share location access',
+            onPress: () => router.push('/settings/location' as never),
+          },
+          {
             icon: '✉️',
             title: 'Phone & email',
             subtitle: 'Login and contact details',
