@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEve
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { prefetchResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { feedMediaDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { FeedMediaSlide } from '@/src/features/feed/components/FeedMediaSlide';
 import type { FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
@@ -10,6 +11,13 @@ import type { FeedViewerMedia } from '@/src/features/feed/components/feedCompone
 const normalizeStableUri = (value?: string | null) => {
   const normalized = typeof value === 'string' ? value.trim() : '';
   return normalized.length > 0 ? normalized : null;
+};
+
+const getAspectClass = (aspectRatio?: number | null) => {
+  if (typeof aspectRatio !== 'number' || !Number.isFinite(aspectRatio) || aspectRatio <= 0) return 'unknown';
+  if (aspectRatio > 1.08) return 'landscape';
+  if (aspectRatio < 0.92) return 'portrait';
+  return 'square';
 };
 
 type FeedMediaCarouselProps = {
@@ -182,6 +190,18 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         jumpDistance,
         corrected: nextIndex !== measuredIndex,
       });
+      if (nextIndex !== previousIndex) {
+        const nextMedia = stableMediaItems[nextIndex] ?? null;
+        trackMobileEvent('media_angle_swiped', {
+          sourceScreen: 'runway_feed',
+          itemId: collectionId,
+          mediaId: nextMedia?.id ?? null,
+          fromIndex: previousIndex,
+          toIndex: nextIndex,
+          mediaCount: stableMediaItems.length,
+          aspectClass: getAspectClass(nextMedia?.aspectRatio),
+        });
+      }
       setActiveIndex(nextIndex);
       onActiveIndexChange(nextIndex);
     },

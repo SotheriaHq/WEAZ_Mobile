@@ -19,8 +19,8 @@ type ThreadRailActionProps = {
 };
 
 const THREAD_EMOJI = String.fromCodePoint(0x1f9f5);
-const THREAD_SPIN_DURATION_MS = 680;
-const THREAD_COUNT_REVEAL_DELAY_MS = 520;
+const THREAD_SPIN_DURATION_MS = 420;
+const THREAD_COUNT_REVEAL_DELAY_MS = 280;
 
 function formatThreadCountLabel(count: string) {
   const value = count.trim();
@@ -115,27 +115,17 @@ export default function ThreadRailAction({
     }
 
     rotation.value = withSequence(
-      withTiming(360, {
-        duration: THREAD_SPIN_DURATION_MS,
-        easing: Easing.bezier(0.16, 0.86, 0.2, 1),
-      }),
-      withTiming(0, { duration: 0 }),
+      withTiming(-8, { duration: 90, easing: Easing.out(Easing.quad) }),
+      withTiming(8, { duration: THREAD_SPIN_DURATION_MS - 180, easing: Easing.bezier(0.16, 0.86, 0.2, 1) }),
+      withTiming(0, { duration: 90, easing: Easing.out(Easing.quad) }),
     );
     feedbackScale.value = withSequence(
-      withTiming(1.72, {
-        duration: 150,
+      withTiming(1.24, {
+        duration: 120,
         easing: Easing.bezier(0.16, 0.95, 0.28, 1.12),
       }),
-      withTiming(1.16, {
-        duration: 130,
-        easing: Easing.out(Easing.quad),
-      }),
-      withTiming(1.34, {
-        duration: 100,
-        easing: Easing.out(Easing.quad),
-      }),
       withTiming(1, {
-        duration: 190,
+        duration: 180,
         easing: Easing.out(Easing.quad),
       }),
     );

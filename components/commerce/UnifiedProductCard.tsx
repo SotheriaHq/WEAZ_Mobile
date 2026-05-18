@@ -4,6 +4,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { AppText } from '@/components/ui/AppText';
+import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
@@ -21,11 +22,16 @@ type UnifiedProductCardProps = {
   unavailable?: boolean;
   favorite?: boolean;
   favoriteBusy?: boolean;
+  favoriteAccessibilityLabel?: string;
   actionLabel?: string;
   actionBusy?: boolean;
   actionDisabled?: boolean;
   topRightSlot?: React.ReactNode;
   metaLabel?: string | null;
+  newDropItemId?: string;
+  newDropCreatedAt?: string | null;
+  analyticsSourceScreen?: string;
+  feedPosition?: number;
   style?: StyleProp<ViewStyle>;
   onPress: () => void;
   onFavoritePress?: () => void;
@@ -48,11 +54,16 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   unavailable = false,
   favorite = false,
   favoriteBusy = false,
+  favoriteAccessibilityLabel,
   actionLabel,
   actionBusy = false,
   actionDisabled = false,
   topRightSlot,
   metaLabel,
+  newDropItemId,
+  newDropCreatedAt,
+  analyticsSourceScreen = 'market',
+  feedPosition,
   style,
   onPress,
   onFavoritePress,
@@ -122,6 +133,16 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
         </View>
       ) : null}
 
+      {newDropItemId ? (
+        <NewDropBadge
+          itemId={newDropItemId}
+          createdAt={newDropCreatedAt}
+          sourceScreen={analyticsSourceScreen}
+          feedPosition={feedPosition}
+          style={styles.newDropBadge}
+        />
+      ) : null}
+
       {topRightSlot ? (
         <View style={styles.topRightSlot}>{topRightSlot}</View>
       ) : onFavoritePress ? (
@@ -138,7 +159,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
             pressed && styles.inlinePressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={favorite ? 'Remove from favorites' : 'Add to favorites'}
+          accessibilityLabel={favoriteAccessibilityLabel ?? (favorite ? 'Remove from favorites' : 'Add to favorites')}
         >
           {favoriteBusy ? (
             <ActivityIndicator size="small" color={theme.colors.textInverse} />
@@ -239,6 +260,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  newDropBadge: {
+    position: 'absolute',
+    left: tokens.spacing.sm,
+    top: 44,
+    maxWidth: '62%',
   },
   topRightSlot: {
     position: 'absolute',

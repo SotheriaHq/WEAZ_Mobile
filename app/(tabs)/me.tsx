@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { ProfileApi, type Order, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
+import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
@@ -46,6 +47,15 @@ const MEASUREMENT_FIELDS: Array<{ key: MeasurementKey; label: string }> = [
   { key: 'INSEAM', label: 'Inseam' },
   { key: 'HEIGHT', label: 'Height' },
 ];
+
+const getSavedLooksCountBucket = (count: number) => {
+  if (count <= 0) return '0';
+  if (count <= 2) return '1-2';
+  if (count <= 9) return '3-9';
+  return '10+';
+};
+
+const getProfileTabLabel = (tab: ProfileTab) => (tab === 'Saved' ? 'Saved Looks' : tab);
 
 function formatCurrency(amount: number, currency = 'NGN') {
   try {
@@ -383,6 +393,7 @@ export default function BuyerProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Saved');
+  const savedLooksOpenedTrackedRef = useRef(false);
   const [editOpen, setEditOpen] = useState(false);
   const [fittingsOpen, setFittingsOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -415,6 +426,15 @@ export default function BuyerProfileScreen() {
     }),
     [state.orders.length, state.patches.length, state.saved.length],
   );
+
+  useEffect(() => {
+    if (status !== 'authenticated' || activeTab !== 'Saved' || savedLooksOpenedTrackedRef.current) return;
+    savedLooksOpenedTrackedRef.current = true;
+    trackMobileEvent('saved_looks_opened', {
+      sourceScreen: 'profile',
+      savedCountBucket: getSavedLooksCountBucket(state.saved.length),
+    });
+  }, [activeTab, state.saved.length, status]);
 
   useEffect(() => {
     if (status === 'authenticated' && user?.id) {
@@ -715,7 +735,7 @@ export default function BuyerProfileScreen() {
           <ActivityIndicator size="small" color={theme.colors.primary} />
           <AppText variant="subtitle">Redirecting to sign in</AppText>
           <AppText variant="body" tone="muted" style={styles.emptyBody}>
-            Sign in to manage your saved designs, fittings, and orders.
+            Sign in to manage your saved looks, fittings, and orders.
           </AppText>
         </View>
       </SafeAreaView>
@@ -778,7 +798,7 @@ export default function BuyerProfileScreen() {
         </View>
 
         <View style={styles.summaryRow}>
-          <SummaryStat title="Saved" value={String(profileCounts.saved)} subtitle="designs" />
+          <SummaryStat title="Saved Looks" value={String(profileCounts.saved)} subtitle="inspiration" />
           <SummaryStat title="Patched" value={String(profileCounts.patches)} subtitle="brands" />
           <SummaryStat title="History" value={String(profileCounts.orders)} subtitle="orders" />
         </View>
@@ -819,7 +839,7 @@ export default function BuyerProfileScreen() {
                 accessibilityState={{ selected }}
               >
                 <AppText variant="captionBold" tone={selected ? 'primary' : 'secondary'}>
-                  {tab}
+                  {getProfileTabLabel(tab)}
                 </AppText>
               </Pressable>
             );
@@ -830,9 +850,9 @@ export default function BuyerProfileScreen() {
           state.saved.length === 0 ? (
             <EmptyState
               emoji="🗂️"
-              title="Nothing saved yet"
-              body="Save designs you love so you can revisit them quickly from here."
-              cta="Browse designs"
+              title="No saved looks yet"
+              body="Save looks you love for inspiration so you can revisit them quickly from here."
+              cta="Browse Runway"
               onPress={() => router.push('/(tabs)' as any)}
             />
           ) : (

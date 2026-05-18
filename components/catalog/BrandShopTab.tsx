@@ -42,7 +42,7 @@ const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
   { key: 'in_stock', label: 'In stock' },
   { key: 'custom_only', label: 'Custom-ready' },
   { key: 'bagged', label: 'In bag' },
-  { key: 'saved', label: 'Saved' },
+  { key: 'saved', label: 'Wishlist' },
 ];
 
 const toApiErrorMessage = (error: unknown, fallback: string) => {
@@ -164,7 +164,7 @@ function ProductCard({
       mediaSrc={product.coverImage}
       mediaFileId={product.coverImageId}
       typeLabel={typeLabel}
-      metaLabel={wishlisted ? 'Saved' : metaLabel}
+      metaLabel={wishlisted ? 'Wishlist' : metaLabel}
       actionLabel="View"
       actionBusy={busy}
       onActionPress={onPress}
@@ -967,7 +967,7 @@ export function BrandShopTab({
                       ]}
                     >
                       <AppText variant="bodyBold" tone="secondary" style={styles.actionButtonText}>
-                        {wishlistByProductId[activeProduct.id] ? '🧵 Saved • Tap to unsave' : '🧵 Save to wishlist'}
+                        {wishlistByProductId[activeProduct.id] ? '🧵 In wishlist • Tap to remove' : '🧵 Save to wishlist'}
                       </AppText>
                     </Pressable>
 

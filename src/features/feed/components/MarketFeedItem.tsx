@@ -11,6 +11,7 @@ type MarketFeedItemProps = {
   activeMediaIndex: number;
   actionRail: React.ReactNode;
   metaOverlay: React.ReactNode;
+  badgeOverlay?: React.ReactNode;
   onCarouselIndexChange: (collectionId: string, nextIndex: number) => void;
   onContentPress: () => void;
 };
@@ -22,6 +23,7 @@ export const MarketFeedItem = React.memo(function MarketFeedItem({
   activeMediaIndex,
   actionRail,
   metaOverlay,
+  badgeOverlay,
   onCarouselIndexChange,
   onContentPress,
 }: MarketFeedItemProps) {
@@ -42,6 +44,7 @@ export const MarketFeedItem = React.memo(function MarketFeedItem({
         onActiveIndexChange={handleActiveIndexChange}
         onContentPress={onContentPress}
       />
+      {badgeOverlay}
       {actionRail}
       {metaOverlay}
     </View>

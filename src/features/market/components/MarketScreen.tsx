@@ -18,14 +18,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
 import { AppText } from '@/components/ui/AppText';
+import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
 import { MobileStoreApi, type StoreCollectionSummary, type StoreProduct } from '@/src/api/StoreApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
 import { getMarketFeed } from '@/src/api/MarketApi';
+import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
+import { buildMoodboardSuggestionSection } from '@/src/recommendations/recommendationScoring';
 import { MarketFilterSheet } from '@/src/features/market/components/MarketFilterSheet';
 import { MarketEmptyState, MarketErrorState } from '@/src/features/market/components/MarketStates';
 import { MarketSkeleton } from '@/src/features/market/components/MarketSkeleton';
@@ -59,6 +62,7 @@ type MarketRow =
       title: string;
       subtitle?: string;
       items: MarketContentItem[];
+      source?: 'moodboard';
       onSeeAll?: () => void;
     }
   | {
@@ -95,6 +99,10 @@ function getItemTitle(item: MarketContentItem) {
 function getItemBrand(item: MarketContentItem) {
   if (item.kind === 'product') return normalizeOption(item.product.brandName);
   return normalizeOption(item.design.brandName ?? item.design.username);
+}
+
+function getItemBrandId(item: MarketContentItem) {
+  return item.kind === 'product' ? item.product.brandId ?? null : item.design.brandId ?? null;
 }
 
 function getItemCategories(item: MarketContentItem) {
@@ -264,6 +272,7 @@ function buildBlazingTrends(categoryOptions: string[], allItems: MarketContentIt
 function buildRows(args: {
   allItems: MarketContentItem[];
   filteredItems: MarketContentItem[];
+  moodboardItems: MarketContentItem[];
   collections: StoreCollectionSummary[];
   collectionError: string | null;
   categoryOptions: string[];
@@ -274,6 +283,7 @@ function buildRows(args: {
   const {
     allItems,
     filteredItems,
+    moodboardItems,
     collections,
     collectionError,
     categoryOptions,
@@ -302,6 +312,17 @@ function buildRows(args: {
       subtitle: 'New products and custom-ready runway',
       items: freshItems,
       onSeeAll: setNewestView,
+    });
+  }
+
+  if (moodboardItems.length > 0) {
+    rows.push({
+      id: 'for-moodboard',
+      type: 'HORIZONTAL_CARD_ROW',
+      title: 'For your moodboard',
+      subtitle: 'Looks to save for inspiration',
+      items: moodboardItems,
+      source: 'moodboard',
     });
   }
 
@@ -388,9 +409,13 @@ function MarketProductCard({
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
       typeLabel="Product"
+      newDropItemId={item.product.id}
+      newDropCreatedAt={item.product.createdAt}
+      analyticsSourceScreen="market"
       unavailable={unavailable}
       favorite={favorite}
       favoriteBusy={favoriteBusy}
+      favoriteAccessibilityLabel={favorite ? 'Remove from wishlist' : 'Add to wishlist'}
       actionLabel={unavailable ? 'Out' : BAG_IT_LABEL}
       actionBusy={bagBusy}
       actionDisabled={unavailable}
@@ -425,8 +450,12 @@ function MarketDesignCard({
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
       typeLabel="Runway"
+      newDropItemId={item.design.collectionId}
+      newDropCreatedAt={item.design.createdAt ?? item.design.media?.createdAt}
+      analyticsSourceScreen="market"
       favorite={favorite}
       favoriteBusy={favoriteBusy}
+      favoriteAccessibilityLabel={favorite ? 'Remove from Saved Looks' : 'Save look for inspiration'}
       actionLabel={canRequestCustomOrder ? BAG_IT_LABEL : undefined}
       actionBusy={bagBusy}
       actionDisabled={!canRequestCustomOrder}
@@ -480,11 +509,14 @@ function MarketHeroSlide({
       />
       <View style={styles.heroTopRow}>
         <View style={[styles.heroPill, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
-          <AppText variant="captionBold" tone="inverse">Trending Now</AppText>
+          <AppText variant="captionBold" tone="inverse">Market Pick</AppText>
         </View>
-        <View style={[styles.heroBadge, { backgroundColor: theme.colors.primary }]}>
-          <AppText variant="captionBold" tone="inverse">{String.fromCodePoint(0x1f525)}</AppText>
-        </View>
+        <NewDropBadge
+          itemId={item.key}
+          createdAt={getItemCreatedAt(item)}
+          sourceScreen="market"
+          style={styles.heroNewDropBadge}
+        />
       </View>
       <View style={styles.heroCopy}>
         <AppText variant="title" tone="inverse" numberOfLines={1}>
@@ -620,7 +652,7 @@ function BlazingRow({
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <AppText variant="subtitle">{String.fromCodePoint(0x1f525)} Blazing Now</AppText>
+        <AppText variant="subtitle">{String.fromCodePoint(0x1f525)} Live themes</AppText>
       </View>
       <FlatList
         data={trends}
@@ -773,6 +805,7 @@ function HorizontalCardRow({
   onBag,
   onFavorite,
   onSeeAll,
+  source,
 }: {
   title: string;
   subtitle?: string;
@@ -785,7 +818,38 @@ function HorizontalCardRow({
   onBag: (item: MarketContentItem) => void;
   onFavorite: (item: MarketContentItem) => void;
   onSeeAll?: () => void;
+  source?: 'moodboard';
 }) {
+  const handleOpen = useCallback(
+    (item: MarketContentItem) => {
+      if (source === 'moodboard' && item.kind === 'design') {
+        trackMobileEvent('moodboard_suggestion_opened', {
+          sourceScreen: 'market',
+          itemId: item.key,
+          collectionId: item.design.collectionId,
+          brandId: item.design.brandId,
+        });
+      }
+      onOpen(item);
+    },
+    [onOpen, source],
+  );
+
+  const handleFavorite = useCallback(
+    (item: MarketContentItem) => {
+      if (source === 'moodboard' && item.kind === 'design') {
+        trackMobileEvent('moodboard_suggestion_saved', {
+          sourceScreen: 'market',
+          itemId: item.key,
+          collectionId: item.design.collectionId,
+          brandId: item.design.brandId,
+        });
+      }
+      onFavorite(item);
+    },
+    [onFavorite, source],
+  );
+
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -813,9 +877,9 @@ function HorizontalCardRow({
             favorite={Boolean(favoriteByKey[item.key])}
             bagBusy={Boolean(busyByKey[item.key])}
             favoriteBusy={Boolean(favoriteBusyByKey[item.key])}
-            onOpen={onOpen}
+            onOpen={handleOpen}
             onBag={onBag}
-            onFavorite={onFavorite}
+            onFavorite={handleFavorite}
           />
         )}
       />
@@ -948,6 +1012,8 @@ export function MarketScreen() {
   const [favoriteByKey, setFavoriteByKey] = useState<Record<string, boolean>>({});
   const [busyByKey, setBusyByKey] = useState<Record<string, boolean>>({});
   const [favoriteBusyByKey, setFavoriteBusyByKey] = useState<Record<string, boolean>>({});
+  const moodboardSectionSeenRef = useRef<string | null>(null);
+  const moodboardSuggestionSeenRef = useRef<Set<string>>(new Set());
 
   const bottomClearance = standardScreenBottomPadding;
   const allItems = useMemo(() => buildContentItems(products, designs), [designs, products]);
@@ -1000,6 +1066,74 @@ export function MarketScreen() {
       return new Date(getItemCreatedAt(b) ?? 0).getTime() - new Date(getItemCreatedAt(a) ?? 0).getTime();
     });
   }, [allItems, filters, search]);
+
+  const moodboardRecommendations = useMemo(() => {
+    const preferredKeys = [
+      filters.category,
+      ...search.split(/\s+/g).map((entry) => entry.trim()).filter(Boolean),
+    ].filter((entry): entry is string => Boolean(entry));
+
+    const candidates = filteredItems
+      .filter((item): item is DesignMarketItem => item.kind === 'design')
+      .map((item) => ({
+        id: item.key,
+        item,
+        entityType: 'DESIGN' as const,
+        createdAt: item.design.createdAt ?? item.design.media?.createdAt ?? null,
+        brandId: item.design.brandId ?? null,
+        categoryKeys: getItemCategories(item),
+        tagKeys: item.design.tags ?? [],
+        mediaReady: hasDisplayMedia(item),
+        alreadySaved: Boolean(favoriteByKey[item.key]),
+        signals: {
+          threadCount: item.design.threadsCount ?? item.design.stats?.threads ?? null,
+          commentCount: item.design.combinedCommentsCount ?? item.design.commentsCount ?? null,
+          commerceReady: typeof item.design.viewerState?.canBag === 'boolean' ? item.design.viewerState.canBag : null,
+        },
+      }));
+
+    return buildMoodboardSuggestionSection(candidates, {
+      userProfile: preferredKeys.length ? { preferredKeys } : null,
+      limit: 10,
+    });
+  }, [favoriteByKey, filteredItems, filters.category, search]);
+
+  const moodboardItems = useMemo(
+    () => moodboardRecommendations.map((candidate) => candidate.item),
+    [moodboardRecommendations],
+  );
+
+  const moodboardScoreByKey = useMemo(
+    () => Object.fromEntries(moodboardRecommendations.map((candidate) => [candidate.item.key, candidate.score])),
+    [moodboardRecommendations],
+  );
+
+  useEffect(() => {
+    if (moodboardItems.length === 0) return;
+    const sectionKey = moodboardItems.map((item) => item.key).join('|');
+    if (moodboardSectionSeenRef.current !== sectionKey) {
+      moodboardSectionSeenRef.current = sectionKey;
+      trackMobileEvent('moodboard_section_seen', {
+        sourceScreen: 'market',
+        sectionId: 'for-moodboard',
+        itemCount: moodboardItems.length,
+      });
+    }
+
+    moodboardItems.forEach((item, index) => {
+      const seenKey = `${item.key}:${index}`;
+      if (moodboardSuggestionSeenRef.current.has(seenKey)) return;
+      moodboardSuggestionSeenRef.current.add(seenKey);
+      trackMobileEvent('moodboard_suggestion_seen', {
+        sourceScreen: 'market',
+        itemId: item.key,
+        collectionId: item.kind === 'design' ? item.design.collectionId : null,
+        brandId: getItemBrandId(item),
+        position: index,
+        score: moodboardScoreByKey[item.key],
+      });
+    });
+  }, [moodboardItems, moodboardScoreByKey]);
 
   const loadMarket = useCallback(
     async (mode: 'reset' | 'more') => {
@@ -1181,8 +1315,30 @@ export function MarketScreen() {
       setBusy(item.key, true);
       try {
         if (item.kind === 'product') {
+          trackMobileEvent('bag_tapped', {
+            sourceScreen: 'market',
+            sourceType: 'PRODUCT',
+            sourceId: item.product.id,
+            productId: item.product.id,
+            eligibilityState: productStock(item.product) > 0 ? 'eligible' : 'not_eligible',
+          });
           await bagProduct({ id: item.product.id, name: item.product.name });
         } else {
+          trackMobileEvent('bag_tapped', {
+            sourceScreen: 'market',
+            sourceType: 'DESIGN',
+            sourceId: item.design.collectionId,
+            designId: item.design.collectionId,
+            collectionId: item.design.collectionId,
+            eligibilityState: item.design.viewerState?.canBag ? 'eligible' : 'not_eligible',
+          });
+          trackMobileEvent('custom_order_tapped', {
+            sourceScreen: 'market',
+            sourceType: 'DESIGN',
+            sourceId: item.design.collectionId,
+            brandId: item.design.brandId,
+            eligibilityState: item.design.viewerState?.canBag ? 'eligible' : 'not_eligible',
+          });
           await bagSource({
             sourceType: 'DESIGN',
             sourceId: item.design.collectionId,
@@ -1214,11 +1370,25 @@ export function MarketScreen() {
             designId: item.design.collectionId,
             legacyCollectionId: item.design.collectionId,
           });
+          trackMobileEvent('design_unsaved', {
+            sourceScreen: 'market',
+            targetType: 'DESIGN',
+            targetId: item.design.collectionId,
+            collectionId: item.design.collectionId,
+            brandId: item.design.brandId,
+          });
         } else {
           await SavedItemsApi.saveCatalogTarget({
             targetType: 'DESIGN',
             designId: item.design.collectionId,
             legacyCollectionId: item.design.collectionId,
+          });
+          trackMobileEvent('design_saved', {
+            sourceScreen: 'market',
+            targetType: 'DESIGN',
+            targetId: item.design.collectionId,
+            collectionId: item.design.collectionId,
+            brandId: item.design.brandId,
           });
         }
       } catch (error) {
@@ -1254,6 +1424,7 @@ export function MarketScreen() {
     return buildRows({
       allItems,
       filteredItems,
+      moodboardItems,
       collections,
       collectionError,
       categoryOptions,
@@ -1269,6 +1440,7 @@ export function MarketScreen() {
     error,
     filteredItems,
     loadingMore,
+    moodboardItems,
     setCustomReadyView,
     setNewestView,
   ]);
@@ -1305,6 +1477,7 @@ export function MarketScreen() {
               onBag={handleBag}
               onFavorite={handleFavorite}
               onSeeAll={item.onSeeAll}
+              source={item.source}
             />
           );
         case 'COLLECTION_ROW':
@@ -1590,6 +1763,9 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  heroNewDropBadge: {
+    maxWidth: 118,
   },
   heroCopy: {
     position: 'absolute',

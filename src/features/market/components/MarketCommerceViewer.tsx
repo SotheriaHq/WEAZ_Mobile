@@ -31,6 +31,7 @@ import {
   type CollectionDetailMediaDto,
 } from '@/src/api/BrandApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
+import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
@@ -452,6 +453,23 @@ export function MarketCommerceViewer({
     const startedAt = Date.now();
     setBusyAction(ACTION_KIND_BAG);
     try {
+      trackMobileEvent('bag_tapped', {
+        sourceScreen: 'market_viewer',
+        sourceType,
+        sourceId: normalizedSourceId,
+        productId: sourceType === 'PRODUCT' ? normalizedSourceId : null,
+        designId: sourceType === 'DESIGN' ? normalizedSourceId : null,
+        eligibilityState: bagStatus?.ui.defaultAction ?? null,
+      });
+      if (sourceType === 'DESIGN') {
+        trackMobileEvent('custom_order_tapped', {
+          sourceScreen: 'market_viewer',
+          sourceType: 'DESIGN',
+          sourceId: normalizedSourceId,
+          brandId,
+          eligibilityState: bagStatus?.ui.defaultAction ?? null,
+        });
+      }
       const result = sourceType === 'PRODUCT'
         ? await bagProduct({ id: normalizedSourceId, name: title })
         : await bagSource({
@@ -470,7 +488,7 @@ export function MarketCommerceViewer({
         defaultAction: bagStatus?.ui.defaultAction ?? null,
       });
     }
-  }, [bagDisabled, bagProduct, bagSource, bagStatus?.ui.defaultAction, disabledReason, normalizedSourceId, sourceType, title, toast]);
+  }, [bagDisabled, bagProduct, bagSource, bagStatus?.ui.defaultAction, brandId, disabledReason, normalizedSourceId, sourceType, title, toast]);
 
   const handleSavePress = useCallback(async () => {
     if (!requireAuth('Sign in to save market items.')) return;
@@ -489,21 +507,39 @@ export function MarketCommerceViewer({
           designId: normalizedSourceId,
           legacyCollectionId: normalizedSourceId,
         });
+        trackMobileEvent('design_unsaved', {
+          sourceScreen: 'market_viewer',
+          targetType: 'DESIGN',
+          targetId: normalizedSourceId,
+          collectionId: normalizedSourceId,
+          brandId,
+        });
       } else {
         await SavedItemsApi.saveCatalogTarget({
           targetType: 'DESIGN',
           designId: normalizedSourceId,
           legacyCollectionId: normalizedSourceId,
         });
+        trackMobileEvent('design_saved', {
+          sourceScreen: 'market_viewer',
+          targetType: 'DESIGN',
+          targetId: normalizedSourceId,
+          collectionId: normalizedSourceId,
+          brandId,
+        });
       }
-      toast.success(wasSaved ? 'Removed from saved items.' : 'Saved.');
+      toast.success(
+        sourceType === 'PRODUCT'
+          ? wasSaved ? 'Removed from wishlist.' : 'Saved to wishlist.'
+          : wasSaved ? 'Removed from Saved Looks.' : 'Saved to Saved Looks.',
+      );
     } catch (nextError) {
       setSaved(wasSaved);
       toast.error(nextError instanceof Error ? nextError.message : 'Unable to update saved items.');
     } finally {
       setBusyAction(null);
     }
-  }, [busyAction, normalizedSourceId, requireAuth, saved, sourceType, toast]);
+  }, [brandId, busyAction, normalizedSourceId, requireAuth, saved, sourceType, toast]);
 
   const handleMessagePress = useCallback(() => {
     if (!canMessageBrand || !brandId) {
@@ -758,9 +794,15 @@ export function MarketCommerceViewer({
               pressed && styles.pressed,
             ]}
             accessibilityRole="button"
-            accessibilityLabel={saved ? 'Unsave item' : 'Save item'}
+            accessibilityLabel={
+              sourceType === 'PRODUCT'
+                ? saved ? 'Remove from wishlist' : 'Save to wishlist'
+                : saved ? 'Remove from Saved Looks' : 'Save look for inspiration'
+            }
           >
-            <AppText variant="bodyBold" tone="default">{saved ? 'Saved' : 'Save'}</AppText>
+            <AppText variant="bodyBold" tone="default">
+              {sourceType === 'PRODUCT' ? (saved ? 'Wishlisted' : 'Wishlist') : (saved ? 'Saved Look' : 'Save look')}
+            </AppText>
           </Pressable>
           <Pressable
             onPress={handleMessagePress}

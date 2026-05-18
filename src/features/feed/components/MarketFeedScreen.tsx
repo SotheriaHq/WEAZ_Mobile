@@ -15,6 +15,8 @@ import { useAuthAction } from '@/src/hooks/useAuthAction';
 import { Chip } from '@/components/ui/Chip';
 import { IconButton } from '@/components/ui/IconButton';
 import { Button } from '@/components/ui/Button';
+import { NewDropBadge } from '@/components/ui/NewDropBadge';
+import { SocialProofPill } from '@/components/ui/SocialProofPill';
 import { Skeleton, SkeletonAvatar, SkeletonText } from '@/components/ui/Skeleton';
 import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
 import ThreadlyLogoLoader from '@/components/ui/ThreadlyLogoLoader';
@@ -22,7 +24,9 @@ import ThreadRailAction from '../../../../components/catalog/ThreadRailAction';
 import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
 import { brandApi, type CollectionDetailMediaDto } from '@/src/api/BrandApi';
 import { ProfileApi } from '@/src/api/ProfileApi';
+import { SavedItemsApi } from '@/src/api/SavedItemsApi';
 import { DEFAULT_MARKET_FILTER_CHIPS, getMarketFilterChips, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
+import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { fetchMarketFeedPage, readCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { buildFeedCacheIdentity } from '@/src/features/feed/utils/feedKeys';
 import { brandAvatarDevLog, feedDevLog, feedLoadDevLog, feedMediaDevLog, layoutDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
@@ -269,12 +273,15 @@ type FeedActionRailProps = {
   comments: string;
   likes: string;
   threadCountRaw: number;
+  isSavedLook: boolean;
+  isSavingLook: boolean;
   canPatchBrands: boolean;
   isPatched: boolean;
   patchBusy: boolean;
   bottomClearance: number;
   onPatchBrand: (brandId?: string | null, brandName?: string | null) => void;
   onOpenBrand: (brandId?: string | null) => void;
+  onSaveLook: (item: MarketItem) => void;
   onThreadPress: (
     mediaId: string | null | undefined,
     collectionId?: string | null,
@@ -296,12 +303,26 @@ const FeedBagAction = React.memo(function FeedBagAction({ item }: FeedBagActionP
   const feedViewerCanBag = Boolean(item.viewerState?.canBag);
 
   const handlePress = useCallback(() => {
+    trackMobileEvent('bag_tapped', {
+      sourceScreen: 'runway_feed',
+      sourceType: 'DESIGN',
+      sourceId,
+      designId: sourceId,
+      eligibilityState: item.viewerState?.canBag ? 'eligible' : 'not_eligible',
+    });
+    trackMobileEvent('custom_order_tapped', {
+      sourceScreen: 'runway_feed',
+      sourceType: 'DESIGN',
+      sourceId,
+      brandId: item.brandId,
+      eligibilityState: item.viewerState?.canBag ? 'eligible' : 'not_eligible',
+    });
     void bagSource({
       sourceType: 'DESIGN',
       sourceId,
       name: item.collectionTitle,
     });
-  }, [bagSource, item.collectionTitle, sourceId]);
+  }, [bagSource, item.brandId, item.collectionTitle, item.viewerState?.canBag, sourceId]);
 
   if (!feedViewerCanBag) return null;
 
@@ -328,6 +349,35 @@ const FeedBagAction = React.memo(function FeedBagAction({ item }: FeedBagActionP
   );
 });
 
+type FeedSaveLookActionProps = {
+  item: MarketItem;
+  saved: boolean;
+  busy: boolean;
+  onPress: (item: MarketItem) => void;
+};
+
+const FeedSaveLookAction = React.memo(function FeedSaveLookAction({
+  item,
+  saved,
+  busy,
+  onPress,
+}: FeedSaveLookActionProps) {
+  const handlePress = useCallback(() => {
+    onPress(item);
+  }, [item, onPress]);
+
+  return (
+    <View style={styles.railItem}>
+      <IconButton size={44} onPress={handlePress} disabled={busy}>
+        <AppText variant="subtitle">{saved ? '🔖' : '📌'}</AppText>
+      </IconButton>
+      <AppText variant="captionBold" tone="inverse" style={styles.railCountLabel} numberOfLines={1}>
+        {saved ? 'Saved' : 'Save look'}
+      </AppText>
+    </View>
+  );
+});
+
 const FeedActionRail = React.memo(function FeedActionRail({
   item,
   brandName,
@@ -338,12 +388,15 @@ const FeedActionRail = React.memo(function FeedActionRail({
   comments,
   likes,
   threadCountRaw,
+  isSavedLook,
+  isSavingLook,
   canPatchBrands,
   isPatched,
   patchBusy,
   bottomClearance,
   onPatchBrand,
   onOpenBrand,
+  onSaveLook,
   onThreadPress,
   onOpenComments,
 }: FeedActionRailProps) {
@@ -386,6 +439,13 @@ const FeedActionRail = React.memo(function FeedActionRail({
 
       <FeedBagAction item={item} />
 
+      <FeedSaveLookAction
+        item={item}
+        saved={isSavedLook}
+        busy={isSavingLook}
+        onPress={onSaveLook}
+      />
+
       <View style={styles.railItem}>
         <IconButton size={44} onPress={handleCommentsPress}>
           <AppText variant="subtitle">💬</AppText>
@@ -411,8 +471,12 @@ const FeedActionRail = React.memo(function FeedActionRail({
 });
 
 type FeedMetaOverlayProps = {
+  itemId: string;
+  mediaId?: string | null;
   handle: string;
   title: string;
+  threadCount: number;
+  feedPosition?: number;
   scheme: ResolvedTheme;
   overlaySurface: {
     backgroundColor: string;
@@ -425,8 +489,12 @@ type FeedMetaOverlayProps = {
 };
 
 const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
+  itemId,
+  mediaId,
   handle,
   title,
+  threadCount,
+  feedPosition,
   scheme,
   overlaySurface,
   bottomClearance,
@@ -467,6 +535,14 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
             </AppText>
           </Pressable>
         ) : null}
+        <SocialProofPill
+          itemId={itemId}
+          mediaId={mediaId}
+          threadCount={threadCount}
+          sourceScreen="runway_feed"
+          feedPosition={feedPosition}
+          visible={visible}
+        />
       </BlurView>
     </View>
   );
@@ -587,9 +663,14 @@ export function MarketFeedScreen() {
   // Carousel index is tracked in module-level carouselIndexMap (persists across remounts).
   const [threadStateByMedia, setThreadStateByMedia] = useState<Record<string, { threaded: boolean; count: number }>>({});
   const [threadingMediaById, setThreadingMediaById] = useState<Record<string, boolean>>({});
+  const [savedLookByCollectionId, setSavedLookByCollectionId] = useState<Record<string, boolean>>({});
+  const [savingLookByCollectionId, setSavingLookByCollectionId] = useState<Record<string, boolean>>({});
   const threadStateByMediaRef = useRef<Record<string, { threaded: boolean; count: number }>>({});
   const threadingMediaByIdRef = useRef<Record<string, boolean>>({});
+  const savedLookByCollectionIdRef = useRef<Record<string, boolean>>({});
+  const savingLookByCollectionIdRef = useRef<Record<string, boolean>>({});
   const queuedThreadIntentByMediaRef = useRef<Record<string, boolean>>({});
+  const viewedFeedItemKeysRef = useRef<Set<string>>(new Set());
   const [patchedBrandIds, setPatchedBrandIds] = useState<Set<string>>(new Set());
   const [patchingBrandIds, setPatchingBrandIds] = useState<Record<string, boolean>>({});
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -810,6 +891,44 @@ export function MarketFeedScreen() {
   }, [threadingMediaById]);
 
   useEffect(() => {
+    savedLookByCollectionIdRef.current = savedLookByCollectionId;
+  }, [savedLookByCollectionId]);
+
+  useEffect(() => {
+    savingLookByCollectionIdRef.current = savingLookByCollectionId;
+  }, [savingLookByCollectionId]);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || items.length === 0) {
+      if (status !== 'authenticated') {
+        savedLookByCollectionIdRef.current = {};
+        setSavedLookByCollectionId({});
+      }
+      return undefined;
+    }
+
+    const ids = Array.from(new Set(items.map((item) => item.collectionId).filter(Boolean)));
+    let cancelled = false;
+    SavedItemsApi.checkBatch('COLLECTION', ids)
+      .then((result) => {
+        if (cancelled) return;
+        setSavedLookByCollectionId((current) => {
+          const next = { ...current };
+          ids.forEach((id) => {
+            next[id] = Boolean(result[id]);
+          });
+          savedLookByCollectionIdRef.current = next;
+          return next;
+        });
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items, status]);
+
+  useEffect(() => {
     void loadPatchedBrands();
   }, [loadPatchedBrands]);
 
@@ -878,9 +997,12 @@ export function MarketFeedScreen() {
     feedActiveIndex = 0;
     setThreadStateByMedia({});
     setThreadingMediaById({});
+    setSavingLookByCollectionId({});
     threadStateByMediaRef.current = {};
     threadingMediaByIdRef.current = {};
+    savingLookByCollectionIdRef.current = {};
     queuedThreadIntentByMediaRef.current = {};
+    viewedFeedItemKeysRef.current.clear();
     pendingCollectionIdsRef.current.clear();
     hydratedCollectionIdsRef.current.clear();
   }, [activeTag]);
@@ -1125,6 +1247,22 @@ export function MarketFeedScreen() {
       if (primaryEntry && !primaryEntry.isGhost) {
         feedActiveIndex = primaryEntry.realIndex;
         setActivePageIndex((current) => (current === primaryEntry.realIndex ? current : primaryEntry.realIndex));
+        const viewedKey = `${primaryEntry.item.collectionId}:${primaryEntry.realIndex}`;
+        if (!viewedFeedItemKeysRef.current.has(viewedKey)) {
+          viewedFeedItemKeysRef.current.add(viewedKey);
+          const mediaItems = collectionMediaMapRef.current[primaryEntry.item.collectionId] ?? buildFallbackMediaItems(primaryEntry.item);
+          const media = mediaItems[carouselIndexMap.get(primaryEntry.item.collectionId) ?? 0] ?? mediaItems[0] ?? null;
+          trackMobileEvent('feed_item_viewed', {
+            sourceScreen: 'runway_feed',
+            itemId: primaryEntry.item.collectionId,
+            itemType: primaryEntry.item.entityType,
+            feedPosition: primaryEntry.realIndex,
+            collectionId: primaryEntry.item.collectionId,
+            mediaId: media?.id ?? null,
+            brandId: primaryEntry.item.brandId,
+            categoryFilter: activeTag,
+          });
+        }
       }
       viewableItems.forEach(({ item: entry }) => {
         const collectionId = entry?.item.collectionId?.trim();
@@ -1163,7 +1301,7 @@ export function MarketFeedScreen() {
         }
       });
     };
-  }, [feedLoopEnabled, hydrateCollectionMedia, items]);
+  }, [activeTag, feedLoopEnabled, hydrateCollectionMedia, items]);
 
   useEffect(() => {
     if (!items.length) return;
@@ -1238,6 +1376,16 @@ export function MarketFeedScreen() {
           threaded: result.threaded,
           count: result.threads,
         };
+        trackMobileEvent('thread_toggled', {
+          sourceScreen: 'runway_feed',
+          itemId: collectionId ?? mediaId,
+          mediaId,
+          collectionId,
+          previousThreaded: previousState.threaded,
+          nextThreaded: result.threaded,
+          threadCount: result.threads,
+          result: 'success',
+        });
 
         threadStateByMediaRef.current = {
           ...threadStateByMediaRef.current,
@@ -1251,6 +1399,17 @@ export function MarketFeedScreen() {
 
       } catch {
         finalState = previousState;
+        trackMobileEvent('thread_toggled', {
+          sourceScreen: 'runway_feed',
+          itemId: collectionId ?? mediaId,
+          mediaId,
+          collectionId,
+          previousThreaded: previousState.threaded,
+          nextThreaded,
+          threadCount: previousState.count,
+          result: 'failure',
+          errorCode: 'thread_toggle_failed',
+        });
 
         threadStateByMediaRef.current = {
           ...threadStateByMediaRef.current,
@@ -1310,14 +1469,34 @@ export function MarketFeedScreen() {
 
       const nextThreaded = !currentState.threaded;
 
+      trackMobileEvent('thread_tapped', {
+        sourceScreen: 'runway_feed',
+        itemId: normalizedCollectionId || normalizedMediaId,
+        mediaId: normalizedMediaId,
+        collectionId: normalizedCollectionId || null,
+        currentThreaded: currentState.threaded,
+        threadCount: currentState.count,
+        feedPosition: activePageIndex,
+      });
+
       if (threadingMediaByIdRef.current[normalizedMediaId]) {
         queuedThreadIntentByMediaRef.current[normalizedMediaId] = nextThreaded;
+        trackMobileEvent('thread_toggled', {
+          sourceScreen: 'runway_feed',
+          itemId: normalizedCollectionId || normalizedMediaId,
+          mediaId: normalizedMediaId,
+          collectionId: normalizedCollectionId || null,
+          previousThreaded: currentState.threaded,
+          nextThreaded,
+          threadCount: currentState.count,
+          result: 'queued',
+        });
         return;
       }
 
       void executeThreadIntent(normalizedMediaId, normalizedCollectionId || null, nextThreaded, currentState);
     },
-    [executeThreadIntent, status],
+    [activePageIndex, executeThreadIntent, status],
   );
 
   const handlePatchBrand = useCallback(
@@ -1367,8 +1546,89 @@ export function MarketFeedScreen() {
   const handleOpenBrand = useCallback((brandId?: string | null) => {
     const normalizedBrandId = typeof brandId === 'string' ? brandId.trim() : '';
     if (!normalizedBrandId) return;
+    trackMobileEvent('brand_opened', {
+      sourceScreen: 'runway_feed',
+      brandId: normalizedBrandId,
+      feedPosition: activePageIndex,
+    });
     router.push({ pathname: '/catalog/[brandId]', params: { brandId: normalizedBrandId } } as any);
-  }, []);
+  }, [activePageIndex]);
+
+  const handleSaveLook = useCallback((item: MarketItem) => {
+    const collectionId = item.collectionId?.trim();
+    if (!collectionId) return;
+
+    requireAuth(
+      async () => {
+        if (savingLookByCollectionIdRef.current[collectionId]) return;
+
+        const wasSaved = Boolean(savedLookByCollectionIdRef.current[collectionId]);
+        const nextSaved = !wasSaved;
+
+        savedLookByCollectionIdRef.current = {
+          ...savedLookByCollectionIdRef.current,
+          [collectionId]: nextSaved,
+        };
+        savingLookByCollectionIdRef.current = {
+          ...savingLookByCollectionIdRef.current,
+          [collectionId]: true,
+        };
+        setSavedLookByCollectionId((current) => ({ ...current, [collectionId]: nextSaved }));
+        setSavingLookByCollectionId((current) => ({ ...current, [collectionId]: true }));
+
+        try {
+          if (wasSaved) {
+            await SavedItemsApi.unsaveCatalogTarget({
+              targetType: 'DESIGN',
+              designId: collectionId,
+              legacyCollectionId: collectionId,
+            });
+            trackMobileEvent('design_unsaved', {
+              sourceScreen: 'runway_feed',
+              targetType: 'DESIGN',
+              targetId: collectionId,
+              collectionId,
+              brandId: item.brandId,
+              feedPosition: activePageIndex,
+            });
+            toast.success('Removed from Saved Looks.');
+          } else {
+            await SavedItemsApi.saveCatalogTarget({
+              targetType: 'DESIGN',
+              designId: collectionId,
+              legacyCollectionId: collectionId,
+            });
+            trackMobileEvent('design_saved', {
+              sourceScreen: 'runway_feed',
+              targetType: 'DESIGN',
+              targetId: collectionId,
+              collectionId,
+              brandId: item.brandId,
+              feedPosition: activePageIndex,
+            });
+            toast.success('Saved to Saved Looks.');
+          }
+        } catch (error) {
+          savedLookByCollectionIdRef.current = {
+            ...savedLookByCollectionIdRef.current,
+            [collectionId]: wasSaved,
+          };
+          setSavedLookByCollectionId((current) => ({ ...current, [collectionId]: wasSaved }));
+          toast.error(toErrorMessage(error));
+        } finally {
+          const nextBusy = { ...savingLookByCollectionIdRef.current };
+          delete nextBusy[collectionId];
+          savingLookByCollectionIdRef.current = nextBusy;
+          setSavingLookByCollectionId((current) => {
+            const next = { ...current };
+            delete next[collectionId];
+            return next;
+          });
+        }
+      },
+      { message: 'Sign in to save looks' },
+    );
+  }, [activePageIndex, requireAuth, toast]);
 
   const handleCarouselIndexChange = useCallback((collectionId: string, nextIndex: number) => {
     carouselIndexMap.set(collectionId, nextIndex);
@@ -1448,6 +1708,8 @@ export function MarketFeedScreen() {
         item.threadsCount ??
         0;
       const threads = formatMetricCountLabel(threadCountRaw, 'thread', 'threads');
+      const isSavedLook = Boolean(savedLookByCollectionId[item.collectionId]);
+      const isSavingLook = Boolean(savingLookByCollectionId[item.collectionId]);
 
       return (
         <MarketFeedItem
@@ -1457,6 +1719,15 @@ export function MarketFeedScreen() {
           activeMediaIndex={activeMediaIndex}
           onCarouselIndexChange={handleCarouselIndexChange}
           onContentPress={() => showMetaOverlay(item.collectionId)}
+          badgeOverlay={
+            <NewDropBadge
+              itemId={item.collectionId}
+              createdAt={item.createdAt ?? item.media?.createdAt}
+              sourceScreen="runway_feed"
+              feedPosition={entry.realIndex}
+              style={styles.newDropBadge}
+            />
+          }
           actionRail={
             <FeedActionRail
               item={item}
@@ -1468,20 +1739,27 @@ export function MarketFeedScreen() {
               comments={comments}
               threads={threads}
               threadCountRaw={threadCountRaw}
+              isSavedLook={isSavedLook}
+              isSavingLook={isSavingLook}
               canPatchBrands={canPatchBrands}
               isPatched={Boolean(item.brandId && patchedBrandIds.has(item.brandId))}
               patchBusy={Boolean(item.brandId && patchingBrandIds[item.brandId])}
               bottomClearance={bottomClearance}
               onPatchBrand={handlePatchBrand}
               onOpenBrand={handleOpenBrand}
+              onSaveLook={handleSaveLook}
               onThreadPress={handleThreadPress}
               onOpenComments={openCommentsSheet}
             />
           }
           metaOverlay={
             <FeedMetaOverlay
+              itemId={item.collectionId}
+              mediaId={currentMediaId}
               handle={handle}
               title={item.collectionTitle}
+              threadCount={threadCountRaw}
+              feedPosition={entry.realIndex}
               scheme={scheme}
               overlaySurface={overlaySurface}
               bottomClearance={bottomClearance}
@@ -1500,12 +1778,15 @@ export function MarketFeedScreen() {
       handleCarouselIndexChange,
       handleOpenBrand,
       handlePatchBrand,
+      handleSaveLook,
       handleThreadPress,
       openCommentsSheet,
       overlaySurface,
       pageHeight,
       patchedBrandIds,
       patchingBrandIds,
+      savedLookByCollectionId,
+      savingLookByCollectionId,
       scheme,
       showMetaOverlay,
       threadStateByMedia,
@@ -1557,6 +1838,18 @@ export function MarketFeedScreen() {
         }
       }
 
+      if (!feedLoopEnabled && correctedRealIndex !== previousIndex) {
+        trackMobileEvent('feed_item_swiped', {
+          sourceScreen: 'runway_feed',
+          fromItemId: items[previousIndex]?.collectionId ?? null,
+          toItemId: items[correctedRealIndex]?.collectionId ?? null,
+          direction: correctedRealIndex > previousIndex ? 'down' : correctedRealIndex < previousIndex ? 'up' : 'none',
+          fromPosition: previousIndex,
+          toPosition: correctedRealIndex,
+          categoryFilter: activeTag,
+        });
+      }
+
       if (feedLoopEnabled) {
         if (rawIndex === feedItems.length - 1) {
           const targetOffset = feedLoopHeadOffset * pageHeight;
@@ -1592,7 +1885,7 @@ export function MarketFeedScreen() {
         void loadMore();
       }
     },
-    [activePageIndex, feedItems, feedLoopEnabled, feedLoopHeadOffset, hasNextPage, items.length, pageHeight],
+    [activePageIndex, activeTag, feedItems, feedLoopEnabled, feedLoopHeadOffset, hasNextPage, items, pageHeight],
   );
 
   const loadMore = useCallback(async () => {
@@ -1985,7 +2278,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 12,
     alignItems: 'center',
-    gap: 18,
+    gap: 14,
+  },
+  newDropBadge: {
+    position: 'absolute',
+    top: 92,
+    left: 16,
+    zIndex: 7,
   },
   ownerAvatarWrap: {
     position: 'relative',
