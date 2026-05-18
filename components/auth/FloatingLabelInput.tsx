@@ -16,6 +16,7 @@ interface FloatingLabelInputProps {
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   autoCorrect?: boolean;
   placeholder?: string;
+  hideLabel?: boolean;
   testID?: string;
   returnKeyType?: 'done' | 'go' | 'next' | 'search' | 'send';
 }
@@ -27,6 +28,8 @@ export function FloatingLabelInput({
   icon,
   value,
   onChangeText,
+  hideLabel = false,
+  placeholder,
   ...rest
 }: FloatingLabelInputProps) {
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -35,9 +38,11 @@ export function FloatingLabelInput({
 
   return (
     <View style={styles.container}>
-      <AppText variant="caption" tone="muted" style={styles.label}>
-        {label}
-      </AppText>
+      {!hideLabel ? (
+        <AppText variant="caption" tone="muted" style={styles.label}>
+          {label}
+        </AppText>
+      ) : null}
       <View
         style={[
           styles.field,
@@ -57,6 +62,7 @@ export function FloatingLabelInput({
           value={value}
           onChangeText={onChangeText}
           secureTextEntry={isPassword && !passwordVisible}
+          placeholder={placeholder ?? (hideLabel ? label : undefined)}
           style={[
             styles.input,
             {

@@ -241,6 +241,7 @@ export default function CatalogScreen() {
   // Determine if owner view
   const activeBrandId = getActiveBrandId(user);
   const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
+  const catalogColumnCount = containerWidth >= 720 ? 3 : 2;
   const targetBrandId = routeBrandId || activeBrandId || null;
   const patchEnabled = Boolean(!isOwner && status === 'authenticated' && targetBrandId);
   const {
@@ -1024,6 +1025,8 @@ export default function CatalogScreen() {
                 isLoading={false}
                 isOwner={isOwner}
                 showDrafts={visibilityFilter === 'Drafts'}
+                numColumns={catalogColumnCount}
+                containerWidth={containerWidth}
                 onCollectionPress={handleCollectionPress}
                 onEdit={handleEditCollection}
                 onDelete={handleDeleteCollection}

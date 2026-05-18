@@ -63,10 +63,10 @@ export function NewDropBadge({
 
 const styles = StyleSheet.create({
   badge: {
-    minHeight: 28,
-    borderRadius: tokens.radius.md,
+    minHeight: 22,
+    borderRadius: tokens.radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },

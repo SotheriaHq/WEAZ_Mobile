@@ -408,7 +408,6 @@ function MarketProductCard({
       priceLabel={getItemPriceLabel(item)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
-      typeLabel="Product"
       newDropItemId={item.product.id}
       newDropCreatedAt={item.product.createdAt}
       analyticsSourceScreen="market"
@@ -449,7 +448,6 @@ function MarketDesignCard({
       priceLabel={getItemPriceLabel(item)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
-      typeLabel="Runway"
       newDropItemId={item.design.collectionId}
       newDropCreatedAt={item.design.createdAt ?? item.design.media?.createdAt}
       analyticsSourceScreen="market"
@@ -619,22 +617,28 @@ function BlazingChip({
       onPress={() => onPress(trend)}
       style={({ pressed }) => [
         styles.blazingChip,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.glassBorder },
         pressed && styles.pressed,
       ]}
       accessibilityRole="button"
       accessibilityLabel={`Open ${trend.label}`}
     >
-      <View style={[styles.blazingThumb, { backgroundColor: theme.colors.surfaceAlt }]}>
-        {imageUri ? (
-          <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.blazingThumbImage} imageStyle={styles.blazingThumbImage} />
-        ) : (
-          <AppText variant="captionBold" tone="primary">{String.fromCodePoint(0x1f525)}</AppText>
-        )}
-      </View>
-      <View style={styles.blazingCopy}>
-        <AppText variant="captionBold" numberOfLines={1}>{trend.label}</AppText>
-        <AppText variant="caption" tone="muted" numberOfLines={1}>
+      {imageUri ? (
+        <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.blazingImage} imageStyle={styles.blazingImage} />
+      ) : (
+        <LinearGradient
+          colors={[theme.colors.surfaceAlt, theme.colors.primarySoft, theme.colors.surface] as [string, string, string]}
+          style={styles.blazingImage}
+        />
+      )}
+      <LinearGradient
+        pointerEvents="none"
+        colors={['transparent', theme.colors.backdropStrong] as [string, string]}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[styles.blazingCopy, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
+        <AppText variant="captionBold" tone="inverse" numberOfLines={1}>{trend.label}</AppText>
+        <AppText variant="caption" tone="inverse" numberOfLines={1}>
           {trend.count} live picks
         </AppText>
       </View>
@@ -1794,29 +1798,25 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   blazingChip: {
-    width: 176,
-    minHeight: 62,
+    width: 154,
+    height: 116,
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-    padding: tokens.spacing.sm,
-  },
-  blazingThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: tokens.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  blazingThumbImage: {
+  blazingImage: {
     ...StyleSheet.absoluteFillObject,
   },
   blazingCopy: {
-    flex: 1,
+    position: 'absolute',
+    left: tokens.spacing.sm,
+    right: tokens.spacing.sm,
+    bottom: tokens.spacing.sm,
     minWidth: 0,
+    borderRadius: tokens.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
   },
   horizontalCardsContent: {
     paddingHorizontal: SIDE_PADDING,

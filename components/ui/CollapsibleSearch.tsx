@@ -17,6 +17,8 @@ type Props = Omit<TextInputProps, 'style' | 'value' | 'onChangeText'> & {
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   collapseOnBlurWhenEmpty?: boolean;
+  iconButtonVariant?: 'surface' | 'bare';
+  showInputLeadingIcon?: boolean;
 };
 
 export function CollapsibleSearch({
@@ -30,6 +32,8 @@ export function CollapsibleSearch({
   expanded,
   onExpandedChange,
   collapseOnBlurWhenEmpty = true,
+  iconButtonVariant = 'surface',
+  showInputLeadingIcon = true,
   onBlur,
   ...textInputProps
 }: Props) {
@@ -101,6 +105,7 @@ export function CollapsibleSearch({
   }, [focusInput, isExpanded]);
 
   if (!isExpanded) {
+    const bareIcon = iconButtonVariant === 'bare';
     return (
       <View style={[styles.root, containerStyle]}>
         <Pressable
@@ -108,10 +113,11 @@ export function CollapsibleSearch({
           style={({ pressed }) => [
             styles.iconButton,
             {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
+              backgroundColor: bareIcon ? 'transparent' : theme.colors.surface,
+              borderColor: bareIcon ? 'transparent' : theme.colors.border,
               opacity: pressed ? 0.82 : 1,
             },
+            bareIcon ? styles.bareIconButton : null,
           ]}
           accessibilityRole="button"
           accessibilityLabel={label}
@@ -135,7 +141,7 @@ export function CollapsibleSearch({
         autoCapitalize="none"
         autoCorrect={false}
         containerStyle={[styles.input, inputContainerStyle]}
-        leading={<AppText variant="subtitle">{String.fromCodePoint(0x1f50d)}</AppText>}
+        leading={showInputLeadingIcon ? <AppText variant="subtitle">{String.fromCodePoint(0x1f50d)}</AppText> : undefined}
         trailing={trailing}
         onBlur={(event) => {
           onBlur?.(event);
@@ -163,6 +169,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bareIconButton: {
+    borderWidth: 0,
   },
   input: {
     width: '100%',
