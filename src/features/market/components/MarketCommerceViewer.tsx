@@ -12,13 +12,13 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image as ExpoImage } from 'expo-image';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import ReviewsTab from '@/components/reviews/ReviewsTab';
-import { StableImage } from '@/components/ui/StableImage';
 import {
   MobileStoreApi,
   type BagSourceType,
@@ -35,6 +35,7 @@ import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { mediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
@@ -49,6 +50,9 @@ type ViewerMediaEntry = {
   fileId: string | null;
   label: string;
 };
+
+type ViewerMediaAspectClass = 'portrait' | 'square' | 'landscape' | 'unknown';
+type ViewerMediaForegroundSizeClass = 'fill-height' | 'fill-width' | 'balanced' | 'unknown';
 
 type MarketCommerceViewerProps = {
   sourceType: CommerceSourceType;
@@ -86,6 +90,34 @@ const asString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+const getViewerAspectClass = (aspectRatio?: number | null): ViewerMediaAspectClass => {
+  if (!aspectRatio || !Number.isFinite(aspectRatio) || aspectRatio <= 0) return 'unknown';
+  if (aspectRatio > 1.08) return 'landscape';
+  if (aspectRatio < 0.92) return 'portrait';
+  return 'square';
+};
+
+const getViewerForegroundSizeClass = (
+  mediaAspectRatio?: number | null,
+  viewportAspectRatio?: number | null,
+): ViewerMediaForegroundSizeClass => {
+  if (
+    !mediaAspectRatio ||
+    !viewportAspectRatio ||
+    !Number.isFinite(mediaAspectRatio) ||
+    !Number.isFinite(viewportAspectRatio) ||
+    mediaAspectRatio <= 0 ||
+    viewportAspectRatio <= 0
+  ) {
+    return 'unknown';
+  }
+  if (Math.abs(mediaAspectRatio - viewportAspectRatio) <= 0.08) return 'balanced';
+  return mediaAspectRatio < viewportAspectRatio ? 'fill-height' : 'fill-width';
+};
+
 const formatPrice = (amount?: number | null, currency = 'NGN') => {
   if (typeof amount !== 'number' || !Number.isFinite(amount)) return null;
   try {
@@ -119,22 +151,90 @@ const getOwnerName = (owner?: CollectionDetailDto['owner'] | null) => {
   return name ?? null;
 };
 
-const getCollectionMediaDirectUrl = (media: CollectionDetailMediaDto) =>
-  asString(media.url) ??
-  asString(media.secureUrl) ??
-  asString(media.s3Url) ??
-  asString(media.previewUrl) ??
-  asString(media.file?.secureUrl) ??
-  asString(media.file?.s3Url) ??
-  asString(media.file?.url);
+const getCollectionMediaDirectUrl = (media: CollectionDetailMediaDto) => {
+  const entry = asRecord(media);
+  const file = asRecord(media.file);
+  return (
+    asString(media.url) ??
+    asString(media.secureUrl) ??
+    asString(media.s3Url) ??
+    asString(media.previewUrl) ??
+    asString(entry.thumbnailUrl) ??
+    asString(entry.displayUrl) ??
+    asString(media.file?.secureUrl) ??
+    asString(media.file?.s3Url) ??
+    asString(media.file?.url) ??
+    asString(file.thumbnailUrl)
+  );
+};
 
-const getCollectionMediaFileId = (media: CollectionDetailMediaDto) =>
-  asString(media.fileId) ??
-  asString(media.fileUploadId) ??
-  asString(media.uploadFileId) ??
-  asString(media.file?.fileId) ??
-  asString(media.file?.id) ??
-  asString(media.id);
+const getCollectionMediaFileId = (media: CollectionDetailMediaDto) => {
+  const entry = asRecord(media);
+  const file = asRecord(media.file);
+  return (
+    asString(media.fileId) ??
+    asString(media.fileUploadId) ??
+    asString(media.uploadFileId) ??
+    asString(entry.coverImageFileId) ??
+    asString(entry.thumbnailFileId) ??
+    asString(media.file?.fileId) ??
+    asString(file.fileUploadId) ??
+    asString(media.file?.id)
+  );
+};
+
+const getProductMediaDirectUrl = (media: StoreProduct['images'][number]) => {
+  const entry = asRecord(media);
+  const file = asRecord(entry.file);
+  return (
+    asString(entry.url) ??
+    asString(entry.secureUrl) ??
+    asString(entry.s3Url) ??
+    asString(entry.previewUrl) ??
+    asString(entry.thumbnailUrl) ??
+    asString(entry.displayUrl) ??
+    asString(file.secureUrl) ??
+    asString(file.s3Url) ??
+    asString(file.url) ??
+    asString(file.thumbnailUrl)
+  );
+};
+
+const getProductMediaFileId = (media: StoreProduct['images'][number]) => {
+  const entry = asRecord(media);
+  const file = asRecord(entry.file);
+  return (
+    asString(entry.fileId) ??
+    asString(entry.fileUploadId) ??
+    asString(entry.uploadFileId) ??
+    asString(entry.coverImageId) ??
+    asString(entry.coverImageFileId) ??
+    asString(entry.thumbnailFileId) ??
+    asString(file.fileId) ??
+    asString(file.fileUploadId) ??
+    asString(file.id)
+  );
+};
+
+const dedupeViewerMediaEntries = (entries: ViewerMediaEntry[]) => {
+  const byKey = new Map<string, ViewerMediaEntry>();
+  entries.forEach((entry) => {
+    if (!entry.url && !entry.fileId) return;
+    const key = entry.fileId ? `file:${entry.fileId}` : `url:${entry.url}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, entry);
+      return;
+    }
+    byKey.set(key, {
+      ...existing,
+      url: existing.url ?? entry.url,
+      fileId: existing.fileId ?? entry.fileId,
+      label: existing.label || entry.label,
+    });
+  });
+  return Array.from(byKey.values());
+};
 
 const buildProductMedia = (product: StoreProduct): ViewerMediaEntry[] => {
   const entries: ViewerMediaEntry[] = [
@@ -145,28 +245,25 @@ const buildProductMedia = (product: StoreProduct): ViewerMediaEntry[] => {
       label: product.name,
     },
     ...product.images.map((image, index) => ({
-      id: `${product.id}:image:${image.fileId ?? image.url ?? index}`,
-      url: image.url ?? null,
-      fileId: image.fileId ?? null,
+      id: `${product.id}:image:${getProductMediaFileId(image) ?? getProductMediaDirectUrl(image) ?? index}`,
+      url: getProductMediaDirectUrl(image),
+      fileId: getProductMediaFileId(image),
       label: `${product.name} ${index + 1}`,
     })),
   ];
 
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    const key = `${entry.url ?? ''}:${entry.fileId ?? ''}`;
-    if ((!entry.url && !entry.fileId) || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return dedupeViewerMediaEntries(entries);
 };
 
 const buildDesignMedia = (detail: CollectionDetailDto): ViewerMediaEntry[] => {
+  const coverMedia = detail.coverMediaId
+    ? (detail.medias ?? []).find((media) => String(media.id) === String(detail.coverMediaId))
+    : null;
   const entries: ViewerMediaEntry[] = [
     {
       id: `${detail.id}:cover`,
-      url: detail.coverImageUrl ?? null,
-      fileId: detail.coverMediaId ?? null,
+      url: detail.coverImageUrl ?? (coverMedia ? getCollectionMediaDirectUrl(coverMedia) : null),
+      fileId: coverMedia ? getCollectionMediaFileId(coverMedia) : null,
       label: detail.title,
     },
     ...(detail.medias ?? []).map((media, index) => ({
@@ -177,13 +274,7 @@ const buildDesignMedia = (detail: CollectionDetailDto): ViewerMediaEntry[] => {
     })),
   ];
 
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    const key = `${entry.url ?? ''}:${entry.fileId ?? ''}`;
-    if ((!entry.url && !entry.fileId) || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return dedupeViewerMediaEntries(entries);
 };
 
 function MediaSlide({
@@ -201,8 +292,9 @@ function MediaSlide({
   sourceType: CommerceSourceType;
   index: number;
 }) {
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
   const [failed, setFailed] = useState(false);
+  const [loadedNaturalSize, setLoadedNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const debugContext = useMemo(
     () => ({
       designId: sourceType === 'DESIGN' ? sourceId : undefined,
@@ -221,7 +313,56 @@ function MediaSlide({
 
   useEffect(() => {
     setFailed(false);
-  }, [uri]);
+    setLoadedNaturalSize(null);
+    if (!__DEV__) return;
+    if (!item.url && !item.fileId) {
+      mediaDevWarn('viewer-media-missing-source', {
+        sourceType,
+        sourceId,
+        mediaId: item.id,
+        mediaIndex: index,
+      });
+    }
+  }, [index, item.fileId, item.id, item.url, sourceId, sourceType, uri]);
+
+  const mediaAspectRatio = loadedNaturalSize ? loadedNaturalSize.width / loadedNaturalSize.height : null;
+  const viewportAspectRatio = width > 0 && height > 0 ? width / height : null;
+  const aspectClass = getViewerAspectClass(mediaAspectRatio);
+  const foregroundSizeClass = getViewerForegroundSizeClass(mediaAspectRatio, viewportAspectRatio);
+
+  useEffect(() => {
+    if (!__DEV__ || !uri) return;
+    mediaDevLog('viewer-image-fit-policy', {
+      sourceType,
+      sourceId,
+      mediaId: item.id,
+      mediaIndex: index,
+      viewportWidth: width,
+      viewportHeight: height,
+      viewportAspectRatio,
+      naturalWidth: loadedNaturalSize?.width ?? null,
+      naturalHeight: loadedNaturalSize?.height ?? null,
+      mediaAspectRatio,
+      fitClass: aspectClass,
+      foregroundSizeClass,
+      contentFit: 'contain',
+      backdropMode: 'same-image-frosted',
+    });
+  }, [
+    aspectClass,
+    foregroundSizeClass,
+    height,
+    index,
+    item.id,
+    loadedNaturalSize?.height,
+    loadedNaturalSize?.width,
+    mediaAspectRatio,
+    sourceId,
+    sourceType,
+    uri,
+    viewportAspectRatio,
+    width,
+  ]);
 
   const fallback = (
     <View style={[styles.mediaFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -238,14 +379,55 @@ function MediaSlide({
           <AppText variant="captionBold" tone="muted">Loading image</AppText>
         </View>
       ) : uri && !failed ? (
-        <StableImage
-          uri={uri}
-          containerStyle={styles.mediaImage}
-          imageStyle={styles.mediaImage}
-          resizeMode="cover"
-          onError={() => setFailed(true)}
-          fallback={fallback}
-        />
+        <>
+          <ExpoImage
+            source={{ uri }}
+            style={styles.mediaBackdropImage}
+            contentFit="cover"
+            blurRadius={30}
+            cachePolicy="memory-disk"
+            recyclingKey={`${item.id}:${uri}:viewer-backdrop`}
+          />
+          <View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFillObject,
+              styles.mediaBackdropWash,
+              {
+                backgroundColor:
+                  scheme === 'dark'
+                    ? 'rgba(0, 0, 0, 0.22)'
+                    : 'rgba(255, 255, 255, 0.1)',
+              },
+            ]}
+          />
+          <ExpoImage
+            source={{ uri }}
+            style={styles.mediaForegroundImage}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            recyclingKey={`${item.id}:${uri}:viewer-foreground`}
+            transition={120}
+            onLoad={(event) => {
+              const nextWidth = event.source?.width;
+              const nextHeight = event.source?.height;
+              if (typeof nextWidth === 'number' && typeof nextHeight === 'number' && nextWidth > 0 && nextHeight > 0) {
+                setLoadedNaturalSize({ width: nextWidth, height: nextHeight });
+              }
+            }}
+            onError={(event) => {
+              mediaDevWarn('viewer-image-on-error', {
+                sourceType,
+                sourceId,
+                mediaId: item.id,
+                mediaIndex: index,
+                hasFileId: Boolean(item.fileId),
+                error: typeof event?.error === 'string' ? event.error : 'image-load-error',
+              });
+              setFailed(true);
+            }}
+          />
+        </>
       ) : (
         fallback
       )}
@@ -291,9 +473,10 @@ export function MarketCommerceViewer({
   const bagBusy = Boolean(loadingByProductId[sourceStatusKey] || busyAction === ACTION_KIND_BAG);
   const activeSheetHeight = sheetExpanded
     ? Math.min(420, Math.max(320, Math.round(height * 0.48)))
-    : 116;
+    : 76;
   const mediaHeight = height;
   const actionBottom = activeSheetHeight + chrome.immersiveOverlayBottomClearance + tokens.spacing.md;
+  const actionClusterWidth = Math.min(184, Math.max(148, Math.round(width * 0.38)));
 
   const load = useCallback(async () => {
     if (!normalizedSourceId) {
@@ -352,6 +535,7 @@ export function MarketCommerceViewer({
     void load();
   }, [load]);
 
+
   const media = useMemo(() => {
     const entries = product ? buildProductMedia(product) : design ? buildDesignMedia(design) : [];
     return entries.length > 0
@@ -384,8 +568,7 @@ export function MarketCommerceViewer({
       (bagStatus && bagStatus.ui.defaultAction === 'DISABLED') ||
       isOwnBrand,
   );
-  const actionPriceLabel = priceLabel ? ` - ${priceLabel}` : '';
-  const bagLabel = `${BAG_IT_EMOJI} ${BAG_IT_LABEL}${actionPriceLabel}`;
+  const compactBagLabel = sourceType === 'DESIGN' ? `${BAG_IT_EMOJI} Custom quote` : `${BAG_IT_EMOJI} ${BAG_IT_LABEL}`;
 
   const productOptions = useMemo(() => {
     if (!product) return [];
@@ -602,14 +785,16 @@ export function MarketCommerceViewer({
     >
       <Pressable
         onPress={() => setSheetExpanded((current) => !current)}
-        style={styles.sheetHandleWrap}
+        style={[styles.sheetHandleWrap, !sheetExpanded && styles.sheetHandleWrapCollapsed]}
         accessibilityRole="button"
         accessibilityLabel={sheetExpanded ? 'Collapse product details' : 'Expand product details'}
       >
         <View style={[styles.sheetHandle, { backgroundColor: theme.colors.bottomSheetHandle }]} />
-        <AppText variant="captionBold" tone="muted">
-          {sheetExpanded ? 'Collapse details for full view' : 'Swipe up for product details'}
-        </AppText>
+        {sheetExpanded ? (
+          <AppText variant="captionBold" tone="muted">
+            Collapse details for full view
+          </AppText>
+        ) : null}
       </Pressable>
 
       {sheetExpanded ? (
@@ -681,7 +866,12 @@ export function MarketCommerceViewer({
           ) : null}
         </ScrollView>
       ) : (
-        <View style={styles.collapsedSheetContent}>
+        <Pressable
+          onPress={() => setSheetExpanded(true)}
+          style={({ pressed }) => [styles.collapsedSheetContent, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Expand product details"
+        >
           <View style={styles.collapsedCopy}>
             <AppText variant="captionBold" tone="primary" numberOfLines={1}>{brandName}</AppText>
             <AppText variant="bodyBold" numberOfLines={1}>{title}</AppText>
@@ -689,7 +879,7 @@ export function MarketCommerceViewer({
           <AppText variant="captionBold" tone="secondary" numberOfLines={1}>
             {priceLabel ?? stockLabel}
           </AppText>
-        </View>
+        </Pressable>
       )}
     </View>
   );
@@ -755,7 +945,7 @@ export function MarketCommerceViewer({
         </View>
       ) : null}
 
-      <View style={[styles.actionCluster, { bottom: actionBottom }]}>
+      <View style={[styles.actionCluster, { bottom: actionBottom, width: actionClusterWidth }]}>
         <Pressable
           onPress={handleBagPress}
           disabled={bagDisabled}
@@ -768,15 +958,20 @@ export function MarketCommerceViewer({
             pressed && styles.pressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={bagLabel}
+          accessibilityLabel={priceLabel ? `${compactBagLabel} ${priceLabel}` : compactBagLabel}
         >
           {bagBusy ? (
             <ActivityIndicator color={bagDisabled ? theme.colors.primary : theme.colors.onPrimary} />
           ) : (
             <>
               <AppText variant="bodyBold" tone={bagDisabled ? 'muted' : 'inverse'} numberOfLines={1}>
-                {bagLabel}
+                {compactBagLabel}
               </AppText>
+              {priceLabel ? (
+                <AppText variant="captionBold" tone={bagDisabled ? 'muted' : 'inverse'} numberOfLines={1}>
+                  {priceLabel}
+                </AppText>
+              ) : null}
               {bagStatus?.standard.inBag || bagStatus?.custom.alreadyBagged ? (
                 <AppText variant="captionBold" tone={bagDisabled ? 'muted' : 'inverse'}>Already in My Bag</AppText>
               ) : null}
@@ -800,8 +995,8 @@ export function MarketCommerceViewer({
                 : saved ? 'Remove from Saved Looks' : 'Save look for inspiration'
             }
           >
-            <AppText variant="bodyBold" tone="default">
-              {sourceType === 'PRODUCT' ? (saved ? 'Wishlisted' : 'Wishlist') : (saved ? 'Saved Look' : 'Save look')}
+            <AppText variant="captionBold" tone="default" numberOfLines={1}>
+              {sourceType === 'PRODUCT' ? (saved ? 'Wishlisted' : 'Wishlist') : (saved ? 'Saved' : 'Save look')}
             </AppText>
           </Pressable>
           <Pressable
@@ -815,7 +1010,7 @@ export function MarketCommerceViewer({
             accessibilityRole="button"
             accessibilityLabel="Message brand"
           >
-            <AppText variant="bodyBold" tone="default">Message</AppText>
+            <AppText variant="captionBold" tone="default">Message</AppText>
           </Pressable>
         </View>
       </View>
@@ -854,9 +1049,16 @@ const styles = StyleSheet.create({
   mediaPage: {
     overflow: 'hidden',
   },
-  mediaImage: {
-    width: '100%',
-    height: '100%',
+  mediaBackdropImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.9,
+    transform: [{ scale: 1.12 }],
+  },
+  mediaBackdropWash: {
+    opacity: 0.76,
+  },
+  mediaForegroundImage: {
+    ...StyleSheet.absoluteFillObject,
   },
   mediaFallback: {
     flex: 1,
@@ -899,17 +1101,17 @@ const styles = StyleSheet.create({
   },
   actionCluster: {
     position: 'absolute',
-    left: tokens.spacing.lg,
     right: tokens.spacing.lg,
+    alignItems: 'stretch',
     gap: tokens.spacing.sm,
   },
   bagAction: {
-    minHeight: 58,
+    minHeight: 50,
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.lg,
+    paddingHorizontal: tokens.spacing.md,
     gap: tokens.spacing.xs,
   },
   secondaryActions: {
@@ -918,12 +1120,12 @@ const styles = StyleSheet.create({
   },
   sideAction: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 44,
     borderRadius: tokens.radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.sm,
   },
   metadataSheet: {
     position: 'absolute',
@@ -941,6 +1143,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: tokens.spacing.xs,
+  },
+  sheetHandleWrapCollapsed: {
+    minHeight: 24,
   },
   sheetHandle: {
     width: 54,
@@ -996,7 +1201,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
-    paddingBottom: tokens.spacing.lg,
+    paddingBottom: tokens.spacing.sm,
   },
   collapsedCopy: {
     flex: 1,

@@ -9,6 +9,8 @@ import { feedMediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDia
 
 type FeedImageLoadState = 'idle' | 'resolving' | 'loading' | 'loaded' | 'failed';
 type FeedImageAspectClass = 'portrait' | 'square' | 'landscape' | 'unknown';
+type FeedImageForegroundSizeClass = 'fill-height' | 'fill-width' | 'balanced' | 'unknown';
+type FeedImageBackdropMode = 'same-image-frosted' | 'dominant-color' | 'none';
 
 type FeedImageProps = {
   id: string;
@@ -37,6 +39,24 @@ const classifyAspectRatio = (aspectRatio?: number | null): FeedImageAspectClass 
   if (aspectRatio > 1.08) return 'landscape';
   if (aspectRatio < 0.92) return 'portrait';
   return 'square';
+};
+
+const classifyForegroundSize = (
+  mediaAspectRatio?: number | null,
+  viewportAspectRatio?: number | null,
+): FeedImageForegroundSizeClass => {
+  if (
+    !mediaAspectRatio ||
+    !viewportAspectRatio ||
+    !Number.isFinite(mediaAspectRatio) ||
+    !Number.isFinite(viewportAspectRatio) ||
+    mediaAspectRatio <= 0 ||
+    viewportAspectRatio <= 0
+  ) {
+    return 'unknown';
+  }
+  if (Math.abs(mediaAspectRatio - viewportAspectRatio) <= 0.08) return 'balanced';
+  return mediaAspectRatio < viewportAspectRatio ? 'fill-height' : 'fill-width';
 };
 
 function FeedImagePlaceholder({ backgroundColor }: { backgroundColor: string }) {
@@ -130,8 +150,22 @@ export const FeedImage = React.memo(function FeedImage({
     aspectRatio ??
     (naturalWidth && naturalHeight ? naturalWidth / naturalHeight : null) ??
     (loadedNaturalSize ? loadedNaturalSize.width / loadedNaturalSize.height : null);
+  const viewportAspectRatio =
+    viewportWidth && viewportHeight && viewportWidth > 0 && viewportHeight > 0
+      ? viewportWidth / viewportHeight
+      : null;
   const resolvedAspectClass = aspectClass ?? classifyAspectRatio(measuredAspectRatio);
+  const foregroundSizeClass = classifyForegroundSize(measuredAspectRatio, viewportAspectRatio);
   const useFrostedBackdrop = frostedBackdrop && contentFit === 'contain';
+  const backdropMode: FeedImageBackdropMode = useFrostedBackdrop
+    ? visibleUri
+      ? 'same-image-frosted'
+      : dominantColor
+        ? 'dominant-color'
+        : 'none'
+    : dominantColor
+      ? 'dominant-color'
+      : 'none';
 
   useEffect(() => {
     setLoadState(hasSource ? 'resolving' : 'idle');
@@ -153,16 +187,20 @@ export const FeedImage = React.memo(function FeedImage({
       mediaIndex: imageIndex ?? null,
       viewportWidth: viewportWidth ?? null,
       viewportHeight: viewportHeight ?? null,
+      viewportAspectRatio,
       naturalWidth: naturalWidth ?? loadedNaturalSize?.width ?? null,
       naturalHeight: naturalHeight ?? loadedNaturalSize?.height ?? null,
-      aspectRatio: measuredAspectRatio ?? null,
-      aspectClass: resolvedAspectClass,
+      mediaAspectRatio: measuredAspectRatio ?? null,
+      fitClass: resolvedAspectClass,
+      foregroundSizeClass,
       contentFit,
-      frostedBackdrop: useFrostedBackdrop,
+      backdropMode,
     });
   }, [
     aspectClass,
+    backdropMode,
     contentFit,
+    foregroundSizeClass,
     id,
     imageIndex,
     loadedNaturalSize?.height,
@@ -172,6 +210,7 @@ export const FeedImage = React.memo(function FeedImage({
     naturalWidth,
     resolvedAspectClass,
     useFrostedBackdrop,
+    viewportAspectRatio,
     viewportHeight,
     viewportWidth,
   ]);
@@ -203,8 +242,8 @@ export const FeedImage = React.memo(function FeedImage({
             {
               backgroundColor:
                 scheme === 'dark'
-                  ? 'rgba(0, 0, 0, 0.28)'
-                  : 'rgba(255, 255, 255, 0.18)',
+                  ? 'rgba(0, 0, 0, 0.18)'
+                  : 'rgba(255, 255, 255, 0.08)',
             },
           ]}
         />
@@ -303,11 +342,11 @@ const styles = StyleSheet.create({
   },
   backdropImage: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.74,
-    transform: [{ scale: 1.08 }],
+    opacity: 0.92,
+    transform: [{ scale: 1.14 }],
   },
   backdropWash: {
-    opacity: 0.82,
+    opacity: 0.72,
   },
   fallback: {
     alignItems: 'center',
