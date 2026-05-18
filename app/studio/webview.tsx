@@ -385,15 +385,16 @@ export default function StudioWebViewScreen() {
   const headerSubtitle = resolvedRouteKey === 'overview' ? undefined : 'Studio';
   const trustedOrigins = useMemo(() => getTrustedStudioOrigins(), []);
   const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
-  const isBrand = hasActiveBrandMembership(user);
+  const hasBrandWorkspace = hasActiveBrandMembership(user);
+  const isStudioEligible = user?.type === 'BRAND' && hasBrandWorkspace;
 
   const closeStudio = useCallback(() => {
     if (router.canGoBack()) {
       router.back();
       return;
     }
-    router.replace((isBrand ? '/(tabs)/store' : '/(tabs)/me') as any);
-  }, [isBrand]);
+    router.replace((hasBrandWorkspace ? '/catalog' : '/(tabs)/me') as any);
+  }, [hasBrandWorkspace]);
 
   const retry = useCallback(() => {
     setWebUrl(null);
@@ -416,8 +417,12 @@ export default function StudioWebViewScreen() {
         setLoadState('error');
         return;
       }
-      if (!isBrand) {
-        setErrorMessage('Ask the brand owner for access to this workspace.');
+      if (!isStudioEligible) {
+        setErrorMessage(
+          hasBrandWorkspace
+            ? 'Studio currently opens for brand-owner accounts. Ask the brand owner to open this workspace.'
+            : 'Ask the brand owner for access to this workspace.',
+        );
         setLoadState('error');
         return;
       }
@@ -459,7 +464,7 @@ export default function StudioWebViewScreen() {
     return () => {
       mounted = false;
     };
-  }, [invalidRouteKey, isBrand, orderId, productId, resolvedRouteKey, retryKey, scheme, status]);
+  }, [hasBrandWorkspace, invalidRouteKey, isStudioEligible, orderId, productId, resolvedRouteKey, retryKey, scheme, status]);
 
   useEffect(() => {
     if (!webUrl || loadState !== 'loading') return;
@@ -660,8 +665,8 @@ export default function StudioWebViewScreen() {
 
   const handleMenuProfile = useCallback(() => {
     setProfileMenuVisible(false);
-    router.replace((isBrand ? '/(tabs)/store' : '/(tabs)/me') as any);
-  }, [isBrand]);
+    router.replace((hasBrandWorkspace ? '/catalog' : '/(tabs)/me') as any);
+  }, [hasBrandWorkspace]);
 
   const handleMenuNotifications = useCallback(() => {
     setProfileMenuVisible(false);

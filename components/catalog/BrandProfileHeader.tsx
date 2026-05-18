@@ -306,14 +306,19 @@ function BrandStatsRow({ stats }: { stats: BrandHeaderStat[] }) {
 }
 
 function BrandTextTags({ tags }: { tags: string[] }) {
-  const visibleTags = useMemo(() => {
-    const cleaned = tags.map(normalizeTag).filter((tag): tag is string => Boolean(tag));
-    const visible = cleaned.slice(0, 3);
-    const extra = Math.max(0, cleaned.length - visible.length);
-    return extra > 0 ? [...visible, `+${extra}`] : visible;
-  }, [tags]);
+  const [expanded, setExpanded] = useState(false);
+  const cleanedTags = useMemo(
+    () => tags.map(normalizeTag).filter((tag): tag is string => Boolean(tag)),
+    [tags],
+  );
+  const extraCount = Math.max(0, cleanedTags.length - 3);
+  const visibleTags = expanded ? cleanedTags : cleanedTags.slice(0, 3);
 
-  if (visibleTags.length === 0) return null;
+  useEffect(() => {
+    setExpanded(false);
+  }, [cleanedTags.join('|')]);
+
+  if (cleanedTags.length === 0) return null;
 
   return (
     <View style={styles.textTagsRow}>
@@ -322,6 +327,30 @@ function BrandTextTags({ tags }: { tags: string[] }) {
           {tag}
         </AppText>
       ))}
+      {!expanded && extraCount > 0 ? (
+        <Pressable
+          onPress={() => setExpanded(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Show ${extraCount} more brand tags`}
+          style={({ pressed }) => [styles.textTagControl, pressed ? styles.pressedControl : null]}
+        >
+          <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+            +{extraCount}
+          </AppText>
+        </Pressable>
+      ) : null}
+      {expanded && extraCount > 0 ? (
+        <Pressable
+          onPress={() => setExpanded(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Collapse brand tags"
+          style={({ pressed }) => [styles.textTagControl, pressed ? styles.pressedControl : null]}
+        >
+          <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+            See less
+          </AppText>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -359,13 +388,13 @@ function SideBrandMetaBlock({
         style={[
           styles.brandNamePill,
           {
-            backgroundColor: theme.colors.glassSurface,
+            backgroundColor: theme.colors.glassSurfaceSoft,
             borderColor: theme.colors.glassBorder,
           },
         ]}
       >
         <BlurView
-          intensity={Math.max(12, Math.round(theme.colors.glassBlur * 0.55))}
+          intensity={Math.max(18, Math.round(theme.colors.glassBlur * 0.72))}
           tint={scheme === 'dark' ? 'dark' : 'light'}
           style={StyleSheet.absoluteFillObject}
           pointerEvents="none"
@@ -727,7 +756,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
-    marginTop: -46,
+    marginTop: -54,
   },
   avatarFrame: {
     width: 116,
@@ -770,16 +799,17 @@ const styles = StyleSheet.create({
   metaBlock: {
     flex: 1,
     minWidth: 0,
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
+    paddingTop: tokens.spacing.xs,
   },
   brandNamePill: {
     alignSelf: 'flex-start',
     maxWidth: '100%',
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.lg,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
   },
   brandNameRow: {
     flexDirection: 'row',
@@ -793,6 +823,7 @@ const styles = StyleSheet.create({
   },
   locationText: {
     maxWidth: '100%',
+    marginTop: -tokens.spacing.xs,
   },
   statsRow: {
     flexDirection: 'row',
@@ -825,6 +856,12 @@ const styles = StyleSheet.create({
   },
   textTag: {
     flexShrink: 1,
+  },
+  textTagControl: {
+    flexShrink: 0,
+  },
+  pressedControl: {
+    opacity: 0.72,
   },
   descriptionWrap: {
     paddingHorizontal: tokens.spacing.lg,

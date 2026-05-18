@@ -852,13 +852,19 @@ export const brandApi = {
       const params = new URLSearchParams();
       if (visibilityQuery) params.set('visibility', visibilityQuery);
       if (args?.limit) params.set('limit', String(args.limit));
+      params.set('_cb', String(Date.now()));
 
       const basePath = getCollectionBasePath(args?.scope);
       const url = args?.brandId
         ? `${basePath}/user/${args.brandId}${params.toString() ? `?${params.toString()}` : ''}`
         : `${basePath}${params.toString() ? `?${params.toString()}` : ''}`;
 
-      const response = await apiClient.get(url);
+      const response = await apiClient.get(url, {
+        headers: {
+          'Cache-Control': 'no-store',
+          Pragma: 'no-cache',
+        },
+      });
       const normalized = normalizeCollectionListPayload(response.data);
 
       let filtered = normalized.items;
@@ -886,7 +892,13 @@ export const brandApi = {
    */
   async getDrafts(): Promise<CollectionDto[]> {
     try {
-      const response = await apiClient.get('/designs/my/drafts');
+      const response = await apiClient.get('/designs/my/drafts', {
+        params: { _cb: Date.now() },
+        headers: {
+          'Cache-Control': 'no-store',
+          Pragma: 'no-cache',
+        },
+      });
       return normalizeCollectionListPayload(response.data).items.map((item) => ({
         ...item,
         status: 'DRAFT',

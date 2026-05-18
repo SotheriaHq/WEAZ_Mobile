@@ -4,7 +4,6 @@ import { MY_BAG_EMOJI } from '@/src/constants/bagging';
 export const NATIVE_ISLAND_KEYS = {
   designs: 'designs',
   market: 'market',
-  store: 'store',
   bag: 'bag',
   inbox: 'inbox',
   profile: 'profile',
@@ -15,7 +14,6 @@ export type NativeIslandKey = (typeof NATIVE_ISLAND_KEYS)[keyof typeof NATIVE_IS
 export const NATIVE_ISLAND_ICONS: Record<NativeIslandKey | 'signIn', string> = {
   designs: String.fromCodePoint(0x1f9f5),
   market: String.fromCodePoint(0x1f6cd, 0xfe0f),
-  store: String.fromCodePoint(0x1f3ea),
   bag: MY_BAG_EMOJI,
   inbox: String.fromCodePoint(0x2709, 0xfe0f),
   profile: String.fromCodePoint(0x1f464),
@@ -24,7 +22,6 @@ export const NATIVE_ISLAND_ICONS: Record<NativeIslandKey | 'signIn', string> = {
 
 export function mapPathnameToIslandKey(pathname: string): NativeIslandKey {
   if (pathname === '/discover' || pathname.startsWith('/products/') || pathname === '/search') return NATIVE_ISLAND_KEYS.market;
-  if (pathname === '/store') return NATIVE_ISLAND_KEYS.store;
   if (pathname === '/inbox' || pathname.startsWith('/messages/')) return NATIVE_ISLAND_KEYS.inbox;
   if (pathname === '/me' || pathname === '/me-edit' || pathname === '/catalog' || pathname.startsWith('/catalog/')) {
     return NATIVE_ISLAND_KEYS.profile;
@@ -53,16 +50,6 @@ export function buildNativeIslandItems(args: {
       emoji: NATIVE_ISLAND_ICONS.market,
       active: args.activeKey === NATIVE_ISLAND_KEYS.market,
     },
-    ...(args.isBrand
-      ? [
-          {
-            key: NATIVE_ISLAND_KEYS.store,
-            label: 'Store',
-            emoji: NATIVE_ISLAND_ICONS.store,
-            active: args.activeKey === NATIVE_ISLAND_KEYS.store,
-          },
-        ]
-      : []),
     {
       key: NATIVE_ISLAND_KEYS.bag,
       label: 'Bag',
@@ -91,7 +78,6 @@ export function buildNativeIslandItems(args: {
 export function getNativeIslandRoute(key: string, isBrand: boolean) {
   if (key === NATIVE_ISLAND_KEYS.designs) return '/' as const;
   if (key === NATIVE_ISLAND_KEYS.market) return '/(tabs)/discover' as const;
-  if (key === NATIVE_ISLAND_KEYS.store) return '/(tabs)/store' as const;
   if (key === NATIVE_ISLAND_KEYS.inbox) return '/(tabs)/inbox' as const;
   if (key === NATIVE_ISLAND_KEYS.profile) return isBrand ? '/catalog' : '/(tabs)/me';
   return null;

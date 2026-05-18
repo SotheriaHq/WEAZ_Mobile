@@ -13,8 +13,10 @@ import { router } from 'expo-router';
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
 import ThreadlyLogoLoader from '@/components/ui/ThreadlyLogoLoader';
+import { brandApi } from '@/src/api/BrandApi';
+import { ProfileApi } from '@/src/api/ProfileApi';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
-import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { getActiveBrandId, hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { profileMenuAvatarDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { tokens, type AppTheme } from '@/src/styles/tokens';
@@ -60,16 +62,18 @@ export function ProfileMenuDropup({
   bottomOffset,
   user,
 }: ProfileMenuDropupProps) {
-  const { signOut } = useAuth();
+  const { signOut, updateUser } = useAuth();
   const { theme: liveTheme } = useTheme();
   const { height, width } = useWindowDimensions();
   const activeTheme = liveTheme ?? theme;
   const [mounted, setMounted] = React.useState(visible);
   const translateY = React.useRef(new Animated.Value(18)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
+  const avatarHydrationKeyRef = React.useRef<string | null>(null);
 
   const displayName = getDisplayName(user);
   const handle = user?.username ? `@${user.username}` : null;
+  const hasBrandWorkspace = hasActiveBrandMembership(user);
   const avatar = resolveProfileImageSource(user);
   const hasAvatarSource = Boolean(avatar.src || avatar.fileId);
   const { uri: avatarUri, loading: avatarLoading } = useResolvedImageAsset({
@@ -126,6 +130,63 @@ export function ProfileMenuDropup({
       resolved: Boolean(avatarUri),
     });
   }, [avatar.fileId, avatar.src, avatarUri]);
+
+  React.useEffect(() => {
+    if (!visible || !user?.id || hasAvatarSource) return;
+
+    const hydrationKey = `${user.id}:${getActiveBrandId(user) ?? 'buyer'}`;
+    if (avatarHydrationKeyRef.current === hydrationKey) return;
+    avatarHydrationKeyRef.current = hydrationKey;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (hasBrandWorkspace) {
+          const brandId = getActiveBrandId(user) ?? user.id;
+          const profile = await brandApi.getProfileById(brandId);
+          const resolved = resolveProfileImageSource(profile as any);
+          if (!cancelled && (resolved.src || resolved.fileId)) {
+            updateUser({
+              profileImage: resolved.src,
+              profileImageId: resolved.fileId,
+              profileImageFile:
+                (profile as any)?.profileImageFile ??
+                (profile as any)?.logoImageMeta ??
+                { id: resolved.fileId, url: resolved.src, s3Url: resolved.src },
+            });
+          }
+          return;
+        }
+
+        const profile = await ProfileApi.getMe();
+        const resolved = resolveProfileImageSource(profile as any);
+        if (!cancelled && (resolved.src || resolved.fileId)) {
+          updateUser({
+            firstName: profile?.firstName,
+            lastName: profile?.lastName,
+            username: profile?.username,
+            profileImage: resolved.src,
+            profileImageId: resolved.fileId,
+            profileImageFile:
+              profile?.profileImageFile ??
+              { id: resolved.fileId, url: resolved.src, s3Url: resolved.src },
+          });
+        }
+      } catch (error) {
+        if (__DEV__) {
+          profileMenuAvatarDevLog('hydrate-failed', {
+            userId: user.id,
+            hasBrandWorkspace,
+            message: error instanceof Error ? error.message : 'unknown',
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasAvatarSource, hasBrandWorkspace, updateUser, user, visible]);
 
   React.useEffect(() => {
     if (visible) {
@@ -255,7 +316,7 @@ export function ProfileMenuDropup({
                 </View>
               </Pressable>
 
-              {hasActiveBrandMembership(user) && onOpenStudio ? (
+              {hasBrandWorkspace && onOpenStudio ? (
                 <Pressable
                   onPress={onOpenStudio}
                   accessibilityRole="button"

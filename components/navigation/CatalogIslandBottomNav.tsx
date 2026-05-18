@@ -22,7 +22,6 @@ const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 const NAV_EMOJI = {
   designs: String.fromCodePoint(0x1F9F5),
   market: String.fromCodePoint(0x1F6CD),
-  store: String.fromCodePoint(0x1F3EA),
   inbox: String.fromCodePoint(0x2709, 0xFE0F),
   profile: String.fromCodePoint(0x1F464),
 } as const;
@@ -30,7 +29,6 @@ const NAV_EMOJI = {
 function mapPathnameToIslandKey(pathname: string): string {
   if (pathname === '/catalog' || pathname.startsWith('/catalog/')) return 'profile';
   if (pathname === '/discover') return 'market';
-  if (pathname === '/store') return 'store';
   if (pathname === '/inbox') return 'inbox';
   if (pathname === '/me' || pathname === '/me-edit') return 'profile';
   return 'designs';
@@ -161,7 +159,6 @@ export function CatalogIslandBottomNav() {
     () => [
       { key: 'designs', label: 'Runway', emoji: NAV_EMOJI.designs, active: displayedActiveKey === 'designs' },
       { key: 'market', label: 'Market', emoji: NAV_EMOJI.market, active: displayedActiveKey === 'market' },
-      ...(isBrand ? [{ key: 'store', label: 'Store', emoji: NAV_EMOJI.store, active: displayedActiveKey === 'store' }] : []),
       { key: 'inbox', label: 'Messages', emoji: NAV_EMOJI.inbox, active: displayedActiveKey === 'inbox' },
       {
         key: 'profile',
@@ -171,7 +168,7 @@ export function CatalogIslandBottomNav() {
         badge: notificationCountReady ? unreadNotificationCount : undefined,
       },
     ],
-    [displayedActiveKey, isBrand, notificationCountReady, unreadNotificationCount],
+    [displayedActiveKey, notificationCountReady, unreadNotificationCount],
   );
 
   const handleSelect = useCallback(
@@ -192,8 +189,6 @@ export function CatalogIslandBottomNav() {
         router.push('/' as any);
       } else if (item.key === 'market') {
         router.push('/(tabs)/discover' as any);
-      } else if (item.key === 'store') {
-        router.push('/(tabs)/store' as any);
       } else if (item.key === 'inbox') {
         router.push('/(tabs)/inbox' as any);
       }

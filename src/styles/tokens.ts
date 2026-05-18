@@ -46,6 +46,7 @@ type Theme = {
     controlSurface: string;
     controlSurfaceActive: string;
     // Phase 12: semantic glassmorphism tokens (replaces GLASS export)
+    glassSurfaceSoft: string;
     glassSurface: string;
     glassSurfaceStrong: string;
     glassBorder: string;
@@ -87,6 +88,7 @@ export const tokens = {
         mutedSurface: '#ffffff',
         controlSurface: '#ffffff',
         controlSurfaceActive: 'rgba(17,24,39,0.08)',
+        glassSurfaceSoft: 'rgba(255,255,255,0.42)',
         glassSurface: 'rgba(255,255,255,0.78)',
         glassSurfaceStrong: 'rgba(255,255,255,0.92)',
         glassBorder: 'rgba(15,23,42,0.12)',
@@ -125,6 +127,7 @@ export const tokens = {
         mutedSurface: 'rgba(255,255,255,0.05)',
         controlSurface: 'rgba(255,255,255,0.05)',
         controlSurfaceActive: 'rgba(255,255,255,0.10)',
+        glassSurfaceSoft: 'rgba(3,7,18,0.52)',
         glassSurface: 'rgba(0,0,0,0.58)',
         glassSurfaceStrong: 'rgba(3,7,18,0.74)',
         glassBorder: 'rgba(255,255,255,0.12)',

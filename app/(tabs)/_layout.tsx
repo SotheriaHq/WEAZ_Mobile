@@ -59,7 +59,6 @@ export default function TabLayout() {
   const isRootTabPath =
     pathname === '/' ||
     pathname === '/discover' ||
-    pathname === '/store' ||
     pathname === '/inbox' ||
     pathname === '/me' ||
     pathname === '/(tabs)';
@@ -307,14 +306,6 @@ export default function TabLayout() {
           name="discover"
           options={{
             title: 'Market',
-          }}
-        />
-
-        <Tabs.Screen
-          name="store"
-          options={{
-            title: 'Store',
-            href: isBrand ? undefined : null,
           }}
         />
 

@@ -253,11 +253,17 @@ export default function CatalogScreen() {
     enabled: patchEnabled,
   });
 
+  const getCollectionOwnerId = useCallback(
+    (sourceProfile?: BrandProfileDto | null) =>
+      sourceProfile?.id ?? profile?.id ?? (isOwner ? userId : targetBrandId),
+    [isOwner, profile?.id, targetBrandId, userId],
+  );
+
   // Fetch profile data
-  const fetchProfile = useCallback(async () => {
+  const fetchProfile = useCallback(async (): Promise<BrandProfileDto | null> => {
     if (!targetBrandId) {
       setProfile(null);
-      return;
+      return null;
     }
 
     try {
@@ -278,15 +284,20 @@ export default function CatalogScreen() {
           bannerImageFile: (data as any).bannerImageMeta,
         });
       }
+      return data;
     } catch (error) {
       console.error('Error fetching profile:', error);
       // Don't show toast for profile errors on initial load - will show empty state
+      return null;
     }
   }, [targetBrandId, isOwner, updateUser]);
 
   // Fetch collections
-  const fetchCollections = useCallback(async () => {
-    if (!targetBrandId) {
+  const fetchCollections = useCallback(async (profileOverride?: BrandProfileDto | null) => {
+    const collectionOwnerId = getCollectionOwnerId(profileOverride);
+    const profileOwnerId = profileOverride?.id ?? profile?.id ?? null;
+
+    if (!collectionOwnerId) {
       setCollections([]);
       setDrafts([]);
       return;
@@ -300,7 +311,9 @@ export default function CatalogScreen() {
         const data = await brandApi.getDrafts();
         catalogDevLog('load', {
           tab: visibilityFilter,
-          brandId: targetBrandId,
+          routeBrandId: targetBrandId,
+          profileOwnerId,
+          collectionOwnerId,
           ownerId: userId,
           endpoint: '/designs/my/drafts',
           itemCount: data.length,
@@ -310,16 +323,19 @@ export default function CatalogScreen() {
         setDrafts(data);
       } else {
         const { items } = await brandApi.getCollections({
-          brandId: targetBrandId,
+          brandId: collectionOwnerId,
           scope: 'all',
           visibility,
           status: statusFilter,
+          limit: 80,
         });
         catalogDevLog('load', {
           tab: visibilityFilter,
-          brandId: targetBrandId,
+          routeBrandId: targetBrandId,
+          profileOwnerId,
+          collectionOwnerId,
           ownerId: userId,
-          endpoint: `/collections/user/${targetBrandId}`,
+          endpoint: `/collections/user/${collectionOwnerId}`,
           itemCount: items.length,
           status: statusFilter,
           visibility: visibility ?? null,
@@ -330,15 +346,15 @@ export default function CatalogScreen() {
       console.error('Error fetching collections:', error);
       // Collections error will show empty state
     }
-  }, [targetBrandId, visibilityFilter, isOwner, userId]);
+  }, [getCollectionOwnerId, isOwner, profile?.id, targetBrandId, userId, visibilityFilter]);
 
   // Initial load
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
+      const loadedProfile = await fetchProfile();
       await Promise.all([
-        fetchProfile(),
-        fetchCollections(),
+        fetchCollections(loadedProfile),
         refreshPatchStatus({ silent: true }),
       ]);
       setIsLoading(false);
@@ -348,8 +364,17 @@ export default function CatalogScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void fetchProfile();
-    }, [fetchProfile]),
+      let cancelled = false;
+      void (async () => {
+        const loadedProfile = await fetchProfile();
+        if (!cancelled) {
+          await fetchCollections(loadedProfile);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [fetchCollections, fetchProfile]),
   );
 
   useEffect(() => subscribeDesignEditorBackgroundTasks(() => {
@@ -421,9 +446,9 @@ export default function CatalogScreen() {
   // Refresh
   const handleRefresh = async () => {
     setIsRefreshing(true);
+    const loadedProfile = await fetchProfile();
     await Promise.all([
-      fetchProfile(),
-      fetchCollections(),
+      fetchCollections(loadedProfile),
       refreshPatchStatus({ force: true, silent: true }),
     ]);
     setIsRefreshing(false);
