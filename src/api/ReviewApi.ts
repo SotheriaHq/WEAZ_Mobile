@@ -4,6 +4,7 @@ export type ReviewTargetType = 'PRODUCT' | 'COLLECTION' | 'DESIGN' | 'CUSTOM_ORD
 export type ReviewSatisfaction = 'NONE' | 'ANGRY' | 'SAD' | 'OKAY' | 'HAPPY' | 'EXCITED';
 export type ReviewStatus = 'APPROVED' | 'PENDING_MODERATION' | 'HIDDEN' | 'FLAGGED' | 'DELETED';
 export type ReviewPromptStatus = 'PENDING' | 'SHOWN' | 'SKIPPED' | 'SUBMITTED' | 'EXPIRED';
+export type ReviewReportReason = 'SPAM' | 'HARASSMENT' | 'HATE' | 'OFF_TOPIC' | 'COUNTERFEIT' | 'MEDIA_POLICY' | 'OTHER';
 
 export type RatingBreakdown = { 1: number; 2: number; 3: number; 4: number; 5: number };
 export type SatisfactionDistribution = Record<ReviewSatisfaction, number>;
@@ -39,6 +40,26 @@ export type ReviewDto = {
   updatedAt: string | null;
   canEdit: boolean;
   canDelete: boolean;
+  hiddenReason?: string | null;
+  target?: {
+    type: ReviewTargetType;
+    id?: string | null;
+    name?: string | null;
+    mediaUrl?: string | null;
+    product?: Record<string, unknown> | null;
+    collection?: Record<string, unknown> | null;
+    legacyCollection?: Record<string, unknown> | null;
+    design?: Record<string, unknown> | null;
+    orderItem?: Record<string, unknown> | null;
+    customOrder?: Record<string, unknown> | null;
+  } | null;
+  reviewer?: {
+    id: string;
+    username?: string | null;
+    displayName?: string | null;
+    profileImage?: string | null;
+    email?: string | null;
+  } | null;
 };
 
 export type ReviewPromptDto = {
@@ -90,6 +111,37 @@ export type ReviewListDto = {
   nextCursor: string | null;
 };
 
+export type MyReviewsListDto = {
+  items: ReviewDto[];
+  nextCursor: string | null;
+};
+
+export type BrandLifecycleReviewSummaryDto = ReviewSummaryDto & {
+  statusCounts: Record<ReviewStatus, number>;
+  targetTypeCounts: Record<ReviewTargetType, number>;
+  flaggedCount: number;
+  hiddenCount: number;
+  deletedCount: number;
+  pendingModerationCount: number;
+};
+
+export type BrandLifecycleBreakdownTargetDto = {
+  targetType: ReviewTargetType;
+  targetId: string | null;
+  name: string | null;
+  reviewCount: number;
+  averageRating: number;
+};
+
+export type BrandLifecycleDashboardDto = {
+  items: ReviewDto[];
+  summary: BrandLifecycleReviewSummaryDto;
+  breakdown: {
+    targets: BrandLifecycleBreakdownTargetDto[];
+  };
+  nextCursor: string | null;
+};
+
 export type SubmitReviewPayload = {
   promptId?: string;
   targetType: ReviewTargetType;
@@ -117,6 +169,28 @@ export type ReviewQueryParams = {
   limit?: number;
   sort?: 'newest' | 'highest_rating' | 'lowest_rating' | 'most_helpful';
   filter?: 'all' | '1' | '2' | '3' | '4' | '5' | 'with_media';
+};
+
+export type MyReviewQueryParams = {
+  cursor?: string;
+  limit?: number;
+  status?: ReviewStatus;
+  targetType?: ReviewTargetType;
+  includeDeleted?: boolean;
+};
+
+export type BrandLifecycleReviewQueryParams = {
+  cursor?: string;
+  limit?: number;
+  status?: ReviewStatus;
+  targetType?: ReviewTargetType;
+  productId?: string;
+  collectionId?: string;
+  legacyCollectionId?: string;
+  designId?: string;
+  rating?: number;
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 export class ReviewApiError extends Error {
@@ -198,6 +272,9 @@ export const normalizeReview = (raw: any, viewerId?: string | null): ReviewDto =
     updatedAt: dateString(raw?.updatedAt),
     canEdit: typeof raw?.canEdit === 'boolean' ? raw.canEdit : Boolean(isOwner && editWindowOpen && !hiddenOrDeleted),
     canDelete: typeof raw?.canDelete === 'boolean' ? raw.canDelete : Boolean(isOwner && status !== 'DELETED'),
+    hiddenReason: raw?.hiddenReason ?? null,
+    target: raw?.target ?? null,
+    reviewer: raw?.reviewer ?? null,
   };
 };
 
@@ -235,6 +312,52 @@ const normalizeList = (raw: any, viewerId?: string | null): ReviewListDto => ({
   nextCursor: raw?.nextCursor ?? null,
 });
 
+const normalizeMyReviewsList = (raw: any, viewerId?: string | null): MyReviewsListDto => ({
+  items: Array.isArray(raw?.items) ? raw.items.map((item: unknown) => normalizeReview(item, viewerId)) : [],
+  nextCursor: raw?.nextCursor ?? null,
+});
+
+const normalizeDashboardSummary = (raw: any): BrandLifecycleReviewSummaryDto => ({
+  ...normalizeSummary(raw),
+  statusCounts: {
+    APPROVED: 0,
+    PENDING_MODERATION: 0,
+    HIDDEN: 0,
+    FLAGGED: 0,
+    DELETED: 0,
+    ...(raw?.statusCounts ?? {}),
+  },
+  targetTypeCounts: {
+    PRODUCT: 0,
+    COLLECTION: 0,
+    DESIGN: 0,
+    CUSTOM_ORDER: 0,
+    BRAND: 0,
+    ...(raw?.targetTypeCounts ?? {}),
+  },
+  flaggedCount: Number(raw?.flaggedCount ?? raw?.statusCounts?.FLAGGED ?? 0),
+  hiddenCount: Number(raw?.hiddenCount ?? raw?.statusCounts?.HIDDEN ?? 0),
+  deletedCount: Number(raw?.deletedCount ?? raw?.statusCounts?.DELETED ?? 0),
+  pendingModerationCount: Number(raw?.pendingModerationCount ?? raw?.statusCounts?.PENDING_MODERATION ?? 0),
+});
+
+const normalizeBrandDashboard = (raw: any, viewerId?: string | null): BrandLifecycleDashboardDto => ({
+  items: Array.isArray(raw?.items) ? raw.items.map((item: unknown) => normalizeReview(item, viewerId)) : [],
+  summary: normalizeDashboardSummary(raw?.summary),
+  breakdown: {
+    targets: Array.isArray(raw?.breakdown?.targets)
+      ? raw.breakdown.targets.map((item: any) => ({
+          targetType: (item?.targetType ?? 'PRODUCT') as ReviewTargetType,
+          targetId: item?.targetId ?? null,
+          name: item?.name ?? null,
+          reviewCount: Number(item?.reviewCount ?? 0),
+          averageRating: Number(item?.averageRating ?? 0),
+        }))
+      : [],
+  },
+  nextCursor: raw?.nextCursor ?? null,
+});
+
 const mutationHeaders = () => ({ 'Idempotency-Key': createIdempotencyKey() });
 
 export const reviewApi = {
@@ -254,6 +377,15 @@ export const reviewApi = {
       return unwrap<ReviewEligibilityDto>(response.data);
     } catch (error) {
       throw normalizeError(error, 'Unable to load review eligibility');
+    }
+  },
+
+  async getMyReviews(params?: MyReviewQueryParams, viewerId?: string | null): Promise<MyReviewsListDto> {
+    try {
+      const response = await apiClient.get('/reviews/me', { params });
+      return normalizeMyReviewsList(unwrap(response.data), viewerId);
+    } catch (error) {
+      throw normalizeError(error, 'Unable to load your reviews');
     }
   },
 
@@ -333,6 +465,28 @@ export const reviewApi = {
       return normalizeSummary(unwrap(response.data));
     } catch (error) {
       throw normalizeError(error, 'Unable to load brand review summary');
+    }
+  },
+
+  async getBrandLifecycleDashboard(params?: BrandLifecycleReviewQueryParams, viewerId?: string | null): Promise<BrandLifecycleDashboardDto> {
+    try {
+      const response = await apiClient.get('/brands/reviews/lifecycle', { params });
+      return normalizeBrandDashboard(unwrap(response.data), viewerId);
+    } catch (error) {
+      throw normalizeError(error, 'Unable to load brand review dashboard');
+    }
+  },
+
+  async reportBrandLifecycleReview(
+    reviewId: string,
+    payload: { reason: ReviewReportReason; details?: string },
+    viewerId?: string | null,
+  ): Promise<ReviewDto> {
+    try {
+      const response = await apiClient.post(`/brands/reviews/lifecycle/${reviewId}/report`, payload, { headers: mutationHeaders() });
+      return normalizeReview(unwrap(response.data), viewerId);
+    } catch (error) {
+      throw normalizeError(error, 'Unable to report review');
     }
   },
 };

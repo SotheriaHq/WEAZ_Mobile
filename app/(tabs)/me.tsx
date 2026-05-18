@@ -773,6 +773,7 @@ export default function BuyerProfileScreen() {
           <ProfileAction emoji="✏️" label="Edit info" onPress={() => setEditOpen(true)} />
           <ProfileAction emoji="📏" label="My fits" onPress={() => setFittingsOpen(true)} />
           <ProfileAction emoji="📦" label="Orders" onPress={() => router.push('/orders' as any)} />
+          <ProfileAction emoji="⭐" label="Reviews" onPress={() => router.push('/reviews' as any)} />
           <ProfileAction emoji="⚙️" label="Settings" onPress={handleOpenSettings} />
         </View>
 
