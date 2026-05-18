@@ -7,21 +7,35 @@ import { env } from '@/src/config/env';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const UNCONFIGURED_GOOGLE_CLIENT_ID =
+  'threadly-google-auth-not-configured.apps.googleusercontent.com';
+
 const usableClientId = (value: string | undefined | null): string | undefined => {
   const normalized = String(value ?? '').trim();
   if (!normalized || normalized.startsWith('<')) return undefined;
   return normalized;
 };
 
-const hasPlatformClientId = () => {
-  const webClientId = usableClientId(env.google.webClientId);
+type GoogleClientIds = {
+  webClientId?: string;
+  iosClientId?: string;
+  androidClientId?: string;
+};
+
+const getGoogleClientIds = (): GoogleClientIds => ({
+  webClientId: usableClientId(env.google.webClientId),
+  iosClientId: usableClientId(env.google.iosClientId),
+  androidClientId: usableClientId(env.google.androidClientId),
+});
+
+const platformClientId = (clientIds: GoogleClientIds): string | undefined => {
   if (Platform.OS === 'ios') {
-    return Boolean(usableClientId(env.google.iosClientId) || webClientId);
+    return clientIds.iosClientId;
   }
   if (Platform.OS === 'android') {
-    return Boolean(usableClientId(env.google.androidClientId) || webClientId);
+    return clientIds.androidClientId;
   }
-  return Boolean(webClientId);
+  return clientIds.webClientId;
 };
 
 type UseGoogleIdTokenRequestOptions = {
@@ -30,21 +44,36 @@ type UseGoogleIdTokenRequestOptions = {
 
 export function useGoogleIdTokenRequest(options: UseGoogleIdTokenRequestOptions = {}) {
   const config = useMemo(
-    () => ({
-      webClientId: usableClientId(env.google.webClientId),
-      iosClientId: usableClientId(env.google.iosClientId),
-      androidClientId: usableClientId(env.google.androidClientId),
-      selectAccount: true,
-      scopes: ['openid', 'email', 'profile'],
-      ...(options.loginHint?.trim() ? { loginHint: options.loginHint.trim() } : {}),
-    }),
+    () => {
+      const clientIds = getGoogleClientIds();
+      const fallbackClientId = platformClientId(clientIds) ?? UNCONFIGURED_GOOGLE_CLIENT_ID;
+
+      return {
+        webClientId:
+          Platform.OS === 'web'
+            ? fallbackClientId
+            : clientIds.webClientId,
+        iosClientId:
+          Platform.OS === 'ios'
+            ? fallbackClientId
+            : clientIds.iosClientId,
+        androidClientId:
+          Platform.OS === 'android'
+            ? fallbackClientId
+            : clientIds.androidClientId,
+        selectAccount: true,
+        scopes: ['openid', 'email', 'profile'],
+        ...(options.loginHint?.trim() ? { loginHint: options.loginHint.trim() } : {}),
+      };
+    },
     [options.loginHint],
   );
 
   const [request, , promptAsync] = Google.useIdTokenAuthRequest(config);
+  const configured = Boolean(platformClientId(getGoogleClientIds()));
 
   const requestGoogleIdToken = useCallback(async () => {
-    if (!hasPlatformClientId()) {
+    if (!configured) {
       throw new Error('Google sign-in is not configured for this build.');
     }
     if (!request) {
@@ -62,11 +91,11 @@ export function useGoogleIdTokenRequest(options: UseGoogleIdTokenRequestOptions 
     }
 
     return idToken;
-  }, [promptAsync, request]);
+  }, [configured, promptAsync, request]);
 
   return {
-    configured: hasPlatformClientId(),
-    ready: Boolean(request),
+    configured,
+    ready: configured && Boolean(request),
     requestGoogleIdToken,
   };
 }

@@ -165,6 +165,21 @@ function main() {
   const googleHookSource = fs.readFileSync(googleHookPath, 'utf8');
   assert.match(googleHookSource, /expo-auth-session\/providers\/google/, 'Mobile Google auth must use Expo AuthSession Google provider.');
   assert.match(googleHookSource, /useIdTokenAuthRequest/, 'Mobile Google auth must request ID tokens.');
+  assert.match(
+    googleHookSource,
+    /UNCONFIGURED_GOOGLE_CLIENT_ID/,
+    'Mobile Google auth must provide a safe placeholder client id so missing platform config does not crash route mount.',
+  );
+  assert.doesNotMatch(
+    googleHookSource,
+    /usableClientId\(env\.google\.iosClientId\)\s*\|\|\s*webClientId/,
+    'Mobile Google auth must not treat the web Google client ID as an iOS client ID.',
+  );
+  assert.doesNotMatch(
+    googleHookSource,
+    /usableClientId\(env\.google\.androidClientId\)\s*\|\|\s*webClientId/,
+    'Mobile Google auth must not treat the web Google client ID as an Android client ID.',
+  );
   assert.doesNotMatch(
     [mobileEnvExampleSource, authApiSource, loginSource, signupSource, googleHookSource].join('\n'),
     /GOOGLE_CLIENT_SECRET|google-client-secret|client_secret/i,
