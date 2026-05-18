@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 
 import type { DesignEditorAsset } from '@/src/api/DesignApi';
+import { markInteractionTiming } from '@/src/utils/interactionTiming';
 import { DESIGN_EDITOR_MAX_MEDIA } from './designCreationRules';
 
 export { DESIGN_EDITOR_MAX_MEDIA };
@@ -59,10 +60,12 @@ export async function pickDesignEditorMediaAssets({
   source,
   existingCount = 0,
   maxMedia = DESIGN_EDITOR_MAX_MEDIA,
+  timingToken,
 }: {
   source: DesignEditorMediaSource;
   existingCount?: number;
   maxMedia?: number;
+  timingToken?: string | null;
 }): Promise<DesignEditorMediaPickResult> {
   const remainingSlots = Math.max(0, maxMedia - existingCount);
   if (remainingSlots === 0) {
@@ -72,10 +75,22 @@ export async function pickDesignEditorMediaAssets({
     };
   }
 
+  markInteractionTiming(timingToken, 'permission_request_start', {
+    source,
+    existingCount,
+    remainingSlots,
+  });
+
   const permission =
     source === 'camera'
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+  markInteractionTiming(timingToken, 'permission_result', {
+    source,
+    granted: Boolean(permission.granted),
+    canAskAgain: Boolean(permission.canAskAgain),
+  });
 
   if (!permission.granted) {
     return {
@@ -95,6 +110,12 @@ export async function pickDesignEditorMediaAssets({
     };
   }
 
+  markInteractionTiming(timingToken, 'picker_open_start', {
+    source,
+    existingCount,
+    remainingSlots,
+  });
+
   const result =
     source === 'camera'
       ? await ImagePicker.launchCameraAsync({
@@ -107,6 +128,12 @@ export async function pickDesignEditorMediaAssets({
           quality: 0.9,
           selectionLimit: remainingSlots,
         });
+
+  markInteractionTiming(timingToken, 'picker_result_received', {
+    source,
+    cancelled: Boolean(result.canceled),
+    assetCount: result.assets?.length ?? 0,
+  });
 
   if (result.canceled || !result.assets?.length) {
     return { status: 'cancelled' };

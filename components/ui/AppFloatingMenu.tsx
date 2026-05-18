@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Dimensions, Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
@@ -24,6 +24,8 @@ type Props = {
   } | null;
   options: FloatingMenuOption[];
   onClose: () => void;
+  onShown?: () => void;
+  onOptionPressStart?: (option: FloatingMenuOption) => void;
 };
 
 function resolveMenuPosition({
@@ -50,9 +52,26 @@ function resolveMenuPosition({
   };
 }
 
-export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, onClose }: Props) {
+function resolveFallbackMenuPosition(menuWidth: number) {
+  const { width } = Dimensions.get('window');
+  return {
+    top: tokens.spacing['3xl'] + tokens.spacing.xl,
+    left: Math.max(tokens.spacing.md, width - menuWidth - tokens.spacing.lg),
+  };
+}
+
+export function AppFloatingMenu({
+  visible,
+  anchorRef,
+  anchorMetrics,
+  options,
+  onClose,
+  onShown,
+  onOptionPressStart,
+}: Props) {
   const { scheme, theme } = useTheme();
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const shownReportedRef = useRef(false);
   const menuWidth = 188;
 
   useAndroidOverlaySystemBars(visible, scheme, 'floating-menu');
@@ -65,12 +84,17 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
   );
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      shownReportedRef.current = false;
+      return;
+    }
 
     if (anchorMetrics) {
       updateMenuPosition(anchorMetrics);
       return;
     }
+
+    setMenuPosition((current) => current ?? resolveFallbackMenuPosition(menuWidth));
 
     if (anchorRef.current?.measureInWindow) {
       anchorRef.current.measureInWindow((pageX: number, pageY: number, width: number, height: number) => {
@@ -83,7 +107,13 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
         });
       });
     }
-  }, [anchorMetrics, anchorRef, updateMenuPosition, visible]);
+  }, [anchorMetrics, anchorRef, menuWidth, updateMenuPosition, visible]);
+
+  useEffect(() => {
+    if (!visible || !menuPosition || shownReportedRef.current) return;
+    shownReportedRef.current = true;
+    onShown?.();
+  }, [menuPosition, onShown, visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -130,6 +160,7 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
                 index < options.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
               ]}
               onPress={() => {
+                onOptionPressStart?.(option);
                 onClose();
                 requestAnimationFrame(option.onPress);
               }}

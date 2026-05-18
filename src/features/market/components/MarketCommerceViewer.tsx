@@ -69,6 +69,7 @@ const ACTION_KIND_BAG = 'bag';
 const ACTION_KIND_SAVE = 'save';
 const ACTION_KIND_MESSAGE = 'message';
 const ACTION_KIND_SHARE = 'share';
+const COLLAPSED_SHEET_HEIGHT = 52;
 
 const shouldLogViewerTiming = () =>
   __DEV__ ||
@@ -473,7 +474,7 @@ export function MarketCommerceViewer({
   const bagBusy = Boolean(loadingByProductId[sourceStatusKey] || busyAction === ACTION_KIND_BAG);
   const activeSheetHeight = sheetExpanded
     ? Math.min(420, Math.max(320, Math.round(height * 0.48)))
-    : 76;
+    : COLLAPSED_SHEET_HEIGHT;
   const mediaHeight = height;
   const actionBottom = activeSheetHeight + chrome.immersiveOverlayBottomClearance + tokens.spacing.md;
   const actionClusterWidth = Math.min(184, Math.max(148, Math.round(width * 0.38)));
@@ -873,11 +874,10 @@ export function MarketCommerceViewer({
           accessibilityLabel="Expand product details"
         >
           <View style={styles.collapsedCopy}>
-            <AppText variant="captionBold" tone="primary" numberOfLines={1}>{brandName}</AppText>
             <AppText variant="bodyBold" numberOfLines={1}>{title}</AppText>
           </View>
-          <AppText variant="captionBold" tone="secondary" numberOfLines={1}>
-            {priceLabel ?? stockLabel}
+          <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+            View details
           </AppText>
         </Pressable>
       )}
@@ -1145,7 +1145,8 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
   },
   sheetHandleWrapCollapsed: {
-    minHeight: 24,
+    minHeight: 8,
+    gap: 0,
   },
   sheetHandle: {
     width: 54,
@@ -1196,12 +1197,12 @@ const styles = StyleSheet.create({
   },
   collapsedSheetContent: {
     flex: 1,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
-    paddingBottom: tokens.spacing.sm,
   },
   collapsedCopy: {
     flex: 1,
