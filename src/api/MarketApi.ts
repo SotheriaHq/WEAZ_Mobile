@@ -20,6 +20,13 @@ export type MarketFilterChip = {
   tag: string | null;
 };
 
+type MarketFilterPreference = {
+  dimensionSlug: string;
+  valueSlug: string;
+  label: string;
+  tag: string;
+};
+
 type RawMarketItem = Record<string, unknown>;
 type DropReason =
   | 'missing id'
@@ -287,14 +294,72 @@ const unwrapData = <T,>(payload: unknown): T | null => {
   return (unwrapped ?? null) as T | null;
 };
 
-const FALLBACK_FILTER_TAGS = ['streetwear', 'haute couture', 'sustainable'];
+export const DEFAULT_MARKET_FILTER_CHIPS: MarketFilterChip[] = [
+  { id: 'discover-for-you', label: 'Discover for you', tag: null },
+  { id: 'explore', label: 'Explore', tag: null },
+  { id: 'african-culture', label: 'African culture', tag: 'african-fashion' },
+  { id: 'casual', label: 'Casual', tag: 'casual-style' },
+];
 
-const toFilterLabel = (value: string) =>
-  value
-    .split(/[\s_-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+const MARKET_FILTER_PREFERENCES: MarketFilterPreference[] = [
+  { dimensionSlug: 'heritage', valueSlug: 'african-cultural', label: 'African culture', tag: 'african-fashion' },
+  { dimensionSlug: 'style', valueSlug: 'casual-streetwear', label: 'Casual', tag: 'casual-style' },
+  { dimensionSlug: 'fabric', valueSlug: 'ankara', label: 'Ankara', tag: 'ankara-fashion' },
+  { dimensionSlug: 'heritage', valueSlug: 'afro-modern', label: 'Afro-modern', tag: 'afro-modern' },
+  { dimensionSlug: 'occasion', valueSlug: 'owambe-party', label: 'Owambe', tag: 'owambe' },
+  { dimensionSlug: 'style', valueSlug: 'contemporary', label: 'Contemporary', tag: 'contemporary-style' },
+];
+
+type RawCategoryFilterValue = {
+  slug?: string | null;
+  label?: string | null;
+  name?: string | null;
+};
+
+type RawCategoryFilterDimension = {
+  slug?: string | null;
+  label?: string | null;
+  values?: RawCategoryFilterValue[];
+};
+
+type RawCategoryFiltersResponse = {
+  dimensions?: RawCategoryFilterDimension[];
+  items?: RawCategoryFilterDimension[];
+};
+
+type RawCategoryFiltersPayload = RawCategoryFilterDimension[] | RawCategoryFiltersResponse | null;
+
+const normalizeSlug = (value: unknown) =>
+  typeof value === 'string' && value.trim().length > 0 ? value.trim().toLowerCase() : null;
+
+const mapSeededFiltersToChips = (payload: RawCategoryFiltersPayload): MarketFilterChip[] => {
+  const dimensions = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.dimensions)
+      ? payload.dimensions
+      : Array.isArray(payload?.items)
+        ? payload.items
+        : [];
+  const chips = MARKET_FILTER_PREFERENCES.flatMap((preference) => {
+    const dimension = dimensions.find((candidate) => normalizeSlug(candidate.slug) === preference.dimensionSlug);
+    const values = Array.isArray(dimension?.values) ? dimension.values : [];
+    const value = values.find((candidate) => normalizeSlug(candidate.slug) === preference.valueSlug);
+    if (!value) return [];
+    return {
+      id: normalizeSlug(value.slug) ?? preference.valueSlug,
+      label: preference.label,
+      tag: preference.tag,
+    };
+  });
+  const uniqueChips = Array.from(new Map(chips.map((chip) => [chip.id, chip])).values());
+  return uniqueChips.length > 0
+    ? [
+        DEFAULT_MARKET_FILTER_CHIPS[0],
+        DEFAULT_MARKET_FILTER_CHIPS[1],
+        ...uniqueChips,
+      ]
+    : DEFAULT_MARKET_FILTER_CHIPS;
+};
 
 export const normalizeLegacyMarketFeedItem = (raw: RawMarketItem): MarketItem | null => {
   const collection = asRecord(raw.collection);
@@ -500,38 +565,11 @@ export async function getMarketFeed(params?: GetMarketFeedParams, config?: Axios
 
 export async function getMarketFilterChips(): Promise<MarketFilterChip[]> {
   try {
-    const response = await apiClient.get('/tags/trending', {
-      params: {
-        window: '7d',
-        limit: 3,
-      },
-    });
-    const data = unwrapData<{ items?: Array<{ name?: string | null }> }>(response.data);
-    const tags = Array.isArray(data?.items)
-      ? data.items
-          .map((item) => (typeof item?.name === 'string' ? item.name.trim() : ''))
-          .filter(Boolean)
-      : [];
-    const uniqueTags = Array.from(new Set(tags)).slice(0, 3);
-
-    const sourceTags = uniqueTags.length ? uniqueTags : FALLBACK_FILTER_TAGS;
-    return [
-      { id: 'all', label: 'All', tag: null },
-      ...sourceTags.map((tag) => ({
-        id: tag.toLowerCase(),
-        label: toFilterLabel(tag),
-        tag,
-      })),
-    ];
+    const response = await apiClient.get('/categories/filters');
+    const data = unwrapData<RawCategoryFiltersPayload>(response.data);
+    return mapSeededFiltersToChips(data);
   } catch {
-    return [
-      { id: 'all', label: 'All', tag: null },
-      ...FALLBACK_FILTER_TAGS.map((tag) => ({
-        id: tag.replace(/\s+/g, '-'),
-        label: toFilterLabel(tag),
-        tag,
-      })),
-    ];
+    return DEFAULT_MARKET_FILTER_CHIPS;
   }
 }
 

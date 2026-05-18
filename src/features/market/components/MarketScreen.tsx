@@ -169,7 +169,7 @@ function hasDisplayMedia(item: MarketContentItem) {
 }
 
 function getItemTypeLabel(item: MarketContentItem) {
-  if (item.entityType === 'DESIGN') return 'Design';
+  if (item.entityType === 'DESIGN') return 'Runway';
   if (item.entityType === 'PRODUCT') return 'Product';
   return 'Catalog item';
 }
@@ -299,7 +299,7 @@ function buildRows(args: {
       id: 'fresh-row',
       type: 'HORIZONTAL_CARD_ROW',
       title: 'Fresh on Threadly',
-      subtitle: 'New products and custom-ready designs',
+      subtitle: 'New products and custom-ready runway',
       items: freshItems,
       onSeeAll: setNewestView,
     });
@@ -326,7 +326,7 @@ function buildRows(args: {
     rows.push({
       id: 'custom-ready-row',
       type: 'HORIZONTAL_CARD_ROW',
-      title: 'Custom-ready designs',
+      title: 'Custom-ready runway',
       subtitle: 'Start a tailored request from the feed',
       items: customReady,
       onSeeAll: setCustomReadyView,
@@ -424,7 +424,7 @@ function MarketDesignCard({
       priceLabel={getItemPriceLabel(item)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
-      typeLabel="Design"
+      typeLabel="Runway"
       favorite={favorite}
       favoriteBusy={favoriteBusy}
       actionLabel={canRequestCustomOrder ? BAG_IT_LABEL : undefined}
@@ -1375,7 +1375,7 @@ export function MarketScreen() {
         <View style={styles.titleWrap}>
           <AppText variant="title">Market</AppText>
           <AppText variant="caption" tone="muted" numberOfLines={1}>
-            Products and custom-ready designs
+            Products and custom-ready runway
           </AppText>
         </View>
         <Pressable

@@ -17,6 +17,9 @@ export type FeedViewerMedia = {
   orderIndex?: number | null;
   blurHash?: string | null;
   dominantColor?: string | null;
+  width?: number | null;
+  height?: number | null;
+  aspectRatio?: number | null;
 };
 
 export type FeedCarouselMedia = FeedViewerMedia & {

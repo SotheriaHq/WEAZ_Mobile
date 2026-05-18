@@ -19,7 +19,7 @@ export function MarketEmptyState({ onClear, onRetry }: EmptyProps) {
       <AppText variant="display">⌕</AppText>
       <AppText variant="subtitle" style={styles.center}>No market items found</AppText>
       <AppText variant="body" tone="muted" style={styles.center}>
-        Clear filters or retry to load the latest products and designs.
+        Clear filters or retry to load the latest products and runway looks.
       </AppText>
       <View style={styles.actions}>
         <Button title="Clear filters" onPress={onClear} size="md" style={styles.button} />

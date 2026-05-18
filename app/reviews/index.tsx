@@ -26,7 +26,7 @@ const FILTERS: Array<{ key: ReviewFilter; label: string }> = [
   { key: 'PRODUCT', label: 'Products' },
   { key: 'BRAND', label: 'Brands' },
   { key: 'COLLECTION', label: 'Collections' },
-  { key: 'DESIGN', label: 'Designs' },
+  { key: 'DESIGN', label: 'Runway' },
   { key: 'CUSTOM_ORDER', label: 'Custom' },
 ];
 

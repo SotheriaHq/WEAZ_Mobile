@@ -9,16 +9,47 @@ import type { FeedViewerMedia } from '@/src/features/feed/components/feedCompone
 type FeedMediaSlideProps = {
   media: FeedViewerMedia | null;
   imageIndex: number;
+  viewportWidth?: number | null;
+  viewportHeight?: number | null;
   onPress?: () => void;
+};
+
+const getMediaAspectRatio = (media: FeedViewerMedia | null) => {
+  if (!media) return null;
+  if (typeof media.aspectRatio === 'number' && Number.isFinite(media.aspectRatio) && media.aspectRatio > 0) {
+    return media.aspectRatio;
+  }
+  if (
+    typeof media.width === 'number' &&
+    typeof media.height === 'number' &&
+    Number.isFinite(media.width) &&
+    Number.isFinite(media.height) &&
+    media.width > 0 &&
+    media.height > 0
+  ) {
+    return media.width / media.height;
+  }
+  return null;
+};
+
+const getAspectClass = (aspectRatio: number | null) => {
+  if (!aspectRatio || !Number.isFinite(aspectRatio) || aspectRatio <= 0) return 'unknown' as const;
+  if (aspectRatio > 1.08) return 'landscape' as const;
+  if (aspectRatio < 0.92) return 'portrait' as const;
+  return 'square' as const;
 };
 
 export const FeedMediaSlide = React.memo(function FeedMediaSlide({
   media,
   imageIndex,
+  viewportWidth,
+  viewportHeight,
   onPress,
 }: FeedMediaSlideProps) {
   const { scheme, theme } = useTheme();
   const placeholderSurface = scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt;
+  const aspectRatio = getMediaAspectRatio(media);
+  const aspectClass = getAspectClass(aspectRatio);
 
   if (!media) {
     return (
@@ -64,6 +95,14 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
         style={styles.pageImage}
         sourceType={media.fileId ? 'feed-media-file' : 'feed-media-url'}
         imageIndex={imageIndex}
+        contentFit="contain"
+        viewportWidth={viewportWidth}
+        viewportHeight={viewportHeight}
+        naturalWidth={media.width}
+        naturalHeight={media.height}
+        aspectRatio={aspectRatio}
+        aspectClass={aspectClass}
+        frostedBackdrop
       />
     </Pressable>
   );

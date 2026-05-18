@@ -43,7 +43,7 @@ export function buildNativeIslandItems(args: {
   const baseItems: NativeIslandNavItem[] = [
     {
       key: NATIVE_ISLAND_KEYS.designs,
-      label: 'Designs',
+      label: 'Runway',
       emoji: NATIVE_ISLAND_ICONS.designs,
       active: args.activeKey === NATIVE_ISLAND_KEYS.designs,
     },

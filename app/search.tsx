@@ -45,7 +45,7 @@ type ResultState =
 const FILTER_OPTIONS: Array<{ key: FilterType; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'brand', label: 'Brands' },
-  { key: 'design', label: 'Designs' },
+  { key: 'design', label: 'Runway' },
   { key: 'collection', label: 'Collections' },
   { key: 'product', label: 'Products' },
   { key: 'tag', label: 'Tags' },
@@ -164,13 +164,13 @@ function SearchResultRow({
 }) {
   const typeLabel =
     item.type === 'brand'
-      ? '👤 Brand'
+      ? 'Brand'
       : item.type === 'design'
-        ? '🎨 Design'
+        ? 'Runway'
         : item.type === 'collection'
-          ? '🗂️ Collection'
+          ? 'Collection'
           : item.type === 'product'
-            ? '🛍️ Product'
+            ? 'Product'
             : '# Tag';
 
   return (

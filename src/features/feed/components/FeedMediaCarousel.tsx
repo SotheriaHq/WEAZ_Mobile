@@ -15,6 +15,7 @@ const normalizeStableUri = (value?: string | null) => {
 type FeedMediaCarouselProps = {
   collectionId: string;
   mediaItems: FeedViewerMedia[];
+  pageHeight: number;
   initialActiveIndex?: number;
   onActiveIndexChange: (nextIndex: number) => void;
   onContentPress?: () => void;
@@ -34,6 +35,7 @@ type FeedMediaCarouselProps = {
 export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   collectionId,
   mediaItems,
+  pageHeight,
   initialActiveIndex = 0,
   onActiveIndexChange,
   onContentPress,
@@ -189,7 +191,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   if (!mediaItems.length) {
     return (
       <View style={StyleSheet.absoluteFillObject}>
-        <FeedMediaSlide media={null} imageIndex={0} onPress={onContentPress} />
+        <FeedMediaSlide media={null} imageIndex={0} viewportWidth={width} viewportHeight={pageHeight} onPress={onContentPress} />
       </View>
     );
   }
@@ -197,7 +199,13 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   if (!hasMultipleItems) {
     return (
       <View style={StyleSheet.absoluteFillObject}>
-        <FeedMediaSlide media={stableMediaItems[0] ?? null} imageIndex={0} onPress={onContentPress} />
+        <FeedMediaSlide
+          media={stableMediaItems[0] ?? null}
+          imageIndex={0}
+          viewportWidth={width}
+          viewportHeight={pageHeight}
+          onPress={onContentPress}
+        />
       </View>
     );
   }
@@ -220,7 +228,13 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       >
         {stableMediaItems.map((item, index) => (
           <View key={item.id} style={[styles.slide, { width }]}>
-            <FeedMediaSlide media={item} imageIndex={index} onPress={onContentPress} />
+            <FeedMediaSlide
+              media={item}
+              imageIndex={index}
+              viewportWidth={width}
+              viewportHeight={pageHeight}
+              onPress={onContentPress}
+            />
           </View>
         ))}
       </ScrollView>

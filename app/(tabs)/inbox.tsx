@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { CollapsibleSearch } from '@/components/ui/CollapsibleSearch';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { Tabs } from '@/components/catalog/Tabs';
@@ -441,9 +441,8 @@ export default function InboxScreen() {
 
       <View style={styles.headerBlock}>
         <AppText variant="title">Messages</AppText>
-        <Input
+        <CollapsibleSearch
           label="Search messages"
-          hideLabel
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholder="Search names, messages, or order refs"

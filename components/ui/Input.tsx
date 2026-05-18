@@ -1,11 +1,11 @@
 import React from 'react';
-import { Pressable, StyleSheet, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
+import { StyleSheet, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
-type Props = Omit<TextInputProps, 'style'> & {
+export type InputProps = Omit<TextInputProps, 'style'> & {
   label: string;
   hideLabel?: boolean;
   error?: string;
@@ -16,7 +16,7 @@ type Props = Omit<TextInputProps, 'style'> & {
   variant?: 'default' | 'bare';
 };
 
-export function Input({
+export const Input = React.forwardRef<TextInput, InputProps>(function Input({
   label,
   hideLabel = false,
   error,
@@ -27,7 +27,7 @@ export function Input({
   variant = 'default',
   multiline,
   ...rest
-}: Props) {
+}, ref) {
   const { theme } = useTheme();
   const hasError = Boolean(error);
   const isBare = variant === 'bare';
@@ -52,6 +52,7 @@ export function Input({
       >
         {leading ? <View style={styles.leading}>{leading}</View> : null}
         <TextInput
+          ref={ref}
           {...rest}
           multiline={multiline}
           style={[
@@ -70,11 +71,7 @@ export function Input({
           ]}
           placeholderTextColor={theme.colors.textMuted}
         />
-        {trailing ? (
-          <Pressable style={styles.trailing} accessibilityRole="button">
-            {trailing}
-          </Pressable>
-        ) : null}
+        {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
       </View>
       {error ? (
         <AppText variant="caption" tone="danger" style={styles.message}>
@@ -87,7 +84,9 @@ export function Input({
       ) : null}
     </View>
   );
-}
+});
+
+Input.displayName = 'Input';
 
 const styles = StyleSheet.create({
   label: {

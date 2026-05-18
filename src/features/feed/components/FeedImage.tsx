@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
+import { Image as ExpoImage, type ImageContentFit } from 'expo-image';
 
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
-import { mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
+import { feedMediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 
 type FeedImageLoadState = 'idle' | 'resolving' | 'loading' | 'loaded' | 'failed';
+type FeedImageAspectClass = 'portrait' | 'square' | 'landscape' | 'unknown';
 
 type FeedImageProps = {
   id: string;
@@ -21,6 +22,21 @@ type FeedImageProps = {
   style?: StyleProp<ViewStyle>;
   sourceType?: string;
   imageIndex?: number;
+  contentFit?: ImageContentFit;
+  viewportWidth?: number | null;
+  viewportHeight?: number | null;
+  naturalWidth?: number | null;
+  naturalHeight?: number | null;
+  aspectRatio?: number | null;
+  aspectClass?: FeedImageAspectClass;
+  frostedBackdrop?: boolean;
+};
+
+const classifyAspectRatio = (aspectRatio?: number | null): FeedImageAspectClass => {
+  if (!aspectRatio || !Number.isFinite(aspectRatio) || aspectRatio <= 0) return 'unknown';
+  if (aspectRatio > 1.08) return 'landscape';
+  if (aspectRatio < 0.92) return 'portrait';
+  return 'square';
 };
 
 function FeedImagePlaceholder({ backgroundColor }: { backgroundColor: string }) {
@@ -66,12 +82,21 @@ export const FeedImage = React.memo(function FeedImage({
   style,
   sourceType,
   imageIndex,
+  contentFit = 'contain',
+  viewportWidth,
+  viewportHeight,
+  naturalWidth,
+  naturalHeight,
+  aspectRatio,
+  aspectClass,
+  frostedBackdrop = true,
 }: FeedImageProps) {
   const { scheme, theme } = useTheme();
   const placeholderSurface = dominantColor || (scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt);
   const [loadState, setLoadState] = useState<FeedImageLoadState>('idle');
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
+  const [loadedNaturalSize, setLoadedNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const lastSuccessfulUriRef = useRef<string | null>(null);
   const failedUriSetRef = useRef<Set<string>>(new Set());
   const sourceUrl = displayUrl || previewUrl || thumbnailUrl || null;
@@ -101,10 +126,17 @@ export const FeedImage = React.memo(function FeedImage({
       return null;
     }
   }, [sourceUrl, uri, visibleUri]);
+  const measuredAspectRatio =
+    aspectRatio ??
+    (naturalWidth && naturalHeight ? naturalWidth / naturalHeight : null) ??
+    (loadedNaturalSize ? loadedNaturalSize.width / loadedNaturalSize.height : null);
+  const resolvedAspectClass = aspectClass ?? classifyAspectRatio(measuredAspectRatio);
+  const useFrostedBackdrop = frostedBackdrop && contentFit === 'contain';
 
   useEffect(() => {
     setLoadState(hasSource ? 'resolving' : 'idle');
     setFailedUri(null);
+    setLoadedNaturalSize(null);
     failedUriSetRef.current = new Set();
   }, [hasSource, id, sourceUrl, fileId, retryToken]);
 
@@ -114,6 +146,36 @@ export const FeedImage = React.memo(function FeedImage({
     }
   }, [failedUri, uri]);
 
+  useEffect(() => {
+    if (!__DEV__) return;
+    feedMediaDevLog('image-fit-policy', {
+      mediaId: id,
+      mediaIndex: imageIndex ?? null,
+      viewportWidth: viewportWidth ?? null,
+      viewportHeight: viewportHeight ?? null,
+      naturalWidth: naturalWidth ?? loadedNaturalSize?.width ?? null,
+      naturalHeight: naturalHeight ?? loadedNaturalSize?.height ?? null,
+      aspectRatio: measuredAspectRatio ?? null,
+      aspectClass: resolvedAspectClass,
+      contentFit,
+      frostedBackdrop: useFrostedBackdrop,
+    });
+  }, [
+    aspectClass,
+    contentFit,
+    id,
+    imageIndex,
+    loadedNaturalSize?.height,
+    loadedNaturalSize?.width,
+    measuredAspectRatio,
+    naturalHeight,
+    naturalWidth,
+    resolvedAspectClass,
+    useFrostedBackdrop,
+    viewportHeight,
+    viewportWidth,
+  ]);
+
   const handleRetry = useCallback(() => {
     setFailedUri(null);
     failedUriSetRef.current = new Set();
@@ -121,6 +183,33 @@ export const FeedImage = React.memo(function FeedImage({
     setRetryToken((current) => current + 1);
     void resolveImageUri({ src: sourceUrl, fileId, forceRefresh: true, debugContext });
   }, [debugContext, fileId, hasSource, sourceUrl]);
+
+  const renderFrostedBackdrop = (sourceUri: string) =>
+    useFrostedBackdrop ? (
+      <>
+        <ExpoImage
+          source={{ uri: sourceUri }}
+          style={styles.backdropImage}
+          contentFit="cover"
+          blurRadius={28}
+          cachePolicy="memory-disk"
+          recyclingKey={`${id}:${sourceUri}:frosted-backdrop`}
+        />
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            styles.backdropWash,
+            {
+              backgroundColor:
+                scheme === 'dark'
+                  ? 'rgba(0, 0, 0, 0.28)'
+                  : 'rgba(255, 255, 255, 0.18)',
+            },
+          ]}
+        />
+      </>
+    ) : null;
 
   const renderFallback = (copy: string) => (
     <Pressable
@@ -143,16 +232,20 @@ export const FeedImage = React.memo(function FeedImage({
   }
 
   if (loading || loadState === 'resolving') {
+    const staleUri = lastSuccessfulUriRef.current;
     return (
       <View style={[styles.root, { backgroundColor: placeholderSurface }, style]}>
-        {lastSuccessfulUriRef.current ? (
-          <ExpoImage
-            source={{ uri: lastSuccessfulUriRef.current }}
-            style={StyleSheet.absoluteFillObject}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            recyclingKey={`${id}:${lastSuccessfulUriRef.current}:stale`}
-          />
+        {staleUri ? (
+          <>
+            {renderFrostedBackdrop(staleUri)}
+            <ExpoImage
+              source={{ uri: staleUri }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit={contentFit}
+              cachePolicy="memory-disk"
+              recyclingKey={`${id}:${staleUri}:stale`}
+            />
+          </>
         ) : (
           <FeedImagePlaceholder backgroundColor={placeholderSurface} />
         )}
@@ -166,16 +259,22 @@ export const FeedImage = React.memo(function FeedImage({
 
   return (
     <View style={[styles.root, { backgroundColor: placeholderSurface }, style]}>
+      {renderFrostedBackdrop(visibleUri)}
       {loadState !== 'loaded' ? <FeedImagePlaceholder backgroundColor={placeholderSurface} /> : null}
       <ExpoImage
         source={{ uri: visibleUri }}
         placeholder={blurHash ? { blurhash: blurHash } : undefined}
         style={[StyleSheet.absoluteFillObject, { opacity: loadState === 'loaded' ? 1 : 0 }]}
-        contentFit="cover"
+        contentFit={contentFit}
         cachePolicy="memory-disk"
         recyclingKey={`${id}:${visibleUri}`}
         transition={120}
-        onLoad={() => {
+        onLoad={(event) => {
+          const nextWidth = event.source?.width;
+          const nextHeight = event.source?.height;
+          if (typeof nextWidth === 'number' && typeof nextHeight === 'number' && nextWidth > 0 && nextHeight > 0) {
+            setLoadedNaturalSize({ width: nextWidth, height: nextHeight });
+          }
           lastSuccessfulUriRef.current = visibleUri;
           setLoadState('loaded');
         }}
@@ -201,6 +300,14 @@ const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
+  },
+  backdropImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.74,
+    transform: [{ scale: 1.08 }],
+  },
+  backdropWash: {
+    opacity: 0.82,
   },
   fallback: {
     alignItems: 'center',

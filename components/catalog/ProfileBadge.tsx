@@ -1,9 +1,8 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { AppText } from '@/components/ui/AppText';
+import { AppBadge, getStoreBadgeModel, type AppBadgeTone } from '@/components/ui/AppBadge';
 import { tokens } from '@/src/styles/tokens';
-import { useTheme } from '@/src/theme/ThemeProvider';
 
 export type ProfileBadgeVariant =
   | 'email_verified'
@@ -12,13 +11,18 @@ export type ProfileBadgeVariant =
   | 'store_verified'
   | 'store_open'
   | 'store_closed'
+  | 'store_open_verified'
+  | 'store_open_unverified'
+  | 'store_closed_verified'
+  | 'store_closed_unverified'
+  | 'not_verified'
   | 'pending_verification';
 
 export type ProfileBadgeModel = {
   variant: ProfileBadgeVariant;
   label: string;
   icon: string;
-  tone: 'primary' | 'success' | 'warning' | 'muted';
+  tone: AppBadgeTone;
   accessibilityLabel: string;
 };
 
@@ -34,47 +38,81 @@ type BrandBadgeSource = {
   verificationStatus?: string | null;
 };
 
+const EMAIL_ICON = String.fromCodePoint(0x2709, 0xfe0f);
+const VERIFIED_ICON = String.fromCodePoint(0x2726);
+const PENDING_ICON = String.fromCodePoint(0x23f3);
+
 const BADGE_LABELS: Record<ProfileBadgeVariant, Omit<ProfileBadgeModel, 'variant'>> = {
   email_verified: {
     label: 'Email',
-    icon: '✉️',
+    icon: EMAIL_ICON,
     tone: 'primary',
     accessibilityLabel: 'Email verified',
   },
   user_verified: {
     label: 'User',
-    icon: '✦',
+    icon: VERIFIED_ICON,
     tone: 'primary',
     accessibilityLabel: 'Verified user',
   },
   brand_verified: {
     label: 'Verified',
-    icon: '✦',
-    tone: 'primary',
+    icon: VERIFIED_ICON,
+    tone: 'verified',
     accessibilityLabel: 'Verified brand',
   },
   store_verified: {
     label: 'Store',
-    icon: '✦',
-    tone: 'primary',
+    icon: VERIFIED_ICON,
+    tone: 'verified',
     accessibilityLabel: 'Verified store',
   },
   store_open: {
     label: 'Open',
-    icon: '🛍️',
+    icon: String.fromCodePoint(0x1f6cd, 0xfe0f),
     tone: 'success',
     accessibilityLabel: 'Store open',
   },
   store_closed: {
     label: 'Closed',
-    icon: '🛍️',
-    tone: 'muted',
+    icon: String.fromCodePoint(0x1f6cd, 0xfe0f),
+    tone: 'neutral',
     accessibilityLabel: 'Store closed',
+  },
+  store_open_verified: {
+    label: 'Open',
+    icon: VERIFIED_ICON,
+    tone: 'verified',
+    accessibilityLabel: 'Verified store open',
+  },
+  store_open_unverified: {
+    label: 'Open',
+    icon: String.fromCodePoint(0x1f6cd, 0xfe0f),
+    tone: 'success',
+    accessibilityLabel: 'Store open',
+  },
+  store_closed_verified: {
+    label: 'Closed',
+    icon: VERIFIED_ICON,
+    tone: 'muted',
+    accessibilityLabel: 'Verified store closed',
+  },
+  store_closed_unverified: {
+    label: 'Closed',
+    icon: String.fromCodePoint(0x1f6cd, 0xfe0f),
+    tone: 'neutral',
+    accessibilityLabel: 'Store closed',
+  },
+  not_verified: {
+    label: 'Not verified',
+    icon: String.fromCodePoint(0x1f6cd, 0xfe0f),
+    tone: 'neutral',
+    accessibilityLabel: 'Store not verified',
   },
   pending_verification: {
     label: 'Pending',
-    icon: '⏳',
-    tone: 'warning',
+    icon: PENDING_ICON,
+    tone: 'neutral',
     accessibilityLabel: 'Verification pending',
   },
 };
@@ -83,7 +121,11 @@ export function getProfileBadge(variant: ProfileBadgeVariant): ProfileBadgeModel
   return { variant, ...BADGE_LABELS[variant] };
 }
 
-export function getStoreStatusBadge(status: StoreStatus, isStoreOpen?: boolean | null): ProfileBadgeModel | null {
+export function getStoreStatusBadge(
+  status: StoreStatus,
+  isStoreOpen?: boolean | null,
+  verified?: boolean | null,
+): ProfileBadgeModel | null {
   const normalized = String(status ?? '').toUpperCase();
 
   if (normalized === 'PENDING_VERIFICATION') {
@@ -91,11 +133,13 @@ export function getStoreStatusBadge(status: StoreStatus, isStoreOpen?: boolean |
   }
 
   if (normalized === 'OPEN' || isStoreOpen === true) {
-    return getProfileBadge('store_open');
+    const badge = getStoreBadgeModel({ isOpen: true, verified });
+    return { variant: badge.state === 'open_verified' ? 'store_open_verified' : 'store_open_unverified', ...badge };
   }
 
   if (normalized === 'CLOSED' || isStoreOpen === false) {
-    return getProfileBadge('store_closed');
+    const badge = getStoreBadgeModel({ isOpen: false, verified });
+    return { variant: badge.state === 'closed_verified' ? 'store_closed_verified' : 'store_closed_unverified', ...badge };
   }
 
   return null;
@@ -124,7 +168,7 @@ export function getBrandBadges(source: BrandBadgeSource): ProfileBadgeModel[] {
     badges.push(getProfileBadge('email_verified'));
   }
 
-  const storeStatus = getStoreStatusBadge(source.storeStatus, source.isStoreOpen);
+  const storeStatus = getStoreStatusBadge(source.storeStatus, source.isStoreOpen, Boolean(source.storeVerified || source.brandVerified));
   if (storeStatus) {
     badges.push(storeStatus);
   }
@@ -139,41 +183,14 @@ export function ProfileBadge({
   badge: ProfileBadgeModel;
   compact?: boolean;
 }) {
-  const { theme } = useTheme();
-  const tint =
-    badge.tone === 'success'
-      ? theme.colors.success
-      : badge.tone === 'warning'
-        ? theme.colors.warning
-        : badge.tone === 'muted'
-          ? theme.colors.textMuted
-          : theme.colors.primary;
-
   return (
-    <View
-      style={[
-        styles.badge,
-        compact ? styles.compactBadge : null,
-        {
-          backgroundColor: theme.colors.surface,
-          borderColor: tint,
-        },
-      ]}
+    <AppBadge
+      label={badge.label}
+      icon={badge.icon}
+      tone={badge.tone}
+      compact={compact}
       accessibilityLabel={badge.accessibilityLabel}
-    >
-      <View style={styles.sealStack}>
-        <View style={[styles.sealBack, { backgroundColor: tint }]} />
-        <View style={[styles.sealFront, { backgroundColor: tint }]} />
-        <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.sealText}>
-          {badge.icon}
-        </AppText>
-      </View>
-      {!compact ? (
-        <AppText variant="captionBold" tone={badge.tone === 'muted' ? 'muted' : badge.tone} numberOfLines={1}>
-          {badge.label}
-        </AppText>
-      ) : null}
-    </View>
+    />
   );
 }
 
@@ -195,41 +212,5 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: tokens.spacing.sm,
-  },
-  badge: {
-    minHeight: 30,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
-    maxWidth: 116,
-  },
-  compactBadge: {
-    minHeight: 24,
-    paddingHorizontal: tokens.spacing.xs,
-  },
-  sealStack: {
-    width: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sealBack: {
-    position: 'absolute',
-    width: 16,
-    height: 16,
-    borderRadius: tokens.spacing.xs,
-    transform: [{ rotate: '45deg' }],
-  },
-  sealFront: {
-    position: 'absolute',
-    width: 16,
-    height: 16,
-    borderRadius: tokens.spacing.xs,
-  },
-  sealText: {
-    textAlign: 'center',
   },
 });

@@ -22,7 +22,7 @@ import ThreadRailAction from '../../../../components/catalog/ThreadRailAction';
 import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
 import { brandApi, type CollectionDetailMediaDto } from '@/src/api/BrandApi';
 import { ProfileApi } from '@/src/api/ProfileApi';
-import { getMarketFilterChips, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
+import { DEFAULT_MARKET_FILTER_CHIPS, getMarketFilterChips, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import { fetchMarketFeedPage, readCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { buildFeedCacheIdentity } from '@/src/features/feed/utils/feedKeys';
 import { brandAvatarDevLog, feedDevLog, feedLoadDevLog, feedMediaDevLog, layoutDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
@@ -76,6 +76,15 @@ const toFeedMediaType = (rawType?: string | null): 'image' | 'video' => {
   return normalized.includes('video') ? 'video' : 'image';
 };
 
+const toFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
 const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
   const strictMediaItems = Array.isArray(item.mediaItems) && item.mediaItems.length
     ? item.mediaItems
@@ -101,6 +110,9 @@ const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
         orderIndex: media.orderIndex,
         blurHash: media.blurHash,
         dominantColor: media.dominantColor,
+        width: media.width,
+        height: media.height,
+        aspectRatio: media.aspectRatio,
       }));
   }
 
@@ -117,6 +129,7 @@ const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
           label: item.collectionTitle,
           threadsCount: typeof item.threadsCount === 'number' ? item.threadsCount : 0,
           orderIndex: 0,
+          aspectRatio: item.media?.aspectRatio ?? null,
         },
       ]
     : [];
@@ -302,7 +315,7 @@ const FeedBagAction = React.memo(function FeedBagAction({ item }: FeedBagActionP
 
   return (
     <View style={styles.railItem}>
-      <IconButton size={44} onPress={handlePress} disabled={isLoading}>
+      <IconButton size={44} onPress={handlePress} disabled={isLoading} style={styles.railBagButton}>
         <BagPulseIcon
           status={pulseStatus}
           context="rail"
@@ -551,8 +564,8 @@ export function MarketFeedScreen() {
   } = useScreenChrome();
   const feedListRef = useRef<FlatList<FeedListEntry> | null>(null);
   const initializedLoopKeyRef = useRef<string | null>(null);
-  const [filterChips, setFilterChips] = useState<MarketFilterChip[]>([{ id: 'all', label: 'All', tag: null }]);
-  const [selectedFilterId, setSelectedFilterId] = useState('all');
+  const [filterChips, setFilterChips] = useState<MarketFilterChip[]>(DEFAULT_MARKET_FILTER_CHIPS);
+  const [selectedFilterId, setSelectedFilterId] = useState(DEFAULT_MARKET_FILTER_CHIPS[0].id);
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [rootViewportHeight, setRootViewportHeight] = useState(0);
   const [measuredFeedViewportHeight, setFeedViewportHeight] = useState(0);
@@ -634,7 +647,7 @@ export function MarketFeedScreen() {
   const feedViewportReady = pageHeight > 0;
 
   const activeFilter = useMemo(
-    () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? { id: 'all', label: 'All', tag: null },
+    () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? DEFAULT_MARKET_FILTER_CHIPS[0],
     [filterChips, selectedFilterId],
   );
   const visibleFilterChips = useMemo(() => filterChips, [filterChips]);
@@ -844,7 +857,7 @@ export function MarketFeedScreen() {
         if (chips.some((chip) => chip.id === current)) {
           return current;
         }
-        return 'all';
+        return DEFAULT_MARKET_FILTER_CHIPS[0].id;
       });
     });
 
@@ -1031,6 +1044,13 @@ export function MarketFeedScreen() {
         const directUrl = getCollectionMediaDirectUrl(media);
         const fileId = getCollectionMediaFileId(media);
         const url = directUrl ?? '';
+        const rawMedia = media as unknown as Record<string, unknown>;
+        const rawFile = media.file as unknown as Record<string, unknown> | undefined;
+        const width = toFiniteNumber(rawMedia.width ?? rawFile?.width);
+        const height = toFiniteNumber(rawMedia.height ?? rawFile?.height);
+        const aspectRatio =
+          toFiniteNumber(rawMedia.aspectRatio ?? rawFile?.aspectRatio) ??
+          (width && height ? width / height : null);
         return {
           id: media.id || media.file?.id || `${collectionId}-${index}`,
           collectionId,
@@ -1039,8 +1059,11 @@ export function MarketFeedScreen() {
           displayUrl: url,
           fileId,
           type: toFeedMediaType(media.mediaType ?? null),
-          label: media.caption ?? detail.title ?? item?.collectionTitle ?? 'Design view',
+          label: media.caption ?? detail.title ?? item?.collectionTitle ?? 'Runway view',
           orderIndex: typeof media.orderIndex === 'number' ? media.orderIndex : index,
+          width,
+          height,
+          aspectRatio,
           threadsCount:
             typeof media.threadsCount === 'number'
               ? media.threadsCount
@@ -1754,7 +1777,7 @@ export function MarketFeedScreen() {
           contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
           contentContainerStyle={{ flexGrow: 1, paddingBottom: overlayScrollPadding }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}>
-          <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? 'all')} />
+          <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? DEFAULT_MARKET_FILTER_CHIPS[0].id)} />
         </ScrollView>
       ) : (
         <View
@@ -1863,10 +1886,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerChipsScroll: {
-    flexGrow: 0,
+    flexGrow: 1,
+    flexShrink: 1,
   },
   headerChipsContent: {
+    flexGrow: 1,
     gap: tokens.spacing.sm,
+    justifyContent: 'center',
     paddingHorizontal: tokens.spacing.sm,
     alignItems: 'center',
   },
@@ -2099,6 +2125,10 @@ const styles = StyleSheet.create({
     width: 88,
     alignItems: 'center',
     gap: 6,
+  },
+  railBagButton: {
+    borderRadius: tokens.radius.md,
+    overflow: 'visible',
   },
   railCountLabel: {
     width: 88,

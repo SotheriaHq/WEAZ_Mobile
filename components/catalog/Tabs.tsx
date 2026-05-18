@@ -200,7 +200,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   scrollContent: {
+    flexGrow: 1,
     flexDirection: 'row',
+    justifyContent: 'center',
     paddingHorizontal: tokens.spacing.xs,
   },
   tab: {

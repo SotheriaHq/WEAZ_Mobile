@@ -46,6 +46,7 @@ export function BagPulseIcon({
   const pulse = useRef(new Animated.Value(0)).current;
   const maxScale = useMemo(() => resolveScale(status, context), [context, status]);
   const icon = BAG_IT_EMOJI;
+  const shapeRadius = Math.max(tokens.radius.md, size / 3);
 
   useEffect(() => {
     if (status === 'disabled') {
@@ -72,7 +73,7 @@ export function BagPulseIcon({
 
     loop.start();
     return () => loop.stop();
-  }, [pulse, status]);
+  }, [context, pulse, status]);
 
   const scale = pulse.interpolate({
     inputRange: [0, 1],
@@ -96,7 +97,7 @@ export function BagPulseIcon({
         style={[
           styles.ring,
           {
-            borderRadius: size / 2,
+            borderRadius: shapeRadius,
             backgroundColor: theme.colors.primary,
             opacity: ringOpacity,
             transform: [{ scale: ringScale }],
@@ -109,7 +110,7 @@ export function BagPulseIcon({
           {
             width: size,
             height: size,
-            borderRadius: Math.max(tokens.radius.md, size / 3),
+            borderRadius: shapeRadius,
             backgroundColor: active
               ? theme.colors.primary
               : previouslyBagged
@@ -132,6 +133,7 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
   ring: {
     ...StyleSheet.absoluteFillObject,

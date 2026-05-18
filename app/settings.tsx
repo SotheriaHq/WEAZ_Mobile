@@ -186,8 +186,8 @@ export default function SettingsScreen() {
           },
           {
             icon: '🗂️',
-            title: 'Saved designs',
-            subtitle: 'Designs you want to revisit',
+            title: 'Saved runway',
+            subtitle: 'Runway looks you want to revisit',
             onPress: () => router.push({ pathname: '/(tabs)/me', params: { tab: 'saved' } } as never),
           },
           {
@@ -266,7 +266,7 @@ export default function SettingsScreen() {
         title: 'Studio / Brand',
         rows: [
           { icon: '🏷️', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => router.push('/catalog' as never) },
-          { icon: '🧵', title: 'Catalog settings', subtitle: 'Designs, products, collections', onPress: () => router.push('/catalog' as never) },
+          { icon: '🧵', title: 'Catalog settings', subtitle: 'Runway, products, collections', onPress: () => router.push('/catalog' as never) },
           { icon: '✅', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => router.push('/studio' as never) },
           { icon: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => router.push('/studio' as never) },
         ],

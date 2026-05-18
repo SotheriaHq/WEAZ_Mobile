@@ -159,7 +159,7 @@ export function CatalogIslandBottomNav() {
 
   const items = useMemo<NativeIslandNavItem[]>(
     () => [
-      { key: 'designs', label: 'Designs', emoji: NAV_EMOJI.designs, active: displayedActiveKey === 'designs' },
+      { key: 'designs', label: 'Runway', emoji: NAV_EMOJI.designs, active: displayedActiveKey === 'designs' },
       { key: 'market', label: 'Market', emoji: NAV_EMOJI.market, active: displayedActiveKey === 'market' },
       ...(isBrand ? [{ key: 'store', label: 'Store', emoji: NAV_EMOJI.store, active: displayedActiveKey === 'store' }] : []),
       { key: 'inbox', label: 'Messages', emoji: NAV_EMOJI.inbox, active: displayedActiveKey === 'inbox' },
