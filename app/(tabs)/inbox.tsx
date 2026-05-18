@@ -11,7 +11,6 @@ import {
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { BrandHeader } from '@/components/ui/BrandHeader';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { CollapsibleSearch } from '@/components/ui/CollapsibleSearch';
@@ -272,6 +271,7 @@ export default function InboxScreen() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -353,6 +353,7 @@ export default function InboxScreen() {
     setConversations([]);
     setError(null);
     setSearchQuery('');
+    setSearchExpanded(false);
     setActiveFilter('all');
 
     if (status === 'authenticated') {
@@ -434,28 +435,36 @@ export default function InboxScreen() {
   const isSearching = searchQuery.trim().length > 0;
   const hasLoadedConversations = conversations.length > 0;
   const bottomPadding = standardScreenBottomPadding;
+  const stateContainerStyle = useMemo(
+    () => [styles.stateWrap, { paddingBottom: bottomPadding }],
+    [bottomPadding],
+  );
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <BrandHeader />
-
       <View style={styles.headerBlock}>
-        <AppText variant="title">Messages</AppText>
-        <CollapsibleSearch
-          label="Search messages"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search names, messages, or order refs"
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="search"
-          containerStyle={styles.searchInput}
-        />
+        <View style={styles.headerRow}>
+          <AppText variant="title" numberOfLines={1} style={styles.headerTitle}>
+            Messages
+          </AppText>
+          <CollapsibleSearch
+            label="Search messages"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search names, messages, or order refs"
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            expanded={searchExpanded}
+            onExpandedChange={setSearchExpanded}
+            containerStyle={[styles.searchControl, searchExpanded ? styles.searchControlExpanded : null]}
+          />
+        </View>
         <Tabs tabs={FILTER_TABS} activeTab={activeFilter} onTabChange={handleFilterChange} scrollable />
       </View>
 
       {status !== 'authenticated' ? (
-        <View style={styles.stateWrap}>
+        <View style={stateContainerStyle}>
           <AppText variant="subtitle">Messages</AppText>
           <AppText variant="body" tone="muted" style={styles.stateText}>
             Sign in to see real conversations from brands, customers, and orders.
@@ -468,13 +477,13 @@ export default function InboxScreen() {
       ) : loading ? (
         <MessagesSkeleton bottomPadding={bottomPadding} />
       ) : error && !hasLoadedConversations ? (
-        <View style={styles.stateWrap}>
+        <View style={stateContainerStyle}>
           <AppText variant="subtitle">Could not load messages</AppText>
           <AppText variant="body" tone="muted" style={styles.stateText}>{error}</AppText>
           <Button title="Retry" size="sm" onPress={() => void loadConversations('reset')} />
         </View>
       ) : filteredConversations.length === 0 ? (
-        <View style={styles.stateWrap}>
+        <View style={stateContainerStyle}>
           <AppText variant="subtitle">
             {isSearching ? 'No matching messages' : activeFilter === 'unread' ? 'No unread messages' : activeFilter === 'orders' ? 'No order messages' : 'No messages yet'}
           </AppText>
@@ -526,13 +535,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerBlock: {
+    paddingTop: tokens.spacing.md,
+  },
+  headerRow: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.lg,
     paddingBottom: tokens.spacing.sm,
   },
-  searchInput: {
-    marginTop: tokens.spacing.xs,
+  headerTitle: {
+    flexShrink: 0,
+  },
+  searchControl: {
+    width: 44,
+    alignSelf: 'center',
+  },
+  searchControlExpanded: {
+    flex: 1,
+    width: undefined,
+    minWidth: 0,
   },
   listContent: {
     paddingTop: tokens.spacing.sm,
