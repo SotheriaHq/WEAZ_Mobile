@@ -17,6 +17,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
+import ReviewsTab from '@/components/reviews/ReviewsTab';
 import { StableImage } from '@/components/ui/StableImage';
 import {
   MobileStoreApi,
@@ -637,10 +638,9 @@ export function MarketCommerceViewer({
             ) : null}
           </View>
 
-          {sourceType === 'DESIGN' ? (
-            <View style={[styles.reviewPlaceholder, { borderColor: theme.colors.border }]}>
-              <AppText variant="captionBold" tone="muted">Reviews</AppText>
-              <AppText variant="body" tone="secondary">Review summary will appear here when available.</AppText>
+          {sourceType === 'PRODUCT' ? (
+            <View style={styles.reviewSummaryWrap}>
+              <ReviewsTab productId={normalizedSourceId} compact />
             </View>
           ) : null}
         </ScrollView>
@@ -944,11 +944,8 @@ const styles = StyleSheet.create({
   detailBlock: {
     gap: tokens.spacing.xs,
   },
-  reviewPlaceholder: {
-    borderWidth: 1,
-    borderRadius: tokens.radius.lg,
-    padding: tokens.spacing.md,
-    gap: tokens.spacing.xs,
+  reviewSummaryWrap: {
+    gap: tokens.spacing.sm,
   },
   collapsedSheetContent: {
     flex: 1,

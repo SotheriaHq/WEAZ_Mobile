@@ -10,10 +10,14 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
+import ReviewFormSheet from '@/components/reviews/ReviewFormSheet';
+import ReviewPromptCard from '@/components/reviews/ReviewPromptCard';
 import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
+import reviewApi, { type ReviewPromptDto, type SubmitReviewPayload } from '@/src/api/ReviewApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { useToast } from '@/src/toast/ToastContext';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'completed' | 'cancelled';
 
@@ -203,6 +207,7 @@ function OrdersLoadingState() {
 
 export default function OrdersScreen() {
   const { theme } = useTheme();
+  const toast = useToast();
   const { status } = useAuth();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
@@ -211,6 +216,9 @@ export default function OrdersScreen() {
   const [items, setItems] = useState<BuyerOrderSummary[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [reviewPrompts, setReviewPrompts] = useState<ReviewPromptDto[]>([]);
+  const [activeReviewPrompt, setActiveReviewPrompt] = useState<ReviewPromptDto | null>(null);
+  const [skippingPromptId, setSkippingPromptId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -234,6 +242,46 @@ export default function OrdersScreen() {
     }
     void load();
   }, [load, status]);
+
+  const loadReviewPrompts = useCallback(async () => {
+    if (status !== 'authenticated') {
+      setReviewPrompts([]);
+      return;
+    }
+    try {
+      const prompts = await reviewApi.listReviewPrompts();
+      setReviewPrompts(prompts);
+    } catch (nextError) {
+      const responseStatus = (nextError as { status?: number })?.status;
+      if (responseStatus !== 401 && responseStatus !== 403) {
+        toast.error(nextError instanceof Error ? nextError.message : 'Could not load review prompts.');
+      }
+    }
+  }, [status, toast]);
+
+  useEffect(() => {
+    void loadReviewPrompts();
+  }, [loadReviewPrompts]);
+
+  const submitPromptReview = useCallback(async (payload: SubmitReviewPayload) => {
+    const saved = await reviewApi.submitReview(payload);
+    setReviewPrompts((current) => current.filter((prompt) => prompt.id !== payload.promptId));
+    setActiveReviewPrompt(null);
+    toast.success(saved.status === 'PENDING_MODERATION' ? 'Review submitted for moderation.' : 'Review submitted.');
+  }, [toast]);
+
+  const skipPrompt = useCallback(async (prompt: ReviewPromptDto) => {
+    setSkippingPromptId(prompt.id);
+    try {
+      await reviewApi.skipReviewPrompt(prompt.id);
+      setReviewPrompts((current) => current.filter((item) => item.id !== prompt.id));
+      toast.success('Review prompt skipped.');
+    } catch (nextError) {
+      toast.error(nextError instanceof Error ? nextError.message : 'Could not skip review prompt.');
+    } finally {
+      setSkippingPromptId(null);
+    }
+  }, [toast]);
 
   const filteredItems = useMemo(
     () =>
@@ -300,12 +348,31 @@ export default function OrdersScreen() {
             onRefresh={() => {
               setRefreshing(true);
               void load();
+              void loadReviewPrompts();
             }}
             tintColor={theme.colors.primary}
           />
         }
         ListHeaderComponent={
           <View style={styles.headerStack}>
+            {reviewPrompts.length > 0 ? (
+              <View style={styles.promptStack}>
+                <AppText variant="bodyBold">Reviews waiting for you</AppText>
+                <AppText variant="captionRegular" tone="muted">
+                  These prompts are optional and only appear after completed purchases.
+                </AppText>
+                {reviewPrompts.map((prompt) => (
+                  <ReviewPromptCard
+                    key={prompt.id}
+                    prompt={prompt}
+                    onReview={setActiveReviewPrompt}
+                    onSkip={(item) => void skipPrompt(item)}
+                    skipping={skippingPromptId === prompt.id}
+                  />
+                ))}
+              </View>
+            ) : null}
+
             <View style={styles.statsGrid}>
               <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Total</AppText><AppText variant="subtitle">{stats.total}</AppText></Card>
               <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Pending</AppText><AppText variant="subtitle">{stats.pending}</AppText></Card>
@@ -362,6 +429,13 @@ export default function OrdersScreen() {
           ) : null
         }
       />
+      <ReviewFormSheet
+        visible={Boolean(activeReviewPrompt)}
+        mode="create"
+        prompt={activeReviewPrompt}
+        onClose={() => setActiveReviewPrompt(null)}
+        onSubmit={(payload) => submitPromptReview(payload as SubmitReviewPayload)}
+      />
     </SafeAreaView>
   );
 }
@@ -389,6 +463,11 @@ const styles = StyleSheet.create({
   },
   headerStack: {
     gap: tokens.spacing.md,
+  },
+  promptStack: {
+    flexBasis: '100%',
+    gap: tokens.spacing.sm,
+    marginBottom: tokens.spacing.sm,
   },
   statsGrid: {
     flexDirection: 'row',
