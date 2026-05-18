@@ -38,7 +38,6 @@ interface CollectionsGridProps {
   showDrafts?: boolean;
   emptyComponent?: React.ReactNode;
   numColumns?: number;
-  containerWidth?: number;
 }
 
 const GRID_LAYOUT = {
@@ -68,20 +67,18 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   showDrafts = false,
   emptyComponent,
   numColumns = 2,
-  containerWidth,
 }: CollectionsGridProps) {
   const { width: screenWidth } = useWindowDimensions();
   const { theme } = useTheme();
-  const measuredWidth = containerWidth && containerWidth > 0 ? containerWidth : screenWidth;
   
   const screenPadding = GRID_LAYOUT.screenPadding;
   const columnGap = GRID_LAYOUT.columnGap;
   const rowGap = GRID_LAYOUT.rowGap;
   const cardWidth = useMemo(() => {
     const totalColumnGap = columnGap * Math.max(0, numColumns - 1);
-    const availableWidth = measuredWidth - screenPadding * 2 - totalColumnGap;
+    const availableWidth = screenWidth - screenPadding * 2 - totalColumnGap;
     return availableWidth / numColumns;
-  }, [columnGap, measuredWidth, numColumns, screenPadding]);
+  }, [columnGap, numColumns, screenPadding, screenWidth]);
 
   const renderItem = useCallback(
     ({ item, index }: { item: CollectionDto; index: number }) => {

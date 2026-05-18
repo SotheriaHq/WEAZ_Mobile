@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
@@ -41,7 +41,6 @@ import {
   isLegacyDiscoveryDimensionSlug,
   normalizeHashtagLabel,
 } from '@/src/utils/creatorMetadata';
-import { endInteractionTiming, markInteractionTiming } from '@/src/utils/interactionTiming';
 
 const PRIVACY_OPTIONS = [
   { value: 'PUBLIC', label: DESIGN_VISIBILITY_LABELS.PUBLIC },
@@ -64,8 +63,6 @@ function formatPriceSummary(minPrice: string, maxPrice: string) {
 }
 
 export default function CreateDesignComposerScreen() {
-  const params = useLocalSearchParams<{ timingToken?: string | string[] }>();
-  const timingToken = Array.isArray(params.timingToken) ? params.timingToken[0] : params.timingToken;
   const {
     booting,
     loadingError,
@@ -98,8 +95,6 @@ export default function CreateDesignComposerScreen() {
   const insets = useSafeAreaInsets();
   const plusRef = useRef<View>(null);
   const hasEverHadAssetsRef = useRef(false);
-  const visibleTimingLoggedRef = useRef(false);
-  const assetsTimingLoggedRef = useRef(false);
 
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -240,24 +235,6 @@ export default function CreateDesignComposerScreen() {
     selectedTags.length,
   ]);
   const canPreview = missingRequiredFields.length === 0;
-
-  useEffect(() => {
-    if (!timingToken || visibleTimingLoggedRef.current) return;
-    visibleTimingLoggedRef.current = true;
-    requestAnimationFrame(() => {
-      markInteractionTiming(timingToken, 'form_screen_visible');
-    });
-  }, [timingToken]);
-
-  useEffect(() => {
-    if (!timingToken || assetsTimingLoggedRef.current || booting || assets.length === 0) return;
-    assetsTimingLoggedRef.current = true;
-    requestAnimationFrame(() => {
-      endInteractionTiming(timingToken, 'form_assets_visible', {
-        assetCount: assets.length,
-      });
-    });
-  }, [assets.length, booting, timingToken]);
 
   const handlePickMedia = useCallback(
     async (source: 'camera' | 'library') => {

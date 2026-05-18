@@ -171,14 +171,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
         </Pressable>
       ) : null}
 
-      <BlurView
-        tint={scheme === 'dark' ? 'dark' : 'light'}
-        intensity={Math.max(18, Math.round((theme.colors.glassBlur as number) * 0.72))}
-        style={[
-          styles.copyOverlay,
-          { maxHeight: Math.max(68, Math.round(cardHeight * 0.22)) },
-        ]}
-      >
+      <BlurView tint={scheme === 'dark' ? 'dark' : 'light'} intensity={theme.colors.glassBlur as number} style={styles.copyOverlay}>
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.backdropStrong }]} />
         <View style={styles.copyStack}>
           <View style={styles.titleBlock}>
@@ -260,19 +253,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: tokens.spacing.sm,
     top: tokens.spacing.sm,
-    minHeight: 24,
+    minHeight: 28,
     maxWidth: '62%',
     borderRadius: tokens.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   newDropBadge: {
     position: 'absolute',
     left: tokens.spacing.sm,
-    top: tokens.spacing.sm,
-    maxWidth: '54%',
+    top: 44,
+    maxWidth: '62%',
   },
   topRightSlot: {
     position: 'absolute',
@@ -300,14 +293,14 @@ const styles = StyleSheet.create({
   },
   copyStack: {
     paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
-    gap: 2,
+    paddingVertical: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
   },
   titleBlock: {
     minWidth: 0,
   },
   actionRow: {
-    minHeight: 30,
+    minHeight: 34,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.sm,
@@ -317,13 +310,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   actionButton: {
-    minWidth: 44,
-    height: 30,
+    minWidth: 50,
+    height: 34,
     borderRadius: tokens.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.sm,
   },
   inlinePressed: {
     opacity: 0.82,

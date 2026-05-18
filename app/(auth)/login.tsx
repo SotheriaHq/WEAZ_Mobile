@@ -84,7 +84,6 @@ export default function LoginScreen() {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordSetupLoading, setPasswordSetupLoading] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(false);
-  const [, setUnknownEmailAttempts] = useState(0);
 
   const googleTokenRequest = useGoogleIdTokenRequest({
     loginHint: stripInvisibleAuthSpacing(email).trim() || undefined,
@@ -163,11 +162,10 @@ export default function LoginScreen() {
   const showAuthRequired = params.reason === 'auth_required';
   const canRequestPasswordSetup = Boolean(loginOptions?.methods.passwordSetupAvailable);
   const showGoogleAction =
-    googleTokenRequest.configured &&
-    (loginStep === 'email' ||
-      loginStep === 'google-only' ||
-      loginStep === 'generic' ||
-      Boolean(loginOptions?.methods.google));
+    loginStep === 'email' ||
+    loginStep === 'google-only' ||
+    loginStep === 'generic' ||
+    Boolean(loginOptions?.methods.google);
 
   const resetProgressiveFlow = () => {
     setLoginStep('email');
@@ -179,7 +177,6 @@ export default function LoginScreen() {
     setPasswordSetupToken('');
     setNewPassword('');
     setConfirmNewPassword('');
-    setUnknownEmailAttempts(0);
   };
 
   const continueWithEmail = async () => {
@@ -200,16 +197,7 @@ export default function LoginScreen() {
       } else if (options.methods.google || options.methods.passwordSetupAvailable) {
         setLoginStep('google-only');
       } else {
-        setLoginStep('email');
-        setUnknownEmailAttempts((current) => {
-          const next = current + 1;
-          setFlowError(
-            next > 1
-              ? 'We still could not find this account. Create an account to continue.'
-              : 'We could not find this account. Create an account to continue.',
-          );
-          return next;
-        });
+        setLoginStep('generic');
       }
     } catch (error) {
       setFlowError(getErrorMessage(error, 'Unable to check sign-in options. Try again.'));
@@ -427,13 +415,12 @@ export default function LoginScreen() {
 
             <View style={styles.fieldsContainer}>
               <FloatingLabelInput
-                label="Email"
-                hideLabel
+                label="Email Address"
+                icon="@"
                 value={email}
                 onChangeText={(value) => {
                   setEmail(stripInvisibleAuthSpacing(value));
                   setEmailError('');
-                  setUnknownEmailAttempts(0);
                   if (loginStep !== 'email') {
                     resetProgressiveFlow();
                   }
@@ -448,7 +435,7 @@ export default function LoginScreen() {
               {loginStep === 'password' ? (
                 <FloatingLabelInput
                   label="Password"
-                  hideLabel
+                  icon="*"
                   value={password}
                   onChangeText={(value) => {
                     setPassword(stripInvisibleAuthSpacing(value));
@@ -470,6 +457,15 @@ export default function LoginScreen() {
               </View>
             ) : null}
 
+            {loginStep === 'generic' ? (
+              <View style={styles.statePanel}>
+                <AppText variant="bodyBold">Choose a sign-in path</AppText>
+                <AppText variant="caption" tone="muted" style={styles.statePanelText}>
+                  Continue with Google or create an account if you are new to Threadly.
+                </AppText>
+              </View>
+            ) : null}
+
             {loginStep === 'code' ? (
               <View style={styles.inlineFlow}>
                 <AppText variant="bodyBold">Enter your email code</AppText>
@@ -478,7 +474,6 @@ export default function LoginScreen() {
                 </AppText>
                 <FloatingLabelInput
                   label="Verification Code"
-                  hideLabel
                   value={emailCode}
                   onChangeText={(value) => {
                     setEmailCode(value);
@@ -514,7 +509,6 @@ export default function LoginScreen() {
                 </AppText>
                 <FloatingLabelInput
                   label="New Password"
-                  hideLabel
                   value={newPassword}
                   onChangeText={(value) => {
                     setNewPassword(value);
@@ -525,7 +519,6 @@ export default function LoginScreen() {
                 />
                 <FloatingLabelInput
                   label="Confirm Password"
-                  hideLabel
                   value={confirmNewPassword}
                   onChangeText={(value) => {
                     setConfirmNewPassword(value);
@@ -620,16 +613,19 @@ export default function LoginScreen() {
             {showGoogleAction ? (
               <View style={styles.googleAction}>
                 <Button
-                  title="Continue with Google"
+                  title={loginStep === 'email' ? 'CONTINUE WITH GOOGLE' : 'GOOGLE'}
                   variant="outline"
                   onPress={handleGoogleSignIn}
                   loading={googleLoading}
                   disabled={!googleTokenRequest.configured || !googleTokenRequest.ready || googleLoading}
                   fullWidth
-                  left={<AppText variant="bodyBold" tone="secondary">G</AppText>}
-                  style={styles.googleButton}
                   testID="login-google-button"
                 />
+                {!googleTokenRequest.configured ? (
+                  <AppText variant="caption" tone="warning" style={styles.googleConfigText}>
+                    Google sign-in needs public Google client IDs in this build.
+                  </AppText>
+                ) : null}
               </View>
             ) : null}
 
@@ -645,6 +641,16 @@ export default function LoginScreen() {
                 disabled={emailCodeLoading}
                 fullWidth
                 style={styles.passwordSetupButton}
+              />
+            ) : null}
+
+            {loginStep !== 'email' ? (
+              <Button
+                title="Use a different email"
+                variant="ghost"
+                size="xs"
+                onPress={resetProgressiveFlow}
+                style={styles.changeEmailButton}
               />
             ) : null}
 
@@ -794,11 +800,15 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.md,
     gap: tokens.spacing.sm,
   },
-  googleButton: {
-    borderRadius: tokens.radius.lg,
+  googleConfigText: {
+    textAlign: 'center',
   },
   passwordSetupButton: {
     marginTop: tokens.spacing.md,
+  },
+  changeEmailButton: {
+    alignSelf: 'center',
+    marginTop: tokens.spacing.sm,
   },
   footerRow: {
     marginTop: tokens.spacing['2xl'],

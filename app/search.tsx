@@ -26,7 +26,6 @@ import type {
   SearchTrendingLink,
 } from '@/src/types/search';
 import { routeForSearchItem } from '@/src/utils/mobileRouting';
-import { endInteractionTiming, markInteractionTiming } from '@/src/utils/interactionTiming';
 import {
   getHiddenSearches,
   getLocalRecentSearches,
@@ -200,18 +199,10 @@ function SearchResultRow({
 }
 
 export default function SearchScreen() {
-  const params = useLocalSearchParams<{
-    q?: string | string[];
-    type?: string | string[];
-    autoSubmit?: string | string[];
-    timingToken?: string | string[];
-    sourceScreen?: string | string[];
-  }>();
+  const params = useLocalSearchParams<{ q?: string | string[]; type?: string | string[]; autoSubmit?: string | string[] }>();
   const initialQuery = Array.isArray(params.q) ? params.q[0] : params.q ?? '';
   const initialType = Array.isArray(params.type) ? params.type[0] : params.type;
   const autoSubmit = Array.isArray(params.autoSubmit) ? params.autoSubmit[0] : params.autoSubmit;
-  const timingToken = Array.isArray(params.timingToken) ? params.timingToken[0] : params.timingToken;
-  const sourceScreen = Array.isArray(params.sourceScreen) ? params.sourceScreen[0] : params.sourceScreen;
 
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -229,7 +220,6 @@ export default function SearchScreen() {
   const [resultState, setResultState] = useState<ResultState>({ status: 'idle' });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
-  const visibleLoggedRef = useRef(false);
 
   const normalizedQuery = normalizeQuery(query);
   const recentQueries = useMemo(
@@ -296,39 +286,19 @@ export default function SearchScreen() {
   );
 
   useEffect(() => {
-    if (!timingToken || visibleLoggedRef.current) return;
-    visibleLoggedRef.current = true;
-    requestAnimationFrame(() => {
-      endInteractionTiming(timingToken, 'screen_visible', {
-        sourceScreen: sourceScreen ?? null,
-      });
-    });
-  }, [sourceScreen, timingToken]);
-
-  useEffect(() => {
     let mounted = true;
-    markInteractionTiming(timingToken, 'local_history_load_start', {
-      sourceScreen: sourceScreen ?? null,
-    });
     Promise.all([getLocalRecentSearches(), getHiddenSearches()])
       .then(([recent, hidden]) => {
         if (!mounted) return;
         setLocalRecent(recent);
         setHiddenRecent(hidden);
       })
-      .catch(() => undefined)
-      .finally(() => {
-        if (mounted) {
-          markInteractionTiming(timingToken, 'local_history_load_end', {
-            sourceScreen: sourceScreen ?? null,
-          });
-        }
-      });
+      .catch(() => undefined);
 
     return () => {
       mounted = false;
     };
-  }, [sourceScreen, timingToken]);
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) {

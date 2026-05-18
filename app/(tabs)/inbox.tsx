@@ -457,8 +457,6 @@ export default function InboxScreen() {
             returnKeyType="search"
             expanded={searchExpanded}
             onExpandedChange={setSearchExpanded}
-            iconButtonVariant="bare"
-            showInputLeadingIcon={false}
             containerStyle={[styles.searchControl, searchExpanded ? styles.searchControlExpanded : null]}
           />
         </View>

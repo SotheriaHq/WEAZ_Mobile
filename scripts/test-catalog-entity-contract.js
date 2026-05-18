@@ -41,10 +41,9 @@ assert.match(marketScreenSource, /entityType:\s*'PRODUCT' as const/);
 assert.match(marketScreenSource, /entityType:\s*'DESIGN' as const/);
 assert.match(marketScreenSource, /function MarketProductCard/);
 assert.match(marketScreenSource, /function MarketDesignCard/);
-assert.doesNotMatch(marketScreenSource, /typeLabel="Product"/);
-assert.doesNotMatch(marketScreenSource, /typeLabel="Runway"/);
-assert.match(marketScreenSource, /actionLabel=\{unavailable \? 'Out' : BAG_IT_LABEL\}/);
-assert.match(marketScreenSource, /actionLabel=\{canRequestCustomOrder \? BAG_IT_LABEL : undefined\}/);
+assert.match(marketScreenSource, /typeLabel="Product"/);
+assert.match(marketScreenSource, /typeLabel="Design"/);
+assert.match(marketScreenSource, /actionLabel=\{canRequestCustomOrder \? 'Request' : undefined\}/);
 
 assert.match(catalogCardBranchSource, /resolveCatalogCardBranch/);
 assert.match(catalogCardBranchSource, /primaryActionKind:\s*'view-design'/);

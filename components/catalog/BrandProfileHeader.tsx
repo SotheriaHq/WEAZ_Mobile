@@ -72,13 +72,11 @@ function HeaderIconButton({
   value,
   onPress,
   disabled = false,
-  bare = false,
 }: {
   label: string;
   value: string;
   onPress?: () => void;
   disabled?: boolean;
-  bare?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -90,10 +88,9 @@ function HeaderIconButton({
       disabled={disabled}
       style={({ pressed }) => [
         styles.headerIconButton,
-        bare ? styles.headerIconButtonBare : null,
         {
-          backgroundColor: bare ? 'transparent' : theme.colors.glassSurfaceStrong,
-          borderColor: bare ? 'transparent' : theme.colors.glassBorder,
+          backgroundColor: theme.colors.glassSurfaceStrong,
+          borderColor: theme.colors.glassBorder,
           opacity: disabled ? 0.55 : pressed ? 0.78 : 1,
         },
       ]}
@@ -170,35 +167,21 @@ function BannerHeader({
       ) : null}
 
       <View style={styles.bannerControls}>
-        <HeaderIconButton label="Go back" value="👈" onPress={onBack} bare />
+        <HeaderIconButton label="Go back" value="👈" onPress={onBack} />
         <View style={styles.bannerRightControls}>
-          {!isOwner ? (
+          {isOwner ? (
+            <HeaderIconButton
+              label="Edit banner"
+              value={bannerLoading ? '…' : '✎'}
+              onPress={onEditBanner}
+              disabled={bannerLoading}
+            />
+          ) : (
             <HeaderIconButton label="Search" value="🔍" onPress={onSearch} />
-          ) : null}
+          )}
           <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} />
         </View>
       </View>
-
-      {isOwner ? (
-        <Pressable
-          onPress={onEditBanner}
-          disabled={bannerLoading || !onEditBanner}
-          style={({ pressed }) => [
-            styles.bannerEditChip,
-            {
-              backgroundColor: theme.colors.glassSurfaceStrong,
-              borderColor: theme.colors.glassBorder,
-              opacity: bannerLoading || !onEditBanner ? 0.55 : pressed ? 0.78 : 1,
-            },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Edit banner"
-        >
-          <AppText variant="captionBold" tone="default">
-            {bannerLoading ? '…' : '✎ Banner'}
-          </AppText>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
@@ -405,7 +388,7 @@ function SideBrandMetaBlock({
         style={[
           styles.brandNamePill,
           {
-            backgroundColor: theme.colors.glassSurface,
+            backgroundColor: theme.colors.glassSurfaceSoft,
             borderColor: theme.colors.glassBorder,
           },
         ]}
@@ -432,7 +415,7 @@ function SideBrandMetaBlock({
       </View>
 
       {location ? (
-        <AppText variant="captionBold" tone="secondary" numberOfLines={1} style={styles.locationText}>
+        <AppText variant="small" tone="muted" numberOfLines={1} style={styles.locationText}>
           📍 {location}
         </AppText>
       ) : null}
@@ -765,35 +748,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerIconButtonBare: {
-    width: 44,
-    height: 44,
-    borderWidth: 0,
-  },
   headerIconText: {
     textAlign: 'center',
   },
-  bannerEditChip: {
-    position: 'absolute',
-    right: tokens.spacing.lg,
-    bottom: tokens.spacing.lg,
-    minHeight: 34,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   identityRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
-    marginTop: -62,
+    marginTop: -54,
   },
   avatarFrame: {
-    width: 104,
-    height: 104,
+    width: 116,
+    height: 116,
     borderRadius: tokens.radius.xl,
     borderWidth: 4,
     overflow: 'visible',
@@ -824,7 +791,7 @@ const styles = StyleSheet.create({
     bottom: -tokens.spacing.xs,
     width: 34,
     height: 34,
-    borderRadius: tokens.radius.md,
+    borderRadius: tokens.radius.full,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -832,17 +799,17 @@ const styles = StyleSheet.create({
   metaBlock: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
-    paddingTop: 0,
+    gap: tokens.spacing.xs,
+    paddingTop: tokens.spacing.xs,
   },
   brandNamePill: {
     alignSelf: 'flex-start',
     maxWidth: '100%',
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.xl,
+    borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.sm,
   },
   brandNameRow: {
     flexDirection: 'row',
@@ -856,7 +823,7 @@ const styles = StyleSheet.create({
   },
   locationText: {
     maxWidth: '100%',
-    marginTop: 0,
+    marginTop: -tokens.spacing.xs,
   },
   statsRow: {
     flexDirection: 'row',

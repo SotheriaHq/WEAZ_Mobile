@@ -69,7 +69,6 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { formatCount } from '@/src/utils/formatCount';
 import { env } from '@/src/config/env';
 import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
-import { markInteractionTiming, startInteractionTiming } from '@/src/utils/interactionTiming';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -235,7 +234,6 @@ export default function CatalogScreen() {
     height: number;
   } | null>(null);
   const createMenuAnchorRef = useRef<View>(null);
-  const createMenuTimingTokenRef = useRef<string | null>(null);
   const tabPagerRef = useRef<ScrollView>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
   const activeTabPagerHeight = tabHeights[activeTab];
@@ -243,7 +241,6 @@ export default function CatalogScreen() {
   // Determine if owner view
   const activeBrandId = getActiveBrandId(user);
   const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
-  const catalogColumnCount = containerWidth >= 720 ? 3 : 2;
   const targetBrandId = routeBrandId || activeBrandId || null;
   const patchEnabled = Boolean(!isOwner && status === 'authenticated' && targetBrandId);
   const {
@@ -784,12 +781,6 @@ export default function CatalogScreen() {
       toast.error('Verify your email before creating designs.');
       return;
     }
-    const timingToken = startInteractionTiming('brand_create_flow', {
-      sourceScreen: 'catalog',
-      owner: isOwner,
-    });
-    createMenuTimingTokenRef.current = timingToken;
-    markInteractionTiming(timingToken, 'plus_press');
     setCreateMenuOpen(true);
   };
 
@@ -856,42 +847,24 @@ export default function CatalogScreen() {
       const pickResult = await pickDesignEditorMediaAssets({
         source,
         existingCount: 0,
-        timingToken: createMenuTimingTokenRef.current,
       });
 
       if (pickResult.status === 'cancelled') {
-        markInteractionTiming(createMenuTimingTokenRef.current, 'picker_cancelled', { source });
         return;
       }
 
       if (pickResult.status === 'limit') {
-        markInteractionTiming(createMenuTimingTokenRef.current, 'picker_limit', { source });
         toast.error(pickResult.message);
         return;
       }
 
       if (pickResult.status === 'permission') {
-        markInteractionTiming(createMenuTimingTokenRef.current, 'picker_permission_blocked', { source });
         toast.error(pickResult.issue.message);
         return;
       }
 
-      markInteractionTiming(createMenuTimingTokenRef.current, 'picker_result_handled', {
-        source,
-        assetCount: pickResult.assets.length,
-      });
       const handoffToken = stageDesignEditorAssetBundle(pickResult.assets);
-      markInteractionTiming(createMenuTimingTokenRef.current, 'form_route_start', {
-        source,
-        assetCount: pickResult.assets.length,
-      });
-      router.push({
-        pathname: '/catalog/create-design/composer',
-        params: {
-          handoffToken,
-          timingToken: createMenuTimingTokenRef.current ?? undefined,
-        },
-      } as any);
+      router.push({ pathname: '/catalog/create-design', params: { handoffToken } } as any);
     },
     [toast, user, userEmailVerified],
   );
@@ -1051,8 +1024,6 @@ export default function CatalogScreen() {
                 isLoading={false}
                 isOwner={isOwner}
                 showDrafts={visibilityFilter === 'Drafts'}
-                numColumns={catalogColumnCount}
-                containerWidth={containerWidth}
                 onCollectionPress={handleCollectionPress}
                 onEdit={handleEditCollection}
                 onDelete={handleDeleteCollection}
@@ -1105,14 +1076,6 @@ export default function CatalogScreen() {
         anchorRef={createMenuAnchorRef}
         anchorMetrics={createMenuAnchorMetrics}
         onClose={() => setCreateMenuOpen(false)}
-        onShown={() => {
-          markInteractionTiming(createMenuTimingTokenRef.current, 'modal_visible');
-        }}
-        onOptionPressStart={(option) => {
-          markInteractionTiming(createMenuTimingTokenRef.current, 'modal_option_press', {
-            optionKey: option.key,
-          });
-        }}
         options={createMenuOptions}
       />
 

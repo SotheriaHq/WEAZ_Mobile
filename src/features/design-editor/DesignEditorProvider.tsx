@@ -368,16 +368,6 @@ export function DesignEditorProvider({
       setBooting(true);
       setLoadingError(null);
       try {
-        if (!activeDesignId && normalizedAssetHandoffToken) {
-          const stagedAssets = consumeDesignEditorAssetBundle(normalizedAssetHandoffToken);
-          if (stagedAssets?.length) {
-            setAssets(stagedAssets.slice(0, DESIGN_EDITOR_MAX_MEDIA));
-            setCoverAssetIdState(stagedAssets[0]?.id ?? null);
-            setOriginalMediaIds([]);
-            setBooting(false);
-          }
-        }
-
         const [categoriesResult, filtersResult] = await Promise.allSettled([
           getDesignCategories(),
           getDesignFilterDimensions(),
@@ -410,6 +400,15 @@ export function DesignEditorProvider({
         }
 
         setCustomOrderConfigurations([]);
+
+        if (!activeDesignId && normalizedAssetHandoffToken) {
+          const stagedAssets = consumeDesignEditorAssetBundle(normalizedAssetHandoffToken);
+          if (stagedAssets?.length) {
+            setAssets(stagedAssets.slice(0, DESIGN_EDITOR_MAX_MEDIA));
+            setCoverAssetIdState(stagedAssets[0]?.id ?? null);
+            setOriginalMediaIds([]);
+          }
+        }
 
         if (activeDesignId) {
           const detail = await getDesignDetail(activeDesignId);

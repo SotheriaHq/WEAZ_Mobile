@@ -53,7 +53,7 @@ const priceRange = (minPrice?: number | null, maxPrice?: number | null) => {
 };
 
 export const CollectionCardSkeleton = ({ width = 180 }: { width?: number }) => {
-  const imageHeight = Math.round(width * 1.32);
+  const imageHeight = Math.round(width * 1.14);
 
   return (
     <View style={[styles.card, { width }]}>
@@ -83,7 +83,7 @@ export const CollectionCard = React.memo(function CollectionCard({
   const scale = React.useRef(new Animated.Value(1)).current;
 
   const width = Math.round(cardWidth ?? (screenWidth - tokens.spacing.lg * 2 - tokens.spacing.md) / 2);
-  const imageHeight = Math.round(width * 1.32);
+  const imageHeight = Math.round(width * 1.14);
   const coverUri = useResolvedImageUri({
     src: collection.coverImage,
     fileId: collection.coverFileId,
@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
   actionRail: {
     position: 'absolute',
     right: tokens.spacing.sm,
-    bottom: 82,
+    bottom: 92,
     gap: tokens.spacing.xs,
     zIndex: 2,
   },
@@ -384,14 +384,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    minHeight: 104,
+    minHeight: 118,
     justifyContent: 'flex-end',
-    paddingTop: tokens.spacing['2xl'],
+    paddingTop: tokens.spacing['3xl'],
   },
   metadataPanel: {
-    gap: 2,
+    gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.md,
-    paddingBottom: tokens.spacing.sm,
+    paddingBottom: tokens.spacing.md,
   },
   cardMetaRow: {
     flexDirection: 'row',

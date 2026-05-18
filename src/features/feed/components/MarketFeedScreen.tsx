@@ -45,7 +45,6 @@ import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
 import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
 import type { FeedListEntry, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
-import { markInteractionTiming, startInteractionTiming } from '@/src/utils/interactionTiming';
 
 /**
  * Module-level feed cache - stale-while-revalidate.
@@ -2034,16 +2033,7 @@ export function MarketFeedScreen() {
 
                 <View style={styles.headerRightGroup}>
                 <Pressable
-                  onPress={() => {
-                    const timingToken = startInteractionTiming('runway_search_route', {
-                      sourceScreen: 'runway_feed',
-                    });
-                    markInteractionTiming(timingToken, 'route_start');
-                    router.push({
-                      pathname: '/search',
-                      params: { timingToken, sourceScreen: 'runway_feed' },
-                    } as any);
-                  }}
+                  onPress={() => { router.push('/search' as any); }}
                   hitSlop={10}
                   style={({ pressed }) => [
                     styles.headerIconButton,

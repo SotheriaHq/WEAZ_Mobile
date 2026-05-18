@@ -41,28 +41,28 @@ const getToneColors = (tone: AppBadgeTone, theme: ReturnType<typeof useTheme>['t
     case 'success':
       return {
         border: theme.colors.success,
-        background: 'transparent',
+        background: theme.colors.surface,
         iconBackground: theme.colors.success,
         textTone: 'success' as const,
       };
     case 'warning':
       return {
         border: theme.colors.warning,
-        background: 'transparent',
+        background: theme.colors.surface,
         iconBackground: theme.colors.warning,
         textTone: 'warning' as const,
       };
     case 'muted':
       return {
-        border: theme.colors.textMuted,
-        background: 'transparent',
+        border: theme.colors.border,
+        background: theme.colors.surface,
         iconBackground: theme.colors.textMuted,
         textTone: 'muted' as const,
       };
     case 'neutral':
       return {
-        border: theme.colors.textMuted,
-        background: 'transparent',
+        border: theme.colors.border,
+        background: theme.colors.surface,
         iconBackground: theme.colors.textMuted,
         textTone: 'secondary' as const,
       };
@@ -71,7 +71,7 @@ const getToneColors = (tone: AppBadgeTone, theme: ReturnType<typeof useTheme>['t
     default:
       return {
         border: theme.colors.primary,
-        background: 'transparent',
+        background: theme.colors.surface,
         iconBackground: theme.colors.primary,
         textTone: 'primary' as const,
       };
@@ -172,13 +172,10 @@ export function AppBadge({
       accessibilityLabel={accessibilityLabel ?? label}
     >
       {icon ? (
-        <View style={styles.markerWrap}>
-          <View style={[styles.markerShadow, { backgroundColor: colors.iconBackground }]} />
-          <View style={[styles.iconBox, { backgroundColor: colors.iconBackground, borderColor: colors.border }]}>
-            <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.iconText}>
-              {icon}
-            </AppText>
-          </View>
+        <View style={[styles.iconBox, { backgroundColor: colors.iconBackground }]}>
+          <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.iconText}>
+            {icon}
+          </AppText>
         </View>
       ) : null}
       {!compact ? (
@@ -192,10 +189,10 @@ export function AppBadge({
 
 const styles = StyleSheet.create({
   badge: {
-    minHeight: 24,
+    minHeight: 30,
     borderRadius: tokens.radius.md,
-    borderWidth: 0,
-    paddingHorizontal: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
@@ -203,27 +200,12 @@ const styles = StyleSheet.create({
   },
   compactBadge: {
     minHeight: 24,
-    maxWidth: 24,
-  },
-  markerWrap: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markerShadow: {
-    position: 'absolute',
-    width: 21,
-    height: 21,
-    borderRadius: tokens.radius.sm,
-    opacity: 0.28,
-    transform: [{ rotate: '12deg' }],
+    paddingHorizontal: tokens.spacing.xs,
   },
   iconBox: {
-    width: 20,
-    height: 20,
-    borderRadius: tokens.radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    width: 18,
+    height: 18,
+    borderRadius: tokens.spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },
