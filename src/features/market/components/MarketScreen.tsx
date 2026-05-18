@@ -21,7 +21,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
-import { MobileStoreApi, type StoreProduct } from '@/src/api/StoreApi';
+import { MobileStoreApi, type StoreCollectionSummary, type StoreProduct } from '@/src/api/StoreApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
 import { getMarketFeed } from '@/src/api/MarketApi';
 import { useAuth } from '@/src/auth/AuthContext';
@@ -60,6 +60,14 @@ type MarketRow =
       subtitle?: string;
       items: MarketContentItem[];
       onSeeAll?: () => void;
+    }
+  | {
+      id: 'latest-collections';
+      type: 'COLLECTION_ROW';
+      title: string;
+      subtitle: string;
+      items: StoreCollectionSummary[];
+      error: string | null;
     }
   | { id: string; type: 'PRODUCT_GRID'; title: string; items: MarketContentItem[] }
   | { id: string; type: 'EDITORIAL_CARD'; item: MarketContentItem | null }
@@ -187,6 +195,17 @@ function getItemPriceLabel(item: MarketContentItem) {
   return 'Custom quote';
 }
 
+function getCollectionPriceLabel(collection: StoreCollectionSummary) {
+  const { min, max, currency } = collection.priceRange;
+  if (typeof min === 'number' && typeof max === 'number') {
+    if (min === max) return formatMarketPrice(min, currency) ?? 'Price on request';
+    return `${formatMarketPrice(min, currency) ?? 'From'} - ${formatMarketPrice(max, currency) ?? 'custom'}`;
+  }
+  if (typeof min === 'number') return `From ${formatMarketPrice(min, currency)}`;
+  if (typeof max === 'number') return `Up to ${formatMarketPrice(max, currency)}`;
+  return 'Price on request';
+}
+
 function formatMarketPrice(value?: number | null, currency = 'NGN') {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   try {
@@ -245,12 +264,23 @@ function buildBlazingTrends(categoryOptions: string[], allItems: MarketContentIt
 function buildRows(args: {
   allItems: MarketContentItem[];
   filteredItems: MarketContentItem[];
+  collections: StoreCollectionSummary[];
+  collectionError: string | null;
   categoryOptions: string[];
   loadingMore: boolean;
   setNewestView: () => void;
   setCustomReadyView: () => void;
 }) {
-  const { allItems, filteredItems, categoryOptions, loadingMore, setNewestView, setCustomReadyView } = args;
+  const {
+    allItems,
+    filteredItems,
+    collections,
+    collectionError,
+    categoryOptions,
+    loadingMore,
+    setNewestView,
+    setCustomReadyView,
+  } = args;
   const heroItems = filteredItems.filter(hasDisplayMedia).slice(0, 3);
   const rows: MarketRow[] = [];
 
@@ -274,6 +304,15 @@ function buildRows(args: {
       onSeeAll: setNewestView,
     });
   }
+
+  rows.push({
+    id: 'latest-collections',
+    type: 'COLLECTION_ROW',
+    title: 'Latest Collections',
+    subtitle: 'Shop complete edits from Threadly brands',
+    items: collections,
+    error: collectionError,
+  });
 
   const firstGrid = filteredItems.slice(0, 6);
   if (firstGrid.length > 0) {
@@ -595,6 +634,133 @@ function BlazingRow({
   );
 }
 
+function CollectionCard({
+  collection,
+  width,
+  onOpen,
+}: {
+  collection: StoreCollectionSummary;
+  width: number;
+  onOpen: (collection: StoreCollectionSummary) => void;
+}) {
+  const { theme } = useTheme();
+  const imageUri = useResolvedImageUri({
+    src: collection.coverImage,
+    fileId: collection.coverImageId,
+    enabled: Boolean(collection.coverImage || collection.coverImageId),
+  });
+
+  return (
+    <Pressable
+      onPress={() => onOpen(collection)}
+      style={({ pressed }) => [
+        styles.collectionCard,
+        { width, backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        pressed && styles.pressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`View ${collection.title} collection`}
+    >
+      <View style={[styles.collectionMedia, { backgroundColor: theme.colors.surfaceAlt }]}>
+        {imageUri ? (
+          <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.collectionImage} imageStyle={styles.collectionImage} />
+        ) : (
+          <AppText variant="title" tone="muted">{String.fromCodePoint(0x1f5bc, 0xfe0f)}</AppText>
+        )}
+        <LinearGradient
+          colors={[theme.colors.backdrop, 'transparent', theme.colors.backdropStrong]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[styles.collectionCountPill, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
+          <AppText variant="captionBold" tone="inverse">
+            {collection.productCount} {collection.productCount === 1 ? 'piece' : 'pieces'}
+          </AppText>
+        </View>
+      </View>
+      <View style={styles.collectionCopy}>
+        <AppText variant="bodyBold" numberOfLines={2}>
+          {collection.title}
+        </AppText>
+        <AppText variant="caption" tone="muted" numberOfLines={1}>
+          {collection.brandName ?? 'Threadly brand'}
+        </AppText>
+        <View style={styles.collectionMetaRow}>
+          <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+            {getCollectionPriceLabel(collection)}
+          </AppText>
+          <AppText variant="captionBold" tone="muted">
+            View
+          </AppText>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+function CollectionRow({
+  title,
+  subtitle,
+  items,
+  error,
+  cardWidth,
+  onOpen,
+  onRetry,
+}: {
+  title: string;
+  subtitle: string;
+  items: StoreCollectionSummary[];
+  error: string | null;
+  cardWidth: number;
+  onOpen: (collection: StoreCollectionSummary) => void;
+  onRetry: () => void;
+}) {
+  const { theme } = useTheme();
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleBlock}>
+          <AppText variant="subtitle">{title}</AppText>
+          <AppText variant="caption" tone="muted" numberOfLines={1}>{subtitle}</AppText>
+        </View>
+      </View>
+
+      {error ? (
+        <Pressable
+          onPress={onRetry}
+          style={({ pressed }) => [
+            styles.collectionStateCard,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            pressed && styles.pressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading collections"
+        >
+          <AppText variant="bodyBold">Collections could not load</AppText>
+          <AppText variant="caption" tone="muted" numberOfLines={2}>{error}</AppText>
+          <AppText variant="captionBold" tone="primary">Retry</AppText>
+        </Pressable>
+      ) : items.length === 0 ? (
+        <View style={[styles.collectionStateCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <AppText variant="bodyBold">No collections live yet</AppText>
+          <AppText variant="caption" tone="muted">New brand edits will appear here as soon as they are published.</AppText>
+        </View>
+      ) : (
+        <FlatList
+          data={items}
+          horizontal
+          keyExtractor={(item) => item.id}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalCardsContent}
+          renderItem={({ item }) => (
+            <CollectionCard collection={item} width={cardWidth} onOpen={onOpen} />
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
 function HorizontalCardRow({
   title,
   subtitle,
@@ -766,6 +932,7 @@ export function MarketScreen() {
   const { bagProduct, bagSource } = useMobileBagging();
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [designs, setDesigns] = useState<MarketItem[]>([]);
+  const [collections, setCollections] = useState<StoreCollectionSummary[]>([]);
   const [productCursor, setProductCursor] = useState<string | null>(null);
   const [designCursor, setDesignCursor] = useState<string | null>(null);
   const [productHasNext, setProductHasNext] = useState(false);
@@ -774,6 +941,7 @@ export function MarketScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [collectionError, setCollectionError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<MarketFilters>(DEFAULT_MARKET_FILTERS);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
@@ -837,6 +1005,7 @@ export function MarketScreen() {
     async (mode: 'reset' | 'more') => {
       if (mode === 'reset') {
         setError(null);
+        setCollectionError(null);
         setLoading(true);
       } else {
         if (loadingMore || (!productHasNext && !designHasNext)) return;
@@ -861,10 +1030,18 @@ export function MarketScreen() {
           tag: filters.category,
           counts: 'combined',
         });
+        const collectionRequest = mode === 'reset'
+          ? MobileStoreApi.getStoreCollections({ limit: 12 })
+          : Promise.resolve(null);
 
-        const [productResult, designResult] = await Promise.allSettled([productRequest, designRequest]);
+        const [productResult, designResult, collectionResult] = await Promise.allSettled([
+          productRequest,
+          designRequest,
+          collectionRequest,
+        ]);
         const productOk = productResult.status === 'fulfilled';
         const designOk = designResult.status === 'fulfilled';
+        const collectionOk = collectionResult.status === 'fulfilled';
 
         if (!productOk && !designOk) {
           setError(toErrorMessage(productResult.reason ?? designResult.reason));
@@ -888,6 +1065,15 @@ export function MarketScreen() {
             const seen = new Set(current.map((item) => item.collectionId));
             return [...current, ...designResult.value.items.filter((item) => !seen.has(item.collectionId))];
           });
+        }
+
+        if (mode === 'reset') {
+          if (collectionOk && collectionResult.value) {
+            setCollections(collectionResult.value.items);
+            setCollectionError(null);
+          } else if (!collectionOk) {
+            setCollectionError(toErrorMessage(collectionResult.reason));
+          }
         }
       } finally {
         if (mode === 'reset') setLoading(false);
@@ -970,6 +1156,13 @@ export function MarketScreen() {
         brandName: item.design.brandName ?? item.design.username ?? '',
         priceLabel: getItemPriceLabel(item),
       },
+    } as any);
+  }, []);
+
+  const openCollection = useCallback((collection: StoreCollectionSummary) => {
+    router.push({
+      pathname: '/collection-viewer',
+      params: { collectionId: collection.id, returnTo: '/(tabs)/discover' },
     } as any);
   }, []);
 
@@ -1057,16 +1250,28 @@ export function MarketScreen() {
 
   const rowData = useMemo<MarketRow[]>(() => {
     if (error) return [{ id: 'error', type: 'ERROR_STATE', message: error }];
-    if (filteredItems.length === 0) return [{ id: 'empty', type: 'EMPTY_STATE' }];
+    if (filteredItems.length === 0 && collections.length === 0) return [{ id: 'empty', type: 'EMPTY_STATE' }];
     return buildRows({
       allItems,
       filteredItems,
+      collections,
+      collectionError,
       categoryOptions,
       loadingMore,
       setNewestView,
       setCustomReadyView,
     });
-  }, [allItems, categoryOptions, error, filteredItems, loadingMore, setCustomReadyView, setNewestView]);
+  }, [
+    allItems,
+    categoryOptions,
+    collectionError,
+    collections,
+    error,
+    filteredItems,
+    loadingMore,
+    setCustomReadyView,
+    setNewestView,
+  ]);
 
   const horizontalCardWidth = Math.min(184, Math.max(150, Math.round(width * 0.42)));
   const heroHeight = Math.min(236, Math.max(176, Math.round(height * 0.24)));
@@ -1100,6 +1305,18 @@ export function MarketScreen() {
               onBag={handleBag}
               onFavorite={handleFavorite}
               onSeeAll={item.onSeeAll}
+            />
+          );
+        case 'COLLECTION_ROW':
+          return (
+            <CollectionRow
+              title={item.title}
+              subtitle={item.subtitle}
+              items={item.items}
+              error={item.error}
+              cardWidth={horizontalCardWidth}
+              onOpen={openCollection}
+              onRetry={() => void loadMarket('reset')}
             />
           );
         case 'PRODUCT_GRID':
@@ -1142,6 +1359,7 @@ export function MarketScreen() {
       heroHeight,
       horizontalCardWidth,
       loadMarket,
+      openCollection,
       openItem,
       theme.colors.primary,
       width,
@@ -1427,6 +1645,49 @@ const styles = StyleSheet.create({
   horizontalCardsContent: {
     paddingHorizontal: SIDE_PADDING,
     gap: CARD_GAP,
+  },
+  collectionCard: {
+    minHeight: 262,
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  collectionMedia: {
+    height: 168,
+    overflow: 'hidden',
+  },
+  collectionImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  collectionCountPill: {
+    position: 'absolute',
+    right: tokens.spacing.sm,
+    bottom: tokens.spacing.sm,
+    minHeight: 28,
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collectionCopy: {
+    gap: tokens.spacing.xs,
+    padding: tokens.spacing.md,
+  },
+  collectionMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+  },
+  collectionStateCard: {
+    marginHorizontal: SIDE_PADDING,
+    minHeight: 98,
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    padding: tokens.spacing.lg,
+    gap: tokens.spacing.xs,
+    justifyContent: 'center',
   },
   gridStack: {
     paddingHorizontal: SIDE_PADDING,

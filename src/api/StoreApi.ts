@@ -1,6 +1,7 @@
 import { apiClient } from '@/src/api/httpClient';
 import type { CatalogEntityType } from '@/src/features/catalog/catalogDomain';
 import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
+import type { SizeRecommendationResponse, SizeRecommendationSnapshot, SizingRegion } from '@/src/api/ProfileApi';
 
 export interface StoreProductVariant {
   id?: string;
@@ -42,6 +43,9 @@ export interface CartState {
   items: Array<{
     id: string;
     productId: string;
+    selectedSize?: string | null;
+    selectedColor?: string | null;
+    sizeRecommendationSnapshot?: SizeRecommendationSnapshot | Record<string, unknown> | null;
   }>;
   itemCount: number;
   totalQuantity: number;
@@ -169,9 +173,101 @@ export interface ProductBagStatus {
   };
   ui: {
     heartbeatState: 'not_bagged' | 'previously_bagged' | 'currently_bagged' | 'bagging' | 'disabled';
-    defaultAction: 'ADD_STANDARD' | 'OPEN_SELECTOR' | 'OPEN_CUSTOM_FLOW' | 'OPEN_FITTINGS' | 'CONFIRM_STALE_FITTINGS' | 'DISABLED';
+    defaultAction: 'ADD_STANDARD' | 'OPEN_SELECTOR' | 'OPEN_CUSTOM_FLOW' | 'OPEN_FITTINGS' | 'CONFIRM_STALE_FITTINGS' | 'ALREADY_IN_BAG' | 'DISABLED';
     disabledReason: string | null;
   };
+}
+
+export interface StoreCollectionSummary {
+  id: string;
+  title: string;
+  description: string | null;
+  brandId: string | null;
+  brandName: string | null;
+  coverImage: string | null;
+  coverImageId: string | null;
+  productCount: number;
+  priceRange: { min: number | null; max: number | null; currency: string };
+}
+
+export interface StoreCollectionsResponse {
+  items: StoreCollectionSummary[];
+  hasNextPage: boolean;
+  nextCursor: string | null;
+}
+
+export interface CollectionBagProductStatus {
+  productId: string;
+  name: string;
+  coverImage: string | null;
+  coverImageId: string | null;
+  media: Array<{ url: string | null; fileId: string | null }>;
+  price: number;
+  currency: string;
+  canBag: boolean;
+  inBag: boolean;
+  reason: string | null;
+  stockState: ProductBagStatus['stockState'];
+  defaultAction: ProductBagStatus['ui']['defaultAction'];
+  requiresSize: boolean;
+  requiresColor: boolean;
+  availableSizes: string[];
+  availableColors: string[];
+  requiredMeasurementKeys: string[];
+  missingMeasurementKeys: string[];
+  freshnessState: ProductBagStatus['custom']['freshnessState'];
+  sourceStatus: ProductBagStatus;
+}
+
+export interface CollectionBagStatus {
+  sourceType: 'COLLECTION';
+  sourceId: string;
+  collection: StoreCollectionSummary;
+  summary: {
+    canBagAll: boolean;
+    canBagSelected: boolean;
+    eligibleCount: number;
+    blockedCount: number;
+    alreadyInBagCount: number;
+    requiresSelectionCount: number;
+    requiresFittingsCount: number;
+    staleFittingsCount: number;
+    outOfStockCount: number;
+    totalPrice: number;
+    currency: string;
+  };
+  products: CollectionBagProductStatus[];
+  ui: {
+    defaultAction: 'BAG_ALL' | 'BAG_SELECTED' | 'RESOLVE_BLOCKERS' | 'AUTH_REQUIRED' | 'DISABLED';
+    disabledReason: string | null;
+  };
+  featureFlags: {
+    collectionReviewsEnabled: boolean;
+  };
+}
+
+export interface CollectionBagMutationResult {
+  collectionId: string;
+  added: Array<{ productId: string; bagItemId: string; quantity: number }>;
+  skipped: Array<{ productId: string; reason: string }>;
+  blocked: Array<{
+    productId: string;
+    reason: string;
+    missingMeasurementKeys?: string[];
+    requiredMeasurementKeys?: string[];
+  }>;
+  summary: {
+    addedCount: number;
+    skippedCount: number;
+    blockedCount: number;
+    combinedBagCount: number;
+  };
+}
+
+export interface CollectionBagSelection {
+  selectedSize?: string;
+  selectedColor?: string;
+  quantity?: number;
 }
 
 const unwrapData = <T>(payload: unknown): T => {
@@ -280,7 +376,7 @@ const unwrapProductListPayload = (payload: unknown): {
   return {
     items,
     hasNextPage: Boolean(record.hasNextPage ?? record.hasMore ?? nestedProducts.hasNextPage),
-    nextCursor: asString(record.nextCursor ?? record.cursor ?? nestedProducts.nextCursor),
+    nextCursor: asString(record.nextCursor ?? record.endCursor ?? record.cursor ?? nestedProducts.nextCursor),
     total: asNumber(record.total ?? record.count ?? nestedProducts.total, items.length),
   };
 };
@@ -605,7 +701,178 @@ const normalizeBagStatus = (
   };
 };
 
+const normalizeCollectionSummary = (raw: unknown): StoreCollectionSummary | null => {
+  const item = asRecord(raw);
+  const id = asString(item.id);
+  if (!id) return null;
+  const priceRange = asRecord(item.priceRange);
+  return {
+    id,
+    title: asString(item.title) ?? 'Untitled collection',
+    description: asString(item.description),
+    brandId: asString(item.brandId),
+    brandName: asString(item.brandName) ?? asString(asRecord(item.owner).brandFullName),
+    coverImage: asString(item.coverImage) ?? asString(item.coverImageUrl),
+    coverImageId: asString(item.coverImageId) ?? asString(item.coverFileId),
+    productCount: asNumber(item.productCount ?? item.itemCount ?? asRecord(item._count).products),
+    priceRange: {
+      min: item.minPrice !== undefined ? asNumber(item.minPrice) : priceRange.min !== undefined ? asNumber(priceRange.min) : null,
+      max: item.maxPrice !== undefined ? asNumber(item.maxPrice) : priceRange.max !== undefined ? asNumber(priceRange.max) : null,
+      currency: asString(priceRange.currency) ?? asString(item.currency) ?? 'NGN',
+    },
+  };
+};
+
+const normalizeCollectionBagStatus = (payload: unknown, collectionId: string): CollectionBagStatus => {
+  const data = unwrapData<Record<string, unknown>>(payload);
+  const collection = normalizeCollectionSummary(data.collection) ?? {
+    id: collectionId,
+    title: 'Collection',
+    description: null,
+    brandId: null,
+    brandName: null,
+    coverImage: null,
+    coverImageId: null,
+    productCount: 0,
+    priceRange: { min: null, max: null, currency: 'NGN' },
+  };
+  const summary = asRecord(data.summary);
+  const ui = asRecord(data.ui);
+  const featureFlags = asRecord(data.featureFlags);
+  const products = Array.isArray(data.products) ? data.products : [];
+
+  return {
+    sourceType: 'COLLECTION',
+    sourceId: asString(data.sourceId) ?? collectionId,
+    collection,
+    summary: {
+      canBagAll: Boolean(summary.canBagAll),
+      canBagSelected: Boolean(summary.canBagSelected),
+      eligibleCount: asNumber(summary.eligibleCount),
+      blockedCount: asNumber(summary.blockedCount),
+      alreadyInBagCount: asNumber(summary.alreadyInBagCount),
+      requiresSelectionCount: asNumber(summary.requiresSelectionCount),
+      requiresFittingsCount: asNumber(summary.requiresFittingsCount),
+      staleFittingsCount: asNumber(summary.staleFittingsCount),
+      outOfStockCount: asNumber(summary.outOfStockCount),
+      totalPrice: asNumber(summary.totalPrice),
+      currency: asString(summary.currency) ?? collection.priceRange.currency,
+    },
+    products: products
+      .map((entry) => {
+        const product = asRecord(entry);
+        const productId = asString(product.productId);
+        if (!productId) return null;
+        const media = Array.isArray(product.media)
+          ? product.media
+              .map((mediaEntry) => {
+                const mediaRecord = asRecord(mediaEntry);
+                return {
+                  url: asString(mediaRecord.url),
+                  fileId: asString(mediaRecord.fileId),
+                };
+              })
+              .filter((mediaEntry) => mediaEntry.url || mediaEntry.fileId)
+          : [];
+        const sourceStatus = normalizeBagStatus(product.sourceStatus ?? {}, productId);
+        return {
+          productId,
+          name: asString(product.name) ?? 'Untitled product',
+          coverImage: asString(product.coverImage),
+          coverImageId: asString(product.coverImageId),
+          media,
+          price: asNumber(product.price),
+          currency: asString(product.currency) ?? collection.priceRange.currency,
+          canBag: Boolean(product.canBag),
+          inBag: Boolean(product.inBag),
+          reason: asString(product.reason),
+          stockState: (asString(product.stockState) as ProductBagStatus['stockState']) ?? sourceStatus.stockState,
+          defaultAction: (asString(product.defaultAction) as ProductBagStatus['ui']['defaultAction']) ?? sourceStatus.ui.defaultAction,
+          requiresSize: Boolean(product.requiresSize),
+          requiresColor: Boolean(product.requiresColor),
+          availableSizes: asStringList(product.availableSizes),
+          availableColors: asStringList(product.availableColors),
+          requiredMeasurementKeys: asStringList(product.requiredMeasurementKeys),
+          missingMeasurementKeys: asStringList(product.missingMeasurementKeys),
+          freshnessState: (asString(product.freshnessState) as ProductBagStatus['custom']['freshnessState']) ?? sourceStatus.custom.freshnessState,
+          sourceStatus,
+        };
+      })
+      .filter((entry): entry is CollectionBagProductStatus => Boolean(entry)),
+    ui: {
+      defaultAction: (asString(ui.defaultAction) as CollectionBagStatus['ui']['defaultAction']) ?? 'DISABLED',
+      disabledReason: asString(ui.disabledReason),
+    },
+    featureFlags: {
+      collectionReviewsEnabled: Boolean(featureFlags.collectionReviewsEnabled),
+    },
+  };
+};
+
+const normalizeCollectionMutationResult = (payload: unknown, collectionId: string): CollectionBagMutationResult => {
+  const data = unwrapData<Record<string, unknown>>(payload);
+  const summary = asRecord(data.summary);
+  const mapSkippedReason = (entry: unknown): CollectionBagMutationResult['skipped'][number] | null => {
+    const item = asRecord(entry);
+    const productId = asString(item.productId);
+    if (!productId) return null;
+    return { productId, reason: asString(item.reason) ?? 'UNKNOWN' };
+  };
+  const mapBlockedReason = (entry: unknown): CollectionBagMutationResult['blocked'][number] | null => {
+    const item = asRecord(entry);
+    const productId = asString(item.productId);
+    if (!productId) return null;
+    return {
+      productId,
+      reason: asString(item.reason) ?? 'UNKNOWN',
+      missingMeasurementKeys: asStringList(item.missingMeasurementKeys),
+      requiredMeasurementKeys: asStringList(item.requiredMeasurementKeys),
+    };
+  };
+  return {
+    collectionId: asString(data.collectionId) ?? collectionId,
+    added: (Array.isArray(data.added) ? data.added : [])
+      .map((entry) => {
+        const item = asRecord(entry);
+        const productId = asString(item.productId);
+        const bagItemId = asString(item.bagItemId);
+        if (!productId || !bagItemId) return null;
+        return { productId, bagItemId, quantity: asNumber(item.quantity, 1) };
+      })
+      .filter((entry): entry is CollectionBagMutationResult['added'][number] => Boolean(entry)),
+    skipped: (Array.isArray(data.skipped) ? data.skipped : [])
+      .map(mapSkippedReason)
+      .filter((entry): entry is CollectionBagMutationResult['skipped'][number] => Boolean(entry)),
+    blocked: (Array.isArray(data.blocked) ? data.blocked : [])
+      .map(mapBlockedReason)
+      .filter((entry): entry is CollectionBagMutationResult['blocked'][number] => Boolean(entry)),
+    summary: {
+      addedCount: asNumber(summary.addedCount),
+      skippedCount: asNumber(summary.skippedCount),
+      blockedCount: asNumber(summary.blockedCount),
+      combinedBagCount: asNumber(summary.combinedBagCount),
+    },
+  };
+};
+
 export const MobileStoreApi = {
+  async getStoreCollections(params: { cursor?: string | null; limit?: number } = {}): Promise<StoreCollectionsResponse> {
+    const response = await apiClient.get('/store-collections', {
+      params: {
+        cursor: params.cursor ?? undefined,
+        limit: params.limit ?? 12,
+      },
+    });
+    const payload = unwrapProductListPayload(response.data);
+    return {
+      items: payload.items
+        .map((entry) => normalizeCollectionSummary(entry))
+        .filter((entry): entry is StoreCollectionSummary => Boolean(entry)),
+      hasNextPage: payload.hasNextPage,
+      nextCursor: payload.nextCursor,
+    };
+  },
+
   async getMarketplaceProducts(params: MarketplaceProductParams = {}): Promise<MarketplaceProductsResponse> {
     const response = await apiClient.get('/products/market', {
       params: {
@@ -659,6 +926,20 @@ export const MobileStoreApi = {
       throw new Error('Product unavailable');
     }
     return product;
+  },
+
+  async getProductSizeRecommendation(
+    productId: string,
+    params?: { variantId?: string | null; region?: SizingRegion; selectedSize?: string | null },
+  ): Promise<SizeRecommendationResponse | null> {
+    const response = await apiClient.get(`/store/products/${productId}/size-recommendation`, {
+      params: {
+        ...(params?.variantId ? { variantId: params.variantId } : {}),
+        ...(params?.region ? { region: params.region } : {}),
+        ...(params?.selectedSize ? { selectedSize: params.selectedSize } : {}),
+      },
+    });
+    return unwrapData<SizeRecommendationResponse | null>(response.data);
   },
 
   async getProductBagStatus(productId: string): Promise<ProductBagStatus> {
@@ -804,6 +1085,52 @@ export const MobileStoreApi = {
     }
   },
 
+  async getCollectionBagStatus(collectionId: string): Promise<CollectionBagStatus> {
+    const startedAt = Date.now();
+    try {
+      const response = await apiClient.get(`/bag/sources/COLLECTION/${collectionId}/status`);
+      return normalizeCollectionBagStatus(response.data, collectionId);
+    } finally {
+      logBagTiming('collection_status_request', startedAt, { collectionId });
+    }
+  },
+
+  async bagCollectionAll(
+    collectionId: string,
+    payload?: {
+      selections?: Record<string, CollectionBagSelection>;
+      acknowledgements?: { staleFittingsAccepted?: boolean };
+    },
+  ): Promise<CollectionBagMutationResult> {
+    const startedAt = Date.now();
+    try {
+      const response = await apiClient.post(`/bag/collections/${collectionId}/bag-all`, payload ?? {});
+      return normalizeCollectionMutationResult(response.data, collectionId);
+    } finally {
+      logBagTiming('collection_bag_all_request', startedAt, { collectionId });
+    }
+  },
+
+  async bagCollectionSelected(
+    collectionId: string,
+    payload: {
+      productIds: string[];
+      selections?: Record<string, CollectionBagSelection>;
+      acknowledgements?: { staleFittingsAccepted?: boolean };
+    },
+  ): Promise<CollectionBagMutationResult> {
+    const startedAt = Date.now();
+    try {
+      const response = await apiClient.post(`/bag/collections/${collectionId}/bag-selected`, payload);
+      return normalizeCollectionMutationResult(response.data, collectionId);
+    } finally {
+      logBagTiming('collection_bag_selected_request', startedAt, {
+        collectionId,
+        productCount: payload.productIds.length,
+      });
+    }
+  },
+
   async getBagCount(): Promise<BagCount> {
     const startedAt = Date.now();
     try {
@@ -833,9 +1160,15 @@ export const MobileStoreApi = {
         const id = asString(item.id);
         const productId = asString(item.productId) ?? asString(product.id);
         if (!id || !productId) return null;
-        return { id, productId };
+        return {
+          id,
+          productId,
+          selectedSize: asString(item.selectedSize),
+          selectedColor: asString(item.selectedColor),
+          sizeRecommendationSnapshot: item.sizeRecommendationSnapshot as Record<string, unknown> | null,
+        };
       })
-      .filter((entry): entry is { id: string; productId: string } => Boolean(entry));
+      .filter(Boolean) as CartState['items'];
 
     return {
       items: mapped,
@@ -849,12 +1182,16 @@ export const MobileStoreApi = {
     quantity?: number;
     selectedSize?: string;
     selectedColor?: string;
+    sizeRecommendationSnapshot?: SizeRecommendationSnapshot | Record<string, unknown>;
+    manualOverrideReason?: string;
   }): Promise<CartState> {
     const response = await apiClient.post('/store/cart', {
       productId: payload.productId,
       quantity: payload.quantity ?? 1,
       selectedSize: payload.selectedSize,
       selectedColor: payload.selectedColor,
+      sizeRecommendationSnapshot: payload.sizeRecommendationSnapshot,
+      manualOverrideReason: payload.manualOverrideReason,
     });
     return unwrapData<CartState>(response.data);
   },

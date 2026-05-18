@@ -325,6 +325,8 @@ function RootStack() {
       <Stack.Screen name="reviews" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="messages/[threadId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="market-viewer" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="collection-viewer" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="collection-gallery" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="search" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="products/[productId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="studio" options={{ headerShown: false, animation: 'slide_from_right' }} />
