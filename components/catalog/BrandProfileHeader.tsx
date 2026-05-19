@@ -184,8 +184,13 @@ function BannerHeader({
   | 'onEditBanner'
 >) {
   const { scheme, theme } = useTheme();
+  const { width: viewportWidth } = useWindowDimensions();
   const resolvedBanner = useResolvedImageUri({ src: bannerUrl, fileId: bannerFileId ?? undefined });
   const storeStatusBadge = getStoreStatusBadge(badges ?? []);
+  const isCompactPhone = viewportWidth < 390;
+  const isTablet = viewportWidth >= 700;
+  const qrPanelSize = isTablet ? 124 : isCompactPhone ? 84 : 96;
+  const qrCodeSize = isTablet ? 102 : isCompactPhone ? 66 : 76;
 
   return (
     <View style={[styles.bannerWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -227,44 +232,70 @@ function BannerHeader({
       <View style={styles.bannerControls}>
         <HeaderIconButton label="Go back" value="‹" onPress={onBack} bare />
         <View style={styles.bannerRightControls}>
-          {qrTargetUrl || onOpenQr ? (
-            <Pressable
-              onPress={onOpenQr}
-              disabled={!onOpenQr}
-              style={({ pressed }) => [
-                styles.qrButton,
-                {
-                  backgroundColor: qrTargetUrl ? tokens.themes.light.colors.surface : theme.colors.glassSurfaceStrong,
-                  borderColor: theme.colors.glassBorder,
-                  opacity: pressed ? 0.82 : 1,
-                },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Show brand QR code"
-            >
-              {qrTargetUrl ? (
-                <QRCode
-                  value={qrTargetUrl}
-                  size={60}
-                  color={tokens.themes.light.colors.text}
-                  backgroundColor={tokens.themes.light.colors.surface}
-                  quietZone={2}
-                />
-              ) : (
-                <View style={[styles.qrPlaceholder, { backgroundColor: theme.colors.glassSurface, borderColor: theme.colors.glassBorder }]}>
-                  <AppText variant="captionBold" tone="muted">
-                    QR
-                  </AppText>
-                </View>
-              )}
-            </Pressable>
-          ) : null}
           {!isOwner ? (
             <HeaderIconButton label="Search" value="🔍" onPress={onSearch} />
           ) : null}
           <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} />
         </View>
       </View>
+
+      {qrTargetUrl || onOpenQr ? (
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.bannerQrSlot,
+            {
+              width: qrPanelSize,
+              height: qrPanelSize,
+              right: tokens.spacing.lg,
+              top: isTablet ? 68 : 72,
+            },
+          ]}
+        >
+          <Pressable
+            onPress={onOpenQr}
+            disabled={!onOpenQr}
+            style={({ pressed }) => [
+              styles.qrButton,
+              {
+                width: qrPanelSize,
+                height: qrPanelSize,
+                backgroundColor: qrTargetUrl ? tokens.themes.light.colors.surface : theme.colors.glassSurfaceStrong,
+                borderColor: theme.colors.glassBorder,
+                opacity: pressed ? 0.82 : 1,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Show brand QR code"
+          >
+            {qrTargetUrl ? (
+              <QRCode
+                value={qrTargetUrl}
+                size={qrCodeSize}
+                color={tokens.themes.light.colors.text}
+                backgroundColor={tokens.themes.light.colors.surface}
+                quietZone={2}
+              />
+            ) : (
+              <View
+                style={[
+                  styles.qrPlaceholder,
+                  {
+                    width: qrCodeSize,
+                    height: qrCodeSize,
+                    backgroundColor: theme.colors.glassSurface,
+                    borderColor: theme.colors.glassBorder,
+                  },
+                ]}
+              >
+                <AppText variant="captionBold" tone="muted">
+                  QR
+                </AppText>
+              </View>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
 
       <View style={[styles.bannerNameChip, { backgroundColor: 'transparent', borderColor: theme.colors.glassBorder }]}>
         <BlurView
@@ -931,6 +962,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.sm,
   },
+  bannerQrSlot: {
+    position: 'absolute',
+    zIndex: 2,
+  },
   qrButton: {
     width: 74,
     height: 74,
@@ -957,7 +992,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerIconButtonBare: {
+    backgroundColor: 'transparent',
     borderWidth: 0,
+    elevation: 0,
+    overflow: 'visible',
   },
   headerIconText: {
     textAlign: 'center',
@@ -988,8 +1026,8 @@ const styles = StyleSheet.create({
   bannerEditControl: {
     position: 'absolute',
     right: tokens.spacing.lg,
-    bottom: tokens.spacing.md,
-    transform: [{ translateY: -56 }],
+    bottom: tokens.spacing.sm,
+    zIndex: 3,
   },
   bannerEditButton: {
     width: 34,

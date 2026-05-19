@@ -50,6 +50,14 @@ const priceRange = (minPrice?: number | null, maxPrice?: number | null) => {
   return 'Price on request';
 };
 
+const compactCount = (value?: number | null): string => {
+  const count = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  return new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(Math.max(0, count));
+};
+
 export const CollectionCardSkeleton = ({ width = 180 }: { width?: number }) => {
   const imageHeight = Math.round(width * 1.14);
 
@@ -66,6 +74,8 @@ export const CollectionCard = React.memo(function CollectionCard({
   onPress,
   onEdit,
   onDelete,
+  onLike,
+  onComment,
   onShare,
   onSave,
   isSaved = false,
@@ -99,6 +109,9 @@ export const CollectionCard = React.memo(function CollectionCard({
     () => priceRange(collection.saleMinPrice ?? collection.minPrice, collection.saleMaxPrice ?? collection.maxPrice),
     [collection.maxPrice, collection.minPrice, collection.saleMaxPrice, collection.saleMinPrice],
   );
+  const likeCountLabel = compactCount(collection.likesCount);
+  const commentCountLabel = compactCount(collection.commentsCount);
+  const threadCountLabel = compactCount(collection.postsCount);
 
   const disabled = Boolean(collection.clientStatus);
 
@@ -257,6 +270,16 @@ export const CollectionCard = React.memo(function CollectionCard({
                   {priceLabel}
                 </AppText>
               </View>
+              <View style={styles.socialStatsRow}>
+                <SocialMetric emoji={'\u2665'} value={likeCountLabel} label="likes" onPress={onLike ? () => onLike(collection.id) : undefined} />
+                <SocialMetric
+                  emoji={'\uD83D\uDCAC'}
+                  value={commentCountLabel}
+                  label="comments"
+                  onPress={onComment ? () => onComment(collection.id) : undefined}
+                />
+                <SocialMetric emoji={'\uD83E\uDDF5'} value={threadCountLabel} label="threads" />
+              </View>
             </View>
           </LinearGradient>
         </View>
@@ -304,6 +327,39 @@ function RailButton({ emoji, label, busy = false, onPress }: { emoji: string; la
           </AppText>
         ) : null}
       </View>
+    </Pressable>
+  );
+}
+
+function SocialMetric({ emoji, value, label, onPress }: { emoji: string; value: string; label: string; onPress?: () => void }) {
+  const content = (
+    <View style={styles.socialMetricContent}>
+      <AppText variant="caption" tone="inverse">
+        {emoji}
+      </AppText>
+      <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+        {value}
+      </AppText>
+    </View>
+  );
+
+  if (!onPress) {
+    return (
+      <View style={styles.socialMetric} accessibilityLabel={`${value} ${label}`}>
+        {content}
+      </View>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.socialMetric}
+      hitSlop={tokens.spacing.xs}
+      accessibilityRole="button"
+      accessibilityLabel={`${value} ${label}`}
+    >
+      {content}
     </Pressable>
   );
 }
@@ -356,7 +412,7 @@ const styles = StyleSheet.create({
   actionRail: {
     position: 'absolute',
     right: tokens.spacing.sm,
-    bottom: 78,
+    bottom: 108,
     gap: tokens.spacing.xs,
     zIndex: 2,
   },
@@ -405,7 +461,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    minHeight: 86,
+    minHeight: 118,
     justifyContent: 'flex-end',
     paddingTop: tokens.spacing.xl,
   },
@@ -423,6 +479,24 @@ const styles = StyleSheet.create({
   priceText: {
     flexShrink: 1,
     textAlign: 'right',
+  },
+  socialStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.xs,
+  },
+  socialMetric: {
+    minHeight: 24,
+    borderRadius: tokens.radius.full,
+    justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.xs,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  socialMetricContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
   },
   statusPill: {
     minHeight: 28,
