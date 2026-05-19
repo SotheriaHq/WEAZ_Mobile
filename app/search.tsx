@@ -288,6 +288,10 @@ export default function SearchScreen() {
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') return;
         setResultState({ status: 'error', message: getErrorMessage(error) });
+      } finally {
+        if (searchAbortRef.current === controller) {
+          searchAbortRef.current = null;
+        }
       }
     },
     [filterType],
@@ -305,6 +309,16 @@ export default function SearchScreen() {
 
     return () => {
       mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+      suggestAbortRef.current?.abort();
+      searchAbortRef.current?.abort();
     };
   }, []);
 

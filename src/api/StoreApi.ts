@@ -1,7 +1,30 @@
 import { apiClient } from '@/src/api/httpClient';
 import type { CatalogEntityType } from '@/src/features/catalog/catalogDomain';
 import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
-import type { SizeRecommendationResponse, SizeRecommendationSnapshot, SizingRegion } from '@/src/api/ProfileApi';
+
+export type SizingRegion = string;
+
+export interface SizeRecommendationSnapshot {
+  recommendedSize?: string | null;
+  selectedSize?: string | null;
+  confidence?: string | null;
+  region?: SizingRegion | null;
+  measurements?: Record<string, unknown> | null;
+  reasons?: string[];
+  [key: string]: unknown;
+}
+
+export interface SizeRecommendationResponse {
+  productId?: string;
+  recommendedSize?: string | null;
+  selectedSize?: string | null;
+  confidence?: string | null;
+  region?: SizingRegion | null;
+  snapshot?: SizeRecommendationSnapshot | null;
+  alternatives?: Array<Record<string, unknown>>;
+  reasons?: string[];
+  [key: string]: unknown;
+}
 
 export interface StoreProductVariant {
   id?: string;

@@ -12,14 +12,13 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
-import { ProfileApi, type ComputedSizeFitProfile, type Order, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
+import { ProfileApi, type Order, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
-import { CONFIDENCE_LABELS } from '@/src/utils/sizeRecommendation';
 import { resolveIdentity } from '@/src/utils/identity';
 import { profileDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
@@ -30,34 +29,23 @@ type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 type ProfileState = {
   profile: UserProfile | null;
   sizeFit: SizeFitProfile | null;
-  computedSizeFit: ComputedSizeFitProfile | null;
   saved: SavedItem[];
   patches: PatchedBrand[];
   orders: Order[];
 };
 
-type MeasurementKey =
-  | 'HEIGHT'
-  | 'CHEST_BUST'
-  | 'WAIST'
-  | 'HIP_SEAT'
-  | 'SHOULDER'
-  | 'SLEEVE_LENGTH'
-  | 'INSEAM'
-  | 'NECK_COLLAR';
+type MeasurementKey = 'CHEST' | 'WAIST' | 'HIPS' | 'SHOULDER' | 'INSEAM' | 'HEIGHT';
 
 const PROFILE_LOGIN_ROUTE = { pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as const;
 
 const PROFILE_TABS: ProfileTab[] = ['Saved', 'Patches', 'Orders'];
 const MEASUREMENT_FIELDS: Array<{ key: MeasurementKey; label: string }> = [
-  { key: 'HEIGHT', label: 'Height' },
-  { key: 'CHEST_BUST', label: 'Chest / bust' },
+  { key: 'CHEST', label: 'Chest' },
   { key: 'WAIST', label: 'Waist' },
-  { key: 'HIP_SEAT', label: 'Hip / seat' },
+  { key: 'HIPS', label: 'Hips' },
   { key: 'SHOULDER', label: 'Shoulder' },
-  { key: 'SLEEVE_LENGTH', label: 'Sleeve length' },
   { key: 'INSEAM', label: 'Inseam' },
-  { key: 'NECK_COLLAR', label: 'Neck / collar' },
+  { key: 'HEIGHT', label: 'Height' },
 ];
 
 const getSavedLooksCountBucket = (count: number) => {
@@ -68,32 +56,6 @@ const getSavedLooksCountBucket = (count: number) => {
 };
 
 const getProfileTabLabel = (tab: ProfileTab) => (tab === 'Saved' ? 'Saved Looks' : tab);
-
-const MEASUREMENT_ALIASES: Record<MeasurementKey, string[]> = {
-  HEIGHT: ['HEIGHT', 'height', 'stature', 'bodyHeight'],
-  CHEST_BUST: ['CHEST_BUST', 'CHEST', 'BUST', 'chest', 'bust', 'fullBust', 'chestBust', 'WOMEN_CHEST_FULL_BUST', 'MEN_CHEST'],
-  WAIST: ['WAIST', 'waist', 'naturalWaist', 'MEN_WAIST', 'WOMEN_WAIST'],
-  HIP_SEAT: ['HIP_SEAT', 'HIPS', 'HIP', 'SEAT', 'hip', 'hips', 'seat', 'hipSeat', 'WOMEN_HIP', 'MEN_HIP'],
-  SHOULDER: ['SHOULDER', 'shoulder', 'shoulderWidth', 'WOMEN_SHOULDER_WIDTH', 'MEN_SHOULDER'],
-  SLEEVE_LENGTH: ['SLEEVE_LENGTH', 'sleeve', 'sleeveLength', 'armLength', 'MEN_SLEEVE_LENGTH', 'WOMEN_SLEEVE_LENGTH_LONG'],
-  INSEAM: ['INSEAM', 'inseam', 'insideLeg', 'MEN_INSEAM', 'WOMEN_INSEAM'],
-  NECK_COLLAR: ['NECK_COLLAR', 'neck', 'collar', 'collarSize', 'neckGirth'],
-};
-
-const readMeasurementValue = (measurements: Record<string, unknown>, key: MeasurementKey) => {
-  const aliases = MEASUREMENT_ALIASES[key] ?? [key];
-  for (const alias of aliases) {
-    const value = measurements[alias];
-    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-    if (typeof value === 'string' && value.trim()) return value;
-    if (value && typeof value === 'object' && 'value' in (value as Record<string, unknown>)) {
-      const nested = (value as { value?: unknown }).value;
-      if (typeof nested === 'number' && Number.isFinite(nested)) return String(nested);
-      if (typeof nested === 'string' && nested.trim()) return nested;
-    }
-  }
-  return '';
-};
 
 function formatCurrency(amount: number, currency = 'NGN') {
   try {
@@ -118,7 +80,6 @@ function createEmptyProfileState(): ProfileState {
   return {
     profile: null,
     sizeFit: null,
-    computedSizeFit: null,
     saved: [],
     patches: [],
     orders: [],
@@ -268,17 +229,14 @@ function ProfileAction({
 
 function MeasurementCard({
   sizeFit,
-  computedSizeFit,
   onPress,
 }: {
   sizeFit: SizeFitProfile | null;
-  computedSizeFit: ComputedSizeFitProfile | null;
   onPress: () => void;
 }) {
   const { theme } = useTheme();
   const measurements = Object.entries(sizeFit?.measurements ?? {}).filter(([, value]) => String(value).trim().length > 0);
   const measurementCount = measurements.length;
-  const confidence = computedSizeFit?.confidenceLabel ? CONFIDENCE_LABELS[computedSizeFit.confidenceLabel] : null;
 
   return (
     <Card padding="sm" style={[styles.fittingsCard, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -294,22 +252,9 @@ function MeasurementCard({
         <Button title={measurements.length > 0 ? 'Edit' : 'Add'} size="sm" variant="secondary" onPress={onPress} />
       </View>
 
-      <View style={[styles.estimatedSizeRow, { borderColor: theme.colors.border }]}>
-        <View style={styles.sectionHeaderCopy}>
-          <AppText variant="captionBold" tone="muted">Estimated Size</AppText>
-          <AppText variant="h2">{computedSizeFit?.estimatedSize ?? '-'}</AppText>
-          <AppText variant="captionRegular" tone="muted">
-            {computedSizeFit?.displayRange ? `Range: ${computedSizeFit.displayRange}` : 'Based on your saved measurements.'}
-          </AppText>
-        </View>
-        <View style={styles.estimatedConfidence}>
-          <AppText variant="captionBold" tone="primary">{confidence ?? 'Not ready'}</AppText>
-        </View>
-      </View>
-
       {measurements.length === 0 ? (
         <AppText variant="body" tone="muted" style={styles.measurementCopy}>
-          Add your baseline measurements to get standard product recommendations and faster custom orders.
+          Add your baseline measurements once and reuse them across custom orders.
         </AppText>
       ) : null}
 
@@ -458,14 +403,12 @@ export default function BuyerProfileScreen() {
   const [address, setAddress] = useState('');
   const [fitUnit, setFitUnit] = useState<'CM' | 'IN'>('CM');
   const [fitValues, setFitValues] = useState<Record<MeasurementKey, string>>({
-    HEIGHT: '',
-    CHEST_BUST: '',
+    CHEST: '',
     WAIST: '',
-    HIP_SEAT: '',
+    HIPS: '',
     SHOULDER: '',
-    SLEEVE_LENGTH: '',
     INSEAM: '',
-    NECK_COLLAR: '',
+    HEIGHT: '',
   });
   const loadRequestIdRef = useRef(0);
   const lastUserIdRef = useRef<string | null>(null);
@@ -546,10 +489,9 @@ export default function BuyerProfileScreen() {
     }
     setError(null);
     try {
-      const [profileResult, sizeFitResult, computedSizeFitResult, savedResult, patchesResult, ordersResult] = await Promise.allSettled([
+      const [profileResult, sizeFitResult, savedResult, patchesResult, ordersResult] = await Promise.allSettled([
         ProfileApi.getMe(),
         ProfileApi.getSizeFit(),
-        ProfileApi.getComputedSizeFit(),
         ProfileApi.getSaved(),
         ProfileApi.getPatches(user.id),
         ProfileApi.getOrders({ limit: 20, page: 1 }),
@@ -562,15 +504,12 @@ export default function BuyerProfileScreen() {
           ? profileResult.value
           : fallbackProfile;
       const nextSizeFit = sizeFitResult.status === 'fulfilled' ? sizeFitResult.value : null;
-      const nextComputedSizeFit =
-        computedSizeFitResult.status === 'fulfilled' ? computedSizeFitResult.value : null;
       const nextSaved = savedResult.status === 'fulfilled' ? savedResult.value : [];
       const nextPatches = patchesResult.status === 'fulfilled' ? patchesResult.value : [];
       const nextOrders = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
       const profileFailed = profileResult.status === 'rejected' && !isNotFoundError(profileResult.reason);
       const optionalFailures = [
         { section: 'size-fit', endpoint: '/users/me/size-fit', result: sizeFitResult },
-        { section: 'computed-size-fit', endpoint: '/users/me/size-fit/computed', result: computedSizeFitResult },
         { section: 'saved', endpoint: '/saved/me', result: savedResult },
         { section: 'patches', endpoint: `/users/${user.id}/patches`, result: patchesResult },
         { section: 'orders', endpoint: '/order/my-orders', result: ordersResult },
@@ -588,7 +527,6 @@ export default function BuyerProfileScreen() {
       setState({
         profile: nextProfile,
         sizeFit: nextSizeFit,
-        computedSizeFit: nextComputedSizeFit,
         saved: nextSaved,
         patches: nextPatches,
         orders: nextOrders,
@@ -632,14 +570,12 @@ export default function BuyerProfileScreen() {
     const measurements = state.sizeFit?.measurements ?? {};
     setFitUnit(state.sizeFit?.preferredLengthUnit ?? 'CM');
     setFitValues({
-      HEIGHT: readMeasurementValue(measurements, 'HEIGHT'),
-      CHEST_BUST: readMeasurementValue(measurements, 'CHEST_BUST'),
-      WAIST: readMeasurementValue(measurements, 'WAIST'),
-      HIP_SEAT: readMeasurementValue(measurements, 'HIP_SEAT'),
-      SHOULDER: readMeasurementValue(measurements, 'SHOULDER'),
-      SLEEVE_LENGTH: readMeasurementValue(measurements, 'SLEEVE_LENGTH'),
-      INSEAM: readMeasurementValue(measurements, 'INSEAM'),
-      NECK_COLLAR: readMeasurementValue(measurements, 'NECK_COLLAR'),
+      CHEST: String(measurements.CHEST ?? ''),
+      WAIST: String(measurements.WAIST ?? ''),
+      HIPS: String(measurements.HIPS ?? ''),
+      SHOULDER: String(measurements.SHOULDER ?? ''),
+      INSEAM: String(measurements.INSEAM ?? ''),
+      HEIGHT: String(measurements.HEIGHT ?? ''),
     });
   }, [fittingsOpen, state.sizeFit]);
 
@@ -654,8 +590,8 @@ export default function BuyerProfileScreen() {
   }, []);
 
   const handleOpenSettings = useCallback(() => {
-    router.push('/settings' as any);
-  }, []);
+    toast.info('More settings are coming soon.');
+  }, [toast]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -759,8 +695,7 @@ export default function BuyerProfileScreen() {
         measurements,
         preferredLengthUnit: fitUnit,
       });
-      const computed = await ProfileApi.getComputedSizeFit().catch(() => null);
-      setState((current) => ({ ...current, sizeFit: updated, computedSizeFit: computed }));
+      setState((current) => ({ ...current, sizeFit: updated }));
       setFittingsOpen(false);
       toast.success('Fittings updated.');
     } catch (nextError) {
@@ -869,11 +804,7 @@ export default function BuyerProfileScreen() {
           <SummaryStat title="History" value={String(profileCounts.orders)} subtitle="orders" />
         </View>
 
-        <MeasurementCard
-          sizeFit={state.sizeFit}
-          computedSizeFit={state.computedSizeFit}
-          onPress={() => setFittingsOpen(true)}
-        />
+        <MeasurementCard sizeFit={state.sizeFit} onPress={() => setFittingsOpen(true)} />
 
         {error ? (
           <View style={[styles.inlineNotice, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
@@ -1029,43 +960,6 @@ export default function BuyerProfileScreen() {
           })}
         </View>
 
-        <Card padding="sm" style={[styles.sheetSizingSummary, { backgroundColor: theme.colors.surfaceAlt }]}>
-          <View style={styles.sectionHeaderRow}>
-            <View style={styles.sectionHeaderCopy}>
-              <AppText variant="bodyBold">Estimated category sizes</AppText>
-              <AppText variant="captionRegular" tone="muted">
-                Based on your saved measurements and approved sizing data.
-              </AppText>
-            </View>
-            <Button title="Guide" size="sm" variant="secondary" onPress={() => router.push('/size-guide' as any)} />
-          </View>
-          {state.computedSizeFit?.categoryBreakdown ? (
-            <View style={styles.categoryGrid}>
-              {[
-                ['Tops', state.computedSizeFit.categoryBreakdown.tops],
-                ['Bottoms', state.computedSizeFit.categoryBreakdown.bottoms],
-                ['Gowns / Dresses', state.computedSizeFit.categoryBreakdown.gownsDresses],
-                ['Formal Shirts', state.computedSizeFit.categoryBreakdown.formalShirts],
-              ]
-                .filter(([, value]) => Boolean(value))
-                .map(([label, value]) => {
-                  const recommendation = value as NonNullable<ComputedSizeFitProfile['categoryBreakdown'][string]>;
-                  return (
-                    <View key={String(label)} style={[styles.categoryCard, { borderColor: theme.colors.border }]}>
-                      <AppText variant="captionBold">{String(label)}</AppText>
-                      <AppText variant="bodyBold">{recommendation.recommendedSize ?? recommendation.estimatedSize ?? '-'}</AppText>
-                      <AppText variant="captionRegular" tone="muted">
-                        {recommendation.confidenceLabel ? CONFIDENCE_LABELS[recommendation.confidenceLabel] : 'Not ready'}
-                      </AppText>
-                    </View>
-                  );
-                })}
-            </View>
-          ) : (
-            <AppText variant="captionRegular" tone="muted">Complete your measurements to improve recommendations.</AppText>
-          )}
-        </Card>
-
         {MEASUREMENT_FIELDS.map((field) => (
           <Input
             key={field.key}
@@ -1183,18 +1077,6 @@ const styles = StyleSheet.create({
   measurementCopy: {
     lineHeight: 18,
   },
-  estimatedSizeRow: {
-    borderWidth: 1,
-    borderRadius: tokens.radius.lg,
-    padding: tokens.spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.md,
-  },
-  estimatedConfidence: {
-    alignItems: 'flex-end',
-  },
   measurementEmpty: {
     alignItems: 'center',
     gap: tokens.spacing.xs,
@@ -1305,22 +1187,6 @@ const styles = StyleSheet.create({
   unitRow: {
     flexDirection: 'row',
     gap: tokens.spacing.sm,
-  },
-  sheetSizingSummary: {
-    gap: tokens.spacing.md,
-    marginBottom: tokens.spacing.md,
-  },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
-  },
-  categoryCard: {
-    width: '48%',
-    borderWidth: 1,
-    borderRadius: tokens.radius.md,
-    padding: tokens.spacing.sm,
-    gap: tokens.spacing.xs,
   },
   unitPill: {
     flex: 1,
