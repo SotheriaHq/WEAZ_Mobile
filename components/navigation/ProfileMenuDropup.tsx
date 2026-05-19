@@ -335,22 +335,6 @@ export function ProfileMenuDropup({
               ) : null}
 
               <Pressable
-                onPress={onOpenProfile}
-                accessibilityRole="button"
-                accessibilityLabel="View full profile"
-                style={({ pressed }) => [styles.item, pressed && styles.pressed]}
-              >
-                <View style={styles.iconSlot}>
-                  <AppText variant="captionBold">👤</AppText>
-                </View>
-                <View style={styles.textWrap}>
-                  <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
-                    View full profile
-                  </AppText>
-                </View>
-              </Pressable>
-
-              <Pressable
                 onPress={handleOpenSettings}
                 accessibilityRole="button"
                 accessibilityLabel="Open settings"

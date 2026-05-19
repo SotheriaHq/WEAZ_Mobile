@@ -457,6 +457,7 @@ export default function InboxScreen() {
             returnKeyType="search"
             expanded={searchExpanded}
             onExpandedChange={setSearchExpanded}
+            collapsedVariant="bare"
             containerStyle={[styles.searchControl, searchExpanded ? styles.searchControlExpanded : null]}
           />
         </View>
@@ -551,6 +552,7 @@ const styles = StyleSheet.create({
   searchControl: {
     width: 44,
     alignSelf: 'center',
+    marginLeft: 'auto',
   },
   searchControlExpanded: {
     flex: 1,

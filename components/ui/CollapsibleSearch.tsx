@@ -17,6 +17,7 @@ type Props = Omit<TextInputProps, 'style' | 'value' | 'onChangeText'> & {
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   collapseOnBlurWhenEmpty?: boolean;
+  collapsedVariant?: 'surface' | 'bare';
 };
 
 export function CollapsibleSearch({
@@ -30,6 +31,7 @@ export function CollapsibleSearch({
   expanded,
   onExpandedChange,
   collapseOnBlurWhenEmpty = true,
+  collapsedVariant = 'surface',
   onBlur,
   ...textInputProps
 }: Props) {
@@ -107,9 +109,10 @@ export function CollapsibleSearch({
           onPress={handleIconPress}
           style={({ pressed }) => [
             styles.iconButton,
+            collapsedVariant === 'bare' && styles.iconButtonBare,
             {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
+              backgroundColor: collapsedVariant === 'bare' ? 'transparent' : theme.colors.surface,
+              borderColor: collapsedVariant === 'bare' ? 'transparent' : theme.colors.border,
               opacity: pressed ? 0.82 : 1,
             },
           ]}
@@ -163,6 +166,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  iconButtonBare: {
+    borderWidth: 0,
   },
   input: {
     width: '100%',

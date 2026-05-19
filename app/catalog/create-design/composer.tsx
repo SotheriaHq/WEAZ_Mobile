@@ -4,7 +4,6 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
-import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { AppMultiSelectSheet, AppSelectSheet } from '@/components/ui/AppSelectSheet';
@@ -16,6 +15,7 @@ import { Input } from '@/components/ui/Input';
 import { OptionRow } from '@/components/ui/OptionRow';
 import { RequiredFieldLabel } from '@/components/ui/RequiredFieldLabel';
 import { StableImage } from '@/components/ui/StableImage';
+import { ThreadlySheet } from '@/src/components/ui/ThreadlySheet';
 import type { FilterDimensionOption } from '@/src/api/DesignApi';
 import TagsApi from '@/src/api/TagsApi';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
@@ -100,7 +100,6 @@ export default function CreateDesignComposerScreen() {
   const pickerSourceParam = Array.isArray(params.pickerSource) ? params.pickerSource[0] : params.pickerSource;
   const shouldOpenInitialPicker = openPickerParam === '1' || openPickerParam === 'true';
   const initialPickerSource: DesignEditorMediaSource = pickerSourceParam === 'camera' ? 'camera' : 'library';
-  const plusRef = useRef<View>(null);
   const hasEverHadAssetsRef = useRef(false);
   const initialPickerStartedRef = useRef(false);
 
@@ -444,9 +443,7 @@ export default function CreateDesignComposerScreen() {
                       : 'No media selected yet'}
                 </AppText>
               </View>
-              <View ref={plusRef}>
-                <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
-              </View>
+              <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
             </View>
             {assets.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaStrip}>
@@ -1007,28 +1004,26 @@ export default function CreateDesignComposerScreen() {
         {renderDiscoverySections(occasionDimensions, 'Occasion options could not load. You can still save a draft.')}
       </AppBottomSheet>
 
-      <AppFloatingMenu
+      <ThreadlySheet
         visible={mediaOpen}
-        anchorRef={plusRef}
+        title="Add media"
+        subtitle="Choose how to add a reference image for this design."
         onClose={() => setMediaOpen(false)}
         options={[
           {
-            key: 'camera',
-            icon: '📷',
-            title: 'Camera',
-            onPress: () => void handlePickMedia('camera'),
+            label: 'Camera',
+            icon: <AppText variant="subtitle">📷</AppText>,
+            onSelect: () => void handlePickMedia('camera'),
           },
           {
-            key: 'media',
-            icon: '🖼️',
-            title: 'Media',
-            onPress: () => void handlePickMedia('library'),
+            label: 'Select from library',
+            icon: <AppText variant="subtitle">🖼️</AppText>,
+            onSelect: () => void handlePickMedia('library'),
           },
           {
-            key: 'attachment',
-            icon: '📎',
-            title: 'Attachment',
-            onPress: () => void handlePickMedia('library'),
+            label: 'Attachment',
+            icon: <AppText variant="subtitle">📎</AppText>,
+            onSelect: () => void handlePickMedia('library'),
           },
         ]}
       />

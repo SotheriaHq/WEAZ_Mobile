@@ -46,11 +46,9 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   width,
   height,
   title,
-  brandName,
   priceLabel,
   mediaSrc,
   mediaFileId,
-  typeLabel,
   unavailable = false,
   favorite = false,
   favoriteBusy = false,
@@ -59,7 +57,6 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   actionBusy = false,
   actionDisabled = false,
   topRightSlot,
-  metaLabel,
   newDropItemId,
   newDropCreatedAt,
   analyticsSourceScreen = 'market',
@@ -77,7 +74,6 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   });
   const cardHeight = height ?? Math.round(width * 1.58);
   const canPressAction = Boolean(onActionPress) && !actionBusy && !actionDisabled && !unavailable;
-  const displayBrand = brandName?.trim() || metaLabel?.trim() || 'Threadly brand';
   const displayPrice = priceLabel?.trim() || 'Price on request';
 
   return (
@@ -125,23 +121,22 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
         style={styles.mediaShade}
       />
 
-      {typeLabel ? (
-        <View style={[styles.typeBadge, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
-          <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
-            {typeLabel}
-          </AppText>
-        </View>
-      ) : null}
-
       {newDropItemId ? (
         <NewDropBadge
           itemId={newDropItemId}
           createdAt={newDropCreatedAt}
           sourceScreen={analyticsSourceScreen}
           feedPosition={feedPosition}
+          compact
           style={styles.newDropBadge}
         />
       ) : null}
+
+      <View style={[styles.priceChip, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
+        <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.priceChipText}>
+          {displayPrice}
+        </AppText>
+      </View>
 
       {topRightSlot ? (
         <View style={styles.topRightSlot}>{topRightSlot}</View>
@@ -171,22 +166,21 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
         </Pressable>
       ) : null}
 
-      <BlurView tint={scheme === 'dark' ? 'dark' : 'light'} intensity={theme.colors.glassBlur as number} style={styles.copyOverlay}>
+      <BlurView
+        tint={scheme === 'dark' ? 'dark' : 'light'}
+        intensity={theme.colors.glassBlur as number}
+        style={[styles.copyOverlay, { maxHeight: Math.round(cardHeight * 0.2) }]}
+      >
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.backdropStrong }]} />
         <View style={styles.copyStack}>
           <View style={styles.titleBlock}>
             <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
               {title}
             </AppText>
-            <AppText variant="caption" tone="inverse" numberOfLines={1}>
-              {displayBrand}
-            </AppText>
           </View>
 
           <View style={styles.actionRow}>
-            <AppText variant="captionBold" tone="primary" numberOfLines={1} style={styles.priceText}>
-              {displayPrice}
-            </AppText>
+            <View style={styles.actionSpacer} />
             {actionLabel ? (
               <Pressable
                 onPress={(event) => {
@@ -249,23 +243,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: tokens.spacing.xs,
   },
-  typeBadge: {
-    position: 'absolute',
-    left: tokens.spacing.sm,
-    top: tokens.spacing.sm,
-    minHeight: 28,
-    maxWidth: '62%',
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   newDropBadge: {
     position: 'absolute',
     left: tokens.spacing.sm,
-    top: 44,
-    maxWidth: '62%',
+    top: tokens.spacing.sm,
+    maxWidth: '18%',
+    opacity: 0.9,
+  },
+  priceChip: {
+    position: 'absolute',
+    right: tokens.spacing.sm,
+    bottom: 86,
+    maxWidth: '30%',
+    minHeight: 26,
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  priceChipText: {
+    textAlign: 'center',
   },
   topRightSlot: {
     position: 'absolute',
@@ -293,30 +291,30 @@ const styles = StyleSheet.create({
   },
   copyStack: {
     paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
     gap: tokens.spacing.xs,
   },
   titleBlock: {
     minWidth: 0,
   },
   actionRow: {
-    minHeight: 34,
+    minHeight: 26,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.sm,
   },
-  priceText: {
+  actionSpacer: {
     flex: 1,
     minWidth: 0,
   },
   actionButton: {
     minWidth: 50,
-    height: 34,
+    height: 26,
     borderRadius: tokens.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.xs,
   },
   inlinePressed: {
     opacity: 0.82,

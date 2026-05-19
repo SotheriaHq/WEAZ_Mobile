@@ -12,6 +12,7 @@ type NewDropBadgeProps = {
   createdAt?: string | null;
   sourceScreen: string;
   feedPosition?: number;
+  compact?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -20,6 +21,7 @@ export function NewDropBadge({
   createdAt,
   sourceScreen,
   feedPosition,
+  compact = false,
   style,
 }: NewDropBadgeProps) {
   const { theme } = useTheme();
@@ -47,6 +49,7 @@ export function NewDropBadge({
       pointerEvents="none"
       style={[
         styles.badge,
+        compact && styles.compactBadge,
         {
           backgroundColor: theme.colors.primarySoft,
           borderColor: theme.colors.primary,
@@ -55,7 +58,7 @@ export function NewDropBadge({
       ]}
     >
       <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-        New Drop
+        {compact ? 'New' : 'New Drop'}
       </AppText>
     </View>
   );
@@ -69,6 +72,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  compactBadge: {
+    minHeight: 22,
+    paddingHorizontal: tokens.spacing.xs,
   },
 });
 

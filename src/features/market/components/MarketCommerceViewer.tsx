@@ -283,7 +283,7 @@ export function MarketCommerceViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [sheetExpanded, setSheetExpanded] = useState(true);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const normalizedSourceId = String(sourceId ?? '').trim();
@@ -291,9 +291,9 @@ export function MarketCommerceViewer({
   const bagBusy = Boolean(loadingByProductId[sourceStatusKey] || busyAction === ACTION_KIND_BAG);
   const activeSheetHeight = sheetExpanded
     ? Math.min(420, Math.max(320, Math.round(height * 0.48)))
-    : 116;
+    : 56;
   const mediaHeight = height;
-  const actionBottom = activeSheetHeight + chrome.immersiveOverlayBottomClearance + tokens.spacing.md;
+  const actionTop = chrome.insets.top + tokens.spacing['3xl'] + tokens.spacing.md;
 
   const load = useCallback(async () => {
     if (!normalizedSourceId) {
@@ -595,20 +595,20 @@ export function MarketCommerceViewer({
         {
           height: activeSheetHeight,
           bottom: chrome.immersiveOverlayBottomClearance,
-          backgroundColor: theme.colors.bottomSheetSurface,
-          borderColor: theme.colors.border,
+          backgroundColor: sheetExpanded ? theme.colors.bottomSheetSurface : theme.colors.glassSurfaceStrong,
+          borderColor: sheetExpanded ? theme.colors.border : theme.colors.glassBorder,
         },
       ]}
     >
       <Pressable
         onPress={() => setSheetExpanded((current) => !current)}
-        style={styles.sheetHandleWrap}
+        style={[styles.sheetHandleWrap, !sheetExpanded && styles.sheetHandleWrapCollapsed]}
         accessibilityRole="button"
         accessibilityLabel={sheetExpanded ? 'Collapse product details' : 'Expand product details'}
       >
         <View style={[styles.sheetHandle, { backgroundColor: theme.colors.bottomSheetHandle }]} />
         <AppText variant="captionBold" tone="muted">
-          {sheetExpanded ? 'Collapse details for full view' : 'Swipe up for product details'}
+          {sheetExpanded ? 'Collapse details for full view' : 'Swipe up for details'}
         </AppText>
       </Pressable>
 
@@ -680,17 +680,7 @@ export function MarketCommerceViewer({
             </View>
           ) : null}
         </ScrollView>
-      ) : (
-        <View style={styles.collapsedSheetContent}>
-          <View style={styles.collapsedCopy}>
-            <AppText variant="captionBold" tone="primary" numberOfLines={1}>{brandName}</AppText>
-            <AppText variant="bodyBold" numberOfLines={1}>{title}</AppText>
-          </View>
-          <AppText variant="captionBold" tone="secondary" numberOfLines={1}>
-            {priceLabel ?? stockLabel}
-          </AppText>
-        </View>
-      )}
+      ) : null}
     </View>
   );
 
@@ -748,19 +738,20 @@ export function MarketCommerceViewer({
       </View>
 
       {media.length > 1 ? (
-        <View style={[styles.paginationPill, { backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder }]}>
+        <View style={[styles.paginationPill, { top: actionTop + 56, backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder }]}>
           <AppText variant="captionBold" tone="default">
             {activeIndex + 1} / {media.length}
           </AppText>
         </View>
       ) : null}
 
-      <View style={[styles.actionCluster, { bottom: actionBottom }]}>
+      <View style={[styles.actionCluster, { top: actionTop }]}>
         <Pressable
           onPress={handleBagPress}
           disabled={bagDisabled}
           style={({ pressed }) => [
             styles.bagAction,
+            styles.bagActionTop,
             {
               backgroundColor: bagDisabled ? theme.colors.surfaceAlt : theme.colors.primary,
               borderColor: bagDisabled ? theme.colors.border : theme.colors.primary,
@@ -774,8 +765,8 @@ export function MarketCommerceViewer({
             <ActivityIndicator color={bagDisabled ? theme.colors.primary : theme.colors.onPrimary} />
           ) : (
             <>
-              <AppText variant="bodyBold" tone={bagDisabled ? 'muted' : 'inverse'} numberOfLines={1}>
-                {bagLabel}
+              <AppText variant="captionBold" tone={bagDisabled ? 'muted' : 'inverse'} numberOfLines={1}>
+                {`${BAG_IT_EMOJI} ${BAG_IT_LABEL}`}
               </AppText>
               {bagStatus?.standard.inBag || bagStatus?.custom.alreadyBagged ? (
                 <AppText variant="captionBold" tone={bagDisabled ? 'muted' : 'inverse'}>Already in My Bag</AppText>
@@ -801,7 +792,7 @@ export function MarketCommerceViewer({
             }
           >
             <AppText variant="bodyBold" tone="default">
-              {sourceType === 'PRODUCT' ? (saved ? 'Wishlisted' : 'Wishlist') : (saved ? 'Saved Look' : 'Save look')}
+              {sourceType === 'PRODUCT' ? (saved ? 'Wishlisted' : 'Wishlist') : (saved ? 'Saved' : 'Save')}
             </AppText>
           </Pressable>
           <Pressable
@@ -901,6 +892,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: tokens.spacing.lg,
     right: tokens.spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: tokens.spacing.sm,
   },
   bagAction: {
@@ -912,18 +905,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.lg,
     gap: tokens.spacing.xs,
   },
+  bagActionTop: {
+    flex: 1.15,
+    minHeight: 44,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.md,
+  },
   secondaryActions: {
     flexDirection: 'row',
+    flex: 1,
     gap: tokens.spacing.sm,
   },
   sideAction: {
     flex: 1,
-    minHeight: 46,
-    borderRadius: tokens.radius.lg,
+    minHeight: 44,
+    borderRadius: tokens.radius.full,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.sm,
   },
   metadataSheet: {
     position: 'absolute',
@@ -941,6 +941,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: tokens.spacing.xs,
+  },
+  sheetHandleWrapCollapsed: {
+    minHeight: 56,
   },
   sheetHandle: {
     width: 54,

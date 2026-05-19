@@ -6,6 +6,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
+import { GoogleMark } from '@/components/auth/GoogleMark';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -60,6 +61,17 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function isCredentialFailure(error: unknown) {
+  const message = getErrorMessage(error, '').toLowerCase();
+  return (
+    message.includes('invalid') ||
+    message.includes('credential') ||
+    message.includes('password') ||
+    message.includes('unauthorized') ||
+    message.includes('not found')
+  );
+}
+
 export default function LoginScreen() {
   const { theme } = useTheme();
   const { signIn, signInWithGoogle, status, user } = useAuth();
@@ -84,6 +96,10 @@ export default function LoginScreen() {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordSetupLoading, setPasswordSetupLoading] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(false);
+  const [credentialFailures, setCredentialFailures] = useState<{ email: string; count: number }>({
+    email: '',
+    count: 0,
+  });
 
   const googleTokenRequest = useGoogleIdTokenRequest({
     loginHint: stripInvisibleAuthSpacing(email).trim() || undefined,
@@ -164,8 +180,17 @@ export default function LoginScreen() {
   const showGoogleAction =
     loginStep === 'email' ||
     loginStep === 'google-only' ||
-    loginStep === 'generic' ||
     Boolean(loginOptions?.methods.google);
+  const showSignupHint =
+    credentialFailures.email === normalizedEmail && credentialFailures.count >= 3;
+
+  const recordCredentialFailure = () => {
+    setCredentialFailures((current) =>
+      current.email === normalizedEmail
+        ? { email: normalizedEmail, count: current.count + 1 }
+        : { email: normalizedEmail, count: 1 },
+    );
+  };
 
   const resetProgressiveFlow = () => {
     setLoginStep('email');
@@ -197,10 +222,17 @@ export default function LoginScreen() {
       } else if (options.methods.google || options.methods.passwordSetupAvailable) {
         setLoginStep('google-only');
       } else {
-        setLoginStep('generic');
+        recordCredentialFailure();
+        toast.error('Invalid credentials');
+        setLoginStep('email');
       }
     } catch (error) {
-      setFlowError(getErrorMessage(error, 'Unable to check sign-in options. Try again.'));
+      if (isCredentialFailure(error)) {
+        recordCredentialFailure();
+        toast.error('Invalid credentials');
+      } else {
+        setFlowError(getErrorMessage(error, 'Unable to check sign-in options. Try again.'));
+      }
     } finally {
       setOptionsLoading(false);
     }
@@ -232,7 +264,8 @@ export default function LoginScreen() {
       toast.success('Welcome back!');
       setPendingNavigation(true);
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Login failed. Please try again.'));
+      recordCredentialFailure();
+      toast.error('Invalid credentials');
     } finally {
       setSubmitting(false);
     }
@@ -415,7 +448,9 @@ export default function LoginScreen() {
 
             <View style={styles.fieldsContainer}>
               <FloatingLabelInput
-                label="Email Address"
+                label="Email"
+                placeholder="Email"
+                hideLabel
                 icon="@"
                 value={email}
                 onChangeText={(value) => {
@@ -435,6 +470,8 @@ export default function LoginScreen() {
               {loginStep === 'password' ? (
                 <FloatingLabelInput
                   label="Password"
+                  placeholder="Password"
+                  hideLabel
                   icon="*"
                   value={password}
                   onChangeText={(value) => {
@@ -453,15 +490,6 @@ export default function LoginScreen() {
                 <AppText variant="bodyBold">This account uses Google sign-in.</AppText>
                 <AppText variant="caption" tone="muted" style={styles.statePanelText}>
                   Continue with Google, or verify your email to create a Threadly password.
-                </AppText>
-              </View>
-            ) : null}
-
-            {loginStep === 'generic' ? (
-              <View style={styles.statePanel}>
-                <AppText variant="bodyBold">Choose a sign-in path</AppText>
-                <AppText variant="caption" tone="muted" style={styles.statePanelText}>
-                  Continue with Google or create an account if you are new to Threadly.
                 </AppText>
               </View>
             ) : null}
@@ -588,7 +616,7 @@ export default function LoginScreen() {
               />
             ) : null}
 
-            {loginStep === 'email' || loginStep === 'generic' ? (
+            {loginStep === 'email' ? (
               <View style={styles.primaryAction}>
                 <PrimaryAuthButton
                   title="CONTINUE"
@@ -613,12 +641,13 @@ export default function LoginScreen() {
             {showGoogleAction ? (
               <View style={styles.googleAction}>
                 <Button
-                  title={loginStep === 'email' ? 'CONTINUE WITH GOOGLE' : 'GOOGLE'}
+                  title="Continue with Google"
                   variant="outline"
                   onPress={handleGoogleSignIn}
                   loading={googleLoading}
                   disabled={!googleTokenRequest.configured || !googleTokenRequest.ready || googleLoading}
                   fullWidth
+                  left={<GoogleMark />}
                   testID="login-google-button"
                 />
                 {__DEV__ && !googleTokenRequest.configured ? (
@@ -626,6 +655,23 @@ export default function LoginScreen() {
                     Google sign-in needs public Google client IDs in this build.
                   </AppText>
                 ) : null}
+              </View>
+            ) : null}
+
+            {showSignupHint ? (
+              <View style={styles.signupHint}>
+                <AppText variant="captionRegular" tone="muted">
+                  New here?{' '}
+                </AppText>
+                <Pressable
+                  onPress={() => router.push({ pathname: '/(auth)/signup', params: { next: nextPath } })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Create an account"
+                >
+                  <AppText variant="captionBold" tone="primary">
+                    Create an account.
+                  </AppText>
+                </Pressable>
               </View>
             ) : null}
 
@@ -641,16 +687,6 @@ export default function LoginScreen() {
                 disabled={emailCodeLoading}
                 fullWidth
                 style={styles.passwordSetupButton}
-              />
-            ) : null}
-
-            {loginStep !== 'email' ? (
-              <Button
-                title="Use a different email"
-                variant="ghost"
-                size="xs"
-                onPress={resetProgressiveFlow}
-                style={styles.changeEmailButton}
               />
             ) : null}
 
@@ -803,12 +839,15 @@ const styles = StyleSheet.create({
   googleConfigText: {
     textAlign: 'center',
   },
+  signupHint: {
+    marginTop: tokens.spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
   passwordSetupButton: {
     marginTop: tokens.spacing.md,
-  },
-  changeEmailButton: {
-    alignSelf: 'center',
-    marginTop: tokens.spacing.sm,
   },
   footerRow: {
     marginTop: tokens.spacing['2xl'],

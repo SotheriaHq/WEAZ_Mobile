@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Animated, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { AppText } from '@/components/ui/AppText';
+import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import type { CollectionDto } from '@/src/api/BrandApi';
@@ -21,6 +22,9 @@ export interface CollectionCardProps {
   onLike?: (id: string) => void;
   onComment?: (id: string) => void;
   onShare?: (id: string) => void;
+  onSave?: (collection: CollectionDto) => void;
+  isSaved?: boolean;
+  saveBusy?: boolean;
   showActions?: boolean;
   isDraft?: boolean;
   isOwner?: boolean;
@@ -35,12 +39,6 @@ const formatPrice = (price?: number | null): string | null => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(price);
-};
-
-const formatCount = (count: number): string => {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
-  return String(count);
 };
 
 const priceRange = (minPrice?: number | null, maxPrice?: number | null) => {
@@ -68,9 +66,10 @@ export const CollectionCard = React.memo(function CollectionCard({
   onPress,
   onEdit,
   onDelete,
-  onLike,
-  onComment,
   onShare,
+  onSave,
+  isSaved = false,
+  saveBusy = false,
   showActions = true,
   isDraft = false,
   isOwner = false,
@@ -83,7 +82,7 @@ export const CollectionCard = React.memo(function CollectionCard({
   const scale = React.useRef(new Animated.Value(1)).current;
 
   const width = Math.round(cardWidth ?? (screenWidth - tokens.spacing.lg * 2 - tokens.spacing.md) / 2);
-  const imageHeight = Math.round(width * 1.14);
+  const imageHeight = Math.round(width * 1.32);
   const coverUri = useResolvedImageUri({
     src: collection.coverImage,
     fileId: collection.coverFileId,
@@ -143,7 +142,8 @@ export const CollectionCard = React.memo(function CollectionCard({
           {showImage ? (
             <StableImage
               uri={coverUri}
-              resizeMode="cover"
+              resizeMode="contain"
+              aspectAware
               containerStyle={[styles.coverImage, { width, height: imageHeight }]}
               imageStyle={[styles.coverImage, { width, height: imageHeight }]}
               onError={() => setImageFailed(true)}
@@ -159,11 +159,25 @@ export const CollectionCard = React.memo(function CollectionCard({
             </AppText>
           </View>
 
+          <NewDropBadge
+            itemId={collection.id}
+            createdAt={collection.createdAt}
+            sourceScreen="profile-catalog"
+            compact
+            style={styles.newDropBadge}
+          />
+
           {showActions && !isDraft ? (
             <View style={styles.actionRail}>
-              <RailButton label={formatCount(collection.likesCount ?? 0)} emoji="🧵" onPress={() => onLike?.(collection.id)} />
-              <RailButton label={formatCount(collection.commentsCount ?? 0)} emoji="💬" onPress={() => onComment?.(collection.id)} />
-              <RailButton emoji="↗" onPress={() => onShare?.(collection.id)} />
+              {!isOwner && onSave ? (
+                <RailButton
+                  label={isSaved ? 'Saved' : 'Save'}
+                  emoji={isSaved ? '♥' : '♡'}
+                  busy={saveBusy}
+                  onPress={() => onSave(collection)}
+                />
+              ) : null}
+              {onShare ? <RailButton emoji="↗" onPress={() => onShare(collection.id)} /> : null}
             </View>
           ) : null}
 
@@ -266,12 +280,13 @@ function ImageFallback({ title }: { title: string }) {
   );
 }
 
-function RailButton({ emoji, label, onPress }: { emoji: string; label?: string; onPress?: () => void }) {
+function RailButton({ emoji, label, busy = false, onPress }: { emoji: string; label?: string; busy?: boolean; onPress?: () => void }) {
   const { theme, scheme } = useTheme();
 
   return (
     <Pressable
       onPress={onPress}
+      disabled={busy}
       style={[styles.railButton, { backgroundColor: theme.colors.glassSurface }]}
       hitSlop={tokens.spacing.xs}
       accessibilityRole="button"
@@ -282,7 +297,7 @@ function RailButton({ emoji, label, onPress }: { emoji: string; label?: string; 
         style={StyleSheet.absoluteFillObject}
       />
       <View style={styles.railButtonContent}>
-        <AppText variant="caption">{emoji}</AppText>
+        {busy ? <ActivityIndicator size="small" color={theme.colors.primary} /> : <AppText variant="caption">{emoji}</AppText>}
         {label ? (
           <AppText variant="captionBold" tone="secondary">
             {label}
@@ -332,10 +347,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  newDropBadge: {
+    position: 'absolute',
+    top: 42,
+    left: tokens.spacing.sm,
+    maxWidth: '22%',
+  },
   actionRail: {
     position: 'absolute',
     right: tokens.spacing.sm,
-    bottom: 92,
+    bottom: 78,
     gap: tokens.spacing.xs,
     zIndex: 2,
   },
@@ -384,14 +405,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    minHeight: 118,
+    minHeight: 86,
     justifyContent: 'flex-end',
-    paddingTop: tokens.spacing['3xl'],
+    paddingTop: tokens.spacing.xl,
   },
   metadataPanel: {
     gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.md,
-    paddingBottom: tokens.spacing.md,
+    paddingBottom: tokens.spacing.sm,
   },
   cardMetaRow: {
     flexDirection: 'row',

@@ -30,6 +30,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
 import { canManageCatalog, getActiveBrandId } from '@/src/auth/brandAccess';
 import { brandApi, type BrandProfileDto, type CollectionDto } from '@/src/api/BrandApi';
+import { SavedItemsApi } from '@/src/api/SavedItemsApi';
 import { OwnerCatalogMediaHeader } from '@/components/catalog/OwnerCatalogMediaHeader';
 import { BrandProfileHeader, BrandProfileHeaderSkeleton, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
 import MobileProfileImageModal from '@/components/profile/ProfileImageModal';
@@ -47,7 +48,6 @@ import { getBrandBadges } from '@/components/catalog/ProfileBadge';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
 import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
 import { AppActionSheet } from '@/components/ui/AppActionSheet';
 import { AppQrSheet } from '@/components/ui/AppQrSheet';
@@ -220,17 +220,11 @@ export default function CatalogScreen() {
   const [draftDeleteTarget, setDraftDeleteTarget] = useState<CollectionDto | null>(null);
   const [draftDeletePhrase, setDraftDeletePhrase] = useState('');
   const [draftDeleteBusy, setDraftDeleteBusy] = useState(false);
-  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [savedCatalogById, setSavedCatalogById] = useState<Record<string, boolean>>({});
+  const [savingCatalogById, setSavingCatalogById] = useState<Record<string, boolean>>({});
   const [shareActionsOpen, setShareActionsOpen] = useState(false);
   const [brandQrOpen, setBrandQrOpen] = useState(false);
   const [tabHeights, setTabHeights] = useState<Partial<Record<TabType, number>>>({});
-  const [createMenuAnchorMetrics, setCreateMenuAnchorMetrics] = useState<{
-    pageX: number;
-    pageY: number;
-    width: number;
-    height: number;
-  } | null>(null);
-  const createMenuAnchorRef = useRef<View>(null);
   const tabPagerRef = useRef<ScrollView>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
   const activeTabPagerHeight = tabHeights[activeTab];
@@ -684,6 +678,33 @@ export default function CatalogScreen() {
   }, [backgroundTaskCollections, currentCollections, visibleDesignBackgroundTasks]);
 
   useEffect(() => {
+    if (isOwner || status !== 'authenticated') {
+      setSavedCatalogById({});
+      return;
+    }
+
+    const ids = currentCollectionsWithBackgroundTasks
+      .map((collection) => collection.id)
+      .filter(Boolean);
+    if (ids.length === 0) {
+      setSavedCatalogById({});
+      return;
+    }
+
+    let cancelled = false;
+    SavedItemsApi.checkBatch('COLLECTION', ids)
+      .then((result) => {
+        if (cancelled) return;
+        setSavedCatalogById(result);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentCollectionsWithBackgroundTasks, isOwner, status]);
+
+  useEffect(() => {
     const completedVisibleTasks = visibleDesignBackgroundTasks.filter((task) => task.status === 'complete');
     if (completedVisibleTasks.length === 0) return;
 
@@ -773,23 +794,6 @@ export default function CatalogScreen() {
     { key: 'Reviews', label: 'Reviews' },
   ];
 
-  const handleCreatePress = () => {
-    if (canManageCatalog(user) && userEmailVerified === false) {
-      toast.error('Verify your email before creating designs.');
-      return;
-    }
-    setCreateMenuOpen(true);
-  };
-
-  const handleCreateAnchorLayout = useCallback(() => {
-    if (!createMenuAnchorRef.current?.measureInWindow) return;
-
-    createMenuAnchorRef.current.measureInWindow((pageX: number, pageY: number, width: number, height: number) => {
-      if (width <= 0 || height <= 0) return;
-      setCreateMenuAnchorMetrics({ pageX, pageY, width, height });
-    });
-  }, []);
-
   const handleMessageBrand = useCallback(() => {
     if (!targetBrandId) {
       toast.error('Brand profile is not ready yet.');
@@ -803,6 +807,70 @@ export default function CatalogScreen() {
 
     router.push({ pathname: '/messages/[threadId]', params: { threadId: 'brand', brandId: targetBrandId } } as any);
   }, [status, targetBrandId, toast]);
+
+  const handleShareCollection = useCallback(
+    async (collectionId: string) => {
+      const collection = currentCollectionsWithBackgroundTasks.find((item) => item.id === collectionId);
+      const title = collection?.title?.trim() || 'Threadly catalog item';
+      const profileUrl = profileShareUrl ?? '';
+      const url = profileUrl ? `${profileUrl}${profileUrl.includes('?') ? '&' : '?'}collectionId=${encodeURIComponent(collectionId)}` : '';
+
+      try {
+        await Share.share({
+          title,
+          message: url ? `${title}\n${url}` : title,
+          url: url || undefined,
+        });
+      } catch {
+        toast.error('Could not share this catalog item.');
+      }
+    },
+    [currentCollectionsWithBackgroundTasks, profileShareUrl, toast],
+  );
+
+  const handleToggleSaveCollection = useCallback(
+    async (collection: CollectionDto) => {
+      if (isOwner) return;
+      if (status !== 'authenticated') {
+        router.push({ pathname: '/(auth)/login', params: { next: `/catalog/${targetBrandId ?? ''}` } } as any);
+        return;
+      }
+
+      const wasSaved = Boolean(savedCatalogById[collection.id]);
+      setSavedCatalogById((current) => ({ ...current, [collection.id]: !wasSaved }));
+      setSavingCatalogById((current) => ({ ...current, [collection.id]: true }));
+
+      try {
+        if (wasSaved) {
+          await SavedItemsApi.unsaveCatalogTarget({
+            targetType: collection.entityType === 'DESIGN' ? 'DESIGN' : 'COLLECTION',
+            collectionId: collection.id,
+            legacyCollectionId: collection.id,
+            designId: collection.entityType === 'DESIGN' ? collection.id : undefined,
+          });
+          toast.success('Removed from saved.');
+        } else {
+          await SavedItemsApi.saveCatalogTarget({
+            targetType: collection.entityType === 'DESIGN' ? 'DESIGN' : 'COLLECTION',
+            collectionId: collection.id,
+            legacyCollectionId: collection.id,
+            designId: collection.entityType === 'DESIGN' ? collection.id : undefined,
+          });
+          toast.success('Saved for later.');
+        }
+      } catch {
+        setSavedCatalogById((current) => ({ ...current, [collection.id]: wasSaved }));
+        toast.error('Could not update saved items.');
+      } finally {
+        setSavingCatalogById((current) => {
+          const next = { ...current };
+          delete next[collection.id];
+          return next;
+        });
+      }
+    },
+    [isOwner, savedCatalogById, status, targetBrandId, toast],
+  );
 
   const shareActionOptions = useMemo(
     () => [
@@ -853,29 +921,9 @@ export default function CatalogScreen() {
     [toast, user, userEmailVerified],
   );
 
-  const createMenuOptions = useMemo(
-    () => [
-      {
-        key: 'camera',
-        icon: '📷',
-        title: 'Camera',
-        onPress: () => handleLaunchCreateDesign('camera'),
-      },
-      {
-        key: 'media',
-        icon: '🖼️',
-        title: 'Media',
-        onPress: () => handleLaunchCreateDesign('library'),
-      },
-      {
-        key: 'attachment',
-        icon: '📎',
-        title: 'Attachment',
-        onPress: () => void handleLaunchCreateDesign('library'),
-      },
-    ],
-    [handleLaunchCreateDesign],
-  );
+  const handleCreatePress = useCallback(() => {
+    handleLaunchCreateDesign('library');
+  }, [handleLaunchCreateDesign]);
 
   if (showInitialSkeleton) {
     return (
@@ -919,14 +967,14 @@ export default function CatalogScreen() {
               router.push({ pathname: '/catalog/edit-profile', params: { brandId: targetBrandId } } as any);
             }}
             onCreate={handleCreatePress}
-            createAnchorRef={createMenuAnchorRef}
-            onCreateAnchorLayout={handleCreateAnchorLayout}
             onViewAvatar={() => {
               if (ownerAvatarUri || ownerAvatar.src) {
                 setIsAvatarModalOpen(true);
               }
             }}
             onShare={() => setShareActionsOpen(true)}
+            qrTargetUrl={profileQrTargetUrl}
+            onOpenQr={() => setBrandQrOpen(true)}
             onBack={handleBackNavigation}
             onSearch={() => router.push('/search')}
           />
@@ -954,6 +1002,8 @@ export default function CatalogScreen() {
               }
             }}
             onShare={() => setShareActionsOpen(true)}
+            qrTargetUrl={profileQrTargetUrl}
+            onOpenQr={() => setBrandQrOpen(true)}
             onMessage={handleMessageBrand}
             onBack={handleBackNavigation}
             onSearch={() => router.push('/search')}
@@ -1011,6 +1061,10 @@ export default function CatalogScreen() {
                 onCollectionPress={handleCollectionPress}
                 onEdit={handleEditCollection}
                 onDelete={handleDeleteCollection}
+                onShare={handleShareCollection}
+                onSave={handleToggleSaveCollection}
+                savedById={savedCatalogById}
+                saveBusyById={savingCatalogById}
                 emptyComponent={
                   <EmptyCollections
                     isOwner={isOwner}
@@ -1053,14 +1107,6 @@ export default function CatalogScreen() {
         visible={isAvatarModalOpen}
         imageUrl={modalAvatarUri}
         onClose={() => setIsAvatarModalOpen(false)}
-      />
-
-      <AppFloatingMenu
-        visible={createMenuOpen}
-        anchorRef={createMenuAnchorRef}
-        anchorMetrics={createMenuAnchorMetrics}
-        onClose={() => setCreateMenuOpen(false)}
-        options={createMenuOptions}
       />
 
       <AppActionSheet

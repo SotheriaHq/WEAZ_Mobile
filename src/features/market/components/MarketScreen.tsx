@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 
 import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
 import { AppText } from '@/components/ui/AppText';
@@ -408,7 +409,6 @@ function MarketProductCard({
       priceLabel={getItemPriceLabel(item)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
-      typeLabel="Product"
       newDropItemId={item.product.id}
       newDropCreatedAt={item.product.createdAt}
       analyticsSourceScreen="market"
@@ -449,7 +449,6 @@ function MarketDesignCard({
       priceLabel={getItemPriceLabel(item)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
-      typeLabel="Runway"
       newDropItemId={item.design.collectionId}
       newDropCreatedAt={item.design.createdAt ?? item.design.media?.createdAt}
       analyticsSourceScreen="market"
@@ -625,19 +624,24 @@ function BlazingChip({
       accessibilityRole="button"
       accessibilityLabel={`Open ${trend.label}`}
     >
-      <View style={[styles.blazingThumb, { backgroundColor: theme.colors.surfaceAlt }]}>
-        {imageUri ? (
-          <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.blazingThumbImage} imageStyle={styles.blazingThumbImage} />
-        ) : (
-          <AppText variant="captionBold" tone="primary">{String.fromCodePoint(0x1f525)}</AppText>
-        )}
-      </View>
-      <View style={styles.blazingCopy}>
-        <AppText variant="captionBold" numberOfLines={1}>{trend.label}</AppText>
-        <AppText variant="caption" tone="muted" numberOfLines={1}>
+      {imageUri ? (
+        <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.blazingFullImage} imageStyle={styles.blazingFullImage} />
+      ) : (
+        <View style={[styles.blazingFullImage, { backgroundColor: theme.colors.primarySoft, alignItems: 'center', justifyContent: 'center' }]}>
+          <AppText variant="title" tone="primary">{String.fromCodePoint(0x1f525)}</AppText>
+        </View>
+      )}
+      <LinearGradient
+        colors={['transparent', theme.colors.backdropStrong] as [string, string]}
+        style={StyleSheet.absoluteFill}
+      />
+      <BlurView tint="dark" intensity={22} style={styles.blazingCopy}>
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.backdrop }]} />
+        <AppText variant="captionBold" tone="inverse" numberOfLines={1}>{trend.label}</AppText>
+        <AppText variant="caption" tone="inverse" numberOfLines={1}>
           {trend.count} live picks
         </AppText>
-      </View>
+      </BlurView>
     </Pressable>
   );
 }
@@ -693,38 +697,39 @@ function CollectionCard({
       accessibilityRole="button"
       accessibilityLabel={`View ${collection.title} collection`}
     >
-      <View style={[styles.collectionMedia, { backgroundColor: theme.colors.surfaceAlt }]}>
-        {imageUri ? (
-          <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.collectionImage} imageStyle={styles.collectionImage} />
-        ) : (
+      {imageUri ? (
+        <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.collectionImage} imageStyle={styles.collectionImage} />
+      ) : (
+        <View style={[styles.collectionImage, { backgroundColor: theme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }]}>
           <AppText variant="title" tone="muted">{String.fromCodePoint(0x1f5bc, 0xfe0f)}</AppText>
-        )}
-        <LinearGradient
-          colors={[theme.colors.backdrop, 'transparent', theme.colors.backdropStrong]}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={[styles.collectionCountPill, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
-          <AppText variant="captionBold" tone="inverse">
-            {collection.productCount} {collection.productCount === 1 ? 'piece' : 'pieces'}
-          </AppText>
         </View>
+      )}
+      <LinearGradient
+        colors={['transparent', theme.colors.backdropStrong] as [string, string]}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[styles.collectionCountPill, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
+        <AppText variant="captionBold" tone="inverse">
+          {collection.productCount} {collection.productCount === 1 ? 'piece' : 'pieces'}
+        </AppText>
       </View>
-      <View style={styles.collectionCopy}>
-        <AppText variant="bodyBold" numberOfLines={2}>
+      <BlurView tint="dark" intensity={24} style={styles.collectionCopy}>
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.backdrop }]} />
+        <AppText variant="bodyBold" tone="inverse" numberOfLines={2}>
           {collection.title}
         </AppText>
-        <AppText variant="caption" tone="muted" numberOfLines={1}>
+        <AppText variant="caption" tone="inverse" numberOfLines={1}>
           {collection.brandName ?? 'Threadly brand'}
         </AppText>
         <View style={styles.collectionMetaRow}>
-          <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+          <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
             {getCollectionPriceLabel(collection)}
           </AppText>
-          <AppText variant="captionBold" tone="muted">
+          <AppText variant="captionBold" tone="inverse">
             View
           </AppText>
         </View>
-      </View>
+      </BlurView>
     </Pressable>
   );
 }
@@ -1795,41 +1800,32 @@ const styles = StyleSheet.create({
   },
   blazingChip: {
     width: 176,
-    minHeight: 62,
+    height: 132,
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-    padding: tokens.spacing.sm,
-  },
-  blazingThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: tokens.radius.md,
     overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  blazingThumbImage: {
+  blazingFullImage: {
     ...StyleSheet.absoluteFillObject,
   },
   blazingCopy: {
-    flex: 1,
-    minWidth: 0,
+    position: 'absolute',
+    left: tokens.spacing.sm,
+    right: tokens.spacing.sm,
+    bottom: tokens.spacing.sm,
+    borderRadius: tokens.radius.md,
+    overflow: 'hidden',
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
   },
   horizontalCardsContent: {
     paddingHorizontal: SIDE_PADDING,
     gap: CARD_GAP,
   },
   collectionCard: {
-    minHeight: 262,
+    height: 262,
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
-    overflow: 'hidden',
-  },
-  collectionMedia: {
-    height: 168,
     overflow: 'hidden',
   },
   collectionImage: {
@@ -1838,7 +1834,7 @@ const styles = StyleSheet.create({
   collectionCountPill: {
     position: 'absolute',
     right: tokens.spacing.sm,
-    bottom: tokens.spacing.sm,
+    top: tokens.spacing.sm,
     minHeight: 28,
     borderRadius: tokens.radius.full,
     borderWidth: StyleSheet.hairlineWidth,
@@ -1847,8 +1843,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   collectionCopy: {
+    position: 'absolute',
+    left: tokens.spacing.sm,
+    right: tokens.spacing.sm,
+    bottom: tokens.spacing.sm,
+    maxHeight: 52,
     gap: tokens.spacing.xs,
-    padding: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.md,
+    overflow: 'hidden',
   },
   collectionMetaRow: {
     flexDirection: 'row',

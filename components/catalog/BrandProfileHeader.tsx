@@ -2,15 +2,17 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import QRCode from 'react-native-qrcode-svg';
 
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
-import { BrandBadgeRail, ProfileBadge, type ProfileBadgeModel } from '@/components/catalog/ProfileBadge';
+import { BrandBadgeRail, type ProfileBadgeModel } from '@/components/catalog/ProfileBadge';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { useToast } from '@/src/toast/ToastContext';
 
 const BRAND_DESCRIPTION_PREVIEW_LINES = 2;
 const BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH = 120;
@@ -45,6 +47,8 @@ export type BrandProfileHeaderProps = {
   createAnchorRef?: React.RefObject<View | null>;
   onCreateAnchorLayout?: () => void;
   onShare?: () => void;
+  qrTargetUrl?: string | null;
+  onOpenQr?: () => void;
   onBack?: () => void;
   onSearch?: () => void;
   onViewAvatar?: () => void;
@@ -67,16 +71,56 @@ function normalizeTag(tag: string) {
   return trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
 }
 
+function getStoreStatusBadge(badges: ProfileBadgeModel[]) {
+  return badges.find((badge) =>
+    badge.variant.includes('open') ||
+    badge.variant.includes('closed') ||
+    badge.variant === 'pending_verification'
+  ) ?? null;
+}
+
+function StoreStatusBadge({ badge }: { badge: ProfileBadgeModel | null }) {
+  const { theme } = useTheme();
+  const toast = useToast();
+
+  if (!badge) return null;
+
+  const isOpen = badge.variant.includes('open');
+  const isClosed = badge.variant.includes('closed');
+  const color = isOpen ? theme.colors.success : isClosed ? theme.colors.textMuted : theme.colors.warning;
+  const label = isOpen ? 'Open' : isClosed ? 'Closed' : 'Limited or custom-only';
+
+  return (
+    <Pressable
+      onPress={() => toast.info('Store status: green means Open, gray means Closed, yellow means Limited or custom-only.')}
+      hitSlop={tokens.spacing.sm}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}. Tap for store status legend.`}
+      style={styles.storeStatusButton}
+    >
+      {/* Color-only wavy square: green=open, gray=closed, yellow=limited/custom-only. */}
+      <View style={[styles.storeStatusBadge, { backgroundColor: color }]}>
+        <View style={[styles.storeStatusCorner, styles.storeStatusCornerTopLeft, { backgroundColor: color }]} />
+        <View style={[styles.storeStatusCorner, styles.storeStatusCornerTopRight, { backgroundColor: color }]} />
+        <View style={[styles.storeStatusCorner, styles.storeStatusCornerBottomLeft, { backgroundColor: color }]} />
+        <View style={[styles.storeStatusCorner, styles.storeStatusCornerBottomRight, { backgroundColor: color }]} />
+      </View>
+    </Pressable>
+  );
+}
+
 function HeaderIconButton({
   label,
   value,
   onPress,
   disabled = false,
+  bare = false,
 }: {
   label: string;
   value: string;
   onPress?: () => void;
   disabled?: boolean;
+  bare?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -88,9 +132,10 @@ function HeaderIconButton({
       disabled={disabled}
       style={({ pressed }) => [
         styles.headerIconButton,
+        bare && styles.headerIconButtonBare,
         {
-          backgroundColor: theme.colors.glassSurfaceStrong,
-          borderColor: theme.colors.glassBorder,
+          backgroundColor: bare ? 'transparent' : theme.colors.glassSurfaceStrong,
+          borderColor: bare ? 'transparent' : theme.colors.glassBorder,
           opacity: disabled ? 0.55 : pressed ? 0.78 : 1,
         },
       ]}
@@ -106,6 +151,7 @@ function HeaderIconButton({
 
 function BannerHeader({
   brandName,
+  badges,
   bannerUrl,
   bannerFileId,
   bannerLoading,
@@ -113,10 +159,13 @@ function BannerHeader({
   onBack,
   onSearch,
   onShare,
+  qrTargetUrl,
+  onOpenQr,
   onEditBanner,
 }: Pick<
   BrandProfileHeaderProps,
   | 'brandName'
+  | 'badges'
   | 'bannerUrl'
   | 'bannerFileId'
   | 'bannerLoading'
@@ -124,10 +173,13 @@ function BannerHeader({
   | 'onBack'
   | 'onSearch'
   | 'onShare'
+  | 'qrTargetUrl'
+  | 'onOpenQr'
   | 'onEditBanner'
 >) {
   const { scheme, theme } = useTheme();
   const resolvedBanner = useResolvedImageUri({ src: bannerUrl, fileId: bannerFileId ?? undefined });
+  const storeStatusBadge = getStoreStatusBadge(badges ?? []);
 
   return (
     <View style={[styles.bannerWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -167,21 +219,75 @@ function BannerHeader({
       ) : null}
 
       <View style={styles.bannerControls}>
-        <HeaderIconButton label="Go back" value="👈" onPress={onBack} />
+        <HeaderIconButton label="Go back" value="‹" onPress={onBack} bare />
         <View style={styles.bannerRightControls}>
-          {isOwner ? (
-            <HeaderIconButton
-              label="Edit banner"
-              value={bannerLoading ? '…' : '✎'}
-              onPress={onEditBanner}
-              disabled={bannerLoading}
-            />
-          ) : (
+          {qrTargetUrl || onOpenQr ? (
+            <Pressable
+              onPress={onOpenQr}
+              disabled={!onOpenQr}
+              style={({ pressed }) => [
+                styles.qrButton,
+                {
+                  backgroundColor: tokens.themes.light.colors.surface,
+                  borderColor: theme.colors.glassBorder,
+                  opacity: pressed ? 0.82 : 1,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Show brand QR code"
+            >
+              {qrTargetUrl ? (
+                <QRCode
+                  value={qrTargetUrl}
+                  size={50}
+                  color={tokens.themes.light.colors.text}
+                  backgroundColor={tokens.themes.light.colors.surface}
+                  quietZone={2}
+                />
+              ) : (
+                <View style={[styles.qrPlaceholder, { borderColor: theme.colors.border }]} />
+              )}
+            </Pressable>
+          ) : null}
+          {!isOwner ? (
             <HeaderIconButton label="Search" value="🔍" onPress={onSearch} />
-          )}
+          ) : null}
           <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} />
         </View>
       </View>
+
+      <View style={[styles.bannerNameChip, { backgroundColor: theme.colors.glassSurfaceSoft, borderColor: theme.colors.glassBorder }]}>
+        <BlurView
+          intensity={Math.max(18, Math.round(theme.colors.glassBlur * 0.72))}
+          tint={scheme === 'dark' ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFillObject}
+          pointerEvents="none"
+        />
+        <AppText variant="title" tone="inverse" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.bannerNameText}>
+          {brandName}
+        </AppText>
+        <StoreStatusBadge badge={storeStatusBadge} />
+      </View>
+
+      {isOwner && onEditBanner ? (
+        <View style={styles.bannerEditControl}>
+          <Pressable
+            onPress={onEditBanner}
+            disabled={bannerLoading}
+            style={({ pressed }) => [
+              styles.bannerEditButton,
+              { backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder },
+              (pressed || bannerLoading) && styles.pressedControl,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Edit banner"
+          >
+            <AppText variant="captionBold" tone="default">
+              {bannerLoading ? '…' : '✎'}
+            </AppText>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -356,66 +462,22 @@ function BrandTextTags({ tags }: { tags: string[] }) {
 }
 
 function SideBrandMetaBlock({
-  brandName,
   location,
   stats,
   tags,
   badges,
 }: {
-  brandName: string;
   location?: string | null;
   stats: BrandHeaderStat[];
   tags: string[];
   badges: ProfileBadgeModel[];
 }) {
-  const { scheme, theme } = useTheme();
-  const normalizedBrandName = brandName.trim();
-  const brandWordCount = normalizedBrandName.split(/\s+/).filter(Boolean).length;
-  const brandNameLines = brandWordCount > 5 || normalizedBrandName.length > 28 ? 2 : 1;
-  const primaryBadge = badges.find((badge) =>
-    badge.variant === 'brand_verified' ||
-    badge.variant === 'store_verified' ||
-    badge.variant === 'user_verified' ||
-    badge.variant === 'pending_verification'
-  ) ?? null;
-  const secondaryBadges = primaryBadge
-    ? badges.filter((badge) => badge.variant !== primaryBadge.variant)
-    : badges;
+  const secondaryBadges = badges.filter((badge) => !badge.variant.startsWith('store_'));
 
   return (
     <View style={styles.metaBlock}>
-      <View
-        style={[
-          styles.brandNamePill,
-          {
-            backgroundColor: theme.colors.glassSurfaceSoft,
-            borderColor: theme.colors.glassBorder,
-          },
-        ]}
-      >
-        <BlurView
-          intensity={Math.max(18, Math.round(theme.colors.glassBlur * 0.72))}
-          tint={scheme === 'dark' ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFillObject}
-          pointerEvents="none"
-        />
-        <View style={styles.brandNameRow}>
-          <AppText
-            variant="title"
-            numberOfLines={brandNameLines}
-            ellipsizeMode="clip"
-            adjustsFontSizeToFit
-            minimumFontScale={brandNameLines === 1 ? 0.7 : 0.82}
-            style={styles.brandNameText}
-          >
-            {brandName}
-          </AppText>
-          {primaryBadge ? <ProfileBadge badge={primaryBadge} compact /> : null}
-        </View>
-      </View>
-
       {location ? (
-        <AppText variant="small" tone="muted" numberOfLines={1} style={styles.locationText}>
+        <AppText variant="smallBold" tone="secondary" numberOfLines={1} style={styles.locationText}>
           📍 {location}
         </AppText>
       ) : null}
@@ -628,6 +690,8 @@ export function BrandProfileHeader({
   createAnchorRef,
   onCreateAnchorLayout,
   onShare,
+  qrTargetUrl,
+  onOpenQr,
   onBack,
   onSearch,
   onViewAvatar,
@@ -645,6 +709,7 @@ export function BrandProfileHeader({
     <View style={[styles.root, { backgroundColor: theme.colors.surface }]}>
       <BannerHeader
         brandName={effectiveName}
+        badges={badges}
         bannerUrl={bannerUrl}
         bannerFileId={bannerFileId}
         bannerLoading={bannerLoading}
@@ -652,6 +717,8 @@ export function BrandProfileHeader({
         onBack={onBack}
         onSearch={onSearch}
         onShare={onShare}
+        qrTargetUrl={qrTargetUrl}
+        onOpenQr={onOpenQr}
         onEditBanner={onEditBanner}
       />
 
@@ -666,7 +733,6 @@ export function BrandProfileHeader({
           onEditAvatar={onEditAvatar}
         />
         <SideBrandMetaBlock
-          brandName={effectiveName}
           location={location}
           stats={stats}
           tags={tags}
@@ -740,6 +806,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.sm,
   },
+  qrButton: {
+    width: 62,
+    height: 62,
+    borderRadius: tokens.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  qrPlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: tokens.radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   headerIconButton: {
     width: 48,
     height: 48,
@@ -748,8 +829,78 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerIconButtonBare: {
+    borderWidth: 0,
+  },
   headerIconText: {
     textAlign: 'center',
+  },
+  bannerNameChip: {
+    position: 'absolute',
+    left: 132,
+    right: tokens.spacing.lg,
+    bottom: tokens.spacing.md,
+    minHeight: 44,
+    borderRadius: tokens.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    overflow: 'hidden',
+  },
+  bannerNameText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  bannerEditControl: {
+    position: 'absolute',
+    right: tokens.spacing.lg,
+    bottom: tokens.spacing.md,
+    transform: [{ translateY: -56 }],
+  },
+  bannerEditButton: {
+    width: 34,
+    height: 34,
+    borderRadius: tokens.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storeStatusButton: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storeStatusBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: tokens.radius.sm,
+    transform: [{ rotate: '45deg' }],
+  },
+  storeStatusCorner: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: tokens.radius.full,
+  },
+  storeStatusCornerTopLeft: {
+    top: -3,
+    left: 5,
+  },
+  storeStatusCornerTopRight: {
+    right: -3,
+    top: 5,
+  },
+  storeStatusCornerBottomLeft: {
+    left: -3,
+    bottom: 5,
+  },
+  storeStatusCornerBottomRight: {
+    bottom: -3,
+    right: 5,
   },
   identityRow: {
     flexDirection: 'row',
@@ -800,7 +951,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: tokens.spacing.xs,
-    paddingTop: tokens.spacing.xs,
+    paddingTop: tokens.spacing['4xl'] + tokens.spacing.sm,
   },
   brandNamePill: {
     alignSelf: 'flex-start',

@@ -34,6 +34,9 @@ interface CollectionsGridProps {
   onLike?: (id: string) => void;
   onComment?: (id: string) => void;
   onShare?: (id: string) => void;
+  onSave?: (collection: CollectionDto) => void;
+  savedById?: Record<string, boolean>;
+  saveBusyById?: Record<string, boolean>;
   isOwner?: boolean;
   showDrafts?: boolean;
   emptyComponent?: React.ReactNode;
@@ -63,22 +66,32 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   onLike,
   onComment,
   onShare,
+  onSave,
+  savedById,
+  saveBusyById,
   isOwner = false,
   showDrafts = false,
   emptyComponent,
-  numColumns = 2,
+  numColumns,
 }: CollectionsGridProps) {
   const { width: screenWidth } = useWindowDimensions();
   const { theme } = useTheme();
   
   const screenPadding = GRID_LAYOUT.screenPadding;
   const columnGap = GRID_LAYOUT.columnGap;
+  const resolvedNumColumns = useMemo(() => {
+    // Phase 4 uses a balanced responsive grid; true uneven-column masonry should be a dedicated catalog layout pass.
+    if (typeof numColumns === 'number' && numColumns > 0) return numColumns;
+    if (screenWidth >= 1024) return 4;
+    if (screenWidth >= 700) return 3;
+    return 2;
+  }, [numColumns, screenWidth]);
   const rowGap = GRID_LAYOUT.rowGap;
   const cardWidth = useMemo(() => {
-    const totalColumnGap = columnGap * Math.max(0, numColumns - 1);
+    const totalColumnGap = columnGap * Math.max(0, resolvedNumColumns - 1);
     const availableWidth = screenWidth - screenPadding * 2 - totalColumnGap;
-    return availableWidth / numColumns;
-  }, [columnGap, numColumns, screenPadding, screenWidth]);
+    return Math.floor(availableWidth / resolvedNumColumns);
+  }, [columnGap, resolvedNumColumns, screenPadding, screenWidth]);
 
   const renderItem = useCallback(
     ({ item, index }: { item: CollectionDto; index: number }) => {
@@ -97,11 +110,14 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
             onLike={onLike}
             onComment={onComment}
             onShare={onShare}
+            onSave={onSave}
+            isSaved={Boolean(savedById?.[item.id])}
+            saveBusy={Boolean(saveBusyById?.[item.id])}
           />
         </View>
       );
     },
-    [cardWidth, isOwner, onCollectionPress, onComment, onDelete, onEdit, onLike, onShare, showDrafts],
+    [cardWidth, isOwner, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts],
   );
 
   const keyExtractor = useCallback((item: CollectionDto) => item.id, []);
@@ -136,7 +152,8 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
       data={collections}
       renderItem={renderItem}
       keyExtractor={keyExtractor}
-      numColumns={numColumns}
+      key={`catalog-grid-${resolvedNumColumns}`}
+      numColumns={resolvedNumColumns}
       scrollEnabled={false}
       contentContainerStyle={[
         styles.grid,
@@ -145,7 +162,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
           paddingVertical: GRID_LAYOUT.verticalPadding,
         },
       ]}
-      columnWrapperStyle={numColumns > 1 ? [styles.row, { gap: columnGap, marginBottom: rowGap }] : undefined}
+      columnWrapperStyle={resolvedNumColumns > 1 ? [styles.row, { gap: columnGap, marginBottom: rowGap }] : undefined}
       showsVerticalScrollIndicator={false}
       onEndReached={onEndReached}
       onEndReachedThreshold={0.5}
