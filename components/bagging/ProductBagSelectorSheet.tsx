@@ -9,6 +9,14 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { MobileStoreApi, type ProductBagStatus, type StoreProductVariant } from '@/src/api/StoreApi';
 import { useToast } from '@/src/toast/ToastContext';
+import { useAuth } from '@/src/auth/AuthContext';
+import { ProfileApi, type AutoSizeRecommendationMode, type SizeRecommendationResponse } from '@/src/api/ProfileApi';
+import {
+  buildSizeRecommendationSnapshot,
+  canUseRecommendedSize,
+  CONFIDENCE_LABELS,
+  SIZING_REGION_LABELS,
+} from '@/src/utils/sizeRecommendation';
 
 type BagProductInput = {
   id: string;
@@ -25,12 +33,19 @@ type Props = {
 export default function ProductBagSelectorSheet({ visible, product, status, onClose }: Props) {
   const { theme } = useTheme();
   const toast = useToast();
+  const { status: authStatus } = useAuth();
   const { addStandard, loadingByProductId } = useMobileBagging();
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [variants, setVariants] = useState<StoreProductVariant[]>([]);
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [autoMode, setAutoMode] = useState<AutoSizeRecommendationMode | null>(null);
+  const [recommendation, setRecommendation] = useState<SizeRecommendationResponse | null>(null);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [recommendationError, setRecommendationError] = useState<string | null>(null);
+  const [sizeSelectionTouched, setSizeSelectionTouched] = useState(false);
+  const [whyOpen, setWhyOpen] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -38,6 +53,11 @@ export default function ProductBagSelectorSheet({ visible, product, status, onCl
     setSelectedColor(status?.standard.selectedColor ?? null);
     setQuantity(1);
     setSelectionError(null);
+    setRecommendation(null);
+    setRecommendationError(null);
+    setAutoMode(null);
+    setSizeSelectionTouched(false);
+    setWhyOpen(false);
   }, [status, visible]);
 
   useEffect(() => {
@@ -60,11 +80,49 @@ export default function ProductBagSelectorSheet({ visible, product, status, onCl
     };
   }, [product, visible]);
 
+  useEffect(() => {
+    if (!visible || !product || authStatus !== 'authenticated') {
+      setAutoMode(null);
+      setRecommendation(null);
+      setRecommendationError(null);
+      setRecommendationLoading(false);
+      return;
+    }
+    let active = true;
+    setRecommendationLoading(true);
+    setRecommendationError(null);
+
+    void Promise.all([
+      ProfileApi.getSizeFit().catch(() => null),
+      MobileStoreApi.getProductSizeRecommendation(product.id).catch((error) => {
+        const statusCode = Number(error?.response?.status);
+        if (statusCode === 404 || statusCode === 422) return null;
+        throw error;
+      }),
+    ])
+      .then(([profile, nextRecommendation]) => {
+        if (!active) return;
+        setAutoMode(profile?.autoSizeRecommendation ?? null);
+        setRecommendation(nextRecommendation);
+      })
+      .catch(() => {
+        if (active) setRecommendationError('Size recommendation is temporarily unavailable.');
+      })
+      .finally(() => {
+        if (active) setRecommendationLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [authStatus, product, visible]);
+
   const isLoading = Boolean(product && loadingByProductId[product.id]);
   const requiresSize = Boolean(status?.standard.requiresSize);
   const requiresColor = Boolean(status?.standard.requiresColor);
 
   const hasVariantMatrix = variants.length > 0;
+  const sizeOptions = status?.standard.sizes ?? [];
 
   const variantIsAvailable = (variant: StoreProductVariant, size: string | null, color: string | null) => {
     if (Number(variant.stock ?? 0) <= 0) return false;
@@ -83,6 +141,14 @@ export default function ProductBagSelectorSheet({ visible, product, status, onCl
     if (!hasVariantMatrix) return true;
     return variants.some((variant) => variantIsAvailable(variant, selectedSize, selectedColor));
   }, [hasVariantMatrix, selectedColor, selectedSize, variants]);
+
+  useEffect(() => {
+    if (autoMode !== 'ON') return;
+    if (sizeSelectionTouched) return;
+    if (!canUseRecommendedSize(recommendation, sizeOptions)) return;
+    if (!recommendation?.recommendedSize) return;
+    setSelectedSize(recommendation.recommendedSize);
+  }, [autoMode, recommendation, sizeOptions, sizeSelectionTouched]);
 
   const canSubmit = useMemo(() => {
     if (!product || !status) return false;
@@ -113,6 +179,7 @@ export default function ProductBagSelectorSheet({ visible, product, status, onCl
         qty: quantity,
         size: selectedSize ?? undefined,
         color: selectedColor ?? undefined,
+        sizeRecommendationSnapshot: buildSizeRecommendationSnapshot(recommendation, selectedSize),
       });
       toast.success('Added to your bag');
       onClose();
@@ -138,6 +205,80 @@ export default function ProductBagSelectorSheet({ visible, product, status, onCl
       loading={isLoading}
     >
       <View style={styles.group}>
+        <View
+          style={[
+            styles.recommendationCard,
+            { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+          ]}
+        >
+          <AppText variant="caption" tone="muted">Recommended for you</AppText>
+          {recommendationLoading ? (
+            <AppText variant="body">Checking saved measurements...</AppText>
+          ) : recommendation?.recommendedSize ? (
+            <>
+              <View style={styles.recommendationHeader}>
+                <AppText variant="title">{recommendation.recommendedSize}</AppText>
+                <AppText variant="caption" tone="muted">
+                  {CONFIDENCE_LABELS[recommendation.confidenceLabel]}
+                </AppText>
+              </View>
+              {recommendation.alternativeSize ? (
+                <AppText variant="caption" tone="muted">Alternative: {recommendation.alternativeSize}</AppText>
+              ) : null}
+              {selectedSize && selectedSize !== recommendation.recommendedSize ? (
+                <AppText variant="caption" tone="warning">
+                  Your saved measurements suggest {recommendation.recommendedSize}, but you selected {selectedSize}.
+                </AppText>
+              ) : null}
+              {recommendation.fallbackUsed ? (
+                <AppText variant="caption" tone="muted">
+                  This uses the best available fallback chart because this product does not have a more specific approved chart yet.
+                </AppText>
+              ) : null}
+              {recommendation.selectedRegion === 'NG_WEST_AFRICA' ? (
+                <AppText variant="caption" tone="muted">
+                  Nigeria/West Africa support uses approved product, brand, regional, or mapped chart data where available.
+                </AppText>
+              ) : null}
+              <View style={styles.recommendationActions}>
+                {autoMode !== 'ON' && canUseRecommendedSize(recommendation, sizeOptions) ? (
+                  <Button
+                    title={`Use ${recommendation.recommendedSize}`}
+                    size="sm"
+                    onPress={() => {
+                      setSelectedSize(recommendation.recommendedSize);
+                      setSizeSelectionTouched(true);
+                    }}
+                  />
+                ) : null}
+                <Button
+                  title="Why this size?"
+                  size="sm"
+                  variant="secondary"
+                  onPress={() => setWhyOpen((current) => !current)}
+                />
+              </View>
+              {whyOpen ? (
+                <View style={styles.whyBox}>
+                  <AppText variant="caption" tone="muted">
+                    Region: {SIZING_REGION_LABELS[recommendation.selectedRegion]}
+                  </AppText>
+                  {(recommendation.reasons.length ? recommendation.reasons : ['Threadly compared your saved measurements with approved chart ranges.']).map((reason) => (
+                    <AppText key={reason} variant="caption">- {reason}</AppText>
+                  ))}
+                  <AppText variant="caption" tone="muted">
+                    Size charts are guides. Fit may vary by brand, fabric, and cut.
+                  </AppText>
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <AppText variant="caption" tone={recommendationError ? 'warning' : 'muted'}>
+              {recommendationError || 'Add your measurements to get size recommendations.'}
+            </AppText>
+          )}
+        </View>
+
         {requiresSize ? (
           <View style={styles.section}>
             <AppText variant="subtitle">Size</AppText>
@@ -153,6 +294,7 @@ export default function ProductBagSelectorSheet({ visible, product, status, onCl
                       onPress={() => {
                         setSelectionError(null);
                         setSelectedSize(size);
+                        setSizeSelectionTouched(true);
                       }}
                       style={[
                         styles.chip,
@@ -255,5 +397,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
+  },
+  recommendationCard: {
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+  },
+  recommendationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+  },
+  recommendationActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  whyBox: {
+    gap: tokens.spacing.xs,
   },
 });

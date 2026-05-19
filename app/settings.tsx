@@ -197,6 +197,18 @@ export default function SettingsScreen() {
             onPress: () => router.push('/(tabs)/me' as never),
           },
           {
+            icon: 'FIT',
+            title: 'Sizing settings',
+            subtitle: 'Region, fit preference, and auto-apply',
+            onPress: () => router.push('/settings/sizing' as never),
+          },
+          {
+            icon: 'GUIDE',
+            title: 'Size Guide / Charts',
+            subtitle: 'Sizing systems, measurements, and limitations',
+            onPress: () => router.push('/size-guide' as never),
+          },
+          {
             icon: '💳',
             title: 'Payment settings',
             subtitle: 'Cards, payouts, billing if available',

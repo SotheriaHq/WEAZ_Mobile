@@ -77,6 +77,10 @@ async function main() {
       calls.push({ url, config });
       return { data: nextPayload };
     },
+    post: async (url, body) => {
+      calls.push({ url, body });
+      return { data: { items: [], itemCount: 0, totalQuantity: 0 } };
+    },
   };
   const { MobileStoreApi } = loadStoreApiWithMock(mockApiClient);
 
@@ -120,6 +124,37 @@ async function main() {
   assert.equal(marketProducts.hasNextPage, true);
   assert.equal(marketProducts.nextCursor, 'cursor-3');
   assert.equal(marketProducts.total, 10);
+
+  calls.length = 0;
+  nextPayload = {
+    recommendedSize: 'XL',
+    selectedRegion: 'UK',
+    confidenceLabel: 'HIGH',
+  };
+  const recommendation = await MobileStoreApi.getProductSizeRecommendation('product-1', {
+    region: 'UK',
+    selectedSize: 'XXL',
+  });
+  assert.equal(calls[0].url, '/store/products/product-1/size-recommendation');
+  assert.equal(calls[0].config.params.region, 'UK');
+  assert.equal(calls[0].config.params.selectedSize, 'XXL');
+  assert.equal(recommendation.recommendedSize, 'XL');
+
+  calls.length = 0;
+  await MobileStoreApi.addToCart({
+    productId: 'product-1',
+    selectedSize: 'XXL',
+    sizeRecommendationSnapshot: {
+      recommendedSize: 'XL',
+      selectedSize: 'XXL',
+      confidenceLabel: 'HIGH',
+      wasManuallyChanged: true,
+    },
+  });
+  assert.equal(calls[0].url, '/store/cart');
+  assert.equal(calls[0].body.selectedSize, 'XXL');
+  assert.equal(calls[0].body.sizeRecommendationSnapshot.recommendedSize, 'XL');
+  assert.equal(calls[0].body.sizeRecommendationSnapshot.wasManuallyChanged, true);
 
   const brandShopSource = fs.readFileSync(brandShopTabPath, 'utf8');
   assert.match(brandShopSource, /MobileStoreApi\.getBrandProducts\(normalizedBrandId,\s*80\)/);

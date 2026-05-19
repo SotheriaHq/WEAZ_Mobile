@@ -40,6 +40,8 @@ import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import type { SizeRecommendationResponse } from '@/src/api/ProfileApi';
+import { CONFIDENCE_LABELS, SIZING_REGION_LABELS } from '@/src/utils/sizeRecommendation';
 
 type CommerceSourceType = Extract<BagSourceType, 'PRODUCT' | 'DESIGN'>;
 
@@ -285,6 +287,10 @@ export function MarketCommerceViewer({
   const [activeIndex, setActiveIndex] = useState(0);
   const [sheetExpanded, setSheetExpanded] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [sizeRecommendation, setSizeRecommendation] = useState<SizeRecommendationResponse | null>(null);
+  const [sizeRecommendationLoading, setSizeRecommendationLoading] = useState(false);
+  const [sizeRecommendationError, setSizeRecommendationError] = useState<string | null>(null);
+  const [whySizeOpen, setWhySizeOpen] = useState(false);
 
   const normalizedSourceId = String(sourceId ?? '').trim();
   const sourceStatusKey = sourceType === 'PRODUCT' ? normalizedSourceId : `${sourceType}:${normalizedSourceId}`;
@@ -351,6 +357,33 @@ export function MarketCommerceViewer({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (sourceType !== 'PRODUCT' || authStatus !== 'authenticated' || !normalizedSourceId) {
+      setSizeRecommendation(null);
+      setSizeRecommendationError(null);
+      return;
+    }
+    let active = true;
+    setSizeRecommendationLoading(true);
+    setSizeRecommendationError(null);
+    void MobileStoreApi.getProductSizeRecommendation(normalizedSourceId)
+      .then((recommendation) => {
+        if (active) setSizeRecommendation(recommendation);
+      })
+      .catch((error) => {
+        const statusCode = Number(error?.response?.status);
+        if (active && statusCode !== 404 && statusCode !== 422) {
+          setSizeRecommendationError('Size recommendation is temporarily unavailable.');
+        }
+      })
+      .finally(() => {
+        if (active) setSizeRecommendationLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [authStatus, normalizedSourceId, sourceType]);
 
   const media = useMemo(() => {
     const entries = product ? buildProductMedia(product) : design ? buildDesignMedia(design) : [];
@@ -643,6 +676,65 @@ export function MarketCommerceViewer({
               <AppText variant="bodyBold" numberOfLines={2}>{customLabel}</AppText>
             </View>
           </View>
+
+          {sourceType === 'PRODUCT' && authStatus === 'authenticated' ? (
+            <View style={[styles.sizeRecommendationCard, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+              <AppText variant="captionBold" tone="muted">Recommended for you</AppText>
+              {sizeRecommendationLoading ? (
+                <AppText variant="body" tone="secondary">Checking saved measurements...</AppText>
+              ) : sizeRecommendation?.recommendedSize ? (
+                <>
+                  <View style={styles.sizeRecommendationHeader}>
+                    <AppText variant="title">{sizeRecommendation.recommendedSize}</AppText>
+                    <AppText variant="captionBold" tone="primary">
+                      {CONFIDENCE_LABELS[sizeRecommendation.confidenceLabel]}
+                    </AppText>
+                  </View>
+                  {sizeRecommendation.alternativeSize ? (
+                    <AppText variant="caption" tone="muted">Alternative: {sizeRecommendation.alternativeSize}</AppText>
+                  ) : null}
+                  {sizeRecommendation.fallbackUsed ? (
+                    <AppText variant="caption" tone="muted">
+                      This uses the best available fallback chart because this product does not have a more specific approved chart yet.
+                    </AppText>
+                  ) : null}
+                  {sizeRecommendation.selectedRegion === 'NG_WEST_AFRICA' ? (
+                    <AppText variant="caption" tone="muted">
+                      Nigeria/West Africa support uses approved product, brand, regional, or mapped chart data where available.
+                    </AppText>
+                  ) : null}
+                  <Pressable
+                    onPress={() => setWhySizeOpen((current) => !current)}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.inlineLinkButton,
+                      { borderColor: theme.colors.border },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <AppText variant="captionBold" tone="primary">Why this size?</AppText>
+                  </Pressable>
+                  {whySizeOpen ? (
+                    <View style={styles.whySizeBlock}>
+                      <AppText variant="caption" tone="muted">
+                        Region: {SIZING_REGION_LABELS[sizeRecommendation.selectedRegion]}
+                      </AppText>
+                      {(sizeRecommendation.reasons.length ? sizeRecommendation.reasons : ['Threadly compared your saved measurements with approved chart ranges.']).map((reason) => (
+                        <AppText key={reason} variant="caption">- {reason}</AppText>
+                      ))}
+                      <AppText variant="caption" tone="muted">
+                        Size charts are guides. Fit may vary by brand, fabric, and cut.
+                      </AppText>
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <AppText variant="body" tone={sizeRecommendationError ? 'warning' : 'muted'}>
+                  {sizeRecommendationError || 'Add your measurements to get size recommendations.'}
+                </AppText>
+              )}
+            </View>
+          ) : null}
 
           {description ? (
             <View style={styles.detailBlock}>
@@ -981,6 +1073,28 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
     padding: tokens.spacing.md,
+    gap: tokens.spacing.xs,
+  },
+  sizeRecommendationCard: {
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+  },
+  sizeRecommendationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+  },
+  inlineLinkButton: {
+    alignSelf: 'flex-start',
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+  },
+  whySizeBlock: {
     gap: tokens.spacing.xs,
   },
   detailBlock: {
