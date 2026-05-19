@@ -189,8 +189,8 @@ function BannerHeader({
   const storeStatusBadge = getStoreStatusBadge(badges ?? []);
   const isCompactPhone = viewportWidth < 390;
   const isTablet = viewportWidth >= 700;
-  const qrPanelSize = isTablet ? 124 : isCompactPhone ? 84 : 96;
-  const qrCodeSize = isTablet ? 102 : isCompactPhone ? 66 : 76;
+  const qrPanelSize = isTablet ? 136 : isCompactPhone ? 92 : 106;
+  const qrCodeSize = isTablet ? 112 : isCompactPhone ? 72 : 84;
 
   return (
     <View style={[styles.bannerWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -233,9 +233,9 @@ function BannerHeader({
         <HeaderIconButton label="Go back" value="‹" onPress={onBack} bare />
         <View style={styles.bannerRightControls}>
           {!isOwner ? (
-            <HeaderIconButton label="Search" value="🔍" onPress={onSearch} />
+            <HeaderIconButton label="Search" value="🔍" onPress={onSearch} bare />
           ) : null}
-          <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} />
+          <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} bare />
         </View>
       </View>
 

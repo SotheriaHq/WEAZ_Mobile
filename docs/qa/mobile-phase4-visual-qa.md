@@ -40,6 +40,10 @@ Bio and contact rendering is wired to existing mobile brand profile fields only:
 
 No mobile About tab exists on the catalog/profile surface. The requested web About-to-Bio rename remains a separate `fthreadly` follow-up because this pass is mobile-only.
 
+## Phase 4.9 profile top-control polish
+
+The QR code was scaled slightly larger. Search and menu controls were changed to transparent touch targets so only their icons are visible over the banner. Populated brand-profile QA remains required with a banner, avatar, bio/contact fields, QR target, and at least one catalog card.
+
 ## Required before production release
 
 At least one real Android Expo Go pass and one tablet/iPad-class pass should be completed before production confidence.
