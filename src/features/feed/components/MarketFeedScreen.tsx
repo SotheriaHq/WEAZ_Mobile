@@ -735,6 +735,10 @@ export function MarketFeedScreen() {
   const visibleFilterChips = useMemo(() => filterChips, [filterChips]);
   const activeTag = activeFilter?.tag ?? null;
   const feedLoopEnabled = false;
+  const itemsRef = useRef(items);
+  const activeTagRef = useRef(activeTag);
+  const feedLoopEnabledRef = useRef(feedLoopEnabled);
+  const hydrateCollectionMediaRef = useRef<(item: MarketItem | null | undefined) => void | Promise<void>>(() => undefined);
   const fallbackMediaByCollection = useMemo(() => {
     const next: Record<string, FeedViewerMedia[]> = {};
     items.forEach((item) => {
@@ -878,6 +882,18 @@ export function MarketFeedScreen() {
   useEffect(() => {
     collectionMediaMapRef.current = collectionMediaMap;
   }, [collectionMediaMap]);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    activeTagRef.current = activeTag;
+  }, [activeTag]);
+
+  useEffect(() => {
+    feedLoopEnabledRef.current = feedLoopEnabled;
+  }, [feedLoopEnabled]);
 
   useEffect(() => {
     patchedBrandIdsRef.current = patchedBrandIds;
@@ -1242,8 +1258,17 @@ export function MarketFeedScreen() {
     minimumViewTime: 120,
   });
 
-  const onViewableItemsChanged = useRef(
+  useEffect(() => {
+    hydrateCollectionMediaRef.current = hydrateCollectionMedia;
+  }, [hydrateCollectionMedia]);
+
+  const stableOnViewableItemsChangedRef = useRef(
     ({ viewableItems }: { viewableItems: Array<{ item: FeedListEntry | null; index?: number | null }> }) => {
+      const currentItems = itemsRef.current;
+      const currentActiveTag = activeTagRef.current;
+      const currentFeedLoopEnabled = feedLoopEnabledRef.current;
+      const currentHydrateCollectionMedia = hydrateCollectionMediaRef.current;
+
       const primaryEntry = viewableItems[0]?.item;
       if (primaryEntry && !primaryEntry.isGhost) {
         feedActiveIndex = primaryEntry.realIndex;
@@ -1261,48 +1286,28 @@ export function MarketFeedScreen() {
             collectionId: primaryEntry.item.collectionId,
             mediaId: media?.id ?? null,
             brandId: primaryEntry.item.brandId,
-            categoryFilter: activeTag,
+            categoryFilter: currentActiveTag,
           });
         }
       }
       viewableItems.forEach(({ item: entry }) => {
         const collectionId = entry?.item.collectionId?.trim();
         if (!collectionId) return;
+        if (!currentItems.length) return;
 
-        const realIndex = entry?.realIndex ?? items.findIndex((candidate) => candidate.collectionId === collectionId);
+        const realIndex = entry?.realIndex ?? currentItems.findIndex((candidate) => candidate.collectionId === collectionId);
         if (realIndex < 0) return;
 
         for (let offset = -1; offset <= 2; offset += 1) {
-          const nextIndex = feedLoopEnabled ? (realIndex + offset + items.length) % items.length : realIndex + offset;
-          if (nextIndex < 0 || nextIndex >= items.length) continue;
-          void hydrateCollectionMedia(items[nextIndex]);
+          const nextIndex = currentFeedLoopEnabled
+            ? (realIndex + offset + currentItems.length) % currentItems.length
+            : realIndex + offset;
+          if (nextIndex < 0 || nextIndex >= currentItems.length) continue;
+          void currentHydrateCollectionMedia(currentItems[nextIndex]);
         }
       });
     },
   );
-
-  useEffect(() => {
-    onViewableItemsChanged.current = ({ viewableItems }: { viewableItems: Array<{ item: FeedListEntry | null; index?: number | null }> }) => {
-      const primaryEntry = viewableItems[0]?.item;
-      if (primaryEntry && !primaryEntry.isGhost) {
-        feedActiveIndex = primaryEntry.realIndex;
-        setActivePageIndex((current) => (current === primaryEntry.realIndex ? current : primaryEntry.realIndex));
-      }
-      viewableItems.forEach(({ item: entry }) => {
-        const collectionId = entry?.item.collectionId?.trim();
-        if (!collectionId) return;
-
-        const realIndex = entry?.realIndex ?? items.findIndex((candidate) => candidate.collectionId === collectionId);
-        if (realIndex < 0) return;
-
-        for (let offset = -1; offset <= 2; offset += 1) {
-          const nextIndex = feedLoopEnabled ? (realIndex + offset + items.length) % items.length : realIndex + offset;
-          if (nextIndex < 0 || nextIndex >= items.length) continue;
-          void hydrateCollectionMedia(items[nextIndex]);
-        }
-      });
-    };
-  }, [activeTag, feedLoopEnabled, hydrateCollectionMedia, items]);
 
   useEffect(() => {
     if (!items.length) return;
@@ -2124,7 +2129,7 @@ export function MarketFeedScreen() {
             onScrollBeginDrag={handleFeedScrollBeginDrag}
             style={{ backgroundColor: 'transparent' }}
             viewabilityConfig={viewabilityConfigRef.current}
-            onViewableItemsChanged={onViewableItemsChanged.current}
+            onViewableItemsChanged={stableOnViewableItemsChangedRef.current}
             onScrollToIndexFailed={({ index }) => {
               requestAnimationFrame(() => {
                 feedListRef.current?.scrollToOffset({
