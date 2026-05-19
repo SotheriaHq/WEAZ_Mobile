@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, type View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
-import { BrandProfileHeader, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
+import { BrandProfileHeader, type BrandHeaderContactItem, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
 import type { ProfileBadgeModel } from '@/components/catalog/ProfileBadge';
 import { brandApi, type BrandProfileDto } from '@/src/api/BrandApi';
 import { useAuth } from '@/src/auth/AuthContext';
@@ -24,6 +24,7 @@ type OwnerCatalogMediaHeaderProps = {
   onSearch?: () => void;
   onViewAvatar?: () => void;
   stats?: BrandHeaderStat[];
+  contactItems?: BrandHeaderContactItem[];
   badges?: ProfileBadgeModel[];
 };
 
@@ -56,6 +57,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   onSearch,
   onViewAvatar,
   stats = [],
+  contactItems = [],
   badges = [],
 }: OwnerCatalogMediaHeaderProps) {
   const { user, updateUser } = useAuth();
@@ -206,6 +208,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       username={username}
       location={location}
       description={profile?.brandDescription ?? null}
+      contactItems={contactItems}
       tags={profile?.brandTags || []}
       stats={stats}
       badges={badges}

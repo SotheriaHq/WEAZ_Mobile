@@ -32,7 +32,7 @@ import { canManageCatalog, getActiveBrandId } from '@/src/auth/brandAccess';
 import { brandApi, type BrandProfileDto, type CollectionDto } from '@/src/api/BrandApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
 import { OwnerCatalogMediaHeader } from '@/components/catalog/OwnerCatalogMediaHeader';
-import { BrandProfileHeader, BrandProfileHeaderSkeleton, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
+import { BrandProfileHeader, BrandProfileHeaderSkeleton, type BrandHeaderContactItem, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
 import MobileProfileImageModal from '@/components/profile/ProfileImageModal';
 import { Tabs } from '@/components/catalog/Tabs';
 import { CollectionsGrid } from '@/components/catalog/CollectionsGrid';
@@ -80,17 +80,9 @@ function readMetricNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function getStoreMetricValue(
-  status: BrandProfileDto['storeStatus'],
-  isStoreOpen?: boolean | null,
-): string | null {
-  const normalized = String(status ?? '').toUpperCase();
-
-  if (normalized === 'PENDING_VERIFICATION') return 'Pending';
-  if (normalized === 'OPEN' || isStoreOpen === true) return 'Open';
-  if (normalized === 'CLOSED' || isStoreOpen === false) return 'Closed';
-
-  return null;
+function readContactValue(value: unknown): string | null {
+  const trimmed = String(value ?? '').trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function buildProfileUrlFromConfig(brandId: string | null, username?: string | null): string | null {
@@ -725,47 +717,51 @@ export default function CatalogScreen() {
     const backendDesigns = readMetricNumber(profile?.designsCount) ?? readMetricNumber(profile?.collectionsCount);
     const localDesigns = Math.max(collections.length, currentCollectionsWithBackgroundTasks.length);
     const designsCount = backendDesigns ?? localDesigns;
-    const followersCount = readMetricNumber(profile?.followersCount) ?? readMetricNumber(profile?.patchesCount);
-    const totalThreads = readMetricNumber(profile?.totalThreads) ?? readMetricNumber(profile?.totalLikes);
-    const averageRating = readMetricNumber(profile?.averageRating);
-    const totalReviews = readMetricNumber(profile?.totalReviews);
-    const storeMetric = getStoreMetricValue(profile?.storeStatus, profile?.isStoreOpen);
-    const metricLimit = windowWidth < 390 ? 3 : 4;
+    const patchesCount = readMetricNumber(profile?.patchesCount) ?? readMetricNumber(profile?.followersCount) ?? 0;
+    const totalThreads = readMetricNumber(profile?.totalThreads) ?? readMetricNumber(profile?.totalLikes) ?? 0;
+    const totalReviews = readMetricNumber(profile?.totalReviews) ?? 0;
     const stats: BrandHeaderStat[] = [];
+
+    stats.push({ value: formatCount(patchesCount), label: patchesCount === 1 ? 'Patch' : 'Patches' });
 
     if (Number.isFinite(designsCount)) {
       stats.push({ value: formatCount(designsCount), label: designsCount === 1 ? 'Design' : 'Designs' });
     }
 
-    if (followersCount !== null) {
-      stats.push({ value: formatCount(followersCount), label: followersCount === 1 ? 'Patch' : 'Patches' });
-    }
+    stats.push({ value: formatCount(totalThreads), label: totalThreads === 1 ? 'Thread' : 'Threads' });
 
-    if (totalThreads !== null) {
-      stats.push({ value: formatCount(totalThreads), label: totalThreads === 1 ? 'Thread' : 'Threads' });
-    }
+    stats.push({ value: formatCount(totalReviews), label: totalReviews === 1 ? 'Review' : 'Reviews' });
 
-    if (storeMetric) {
-      stats.push({ value: storeMetric, label: 'Store' });
-    } else if (averageRating !== null && averageRating > 0 && totalReviews !== null && totalReviews > 0) {
-      stats.push({ value: `⭐ ${averageRating.toFixed(1)}`, label: 'Rating' });
-    }
-
-    return stats.slice(0, metricLimit);
+    return stats.slice(0, 4);
   }, [
     collections.length,
     currentCollectionsWithBackgroundTasks.length,
-    profile?.averageRating,
     profile?.collectionsCount,
     profile?.designsCount,
     profile?.followersCount,
-    profile?.isStoreOpen,
     profile?.patchesCount,
-    profile?.storeStatus,
     profile?.totalLikes,
     profile?.totalThreads,
     profile?.totalReviews,
-    windowWidth,
+  ]);
+  const headerContactItems = useMemo<BrandHeaderContactItem[]>(() => {
+    const candidates: BrandHeaderContactItem[] = [
+      { label: 'Email', value: readContactValue(profile?.email) ?? '' },
+      { label: 'Phone', value: readContactValue(profile?.phoneNumber) ?? '' },
+      { label: 'Website', value: readContactValue(profile?.socialWebsite) ?? '' },
+      { label: 'Instagram', value: readContactValue(profile?.socialInstagram) ?? '' },
+      { label: 'Facebook', value: readContactValue(profile?.socialFacebook) ?? '' },
+      { label: 'X', value: readContactValue(profile?.socialTwitter) ?? '' },
+    ];
+
+    return candidates.filter((item) => item.value.length > 0);
+  }, [
+    profile?.email,
+    profile?.phoneNumber,
+    profile?.socialFacebook,
+    profile?.socialInstagram,
+    profile?.socialTwitter,
+    profile?.socialWebsite,
   ]);
   const headerBadges = useMemo(
     () =>
@@ -961,6 +957,7 @@ export default function CatalogScreen() {
             profile={profile}
             isLoading={false}
             stats={headerStats}
+            contactItems={headerContactItems}
             badges={headerBadges}
             onEditProfile={() => {
               if (!targetBrandId) return;
@@ -984,6 +981,7 @@ export default function CatalogScreen() {
             username={profile?.username || undefined}
             location={profileLocation}
             description={profile?.brandDescription ?? null}
+            contactItems={headerContactItems}
             tags={profile?.brandTags || []}
             stats={headerStats}
             badges={headerBadges}

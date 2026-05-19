@@ -32,6 +32,14 @@ Expo Web responsive QA found profile-header polish issues in the brand catalog v
 
 Owner-state header QA still requires an authenticated brand-owner session or native/device environment because this workspace currently renders only the unauthenticated/visitor catalog state.
 
+## Phase 4.7 profile header round 2
+
+Expo Web responsive QA rechecked the brand catalog/profile header at 390 x 844, 360 x 740, 768 x 1024, and 1024 x 768. The visitor placeholder profile now keeps the frosted brand-name chip compact to the text width, keeps the back control transparent, presents a stronger top-right QR slot, shows Patches, Designs, Threads, and Reviews in the stats area, and renders visitor Patch/Message/Share actions as floating emoji controls without visible button chrome.
+
+Bio and contact rendering is wired to existing mobile brand profile fields only: `brandDescription`, `email`, `phoneNumber`, `socialWebsite`, `socialInstagram`, `socialFacebook`, and `socialTwitter`. The local Expo Web visitor state did not include populated profile/contact data, so populated bio/contact visual verification remains deferred until a real or fixture-backed brand profile is available.
+
+No mobile About tab exists on the catalog/profile surface. The requested web About-to-Bio rename remains a separate `fthreadly` follow-up because this pass is mobile-only.
+
 ## Required before production release
 
 At least one real Android Expo Go pass and one tablet/iPad-class pass should be completed before production confidence.

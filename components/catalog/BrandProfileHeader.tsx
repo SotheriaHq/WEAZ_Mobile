@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
@@ -22,11 +22,17 @@ export type BrandHeaderStat = {
   value: string;
 };
 
+export type BrandHeaderContactItem = {
+  label: string;
+  value: string;
+};
+
 export type BrandProfileHeaderProps = {
   brandName: string;
   username?: string;
   location?: string | null;
   description?: string | null;
+  contactItems?: BrandHeaderContactItem[];
   tags?: string[];
   stats?: BrandHeaderStat[];
   badges?: ProfileBadgeModel[];
@@ -228,7 +234,7 @@ function BannerHeader({
               style={({ pressed }) => [
                 styles.qrButton,
                 {
-                  backgroundColor: tokens.themes.light.colors.surface,
+                  backgroundColor: qrTargetUrl ? tokens.themes.light.colors.surface : theme.colors.glassSurfaceStrong,
                   borderColor: theme.colors.glassBorder,
                   opacity: pressed ? 0.82 : 1,
                 },
@@ -239,13 +245,17 @@ function BannerHeader({
               {qrTargetUrl ? (
                 <QRCode
                   value={qrTargetUrl}
-                  size={50}
+                  size={60}
                   color={tokens.themes.light.colors.text}
                   backgroundColor={tokens.themes.light.colors.surface}
                   quietZone={2}
                 />
               ) : (
-                <View style={[styles.qrPlaceholder, { borderColor: theme.colors.border }]} />
+                <View style={[styles.qrPlaceholder, { backgroundColor: theme.colors.glassSurface, borderColor: theme.colors.glassBorder }]}>
+                  <AppText variant="captionBold" tone="muted">
+                    QR
+                  </AppText>
+                </View>
               )}
             </Pressable>
           ) : null}
@@ -406,10 +416,10 @@ function BrandStatsRow({ stats }: { stats: BrandHeaderStat[] }) {
               tone="muted"
               numberOfLines={1}
               adjustsFontSizeToFit
-              minimumFontScale={0.82}
+              minimumFontScale={0.58}
               style={styles.statLabel}
             >
-              {stat.label.toUpperCase()}
+              {stat.label}
             </AppText>
           </View>
         </React.Fragment>
@@ -553,6 +563,51 @@ function BrandDescription({ description }: { description?: string | null }) {
   );
 }
 
+function BrandContactItems({ items = [] }: { items?: BrandHeaderContactItem[] }) {
+  const { theme } = useTheme();
+  const visibleItems = items.filter((item) => item.value.trim().length > 0);
+
+  if (visibleItems.length === 0) return null;
+
+  return (
+    <View style={styles.contactWrap}>
+      {visibleItems.map((item) => (
+        <View
+          key={`${item.label}-${item.value}`}
+          style={[styles.contactChip, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
+        >
+          <AppText variant="captionBold" tone="muted" numberOfLines={1}>
+            {item.label}
+          </AppText>
+          <AppText variant="captionRegular" tone="secondary" numberOfLines={1} style={styles.contactValue}>
+            {item.value}
+          </AppText>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function BrandProfileDetails({
+  description,
+  contactItems,
+}: {
+  description?: string | null;
+  contactItems?: BrandHeaderContactItem[];
+}) {
+  const hasDescription = Boolean(description?.trim());
+  const hasContact = Boolean(contactItems?.some((item) => item.value.trim().length > 0));
+
+  if (!hasDescription && !hasContact) return null;
+
+  return (
+    <View>
+      <BrandDescription description={description} />
+      <BrandContactItems items={contactItems} />
+    </View>
+  );
+}
+
 function VisitorActionIconButton({
   icon,
   label,
@@ -577,26 +632,27 @@ function VisitorActionIconButton({
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
+      hitSlop={tokens.spacing.sm}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ busy: Boolean(loading), disabled: Boolean(isDisabled), selected: Boolean(selected) }}
       style={({ pressed }) => [
         styles.visitorActionButton,
         {
-          backgroundColor: emphasized
-            ? theme.colors.primary
-            : selected
-              ? theme.colors.primarySoft
-              : theme.colors.surface,
-          borderColor: emphasized || selected ? theme.colors.primary : theme.colors.border,
+          backgroundColor: 'transparent',
+          borderColor: 'transparent',
           opacity: isDisabled ? 0.55 : pressed ? 0.78 : 1,
         },
       ]}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={emphasized ? theme.colors.textInverse : theme.colors.primary} />
+        <ActivityIndicator size="small" color={theme.colors.primary} />
       ) : (
-        <AppText variant="subtitle" tone={emphasized ? 'inverse' : selected ? 'primary' : 'secondary'} style={styles.visitorActionIcon}>
+        <AppText
+          variant={emphasized ? 'title' : 'subtitle'}
+          tone={selected ? 'muted' : 'secondary'}
+          style={styles.visitorActionIcon}
+        >
           {icon}
         </AppText>
       )}
@@ -730,6 +786,7 @@ export function BrandProfileHeader({
   username,
   location,
   description,
+  contactItems = [],
   tags = [],
   stats = [],
   badges = [],
@@ -760,6 +817,8 @@ export function BrandProfileHeader({
 }: BrandProfileHeaderProps) {
   const { theme } = useTheme();
   const effectiveName = brandName || username || 'Threadly Brand';
+  const { width } = useWindowDimensions();
+  const useFullWidthStats = width < 380;
 
   if (isLoading) {
     return <BrandProfileHeaderSkeleton />;
@@ -794,13 +853,19 @@ export function BrandProfileHeader({
         />
         <SideBrandMetaBlock
           location={location}
-          stats={stats}
+          stats={useFullWidthStats ? [] : stats}
           tags={tags}
           badges={badges}
         />
       </View>
 
-      <BrandDescription description={description} />
+      {useFullWidthStats ? (
+        <View style={styles.fullWidthStatsWrap}>
+          <BrandStatsRow stats={stats} />
+        </View>
+      ) : null}
+
+      <BrandProfileDetails description={description} contactItems={contactItems} />
 
       <BrandProfileActions
         isOwner={isOwner}
@@ -867,8 +932,8 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   qrButton: {
-    width: 62,
-    height: 62,
+    width: 74,
+    height: 74,
     borderRadius: tokens.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
@@ -876,10 +941,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   qrPlaceholder: {
-    width: 50,
-    height: 50,
+    width: 60,
+    height: 60,
     borderRadius: tokens.radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerIconButton: {
     width: 48,
@@ -898,15 +965,16 @@ const styles = StyleSheet.create({
   bannerNameChip: {
     position: 'absolute',
     left: 132,
-    right: tokens.spacing.lg,
     bottom: 0,
+    alignSelf: 'flex-start',
+    maxWidth: '62%',
     minHeight: 44,
     borderTopLeftRadius: tokens.radius.lg,
     borderTopRightRadius: tokens.radius.lg,
     borderBottomLeftRadius: tokens.radius.sm,
     borderBottomRightRadius: tokens.radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.sm,
     paddingVertical: tokens.spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
@@ -914,8 +982,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   bannerNameText: {
-    flex: 1,
     minWidth: 0,
+    flexShrink: 1,
   },
   bannerEditControl: {
     position: 'absolute',
@@ -1042,7 +1110,6 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.xs,
     flexWrap: 'nowrap',
   },
   statItem: {
@@ -1061,6 +1128,11 @@ const styles = StyleSheet.create({
   statDivider: {
     width: StyleSheet.hairlineWidth,
     height: 24,
+    marginHorizontal: tokens.spacing.xs / 2,
+  },
+  fullWidthStatsWrap: {
+    paddingHorizontal: tokens.spacing.lg,
+    marginTop: tokens.spacing.sm,
   },
   textTagsRow: {
     flexDirection: 'row',
@@ -1079,7 +1151,7 @@ const styles = StyleSheet.create({
   },
   descriptionWrap: {
     paddingHorizontal: tokens.spacing.lg,
-    marginTop: tokens.spacing.lg,
+    marginTop: tokens.spacing.md,
     gap: tokens.spacing.sm,
   },
   descriptionMeasureText: {
@@ -1110,15 +1182,36 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   visitorActionButton: {
-    width: 54,
+    width: 48,
     height: 44,
     borderRadius: tokens.radius.md,
-    borderWidth: 1,
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   visitorActionIcon: {
     textAlign: 'center',
+  },
+  contactWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.lg,
+    marginTop: tokens.spacing.sm,
+  },
+  contactChip: {
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
+  },
+  contactValue: {
+    minWidth: 0,
+    flexShrink: 1,
   },
   squareAction: {
     width: 52,
