@@ -621,7 +621,7 @@ export default function LoginScreen() {
                   fullWidth
                   testID="login-google-button"
                 />
-                {!googleTokenRequest.configured ? (
+                {__DEV__ && !googleTokenRequest.configured ? (
                   <AppText variant="caption" tone="warning" style={styles.googleConfigText}>
                     Google sign-in needs public Google client IDs in this build.
                   </AppText>

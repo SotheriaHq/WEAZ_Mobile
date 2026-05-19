@@ -220,6 +220,8 @@ export default function SearchScreen() {
   const [resultState, setResultState] = useState<ResultState>({ status: 'idle' });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
+  const suggestAbortRef = useRef<AbortController | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   const normalizedQuery = normalizeQuery(query);
   const recentQueries = useMemo(
@@ -231,17 +233,18 @@ export default function SearchScreen() {
     [suggestions],
   );
 
-  const loadSuggestions = useCallback(async (value: string) => {
+  const loadSuggestions = useCallback(async (value: string, signal?: AbortSignal) => {
     const nextRequestId = requestIdRef.current + 1;
     requestIdRef.current = nextRequestId;
     setSuggestionsLoading(true);
     setSuggestionsError(null);
 
     try {
-      const payload = await SearchApi.suggest({ q: value || undefined });
+      const payload = await SearchApi.suggest({ q: value || undefined }, signal);
       if (requestIdRef.current !== nextRequestId) return;
       setSuggestions(payload);
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
       if (requestIdRef.current !== nextRequestId) return;
       setSuggestionsError(getErrorMessage(error));
     } finally {
@@ -259,6 +262,10 @@ export default function SearchScreen() {
         return;
       }
 
+      searchAbortRef.current?.abort();
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+
       setResultState({ status: 'loading' });
       try {
         const payload = await SearchApi.search({
@@ -266,7 +273,7 @@ export default function SearchScreen() {
           type: nextType === 'all' ? 'all' : nextType,
           page: 1,
           limit: 24,
-        });
+        }, controller.signal);
         if (payload.items.length === 0) {
           setResultState({ status: 'empty' });
         } else {
@@ -279,6 +286,7 @@ export default function SearchScreen() {
         await saveRecentSearch(normalized);
         setLocalRecent(await getLocalRecentSearches());
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return;
         setResultState({ status: 'error', message: getErrorMessage(error) });
       }
     },
@@ -304,14 +312,19 @@ export default function SearchScreen() {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
+    suggestAbortRef.current?.abort();
+    const controller = new AbortController();
+    suggestAbortRef.current = controller;
+
     debounceRef.current = setTimeout(() => {
-      void loadSuggestions(normalizedQuery);
+      void loadSuggestions(normalizedQuery, controller.signal);
     }, 180);
 
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
       }
+      controller.abort();
     };
   }, [loadSuggestions, normalizedQuery]);
 

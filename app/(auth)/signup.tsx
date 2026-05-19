@@ -508,7 +508,7 @@ export default function SignupScreen() {
                 fullWidth
                 testID="signup-google-button"
               />
-              {!googleTokenRequest.configured ? (
+              {__DEV__ && !googleTokenRequest.configured ? (
                 <AppText variant="caption" tone="warning" style={styles.googleConfigText}>
                   Google signup needs public Google client IDs in this build.
                 </AppText>

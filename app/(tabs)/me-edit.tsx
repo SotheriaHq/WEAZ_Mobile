@@ -87,23 +87,31 @@ export default function MeEditScreen() {
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
-    try {
-      const data = await ProfileApi.getMe();
-      if (!data) {
-        toast.error('Could not load your profile.');
+    const retryDelays = [1000, 3000];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, retryDelays[attempt - 1]));
+      }
+      try {
+        const data = await ProfileApi.getMe();
+        if (!data) {
+          console.warn('[background.profile.load.failed] No profile data returned');
+          if (attempt === 2) toast.error('Could not load your profile.');
+          continue;
+        }
+        const nextForm = toForm(data);
+        setProfile(data);
+        setForm(nextForm);
+        setBaseline(nextForm);
+        setSaveState('idle');
         setLoading(false);
         return;
+      } catch (error) {
+        console.warn('[background.profile.load.failed]', error);
+        if (attempt === 2) toast.error('Failed to load your profile.');
       }
-      const nextForm = toForm(data);
-      setProfile(data);
-      setForm(nextForm);
-      setBaseline(nextForm);
-      setSaveState('idle');
-    } catch {
-      toast.error('Failed to load your profile.');
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }, [toast]);
 
   useEffect(() => {
@@ -220,6 +228,7 @@ export default function MeEditScreen() {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.85,
+      base64: false,
     });
 
     if (result.canceled || !result.assets?.[0]) {

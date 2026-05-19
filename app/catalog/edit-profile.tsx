@@ -407,6 +407,7 @@ export default function BrandProfileEditScreen() {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.85,
+      base64: false,
     });
 
     if (result.canceled || !result.assets?.[0]) {
