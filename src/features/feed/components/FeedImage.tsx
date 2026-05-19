@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { Image as ExpoImage, type ImageContentFit } from 'expo-image';
+import type { ImageContentFit } from 'expo-image';
 
 import { AppText } from '@/components/ui/AppText';
+import { AspectAwareMedia } from '@/src/components/media/AspectAwareMedia';
+import type { AspectAwareMediaStrategy } from '@/src/components/media/aspectAwareMediaStrategy';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { feedMediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
@@ -37,6 +39,15 @@ const classifyAspectRatio = (aspectRatio?: number | null): FeedImageAspectClass 
   if (aspectRatio > 1.08) return 'landscape';
   if (aspectRatio < 0.92) return 'portrait';
   return 'square';
+};
+
+const getAspectStrategyOverride = (
+  contentFit: ImageContentFit,
+  frostedBackdrop: boolean,
+): AspectAwareMediaStrategy | null => {
+  if (contentFit === 'cover') return 'edge';
+  if (frostedBackdrop) return null;
+  return 'letter-solid';
 };
 
 function FeedImagePlaceholder({ backgroundColor }: { backgroundColor: string }) {
@@ -131,7 +142,9 @@ export const FeedImage = React.memo(function FeedImage({
     (naturalWidth && naturalHeight ? naturalWidth / naturalHeight : null) ??
     (loadedNaturalSize ? loadedNaturalSize.width / loadedNaturalSize.height : null);
   const resolvedAspectClass = aspectClass ?? classifyAspectRatio(measuredAspectRatio);
-  const useFrostedBackdrop = frostedBackdrop && contentFit === 'contain';
+  const strategyOverride = getAspectStrategyOverride(contentFit, frostedBackdrop);
+  const resolvedImageWidth = naturalWidth ?? loadedNaturalSize?.width ?? null;
+  const resolvedImageHeight = naturalHeight ?? loadedNaturalSize?.height ?? null;
 
   useEffect(() => {
     setLoadState(hasSource ? 'resolving' : 'idle');
@@ -158,7 +171,8 @@ export const FeedImage = React.memo(function FeedImage({
       aspectRatio: measuredAspectRatio ?? null,
       aspectClass: resolvedAspectClass,
       contentFit,
-      frostedBackdrop: useFrostedBackdrop,
+      frostedBackdrop,
+      strategyOverride,
     });
   }, [
     aspectClass,
@@ -171,7 +185,8 @@ export const FeedImage = React.memo(function FeedImage({
     naturalHeight,
     naturalWidth,
     resolvedAspectClass,
-    useFrostedBackdrop,
+    strategyOverride,
+    frostedBackdrop,
     viewportHeight,
     viewportWidth,
   ]);
@@ -183,33 +198,6 @@ export const FeedImage = React.memo(function FeedImage({
     setRetryToken((current) => current + 1);
     void resolveImageUri({ src: sourceUrl, fileId, forceRefresh: true, debugContext });
   }, [debugContext, fileId, hasSource, sourceUrl]);
-
-  const renderFrostedBackdrop = (sourceUri: string) =>
-    useFrostedBackdrop ? (
-      <>
-        <ExpoImage
-          source={{ uri: sourceUri }}
-          style={styles.backdropImage}
-          contentFit="cover"
-          blurRadius={28}
-          cachePolicy="memory-disk"
-          recyclingKey={`${id}:${sourceUri}:frosted-backdrop`}
-        />
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFillObject,
-            styles.backdropWash,
-            {
-              backgroundColor:
-                scheme === 'dark'
-                  ? 'rgba(0, 0, 0, 0.28)'
-                  : 'rgba(255, 255, 255, 0.18)',
-            },
-          ]}
-        />
-      </>
-    ) : null;
 
   const renderFallback = (copy: string) => (
     <Pressable
@@ -236,16 +224,18 @@ export const FeedImage = React.memo(function FeedImage({
     return (
       <View style={[styles.root, { backgroundColor: placeholderSurface }, style]}>
         {staleUri ? (
-          <>
-            {renderFrostedBackdrop(staleUri)}
-            <ExpoImage
-              source={{ uri: staleUri }}
-              style={StyleSheet.absoluteFillObject}
-              contentFit={contentFit}
-              cachePolicy="memory-disk"
-              recyclingKey={`${id}:${staleUri}:stale`}
-            />
-          </>
+          <AspectAwareMedia
+            source={{ uri: staleUri }}
+            blurhash={blurHash}
+            dominantColor={dominantColor}
+            imageWidth={resolvedImageWidth}
+            imageHeight={resolvedImageHeight}
+            imageAspectRatio={measuredAspectRatio}
+            style={StyleSheet.absoluteFillObject}
+            strategyOverride={strategyOverride}
+            recyclingKey={`${id}:${staleUri}:stale`}
+            accessibilityLabel={label ?? 'Feed image'}
+          />
         ) : (
           <FeedImagePlaceholder backgroundColor={placeholderSurface} />
         )}
@@ -259,16 +249,18 @@ export const FeedImage = React.memo(function FeedImage({
 
   return (
     <View style={[styles.root, { backgroundColor: placeholderSurface }, style]}>
-      {renderFrostedBackdrop(visibleUri)}
       {loadState !== 'loaded' ? <FeedImagePlaceholder backgroundColor={placeholderSurface} /> : null}
-      <ExpoImage
+      <AspectAwareMedia
         source={{ uri: visibleUri }}
-        placeholder={blurHash ? { blurhash: blurHash } : undefined}
+        blurhash={blurHash}
+        dominantColor={dominantColor}
+        imageWidth={resolvedImageWidth}
+        imageHeight={resolvedImageHeight}
+        imageAspectRatio={measuredAspectRatio}
         style={[StyleSheet.absoluteFillObject, { opacity: loadState === 'loaded' ? 1 : 0 }]}
-        contentFit={contentFit}
-        cachePolicy="memory-disk"
+        strategyOverride={strategyOverride}
         recyclingKey={`${id}:${visibleUri}`}
-        transition={120}
+        accessibilityLabel={label ?? 'Feed image'}
         onLoad={(event) => {
           const nextWidth = event.source?.width;
           const nextHeight = event.source?.height;
@@ -300,14 +292,6 @@ const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
-  },
-  backdropImage: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.74,
-    transform: [{ scale: 1.08 }],
-  },
-  backdropWash: {
-    opacity: 0.82,
   },
   fallback: {
     alignItems: 'center',

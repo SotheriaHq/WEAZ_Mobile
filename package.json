@@ -8,6 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "audit:design-system": "node ../scripts/audit-mobile-design-system.js",
+    "test:aspect-aware-media": "node scripts/test-aspect-aware-media-strategy.js",
     "test:store-api-contract": "node scripts/test-store-api-contract.js",
     "test:product-collection-management-contract": "node scripts/test-product-collection-management-contract.js",
     "test:brand-profile-contract": "node scripts/test-brand-profile-contract.js",

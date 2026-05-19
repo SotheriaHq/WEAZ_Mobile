@@ -9,6 +9,7 @@ import ThreadRailAction from './ThreadRailAction';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { Button } from '@/components/ui/Button';
 import { ThreadlyLogoLoader } from '@/components/ui/ThreadlyLogoLoader';
+import { AspectAwareMedia } from '@/src/components/media/AspectAwareMedia';
 import {
   brandApi,
   type CollectionDetailDto,
@@ -32,6 +33,11 @@ type ViewerMedia = {
   type: 'image' | 'video';
   label: string;
   threadsCount: number;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
+  imageAspectRatio?: number | null;
+  blurhash?: string | null;
+  dominantColor?: string | null;
 };
 
 type CarouselMedia = ViewerMedia & {
@@ -74,6 +80,33 @@ const getCollectionMediaFileId = (media: CollectionDetailMediaDto) =>
   normalizeStableUri(media.file?.fileId) ??
   normalizeStableUri(media.file?.id);
 
+const getPositiveNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+};
+
+const getMediaNumber = (media: CollectionDetailMediaDto, key: string): number | null => {
+  const record = media as unknown as Record<string, unknown>;
+  const fileRecord = media.file as Record<string, unknown> | null | undefined;
+  return getPositiveNumber(record[key]) ?? getPositiveNumber(fileRecord?.[key]);
+};
+
+const getMediaString = (media: CollectionDetailMediaDto, keys: string[]): string | null => {
+  const record = media as unknown as Record<string, unknown>;
+  const fileRecord = media.file as Record<string, unknown> | null | undefined;
+
+  for (const key of keys) {
+    const value = record[key] ?? fileRecord?.[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+
+  return null;
+};
+
 function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null; fallbackMedia?: ViewerMedia | null }) {
   const [imageFailed, setImageFailed] = useState(false);
   const primaryDebugContext = useMemo(
@@ -110,6 +143,7 @@ function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null;
   });
   const uri = imageFailed ? fallbackUri : primaryUri ?? fallbackUri;
   const loading = primaryLoading || (shouldUseFallback && fallbackLoading);
+  const displayMedia = shouldUseFallback && fallbackCandidate ? fallbackCandidate : media;
 
   useEffect(() => {
     setImageFailed(false);
@@ -155,7 +189,20 @@ function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null;
     );
   }
 
-  return <Image source={{ uri }} style={styles.slideImage} resizeMode="cover" onError={() => setImageFailed(true)} />;
+  return (
+    <AspectAwareMedia
+      source={{ uri }}
+      imageWidth={displayMedia?.imageWidth}
+      imageHeight={displayMedia?.imageHeight}
+      imageAspectRatio={displayMedia?.imageAspectRatio}
+      blurhash={displayMedia?.blurhash}
+      dominantColor={displayMedia?.dominantColor}
+      style={styles.slideImage}
+      accessibilityLabel={displayMedia?.label ?? 'Collection media'}
+      recyclingKey={`${displayMedia?.id ?? 'collection-media'}:${uri}`}
+      onError={() => setImageFailed(true)}
+    />
+  );
 }
 
 function OwnerAvatar({
@@ -181,6 +228,7 @@ function OwnerAvatar({
     >
       <View style={styles.ownerAvatarCircle}>
         {uri && !loading ? (
+          // Avatar images intentionally use fixed-size cover rendering; do not migrate to AspectAwareMedia.
           <Image source={{ uri }} style={styles.ownerAvatarImage} resizeMode="cover" />
         ) : (
           <AppText variant="bodyBold" tone="inverse">{initials}</AppText>
@@ -430,6 +478,12 @@ export function CollectionDetailViewer({
               type: getMediaType(media),
               label: media.caption ?? media.file?.originalName ?? response.title,
               threadsCount: typeof media.threadsCount === 'number' ? media.threadsCount : 0,
+              imageWidth: getMediaNumber(media, 'width') ?? getMediaNumber(media, 'naturalWidth') ?? getMediaNumber(media, 'imageWidth'),
+              imageHeight:
+                getMediaNumber(media, 'height') ?? getMediaNumber(media, 'naturalHeight') ?? getMediaNumber(media, 'imageHeight'),
+              imageAspectRatio: getMediaNumber(media, 'aspectRatio'),
+              blurhash: getMediaString(media, ['blurhash', 'blurHash']),
+              dominantColor: getMediaString(media, ['dominantColor']),
             } satisfies ViewerMedia;
           }),
         );

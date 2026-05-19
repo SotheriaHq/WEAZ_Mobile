@@ -10,6 +10,9 @@ import {
 } from 'react-native';
 import { Image as ExpoImage, type ImageContentFit } from 'expo-image';
 
+import { AspectAwareMedia } from '@/src/components/media/AspectAwareMedia';
+import type { AspectAwareMediaStrategy } from '@/src/components/media/aspectAwareMediaStrategy';
+
 type StableImageProps = {
   uri?: string | null;
   resizeMode?: ImageResizeMode;
@@ -18,6 +21,13 @@ type StableImageProps = {
   fallback?: React.ReactNode;
   fadeDuration?: number;
   onError?: () => void;
+  aspectAware?: boolean;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
+  imageAspectRatio?: number | null;
+  blurhash?: string | null;
+  dominantColor?: string | null;
+  strategyOverride?: AspectAwareMediaStrategy | null;
 };
 
 const AnimatedExpoImage = Animated.createAnimatedComponent(ExpoImage);
@@ -37,6 +47,13 @@ export function StableImage({
   fallback,
   fadeDuration = 180,
   onError,
+  aspectAware = false,
+  imageWidth,
+  imageHeight,
+  imageAspectRatio,
+  blurhash,
+  dominantColor,
+  strategyOverride,
 }: StableImageProps) {
   const [displayUri, setDisplayUri] = React.useState<string | null>(uri ?? null);
   const [incomingUri, setIncomingUri] = React.useState<string | null>(null);
@@ -100,6 +117,32 @@ export function StableImage({
       displayOpacity.setValue(1);
     });
   }, [displayOpacity, fadeDuration, incomingOpacity]);
+
+  if (aspectAware) {
+    const aspectStrategyOverride = strategyOverride ?? (resizeMode === 'cover' ? 'edge' : null);
+
+    return (
+      <View style={containerStyle}>
+        {fallback}
+        {uri ? (
+          // Aspect-aware rendering intentionally skips the crossfade stack; all current call sites keep the default path.
+          <AspectAwareMedia
+            source={{ uri }}
+            imageWidth={imageWidth}
+            imageHeight={imageHeight}
+            imageAspectRatio={imageAspectRatio}
+            blurhash={blurhash}
+            dominantColor={dominantColor}
+            style={[styles.imageLayer, imageStyle as StyleProp<ViewStyle>]}
+            imageStyle={imageStyle}
+            strategyOverride={aspectStrategyOverride}
+            recyclingKey={uri}
+            onError={onError ? () => onError() : undefined}
+          />
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View style={containerStyle}>
