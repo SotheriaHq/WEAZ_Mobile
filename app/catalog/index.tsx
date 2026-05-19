@@ -52,11 +52,7 @@ import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
 import { AppActionSheet } from '@/components/ui/AppActionSheet';
 import { AppQrSheet } from '@/components/ui/AppQrSheet';
 import { BrandSwitcherSheet } from '@/components/brand/BrandSwitcherSheet';
-import {
-  pickDesignEditorMediaAssets,
-  stageDesignEditorAssetBundle,
-  type DesignEditorMediaSource,
-} from '@/src/features/design-editor/designEditorMediaFlow';
+import type { DesignEditorMediaSource } from '@/src/features/design-editor/designEditorMediaFlow';
 import {
   readDesignEditorBackgroundTasks,
   removeDesignEditorBackgroundTask,
@@ -69,6 +65,7 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { formatCount } from '@/src/utils/formatCount';
 import { env } from '@/src/config/env';
 import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
+import { perfMark } from '@/src/utils/perf';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -838,33 +835,20 @@ export default function CatalogScreen() {
   );
 
   const handleLaunchCreateDesign = useCallback(
-    async (source: DesignEditorMediaSource) => {
+    (source: DesignEditorMediaSource) => {
       if (canManageCatalog(user) && userEmailVerified === false) {
         toast.error('Verify your email before creating designs.');
         return;
       }
 
-      const pickResult = await pickDesignEditorMediaAssets({
-        source,
-        existingCount: 0,
-      });
-
-      if (pickResult.status === 'cancelled') {
-        return;
-      }
-
-      if (pickResult.status === 'limit') {
-        toast.error(pickResult.message);
-        return;
-      }
-
-      if (pickResult.status === 'permission') {
-        toast.error(pickResult.issue.message);
-        return;
-      }
-
-      const handoffToken = stageDesignEditorAssetBundle(pickResult.assets);
-      router.push({ pathname: '/catalog/create-design', params: { handoffToken } } as any);
+      perfMark('catalog-plus-tap');
+      router.push({
+        pathname: '/catalog/create-design/composer',
+        params: {
+          openPicker: '1',
+          pickerSource: source,
+        },
+      } as any);
     },
     [toast, user, userEmailVerified],
   );
@@ -875,13 +859,13 @@ export default function CatalogScreen() {
         key: 'camera',
         icon: '📷',
         title: 'Camera',
-        onPress: () => void handleLaunchCreateDesign('camera'),
+        onPress: () => handleLaunchCreateDesign('camera'),
       },
       {
         key: 'media',
         icon: '🖼️',
         title: 'Media',
-        onPress: () => void handleLaunchCreateDesign('library'),
+        onPress: () => handleLaunchCreateDesign('library'),
       },
       {
         key: 'attachment',

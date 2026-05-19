@@ -42,6 +42,7 @@ import { requestNativeIslandCollapse } from '@/components/navigation/nativeIslan
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
+import { perfMark } from '@/src/utils/perf';
 import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
 import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
 import type { FeedListEntry, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
@@ -1554,6 +1555,11 @@ export function MarketFeedScreen() {
     router.push({ pathname: '/catalog/[brandId]', params: { brandId: normalizedBrandId } } as any);
   }, [activePageIndex]);
 
+  const handleOpenSearch = useCallback(() => {
+    perfMark('runway-search-tap');
+    router.push('/search' as any);
+  }, []);
+
   const handleSaveLook = useCallback((item: MarketItem) => {
     const collectionId = item.collectionId?.trim();
     if (!collectionId) return;
@@ -2033,7 +2039,7 @@ export function MarketFeedScreen() {
 
                 <View style={styles.headerRightGroup}>
                 <Pressable
-                  onPress={() => { router.push('/search' as any); }}
+                  onPress={handleOpenSearch}
                   hitSlop={10}
                   style={({ pressed }) => [
                     styles.headerIconButton,

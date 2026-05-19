@@ -14,7 +14,6 @@ import { Header } from '@/components/ui/Header';
 import { IconButton } from '@/components/ui/IconButton';
 import { StableImage } from '@/components/ui/StableImage';
 import StudioApi from '@/src/api/StudioApi';
-import { publicLinkApi } from '@/src/api/PublicLinkApi';
 import { env } from '@/src/config/env';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { getActiveBrandId, hasActiveBrandMembership, isBrandOwner } from '@/src/auth/brandAccess';
@@ -33,6 +32,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
+import { perfMark } from '@/src/utils/perf';
 
 type LoadState = 'booting' | 'loading' | 'ready' | 'error';
 
@@ -501,32 +501,15 @@ export default function StudioWebViewScreen() {
     (target: string, source: 'navigation' | 'message') => {
       const aliasTarget = getTrustedAliasPath(target);
       if (aliasTarget) {
-        void (async () => {
-          try {
-            if (aliasTarget.type === 'profile') {
-              const profile = await publicLinkApi.resolveProfileByUsername(aliasTarget.value);
-              trackStudioWebViewEvent('native-route-opened', {
-                source,
-                path: sanitizePathForTelemetry(`/profile/${profile.id}`),
-              });
-              router.push({ pathname: '/profile/[id]', params: { id: profile.id } } as any);
-              return;
-            }
-
-            const store = await publicLinkApi.resolveStorefrontBySlug(aliasTarget.value);
-            trackStudioWebViewEvent('native-route-opened', {
-              source,
-              path: sanitizePathForTelemetry(`/catalog/${store.ownerId}`),
-            });
-            router.push({ pathname: '/catalog/[brandId]', params: { brandId: store.ownerId, tab: 'Shop' } } as any);
-          } catch {
-            trackStudioWebViewEvent('native-route-blocked', {
-              source,
-              reason: aliasTarget.type === 'profile' ? 'profile_alias_resolution_failed' : 'storefront_alias_resolution_failed',
-            });
-            toast.info(aliasTarget.type === 'profile' ? 'Profile not found.' : 'Storefront not found.');
-          }
-        })();
+        perfMark('studio-webview-tap');
+        router.push({
+          pathname: '/studio/resolve-alias',
+          params: {
+            aliasType: aliasTarget.type,
+            aliasValue: aliasTarget.value,
+            source,
+          },
+        } as any);
         return false;
       }
 

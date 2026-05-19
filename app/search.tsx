@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
+  InteractionManager,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -32,6 +33,7 @@ import {
   removeRecentSearch,
   saveRecentSearch,
 } from '@/src/utils/searchHistory';
+import { perfMeasure } from '@/src/utils/perf';
 
 type FilterType = 'all' | SearchEntityType;
 
@@ -233,6 +235,10 @@ export default function SearchScreen() {
     [suggestions],
   );
 
+  useEffect(() => {
+    perfMeasure('runway-search-first-paint', 'runway-search-tap');
+  }, []);
+
   const loadSuggestions = useCallback(async (value: string, signal?: AbortSignal) => {
     const nextRequestId = requestIdRef.current + 1;
     requestIdRef.current = nextRequestId;
@@ -299,16 +305,19 @@ export default function SearchScreen() {
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([getLocalRecentSearches(), getHiddenSearches()])
-      .then(([recent, hidden]) => {
-        if (!mounted) return;
-        setLocalRecent(recent);
-        setHiddenRecent(hidden);
-      })
-      .catch(() => undefined);
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      Promise.all([getLocalRecentSearches(), getHiddenSearches()])
+        .then(([recent, hidden]) => {
+          if (!mounted) return;
+          setLocalRecent(recent);
+          setHiddenRecent(hidden);
+        })
+        .catch(() => undefined);
+    });
 
     return () => {
       mounted = false;
+      interaction.cancel();
     };
   }, []);
 
@@ -329,12 +338,18 @@ export default function SearchScreen() {
     suggestAbortRef.current?.abort();
     const controller = new AbortController();
     suggestAbortRef.current = controller;
+    let cancelled = false;
 
-    debounceRef.current = setTimeout(() => {
-      void loadSuggestions(normalizedQuery, controller.signal);
-    }, 180);
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      debounceRef.current = setTimeout(() => {
+        void loadSuggestions(normalizedQuery, controller.signal);
+      }, 180);
+    });
 
     return () => {
+      cancelled = true;
+      interaction.cancel();
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
       }
@@ -344,7 +359,10 @@ export default function SearchScreen() {
 
   useEffect(() => {
     if (autoSubmit === '1' || autoSubmit === 'true') {
-      void runSearch(initialQuery, filterType);
+      const interaction = InteractionManager.runAfterInteractions(() => {
+        void runSearch(initialQuery, filterType);
+      });
+      return () => interaction.cancel();
     }
   }, [autoSubmit, filterType, initialQuery, runSearch]);
 

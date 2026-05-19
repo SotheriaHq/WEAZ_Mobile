@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppFloatingMenu } from '@/components/ui/AppFloatingMenu';
@@ -31,6 +31,8 @@ import {
 } from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import type { DesignEditorMediaSource } from '@/src/features/design-editor/designEditorMediaFlow';
+import { perfMeasure } from '@/src/utils/perf';
 import {
   CREATOR_AUDIENCE_OPTIONS,
   CREATOR_METADATA_HELP,
@@ -93,8 +95,14 @@ export default function CreateDesignComposerScreen() {
   } = useDesignEditor();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ openPicker?: string | string[]; pickerSource?: string | string[] }>();
+  const openPickerParam = Array.isArray(params.openPicker) ? params.openPicker[0] : params.openPicker;
+  const pickerSourceParam = Array.isArray(params.pickerSource) ? params.pickerSource[0] : params.pickerSource;
+  const shouldOpenInitialPicker = openPickerParam === '1' || openPickerParam === 'true';
+  const initialPickerSource: DesignEditorMediaSource = pickerSourceParam === 'camera' ? 'camera' : 'library';
   const plusRef = useRef<View>(null);
   const hasEverHadAssetsRef = useRef(false);
+  const initialPickerStartedRef = useRef(false);
 
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -114,6 +122,7 @@ export default function CreateDesignComposerScreen() {
   const [tagSuggestions, setTagSuggestions] = useState<{ name: string; usageCount: number }[]>([]);
   const [tagError, setTagError] = useState<string | null>(null);
   const [tagsLoading, setTagsLoading] = useState(false);
+  const [initialPickerPending, setInitialPickerPending] = useState(shouldOpenInitialPicker);
 
   const audienceLabel = getAudienceLabel(form.audience);
   const sizingLabel = DESIGN_SIZING_LABELS[form.sizingMode];
@@ -238,10 +247,34 @@ export default function CreateDesignComposerScreen() {
 
   const handlePickMedia = useCallback(
     async (source: 'camera' | 'library') => {
-      await pickMedia(source);
+      return pickMedia(source);
     },
     [pickMedia],
   );
+
+  useEffect(() => {
+    perfMeasure('catalog-plus-to-composer', 'catalog-plus-tap');
+  }, []);
+
+  useEffect(() => {
+    if (!shouldOpenInitialPicker || initialPickerStartedRef.current || isEditMode) return;
+    initialPickerStartedRef.current = true;
+
+    let active = true;
+    const timer = setTimeout(() => {
+      setInitialPickerPending(true);
+      void handlePickMedia(initialPickerSource).finally(() => {
+        if (active) {
+          setInitialPickerPending(false);
+        }
+      });
+    }, 0);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [handlePickMedia, initialPickerSource, isEditMode, shouldOpenInitialPicker]);
 
   const loadTags = useCallback(async (isActive: () => boolean = () => true) => {
     setTagsLoading(true);
@@ -316,7 +349,13 @@ export default function CreateDesignComposerScreen() {
   }, [assets.length]);
 
   const shouldRedirectEmptyCreate =
-    !booting && !isEditMode && assets.length === 0 && !hasEverHadAssetsRef.current;
+    !booting &&
+    !isEditMode &&
+    assets.length === 0 &&
+    !hasEverHadAssetsRef.current &&
+    !shouldOpenInitialPicker &&
+    !initialPickerPending &&
+    !permissionIssue;
 
   useEffect(() => {
     if (shouldRedirectEmptyCreate) {
@@ -370,7 +409,7 @@ export default function CreateDesignComposerScreen() {
     [filterSelection, toggleFilterValue],
   );
 
-  if (booting || shouldRedirectEmptyCreate) {
+  if ((booting && !shouldOpenInitialPicker) || shouldRedirectEmptyCreate) {
     return <AppLoaderScreen message="Loading composer" />;
   }
 
@@ -398,7 +437,11 @@ export default function CreateDesignComposerScreen() {
               <View style={styles.sectionTitleCopy}>
                 <AppText variant="bodyBold">Selected media</AppText>
                 <AppText variant="captionRegular" tone="muted">
-                  {assets.length > 0 ? `${assets.length}/${DESIGN_EDITOR_MAX_MEDIA} selected` : 'No media selected yet'}
+                  {initialPickerPending
+                    ? 'Opening media picker...'
+                    : assets.length > 0
+                      ? `${assets.length}/${DESIGN_EDITOR_MAX_MEDIA} selected`
+                      : 'No media selected yet'}
                 </AppText>
               </View>
               <View ref={plusRef}>
