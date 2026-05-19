@@ -738,7 +738,7 @@ export default function CatalogScreen() {
     }
 
     if (followersCount !== null) {
-      stats.push({ value: formatCount(followersCount), label: followersCount === 1 ? 'Follower' : 'Followers' });
+      stats.push({ value: formatCount(followersCount), label: followersCount === 1 ? 'Patch' : 'Patches' });
     }
 
     if (totalThreads !== null) {

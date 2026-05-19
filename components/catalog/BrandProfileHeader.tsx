@@ -256,12 +256,19 @@ function BannerHeader({
         </View>
       </View>
 
-      <View style={[styles.bannerNameChip, { backgroundColor: theme.colors.glassSurfaceSoft, borderColor: theme.colors.glassBorder }]}>
+      <View style={[styles.bannerNameChip, { backgroundColor: 'transparent', borderColor: theme.colors.glassBorder }]}>
         <BlurView
-          intensity={Math.max(18, Math.round(theme.colors.glassBlur * 0.72))}
+          intensity={Math.max(14, Math.round(theme.colors.glassBlur * 0.5))}
           tint={scheme === 'dark' ? 'dark' : 'light'}
           style={StyleSheet.absoluteFillObject}
           pointerEvents="none"
+        />
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: scheme === 'dark' ? 'rgba(0,0,0,0.14)' : 'rgba(8,10,18,0.08)' },
+          ]}
         />
         <AppText variant="title" tone="inverse" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.bannerNameText}>
           {brandName}
@@ -546,6 +553,57 @@ function BrandDescription({ description }: { description?: string | null }) {
   );
 }
 
+function VisitorActionIconButton({
+  icon,
+  label,
+  onPress,
+  disabled,
+  loading,
+  emphasized,
+  selected,
+}: {
+  icon: string;
+  label: string;
+  onPress?: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  emphasized?: boolean;
+  selected?: boolean;
+}) {
+  const { theme } = useTheme();
+  const isDisabled = disabled || loading;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ busy: Boolean(loading), disabled: Boolean(isDisabled), selected: Boolean(selected) }}
+      style={({ pressed }) => [
+        styles.visitorActionButton,
+        {
+          backgroundColor: emphasized
+            ? theme.colors.primary
+            : selected
+              ? theme.colors.primarySoft
+              : theme.colors.surface,
+          borderColor: emphasized || selected ? theme.colors.primary : theme.colors.border,
+          opacity: isDisabled ? 0.55 : pressed ? 0.78 : 1,
+        },
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color={emphasized ? theme.colors.textInverse : theme.colors.primary} />
+      ) : (
+        <AppText variant="subtitle" tone={emphasized ? 'inverse' : selected ? 'primary' : 'secondary'} style={styles.visitorActionIcon}>
+          {icon}
+        </AppText>
+      )}
+    </Pressable>
+  );
+}
+
 function BrandProfileActions({
   isOwner,
   isPatched,
@@ -615,27 +673,29 @@ function BrandProfileActions({
   }
 
   return (
-    <View style={styles.actionRow}>
-      <View style={styles.primaryActionSlot}>
-        <Button
-          title={isPatched ? 'Following' : 'Follow'}
-          size="md"
-          variant={isPatched ? 'outline' : 'primary'}
-          onPress={onPatch}
-          disabled={!onPatch || patchLoading}
-          loading={patchLoading}
-          fullWidth
-          style={styles.actionButton}
-        />
-      </View>
+    <View style={[styles.actionRow, styles.visitorActionRow]}>
+      <VisitorActionIconButton
+        icon="🪡"
+        label={isPatched ? 'Unpatch brand' : 'Patch brand'}
+        onPress={onPatch}
+        disabled={!onPatch || patchLoading}
+        loading={patchLoading}
+        emphasized={!isPatched}
+        selected={isPatched}
+      />
       {onMessage ? (
-        <View style={styles.secondaryActionSlot}>
-          <Button title="Message" size="md" variant="outline" onPress={onMessage} fullWidth style={styles.actionButton} />
-        </View>
+        <VisitorActionIconButton
+          icon="💬"
+          label="Message brand"
+          onPress={onMessage}
+        />
       ) : null}
-      <View style={styles.secondaryActionSlot}>
-        <Button title="Share" size="md" variant="outline" onPress={onShare} disabled={!onShare} fullWidth style={styles.actionButton} />
-      </View>
+      <VisitorActionIconButton
+        icon="↗"
+        label="Share brand"
+        onPress={onShare}
+        disabled={!onShare}
+      />
     </View>
   );
 }
@@ -839,9 +899,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 132,
     right: tokens.spacing.lg,
-    bottom: tokens.spacing.md,
+    bottom: 0,
     minHeight: 44,
-    borderRadius: tokens.radius.lg,
+    borderTopLeftRadius: tokens.radius.lg,
+    borderTopRightRadius: tokens.radius.lg,
+    borderBottomLeftRadius: tokens.radius.sm,
+    borderBottomRightRadius: tokens.radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
@@ -1042,6 +1105,20 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     borderRadius: tokens.radius.md,
+  },
+  visitorActionRow: {
+    justifyContent: 'flex-start',
+  },
+  visitorActionButton: {
+    width: 54,
+    height: 44,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  visitorActionIcon: {
+    textAlign: 'center',
   },
   squareAction: {
     width: 52,

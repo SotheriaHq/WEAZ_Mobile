@@ -26,6 +26,12 @@ Native Android/iOS hardware QA is deferred. This means picker behavior, platform
 - Catalog/profile placeholder rendered in phone and tablet viewports without right-edge cutoff.
 - Messages rendered with a right-aligned search icon and no bordered search wrapper.
 
+## Phase 4.6 profile header follow-up
+
+Expo Web responsive QA found profile-header polish issues in the brand catalog visitor state. The follow-up pass verified the brand name plate as a frosted chip sitting flush with the banner edge, replaced visitor Follow/Following copy with Patch/Patched semantics, changed the visible profile patch-count label from Followers to Patches, and made visitor Patch/Message/Share controls emoji-only with accessibility labels.
+
+Owner-state header QA still requires an authenticated brand-owner session or native/device environment because this workspace currently renders only the unauthenticated/visitor catalog state.
+
 ## Required before production release
 
 At least one real Android Expo Go pass and one tablet/iPad-class pass should be completed before production confidence.
