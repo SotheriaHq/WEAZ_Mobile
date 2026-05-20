@@ -234,6 +234,18 @@ export default function SearchScreen() {
     () => (suggestions ? buildSuggestionItems(suggestions) : []),
     [suggestions],
   );
+  const hasActiveQuery = normalizedQuery.length > 0;
+  const hasTrending = Boolean(suggestions?.trending?.length);
+  const showRecentSection = recentQueries.length > 0;
+  const showSuggestionSection = !suggestionsError && (suggestedItems.length > 0 || (hasActiveQuery && suggestionsLoading));
+  const showSuggestionRetry = hasActiveQuery && Boolean(suggestionsError) && !suggestionsLoading;
+  const showPopularSection = hasTrending;
+  const showDefaultPrompt =
+    resultState.status === 'idle' &&
+    !hasActiveQuery &&
+    !showRecentSection &&
+    !showSuggestionSection &&
+    !showPopularSection;
 
   useEffect(() => {
     perfMeasure('runway-search-first-paint', 'runway-search-tap');
@@ -261,7 +273,11 @@ export default function SearchScreen() {
   }, []);
 
   const runSearch = useCallback(
-    async (searchValue: string, nextType: FilterType = filterType) => {
+    async (
+      searchValue: string,
+      nextType: FilterType = filterType,
+      options: { saveToRecent?: boolean } = {},
+    ) => {
       const normalized = normalizeQuery(searchValue);
       if (!normalized) {
         setResultState({ status: 'idle' });
@@ -289,8 +305,10 @@ export default function SearchScreen() {
             hasNextPage: payload.meta.hasNextPage,
           });
         }
-        await saveRecentSearch(normalized);
-        setLocalRecent(await getLocalRecentSearches());
+        if (options.saveToRecent !== false) {
+          await saveRecentSearch(normalized);
+          setLocalRecent(await getLocalRecentSearches());
+        }
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') return;
         setResultState({ status: 'error', message: getErrorMessage(error) });
@@ -344,6 +362,12 @@ export default function SearchScreen() {
       if (cancelled) return;
       debounceRef.current = setTimeout(() => {
         void loadSuggestions(normalizedQuery, controller.signal);
+        if (normalizedQuery) {
+          void runSearch(normalizedQuery, filterType, { saveToRecent: false });
+        } else {
+          searchAbortRef.current?.abort();
+          setResultState({ status: 'idle' });
+        }
       }, 180);
     });
 
@@ -355,7 +379,7 @@ export default function SearchScreen() {
       }
       controller.abort();
     };
-  }, [loadSuggestions, normalizedQuery]);
+  }, [filterType, loadSuggestions, normalizedQuery, runSearch]);
 
   useEffect(() => {
     if (autoSubmit === '1' || autoSubmit === 'true') {
@@ -378,15 +402,29 @@ export default function SearchScreen() {
   }, []);
 
   const onSubmitSearch = useCallback(() => {
-    void runSearch(query);
-  }, [query, runSearch]);
+    void runSearch(query, filterType, { saveToRecent: true });
+  }, [filterType, query, runSearch]);
+
+  const onClearQuery = useCallback(() => {
+    suggestAbortRef.current?.abort();
+    searchAbortRef.current?.abort();
+    setQuery('');
+    setResultState({ status: 'idle' });
+  }, []);
+
+  const onRetrySuggestions = useCallback(() => {
+    suggestAbortRef.current?.abort();
+    const controller = new AbortController();
+    suggestAbortRef.current = controller;
+    void loadSuggestions(normalizedQuery, controller.signal);
+  }, [loadSuggestions, normalizedQuery]);
 
   const contentBottom = insets.bottom + LAYOUT.TAB_BAR_HEIGHT + tokens.spacing.xl;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
-        <AppBackButton fallbackHref="/(tabs)" />
+        <AppBackButton fallbackHref="/(tabs)" emoji="👈" />
         <View style={styles.searchInputWrap}>
           <Input
             label="Search"
@@ -396,11 +434,21 @@ export default function SearchScreen() {
             onSubmitEditing={onSubmitSearch}
             placeholder="Search Threadly"
             returnKeyType="search"
-            leading={<AppText variant="subtitle">🔍</AppText>}
+            trailing={
+              query.length > 0 ? (
+                <Pressable
+                  onPress={onClearQuery}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                  style={styles.clearSearchButton}
+                >
+                  <AppText variant="captionBold" tone="muted">✕</AppText>
+                </Pressable>
+              ) : null
+            }
             containerStyle={styles.searchFieldContainer}
           />
         </View>
-        <Button title="Search" size="sm" variant="ghost" onPress={onSubmitSearch} />
       </View>
 
       <ScrollView
@@ -408,7 +456,12 @@ export default function SearchScreen() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.content, { paddingBottom: contentBottom }]}
       >
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroller}
+          contentContainerStyle={styles.filterRow}
+        >
           {FILTER_OPTIONS.map((option) => {
             const selected = option.key === filterType;
             return (
@@ -416,8 +469,8 @@ export default function SearchScreen() {
                 key={option.key}
                 onPress={() => {
                   setFilterType(option.key);
-                  if (resultState.status !== 'idle') {
-                    void runSearch(query, option.key);
+                  if (normalizeQuery(query)) {
+                    void runSearch(query, option.key, { saveToRecent: false });
                   }
                 }}
                 style={[
@@ -489,10 +542,21 @@ export default function SearchScreen() {
           </SearchSection>
         ) : (
           <>
-            <SearchSection
-              title="Recent searches"
-              rightAction={
-                recentQueries.length > 0 ? (
+            {showSuggestionRetry ? (
+              <View style={[styles.suggestionRetryRow, { borderColor: theme.colors.border }]}>
+                <AppText variant="captionRegular" tone="muted">
+                  Suggestions unavailable.
+                </AppText>
+                <Pressable onPress={onRetrySuggestions} accessibilityRole="button" accessibilityLabel="Retry suggestions">
+                  <AppText variant="captionBold" tone="primary">Retry</AppText>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {showRecentSection ? (
+              <SearchSection
+                title="Recent searches"
+                rightAction={
                   <Pressable
                     onPress={async () => {
                       for (const entry of recentQueries) {
@@ -504,12 +568,10 @@ export default function SearchScreen() {
                   >
                     <AppText variant="captionBold" tone="muted">Clear</AppText>
                   </Pressable>
-                ) : null
-              }
-            >
-              <Card padding="md">
-                {recentQueries.length > 0 ? (
-                  recentQueries.map((entry) => (
+                }
+              >
+                <View style={styles.sectionStack}>
+                  {recentQueries.map((entry) => (
                     <QueryRow
                       key={entry.query}
                       label={entry.query}
@@ -521,50 +583,37 @@ export default function SearchScreen() {
                         void removeRecent(entry.query);
                       }}
                     />
-                  ))
-                ) : (
-                  <AppText variant="body" tone="muted">Your recent searches will appear here.</AppText>
-                )}
-              </Card>
-            </SearchSection>
+                  ))}
+                </View>
+              </SearchSection>
+            ) : null}
 
-            <SearchSection
-              title="You may like"
-              rightAction={
-                !normalizedQuery ? (
-                  <AppText variant="captionRegular" tone="muted">Start typing for live suggestions</AppText>
-                ) : null
-              }
-            >
-              <Card padding="md">
-                {suggestionsLoading ? (
-                  <View style={styles.stateInline}>
-                    <ActivityIndicator size="small" color={theme.colors.primary} />
-                    <AppText variant="body" tone="muted">Loading suggestions...</AppText>
-                  </View>
-                ) : suggestionsError ? (
-                  <AppText variant="body" tone="danger">{suggestionsError}</AppText>
-                ) : suggestedItems.length > 0 ? (
-                  suggestedItems.map((item) => (
-                    <SearchResultRow key={`${item.type}-${item.id}`} item={item} onPress={() => openSearchItem(item)} />
-                  ))
-                ) : (
-                  <AppText variant="body" tone="muted">No suggestions yet.</AppText>
-                )}
-              </Card>
-            </SearchSection>
+            {showSuggestionSection ? (
+              <SearchSection title="You may like">
+                <View style={styles.sectionStack}>
+                  {suggestionsLoading ? (
+                    <View style={styles.stateInline}>
+                      <ActivityIndicator size="small" color={theme.colors.primary} />
+                      <AppText variant="body" tone="muted">Loading suggestions...</AppText>
+                    </View>
+                  ) : (
+                    suggestedItems.map((item) => (
+                      <SearchResultRow key={`${item.type}-${item.id}`} item={item} onPress={() => openSearchItem(item)} />
+                    ))
+                  )}
+                </View>
+              </SearchSection>
+            ) : null}
 
-            <SearchSection
-              title="Popular on Threadly"
-              rightAction={
-                suggestions?.trending?.length ? (
-                  <AppText variant="captionRegular" tone="muted">{suggestions.trending.length} trending</AppText>
-                ) : null
-              }
-            >
-              <Card padding="md">
-                {suggestions?.trending?.length ? (
-                  suggestions.trending.map((trend: SearchTrendingLink) => (
+            {showPopularSection ? (
+              <SearchSection
+                title="Popular on Threadly"
+                rightAction={
+                  <AppText variant="captionRegular" tone="muted">{suggestions?.trending?.length ?? 0} trending</AppText>
+                }
+              >
+                <View style={styles.sectionStack}>
+                  {suggestions?.trending.map((trend: SearchTrendingLink) => (
                     <Pressable
                       key={trend.query}
                       onPress={() => {
@@ -579,12 +628,21 @@ export default function SearchScreen() {
                       </View>
                       <AppText variant="subtitle" tone="muted">›</AppText>
                     </Pressable>
-                  ))
-                ) : (
-                  <AppText variant="body" tone="muted">Trending searches will appear here when available.</AppText>
-                )}
-              </Card>
-            </SearchSection>
+                  ))}
+                </View>
+              </SearchSection>
+            ) : null}
+
+            {showDefaultPrompt ? (
+              <View style={styles.defaultPrompt}>
+                <AppText variant="bodyBold" style={styles.defaultPromptTitle}>
+                  👀 What are you looking for?
+                </AppText>
+                <AppText variant="small" tone="muted" style={styles.defaultPromptCopy}>
+                  Search brands, runway looks, collections,{'\n'}products, or tags.
+                </AppText>
+              </View>
+            ) : null}
           </>
         )}
       </ScrollView>
@@ -600,33 +658,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.sm,
-    paddingHorizontal: tokens.spacing.lg,
+    paddingHorizontal: tokens.spacing.md,
     paddingBottom: tokens.spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   searchInputWrap: {
     flex: 1,
+    minWidth: 0,
   },
   searchFieldContainer: {
     marginBottom: 0,
   },
+  clearSearchButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radius.full,
+  },
   content: {
     gap: tokens.spacing.lg,
-    paddingHorizontal: tokens.spacing.lg,
+    paddingHorizontal: tokens.spacing.md,
     paddingTop: tokens.spacing.md,
   },
+  filterScroller: {
+    alignSelf: 'stretch',
+  },
   filterRow: {
-    gap: tokens.spacing.sm,
-    paddingRight: tokens.spacing.md,
+    flexGrow: 1,
+    justifyContent: 'center',
+    gap: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.sm,
   },
   filterPill: {
     borderWidth: 1,
     borderRadius: tokens.radius.full,
-    paddingHorizontal: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.xs / 2,
     paddingVertical: tokens.spacing.sm,
   },
   section: {
     gap: tokens.spacing.sm,
+  },
+  sectionStack: {
+    gap: tokens.spacing.xs,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -678,5 +752,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.sm,
+  },
+  suggestionRetryRow: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.lg,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  defaultPrompt: {
+    alignSelf: 'stretch',
+    minHeight: 220,
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.lg,
+  },
+  defaultPromptTitle: {
+    width: '100%',
+    textAlign: 'center',
+  },
+  defaultPromptCopy: {
+    width: '100%',
+    textAlign: 'center',
   },
 });
