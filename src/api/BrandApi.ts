@@ -230,9 +230,12 @@ export interface UploadAssetDto {
 const SIGNED_URL_TTL_MS = 4 * 60 * 1000;
 const SIGNED_URL_REFRESH_SKEW_MS = 30 * 1000;
 const MISSING_SIGNED_URL_TTL_MS = 2 * 60 * 1000;
+const BRAND_PROFILE_TTL_MS = 30 * 1000;
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 const signedUrlPending = new Map<string, Promise<string | null>>();
 const signedUrlMissingCache = new Map<string, number>();
+const brandProfileCache = new Map<string, { profile: BrandProfileDto | null; expiresAt: number }>();
+const brandProfilePending = new Map<string, Promise<BrandProfileDto | null>>();
 
 export type SignedFileUrlDebugContext = {
   designId?: string | null;
@@ -747,10 +750,44 @@ export const brandApi = {
   /**
    * Get brand profile by ID (for viewing other brands)
    */
-  async getProfileById(brandId: string): Promise<BrandProfileDto | null> {
+  async getProfileById(
+    brandId: string,
+    opts?: { forceRefresh?: boolean },
+  ): Promise<BrandProfileDto | null> {
     try {
-      const response = await apiClient.get(`/brands/${brandId}`);
-      return normalizeBrandProfile(response.data);
+      const cacheKey = asString(brandId);
+      const forceRefresh = opts?.forceRefresh === true;
+      if (!cacheKey) return null;
+
+      if (forceRefresh) {
+        brandProfileCache.delete(cacheKey);
+        brandProfilePending.delete(cacheKey);
+      }
+
+      const cached = brandProfileCache.get(cacheKey);
+      if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
+        return cached.profile;
+      }
+
+      const pending = brandProfilePending.get(cacheKey);
+      if (!forceRefresh && pending) {
+        return pending;
+      }
+
+      const request = (async () => {
+        const response = await apiClient.get(`/brands/${cacheKey}`);
+        const profile = normalizeBrandProfile(response.data);
+        brandProfileCache.set(cacheKey, {
+          profile,
+          expiresAt: Date.now() + BRAND_PROFILE_TTL_MS,
+        });
+        return profile;
+      })();
+
+      brandProfilePending.set(cacheKey, request);
+      return await request.finally(() => {
+        brandProfilePending.delete(cacheKey);
+      });
     } catch (error) {
       console.error('Error fetching brand profile by ID:', error);
       return null;
@@ -763,7 +800,9 @@ export const brandApi = {
   async updateProfile(brandId: string, payload: UpdateBrandProfilePayload): Promise<BrandProfileDto | null> {
     try {
       await apiClient.patch(`/brands/${brandId}`, payload);
-      return this.getProfileById(brandId);
+      brandProfileCache.delete(brandId);
+      brandProfilePending.delete(brandId);
+      return this.getProfileById(brandId, { forceRefresh: true });
     } catch (error) {
       console.error('Error updating brand profile:', error);
       throw error;
@@ -823,6 +862,7 @@ export const brandApi = {
     page?: number;
     limit?: number;
     scope?: CollectionScope;
+    forceRefresh?: boolean;
   }): Promise<{ items: CollectionDto[]; total: number; hasMore: boolean }> {
     try {
       const visibilityQuery = args?.visibility
@@ -852,19 +892,24 @@ export const brandApi = {
       const params = new URLSearchParams();
       if (visibilityQuery) params.set('visibility', visibilityQuery);
       if (args?.limit) params.set('limit', String(args.limit));
-      params.set('_cb', String(Date.now()));
+      if (args?.forceRefresh) params.set('_cb', String(Date.now()));
 
       const basePath = getCollectionBasePath(args?.scope);
       const url = args?.brandId
         ? `${basePath}/user/${args.brandId}${params.toString() ? `?${params.toString()}` : ''}`
         : `${basePath}${params.toString() ? `?${params.toString()}` : ''}`;
 
-      const response = await apiClient.get(url, {
-        headers: {
-          'Cache-Control': 'no-store',
-          Pragma: 'no-cache',
-        },
-      });
+      const response = await apiClient.get(
+        url,
+        args?.forceRefresh
+          ? {
+              headers: {
+                'Cache-Control': 'no-store',
+                Pragma: 'no-cache',
+              },
+            }
+          : undefined,
+      );
       const normalized = normalizeCollectionListPayload(response.data);
 
       let filtered = normalized.items;
@@ -890,15 +935,20 @@ export const brandApi = {
   /**
    * Get draft collections (owner only)
    */
-  async getDrafts(): Promise<CollectionDto[]> {
+  async getDrafts(opts?: { forceRefresh?: boolean }): Promise<CollectionDto[]> {
     try {
-      const response = await apiClient.get('/designs/my/drafts', {
-        params: { _cb: Date.now() },
-        headers: {
-          'Cache-Control': 'no-store',
-          Pragma: 'no-cache',
-        },
-      });
+      const response = await apiClient.get(
+        '/designs/my/drafts',
+        opts?.forceRefresh
+          ? {
+              params: { _cb: Date.now() },
+              headers: {
+                'Cache-Control': 'no-store',
+                Pragma: 'no-cache',
+              },
+            }
+          : undefined,
+      );
       return normalizeCollectionListPayload(response.data).items.map((item) => ({
         ...item,
         status: 'DRAFT',
@@ -1007,10 +1057,11 @@ export const brandApi = {
       return pending;
     }
 
-    // Make new request
+    // Public catalog/profile media usually belongs to another user. The signed-url
+    // endpoint is owner-only, so using it first produces repeated 400s for public media.
     const promise = (async () => {
       try {
-        const response = await apiClient.get(`/uploads/signed-url/${fileId}`);
+        const response = await apiClient.get(`/uploads/public-url/${fileId}`);
         const url = unwrapData<any>(response.data)?.url ?? null;
         if (url) {
           signedUrlMissingCache.delete(fileId);
@@ -1018,9 +1069,10 @@ export const brandApi = {
         }
         return url;
       } catch (error: any) {
-        if (error?.response?.status === 401 || error?.response?.status === 403) {
+        const publicStatus = error?.response?.status;
+        if (publicStatus === 400 || publicStatus === 401 || publicStatus === 403 || publicStatus === 404) {
           try {
-            const response = await apiClient.get(`/uploads/public-url/${fileId}`);
+            const response = await apiClient.get(`/uploads/signed-url/${fileId}`);
             const url = unwrapData<any>(response.data)?.url ?? null;
             if (url) {
               signedUrlMissingCache.delete(fileId);
@@ -1036,16 +1088,16 @@ export const brandApi = {
               logSignedFileUrlFailure(fileId, publicError.response.status, context);
               return null;
             }
-            logSignedFileUrlNetworkError('public-url-fallback-error', publicError, context);
+            logSignedFileUrlNetworkError('signed-url-fallback-error', publicError, context);
             throw publicError;
           }
         }
-        if (error?.response?.status === 400 || error?.response?.status === 404) {
+        if (publicStatus === 400 || publicStatus === 404) {
           signedUrlMissingCache.set(fileId, Date.now() + MISSING_SIGNED_URL_TTL_MS);
-          logSignedFileUrlFailure(fileId, error.response.status, context);
+          logSignedFileUrlFailure(fileId, publicStatus, context);
           return null;
         }
-        logSignedFileUrlNetworkError('signed-url-error', error, context);
+        logSignedFileUrlNetworkError('public-url-error', error, context);
         throw error;
       } finally {
         signedUrlPending.delete(fileId);
@@ -1061,17 +1113,22 @@ export const brandApi = {
    */
   async getCollectionDetail(
     collectionId: string,
-    opts?: { scope?: CollectionScope },
+    opts?: { scope?: CollectionScope; forceRefresh?: boolean },
   ): Promise<CollectionDetailDto | null> {
     try {
       const basePath = getCollectionBasePath(opts?.scope);
-      const response = await apiClient.get(`${basePath}/${collectionId}`, {
-        params: { _cb: Date.now() },
-        headers: {
-          'Cache-Control': 'no-store',
-          Pragma: 'no-cache',
-        },
-      });
+      const response = await apiClient.get(
+        `${basePath}/${collectionId}`,
+        opts?.forceRefresh
+          ? {
+              params: { _cb: Date.now() },
+              headers: {
+                'Cache-Control': 'no-store',
+                Pragma: 'no-cache',
+              },
+            }
+          : undefined,
+      );
       return unwrapData<CollectionDetailDto>(response.data);
     } catch (error: any) {
       console.error('Error fetching collection detail:', error);

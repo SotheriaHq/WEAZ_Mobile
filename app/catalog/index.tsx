@@ -74,6 +74,7 @@ import { perfMark } from '@/src/utils/perf';
 type TabType = 'Collections' | 'Shop' | 'Reviews';
 type VisibilityType = 'Public' | 'Private' | 'Drafts';
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
+const CATALOG_FOCUS_REFETCH_STALE_MS = 60 * 1000;
 
 function readMetricNumber(value: unknown): number | null {
   const parsed = Number(value);
@@ -196,6 +197,8 @@ export default function CatalogScreen() {
 
   // State
   const [profile, setProfile] = useState<BrandProfileDto | null>(null);
+  const profileRef = useRef<BrandProfileDto | null>(null);
+  const lastCatalogFetchRef = useRef<{ key: string; at: number } | null>(null);
   const [collections, setCollections] = useState<CollectionDto[]>([]);
   const [drafts, setDrafts] = useState<CollectionDto[]>([]);
   const [designBackgroundTasks, setDesignBackgroundTasks] = useState<DesignEditorBackgroundTask[]>(
@@ -221,6 +224,10 @@ export default function CatalogScreen() {
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
   const activeTabPagerHeight = tabHeights[activeTab];
 
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
+
   // Determine if owner view
   const activeBrandId = getActiveBrandId(user);
   const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
@@ -238,19 +245,47 @@ export default function CatalogScreen() {
 
   const getCollectionOwnerId = useCallback(
     (sourceProfile?: BrandProfileDto | null) =>
-      sourceProfile?.id ?? profile?.id ?? (isOwner ? userId : targetBrandId),
-    [isOwner, profile?.id, targetBrandId, userId],
+      sourceProfile?.id ?? profileRef.current?.id ?? (isOwner ? userId : targetBrandId),
+    [isOwner, targetBrandId, userId],
   );
 
   // Fetch profile data
-  const fetchProfile = useCallback(async (): Promise<BrandProfileDto | null> => {
+  const getCatalogFetchKey = useCallback(
+    () => `${targetBrandId ?? 'none'}:${isOwner ? 'owner' : 'visitor'}:${visibilityFilter}`,
+    [isOwner, targetBrandId, visibilityFilter],
+  );
+
+  const markCatalogFetched = useCallback(() => {
+    lastCatalogFetchRef.current = { key: getCatalogFetchKey(), at: Date.now() };
+  }, [getCatalogFetchKey]);
+
+  const hasCatalogData = useCallback(
+    () => Boolean(profileRef.current || collections.length > 0 || drafts.length > 0),
+    [collections.length, drafts.length],
+  );
+
+  const isCatalogFetchFresh = useCallback(() => {
+    const last = lastCatalogFetchRef.current;
+    return Boolean(
+      last &&
+        last.key === getCatalogFetchKey() &&
+        Date.now() - last.at < CATALOG_FOCUS_REFETCH_STALE_MS &&
+        hasCatalogData(),
+    );
+  }, [getCatalogFetchKey, hasCatalogData]);
+
+  const fetchProfile = useCallback(async (options?: { forceRefresh?: boolean }): Promise<BrandProfileDto | null> => {
     if (!targetBrandId) {
+      profileRef.current = null;
       setProfile(null);
       return null;
     }
 
     try {
-      const data = await brandApi.getProfileById(targetBrandId);
+      const data = await brandApi.getProfileById(targetBrandId, {
+        forceRefresh: options?.forceRefresh,
+      });
+      profileRef.current = data;
       setProfile(data);
       if (isOwner && data) {
         updateUser({
@@ -276,9 +311,12 @@ export default function CatalogScreen() {
   }, [targetBrandId, isOwner, updateUser]);
 
   // Fetch collections
-  const fetchCollections = useCallback(async (profileOverride?: BrandProfileDto | null) => {
+  const fetchCollections = useCallback(async (
+    profileOverride?: BrandProfileDto | null,
+    options?: { forceRefresh?: boolean },
+  ) => {
     const collectionOwnerId = getCollectionOwnerId(profileOverride);
-    const profileOwnerId = profileOverride?.id ?? profile?.id ?? null;
+    const profileOwnerId = profileOverride?.id ?? profileRef.current?.id ?? null;
 
     if (!collectionOwnerId) {
       setCollections([]);
@@ -291,7 +329,7 @@ export default function CatalogScreen() {
       const statusFilter = visibilityFilter === 'Drafts' ? 'DRAFT' : 'PUBLISHED';
       
       if (visibilityFilter === 'Drafts' && isOwner) {
-        const data = await brandApi.getDrafts();
+        const data = await brandApi.getDrafts({ forceRefresh: options?.forceRefresh });
         catalogDevLog('load', {
           tab: visibilityFilter,
           routeBrandId: targetBrandId,
@@ -311,6 +349,7 @@ export default function CatalogScreen() {
           visibility,
           status: statusFilter,
           limit: 80,
+          forceRefresh: options?.forceRefresh,
         });
         catalogDevLog('load', {
           tab: visibilityFilter,
@@ -329,7 +368,7 @@ export default function CatalogScreen() {
       console.error('Error fetching collections:', error);
       // Collections error will show empty state
     }
-  }, [getCollectionOwnerId, isOwner, profile?.id, targetBrandId, userId, visibilityFilter]);
+  }, [getCollectionOwnerId, isOwner, targetBrandId, userId, visibilityFilter]);
 
   // Initial load
   useEffect(() => {
@@ -340,24 +379,29 @@ export default function CatalogScreen() {
         fetchCollections(loadedProfile),
         refreshPatchStatus({ silent: true }),
       ]);
+      markCatalogFetched();
       setIsLoading(false);
     };
     load();
-  }, [fetchCollections, fetchProfile, refreshPatchStatus]);
+  }, [fetchCollections, fetchProfile, markCatalogFetched, refreshPatchStatus]);
 
   useFocusEffect(
     useCallback(() => {
+      if (isCatalogFetchFresh()) {
+        return undefined;
+      }
       let cancelled = false;
       void (async () => {
         const loadedProfile = await fetchProfile();
         if (!cancelled) {
           await fetchCollections(loadedProfile);
+          markCatalogFetched();
         }
       })();
       return () => {
         cancelled = true;
       };
-    }, [fetchCollections, fetchProfile]),
+    }, [fetchCollections, fetchProfile, isCatalogFetchFresh, markCatalogFetched]),
   );
 
   useEffect(() => subscribeDesignEditorBackgroundTasks(() => {
@@ -429,11 +473,12 @@ export default function CatalogScreen() {
   // Refresh
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    const loadedProfile = await fetchProfile();
+    const loadedProfile = await fetchProfile({ forceRefresh: true });
     await Promise.all([
-      fetchCollections(loadedProfile),
+      fetchCollections(loadedProfile, { forceRefresh: true }),
       refreshPatchStatus({ force: true, silent: true }),
     ]);
+    markCatalogFetched();
     setIsRefreshing(false);
   };
 
@@ -525,14 +570,15 @@ export default function CatalogScreen() {
       await brandApi.deleteCollection(draftDeleteTarget.id);
       setDraftDeleteTarget(null);
       setDraftDeletePhrase('');
-      await fetchCollections();
+      await fetchCollections(undefined, { forceRefresh: true });
+      markCatalogFetched();
       toast.success(visibilityFilter === 'Drafts' ? 'Draft deleted.' : 'Collection deleted.');
     } catch {
       toast.error('Could not delete this collection. Please try again.');
     } finally {
       setDraftDeleteBusy(false);
     }
-  }, [draftDeleteBusy, draftDeletePhrase, draftDeleteTarget, fetchCollections, toast, visibilityFilter]);
+  }, [draftDeleteBusy, draftDeletePhrase, draftDeleteTarget, fetchCollections, markCatalogFetched, toast, visibilityFilter]);
 
   const ownerAvatar = useMemo(() => resolveProfileImageSource(profile as any), [profile]);
   const visitorAvatar = useMemo(() => resolveProfileImageSource(profile as any), [profile]);
@@ -702,8 +748,9 @@ export default function CatalogScreen() {
 
     let cancelled = false;
     void (async () => {
-      await fetchCollections();
+      await fetchCollections(undefined, { forceRefresh: true });
       if (cancelled) return;
+      markCatalogFetched();
       completedVisibleTasks.forEach((task) => removeDesignEditorBackgroundTask(task.id));
       setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
     })();
@@ -711,7 +758,7 @@ export default function CatalogScreen() {
     return () => {
       cancelled = true;
     };
-  }, [fetchCollections, visibleDesignBackgroundTasks]);
+  }, [fetchCollections, markCatalogFetched, visibleDesignBackgroundTasks]);
 
   const headerStats = useMemo<BrandHeaderStat[]>(() => {
     const backendDesigns = readMetricNumber(profile?.designsCount) ?? readMetricNumber(profile?.collectionsCount);

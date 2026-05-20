@@ -814,14 +814,22 @@ async function ensureDesignCustomOrderConfiguration(
   });
 }
 
-export async function getDesignDetail(designId: string): Promise<DesignDetail> {
-  const response = await apiClient.get(`/designs/${designId}`, {
-    params: { _cb: Date.now() },
-    headers: {
-      'Cache-Control': 'no-store',
-      Pragma: 'no-cache',
-    },
-  });
+export async function getDesignDetail(
+  designId: string,
+  options?: { forceRefresh?: boolean },
+): Promise<DesignDetail> {
+  const response = await apiClient.get(
+    `/designs/${designId}`,
+    options?.forceRefresh
+      ? {
+          params: { _cb: Date.now() },
+          headers: {
+            'Cache-Control': 'no-store',
+            Pragma: 'no-cache',
+          },
+        }
+      : undefined,
+  );
   return normalizeDetail(response.data);
 }
 
@@ -970,7 +978,7 @@ export async function saveDesignEditor(
       completions,
     );
 
-    const detail = await getDesignDetail(designId);
+    const detail = await getDesignDetail(designId, { forceRefresh: true });
     onProgress?.(1, payload.action === 'publish' ? 'Design published.' : 'Draft saved.');
     return { id: designId, detail };
   }
@@ -1025,7 +1033,7 @@ export async function saveDesignEditor(
     completions,
   );
 
-  const detail = await getDesignDetail(payload.designId);
+  const detail = await getDesignDetail(payload.designId, { forceRefresh: true });
   const finalMediaIds = detail.medias.map((media) => media.id);
   const orderedExistingMediaIds = filteredAssets
     .map((asset) => asset.existingMediaId)
@@ -1041,5 +1049,5 @@ export async function saveDesignEditor(
   }
 
   onProgress?.(1, payload.action === 'publish' ? 'Design published.' : 'Draft saved.');
-  return { id: payload.designId, detail: await getDesignDetail(payload.designId) };
+  return { id: payload.designId, detail: await getDesignDetail(payload.designId, { forceRefresh: true }) };
 }

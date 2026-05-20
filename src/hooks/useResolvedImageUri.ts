@@ -1,5 +1,6 @@
 import { Image as ExpoImage } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 
 import { brandApi, type SignedFileUrlDebugContext } from '@/src/api/BrandApi';
 import { mediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
@@ -78,13 +79,12 @@ const shouldPreferFileIdResolution = (directSrc: string | null, normalizedFileId
 
 const isUsableDirectHttpUrl = (value: string) => {
   const sourceType = getDirectSourceType(value);
-  return Boolean(sourceType && sourceType !== 'loopback-url');
+  return Boolean(sourceType && (sourceType !== 'loopback-url' || Platform.OS === 'web'));
 };
 
 const isPotentialFileId = (value: string) => !isHttpUrl(value) && !/[/?#\\]/.test(value);
 
 const getResolutionCacheKey = (directSrc: string | null, normalizedFileId: string | null) => {
-  if (normalizedFileId && directSrc) return `file:${normalizedFileId}|src:${directSrc}`;
   if (normalizedFileId) return `file:${normalizedFileId}`;
   if (directSrc) return `src:${directSrc}`;
   return null;

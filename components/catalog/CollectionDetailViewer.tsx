@@ -441,7 +441,10 @@ export function CollectionDetailViewer({
       threadingMediaByIdRef.current = {};
 
       try {
-        const response = await brandApi.getCollectionDetail(collectionId, { scope: resolvedScope });
+        const response = await brandApi.getCollectionDetail(collectionId, {
+          scope: resolvedScope,
+          forceRefresh: reloadToken > 0,
+        });
         if (!mounted) return;
 
         if (!response) {
