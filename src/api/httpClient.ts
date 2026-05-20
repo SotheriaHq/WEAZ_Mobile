@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 
 import { env } from '@/src/config/env';
 import { apiHostDevLog, apiHostDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
+import { finishNetworkTrace, startNetworkTrace } from './networkTrace';
 
 const DEFAULT_PORT = 3040;
 const MOBILE_PLATFORM_HEADER = 'x-client-platform';
@@ -262,6 +263,18 @@ const refreshClient: AxiosInstance = axios.create({
   },
 });
 
+refreshClient.interceptors.request.use((config) => startNetworkTrace(config));
+refreshClient.interceptors.response.use(
+  (res) => {
+    finishNetworkTrace(res.config, res);
+    return res;
+  },
+  (error: AxiosError) => {
+    finishNetworkTrace(error.config, error.response, error);
+    return Promise.reject(error);
+  },
+);
+
 function applyBaseUrl(baseUrl: string) {
   apiClient.defaults.baseURL = baseUrl;
   refreshClient.defaults.baseURL = baseUrl;
@@ -461,11 +474,13 @@ apiClient.interceptors.request.use((config) => {
       console.log('[api] /auth/login outbound payload', summarizeLoginPayload(payload));
     }
   }
+  startNetworkTrace(retryableConfig);
   return retryableConfig;
 });
 
 apiClient.interceptors.response.use(
   (res) => {
+    finishNetworkTrace(res.config, res);
     const successfulIndex = findCandidateIndex(res.config?.baseURL);
     if (successfulIndex >= 0) {
       promoteActiveHostTo(successfulIndex, `HTTP ${res.status}`);
@@ -477,6 +492,7 @@ apiClient.interceptors.response.use(
     return res;
   },
   async (error: AxiosError) => {
+    finishNetworkTrace(error.config, error.response, error);
     if (__DEV__) {
       console.log(`[api] ? ${error.message}`, {
         url: error.config?.url,

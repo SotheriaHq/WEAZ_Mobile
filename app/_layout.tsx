@@ -17,6 +17,7 @@ import { ThemeProvider, useTheme, type ThemeMode } from '@/src/theme/ThemeProvid
 import { ThemeBackendSync } from '@/src/theme/ThemeBackendSync';
 import { normalizeThemePreference } from '@/src/types/theme';
 import { AuthProvider } from '@/src/auth/AuthContext';
+import { setNetworkTraceScreen } from '@/src/api/networkTrace';
 
 import { ToastProvider } from '@/src/toast/ToastContext';
 import { useToast } from '@/src/toast/ToastContext';
@@ -235,6 +236,17 @@ function ForegroundMessagingSetup() {
   return null;
 }
 
+function NetworkTraceRouteSync() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    setNetworkTraceScreen(pathname || null);
+    return () => setNetworkTraceScreen(null);
+  }, [pathname]);
+
+  return null;
+}
+
 function RootBootstrap({
   fontsLoaded,
 }: {
@@ -274,6 +286,7 @@ function RootBootstrap({
       }}
     >
       <NotificationSetup />
+      <NetworkTraceRouteSync />
       <PushTokenRegistrationGate />
       <ForegroundMessagingSetup />
       <RootStack />
