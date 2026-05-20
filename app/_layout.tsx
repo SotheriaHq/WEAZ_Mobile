@@ -9,7 +9,7 @@ import { useFonts } from 'expo-font';
 import { Stack, usePathname } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
@@ -19,6 +19,7 @@ import { normalizeThemePreference } from '@/src/types/theme';
 import { AuthProvider } from '@/src/auth/AuthContext';
 
 import { ToastProvider } from '@/src/toast/ToastContext';
+import { useToast } from '@/src/toast/ToastContext';
 import { useAuth } from '@/src/auth/AuthContext';
 import { BagCountProvider } from '@/src/features/bagging/BagCountContext';
 import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
@@ -28,6 +29,12 @@ import Constants from 'expo-constants';
 import { handleInitialNotification, setupNotificationListeners } from '@/src/utils/notificationRouting';
 import { useNotificationRouting } from '@/src/utils/notificationRouting';
 import { useAuthenticatedPushTokenRegistration } from '@/src/notifications/pushTokenRegistration';
+import {
+  isMessageThreadActive,
+  shouldShowMessageForegroundAlert,
+  useMessagingRealtimeChannel,
+} from '@/src/realtime/messaging';
+import type { MessageCreatedRealtimeEvent } from '@/src/types/messaging';
 import {
   applyAndroidSystemBarsPolicy,
   getInitialAndroidSystemScheme,
@@ -182,6 +189,52 @@ function PushTokenRegistrationGate() {
   return null;
 }
 
+function isMessagesInboxPath(pathname: string) {
+  return pathname === '/inbox' || pathname === '/(tabs)/inbox';
+}
+
+function getPathThreadId(pathname: string) {
+  const match = pathname.match(/^\/messages\/([^/?#]+)/);
+  const routeThreadId = match?.[1] ? decodeURIComponent(match[1]) : null;
+  return routeThreadId && routeThreadId !== 'resolve' ? routeThreadId : null;
+}
+
+function ForegroundMessagingSetup() {
+  const { status, token, user } = useAuth();
+  const toast = useToast();
+  const pathname = usePathname();
+
+  const handleMessageCreated = useCallback(
+    (payload: MessageCreatedRealtimeEvent) => {
+      const threadId = payload.threadId ?? payload.conversationId ?? null;
+      const routeThreadId = getPathThreadId(pathname);
+      const isViewingThread =
+        Boolean(threadId && routeThreadId && threadId === routeThreadId) ||
+        isMessageThreadActive(threadId);
+
+      if (isViewingThread || isMessagesInboxPath(pathname)) {
+        return;
+      }
+
+      if (!shouldShowMessageForegroundAlert(payload)) {
+        return;
+      }
+
+      toast.info('New message received', 2800);
+    },
+    [pathname, toast],
+  );
+
+  useMessagingRealtimeChannel({
+    enabled: status === 'authenticated' && Boolean(user?.id),
+    token: token ?? null,
+    userId: user?.id ?? null,
+    onMessageCreated: handleMessageCreated,
+  });
+
+  return null;
+}
+
 function RootBootstrap({
   fontsLoaded,
 }: {
@@ -222,6 +275,7 @@ function RootBootstrap({
     >
       <NotificationSetup />
       <PushTokenRegistrationGate />
+      <ForegroundMessagingSetup />
       <RootStack />
     </View>
   );

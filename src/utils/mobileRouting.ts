@@ -5,6 +5,10 @@ import type { SearchItem } from '@/src/types/search';
 import type { MessageContextParams } from '@/src/types/messaging';
 
 type RouterTarget = Href;
+type MessageNotificationTarget = {
+  type: 'thread' | 'inbox' | 'unsupported';
+  params: MessageContextParams;
+};
 
 function parseHrefId(href: string, pattern: RegExp): string | null {
   const match = href.match(pattern);
@@ -17,6 +21,152 @@ function parseTargetUrlPath(targetUrl: string) {
   } catch {
     return targetUrl.split('?')[0] || targetUrl;
   }
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function firstQueryValue(params: URLSearchParams, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = readString(params.get(key));
+    if (value) return value;
+  }
+  return null;
+}
+
+function parseTargetUrl(targetUrl: string): { path: string; params: URLSearchParams } | null {
+  try {
+    const parsed = new URL(targetUrl, 'https://threadly.mobile');
+    const schemeHostPath =
+      parsed.protocol !== 'http:' &&
+      parsed.protocol !== 'https:' &&
+      parsed.hostname &&
+      !parsed.pathname;
+    const rawPath = schemeHostPath ? `/${parsed.hostname}` : parsed.pathname || '/';
+    return {
+      path: rawPath.startsWith('/') ? rawPath : `/${rawPath}`,
+      params: parsed.searchParams,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isMessageLikeValue(value: unknown): boolean {
+  return typeof value === 'string' && value.toLowerCase().includes('message');
+}
+
+function isMessageTargetUrl(targetUrl: unknown): boolean {
+  const normalizedTargetUrl = readString(targetUrl);
+  if (!normalizedTargetUrl) return false;
+
+  const parsed = parseTargetUrl(normalizedTargetUrl);
+  if (!parsed) return false;
+
+  const path = parsed.path.toLowerCase();
+  const tab = readString(parsed.params.get('tab'))?.toLowerCase();
+  const openChat = readString(parsed.params.get('openChat'))?.toLowerCase();
+
+  return (
+    path === '/messages' ||
+    path.startsWith('/messages/') ||
+    path === '/inbox' ||
+    path === '/studio/messages' ||
+    path.startsWith('/studio/messages/') ||
+    tab === 'messages' ||
+    openChat === '1' ||
+    openChat === 'true'
+  );
+}
+
+function isMessageNotificationPayload(payload: Record<string, unknown> | null | undefined): boolean {
+  if (!payload) return false;
+  return (
+    isMessageLikeValue(payload.type) ||
+    isMessageLikeValue(payload.category) ||
+    isMessageLikeValue(payload.notificationType) ||
+    isMessageTargetUrl(payload.targetUrl)
+  );
+}
+
+export function parseMessageTargetUrl(targetUrl: unknown): MessageContextParams {
+  const normalizedTargetUrl = readString(targetUrl);
+  if (!normalizedTargetUrl || !isMessageTargetUrl(normalizedTargetUrl)) {
+    return {};
+  }
+
+  const parsed = parseTargetUrl(normalizedTargetUrl);
+  if (!parsed) return {};
+
+  const threadId = firstQueryValue(parsed.params, ['threadId', 'thread']);
+  const conversationId = firstQueryValue(parsed.params, ['conversationId']) ?? threadId;
+
+  return {
+    threadId,
+    conversationId,
+    messageId: firstQueryValue(parsed.params, ['messageId']),
+    orderId: firstQueryValue(parsed.params, ['orderId']),
+    customOrderId: firstQueryValue(parsed.params, ['customOrderId']),
+    brandId: firstQueryValue(parsed.params, ['brandId']),
+    customerId: firstQueryValue(parsed.params, ['customerId']),
+    targetUrl: normalizedTargetUrl,
+  };
+}
+
+function mergeMessageContexts(
+  primary: MessageContextParams,
+  fallback: MessageContextParams,
+): MessageContextParams {
+  return {
+    threadId: primary.threadId ?? fallback.threadId ?? null,
+    conversationId: primary.conversationId ?? fallback.conversationId ?? primary.threadId ?? fallback.threadId ?? null,
+    messageId: primary.messageId ?? fallback.messageId ?? null,
+    orderId: primary.orderId ?? fallback.orderId ?? null,
+    customOrderId: primary.customOrderId ?? fallback.customOrderId ?? null,
+    brandId: primary.brandId ?? fallback.brandId ?? null,
+    customerId: primary.customerId ?? fallback.customerId ?? null,
+    actorUserId: primary.actorUserId ?? fallback.actorUserId ?? null,
+    targetUrl: primary.targetUrl ?? fallback.targetUrl ?? null,
+    designId: primary.designId ?? fallback.designId ?? null,
+    productId: primary.productId ?? fallback.productId ?? null,
+  };
+}
+
+function hasSupportedMessageContext(context: MessageContextParams): boolean {
+  return Boolean(
+    context.threadId ||
+      context.conversationId ||
+      context.messageId ||
+      context.orderId ||
+      context.customOrderId ||
+      context.brandId ||
+      context.customerId,
+  );
+}
+
+export function buildMessageNotificationRoute(target: MessageNotificationTarget): RouterTarget {
+  if (target.type !== 'thread') {
+    return '/(tabs)/inbox' as Href;
+  }
+
+  const routeThreadId =
+    target.params.threadId ??
+    target.params.conversationId ??
+    'resolve';
+
+  return {
+    pathname: '/messages/[threadId]',
+    params: {
+      threadId: routeThreadId,
+      ...(target.params.conversationId ? { conversationId: target.params.conversationId } : null),
+      ...(target.params.messageId ? { messageId: target.params.messageId } : null),
+      ...(target.params.orderId ? { orderId: target.params.orderId } : null),
+      ...(target.params.customOrderId ? { customOrderId: target.params.customOrderId } : null),
+      ...(target.params.brandId ? { brandId: target.params.brandId } : null),
+      ...(target.params.customerId ? { customerId: target.params.customerId } : null),
+    },
+  } as Href;
 }
 
 export function routeForSearchItem(item: SearchItem): RouterTarget {
@@ -183,7 +333,11 @@ export function routeForNotification(notification: MobileNotification): RouterTa
   }
 
   if (type.includes('MESSAGE')) {
-    return '/(tabs)/inbox' as Href;
+    const target = getMessageNotificationTarget({
+      ...payload,
+      ...(typeof notification.targetUrl === 'string' ? { targetUrl: notification.targetUrl } : null),
+    });
+    return target ? buildMessageNotificationRoute(target) : ('/(tabs)/inbox' as Href);
   }
 
   if (type === 'TAG_MENTION') {
@@ -319,35 +473,33 @@ export function normalizeNotificationContext(
   payload: Record<string, unknown> | null | undefined,
   contextOverrides: MessageContextParams = {},
 ): MessageContextParams {
+  const targetUrlContext = parseMessageTargetUrl(payload?.targetUrl ?? contextOverrides.targetUrl);
   if (!payload) {
-    return { ...contextOverrides };
+    return mergeMessageContexts(contextOverrides, targetUrlContext);
   }
 
-  const threadId = typeof payload.threadId === 'string' ? payload.threadId : null;
-  const conversationId = typeof payload.conversationId === 'string' ? payload.conversationId : null;
-  const messageId = typeof payload.messageId === 'string' ? payload.messageId : null;
-  const orderId = typeof payload.orderId === 'string' ? payload.orderId : null;
-  const customOrderId = typeof payload.customOrderId === 'string' ? payload.customOrderId : null;
-  const brandId = typeof payload.brandId === 'string' ? payload.brandId : null;
-  const customerId = typeof payload.customerId === 'string' ? payload.customerId : null;
-  const designId = typeof payload.designId === 'string' ? payload.designId : null;
-  const productId = typeof payload.productId === 'string' ? payload.productId : null;
+  const directContext: MessageContextParams = {
+    threadId: readString(payload.threadId),
+    conversationId: readString(payload.conversationId),
+    messageId: readString(payload.messageId),
+    orderId: readString(payload.orderId),
+    customOrderId: readString(payload.customOrderId),
+    brandId: readString(payload.brandId),
+    customerId: readString(payload.customerId),
+    actorUserId: readString(payload.actorUserId),
+    targetUrl: readString(payload.targetUrl),
+    designId: readString(payload.designId),
+    productId: readString(payload.productId),
+  };
 
-  // Do not route unsupported design/product context as valid thread context
-  // These should be caught by the ChatThread unsupported state
-  const hasUnsupportedContext = Boolean(designId || productId);
+  const context = mergeMessageContexts(
+    directContext,
+    mergeMessageContexts(targetUrlContext, contextOverrides),
+  );
+  const hasUnsupportedContext = Boolean((context.designId || context.productId) && !hasSupportedMessageContext(context));
 
   return {
-    ...contextOverrides,
-    threadId,
-    conversationId,
-    messageId,
-    orderId,
-    customOrderId,
-    brandId,
-    customerId,
-    designId,
-    productId,
+    ...context,
     _hasUnsupportedContext: hasUnsupportedContext,
   };
 }
@@ -360,10 +512,7 @@ export function normalizeNotificationContext(
  */
 export function getMessageNotificationTarget(
   payload: Record<string, unknown> | null | undefined,
-): {
-  type: 'thread' | 'inbox' | 'unsupported';
-  params: MessageContextParams;
-} | null {
+): MessageNotificationTarget | null {
   const context = normalizeNotificationContext(payload);
 
   // Check for unsupported design/product context first
@@ -384,7 +533,7 @@ export function getMessageNotificationTarget(
   }
 
   // Generic message notification without specific context - route to inbox
-  if (payload && typeof payload.type === 'string' && String(payload.type).toLowerCase().includes('message')) {
+  if (isMessageNotificationPayload(payload)) {
     return { type: 'inbox', params: context };
   }
 

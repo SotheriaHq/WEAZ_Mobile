@@ -20,6 +20,11 @@ import {
   useNotificationRealtimeChannel,
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
+import {
+  refreshUnreadMessageCount as refreshSharedUnreadMessageCount,
+  useMessagingRealtimeChannel,
+  useUnreadMessageCount,
+} from '@/src/realtime/messaging';
 import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { applyAndroidSystemBarsPolicy } from '@/src/system/AndroidSystemBars';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
@@ -45,7 +50,9 @@ export default function TabLayout() {
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [isIslandExpanded, setIsIslandExpanded] = useState(false);
   const unreadNotificationCount = useUnreadNotificationCount();
+  const unreadMessageCount = useUnreadMessageCount();
   const [notificationCountReady, setNotificationCountReady] = useState(false);
+  const [messageCountReady, setMessageCountReady] = useState(false);
   const lastBackPressAtRef = useRef(0);
   const lastProfileTabPressAtRef = useRef(0);
   const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -73,6 +80,13 @@ export default function TabLayout() {
       authenticated: status === 'authenticated',
     });
     setNotificationCountReady(ready);
+  }, [status]);
+
+  const refreshUnreadMessageCount = useCallback(async () => {
+    const ready = await refreshSharedUnreadMessageCount({
+      authenticated: status === 'authenticated',
+    });
+    setMessageCountReady(ready);
   }, [status]);
 
   const clearProfileTabTimer = useCallback(() => {
@@ -136,6 +150,7 @@ export default function TabLayout() {
         profileLabel: profileNavLabel,
         profileIcon: profileNavEmoji,
         profileBadge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
+        inboxBadge: canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
         bagBadge: bagCount.combinedCount,
       }),
     [
@@ -143,9 +158,11 @@ export default function TabLayout() {
       canOpenProfileMenu,
       displayedActiveKey,
       isBrand,
+      messageCountReady,
       notificationCountReady,
       profileNavEmoji,
       profileNavLabel,
+      unreadMessageCount,
       unreadNotificationCount,
     ],
   );
@@ -234,6 +251,11 @@ export default function TabLayout() {
   }, [refreshUnreadNotificationCount, user?.id]);
 
   useEffect(() => {
+    setMessageCountReady(false);
+    void refreshUnreadMessageCount();
+  }, [refreshUnreadMessageCount, user?.id]);
+
+  useEffect(() => {
     if (status !== 'authenticated') return;
 
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -246,6 +268,18 @@ export default function TabLayout() {
   }, [refreshUnreadNotificationCount, status]);
 
   useEffect(() => {
+    if (status !== 'authenticated') return;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void refreshUnreadMessageCount();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [refreshUnreadMessageCount, status]);
+
+  useEffect(() => {
     if (profileMenuVisible) {
       void refreshUnreadNotificationCount();
     }
@@ -253,6 +287,12 @@ export default function TabLayout() {
   }, [profileMenuVisible, refreshUnreadNotificationCount, scheme]);
 
   useNotificationRealtimeChannel({
+    enabled: status === 'authenticated' && Boolean(user?.id),
+    token: token ?? null,
+    userId: user?.id ?? null,
+  });
+
+  useMessagingRealtimeChannel({
     enabled: status === 'authenticated' && Boolean(user?.id),
     token: token ?? null,
     userId: user?.id ?? null,

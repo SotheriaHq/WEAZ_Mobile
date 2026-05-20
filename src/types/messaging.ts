@@ -20,6 +20,8 @@ export type MessageContextParams = {
   messageId?: string | null;
   brandId?: string | null;
   customerId?: string | null;
+  actorUserId?: string | null;
+  targetUrl?: string | null;
   designId?: string | null;
   productId?: string | null;
   _hasUnsupportedContext?: boolean;
@@ -98,6 +100,28 @@ export type ConversationListResponse = {
 
 export type MessageUnreadCountResponse = {
   unreadCount: number;
+};
+
+export type MessageRealtimeBaseEvent = {
+  threadId?: string | null;
+  conversationId?: string | null;
+  contextType?: MessageContextType | null;
+  orderId?: string | null;
+  customOrderId?: string | null;
+  ts?: number | null;
+};
+
+export type MessageCreatedRealtimeEvent = MessageRealtimeBaseEvent & {
+  messageId?: string | null;
+  senderRole?: MessageParticipantRole | null;
+  createdAt?: string | null;
+};
+
+export type ThreadUpdatedRealtimeEvent = MessageRealtimeBaseEvent;
+
+export type MessageReadRealtimeEvent = MessageRealtimeBaseEvent & {
+  lastReadMessageId?: string | null;
+  readByUserId?: string | null;
 };
 
 export type ConversationThread = {

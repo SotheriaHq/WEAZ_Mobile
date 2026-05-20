@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -9,6 +10,7 @@ import {
   View,
   type ListRenderItemInfo,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -22,6 +24,11 @@ import { StableImage } from '@/components/ui/StableImage';
 import { MessagingApi, createMessageClientId } from '@/src/api/MessagingApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import {
+  refreshUnreadMessageCount,
+  setActiveMessageThreadId,
+  useMessagingRealtimeChannel,
+} from '@/src/realtime/messaging';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -30,15 +37,17 @@ import type {
   ConversationThread,
   MessageAttachment,
   MessageContextParams,
+  MessageReadRealtimeEvent,
   MessageItem,
   ResolvedConversationRoute,
   ThreadOrderItem,
 } from '@/src/types/messaging';
 
 type LoadPhase = 'loading' | 'resolving' | 'ready' | 'error' | 'invalid' | 'unsupported' | 'unauthenticated';
-type LoadMode = 'reset' | 'refresh' | 'more';
+type LoadMode = 'reset' | 'refresh' | 'more' | 'realtime';
 
 const PAGE_SIZE = 50;
+const REALTIME_REFRESH_DEBOUNCE_MS = 300;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function firstParam(value: string | string[] | undefined) {
@@ -143,6 +152,42 @@ function mergeMessages(current: MessageItem[], incoming: MessageItem[]) {
     if (aTime === bTime) return b.id.localeCompare(a.id);
     return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
   });
+}
+
+function applyReadReceipt(
+  current: MessageItem[],
+  payload: MessageReadRealtimeEvent,
+  currentUserId: string | null,
+) {
+  const readMessageId = validId(payload.lastReadMessageId);
+  const readByUserId = validId(payload.readByUserId);
+  if (!currentUserId || !readMessageId || readByUserId === currentUserId) return current;
+
+  const readMessage = current.find((message) => message.id === readMessageId);
+  const readTimestamp = Date.parse(readMessage?.createdAt ?? '');
+  let changed = false;
+
+  const nextMessages = current.map((message) => {
+    if (message.senderUserId !== currentUserId || message.deliveryStatus === 'READ') {
+      return message;
+    }
+
+    const messageTimestamp = Date.parse(message.createdAt ?? '');
+    const isReadBoundary = message.id === readMessageId;
+    const isAtOrBeforeReadBoundary =
+      Number.isFinite(readTimestamp) &&
+      Number.isFinite(messageTimestamp) &&
+      messageTimestamp <= readTimestamp;
+
+    if (!isReadBoundary && !isAtOrBeforeReadBoundary) {
+      return message;
+    }
+
+    changed = true;
+    return { ...message, deliveryStatus: 'READ' as const };
+  });
+
+  return changed ? nextMessages : current;
 }
 
 function formatMessageTime(value: string | null) {
@@ -365,7 +410,7 @@ export default function ChatThreadScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const toast = useToast();
-  const { status, user } = useAuth();
+  const { status, token, user } = useAuth();
   const params = useLocalSearchParams();
   const paramThreadId = firstParam(params.threadId);
   const paramConversationId = firstParam(params.conversationId);
@@ -420,8 +465,12 @@ export default function ChatThreadScreen() {
   const loadingMoreRef = useRef(false);
   const hasNextPageRef = useRef(false);
   const markedReadRef = useRef<string | null>(null);
+  const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRealtimeThreadRefreshRef = useRef<() => void>(() => undefined);
+  const skipInitialFocusRefreshRef = useRef(true);
 
   const directThreadId = validId(routeContext.threadId) ?? validId(routeContext.conversationId);
+  const activeThreadId = validId(activeContext?.threadId) ?? validId(activeContext?.conversationId) ?? directThreadId;
   const participant = useMemo(
     () => resolveParticipantFromMessages(messages, user?.id ?? null),
     [messages, user?.id],
@@ -448,6 +497,7 @@ export default function ChatThreadScreen() {
     try {
       await MessagingApi.markConversationRead({ threadId }, latestMessageId ?? null);
       setReadWarning(null);
+      void refreshUnreadMessageCount({ authenticated: true });
     } catch (error) {
       markedReadRef.current = null;
       setReadWarning(getErrorMessage(error));
@@ -467,7 +517,7 @@ export default function ChatThreadScreen() {
     } else if (mode === 'more') {
       loadingMoreRef.current = true;
       setLoadingMore(true);
-    } else {
+    } else if (mode !== 'realtime') {
       setPhase('loading');
       setStateTitle('Loading conversation');
       setStateBody('Fetching real messages from Threadly.');
@@ -523,9 +573,86 @@ export default function ChatThreadScreen() {
     }
   }, [markRead]);
 
+  const scheduleRealtimeThreadRefresh = useCallback(() => {
+    if (status !== 'authenticated' || !activeContext) return;
+
+    if (realtimeRefreshTimerRef.current) {
+      clearTimeout(realtimeRefreshTimerRef.current);
+    }
+
+    realtimeRefreshTimerRef.current = setTimeout(() => {
+      realtimeRefreshTimerRef.current = null;
+      cursorRef.current = null;
+      hasNextPageRef.current = true;
+      void loadThread(activeContext, 'realtime');
+      void refreshUnreadMessageCount({ authenticated: true });
+    }, REALTIME_REFRESH_DEBOUNCE_MS);
+  }, [activeContext, loadThread, status]);
+
+  useEffect(() => {
+    scheduleRealtimeThreadRefreshRef.current = scheduleRealtimeThreadRefresh;
+  }, [scheduleRealtimeThreadRefresh]);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !activeThreadId) {
+      setActiveMessageThreadId(null);
+      return undefined;
+    }
+
+    setActiveMessageThreadId(activeThreadId);
+    return () => setActiveMessageThreadId(null);
+  }, [activeThreadId, status]);
+
+  const isRealtimeEventForActiveThread = useCallback(
+    (threadId: string | null | undefined) => {
+      const eventThreadId = validId(threadId);
+      return Boolean(eventThreadId && activeThreadId && eventThreadId === activeThreadId);
+    },
+    [activeThreadId],
+  );
+
+  const handleRealtimeMessageCreated = useCallback(
+    (payload: { threadId?: string | null }) => {
+      if (isRealtimeEventForActiveThread(payload.threadId)) {
+        scheduleRealtimeThreadRefresh();
+        return;
+      }
+
+      void refreshUnreadMessageCount({ authenticated: status === 'authenticated' });
+    },
+    [isRealtimeEventForActiveThread, scheduleRealtimeThreadRefresh, status],
+  );
+
+  const handleRealtimeThreadUpdated = useCallback(
+    (payload: { threadId?: string | null }) => {
+      if (isRealtimeEventForActiveThread(payload.threadId)) {
+        scheduleRealtimeThreadRefresh();
+        return;
+      }
+
+      void refreshUnreadMessageCount({ authenticated: status === 'authenticated' });
+    },
+    [isRealtimeEventForActiveThread, scheduleRealtimeThreadRefresh, status],
+  );
+
+  const handleRealtimeMessageRead = useCallback(
+    (payload: MessageReadRealtimeEvent) => {
+      if (isRealtimeEventForActiveThread(payload.threadId)) {
+        setMessages((current) => applyReadReceipt(current, payload, user?.id ?? null));
+      }
+
+      void refreshUnreadMessageCount({ authenticated: status === 'authenticated' });
+    },
+    [isRealtimeEventForActiveThread, status, user?.id],
+  );
+
   useEffect(() => {
     requestIdRef.current += 1;
     const requestId = requestIdRef.current;
+    if (realtimeRefreshTimerRef.current) {
+      clearTimeout(realtimeRefreshTimerRef.current);
+      realtimeRefreshTimerRef.current = null;
+    }
     cursorRef.current = null;
     hasNextPageRef.current = false;
     loadingMoreRef.current = false;
@@ -597,12 +724,54 @@ export default function ChatThreadScreen() {
       });
   }, [directThreadId, loadThread, routeContext, status]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (skipInitialFocusRefreshRef.current) {
+        skipInitialFocusRefreshRef.current = false;
+        return undefined;
+      }
+      scheduleRealtimeThreadRefreshRef.current();
+      return undefined;
+    }, []),
+  );
+
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        scheduleRealtimeThreadRefresh();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [scheduleRealtimeThreadRefresh, status]);
+
+  useEffect(() => {
+    return () => {
+      if (realtimeRefreshTimerRef.current) {
+        clearTimeout(realtimeRefreshTimerRef.current);
+        realtimeRefreshTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useMessagingRealtimeChannel({
+    enabled: status === 'authenticated' && Boolean(user?.id),
+    token: token ?? null,
+    userId: user?.id ?? null,
+    onMessageCreated: handleRealtimeMessageCreated,
+    onThreadUpdated: handleRealtimeThreadUpdated,
+    onMessageRead: handleRealtimeMessageRead,
+  });
+
   const handleRefresh = useCallback(() => {
     if (!activeContext) return;
     cursorRef.current = null;
     hasNextPageRef.current = true;
     void loadThread(activeContext, 'refresh');
-  }, [activeContext, loadThread]);
+    void refreshUnreadMessageCount({ authenticated: status === 'authenticated' });
+  }, [activeContext, loadThread, status]);
 
   const handleEndReached = useCallback(() => {
     if (!activeContext || loadingMore || refreshing || !hasNextPage) return;

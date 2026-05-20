@@ -14,6 +14,11 @@ import {
   useNotificationRealtimeChannel,
   useUnreadNotificationCount,
 } from '@/src/realtime/notifications';
+import {
+  refreshUnreadMessageCount as refreshSharedUnreadMessageCount,
+  useMessagingRealtimeChannel,
+  useUnreadMessageCount,
+} from '@/src/realtime/messaging';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
@@ -40,9 +45,11 @@ export function CatalogIslandBottomNav() {
   const pathname = usePathname();
   const { islandLayout } = useScreenChrome();
   const unreadNotificationCount = useUnreadNotificationCount();
+  const unreadMessageCount = useUnreadMessageCount();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [isIslandExpanded, setIsIslandExpanded] = useState(false);
   const [notificationCountReady, setNotificationCountReady] = useState(false);
+  const [messageCountReady, setMessageCountReady] = useState(false);
   const [optimisticActiveKey, setOptimisticActiveKey] = useState<string | null>(null);
   const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProfileTabPressAtRef = useRef(0);
@@ -61,6 +68,13 @@ export function CatalogIslandBottomNav() {
       authenticated: status === 'authenticated',
     });
     setNotificationCountReady(ready);
+  }, [status]);
+
+  const refreshUnreadMessageCount = useCallback(async () => {
+    const ready = await refreshSharedUnreadMessageCount({
+      authenticated: status === 'authenticated',
+    });
+    setMessageCountReady(ready);
   }, [status]);
 
   const clearProfileTabTimer = useCallback(() => {
@@ -121,6 +135,11 @@ export function CatalogIslandBottomNav() {
   }, [refreshUnreadNotificationCount, user?.id]);
 
   useEffect(() => {
+    setMessageCountReady(false);
+    void refreshUnreadMessageCount();
+  }, [refreshUnreadMessageCount, user?.id]);
+
+  useEffect(() => {
     if (status !== 'authenticated') return;
 
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -131,6 +150,18 @@ export function CatalogIslandBottomNav() {
 
     return () => subscription.remove();
   }, [refreshUnreadNotificationCount, status]);
+
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void refreshUnreadMessageCount();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [refreshUnreadMessageCount, status]);
 
   useEffect(() => {
     return () => {
@@ -155,11 +186,23 @@ export function CatalogIslandBottomNav() {
     userId: user?.id ?? null,
   });
 
+  useMessagingRealtimeChannel({
+    enabled: status === 'authenticated' && Boolean(user?.id),
+    token: token ?? null,
+    userId: user?.id ?? null,
+  });
+
   const items = useMemo<NativeIslandNavItem[]>(
     () => [
       { key: 'designs', label: 'Runway', emoji: NAV_EMOJI.designs, active: displayedActiveKey === 'designs' },
       { key: 'market', label: 'Market', emoji: NAV_EMOJI.market, active: displayedActiveKey === 'market' },
-      { key: 'inbox', label: 'Messages', emoji: NAV_EMOJI.inbox, active: displayedActiveKey === 'inbox' },
+      {
+        key: 'inbox',
+        label: 'Messages',
+        emoji: NAV_EMOJI.inbox,
+        active: displayedActiveKey === 'inbox',
+        badge: messageCountReady ? unreadMessageCount : undefined,
+      },
       {
         key: 'profile',
         label: 'Profile',
@@ -168,7 +211,7 @@ export function CatalogIslandBottomNav() {
         badge: notificationCountReady ? unreadNotificationCount : undefined,
       },
     ],
-    [displayedActiveKey, notificationCountReady, unreadNotificationCount],
+    [displayedActiveKey, messageCountReady, notificationCountReady, unreadMessageCount, unreadNotificationCount],
   );
 
   const handleSelect = useCallback(

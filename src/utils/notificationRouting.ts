@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { router, usePathname } from 'expo-router';
-import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import type * as Notifications from 'expo-notifications';
 import { resolveExpoProjectId } from '@/src/notifications/pushTokenRegistration';
+import { shouldPresentMessageForegroundPushNotification } from '@/src/realtime/messaging';
 
 /**
  * Check if running in Expo Go on Android
@@ -20,6 +20,20 @@ let pushConfigurationPromise: Promise<{
   error?: string;
   unsupported?: boolean;
 }> | null = null;
+
+function getForegroundNotificationBehavior(notification?: Notifications.Notification | null) {
+  const shouldPresent = shouldPresentMessageForegroundPushNotification(
+    notification?.request?.content?.data ?? null,
+  );
+
+  return {
+    shouldShowAlert: shouldPresent,
+    shouldPlaySound: shouldPresent,
+    shouldSetBadge: true,
+    shouldShowBanner: shouldPresent,
+    shouldShowList: shouldPresent,
+  };
+}
 
 function supportsNativeNotificationModule() {
   return !isExpoGoAndroid();
@@ -41,8 +55,8 @@ import { useToast } from '@/src/toast/ToastContext';
 import type { MessageContextParams } from '@/src/types/messaging';
 
 import {
+  buildMessageNotificationRoute,
   getMessageNotificationTarget,
-  normalizeNotificationContext,
 } from './mobileRouting';
 import { resolveMobileAuthRoute } from './authLinkRouting';
 
@@ -66,12 +80,11 @@ export function useNotificationRouting() {
    * Navigate to message thread or inbox based on context.
    * Handles deduplication to prevent double navigation.
    */
-  const navigateToMessage = (
+  const navigateToMessage = useCallback((
     context: MessageContextParams,
     options: { type: 'thread' | 'inbox' | 'unsupported' },
   ) => {
-    // Don't navigate if not authenticated (except to auth screen)
-    if (status !== 'authenticated' && status !== 'loading') {
+    if (status !== 'authenticated') {
       // Preserve the navigation intent to handle after login
       pendingNavigationRef.current = { params: context, type: options.type };
       return;
@@ -84,6 +97,8 @@ export function useNotificationRouting() {
       messageId: context.messageId,
       orderId: context.orderId,
       customOrderId: context.customOrderId,
+      brandId: context.brandId,
+      customerId: context.customerId,
       type: options.type,
     });
 
@@ -96,7 +111,7 @@ export function useNotificationRouting() {
     try {
       if (options.type === 'unsupported') {
         // Navigate to inbox - unsupported contexts fall back to inbox
-        router.replace('/(tabs)/inbox' as any);
+        router.replace(buildMessageNotificationRoute({ type: options.type, params: context }) as any);
         toast.info('Design/product-specific messages are not supported yet.');
         return;
       }
@@ -104,37 +119,31 @@ export function useNotificationRouting() {
       if (options.type === 'inbox') {
         // Navigate to inbox (Messages list)
         if (pathname !== '/(tabs)/inbox') {
-          router.replace('/(tabs)/inbox' as any);
+          router.replace(buildMessageNotificationRoute({ type: options.type, params: context }) as any);
         }
         return;
       }
 
-      // Navigate to thread - build params for ChatThread
-      const params: Record<string, any> = {};
-
-      if (context.threadId) params.threadId = context.threadId;
-      if (context.conversationId) params.conversationId = context.conversationId;
-      if (context.messageId) params.messageId = context.messageId;
-      if (context.orderId) params.orderId = context.orderId;
-      if (context.customOrderId) params.customOrderId = context.customOrderId;
-      if (context.brandId) params.brandId = context.brandId;
-      if (context.customerId) params.customerId = context.customerId;
-
-      // Only navigate if not already on the messages screen with same params
-      const isAlreadyOnMessages = pathname === '/messages/[threadId]';
-      if (!isAlreadyOnMessages) {
-        router.replace({ pathname: '/messages/[threadId]', params } as any);
-      }
+      router.replace(buildMessageNotificationRoute({ type: options.type, params: context }) as any);
     } catch (error) {
       console.error('Navigation error:', error);
       toast.error('Unable to open message');
     }
-  };
+  }, [pathname, status, toast]);
+
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    const pendingNavigation = pendingNavigationRef.current;
+    if (!pendingNavigation) return;
+
+    pendingNavigationRef.current = null;
+    navigateToMessage(pendingNavigation.params, { type: pendingNavigation.type });
+  }, [navigateToMessage, status]);
 
   /**
    * Handle a notification tap or deep link.
    */
-  const handleNotification = (
+  const handleNotification = useCallback((
     notification: Notifications.Notification | null,
   ) => {
     if (!notification) return;
@@ -145,12 +154,12 @@ export function useNotificationRouting() {
     if (target) {
       navigateToMessage(target.params, target);
     }
-  };
+  }, [navigateToMessage]);
 
   /**
    * Handle URL deep linking.
    */
-  const handleDeepLink = (url: string | null) => {
+  const handleDeepLink = useCallback((url: string | null) => {
     if (!url) return;
 
     try {
@@ -160,45 +169,14 @@ export function useNotificationRouting() {
         return;
       }
 
-      const parsed = Linking.parse(url);
-      const path = parsed.path || '';
-
-      // Check if it's a message-related URL
-      if (path.startsWith('/messages') || path.startsWith('/inbox')) {
-        // Extract params from URL
-        const params: MessageContextParams = {};
-
-        if (parsed.queryParams?.threadId) {
-          params.threadId = String(parsed.queryParams.threadId);
-        }
-        if (parsed.queryParams?.conversationId) {
-          params.conversationId = String(parsed.queryParams.conversationId);
-        }
-        if (parsed.queryParams?.messageId) {
-          params.messageId = String(parsed.queryParams.messageId);
-        }
-        if (parsed.queryParams?.orderId) {
-          params.orderId = String(parsed.queryParams.orderId);
-        }
-        if (parsed.queryParams?.customOrderId) {
-          params.customOrderId = String(parsed.queryParams.customOrderId);
-        }
-        if (parsed.queryParams?.brandId) {
-          params.brandId = String(parsed.queryParams.brandId);
-        }
-        if (parsed.queryParams?.customerId) {
-          params.customerId = String(parsed.queryParams.customerId);
-        }
-
-        const target = getMessageNotificationTarget(params);
-        if (target) {
-          navigateToMessage(target.params, target);
-        }
+      const target = getMessageNotificationTarget({ targetUrl: url });
+      if (target) {
+        navigateToMessage(target.params, target);
       }
     } catch (error) {
       console.error('Deep link parsing error:', error);
     }
-  };
+  }, [navigateToMessage]);
 
   return {
     handleNotification,
@@ -297,13 +275,7 @@ async function configurePushNotificationsOnce(): Promise<{
 
     // Configure notification handlers
     NotificationsModule.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
+      handleNotification: async (notification) => getForegroundNotificationBehavior(notification),
     });
 
     return { token };
@@ -347,6 +319,10 @@ export function setupNotificationListeners(
 
   void getNotificationsModule().then((NotificationsModule) => {
     if (!mounted || !NotificationsModule) return;
+
+    NotificationsModule.setNotificationHandler({
+      handleNotification: async (notification) => getForegroundNotificationBehavior(notification),
+    });
 
     // Listener for when notification is received while app is foreground
     const receivedSubscription = NotificationsModule.addNotificationReceivedListener(

@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   Pressable,
   RefreshControl,
@@ -8,6 +9,7 @@ import {
   View,
   type ListRenderItemInfo,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -20,6 +22,10 @@ import { Tabs } from '@/components/catalog/Tabs';
 import { MessagingApi } from '@/src/api/MessagingApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import {
+  refreshUnreadMessageCount,
+  useMessagingRealtimeChannel,
+} from '@/src/realtime/messaging';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import type { ConversationListResponse, ConversationSummary } from '@/src/types/messaging';
@@ -27,9 +33,10 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 
 type FilterKey = 'all' | 'unread' | 'orders';
 type InboxCursor = ConversationListResponse['endCursor'];
-type LoadMode = 'reset' | 'refresh' | 'more';
+type LoadMode = 'reset' | 'refresh' | 'more' | 'realtime';
 
 const PAGE_SIZE = 50;
+const REALTIME_REFRESH_DEBOUNCE_MS = 400;
 const FILTER_TABS: Array<{ key: FilterKey; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'unread', label: 'Unread' },
@@ -267,7 +274,7 @@ function MessagesSkeleton({ bottomPadding }: { bottomPadding: number }) {
 export default function InboxScreen() {
   const { theme } = useTheme();
   const { standardScreenBottomPadding } = useScreenChrome();
-  const { status, user } = useAuth();
+  const { status, token, user } = useAuth();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -290,6 +297,10 @@ export default function InboxScreen() {
   const cursorRef = useRef<InboxCursor>(null);
   const hasNextPageRef = useRef(true);
   const fetchInFlightRef = useRef(false);
+  const pendingReloadRef = useRef(false);
+  const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRealtimeRefreshRef = useRef<() => void>(() => undefined);
+  const skipInitialFocusRefreshRef = useRef(true);
 
   const filteredConversations = useMemo(
     () => conversations.filter((item) => matchesFilter(item, activeFilter) && matchesSearch(item, searchQuery)),
@@ -306,7 +317,12 @@ export default function InboxScreen() {
       }
 
       const isReset = mode !== 'more';
-      if (fetchInFlightRef.current) return;
+      if (fetchInFlightRef.current) {
+        if (isReset) {
+          pendingReloadRef.current = true;
+        }
+        return;
+      }
       if (!isReset && !hasNextPageRef.current) return;
 
       fetchInFlightRef.current = true;
@@ -316,7 +332,7 @@ export default function InboxScreen() {
       } else if (mode === 'refresh') {
         setRefreshing(true);
         setError(null);
-      } else {
+      } else if (mode === 'more') {
         setLoadingMore(true);
       }
 
@@ -341,10 +357,35 @@ export default function InboxScreen() {
         setLoading(false);
         setRefreshing(false);
         setLoadingMore(false);
+
+        if (pendingReloadRef.current) {
+          pendingReloadRef.current = false;
+          void loadConversations('realtime');
+        }
       }
     },
     [status],
   );
+
+  const scheduleRealtimeRefresh = useCallback(() => {
+    if (status !== 'authenticated') return;
+
+    if (realtimeRefreshTimerRef.current) {
+      clearTimeout(realtimeRefreshTimerRef.current);
+    }
+
+    realtimeRefreshTimerRef.current = setTimeout(() => {
+      realtimeRefreshTimerRef.current = null;
+      cursorRef.current = null;
+      hasNextPageRef.current = true;
+      void loadConversations('realtime');
+      void refreshUnreadMessageCount({ authenticated: true });
+    }, REALTIME_REFRESH_DEBOUNCE_MS);
+  }, [loadConversations, status]);
+
+  useEffect(() => {
+    scheduleRealtimeRefreshRef.current = scheduleRealtimeRefresh;
+  }, [scheduleRealtimeRefresh]);
 
   useEffect(() => {
     cursorRef.current = null;
@@ -359,11 +400,58 @@ export default function InboxScreen() {
     if (status === 'authenticated') {
       setLoading(true);
       void loadConversations('reset');
+      void refreshUnreadMessageCount({ authenticated: true });
       return;
     }
 
     setLoading(false);
+    void refreshUnreadMessageCount({ authenticated: false });
   }, [loadConversations, status, user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (skipInitialFocusRefreshRef.current) {
+        skipInitialFocusRefreshRef.current = false;
+        return undefined;
+      }
+      scheduleRealtimeRefreshRef.current();
+      return undefined;
+    }, []),
+  );
+
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        scheduleRealtimeRefresh();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [scheduleRealtimeRefresh, status]);
+
+  useEffect(() => {
+    return () => {
+      if (realtimeRefreshTimerRef.current) {
+        clearTimeout(realtimeRefreshTimerRef.current);
+        realtimeRefreshTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleRealtimeMessageEvent = useCallback(() => {
+    scheduleRealtimeRefresh();
+  }, [scheduleRealtimeRefresh]);
+
+  useMessagingRealtimeChannel({
+    enabled: status === 'authenticated' && Boolean(user?.id),
+    token: token ?? null,
+    userId: user?.id ?? null,
+    onMessageCreated: handleRealtimeMessageEvent,
+    onThreadUpdated: handleRealtimeMessageEvent,
+    onMessageRead: handleRealtimeMessageEvent,
+  });
 
   // Handle pending navigation after authentication
   useEffect(() => {
@@ -392,7 +480,8 @@ export default function InboxScreen() {
     cursorRef.current = null;
     hasNextPageRef.current = true;
     void loadConversations('refresh');
-  }, [loadConversations]);
+    void refreshUnreadMessageCount({ authenticated: status === 'authenticated' });
+  }, [loadConversations, status]);
 
   const handleEndReached = useCallback(() => {
     if (loading || refreshing || loadingMore || !hasNextPage) return;

@@ -14,6 +14,7 @@
     "test:brand-profile-contract": "node scripts/test-brand-profile-contract.js",
     "test:design-editor-contract": "node scripts/test-design-editor-contract.js",
     "test:auth-link-routing-contract": "node scripts/test-auth-link-routing-contract.js",
+    "test:notification-routing-contract": "node scripts/test-notification-routing-contract.js",
     "test:notification-settings-contract": "node scripts/test-notification-settings-contract.js",
     "ci:design-system": "npm exec tsc -- --noEmit && node ../scripts/audit-mobile-design-system.js",
     "audit:theme": "node scripts/audit-theme-system.js"

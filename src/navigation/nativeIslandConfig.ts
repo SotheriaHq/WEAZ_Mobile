@@ -35,6 +35,7 @@ export function buildNativeIslandItems(args: {
   profileLabel: string;
   profileIcon: string;
   profileBadge?: number;
+  inboxBadge?: number;
   bagBadge?: number;
 }): NativeIslandNavItem[] {
   const baseItems: NativeIslandNavItem[] = [
@@ -62,6 +63,7 @@ export function buildNativeIslandItems(args: {
       label: 'Msgs',
       emoji: NATIVE_ISLAND_ICONS.inbox,
       active: args.activeKey === NATIVE_ISLAND_KEYS.inbox,
+      badge: args.inboxBadge,
     },
     {
       key: NATIVE_ISLAND_KEYS.profile,
