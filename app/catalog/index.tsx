@@ -25,6 +25,7 @@ import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSharedValue } from 'react-native-reanimated';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
@@ -66,6 +67,14 @@ import { formatCount } from '@/src/utils/formatCount';
 import { env } from '@/src/config/env';
 import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
 import { perfMark } from '@/src/utils/perf';
+import {
+  refreshBrandCollectionsQuery,
+  refreshBrandDraftsQuery,
+  refreshBrandProfileQuery,
+  useBrandCollectionsQuery,
+  useBrandDraftsQuery,
+  useBrandProfileQuery,
+} from '@/src/query/catalogQueries';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -74,7 +83,6 @@ import { perfMark } from '@/src/utils/perf';
 type TabType = 'Collections' | 'Shop' | 'Reviews';
 type VisibilityType = 'Public' | 'Private' | 'Drafts';
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
-const CATALOG_FOCUS_REFETCH_STALE_MS = 60 * 1000;
 
 function readMetricNumber(value: unknown): number | null {
   const parsed = Number(value);
@@ -177,6 +185,7 @@ export default function CatalogScreen() {
   const { user } = useAuth();
   const { status, userId, userEmailVerified, updateUser } = useAuthSession();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const isDark = scheme === 'dark';
 
   const routeTab = Array.isArray(routeTabParam) ? routeTabParam[0] : routeTabParam;
@@ -198,7 +207,6 @@ export default function CatalogScreen() {
   // State
   const [profile, setProfile] = useState<BrandProfileDto | null>(null);
   const profileRef = useRef<BrandProfileDto | null>(null);
-  const lastCatalogFetchRef = useRef<{ key: string; at: number } | null>(null);
   const [collections, setCollections] = useState<CollectionDto[]>([]);
   const [drafts, setDrafts] = useState<CollectionDto[]>([]);
   const [designBackgroundTasks, setDesignBackgroundTasks] = useState<DesignEditorBackgroundTask[]>(
@@ -249,30 +257,23 @@ export default function CatalogScreen() {
     [isOwner, targetBrandId, userId],
   );
 
-  // Fetch profile data
-  const getCatalogFetchKey = useCallback(
-    () => `${targetBrandId ?? 'none'}:${isOwner ? 'owner' : 'visitor'}:${visibilityFilter}`,
-    [isOwner, targetBrandId, visibilityFilter],
+  const profileQuery = useBrandProfileQuery(targetBrandId, { enabled: Boolean(targetBrandId) });
+  const collectionOwnerId = getCollectionOwnerId(profileQuery.data ?? profile);
+  const collectionVisibility = visibilityFilter === 'Drafts'
+    ? undefined
+    : visibilityFilter.toUpperCase() as 'PUBLIC' | 'PRIVATE';
+  const collectionStatusFilter = visibilityFilter === 'Drafts' ? 'DRAFT' : 'PUBLISHED';
+  const collectionsQuery = useBrandCollectionsQuery(
+    {
+      ownerId: collectionOwnerId,
+      scope: 'all',
+      visibility: collectionVisibility,
+      status: collectionStatusFilter,
+      limit: 80,
+    },
+    { enabled: Boolean(collectionOwnerId) && visibilityFilter !== 'Drafts' },
   );
-
-  const markCatalogFetched = useCallback(() => {
-    lastCatalogFetchRef.current = { key: getCatalogFetchKey(), at: Date.now() };
-  }, [getCatalogFetchKey]);
-
-  const hasCatalogData = useCallback(
-    () => Boolean(profileRef.current || collections.length > 0 || drafts.length > 0),
-    [collections.length, drafts.length],
-  );
-
-  const isCatalogFetchFresh = useCallback(() => {
-    const last = lastCatalogFetchRef.current;
-    return Boolean(
-      last &&
-        last.key === getCatalogFetchKey() &&
-        Date.now() - last.at < CATALOG_FOCUS_REFETCH_STALE_MS &&
-        hasCatalogData(),
-    );
-  }, [getCatalogFetchKey, hasCatalogData]);
+  const draftsQuery = useBrandDraftsQuery({ enabled: isOwner && visibilityFilter === 'Drafts' });
 
   const fetchProfile = useCallback(async (options?: { forceRefresh?: boolean }): Promise<BrandProfileDto | null> => {
     if (!targetBrandId) {
@@ -282,9 +283,10 @@ export default function CatalogScreen() {
     }
 
     try {
-      const data = await brandApi.getProfileById(targetBrandId, {
-        forceRefresh: options?.forceRefresh,
-      });
+      const data = options?.forceRefresh
+        ? await refreshBrandProfileQuery(queryClient, targetBrandId)
+        : profileQuery.data ?? profileRef.current;
+      if (!data) return null;
       profileRef.current = data;
       setProfile(data);
       if (isOwner && data) {
@@ -308,7 +310,7 @@ export default function CatalogScreen() {
       // Don't show toast for profile errors on initial load - will show empty state
       return null;
     }
-  }, [targetBrandId, isOwner, updateUser]);
+  }, [isOwner, profileQuery.data, queryClient, targetBrandId, updateUser]);
 
   // Fetch collections
   const fetchCollections = useCallback(async (
@@ -325,11 +327,10 @@ export default function CatalogScreen() {
     }
 
     try {
-      const visibility = visibilityFilter === 'Drafts' ? undefined : visibilityFilter.toUpperCase() as 'PUBLIC' | 'PRIVATE';
-      const statusFilter = visibilityFilter === 'Drafts' ? 'DRAFT' : 'PUBLISHED';
-      
       if (visibilityFilter === 'Drafts' && isOwner) {
-        const data = await brandApi.getDrafts({ forceRefresh: options?.forceRefresh });
+        const data = options?.forceRefresh
+          ? await refreshBrandDraftsQuery(queryClient)
+          : draftsQuery.data ?? drafts;
         catalogDevLog('load', {
           tab: visibilityFilter,
           routeBrandId: targetBrandId,
@@ -343,14 +344,15 @@ export default function CatalogScreen() {
         });
         setDrafts(data);
       } else {
-        const { items } = await brandApi.getCollections({
-          brandId: collectionOwnerId,
-          scope: 'all',
-          visibility,
-          status: statusFilter,
-          limit: 80,
-          forceRefresh: options?.forceRefresh,
-        });
+        const items = options?.forceRefresh
+          ? await refreshBrandCollectionsQuery(queryClient, {
+            ownerId: collectionOwnerId,
+            scope: 'all',
+            visibility: collectionVisibility,
+            status: collectionStatusFilter,
+            limit: 80,
+          })
+          : collectionsQuery.data ?? collections;
         catalogDevLog('load', {
           tab: visibilityFilter,
           routeBrandId: targetBrandId,
@@ -359,8 +361,8 @@ export default function CatalogScreen() {
           ownerId: userId,
           endpoint: `/collections/user/${collectionOwnerId}`,
           itemCount: items.length,
-          status: statusFilter,
-          visibility: visibility ?? null,
+          status: collectionStatusFilter,
+          visibility: collectionVisibility ?? null,
         });
         setCollections(items);
       }
@@ -368,41 +370,91 @@ export default function CatalogScreen() {
       console.error('Error fetching collections:', error);
       // Collections error will show empty state
     }
-  }, [getCollectionOwnerId, isOwner, targetBrandId, userId, visibilityFilter]);
+  }, [
+    collectionStatusFilter,
+    collectionVisibility,
+    collections,
+    collectionsQuery.data,
+    drafts,
+    draftsQuery.data,
+    getCollectionOwnerId,
+    isOwner,
+    queryClient,
+    targetBrandId,
+    userId,
+    visibilityFilter,
+  ]);
 
-  // Initial load
   useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      const loadedProfile = await fetchProfile();
-      await Promise.all([
-        fetchCollections(loadedProfile),
-        refreshPatchStatus({ silent: true }),
-      ]);
-      markCatalogFetched();
-      setIsLoading(false);
-    };
-    load();
-  }, [fetchCollections, fetchProfile, markCatalogFetched, refreshPatchStatus]);
+    if (profileQuery.data === undefined) return;
+    const data = profileQuery.data;
+    profileRef.current = data ?? null;
+    setProfile(data ?? null);
+    if (isOwner && data) {
+      updateUser({
+        firstName: (data as any).firstName,
+        lastName: (data as any).lastName,
+        username: (data as any).username,
+        brandFullName: (data as any).brandFullName,
+        phoneNumber: data?.phoneNumber ?? undefined,
+        profileImage: (data as any).profileImage,
+        profileImageId: (data as any).profileImageId,
+        profileImageFile: (data as any).profileImageFile,
+        bannerImage: (data as any).bannerImage,
+        bannerImageId: (data as any).bannerImageId,
+        bannerImageFile: (data as any).bannerImageMeta,
+      });
+    }
+  }, [isOwner, profileQuery.data, updateUser]);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (isCatalogFetchFresh()) {
-        return undefined;
-      }
-      let cancelled = false;
-      void (async () => {
-        const loadedProfile = await fetchProfile();
-        if (!cancelled) {
-          await fetchCollections(loadedProfile);
-          markCatalogFetched();
-        }
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }, [fetchCollections, fetchProfile, isCatalogFetchFresh, markCatalogFetched]),
-  );
+  useEffect(() => {
+    if (collectionsQuery.data) {
+      setCollections(collectionsQuery.data);
+    }
+  }, [collectionsQuery.data]);
+
+  useEffect(() => {
+    if (draftsQuery.data) {
+      setDrafts(draftsQuery.data);
+    }
+  }, [draftsQuery.data]);
+
+  useEffect(() => {
+    if (!targetBrandId) {
+      setIsLoading(false);
+      return;
+    }
+    const listLoading = visibilityFilter === 'Drafts'
+      ? draftsQuery.isLoading && drafts.length === 0
+      : collectionsQuery.isLoading && collections.length === 0;
+    setIsLoading(Boolean((profileQuery.isLoading && !profileRef.current) || listLoading));
+  }, [
+    collections.length,
+    collectionsQuery.isLoading,
+    drafts.length,
+    draftsQuery.isLoading,
+    profileQuery.isLoading,
+    targetBrandId,
+    visibilityFilter,
+  ]);
+
+  useEffect(() => {
+    if (profileQuery.error) {
+      console.error('Error fetching profile:', profileQuery.error);
+    }
+    if (collectionsQuery.error) {
+      console.error('Error fetching collections:', collectionsQuery.error);
+    }
+    if (draftsQuery.error) {
+      console.error('Error fetching drafts:', draftsQuery.error);
+    }
+  }, [collectionsQuery.error, draftsQuery.error, profileQuery.error]);
+
+  useEffect(() => {
+    if (patchEnabled) {
+      void refreshPatchStatus({ silent: true });
+    }
+  }, [patchEnabled, refreshPatchStatus]);
 
   useEffect(() => subscribeDesignEditorBackgroundTasks(() => {
     setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
@@ -478,7 +530,6 @@ export default function CatalogScreen() {
       fetchCollections(loadedProfile, { forceRefresh: true }),
       refreshPatchStatus({ force: true, silent: true }),
     ]);
-    markCatalogFetched();
     setIsRefreshing(false);
   };
 
@@ -571,14 +622,13 @@ export default function CatalogScreen() {
       setDraftDeleteTarget(null);
       setDraftDeletePhrase('');
       await fetchCollections(undefined, { forceRefresh: true });
-      markCatalogFetched();
       toast.success(visibilityFilter === 'Drafts' ? 'Draft deleted.' : 'Collection deleted.');
     } catch {
       toast.error('Could not delete this collection. Please try again.');
     } finally {
       setDraftDeleteBusy(false);
     }
-  }, [draftDeleteBusy, draftDeletePhrase, draftDeleteTarget, fetchCollections, markCatalogFetched, toast, visibilityFilter]);
+  }, [draftDeleteBusy, draftDeletePhrase, draftDeleteTarget, fetchCollections, toast, visibilityFilter]);
 
   const ownerAvatar = useMemo(() => resolveProfileImageSource(profile as any), [profile]);
   const visitorAvatar = useMemo(() => resolveProfileImageSource(profile as any), [profile]);
@@ -750,7 +800,6 @@ export default function CatalogScreen() {
     void (async () => {
       await fetchCollections(undefined, { forceRefresh: true });
       if (cancelled) return;
-      markCatalogFetched();
       completedVisibleTasks.forEach((task) => removeDesignEditorBackgroundTask(task.id));
       setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
     })();
@@ -758,7 +807,7 @@ export default function CatalogScreen() {
     return () => {
       cancelled = true;
     };
-  }, [fetchCollections, markCatalogFetched, visibleDesignBackgroundTasks]);
+  }, [fetchCollections, visibleDesignBackgroundTasks]);
 
   const headerStats = useMemo<BrandHeaderStat[]>(() => {
     const backendDesigns = readMetricNumber(profile?.designsCount) ?? readMetricNumber(profile?.collectionsCount);

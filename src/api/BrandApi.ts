@@ -1108,6 +1108,17 @@ export const brandApi = {
     return promise;
   },
 
+  async getPublicFileUrl(fileId: string): Promise<string | null> {
+    const cacheKey = String(fileId ?? '').trim();
+    if (!cacheKey || /[/?#\\]/.test(cacheKey) || /^https?:\/\//i.test(cacheKey)) {
+      return null;
+    }
+
+    const response = await apiClient.get(`/uploads/public-url/${cacheKey}`);
+    const payload = unwrapData<{ url?: string }>(response.data);
+    return typeof payload?.url === 'string' && payload.url.length > 0 ? payload.url : null;
+  },
+
   /**
    * Get one collection with medias
    */

@@ -3,6 +3,7 @@ import { Animated, Easing, Image, Pressable, ScrollView, Share, StyleSheet, View
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 
 import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
 import ThreadRailAction from './ThreadRailAction';
@@ -23,6 +24,7 @@ import { useDiscreteTapGesture } from '@/src/hooks/useDiscreteTapGesture';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
+import { refreshCollectionDetailQuery, useCollectionDetailQuery } from '@/src/query/catalogQueries';
 
 type ViewerMedia = {
   id: string;
@@ -375,6 +377,7 @@ export function CollectionDetailViewer({
 }) {
   const { theme } = useTheme();
   const { status } = useAuth();
+  const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { height, width } = useWindowDimensions();
 
@@ -386,7 +389,6 @@ export function CollectionDetailViewer({
   const [requestingAccess, setRequestingAccess] = useState(false);
   const [mediaItems, setMediaItems] = useState<ViewerMedia[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [reloadToken, setReloadToken] = useState(0);
   const [infoVisible, setInfoVisible] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(autoOpenComments);
   const [isWishlisted, setIsWishlisted] = useState(false);
@@ -398,6 +400,7 @@ export function CollectionDetailViewer({
   const infoOpacity = useRef(new Animated.Value(0)).current;
 
   const resolvedScope = normalizeScope(scope);
+  const detailQuery = useCollectionDetailQuery(collectionId, resolvedScope, { enabled: Boolean(collectionId) });
   const brandName = useMemo(() => getDisplayName(detail?.owner), [detail?.owner]);
   const brandHandle = detail?.owner?.username ? `@${detail.owner.username}` : null;
   const mediaCount = mediaItems.length;
@@ -420,19 +423,110 @@ export function CollectionDetailViewer({
     threadingMediaByIdRef.current = threadingMediaById;
   }, [threadingMediaById]);
 
+  const applyDetailResponse = useCallback(async (response: CollectionDetailDto | null) => {
+    if (!response) {
+      setDetail(null);
+      setError('Collection unavailable right now.');
+      setMediaItems([]);
+      setActiveIndex(0);
+      setThreadStateByMedia({});
+      threadStateByMediaRef.current = {};
+      return;
+    }
+
+    const medias = Array.isArray(response.medias) ? response.medias : [];
+    const nextItems = await Promise.all(
+      medias.map(async (media, index) => {
+        const directUrl = getCollectionMediaDirectUrl(media);
+        const fileId = getCollectionMediaFileId(media);
+        const url = (await resolveImageUri({
+          src: directUrl,
+          fileId,
+          debugContext: {
+            designId: collectionId,
+            mediaIndex: index,
+            fileId,
+            sourceField: fileId ? 'collection.media.fileId' : 'collection.media.url',
+          },
+        })) ?? '';
+        return {
+          id: media.id || media.file?.id || `${collectionId}-${index}`,
+          collectionId,
+          mediaIndex: index,
+          url,
+          fileId,
+          type: getMediaType(media),
+          label: media.caption ?? media.file?.originalName ?? response.title,
+          threadsCount: typeof media.threadsCount === 'number' ? media.threadsCount : 0,
+          imageWidth: getMediaNumber(media, 'width') ?? getMediaNumber(media, 'naturalWidth') ?? getMediaNumber(media, 'imageWidth'),
+          imageHeight:
+            getMediaNumber(media, 'height') ?? getMediaNumber(media, 'naturalHeight') ?? getMediaNumber(media, 'imageHeight'),
+          imageAspectRatio: getMediaNumber(media, 'aspectRatio'),
+          blurhash: getMediaString(media, ['blurhash', 'blurHash']),
+          dominantColor: getMediaString(media, ['dominantColor']),
+        } satisfies ViewerMedia;
+      }),
+    );
+
+    const normalizedItems = nextItems.filter((item) => Boolean(item.id));
+    const nextThreadState = normalizedItems.reduce<Record<string, { threaded: boolean; count: number }>>((acc, item) => {
+      acc[item.id] = {
+        threaded: false,
+        count: item.threadsCount,
+      };
+      return acc;
+    }, {});
+
+    setDetail(response);
+    setMediaItems(normalizedItems);
+    setThreadStateByMedia(nextThreadState);
+    threadStateByMediaRef.current = nextThreadState;
+    setActiveIndex(0);
+  }, [collectionId]);
+
+  const handleDetailError = useCallback((fetchError: any) => {
+    const statusCode = fetchError?.response?.status;
+    if (statusCode === 403 || statusCode === 401) {
+      setLocked(true);
+      setError(null);
+    } else if (statusCode === 404 || statusCode === 410) {
+      setError('This design is no longer available.');
+    } else {
+      setError('Unable to load this design right now.');
+    }
+    setDetail(null);
+    setMediaItems([]);
+    setActiveIndex(0);
+    setThreadStateByMedia({});
+    threadStateByMediaRef.current = {};
+  }, []);
+
+  const refreshDetail = useCallback(async () => {
+    if (!collectionId) return;
+    setLoading(!detail);
+    setError(null);
+    setLocked(false);
+    setRequestState('NONE');
+    try {
+      const response = await refreshCollectionDetailQuery(queryClient, collectionId, resolvedScope);
+      await applyDetailResponse(response);
+    } catch (fetchError) {
+      handleDetailError(fetchError);
+    } finally {
+      setLoading(false);
+    }
+  }, [applyDetailResponse, collectionId, detail, handleDetailError, queryClient, resolvedScope]);
+
   useEffect(() => {
     let mounted = true;
 
     const run = async () => {
       if (!collectionId) {
-        if (mounted) {
-          setError('Missing collection id.');
-          setLoading(false);
-        }
+        setError('Missing collection id.');
+        setLoading(false);
         return;
       }
 
-      setLoading(true);
       setError(null);
       setLocked(false);
       setRequestState('NONE');
@@ -440,89 +534,23 @@ export function CollectionDetailViewer({
       queuedThreadIntentByMediaRef.current = {};
       threadingMediaByIdRef.current = {};
 
+      if (detailQuery.error) {
+        handleDetailError(detailQuery.error);
+        setLoading(false);
+        return;
+      }
+
+      if (!detailQuery.data) {
+        setLoading(detailQuery.isLoading && !detail);
+        return;
+      }
+
       try {
-        const response = await brandApi.getCollectionDetail(collectionId, {
-          scope: resolvedScope,
-          forceRefresh: reloadToken > 0,
-        });
-        if (!mounted) return;
-
-        if (!response) {
-          setDetail(null);
-          setError('Collection unavailable right now.');
-          setMediaItems([]);
-          setActiveIndex(0);
-          setThreadStateByMedia({});
-          threadStateByMediaRef.current = {};
-          return;
+        await applyDetailResponse(detailQuery.data);
+      } catch (error) {
+        if (mounted) {
+          handleDetailError(error);
         }
-
-        const medias = Array.isArray(response.medias) ? response.medias : [];
-        const nextItems = await Promise.all(
-          medias.map(async (media, index) => {
-            const directUrl = getCollectionMediaDirectUrl(media);
-            const fileId = getCollectionMediaFileId(media);
-            const url = (await resolveImageUri({
-              src: directUrl,
-              fileId,
-              debugContext: {
-                designId: collectionId,
-                mediaIndex: index,
-                fileId,
-                sourceField: fileId ? 'collection.media.fileId' : 'collection.media.url',
-              },
-            })) ?? '';
-            return {
-              id: media.id || media.file?.id || `${collectionId}-${index}`,
-              collectionId,
-              mediaIndex: index,
-              url,
-              fileId,
-              type: getMediaType(media),
-              label: media.caption ?? media.file?.originalName ?? response.title,
-              threadsCount: typeof media.threadsCount === 'number' ? media.threadsCount : 0,
-              imageWidth: getMediaNumber(media, 'width') ?? getMediaNumber(media, 'naturalWidth') ?? getMediaNumber(media, 'imageWidth'),
-              imageHeight:
-                getMediaNumber(media, 'height') ?? getMediaNumber(media, 'naturalHeight') ?? getMediaNumber(media, 'imageHeight'),
-              imageAspectRatio: getMediaNumber(media, 'aspectRatio'),
-              blurhash: getMediaString(media, ['blurhash', 'blurHash']),
-              dominantColor: getMediaString(media, ['dominantColor']),
-            } satisfies ViewerMedia;
-          }),
-        );
-
-        if (!mounted) return;
-
-        const normalizedItems = nextItems.filter((item) => Boolean(item.id));
-        const nextThreadState = normalizedItems.reduce<Record<string, { threaded: boolean; count: number }>>((acc, item) => {
-          acc[item.id] = {
-            threaded: false,
-            count: item.threadsCount,
-          };
-          return acc;
-        }, {});
-
-        setDetail(response);
-        setMediaItems(normalizedItems);
-        setThreadStateByMedia(nextThreadState);
-        threadStateByMediaRef.current = nextThreadState;
-        setActiveIndex(0);
-      } catch (fetchError: any) {
-        if (!mounted) return;
-        const statusCode = fetchError?.response?.status;
-        if (statusCode === 403 || statusCode === 401) {
-          setLocked(true);
-          setError(null);
-        } else if (statusCode === 404 || statusCode === 410) {
-          setError('This design is no longer available.');
-        } else {
-          setError('Unable to load this design right now.');
-        }
-        setDetail(null);
-        setMediaItems([]);
-        setActiveIndex(0);
-        setThreadStateByMedia({});
-        threadStateByMediaRef.current = {};
       } finally {
         if (mounted) {
           setLoading(false);
@@ -534,7 +562,15 @@ export function CollectionDetailViewer({
     return () => {
       mounted = false;
     };
-  }, [collectionId, reloadToken, resolvedScope]);
+  }, [
+    applyDetailResponse,
+    collectionId,
+    detail,
+    detailQuery.data,
+    detailQuery.error,
+    detailQuery.isLoading,
+    handleDetailError,
+  ]);
 
   useEffect(() => {
     if (!autoOpenComments) {
@@ -741,7 +777,7 @@ export function CollectionDetailViewer({
                   }
                   setRequestState(result.state);
                   if (result.state === 'APPROVED') {
-                    setReloadToken((value) => value + 1);
+                    await refreshDetail();
                   }
                 } catch (requestError: any) {
                   if (requestError?.response?.status === 403) {
@@ -767,7 +803,7 @@ export function CollectionDetailViewer({
           <AppText variant="small" tone="muted" style={styles.errorText}>{error ?? 'Unable to load this design.'}</AppText>
           <View style={styles.errorActions}>
             <Button title="Back" variant="secondary" onPress={() => router.back()} />
-            <Button title="Retry" variant="primary" onPress={() => setReloadToken((value) => value + 1)} />
+            <Button title="Retry" variant="primary" onPress={refreshDetail} />
           </View>
         </View>
       </SafeAreaView>

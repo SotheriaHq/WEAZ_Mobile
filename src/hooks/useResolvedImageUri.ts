@@ -4,6 +4,8 @@ import { Platform } from 'react-native';
 
 import { brandApi, type SignedFileUrlDebugContext } from '@/src/api/BrandApi';
 import { mediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
+import { queryClient } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
 
 type UseResolvedImageUriArgs = {
   src?: string | null;
@@ -221,6 +223,9 @@ export const resolveImageUri = async ({
   if (forceRefresh) {
     resolvedUriCache.delete(cacheKey);
     resolvedUriMissingCache.delete(cacheKey);
+    if (normalizedFileId) {
+      queryClient.removeQueries({ queryKey: queryKeys.media.signedUrl(normalizedFileId), exact: true });
+    }
   }
   const cached = getCachedUri(cacheKey);
   if (cached === '__missing__') {
@@ -251,9 +256,15 @@ export const resolveImageUri = async ({
   const promise = (async () => {
     try {
       if (normalizedFileId && isPotentialFileId(normalizedFileId)) {
-        const signed = await brandApi.getSignedFileUrl(normalizedFileId, {
-          ...debugContext,
-          fileId: debugContext?.fileId ?? normalizedFileId,
+        const signed = await queryClient.fetchQuery({
+          queryKey: queryKeys.media.signedUrl(normalizedFileId),
+          queryFn: () =>
+            brandApi.getSignedFileUrl(normalizedFileId, {
+              ...debugContext,
+              fileId: debugContext?.fileId ?? normalizedFileId,
+            }),
+          staleTime: SIGNED_URI_TTL_MS - SIGNED_URI_REFRESH_SKEW_MS,
+          gcTime: SIGNED_URI_TTL_MS,
         });
         if (signed) {
           setCachedUri(cacheKey, signed);

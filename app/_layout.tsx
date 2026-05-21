@@ -42,6 +42,7 @@ import {
   useAndroidSystemBars,
 } from '@/src/system/AndroidSystemBars';
 import { ScreenChromeProvider } from '@/src/system/ScreenChrome';
+import { QueryProvider } from '@/src/query/QueryProvider';
 
 
 export {
@@ -360,18 +361,20 @@ function RootLayoutNav({
 }) {
   return (
     <ThemeProvider initialMode={initialThemeMode} bootstrapped>
-      <ToastProvider>
-        <AuthProvider>
-          <ThemeBackendSync />
-          <BagCountProvider>
-            <BagFlowProvider>
-              <ScreenChromeProvider>
-                <RootBootstrap fontsLoaded={fontsLoaded} />
-              </ScreenChromeProvider>
-            </BagFlowProvider>
-          </BagCountProvider>
-        </AuthProvider>
-      </ToastProvider>
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ThemeBackendSync />
+            <BagCountProvider>
+              <BagFlowProvider>
+                <ScreenChromeProvider>
+                  <RootBootstrap fontsLoaded={fontsLoaded} />
+                </ScreenChromeProvider>
+              </BagFlowProvider>
+            </BagCountProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>
     </ThemeProvider>
   );
 }
