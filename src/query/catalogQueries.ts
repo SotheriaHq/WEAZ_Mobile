@@ -169,7 +169,7 @@ export function useMediaPublicUrlQuery(fileId?: string | null, options?: Enabled
 export function useMediaSignedUrlQuery(fileId?: string | null, options?: EnabledOption) {
   return useQuery({
     queryKey: queryKeys.media.signedUrl(fileId),
-    queryFn: () => brandApi.getSignedFileUrl(String(fileId)),
+    queryFn: () => brandApi.getPrivateSignedFileUrl(String(fileId)),
     enabled: isEnabled(fileId, options?.enabled ?? true),
     staleTime: THREADLY_QUERY_STALE_TIME_MS,
     gcTime: THREADLY_QUERY_STALE_TIME_MS,

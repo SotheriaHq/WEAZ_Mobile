@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
@@ -27,6 +28,8 @@ import { useProductBagging } from '@/src/hooks/useProductBagging';
 import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
 
 type SortKey = 'newest' | 'price_low_high' | 'price_high_low';
 type FilterKey = 'all' | 'in_stock' | 'custom_only' | 'bagged' | 'saved';
@@ -235,6 +238,7 @@ export function BrandShopTab({
   const { standardScreenBottomPadding } = useScreenChrome();
   const requireAuth = useAuthAction();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -269,6 +273,10 @@ export function BrandShopTab({
   const brandIdIssue = normalizedBrandId
     ? null
     : 'No active brand ID is available for this store view. Switch to a brand workspace or sign in again.';
+  const brandProductsQueryKey = useMemo(
+    () => queryKeys.store.brandProducts(normalizedBrandId, { limit: 80 }),
+    [normalizedBrandId],
+  );
 
   const CARD_GAP = 10;
   const SIDE_PADDING = 16;
@@ -330,7 +338,7 @@ export function BrandShopTab({
     }
   }, [isOwner, status]);
 
-  const fetchProducts = useCallback(async () => {
+  const fetchProducts = useCallback(async (options?: { forceRefresh?: boolean }) => {
     if (!normalizedBrandId) {
       if (__DEV__) {
         console.warn('[brand-shop]', {
@@ -349,6 +357,17 @@ export function BrandShopTab({
       return;
     }
 
+    const forceRefresh = options?.forceRefresh === true;
+    if (forceRefresh) {
+      queryClient.removeQueries({ queryKey: brandProductsQueryKey, exact: true });
+    } else {
+      const cached = queryClient.getQueryData<StoreProduct[]>(brandProductsQueryKey);
+      if (cached) {
+        setProducts(cached);
+        setLoading(false);
+      }
+    }
+
     setError(null);
     try {
       if (__DEV__) {
@@ -358,7 +377,11 @@ export function BrandShopTab({
           isOwner,
         });
       }
-      const items = await MobileStoreApi.getBrandProducts(normalizedBrandId, 80);
+      const items = await queryClient.fetchQuery({
+        queryKey: brandProductsQueryKey,
+        queryFn: () => MobileStoreApi.getBrandProducts(normalizedBrandId, 80),
+        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+      });
       setProducts(items);
     } catch (err) {
       setError(toApiErrorMessage(err, 'Could not load products right now.'));
@@ -366,12 +389,13 @@ export function BrandShopTab({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [isOwner, normalizedBrandId, user?.activeBrandId, user?.brandMemberships, user?.id, user?.storeId]);
+  }, [brandProductsQueryKey, isOwner, normalizedBrandId, queryClient, user?.activeBrandId, user?.brandMemberships, user?.id, user?.storeId]);
 
   useEffect(() => {
-    setLoading(true);
+    const cached = normalizedBrandId ? queryClient.getQueryData<StoreProduct[]>(brandProductsQueryKey) : null;
+    setLoading(!cached);
     void fetchProducts();
-  }, [fetchProducts]);
+  }, [brandProductsQueryKey, fetchProducts, normalizedBrandId, queryClient]);
 
   useEffect(() => {
     void refreshCommerceState();
@@ -656,7 +680,7 @@ export function BrandShopTab({
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([fetchProducts(), refreshCommerceState()]);
+    await Promise.all([fetchProducts({ forceRefresh: true }), refreshCommerceState()]);
     setRefreshing(false);
   }, [fetchProducts, refreshCommerceState]);
 
@@ -723,7 +747,7 @@ export function BrandShopTab({
       actionLabel: 'Retry',
       onAction: () => {
         setLoading(true);
-        void fetchProducts();
+        void fetchProducts({ forceRefresh: true });
       },
     });
   }

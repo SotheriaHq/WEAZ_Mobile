@@ -66,6 +66,8 @@ export const queryKeys = {
     cart: () => ['store', 'cart'] as const,
     wishlist: (params?: Record<string, unknown> | null) => ['store', 'wishlist', normalizeRecord(params)] as const,
     bagCount: () => ['store', 'bagCount'] as const,
+    brandProducts: (brandId?: string | null, params?: Record<string, unknown> | null) =>
+      ['store', 'brandProducts', normalizeId(brandId), normalizeRecord(params)] as const,
   },
   config: {
     uploadLimits: () => ['config', 'uploadLimits'] as const,
@@ -88,12 +90,21 @@ export const queryKeys = {
     batch: (targetType?: string | null, targetIds?: Array<string | null | undefined> | null) =>
       ['saved', 'batch', normalizeId(targetType), normalizeIdList(targetIds)] as const,
   },
+  reviews: {
+    brand: (brandId?: string | null, params?: Record<string, unknown> | null) =>
+      ['reviews', 'brand', normalizeId(brandId), normalizeRecord(params)] as const,
+    product: (productId?: string | null, params?: Record<string, unknown> | null) =>
+      ['reviews', 'product', normalizeId(productId), normalizeRecord(params)] as const,
+  },
 };
 
 export const isPersistableThreadlyQueryKey = (queryKey: readonly unknown[]) => {
   const [root, scope] = queryKey;
   if (root === 'brand' || root === 'design' || root === 'designs' || root === 'config' || root === 'categories') {
     return true;
+  }
+  if (root === 'store') {
+    return scope === 'brandProducts';
   }
   if (root === 'media') {
     return scope === 'publicUrl';

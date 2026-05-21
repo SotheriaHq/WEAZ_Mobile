@@ -276,6 +276,14 @@ function asString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function getPublicUrlCacheKey(fileId: string): string {
+  return `public:${fileId}`;
+}
+
+function getPrivateSignedUrlCacheKey(fileId: string): string {
+  return `private:${fileId}`;
+}
+
 function parseCompactAmzDate(value: string): number | null {
   const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(value);
   if (!match) return null;
@@ -1022,9 +1030,17 @@ export const brandApi = {
   },
 
   /**
-   * Get signed URL for a file
+   * Resolve public media first, then fall back to private signed media.
+   * Existing callers keep this behavior; query-owned paths use the explicit
+   * public/private methods so public URLs can be persisted separately.
    */
   async getSignedFileUrl(fileId: string, context?: SignedFileUrlDebugContext): Promise<string | null> {
+    const publicUrl = await this.getPublicFileUrl(fileId, context);
+    if (publicUrl) return publicUrl;
+    return this.getPrivateSignedFileUrl(fileId, context);
+  },
+
+  async getPublicFileUrl(fileId: string, context?: SignedFileUrlDebugContext): Promise<string | null> {
     const normalizedFileId = asString(fileId);
     if (!normalizedFileId) {
       return null;
@@ -1037,86 +1053,112 @@ export const brandApi = {
     }
 
     fileId = normalizedFileId;
-    const missingCachedUntil = signedUrlMissingCache.get(fileId);
+    const cacheKey = getPublicUrlCacheKey(fileId);
+    const missingCachedUntil = signedUrlMissingCache.get(cacheKey);
     if (missingCachedUntil && missingCachedUntil > Date.now()) {
       return null;
     }
     if (missingCachedUntil) {
-      signedUrlMissingCache.delete(fileId);
+      signedUrlMissingCache.delete(cacheKey);
     }
 
-    // Check cache first
-    const cached = signedUrlCache.get(fileId);
+    const cached = signedUrlCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.url;
     }
 
-    // Check if request is already pending
-    const pending = signedUrlPending.get(fileId);
+    const pending = signedUrlPending.get(cacheKey);
     if (pending) {
       return pending;
     }
 
-    // Public catalog/profile media usually belongs to another user. The signed-url
-    // endpoint is owner-only, so using it first produces repeated 400s for public media.
     const promise = (async () => {
       try {
         const response = await apiClient.get(`/uploads/public-url/${fileId}`);
         const url = unwrapData<any>(response.data)?.url ?? null;
         if (url) {
-          signedUrlMissingCache.delete(fileId);
-          signedUrlCache.set(fileId, { url, expiresAt: getSignedUrlCacheExpiresAt(url) });
+          signedUrlMissingCache.delete(cacheKey);
+          signedUrlCache.set(cacheKey, { url, expiresAt: getSignedUrlCacheExpiresAt(url) });
         }
         return url;
       } catch (error: any) {
         const publicStatus = error?.response?.status;
-        if (publicStatus === 400 || publicStatus === 401 || publicStatus === 403 || publicStatus === 404) {
-          try {
-            const response = await apiClient.get(`/uploads/signed-url/${fileId}`);
-            const url = unwrapData<any>(response.data)?.url ?? null;
-            if (url) {
-              signedUrlMissingCache.delete(fileId);
-              signedUrlCache.set(fileId, { url, expiresAt: getSignedUrlCacheExpiresAt(url) });
-            }
-            return url;
-          } catch (publicError: any) {
-            if (
-              publicError?.response?.status === 400 ||
-              publicError?.response?.status === 404
-            ) {
-              signedUrlMissingCache.set(fileId, Date.now() + MISSING_SIGNED_URL_TTL_MS);
-              logSignedFileUrlFailure(fileId, publicError.response.status, context);
-              return null;
-            }
-            logSignedFileUrlNetworkError('signed-url-fallback-error', publicError, context);
-            throw publicError;
-          }
-        }
         if (publicStatus === 400 || publicStatus === 404) {
-          signedUrlMissingCache.set(fileId, Date.now() + MISSING_SIGNED_URL_TTL_MS);
-          logSignedFileUrlFailure(fileId, publicStatus, context);
+          signedUrlMissingCache.set(cacheKey, Date.now() + MISSING_SIGNED_URL_TTL_MS);
+          logSignedFileUrlFailure(fileId, `public-${publicStatus}`, context);
+          return null;
+        }
+        if (publicStatus === 401 || publicStatus === 403) {
           return null;
         }
         logSignedFileUrlNetworkError('public-url-error', error, context);
         throw error;
       } finally {
-        signedUrlPending.delete(fileId);
+        signedUrlPending.delete(cacheKey);
       }
     })();
 
-    signedUrlPending.set(fileId, promise);
+    signedUrlPending.set(cacheKey, promise);
     return promise;
   },
 
-  async getPublicFileUrl(fileId: string): Promise<string | null> {
-    const cacheKey = String(fileId ?? '').trim();
-    if (!cacheKey || /[/?#\\]/.test(cacheKey) || /^https?:\/\//i.test(cacheKey)) {
+  async getPrivateSignedFileUrl(fileId: string, context?: SignedFileUrlDebugContext): Promise<string | null> {
+    const normalizedFileId = asString(fileId);
+    if (!normalizedFileId) {
       return null;
     }
 
-    const response = await apiClient.get(`/uploads/public-url/${cacheKey}`);
-    const payload = unwrapData<{ url?: string }>(response.data);
-    return typeof payload?.url === 'string' && payload.url.length > 0 ? payload.url : null;
+    if (/[/?#\\]/.test(normalizedFileId) || /^https?:\/\//i.test(normalizedFileId)) {
+      signedUrlMissingCache.set(normalizedFileId, Date.now() + MISSING_SIGNED_URL_TTL_MS);
+      logSignedFileUrlFailure(normalizedFileId, 'invalid-file-id', context);
+      return null;
+    }
+
+    fileId = normalizedFileId;
+    const cacheKey = getPrivateSignedUrlCacheKey(fileId);
+    const missingCachedUntil = signedUrlMissingCache.get(cacheKey);
+    if (missingCachedUntil && missingCachedUntil > Date.now()) {
+      return null;
+    }
+    if (missingCachedUntil) {
+      signedUrlMissingCache.delete(cacheKey);
+    }
+
+    const cached = signedUrlCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.url;
+    }
+
+    const pending = signedUrlPending.get(cacheKey);
+    if (pending) {
+      return pending;
+    }
+
+    const promise = (async () => {
+      try {
+        const response = await apiClient.get(`/uploads/signed-url/${fileId}`);
+        const url = unwrapData<any>(response.data)?.url ?? null;
+        if (url) {
+          signedUrlMissingCache.delete(cacheKey);
+          signedUrlCache.set(cacheKey, { url, expiresAt: getSignedUrlCacheExpiresAt(url) });
+        }
+        return url;
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 400 || status === 401 || status === 403 || status === 404) {
+          signedUrlMissingCache.set(cacheKey, Date.now() + MISSING_SIGNED_URL_TTL_MS);
+          logSignedFileUrlFailure(fileId, status, context);
+          return null;
+        }
+        logSignedFileUrlNetworkError('signed-url-fallback-error', error, context);
+        throw error;
+      } finally {
+        signedUrlPending.delete(cacheKey);
+      }
+    })();
+
+    signedUrlPending.set(cacheKey, promise);
+    return promise;
   },
 
   /**

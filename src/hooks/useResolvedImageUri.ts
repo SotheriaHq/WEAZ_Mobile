@@ -68,17 +68,6 @@ const getDirectSourceType = (value: string) => {
   return 'direct-url';
 };
 
-const shouldPreferFileIdResolution = (directSrc: string | null, normalizedFileId: string | null) => {
-  if (!directSrc || !normalizedFileId) return false;
-
-  const directSourceType = getDirectSourceType(directSrc);
-  return Boolean(
-    directSourceType === 'signed-s3-url' ||
-      directSourceType === 'direct-s3-url' ||
-      hasSignedUrlParams(directSrc),
-  );
-};
-
 const isUsableDirectHttpUrl = (value: string) => {
   const sourceType = getDirectSourceType(value);
   return Boolean(sourceType && (sourceType !== 'loopback-url' || Platform.OS === 'web'));
@@ -135,6 +124,15 @@ const getSignedUriExpiresAt = (uri: string) => {
   }
 
   return null;
+};
+
+const shouldPreferFileIdResolution = (directSrc: string | null, normalizedFileId: string | null) => {
+  if (!directSrc || !normalizedFileId) return false;
+  if (!isUsableDirectHttpUrl(directSrc)) return true;
+  if (!hasSignedUrlParams(directSrc)) return false;
+
+  const expiresAt = getSignedUriExpiresAt(directSrc);
+  return !expiresAt || expiresAt <= Date.now() + SIGNED_URI_REFRESH_SKEW_MS;
 };
 
 const getCachedUriEntry = (key: string) => {
@@ -224,6 +222,7 @@ export const resolveImageUri = async ({
     resolvedUriCache.delete(cacheKey);
     resolvedUriMissingCache.delete(cacheKey);
     if (normalizedFileId) {
+      queryClient.removeQueries({ queryKey: queryKeys.media.publicUrl(normalizedFileId), exact: true });
       queryClient.removeQueries({ queryKey: queryKeys.media.signedUrl(normalizedFileId), exact: true });
     }
   }
@@ -256,25 +255,46 @@ export const resolveImageUri = async ({
   const promise = (async () => {
     try {
       if (normalizedFileId && isPotentialFileId(normalizedFileId)) {
-        const signed = await queryClient.fetchQuery({
-          queryKey: queryKeys.media.signedUrl(normalizedFileId),
+        const publicUrl = await queryClient.fetchQuery({
+          queryKey: queryKeys.media.publicUrl(normalizedFileId),
           queryFn: () =>
-            brandApi.getSignedFileUrl(normalizedFileId, {
+            brandApi.getPublicFileUrl(normalizedFileId, {
               ...debugContext,
               fileId: debugContext?.fileId ?? normalizedFileId,
             }),
           staleTime: SIGNED_URI_TTL_MS - SIGNED_URI_REFRESH_SKEW_MS,
           gcTime: SIGNED_URI_TTL_MS,
         });
-        if (signed) {
-          setCachedUri(cacheKey, signed);
+        if (publicUrl) {
+          setCachedUri(cacheKey, publicUrl);
+          devMediaLog('resolve-public', {
+            sourceType: 'fileId',
+            hasFileId: true,
+            designId: debugContext?.designId ?? null,
+            mediaIndex: debugContext?.mediaIndex ?? null,
+          });
+          return publicUrl;
+        }
+
+        const signedUrl = await queryClient.fetchQuery({
+          queryKey: queryKeys.media.signedUrl(normalizedFileId),
+          queryFn: () =>
+            brandApi.getPrivateSignedFileUrl(normalizedFileId, {
+              ...debugContext,
+              fileId: debugContext?.fileId ?? normalizedFileId,
+            }),
+          staleTime: SIGNED_URI_TTL_MS - SIGNED_URI_REFRESH_SKEW_MS,
+          gcTime: SIGNED_URI_TTL_MS,
+        });
+        if (signedUrl) {
+          setCachedUri(cacheKey, signedUrl);
           devMediaLog('resolve-signed', {
             sourceType: 'fileId',
             hasFileId: true,
             designId: debugContext?.designId ?? null,
             mediaIndex: debugContext?.mediaIndex ?? null,
           });
-          return signed;
+          return signedUrl;
         }
       }
 

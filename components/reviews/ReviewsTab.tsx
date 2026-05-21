@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 
 import DeleteReviewConfirmSheet from '@/components/reviews/DeleteReviewConfirmSheet';
 import ReviewCard from '@/components/reviews/ReviewCard';
@@ -13,6 +14,8 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
 
 const emptySummary: ReviewSummaryDto = {
   averageRating: 0,
@@ -38,7 +41,16 @@ export default function ReviewsTab({ brandId, productId, compact = false }: Prop
   const { theme } = useTheme();
   const toast = useToast();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const currentUserId = user?.id ?? null;
+  const reviewLimit = compact ? 3 : 20;
+  const reviewQueryKey = useMemo(
+    () =>
+      productId
+        ? queryKeys.reviews.product(productId, { limit: reviewLimit, viewerId: currentUserId })
+        : queryKeys.reviews.brand(brandId, { limit: reviewLimit, viewerId: currentUserId }),
+    [brandId, compact, currentUserId, productId, reviewLimit],
+  );
   const [items, setItems] = useState<ReviewDto[]>([]);
   const [summary, setSummary] = useState<ReviewSummaryDto>(emptySummary);
   const [loading, setLoading] = useState(true);
@@ -53,18 +65,34 @@ export default function ReviewsTab({ brandId, productId, compact = false }: Prop
     setSummary(response.summary);
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { forceRefresh?: boolean }) => {
     if (!brandId && !productId) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    const forceRefresh = options?.forceRefresh === true;
+    if (forceRefresh) {
+      queryClient.removeQueries({ queryKey: reviewQueryKey, exact: true });
+    } else {
+      const cached = queryClient.getQueryData<ReviewListDto>(reviewQueryKey);
+      if (cached) {
+        applyList(cached);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+    }
     setError(null);
     setFeatureDisabled(false);
     try {
-      const response = productId
-        ? await reviewApi.getProductReviews(productId, { limit: compact ? 3 : 20 }, currentUserId)
-        : await reviewApi.getBrandReviews(brandId as string, { limit: 20 }, currentUserId);
+      const response = await queryClient.fetchQuery({
+        queryKey: reviewQueryKey,
+        queryFn: () =>
+          productId
+            ? reviewApi.getProductReviews(productId, { limit: reviewLimit }, currentUserId)
+            : reviewApi.getBrandReviews(brandId as string, { limit: reviewLimit }, currentUserId),
+        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+      });
       applyList(response);
     } catch (nextError) {
       const status = (nextError as { status?: number })?.status;
@@ -78,7 +106,7 @@ export default function ReviewsTab({ brandId, productId, compact = false }: Prop
     } finally {
       setLoading(false);
     }
-  }, [applyList, brandId, compact, currentUserId, productId]);
+  }, [applyList, brandId, currentUserId, productId, queryClient, reviewLimit, reviewQueryKey]);
 
   useEffect(() => {
     void load();
@@ -93,6 +121,14 @@ export default function ReviewsTab({ brandId, productId, compact = false }: Prop
     if (!editingReview) return;
     const updated = await reviewApi.updateReview(editingReview.id, payload);
     setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    queryClient.setQueryData<ReviewListDto>(reviewQueryKey, (current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.map((item) => (item.id === updated.id ? updated : item)),
+          }
+        : current,
+    );
     setEditingReview(null);
     toast.success('Review updated');
   };
@@ -104,6 +140,18 @@ export default function ReviewsTab({ brandId, productId, compact = false }: Prop
       await reviewApi.deleteReview(deleteReview.id);
       setItems((current) => current.filter((item) => item.id !== deleteReview.id));
       setSummary((current) => ({ ...current, reviewCount: Math.max(0, current.reviewCount - 1) }));
+      queryClient.setQueryData<ReviewListDto>(reviewQueryKey, (current) =>
+        current
+          ? {
+              ...current,
+              items: current.items.filter((item) => item.id !== deleteReview.id),
+              summary: {
+                ...current.summary,
+                reviewCount: Math.max(0, current.summary.reviewCount - 1),
+              },
+            }
+          : current,
+      );
       toast.success('Review deleted');
       setDeleteReview(null);
     } catch (nextError) {
@@ -131,7 +179,7 @@ export default function ReviewsTab({ brandId, productId, compact = false }: Prop
       <View style={[styles.empty, compact ? styles.compactWrap : styles.wrap]}>
         <AppText variant="subtitle">Reviews are unavailable</AppText>
         <AppText variant="body" tone="muted" style={styles.centerText}>{error}</AppText>
-        <Button title="Retry" onPress={() => void load()} />
+        <Button title="Retry" onPress={() => void load({ forceRefresh: true })} />
       </View>
     );
   }
