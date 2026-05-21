@@ -17,6 +17,8 @@ import {
 } from '@/src/storage/secureStorage';
 import { googleAuth, type GoogleAuthParams } from '@/src/api/AuthApi';
 import { deactivateRegisteredPushTokenForLogout } from '@/src/notifications/pushTokenRegistration';
+import { queryClient, THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
 import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
 
@@ -467,6 +469,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSelectedActiveBrandId(null);
     selectedActiveBrandIdRef.current = null;
     setStatus('unauthenticated');
+    queryClient.removeQueries({ queryKey: queryKeys.auth.profile(), exact: true });
+    queryClient.removeQueries({ queryKey: queryKeys.notifications.unreadCount(), exact: true });
+    queryClient.removeQueries({ queryKey: queryKeys.messaging.unreadCount(), exact: true });
+    queryClient.removeQueries({ queryKey: queryKeys.store.bagCount(), exact: true });
+    queryClient.removeQueries({ queryKey: queryKeys.saved.root() });
     await removeAccessToken();
     await removeRefreshToken();
     await SecureStore.deleteItemAsync(ACTIVE_BRAND_STORAGE_KEY).catch(() => {});
@@ -484,6 +491,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const normalized = normalizeAuthUser(nextUser) ?? nextUser;
+      queryClient.setQueryData(queryKeys.auth.profile(), normalized);
       return applyActiveBrandSelection(normalized);
     });
   }, [applyActiveBrandSelection]);
@@ -501,7 +509,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser((current) => {
       if (!current) return current;
       const nextActiveBrandId = resolveSelectableActiveBrandId(current, normalizedBrandId);
-      return { ...current, activeBrandId: nextActiveBrandId };
+      const nextUser = { ...current, activeBrandId: nextActiveBrandId };
+      queryClient.setQueryData(queryKeys.auth.profile(), nextUser);
+      return nextUser;
     });
   }, []);
 
@@ -515,14 +525,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       setApiAuthToken(currentToken);
-      const response = await apiClient.get('/auth/profile');
-      const profile = unwrapData<any>(response.data);
+      const profile = await queryClient.fetchQuery({
+        queryKey: queryKeys.auth.profile(),
+        queryFn: async () => {
+          const response = await apiClient.get('/auth/profile');
+          return unwrapData<any>(response.data);
+        },
+        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+      });
 
       const mappedUser = normalizeAuthUser(profile);
 
       if (!mappedUser?.id) throw new Error('Invalid profile response');
 
-      setUser(applyActiveBrandSelection(mappedUser));
+      const selectedUser = applyActiveBrandSelection(mappedUser);
+      queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
+      setUser(selectedUser);
       setToken(currentToken);
       setStatus('authenticated');
       return true;
@@ -559,7 +577,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const rawUser = (data as any)?.user;
     const mappedUser = normalizeAuthUser(rawUser);
     if (mappedUser?.id) {
-      setUser(applyActiveBrandSelection(mappedUser));
+      const selectedUser = applyActiveBrandSelection(mappedUser);
+      queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
+      setUser(selectedUser);
     } else {
       await validateToken();
     }

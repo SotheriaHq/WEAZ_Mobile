@@ -30,7 +30,7 @@ export default function MyBagSheet({ visible, onClose }: Props) {
             title="Refresh"
             variant="secondary"
             onPress={() => {
-              void refreshGlobalBagCount();
+              void refreshGlobalBagCount({ forceRefresh: true });
             }}
           />
           <Button

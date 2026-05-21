@@ -143,7 +143,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
         }
         await baggingService.addStandard({ productId: product.id, qty: 1 });
         const nextStatus = await baggingService.prepareBag(product.id);
-        await refreshGlobalBagCount();
+        await refreshGlobalBagCount({ forceRefresh: true });
         toast.success('Added to your bag');
         setSummaryTarget({ product, status: nextStatus });
         return;

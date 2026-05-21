@@ -3,6 +3,8 @@ import { io, type Socket } from 'socket.io-client';
 
 import { apiClient } from '@/src/api/httpClient';
 import { MessagingApi } from '@/src/api/MessagingApi';
+import { queryClient, THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
 import type {
   MessageCreatedRealtimeEvent,
   MessageReadRealtimeEvent,
@@ -42,6 +44,7 @@ function setUnreadCount(nextCount: number) {
   const normalized = Math.max(0, Math.floor(nextCount));
   if (normalized === unreadCount) return;
   unreadCount = normalized;
+  queryClient.setQueryData(queryKeys.messaging.unreadCount(), { unreadCount: normalized });
   emitUnreadCount();
 }
 
@@ -241,17 +244,29 @@ export function resetUnreadMessageCount() {
 
 export async function refreshUnreadMessageCount({
   authenticated,
+  forceRefresh = false,
 }: {
   authenticated: boolean;
+  forceRefresh?: boolean;
 }): Promise<boolean> {
   if (!authenticated) {
     resetUnreadMessageCount();
+    queryClient.removeQueries({ queryKey: queryKeys.messaging.unreadCount(), exact: true });
     return false;
   }
 
   if (unreadCountRefreshPromise) return unreadCountRefreshPromise;
 
-  unreadCountRefreshPromise = MessagingApi.getUnreadMessageCount()
+  if (forceRefresh) {
+    queryClient.removeQueries({ queryKey: queryKeys.messaging.unreadCount(), exact: true });
+  }
+
+  unreadCountRefreshPromise = queryClient
+    .fetchQuery({
+      queryKey: queryKeys.messaging.unreadCount(),
+      queryFn: MessagingApi.getUnreadMessageCount,
+      staleTime: THREADLY_COUNT_STALE_TIME_MS,
+    })
     .then(({ unreadCount: nextUnreadCount }) => {
       replaceUnreadMessageCount(nextUnreadCount);
       return true;

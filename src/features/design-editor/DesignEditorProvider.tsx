@@ -13,7 +13,6 @@ import { router } from 'expo-router';
 import {
   getDesignCategories,
   getDesignDetail,
-  getDesignFilterDimensions,
   getActiveDesignCustomConfiguration,
   getMeasurementPoints,
   deleteDesign,
@@ -30,6 +29,7 @@ import {
   type MeasurementPointOption,
 } from '@/src/api/DesignApi';
 import { useAuthSession } from '@/src/auth/AuthContext';
+import { fetchDesignFilterDimensionsQuery } from '@/src/query/bootstrapQueries';
 import { useToast } from '@/src/toast/ToastContext';
 import {
   getSelectedFilterValueIds,
@@ -370,7 +370,7 @@ export function DesignEditorProvider({
       try {
         const [categoriesResult, filtersResult] = await Promise.allSettled([
           getDesignCategories(),
-          getDesignFilterDimensions(),
+          fetchDesignFilterDimensionsQuery(),
         ]);
 
         const metadataWarnings: string[] = [];

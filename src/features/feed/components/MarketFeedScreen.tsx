@@ -25,7 +25,7 @@ import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsShee
 import { brandApi, type CollectionDetailMediaDto } from '@/src/api/BrandApi';
 import { ProfileApi } from '@/src/api/ProfileApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
-import { DEFAULT_MARKET_FILTER_CHIPS, getMarketFilterChips, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
+import { DEFAULT_MARKET_FILTER_CHIPS, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { fetchMarketFeedPage, readCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { buildFeedCacheIdentity } from '@/src/features/feed/utils/feedKeys';
@@ -43,6 +43,7 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { perfMark } from '@/src/utils/perf';
+import { fetchMarketFilterChipsQuery } from '@/src/query/bootstrapQueries';
 import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
 import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
 import type { FeedListEntry, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
@@ -985,7 +986,7 @@ export function MarketFeedScreen() {
   useEffect(() => {
     let mounted = true;
 
-    void getMarketFilterChips().then((chips) => {
+    void fetchMarketFilterChipsQuery().then((chips) => {
       if (!mounted || !chips.length) return;
       devLog('HomeFeed', 'Filter chips loaded', chips.map(c => ({ id: c.id, label: c.label, tag: c.tag })));
       setFilterChips(chips);

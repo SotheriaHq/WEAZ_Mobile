@@ -16,6 +16,15 @@ const normalizeRecord = (value?: Record<string, unknown> | null) => {
     }, {});
 };
 
+const normalizeIdList = (values?: Array<string | null | undefined> | null) =>
+  Array.from(
+    new Set(
+      (values ?? [])
+        .map((value) => normalizeId(value))
+        .filter(Boolean),
+    ),
+  ).sort();
+
 export const queryKeys = {
   auth: {
     profile: () => ['auth', 'profile'] as const,
@@ -61,6 +70,9 @@ export const queryKeys = {
   config: {
     uploadLimits: () => ['config', 'uploadLimits'] as const,
   },
+  categories: {
+    filters: (view?: string | null) => ['categories', 'filters', normalizeId(view)] as const,
+  },
   media: {
     publicUrl: (fileId?: string | null) => ['media', 'publicUrl', normalizeId(fileId)] as const,
     signedUrl: (fileId?: string | null) => ['media', 'signedUrl', normalizeId(fileId)] as const,
@@ -71,11 +83,16 @@ export const queryKeys = {
   messaging: {
     unreadCount: () => ['messaging', 'unreadCount'] as const,
   },
+  saved: {
+    root: () => ['saved'] as const,
+    batch: (targetType?: string | null, targetIds?: Array<string | null | undefined> | null) =>
+      ['saved', 'batch', normalizeId(targetType), normalizeIdList(targetIds)] as const,
+  },
 };
 
 export const isPersistableThreadlyQueryKey = (queryKey: readonly unknown[]) => {
   const [root, scope] = queryKey;
-  if (root === 'brand' || root === 'design' || root === 'designs' || root === 'config') {
+  if (root === 'brand' || root === 'design' || root === 'designs' || root === 'config' || root === 'categories') {
     return true;
   }
   if (root === 'media') {

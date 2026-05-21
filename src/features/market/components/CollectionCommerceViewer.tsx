@@ -221,7 +221,7 @@ export function CollectionCommerceViewer({
   }, [fallbackHref]);
 
   const reloadAfterMutation = useCallback(async () => {
-    await Promise.all([refreshGlobalBagCount(), load()]);
+    await Promise.all([refreshGlobalBagCount({ forceRefresh: true }), load()]);
   }, [load, refreshGlobalBagCount]);
 
   const handleBagAll = useCallback(async () => {

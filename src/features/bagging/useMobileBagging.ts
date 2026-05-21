@@ -118,7 +118,7 @@ export function useMobileBagging() {
     const [cart, custom] = await Promise.all([
       MobileStoreApi.getCart(),
       MobileStoreApi.listCustomBag(),
-      refreshGlobalBagCount(),
+      refreshGlobalBagCount({ forceRefresh: true }),
     ]);
     setStandardCart(cart);
     setCustomBag(custom);

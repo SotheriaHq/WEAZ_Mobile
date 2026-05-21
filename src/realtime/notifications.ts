@@ -3,6 +3,8 @@ import { io, type Socket } from 'socket.io-client';
 
 import { apiClient } from '@/src/api/httpClient';
 import { NotificationsApi, type MobileNotification } from '@/src/api/NotificationsApi';
+import { queryClient, THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
 
 type RealtimeNotification = MobileNotification;
 type NotificationDeletedPayload = {
@@ -35,6 +37,7 @@ function setUnreadCount(nextCount: number) {
   const normalized = Math.max(0, Math.floor(nextCount));
   if (normalized === unreadCount) return;
   unreadCount = normalized;
+  queryClient.setQueryData(queryKeys.notifications.unreadCount(), { count: normalized });
   emitUnreadCount();
 }
 
@@ -130,17 +133,29 @@ export function resetUnreadNotificationCount() {
 
 export async function refreshUnreadNotificationCount({
   authenticated,
+  forceRefresh = false,
 }: {
   authenticated: boolean;
+  forceRefresh?: boolean;
 }): Promise<boolean> {
   if (!authenticated) {
     resetUnreadNotificationCount();
+    queryClient.removeQueries({ queryKey: queryKeys.notifications.unreadCount(), exact: true });
     return false;
   }
 
   if (unreadCountRefreshPromise) return unreadCountRefreshPromise;
 
-  unreadCountRefreshPromise = NotificationsApi.getUnreadCount()
+  if (forceRefresh) {
+    queryClient.removeQueries({ queryKey: queryKeys.notifications.unreadCount(), exact: true });
+  }
+
+  unreadCountRefreshPromise = queryClient
+    .fetchQuery({
+      queryKey: queryKeys.notifications.unreadCount(),
+      queryFn: NotificationsApi.getUnreadCount,
+      staleTime: THREADLY_COUNT_STALE_TIME_MS,
+    })
     .then(({ count }) => {
       replaceUnreadNotificationCount(count);
       return true;
