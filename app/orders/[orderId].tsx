@@ -14,6 +14,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { readRecommendationSnapshot } from '@/src/utils/sizeRecommendation';
 
 function formatCurrency(amount: number, currency = 'NGN') {
   try {
@@ -48,6 +49,7 @@ function canConfirmDelivery(order: BuyerOrderDetail) {
 
 function DetailItemRow({ item }: { item: BuyerOrderItem }) {
   const { theme } = useTheme();
+  const recommendationSnapshot = readRecommendationSnapshot(item.sizeRecommendationSnapshot);
 
   return (
     <View style={[styles.itemRow, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
@@ -65,7 +67,18 @@ function DetailItemRow({ item }: { item: BuyerOrderItem }) {
       </View>
       <View style={styles.itemCopy}>
         <AppText variant="bodyBold" numberOfLines={1}>{item.productName}</AppText>
-        <AppText variant="captionRegular" tone="muted">Qty {item.quantity}</AppText>
+        <AppText variant="captionRegular" tone="muted">
+          {[`Qty ${item.quantity}`, item.selectedSize ? `Size ${item.selectedSize}` : null, item.selectedColor ? `Color ${item.selectedColor}` : null]
+            .filter(Boolean)
+            .join(' - ')}
+        </AppText>
+        {recommendationSnapshot ? (
+          <AppText variant="captionRegular" tone={recommendationSnapshot.selectedDiffers ? 'warning' : 'muted'}>
+            {recommendationSnapshot.selectedDiffers
+              ? `Saved measurements suggested ${recommendationSnapshot.recommendedSize}, but you selected ${item.selectedSize ?? recommendationSnapshot.selectedSize}.`
+              : `Recommended size: ${recommendationSnapshot.recommendedSize ?? recommendationSnapshot.selectedSize}${recommendationSnapshot.confidenceText ? ` (${recommendationSnapshot.confidenceText})` : ''}.`}
+          </AppText>
+        ) : null}
       </View>
       <AppText variant="captionBold">{formatCurrency(item.price)}</AppText>
     </View>

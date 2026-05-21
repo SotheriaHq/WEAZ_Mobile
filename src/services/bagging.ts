@@ -1,10 +1,13 @@
 import { MobileStoreApi, type BagCount, type BagSourceType, type ProductBagStatus } from '@/src/api/StoreApi';
+import type { SizeRecommendationSnapshot } from '@/src/api/ProfileApi';
 
 export type AddStandardBagPayload = {
   productId: string;
   size?: string;
   color?: string;
   qty?: number;
+  sizeRecommendationSnapshot?: SizeRecommendationSnapshot | Record<string, unknown>;
+  manualOverrideReason?: string;
 };
 
 export type AddCustomOrderBagPayload = {
@@ -30,12 +33,21 @@ export async function getBagCount(): Promise<BagCount> {
   return MobileStoreApi.getBagCount();
 }
 
-export async function addStandard({ productId, size, color, qty = 1 }: AddStandardBagPayload) {
+export async function addStandard({
+  productId,
+  size,
+  color,
+  qty = 1,
+  sizeRecommendationSnapshot,
+  manualOverrideReason,
+}: AddStandardBagPayload) {
   return MobileStoreApi.addToCart({
     productId,
     quantity: qty,
     selectedSize: size,
     selectedColor: color,
+    sizeRecommendationSnapshot,
+    manualOverrideReason,
   });
 }
 

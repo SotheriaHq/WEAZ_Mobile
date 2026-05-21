@@ -48,6 +48,9 @@ export interface BuyerOrderItem {
   quantity: number;
   price: number;
   thumbnail: string | null;
+  selectedSize: string | null;
+  selectedColor: string | null;
+  sizeRecommendationSnapshot: RecordLike | null;
 }
 
 export interface BuyerStandardOrderDetail {
@@ -223,6 +226,14 @@ function normalizeStandardDetail(raw: unknown): BuyerStandardOrderDetail {
       quantity: asNumber(source.quantity, 1),
       price: asNumber(source.price ?? source.unitPrice),
       thumbnail: optionalString(source.thumbnail || nestedProduct.thumbnail || nestedProduct.coverImage || source.image),
+      selectedSize: optionalString(source.selectedSize),
+      selectedColor: optionalString(source.selectedColor),
+      sizeRecommendationSnapshot:
+        source.sizeRecommendationSnapshot && typeof source.sizeRecommendationSnapshot === 'object'
+          ? asRecord(source.sizeRecommendationSnapshot)
+          : source.orderSizeRecommendationSnapshot && typeof source.orderSizeRecommendationSnapshot === 'object'
+            ? asRecord(source.orderSizeRecommendationSnapshot)
+            : null,
     };
   });
 

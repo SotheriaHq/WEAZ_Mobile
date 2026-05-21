@@ -28,15 +28,105 @@ export interface UserProfile {
 
 export interface SizeFitProfile {
   id?: string;
-  measurements?: Record<string, number | string>;
+  measurements?: Record<string, unknown>;
+  canonicalMeasurements?: Record<string, number>;
+  unmappedMeasurements?: Record<string, unknown>;
   notes?: string | null;
-  preferredLengthUnit?: 'CM' | 'IN';
+  preferredLengthUnit?: LengthUnit;
+  preferredWeightUnit?: 'KG' | 'LBS';
+  fitPreference?: FitPreference | null;
+  preferredSizingRegion?: SizingRegion;
+  autoSizeRecommendation?: AutoSizeRecommendationMode;
   visibility?: 'PUBLIC' | 'PRIVATE';
   sharePolicy?: string;
+  notifyOnShare?: boolean;
   isUpdateDue?: boolean;
   missingBaselineKeys?: string[];
+  baselineRequiredKeys?: string[];
   measurementGender?: string | null;
   requireUpdateEveryDays?: number;
+}
+
+export type LengthUnit = 'CM' | 'IN';
+export type FitPreference = 'SLIM' | 'REGULAR' | 'LOOSE' | 'OVERSIZED';
+export type SizingRegion = 'NG_WEST_AFRICA' | 'UK' | 'US' | 'EU' | 'INTERNATIONAL';
+export type AutoSizeRecommendationMode = 'ON' | 'OFF' | 'ASK_EVERY_TIME';
+export type RecommendationConfidenceLabel = 'VERY_HIGH' | 'HIGH' | 'MODERATE' | 'LOW';
+export type GarmentCategory =
+  | 'TOP'
+  | 'BOTTOM'
+  | 'GOWN'
+  | 'DRESS'
+  | 'FORMAL_SHIRT'
+  | 'JACKET'
+  | 'SKIRT'
+  | 'UNISEX_TOP'
+  | 'UNISEX_BOTTOM'
+  | 'OTHER';
+
+export interface SizeRecommendationResponse {
+  estimatedSize: string | null;
+  recommendedSize: string | null;
+  displayRange: string | null;
+  alternativeSize: string | null;
+  confidenceScore: number;
+  confidenceLabel: RecommendationConfidenceLabel;
+  reasons: string[];
+  warnings: string[];
+  chartSource: string | null;
+  chartVersion: number | null;
+  chartId?: string | null;
+  chartVersionId?: string | null;
+  selectedRegion: SizingRegion;
+  garmentCategory: GarmentCategory;
+  manualOverrideAllowed: boolean;
+  missingMeasurements: string[];
+  usedMeasurements: string[];
+  fallbackUsed: boolean;
+  staleMeasurementWarning?: boolean;
+  sizeChartUnavailable?: boolean;
+  userFitPreference?: FitPreference | string | null;
+  productFitType?: string | null;
+  fabricStretch?: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN' | null;
+}
+
+export interface ComputedSizeFitProfile {
+  estimatedSize: string | null;
+  displayRange: string | null;
+  confidenceScore: number;
+  confidenceLabel: RecommendationConfidenceLabel;
+  preferredRegion: SizingRegion;
+  preferredUnit: LengthUnit;
+  fitPreference: FitPreference | null;
+  categoryBreakdown: Record<string, SizeRecommendationResponse>;
+  missingBaselineMeasurements: string[];
+  staleMeasurementWarning?: boolean;
+  measurementUpdatePrompt?: {
+    requiredMeasurements: string[];
+    missingMeasurements: string[];
+  };
+}
+
+export interface SizeRecommendationSnapshot {
+  recommendedSize: string | null;
+  selectedSize: string | null;
+  alternativeSize: string | null;
+  displayRange: string | null;
+  confidenceScore: number;
+  confidenceLabel: RecommendationConfidenceLabel;
+  reasonSummary: string[];
+  warningsSummary: string[];
+  chartSource: string | null;
+  chartId?: string | null;
+  chartVersionId?: string | null;
+  chartVersion: number | null;
+  selectedRegion: SizingRegion;
+  garmentCategory: GarmentCategory;
+  userFitPreference?: FitPreference | string | null;
+  productFitType?: string | null;
+  fabricStretch?: string | null;
+  wasManuallyChanged: boolean;
+  generatedAt: string;
 }
 
 export interface Order {
@@ -309,12 +399,41 @@ export const ProfileApi = {
     return d ?? null;
   },
 
+  async getComputedSizeFit(params?: { region?: SizingRegion }): Promise<ComputedSizeFitProfile | null> {
+    const res = await apiClient.get('/users/me/size-fit/computed', {
+      params: params?.region ? { region: params.region } : undefined,
+    });
+    const d = (res.data?.data ?? res.data) as any;
+    return d ?? null;
+  },
+
   async updateSizeFit(payload: {
     measurements: Record<string, unknown>;
-    preferredLengthUnit?: 'CM' | 'IN';
+    preferredLengthUnit?: LengthUnit;
+    preferredWeightUnit?: 'KG' | 'LBS';
+    fitPreference?: FitPreference;
+    preferredSizingRegion?: SizingRegion;
+    autoSizeRecommendation?: AutoSizeRecommendationMode;
+    requireUpdateEveryDays?: number;
     notes?: string;
   }): Promise<SizeFitProfile | null> {
     const res = await apiClient.put('/users/me/size-fit', payload);
+    const d = (res.data?.data ?? res.data) as any;
+    return d ?? null;
+  },
+
+  async updateSizeFitSettings(payload: {
+    visibility?: 'PUBLIC' | 'PRIVATE';
+    sharePolicy?: string;
+    notifyOnShare?: boolean;
+    requireUpdateEveryDays?: number;
+    preferredLengthUnit?: LengthUnit;
+    preferredWeightUnit?: 'KG' | 'LBS';
+    fitPreference?: FitPreference;
+    preferredSizingRegion?: SizingRegion;
+    autoSizeRecommendation?: AutoSizeRecommendationMode;
+  }): Promise<Partial<SizeFitProfile> | null> {
+    const res = await apiClient.patch('/users/me/size-fit/settings', payload);
     const d = (res.data?.data ?? res.data) as any;
     return d ?? null;
   },
