@@ -10,6 +10,7 @@ const brandApiPath = path.join(repoRoot, 'src', 'api', 'BrandApi.ts');
 const providerPath = path.join(repoRoot, 'src', 'features', 'design-editor', 'DesignEditorProvider.tsx');
 const composerPath = path.join(repoRoot, 'app', 'catalog', 'create-design', 'composer.tsx');
 const productRoutePath = path.join(repoRoot, 'app', 'products', '[productId].tsx');
+const marketCommerceViewerPath = path.join(repoRoot, 'src', 'features', 'market', 'components', 'MarketCommerceViewer.tsx');
 
 function compile(filePath) {
   return ts.transpileModule(fs.readFileSync(filePath, 'utf8'), {
@@ -143,7 +144,28 @@ function main() {
     /designId:\s*productId/,
     'Product image resolution debug context must not label product ids as design ids.',
   );
-  assert.match(productRouteSource, /productId,\s*\n\s*mediaIndex/);
+  assert.match(productRouteSource, /useLocalSearchParams<\{ productId\?: string \| string\[\] \}>/);
+  assert.match(productRouteSource, /sourceType="PRODUCT"/);
+  assert.match(productRouteSource, /sourceId=\{productId \?\? ''\}/);
+  assert.match(productRouteSource, /fallbackHref="\/\(tabs\)\/discover"/);
+
+  const marketCommerceViewerSource = fs.readFileSync(marketCommerceViewerPath, 'utf8');
+  assert.match(
+    marketCommerceViewerSource,
+    /productId:\s*sourceType === 'PRODUCT' \? sourceId : undefined/,
+    'Product media debug context should identify product ids only for product sources.',
+  );
+  assert.match(
+    marketCommerceViewerSource,
+    /designId:\s*sourceType === 'DESIGN' \? sourceId : undefined/,
+    'Design media debug context should identify design ids only for design sources.',
+  );
+  assert.match(marketCommerceViewerSource, /mediaIndex:\s*index/);
+  assert.doesNotMatch(
+    marketCommerceViewerSource,
+    /designId:\s*sourceType === 'PRODUCT'/,
+    'Product media debug context must not be reported as a design id.',
+  );
 
   console.log('Design editor contract tests passed.');
 }

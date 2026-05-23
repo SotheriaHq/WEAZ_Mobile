@@ -9,6 +9,7 @@ const brandApiPath = path.join(repoRoot, 'src', 'api', 'BrandApi.ts');
 const formatCountPath = path.join(repoRoot, 'src', 'utils', 'formatCount.ts');
 const catalogPath = path.join(repoRoot, 'app', 'catalog', 'index.tsx');
 const badgePath = path.join(repoRoot, 'components', 'catalog', 'ProfileBadge.tsx');
+const appBadgePath = path.join(repoRoot, 'components', 'ui', 'AppBadge.tsx');
 const brandHeaderPath = path.join(repoRoot, 'components', 'catalog', 'BrandProfileHeader.tsx');
 
 function compile(filePath) {
@@ -168,9 +169,23 @@ async function main() {
   assert.match(badgeSource, /brand_verified/);
   assert.match(badgeSource, /store_open/);
   assert.match(badgeSource, /pending_verification/);
-  assert.match(badgeSource, /transform:\s*\[\{\s*rotate:\s*'45deg'\s*\}\]/);
+  assert.match(badgeSource, /import \{ AppBadge, getStoreBadgeModel, type AppBadgeTone \}/);
+  assert.match(badgeSource, /<AppBadge/);
+  assert.match(badgeSource, /accessibilityLabel=\{badge\.accessibilityLabel\}/);
+  assert.doesNotMatch(badgeSource, /rotate:\s*'45deg'/);
+
+  const appBadgeSource = fs.readFileSync(appBadgePath, 'utf8');
+  assert.match(appBadgeSource, /export type AppBadgeTone = 'primary' \| 'success' \| 'warning' \| 'muted' \| 'verified' \| 'neutral'/);
+  assert.match(appBadgeSource, /export function getStoreBadgeModel/);
+  assert.match(appBadgeSource, /state:\s*'open_verified'/);
+  assert.match(appBadgeSource, /state:\s*'closed_verified'/);
+  assert.match(appBadgeSource, /borderRadius:\s*tokens\.radius\.md/);
+  assert.match(appBadgeSource, /iconBox:/);
 
   const brandHeaderSource = fs.readFileSync(brandHeaderPath, 'utf8');
+  assert.match(brandHeaderSource, /function StoreStatusBadge/);
+  assert.match(brandHeaderSource, /Color-only wavy square/);
+  assert.match(brandHeaderSource, /storeStatusBadge:[\s\S]*transform:\s*\[\{\s*rotate:\s*'45deg'\s*\}\]/);
   assert.match(brandHeaderSource, /BRAND_DESCRIPTION_PREVIEW_LINES\s*=\s*2/);
   assert.match(brandHeaderSource, /BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH/);
   assert.match(brandHeaderSource, /descriptionMeasureText/);

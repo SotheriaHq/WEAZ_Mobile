@@ -7,7 +7,10 @@ const ts = require('typescript');
 const repoRoot = path.resolve(__dirname, '..');
 const storeApiPath = path.join(repoRoot, 'src', 'api', 'StoreApi.ts');
 const brandShopTabPath = path.join(repoRoot, 'components', 'catalog', 'BrandShopTab.tsx');
-const storeTabPath = path.join(repoRoot, 'app', '(tabs)', 'store.tsx');
+const legacyStoreTabPath = path.join(repoRoot, 'app', '(tabs)', 'store.tsx');
+const discoverTabPath = path.join(repoRoot, 'app', '(tabs)', 'discover.tsx');
+const tabLayoutPath = path.join(repoRoot, 'app', '(tabs)', '_layout.tsx');
+const nativeIslandConfigPath = path.join(repoRoot, 'src', 'navigation', 'nativeIslandConfig.ts');
 
 function loadStoreApiWithMock(mockApiClient) {
   const source = fs.readFileSync(storeApiPath, 'utf8');
@@ -161,8 +164,24 @@ async function main() {
   assert.match(brandShopSource, /Store identity missing/);
   assert.match(brandShopSource, /Filters hide all products/);
 
-  const storeTabSource = fs.readFileSync(storeTabPath, 'utf8');
-  assert.doesNotMatch(storeTabSource, /activeBrandId\s*\?\?\s*user\?\.id/);
+  assert.equal(
+    fs.existsSync(legacyStoreTabPath),
+    false,
+    'The removed Store tab route must not be recreated; Market is the current store entry point.',
+  );
+
+  const discoverTabSource = fs.readFileSync(discoverTabPath, 'utf8');
+  assert.match(discoverTabSource, /import \{ MarketScreen \}/);
+  assert.match(discoverTabSource, /return <MarketScreen \/>/);
+
+  const tabLayoutSource = fs.readFileSync(tabLayoutPath, 'utf8');
+  assert.match(tabLayoutSource, /<Tabs\.Screen\s+name="discover"[\s\S]*title:\s*'Market'/);
+  assert.doesNotMatch(tabLayoutSource, /<Tabs\.Screen\s+name="store"/);
+
+  const nativeIslandConfigSource = fs.readFileSync(nativeIslandConfigPath, 'utf8');
+  assert.match(nativeIslandConfigSource, /market:\s*'market'/);
+  assert.match(nativeIslandConfigSource, /label:\s*'Market'/);
+  assert.match(nativeIslandConfigSource, /return '\/\(tabs\)\/discover' as const/);
 
   console.log('Store API contract tests passed.');
 }
