@@ -14,17 +14,7 @@ type DiagnosticPrefix =
   | 'catalog'
   | 'nav';
 
-type DebugScope = 'feed' | 'media' | 'network' | 'nav' | 'boot' | 'auth' | 'analytics';
-
-const DEBUG_ENV_BY_SCOPE: Record<DebugScope, string> = {
-  feed: 'EXPO_PUBLIC_DEBUG_FEED',
-  media: 'EXPO_PUBLIC_DEBUG_MEDIA',
-  network: 'EXPO_PUBLIC_DEBUG_NETWORK',
-  nav: 'EXPO_PUBLIC_DEBUG_NAV',
-  boot: 'EXPO_PUBLIC_DEBUG_BOOT',
-  auth: 'EXPO_PUBLIC_DEBUG_AUTH',
-  analytics: 'EXPO_PUBLIC_DEBUG_ANALYTICS',
-};
+type DebugScope = 'feed' | 'media' | 'scroll' | 'network' | 'nav' | 'boot' | 'auth' | 'analytics';
 
 const DEBUG_SCOPE_BY_PREFIX: Record<DiagnosticPrefix, DebugScope> = {
   feed: 'feed',
@@ -33,7 +23,7 @@ const DEBUG_SCOPE_BY_PREFIX: Record<DiagnosticPrefix, DebugScope> = {
   'feed-load': 'feed',
   layout: 'nav',
   media: 'media',
-  scroll: 'feed',
+  scroll: 'scroll',
   prefetch: 'media',
   'api-host': 'network',
   'brand-avatar': 'media',
@@ -48,11 +38,32 @@ const isTruthyFlag = (value?: string | null) => {
   return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
 };
 
+const isScopeDebugFlagEnabled = (scope: DebugScope) => {
+  switch (scope) {
+    case 'feed':
+      return isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_FEED);
+    case 'media':
+      return isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_MEDIA);
+    case 'scroll':
+      return isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_SCROLL);
+    case 'network':
+      return isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_NETWORK);
+    case 'nav':
+      return isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_NAV);
+    case 'boot':
+      return isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_BOOT);
+    case 'auth':
+      return isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_AUTH);
+    case 'analytics':
+      return isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_ANALYTICS);
+  }
+};
+
 export const isThreadlyDebugEnabled = (scope: DebugScope) => {
   if (!__DEV__) return false;
   return (
     isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_THREADLY) ||
-    isTruthyFlag(process.env[DEBUG_ENV_BY_SCOPE[scope]])
+    isScopeDebugFlagEnabled(scope)
   );
 };
 

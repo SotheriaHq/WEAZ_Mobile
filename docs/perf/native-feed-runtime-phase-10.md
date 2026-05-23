@@ -45,11 +45,13 @@ Logs:
   - `EXPO_PUBLIC_DEBUG_THREADLY=true`
   - `EXPO_PUBLIC_DEBUG_FEED=true`
   - `EXPO_PUBLIC_DEBUG_MEDIA=true`
+  - `EXPO_PUBLIC_DEBUG_SCROLL=true`
   - `EXPO_PUBLIC_DEBUG_NETWORK=true`
   - `EXPO_PUBLIC_DEBUG_NAV=true`
   - `EXPO_PUBLIC_DEBUG_BOOT=true`
   - `EXPO_PUBLIC_DEBUG_AUTH=true`
   - `EXPO_PUBLIC_DEBUG_ANALYTICS=true`
+- Scroll diagnostics such as `vertical-momentum`, `active-index`, and `horizontal-carousel-index` are controlled by `EXPO_PUBLIC_DEBUG_SCROLL`, not enabled by default.
 - The network trace remains available through `globalThis.__THREADLY_NETWORK_TRACE__?.printSummary()`.
 
 ## Warning Status

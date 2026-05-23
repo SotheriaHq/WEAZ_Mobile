@@ -85,7 +85,9 @@ assertIncludes('src/features/feed/components/FeedMediaCarousel.tsx', 'allowSigne
 assertIncludes('src/features/feed/components/MarketFeedScreen.tsx', 'lastSavedCheckKeyRef', 'feed saved status checks must dedupe stable item ID sets');
 assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_FEED', 'feed diagnostics must be opt-in');
 assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_MEDIA', 'media diagnostics must be opt-in');
+assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_SCROLL', 'gesture scroll diagnostics must be opt-in');
 assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_NETWORK', 'API diagnostics must be opt-in');
+assertIncludes('src/features/feed/utils/feedDiagnostics.ts', "case 'scroll'", 'scroll diagnostics must use their own debug scope');
 
 if (failures.length > 0) {
   console.error('Performance regression guard failed:');

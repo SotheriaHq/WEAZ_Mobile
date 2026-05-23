@@ -32,6 +32,7 @@ Mobile release budget:
 - Media resolver endpoint calls should stay 0 where API payloads already contain stable display URLs.
 - Manual refresh may force fresh requests only through explicitly named refresh paths.
 - Mutation invalidation must target affected query keys only.
+- Feed/media/scroll/network/bootstrap/auth/analytics debug logs are off by default. Enable only the needed `EXPO_PUBLIC_DEBUG_*` flag during targeted debugging.
 
 The remaining native Android/iOS AppState/background-resume path is a manual release gate. Code review shows the AppState bridge marks TanStack focus state without broad invalidation, but that is not native runtime proof.
 
