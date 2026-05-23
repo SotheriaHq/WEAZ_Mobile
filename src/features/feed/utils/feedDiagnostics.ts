@@ -14,13 +14,55 @@ type DiagnosticPrefix =
   | 'catalog'
   | 'nav';
 
+type DebugScope = 'feed' | 'media' | 'network' | 'nav' | 'boot' | 'auth' | 'analytics';
+
+const DEBUG_ENV_BY_SCOPE: Record<DebugScope, string> = {
+  feed: 'EXPO_PUBLIC_DEBUG_FEED',
+  media: 'EXPO_PUBLIC_DEBUG_MEDIA',
+  network: 'EXPO_PUBLIC_DEBUG_NETWORK',
+  nav: 'EXPO_PUBLIC_DEBUG_NAV',
+  boot: 'EXPO_PUBLIC_DEBUG_BOOT',
+  auth: 'EXPO_PUBLIC_DEBUG_AUTH',
+  analytics: 'EXPO_PUBLIC_DEBUG_ANALYTICS',
+};
+
+const DEBUG_SCOPE_BY_PREFIX: Record<DiagnosticPrefix, DebugScope> = {
+  feed: 'feed',
+  'feed-contract': 'feed',
+  'feed-media': 'media',
+  'feed-load': 'feed',
+  layout: 'nav',
+  media: 'media',
+  scroll: 'feed',
+  prefetch: 'media',
+  'api-host': 'network',
+  'brand-avatar': 'media',
+  'profile-menu-avatar': 'media',
+  profile: 'feed',
+  catalog: 'feed',
+  nav: 'nav',
+};
+
+const isTruthyFlag = (value?: string | null) => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+};
+
+export const isThreadlyDebugEnabled = (scope: DebugScope) => {
+  if (!__DEV__) return false;
+  return (
+    isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_THREADLY) ||
+    isTruthyFlag(process.env[DEBUG_ENV_BY_SCOPE[scope]])
+  );
+};
+
 const writeDevDiagnostic = (
   level: 'log' | 'warn',
   prefix: DiagnosticPrefix,
   event: string,
   details?: Record<string, unknown>,
 ) => {
-  if (!__DEV__) return;
+  if (!isThreadlyDebugEnabled(DEBUG_SCOPE_BY_PREFIX[prefix])) return;
   const payload = { event, ...(details ?? {}) };
   if (level === 'warn') {
     console.warn(`[${prefix}]`, payload);

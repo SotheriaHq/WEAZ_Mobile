@@ -17,7 +17,7 @@ The guard checks:
 - image resolution remains public-first before private signed fallback
 - invalid media IDs keep miss caching and in-flight dedupe
 - normal brand/design reads only use `_cb`, `no-store`, or `no-cache` when explicitly forced by `forceRefresh`
-- feed stale-first storage still uses `SecureStore`, `readCachedMarketFeed`, and `FEED_CACHE_TTL_MS`
+- feed stale-first storage uses AsyncStorage for non-secret feed snapshots, keeps `readCachedMarketFeed`, and keeps `FEED_CACHE_TTL_MS`
 
 ## Request-Budget Policy
 

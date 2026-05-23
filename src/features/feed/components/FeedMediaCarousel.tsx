@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { prefetchResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { isUsableImageHttpUrl, prefetchResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { feedMediaDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { FeedMediaSlide } from '@/src/features/feed/components/FeedMediaSlide';
@@ -104,14 +104,16 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     const nextIndex = Math.min(stableMediaItems.length - 1, safeActiveIndex + 1);
     const next = stableMediaItems[nextIndex];
     if (!next) return;
+    const nextDirectUrl = normalizeStableUri(next.displayUrl) ?? normalizeStableUri(next.url);
+    if (!nextDirectUrl || !isUsableImageHttpUrl(nextDirectUrl)) return;
     void prefetchResolvedImageAsset({
-      src: next.displayUrl ?? next.url,
-      fileId: next.fileId,
+      src: nextDirectUrl,
+      fileId: null,
+      allowSignedFallback: false,
       debugContext: {
         designId: next.id,
-        fileId: next.fileId ?? undefined,
         mediaIndex: nextIndex,
-        sourceField: next.fileId ? 'feed.media.fileId' : 'feed.media.displayUrl',
+        sourceField: 'feed.media.displayUrl',
       },
     });
   }, [safeActiveIndex, stableMediaItems]);

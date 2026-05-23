@@ -34,7 +34,7 @@ import type { MarketItem } from '@/src/types/market';
 import type { ResolvedTheme } from '@/src/types/theme';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
-import { prefetchResolvedImageAsset, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { isUsableImageHttpUrl, prefetchResolvedImageAsset, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
@@ -196,6 +196,7 @@ const FeedBrandAvatar = React.memo(function FeedBrandAvatar({
     src: brandLogo,
     fileId: brandLogoFileId,
     enabled: Boolean(brandId || brandLogo || brandLogoFileId),
+    allowSignedFallback: false,
   });
   const initials = getAvatarFallback(brandName, brandName);
 
@@ -670,6 +671,7 @@ export function MarketFeedScreen() {
   const threadStateByMediaRef = useRef<Record<string, { threaded: boolean; count: number }>>({});
   const threadingMediaByIdRef = useRef<Record<string, boolean>>({});
   const savedLookByCollectionIdRef = useRef<Record<string, boolean>>({});
+  const lastSavedCheckKeyRef = useRef<string | null>(null);
   const savingLookByCollectionIdRef = useRef<Record<string, boolean>>({});
   const queuedThreadIntentByMediaRef = useRef<Record<string, boolean>>({});
   const viewedFeedItemKeysRef = useRef<Set<string>>(new Set());
@@ -920,12 +922,18 @@ export function MarketFeedScreen() {
     if (status !== 'authenticated' || items.length === 0) {
       if (status !== 'authenticated') {
         savedLookByCollectionIdRef.current = {};
+        lastSavedCheckKeyRef.current = null;
         setSavedLookByCollectionId({});
       }
       return undefined;
     }
 
-    const ids = Array.from(new Set(items.map((item) => item.collectionId).filter(Boolean)));
+    const ids = Array.from(new Set(items.map((item) => item.collectionId).filter(Boolean))).sort();
+    const savedCheckKey = `${user?.id ?? 'authenticated'}:${ids.join('|')}`;
+    if (lastSavedCheckKeyRef.current === savedCheckKey) {
+      return undefined;
+    }
+    lastSavedCheckKeyRef.current = savedCheckKey;
     let cancelled = false;
     SavedItemsApi.checkBatch('COLLECTION', ids)
       .then((result) => {
@@ -939,12 +947,16 @@ export function MarketFeedScreen() {
           return next;
         });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) {
+          lastSavedCheckKeyRef.current = null;
+        }
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [items, status]);
+  }, [items, status, user?.id]);
 
   useEffect(() => {
     void loadPatchedBrands();
@@ -971,14 +983,16 @@ export function MarketFeedScreen() {
     const nextItem = items[activePageIndex + 1];
     const nextMedia = nextItem ? buildFallbackMediaItems(nextItem)[0] : null;
     if (!nextMedia) return;
+    const nextDirectUrl = normalizeStableUri(nextMedia.displayUrl) ?? normalizeStableUri(nextMedia.url);
+    if (!nextDirectUrl || !isUsableImageHttpUrl(nextDirectUrl)) return;
     void prefetchResolvedImageAsset({
-      src: nextMedia.displayUrl ?? nextMedia.url,
-      fileId: nextMedia.fileId,
+      src: nextDirectUrl,
+      fileId: null,
+      allowSignedFallback: false,
       debugContext: {
         designId: nextMedia.id,
-        fileId: nextMedia.fileId ?? undefined,
         mediaIndex: 0,
-        sourceField: nextMedia.fileId ? 'feed.next.fileId' : 'feed.next.displayUrl',
+        sourceField: 'feed.next.displayUrl',
       },
     });
   }, [activePageIndex, items]);

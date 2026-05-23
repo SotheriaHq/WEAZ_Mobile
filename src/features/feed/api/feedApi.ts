@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { getMarketFeed, type GetMarketFeedParams } from '@/src/api/MarketApi';
 import type { FeedCacheIdentity, FeedPageResult, PersistedFeedSnapshot } from '@/src/features/feed/api/feed.dto';
@@ -10,6 +10,9 @@ const FEED_CACHE_TTL_MS = 5 * 60_000;
 const PERSISTED_CACHE_VERSION = 2;
 
 const memoryCache = new Map<string, PersistedFeedSnapshot>();
+
+const getStorageErrorReason = (error: unknown) =>
+  error instanceof Error ? error.message : typeof error === 'string' ? error : 'unknown-storage-error';
 
 const isMatchingSnapshot = (
   snapshot: PersistedFeedSnapshot | null,
@@ -39,7 +42,7 @@ export const readCachedMarketFeed = async (identity: FeedCacheIdentity) => {
   }
 
   try {
-    const raw = await SecureStore.getItemAsync(getPersistedFeedCacheKey(identity));
+    const raw = await AsyncStorage.getItem(getPersistedFeedCacheKey(identity));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedFeedSnapshot;
     if (!isMatchingSnapshot(parsed, identity)) {
@@ -67,7 +70,13 @@ export const readCachedMarketFeed = async (identity: FeedCacheIdentity) => {
       isFresh: Date.now() - snapshot.cachedAt < FEED_CACHE_TTL_MS,
       source: 'persisted' as const,
     };
-  } catch {
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[feed-cache]', {
+        event: 'persisted-cache-read-failed',
+        reason: getStorageErrorReason(error),
+      });
+    }
     return null;
   }
 };
@@ -99,9 +108,15 @@ export const writeCachedMarketFeed = async (
       version: snapshot.version,
       itemCount: items.length,
     });
-    await SecureStore.setItemAsync(getPersistedFeedCacheKey(identity), JSON.stringify(snapshot));
-  } catch {
-    feedDevWarn('persisted-cache-write-failed', { itemCount: items.length });
+    await AsyncStorage.setItem(getPersistedFeedCacheKey(identity), JSON.stringify(snapshot));
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[feed-cache]', {
+        event: 'persisted-cache-write-failed',
+        itemCount: items.length,
+        reason: getStorageErrorReason(error),
+      });
+    }
   }
 
   return snapshot;

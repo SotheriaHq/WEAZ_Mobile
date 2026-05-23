@@ -2,7 +2,7 @@
 
 Date: 2026-05-23
 
-This document is the release-readiness reference for the mobile side of the Threadly routing, data, and media performance hardening work from Phase 0 through Phase 8. It is documentation only. It does not claim native Android/iOS AppState proof.
+This document is the release-readiness reference for the mobile side of the Threadly routing, data, and media performance hardening work from Phase 0 through the Phase 10 native feed-runtime follow-up. It is documentation only. It does not claim native Android/iOS AppState proof.
 
 ## Original Problem
 
@@ -19,7 +19,7 @@ The feed was the positive control: it already used stale-first cached pages and 
 - Public media is resolved first from stable payload URLs, then public URL query resolution, then private signed fallback.
 - Private signed URL values are not persisted.
 - Invalid or missing media IDs use short miss caching and in-flight dedupe to prevent 400 spam.
-- Feed SecureStore stale-first cache and pagination behavior remain untouched.
+- Feed stale-first cache now stores non-secret feed snapshots in AsyncStorage instead of SecureStore, while pagination behavior remains protected.
 
 ## Request-Budget Policy
 

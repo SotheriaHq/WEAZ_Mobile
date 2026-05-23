@@ -21,6 +21,7 @@ import { queryClient, THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClie
 import { queryKeys } from '@/src/query/queryKeys';
 import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
+import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -141,7 +142,7 @@ let authBootstrapCompletionCount = 0;
 const ACTIVE_BRAND_STORAGE_KEY = 'threadly.activeBrandId';
 
 function devAuthLog(event: string, details?: Record<string, unknown>) {
-  if (!__DEV__) return;
+  if (!isThreadlyDebugEnabled('auth')) return;
   console.log('[auth-bootstrap]', details ? { event, ...details } : { event });
 }
 
@@ -593,7 +594,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const sanitizedPassword = sanitizeLoginPassword(password);
       const looksLikeEmail = normalizedIdentifier.includes('@');
 
-      if (__DEV__) {
+      if (isThreadlyDebugEnabled('auth')) {
         console.log('[auth] login submit diagnostics', {
           rawIdentifierMeta: summarizeIdentifier(rawIdentifier),
           normalizedIdentifierMeta: summarizeIdentifier(normalizedIdentifier),
@@ -612,7 +613,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         candidatePayload: { email: string; password: string } | { identifier: string; password: string },
         label: string,
       ) => {
-        if (__DEV__) {
+        if (isThreadlyDebugEnabled('auth')) {
           console.log('[auth] /auth/login payload', {
             attempt: label,
             payload: {
@@ -627,7 +628,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         return apiClient.post('/auth/login', candidatePayload).catch((error) => {
-          if (__DEV__) {
+          if (isThreadlyDebugEnabled('auth')) {
             console.log('[auth] login attempt failed', {
               attempt: label,
               status: (error as any)?.response?.status,
@@ -651,7 +652,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 password: candidatePassword,
               },
         ).catch((error) => {
-          if (__DEV__) {
+          if (isThreadlyDebugEnabled('auth')) {
             console.log('[auth] login attempt failed', {
               attempt: label,
               status: (error as any)?.response?.status,

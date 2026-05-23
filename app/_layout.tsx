@@ -43,6 +43,7 @@ import {
 } from '@/src/system/AndroidSystemBars';
 import { ScreenChromeProvider } from '@/src/system/ScreenChrome';
 import { QueryProvider } from '@/src/query/QueryProvider';
+import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 
 
 export {
@@ -68,7 +69,7 @@ let splashHideCallCount = 0;
 let splashHidden = false;
 
 function devBootLog(event: string, details?: Record<string, unknown>) {
-  if (!__DEV__) return;
+  if (!isThreadlyDebugEnabled('boot')) return;
   console.log('[boot]', details ? { event, ...details } : { event });
 }
 
@@ -125,7 +126,7 @@ function NotificationSetup() {
         const unsubscribe = isExpoGoAndroid ? () => {} : setupNotificationListeners(
           (notification) => {
             // Handle foreground notification
-            if (__DEV__) {
+            if (isThreadlyDebugEnabled('boot')) {
               console.log('Notification received while foreground');
             }
           },
@@ -392,7 +393,7 @@ function RootStack() {
       <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
       <Stack.Screen name="catalog" options={{ headerShown: false }} />
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
-      <Stack.Screen name="reviews" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="reviews/index" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="messages/[threadId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="market-viewer" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="collection-viewer" options={{ headerShown: false, animation: 'slide_from_right' }} />

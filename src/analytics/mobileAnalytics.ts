@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+
 type BaseEventProperties = {
   sourceScreen: string;
   sessionId?: string;
@@ -157,13 +159,13 @@ export function trackMobileEvent<Name extends MobileAnalyticsEventName>(
   setTimeout(() => {
     try {
       if (!analyticsEnabled) {
-        if (__DEV__) {
+        if (isThreadlyDebugEnabled('analytics')) {
           console.log('[mobile-analytics:no-op]', payload);
         }
         return;
       }
 
-      if (__DEV__) {
+      if (isThreadlyDebugEnabled('analytics')) {
         console.log('[mobile-analytics]', payload);
       }
     } catch {

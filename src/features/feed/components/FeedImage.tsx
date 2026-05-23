@@ -125,6 +125,7 @@ export const FeedImage = React.memo(function FeedImage({
     src: sourceUrl,
     fileId,
     enabled: hasSource,
+    allowSignedFallback: false,
     debugContext,
   });
   const visibleUri = uri && uri !== failedUri ? uri : lastSuccessfulUriRef.current;
@@ -196,7 +197,7 @@ export const FeedImage = React.memo(function FeedImage({
     failedUriSetRef.current = new Set();
     setLoadState(hasSource ? 'resolving' : 'idle');
     setRetryToken((current) => current + 1);
-    void resolveImageUri({ src: sourceUrl, fileId, forceRefresh: true, debugContext });
+    void resolveImageUri({ src: sourceUrl, fileId, forceRefresh: true, allowSignedFallback: false, debugContext });
   }, [debugContext, fileId, hasSource, sourceUrl]);
 
   const renderFallback = (copy: string) => (

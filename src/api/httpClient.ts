@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 import { env } from '@/src/config/env';
-import { apiHostDevLog, apiHostDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
+import { apiHostDevLog, apiHostDevWarn, isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { finishNetworkTrace, startNetworkTrace } from './networkTrace';
 
 const DEFAULT_PORT = 3040;
@@ -317,7 +317,7 @@ function promoteActiveHostTo(index: number, reason: string) {
   const next = getActiveBaseUrl();
   applyBaseUrl(next);
 
-  if (__DEV__) {
+  if (isThreadlyDebugEnabled('network')) {
     apiHostDevWarn('active-host-pinned', { baseURL: next, reason });
   }
 }
@@ -463,7 +463,7 @@ apiClient.interceptors.request.use((config) => {
   headers.set(MOBILE_PLATFORM_HEADER, MOBILE_PLATFORM_VALUE);
   retryableConfig.headers = headers;
 
-  if (__DEV__) {
+  if (isThreadlyDebugEnabled('network')) {
     const activeRequestBaseUrl = retryableConfig.baseURL ?? apiClient.defaults.baseURL ?? '';
     console.log(
       `[api] ${retryableConfig.method?.toUpperCase()} ${activeRequestBaseUrl}${retryableConfig.url}`,
@@ -486,14 +486,14 @@ apiClient.interceptors.response.use(
       promoteActiveHostTo(successfulIndex, `HTTP ${res.status}`);
     }
 
-    if (__DEV__) {
+    if (isThreadlyDebugEnabled('network')) {
       console.log(`[api] ? ${res.status} ${res.config.url}`);
     }
     return res;
   },
   async (error: AxiosError) => {
     finishNetworkTrace(error.config, error.response, error);
-    if (__DEV__) {
+    if (isThreadlyDebugEnabled('network')) {
       console.log(`[api] ? ${error.message}`, {
         url: error.config?.url,
         status: error.response?.status,

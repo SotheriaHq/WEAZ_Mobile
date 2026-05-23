@@ -72,9 +72,20 @@ assertOrder(
 assertCacheBypassIsForceGuarded('src/api/BrandApi.ts');
 assertCacheBypassIsForceGuarded('src/api/DesignApi.ts');
 
-assertIncludes('src/features/feed/api/feedApi.ts', "import * as SecureStore from 'expo-secure-store'", 'feed must keep persisted stale-first cache');
+assertIncludes('src/features/feed/api/feedApi.ts', "import AsyncStorage from '@react-native-async-storage/async-storage'", 'feed persisted cache must use non-secret storage');
+assertNotMatches('src/features/feed/api/feedApi.ts', /expo-secure-store/, 'feed snapshots must not use SecureStore size-limited secret storage');
 assertIncludes('src/features/feed/api/feedApi.ts', 'readCachedMarketFeed', 'feed cache read path must remain present');
 assertIncludes('src/features/feed/api/feedApi.ts', 'FEED_CACHE_TTL_MS', 'feed cache TTL guard must remain present');
+
+assertIncludes('src/hooks/useResolvedImageUri.ts', 'allowSignedFallback', 'media resolver must expose signed fallback control');
+assertIncludes('src/features/feed/components/FeedImage.tsx', 'allowSignedFallback: false', 'public feed images must not fall back to signed URLs');
+assertIncludes('src/features/feed/media/mediaUrlResolver.ts', 'allowSignedFallback: false', 'feed media resolver must keep public-first/no-signed policy');
+assertIncludes('src/features/feed/media/mediaCache.ts', 'isUsableImageHttpUrl', 'feed prefetch must require stable direct public URLs');
+assertIncludes('src/features/feed/components/FeedMediaCarousel.tsx', 'allowSignedFallback: false', 'feed carousel prefetch must not sign public media');
+assertIncludes('src/features/feed/components/MarketFeedScreen.tsx', 'lastSavedCheckKeyRef', 'feed saved status checks must dedupe stable item ID sets');
+assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_FEED', 'feed diagnostics must be opt-in');
+assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_MEDIA', 'media diagnostics must be opt-in');
+assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_NETWORK', 'API diagnostics must be opt-in');
 
 if (failures.length > 0) {
   console.error('Performance regression guard failed:');

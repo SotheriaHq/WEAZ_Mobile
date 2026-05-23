@@ -98,22 +98,18 @@ const isUsableFeedDisplayUrl = (value: string, item: RawMarketItem, mediaId: str
   }
 
   if (summary.isLoopback) {
-    if (__DEV__) {
-      console.warn('[feed-contract]', {
-        event: 'loopback-display-url-rejected',
-        id: asString(item.id),
-        collectionId: asString(item.collectionId),
-        mediaId,
-        hostname: summary.hostname,
-        platform: Platform.OS,
-      });
-    }
+    feedContractDevLog('loopback-display-url-rejected', {
+      id: asString(item.id),
+      collectionId: asString(item.collectionId),
+      mediaId,
+      hostname: summary.hostname,
+      platform: Platform.OS,
+    });
     return false;
   }
 
-  if (__DEV__ && summary.isPrivateLan) {
-    console.warn('[feed-contract]', {
-      event: 'private-lan-display-url',
+  if (summary.isPrivateLan) {
+    feedContractDevLog('private-lan-display-url', {
       id: asString(item.id),
       collectionId: asString(item.collectionId),
       mediaId,
@@ -129,9 +125,7 @@ const warnDroppedFeedItem = (reason: DropReason, item: RawMarketItem) => {
   if (currentDropReasons) {
     currentDropReasons[reason] = (currentDropReasons[reason] ?? 0) + 1;
   }
-  if (!__DEV__) return;
-  console.warn('[feed-contract]', {
-    event: 'dropped-item',
+  feedContractDevLog('dropped-item', {
     reason,
     id: asString(item.id),
     collectionId: asString(item.collectionId),

@@ -18,6 +18,7 @@ export const resolveFeedMediaUrl = ({
   resolveImageUri({
     src: displayUrl || previewUrl || thumbnailUrl || null,
     fileId,
+    allowSignedFallback: false,
     debugContext: {
       designId,
       mediaIndex,

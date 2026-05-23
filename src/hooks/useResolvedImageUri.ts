@@ -11,6 +11,7 @@ type UseResolvedImageUriArgs = {
   src?: string | null;
   fileId?: string | null;
   enabled?: boolean;
+  allowSignedFallback?: boolean;
   debugContext?: SignedFileUrlDebugContext;
 };
 
@@ -73,10 +74,16 @@ const isUsableDirectHttpUrl = (value: string) => {
   return Boolean(sourceType && (sourceType !== 'loopback-url' || Platform.OS === 'web'));
 };
 
+export const isUsableImageHttpUrl = isUsableDirectHttpUrl;
+
 const isPotentialFileId = (value: string) => !isHttpUrl(value) && !/[/?#\\]/.test(value);
 
-const getResolutionCacheKey = (directSrc: string | null, normalizedFileId: string | null) => {
-  if (normalizedFileId) return `file:${normalizedFileId}`;
+const getResolutionCacheKey = (
+  directSrc: string | null,
+  normalizedFileId: string | null,
+  allowSignedFallback: boolean,
+) => {
+  if (normalizedFileId) return `file:${allowSignedFallback ? 'signed' : 'public'}:${normalizedFileId}`;
   if (directSrc) return `src:${directSrc}`;
   return null;
 };
@@ -177,11 +184,13 @@ export const resolveImageUri = async ({
   src,
   fileId,
   forceRefresh = false,
+  allowSignedFallback = true,
   debugContext,
 }: {
   src?: string | null;
   fileId?: string | null;
   forceRefresh?: boolean;
+  allowSignedFallback?: boolean;
   debugContext?: SignedFileUrlDebugContext;
 }) => {
   const directSrc = trim(src);
@@ -207,7 +216,7 @@ export const resolveImageUri = async ({
     return directSrc;
   }
 
-  const cacheKey = getResolutionCacheKey(directSrc, normalizedFileId);
+  const cacheKey = getResolutionCacheKey(directSrc, normalizedFileId, allowSignedFallback);
   if (!cacheKey) {
     devMediaLog('resolve-failed', {
       reason: 'missing-cache-key',
@@ -223,7 +232,9 @@ export const resolveImageUri = async ({
     resolvedUriMissingCache.delete(cacheKey);
     if (normalizedFileId) {
       queryClient.removeQueries({ queryKey: queryKeys.media.publicUrl(normalizedFileId), exact: true });
-      queryClient.removeQueries({ queryKey: queryKeys.media.signedUrl(normalizedFileId), exact: true });
+      if (allowSignedFallback) {
+        queryClient.removeQueries({ queryKey: queryKeys.media.signedUrl(normalizedFileId), exact: true });
+      }
     }
   }
   const cached = getCachedUri(cacheKey);
@@ -274,6 +285,18 @@ export const resolveImageUri = async ({
             mediaIndex: debugContext?.mediaIndex ?? null,
           });
           return publicUrl;
+        }
+
+        if (!allowSignedFallback) {
+          setMissingUri(cacheKey);
+          devMediaLog('resolve-failed', {
+            reason: 'signed-fallback-disabled',
+            sourceType: 'fileId',
+            hasFileId: true,
+            designId: debugContext?.designId ?? null,
+            mediaIndex: debugContext?.mediaIndex ?? null,
+          });
+          return null;
         }
 
         const signedUrl = await queryClient.fetchQuery({
@@ -339,9 +362,10 @@ export const resolveImageUri = async ({
 export const prefetchResolvedImageAsset = async ({
   src,
   fileId,
+  allowSignedFallback = true,
   debugContext,
 }: UseResolvedImageUriArgs) => {
-  const uri = await resolveImageUri({ src, fileId, debugContext });
+  const uri = await resolveImageUri({ src, fileId, allowSignedFallback, debugContext });
   if (!uri || !isHttpUrl(uri)) {
     return false;
   }
@@ -362,11 +386,12 @@ export function useResolvedImageUri({
   src,
   fileId,
   enabled = true,
+  allowSignedFallback = true,
   debugContext,
 }: UseResolvedImageUriArgs) {
   const directSrc = trim(src);
   const normalizedFileId = trim(fileId);
-  const cacheKey = getResolutionCacheKey(directSrc, normalizedFileId);
+  const cacheKey = getResolutionCacheKey(directSrc, normalizedFileId, allowSignedFallback);
   const activeKey = cacheKey ?? (directSrc ? `direct:${directSrc}` : null);
   const previousKeyRef = useRef<string | null>(activeKey);
   const resolvedKeyRef = useRef<string | null>(null);
@@ -441,7 +466,7 @@ export function useResolvedImageUri({
       };
     }
 
-    void resolveImageUri({ src: directSrc, fileId: normalizedFileId, debugContext }).then((nextUri) => {
+    void resolveImageUri({ src: directSrc, fileId: normalizedFileId, allowSignedFallback, debugContext }).then((nextUri) => {
       if (mounted) {
         if (nextUri) {
           if (activeKey) {
@@ -463,7 +488,7 @@ export function useResolvedImageUri({
     return () => {
       mounted = false;
     };
-  }, [activeKey, debugContext, directSrc, enabled, normalizedFileId]);
+  }, [activeKey, allowSignedFallback, debugContext, directSrc, enabled, normalizedFileId]);
 
   useEffect(() => {
     if (!enabled || !cacheKey || !resolvedUri) return;
@@ -474,7 +499,7 @@ export function useResolvedImageUri({
 
     const delay = Math.max(1_000, cached.expiresAt - Date.now() - SIGNED_URI_REFRESH_SKEW_MS);
     const timeout = setTimeout(() => {
-      void resolveImageUri({ src: directSrc, fileId: normalizedFileId, forceRefresh: true, debugContext }).then((nextUri) => {
+      void resolveImageUri({ src: directSrc, fileId: normalizedFileId, forceRefresh: true, allowSignedFallback, debugContext }).then((nextUri) => {
         if (nextUri) {
           if (activeKey) {
             resolvedKeyRef.current = activeKey;
@@ -492,7 +517,7 @@ export function useResolvedImageUri({
     }, delay);
 
     return () => clearTimeout(timeout);
-  }, [activeKey, cacheKey, debugContext, directSrc, enabled, normalizedFileId, resolvedUri]);
+  }, [activeKey, allowSignedFallback, cacheKey, debugContext, directSrc, enabled, normalizedFileId, resolvedUri]);
 
   return resolvedUri;
 }
@@ -531,6 +556,7 @@ export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {
     void resolveImageUri({
       src: directSrc,
       fileId: normalizedFileId,
+      allowSignedFallback: args.allowSignedFallback,
       debugContext: args.debugContext,
     }).finally(() => {
       if (mounted) {
@@ -541,7 +567,7 @@ export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {
     return () => {
       mounted = false;
     };
-  }, [args.debugContext, directSrc, enabled, normalizedFileId, uri]);
+  }, [args.allowSignedFallback, args.debugContext, directSrc, enabled, normalizedFileId, uri]);
 
   return {
     uri,
