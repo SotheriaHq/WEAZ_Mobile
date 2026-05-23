@@ -24,10 +24,13 @@ type BrandCollectionsArgs = {
 const isEnabled = (value: unknown, enabled = true) => Boolean(value) && enabled;
 
 export function useBrandProfileQuery(brandId?: string | null, options?: EnabledOption) {
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.brand.profile(brandId);
   return useQuery({
-    queryKey: queryKeys.brand.profile(brandId),
+    queryKey,
     queryFn: () => brandApi.getProfileById(String(brandId)),
     enabled: isEnabled(brandId, options?.enabled ?? true),
+    initialData: () => queryClient.getQueryData(queryKey),
   });
 }
 
@@ -40,8 +43,10 @@ export async function refreshBrandProfileQuery(queryClient: QueryClient, brandId
 
 export function useBrandCollectionsQuery(args: BrandCollectionsArgs, options?: EnabledOption) {
   const { ownerId, scope = 'design', visibility, status, limit } = args;
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.brand.collections(ownerId, { scope, visibility, status, limit });
   return useQuery({
-    queryKey: queryKeys.brand.collections(ownerId, { scope, visibility, status, limit }),
+    queryKey,
     queryFn: async () => {
       const result = await brandApi.getCollections({
         brandId: String(ownerId),
@@ -53,6 +58,7 @@ export function useBrandCollectionsQuery(args: BrandCollectionsArgs, options?: E
       return result.items;
     },
     enabled: isEnabled(ownerId, options?.enabled ?? true),
+    initialData: () => queryClient.getQueryData(queryKey),
   });
 }
 
@@ -83,10 +89,13 @@ export async function refreshBrandCollectionsQuery(
 }
 
 export function useBrandDraftsQuery(options?: EnabledOption) {
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.designs.user('me', { status: 'DRAFT' });
   return useQuery({
-    queryKey: queryKeys.designs.user('me', { status: 'DRAFT' }),
+    queryKey,
     queryFn: () => brandApi.getDrafts(),
     enabled: options?.enabled ?? true,
+    initialData: () => queryClient.getQueryData(queryKey),
   });
 }
 

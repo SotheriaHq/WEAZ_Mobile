@@ -93,9 +93,15 @@ export const CollectionCard = React.memo(function CollectionCard({
 
   const width = Math.round(cardWidth ?? (screenWidth - tokens.spacing.lg * 2 - tokens.spacing.md) / 2);
   const imageHeight = Math.round(width * 1.32);
+  const allowPrivateMediaFallback =
+    isOwner ||
+    isDraft ||
+    collection.visibility === 'PRIVATE' ||
+    collection.status === 'DRAFT';
   const coverUri = useResolvedImageUri({
     src: collection.coverImage,
     fileId: collection.coverFileId,
+    allowSignedFallback: allowPrivateMediaFallback,
   });
 
   const inferredBranch = resolveCatalogCardBranch(collection, collection.isAvailableInStore ? 'COLLECTION' : 'DESIGN');

@@ -31,6 +31,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 
 type CollectionCommerceViewerProps = {
   collectionId: string;
@@ -38,8 +39,7 @@ type CollectionCommerceViewerProps = {
 };
 
 const shouldLogCollectionTiming = () =>
-  __DEV__ ||
-  process.env.NODE_ENV === 'test' ||
+  isThreadlyDebugEnabled('network') ||
   process.env.EXPO_PUBLIC_BAGGING_OBSERVABILITY === 'true';
 
 const logCollectionTiming = (event: string, startedAt: number, context: Record<string, unknown>) => {

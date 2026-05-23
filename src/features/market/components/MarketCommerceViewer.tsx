@@ -42,6 +42,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import type { SizeRecommendationResponse } from '@/src/api/ProfileApi';
 import { CONFIDENCE_LABELS, SIZING_REGION_LABELS } from '@/src/utils/sizeRecommendation';
+import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 
 type CommerceSourceType = Extract<BagSourceType, 'PRODUCT' | 'DESIGN'>;
 
@@ -69,8 +70,7 @@ const ACTION_KIND_MESSAGE = 'message';
 const ACTION_KIND_SHARE = 'share';
 
 const shouldLogViewerTiming = () =>
-  __DEV__ ||
-  process.env.NODE_ENV === 'test' ||
+  isThreadlyDebugEnabled('network') ||
   process.env.EXPO_PUBLIC_BAGGING_OBSERVABILITY === 'true';
 
 const logViewerTiming = (event: string, startedAt: number, context: Record<string, unknown>) => {

@@ -185,7 +185,11 @@ function BannerHeader({
 >) {
   const { scheme, theme } = useTheme();
   const { width: viewportWidth } = useWindowDimensions();
-  const resolvedBanner = useResolvedImageUri({ src: bannerUrl, fileId: bannerFileId ?? undefined });
+  const resolvedBanner = useResolvedImageUri({
+    src: bannerUrl,
+    fileId: bannerFileId ?? undefined,
+    allowSignedFallback: isOwner,
+  });
   const storeStatusBadge = getStoreStatusBadge(badges ?? []);
   const isCompactPhone = viewportWidth < 390;
   const isTablet = viewportWidth >= 700;
@@ -359,7 +363,11 @@ function OverlayAvatar({
   | 'onEditAvatar'
 >) {
   const { theme } = useTheme();
-  const resolvedAvatar = useResolvedImageUri({ src: avatarUrl, fileId: avatarFileId ?? undefined });
+  const resolvedAvatar = useResolvedImageUri({
+    src: avatarUrl,
+    fileId: avatarFileId ?? undefined,
+    allowSignedFallback: isOwner,
+  });
   const initials = useMemo(() => compactInitials(brandName), [brandName]);
   const avatarAction = onViewAvatar || (isOwner ? onEditAvatar : undefined);
 

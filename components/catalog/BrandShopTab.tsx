@@ -30,6 +30,7 @@ import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
+import { brandShopDevLog, brandShopDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 
 type SortKey = 'newest' | 'price_low_high' | 'price_high_low';
 type FilterKey = 'all' | 'in_stock' | 'custom_only' | 'bagged' | 'saved';
@@ -47,6 +48,8 @@ const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
   { key: 'bagged', label: 'In bag' },
   { key: 'saved', label: 'Wishlist' },
 ];
+
+const EMPTY_PRODUCTS: StoreProduct[] = [];
 
 const toApiErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error === 'string' && error.trim().length > 0) return error;
@@ -166,6 +169,7 @@ function ProductCard({
       priceLabel={formatPrice(product.price, product.currency)}
       mediaSrc={product.coverImage}
       mediaFileId={product.coverImageId}
+      allowSignedFallback={false}
       typeLabel={typeLabel}
       metaLabel={wishlisted ? 'Wishlist' : metaLabel}
       actionLabel="View"
@@ -221,6 +225,7 @@ interface BrandShopTabProps {
   initialProductId?: string | null;
   headerComponent?: React.ReactNode;
   scrollEnabled?: boolean;
+  enabled?: boolean;
 }
 
 export function BrandShopTab({
@@ -230,6 +235,7 @@ export function BrandShopTab({
   initialProductId,
   headerComponent,
   scrollEnabled = false,
+  enabled = true,
 }: BrandShopTabProps) {
   const { scheme, theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -277,6 +283,11 @@ export function BrandShopTab({
     () => queryKeys.store.brandProducts(normalizedBrandId, { limit: 80 }),
     [normalizedBrandId],
   );
+  const cachedBrandProducts = normalizedBrandId
+    ? queryClient.getQueryData<StoreProduct[]>(brandProductsQueryKey)
+    : undefined;
+  const hasCachedBrandProducts = cachedBrandProducts !== undefined;
+  const displayProducts = products.length > 0 ? products : cachedBrandProducts ?? EMPTY_PRODUCTS;
 
   const CARD_GAP = 10;
   const SIDE_PADDING = 16;
@@ -339,17 +350,20 @@ export function BrandShopTab({
   }, [isOwner, status]);
 
   const fetchProducts = useCallback(async (options?: { forceRefresh?: boolean }) => {
+    if (!enabled) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     if (!normalizedBrandId) {
-      if (__DEV__) {
-        console.warn('[brand-shop]', {
-          event: 'missing-brand-id',
-          isOwner,
-          userId: user?.id ?? null,
-          activeBrandId: user?.activeBrandId ?? null,
-          storeId: user?.storeId ?? null,
-          activeMembershipCount: user?.brandMemberships?.filter((membership) => membership.status === 'ACTIVE').length ?? 0,
-        });
-      }
+      brandShopDevWarn('missing-brand-id', {
+        isOwner,
+        userId: user?.id ?? null,
+        activeBrandId: user?.activeBrandId ?? null,
+        storeId: user?.storeId ?? null,
+        activeMembershipCount: user?.brandMemberships?.filter((membership) => membership.status === 'ACTIVE').length ?? 0,
+      });
       setProducts([]);
       setLoading(false);
       setRefreshing(false);
@@ -370,13 +384,10 @@ export function BrandShopTab({
 
     setError(null);
     try {
-      if (__DEV__) {
-        console.log('[brand-shop]', {
-          event: 'load-products',
-          brandId: normalizedBrandId,
-          isOwner,
-        });
-      }
+      brandShopDevLog('load-products', {
+        brandId: normalizedBrandId,
+        isOwner,
+      });
       const items = await queryClient.fetchQuery({
         queryKey: brandProductsQueryKey,
         queryFn: () => MobileStoreApi.getBrandProducts(normalizedBrandId, 80),
@@ -389,22 +400,31 @@ export function BrandShopTab({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [brandProductsQueryKey, isOwner, normalizedBrandId, queryClient, user?.activeBrandId, user?.brandMemberships, user?.id, user?.storeId]);
+  }, [brandProductsQueryKey, enabled, isOwner, normalizedBrandId, queryClient, user?.activeBrandId, user?.brandMemberships, user?.id, user?.storeId]);
 
   useEffect(() => {
-    const cached = normalizedBrandId ? queryClient.getQueryData<StoreProduct[]>(brandProductsQueryKey) : null;
-    setLoading(!cached);
+    const cached = normalizedBrandId ? queryClient.getQueryData<StoreProduct[]>(brandProductsQueryKey) : undefined;
+    if (!enabled) {
+      if (cached !== undefined) {
+        setProducts(cached);
+      }
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    setLoading(cached === undefined);
     void fetchProducts();
-  }, [brandProductsQueryKey, fetchProducts, normalizedBrandId, queryClient]);
+  }, [brandProductsQueryKey, enabled, fetchProducts, normalizedBrandId, queryClient]);
 
   useEffect(() => {
+    if (!enabled) return;
     void refreshCommerceState();
-  }, [refreshCommerceState]);
+  }, [enabled, refreshCommerceState]);
 
   const categoryOptions = useMemo(() => {
     const categories = Array.from(
       new Set(
-        products
+        displayProducts
           .map((product) => product.categoryName?.trim())
           .filter((name): name is string => Boolean(name)),
       ),
@@ -412,12 +432,12 @@ export function BrandShopTab({
 
     categories.sort((a, b) => a.localeCompare(b));
     return ['all', ...categories];
-  }, [products]);
+  }, [displayProducts]);
 
   const filteredProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    const working = products.filter((product) => {
+    const working = displayProducts.filter((product) => {
       const stock = getTotalStock(product);
       const saved = Boolean(wishlistByProductId[product.id]);
       const standardBagged = Boolean(cartByProductId[product.id]);
@@ -463,7 +483,7 @@ export function BrandShopTab({
   }, [
     cartByProductId,
     customBagByProductId,
-    products,
+    displayProducts,
     query,
     selectedCategory,
     selectedFilter,
@@ -476,6 +496,7 @@ export function BrandShopTab({
     src: activeProduct?.coverImage,
     fileId: activeProduct?.coverImageId,
     enabled: Boolean(activeProduct?.coverImage || activeProduct?.coverImageId),
+    allowSignedFallback: false,
   });
 
   const availableSizes = useMemo(() => {
@@ -550,7 +571,7 @@ export function BrandShopTab({
       return;
     }
 
-    const matchingProduct = products.find((product) => product.id === initialProductId);
+    const matchingProduct = displayProducts.find((product) => product.id === initialProductId);
     if (matchingProduct) {
       openedInitialProductIdRef.current = initialProductId;
       void openProductDetail(matchingProduct);
@@ -578,7 +599,7 @@ export function BrandShopTab({
     return () => {
       cancelled = true;
     };
-  }, [initialProductId, loading, normalizedBrandId, openProductDetail, products]);
+  }, [displayProducts, initialProductId, loading, normalizedBrandId, openProductDetail]);
 
   const ensureAuth = useCallback(
     (action: () => Promise<void>, message: string) => {
@@ -679,10 +700,11 @@ export function BrandShopTab({
   ]);
 
   const handleRefresh = useCallback(async () => {
+    if (!enabled) return;
     setRefreshing(true);
     await Promise.all([fetchProducts({ forceRefresh: true }), refreshCommerceState()]);
     setRefreshing(false);
-  }, [fetchProducts, refreshCommerceState]);
+  }, [enabled, fetchProducts, refreshCommerceState]);
 
   const hasActiveProductFilters = Boolean(
     query.trim() ||
@@ -727,7 +749,7 @@ export function BrandShopTab({
     });
   }
 
-  if (loading) {
+  if (loading && !hasCachedBrandProducts) {
     return (
       <View style={[styles.shopSkeleton, { paddingBottom: gridBottomPadding }]}>
         <View style={styles.skeletonGrid}>
@@ -822,7 +844,7 @@ export function BrandShopTab({
 
       {filteredProducts.length === 0 ? (
         renderEmptyState(
-          products.length > 0
+          displayProducts.length > 0
             ? {
                 marker: '🧵',
                 title: 'Filters hide all products',

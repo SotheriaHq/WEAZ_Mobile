@@ -42,15 +42,16 @@ Logs:
 
 - Feed/media/network/nav/bootstrap/auth/analytics diagnostics are opt-in.
 - Supported flags:
-  - `EXPO_PUBLIC_DEBUG_THREADLY=true`
   - `EXPO_PUBLIC_DEBUG_FEED=true`
   - `EXPO_PUBLIC_DEBUG_MEDIA=true`
   - `EXPO_PUBLIC_DEBUG_SCROLL=true`
   - `EXPO_PUBLIC_DEBUG_NETWORK=true`
+  - `EXPO_PUBLIC_DEBUG_CATALOG=true`
   - `EXPO_PUBLIC_DEBUG_NAV=true`
   - `EXPO_PUBLIC_DEBUG_BOOT=true`
   - `EXPO_PUBLIC_DEBUG_AUTH=true`
   - `EXPO_PUBLIC_DEBUG_ANALYTICS=true`
+- There is no global "enable every Threadly diagnostic" flag; Android QA must opt in per diagnostic area so gesture logs cannot accidentally hide real API calls.
 - Scroll diagnostics such as `vertical-momentum`, `active-index`, and `horizontal-carousel-index` are controlled by `EXPO_PUBLIC_DEBUG_SCROLL`, not enabled by default.
 - The network trace remains available through `globalThis.__THREADLY_NETWORK_TRACE__?.printSummary()`.
 

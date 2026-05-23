@@ -327,8 +327,7 @@ const isLoopbackHttpUrl = (value: string) => {
 const toIdempotencyKey = () => `mob_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
 const shouldLogBagTiming = () =>
-  __DEV__ ||
-  process.env.NODE_ENV === 'test' ||
+  process.env.EXPO_PUBLIC_DEBUG_NETWORK === 'true' ||
   process.env.EXPO_PUBLIC_BAGGING_OBSERVABILITY === 'true';
 
 const logBagTiming = (label: string, startedAt: number, context: Record<string, unknown>) => {

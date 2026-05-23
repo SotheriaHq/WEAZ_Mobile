@@ -23,6 +23,7 @@ import { BAG_IT_EMOJI } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 
 type CollectionGalleryViewerProps = {
   collectionId: string;
@@ -38,8 +39,7 @@ type GalleryMedia = {
 };
 
 const shouldLogGalleryTiming = () =>
-  __DEV__ ||
-  process.env.NODE_ENV === 'test' ||
+  isThreadlyDebugEnabled('network') ||
   process.env.EXPO_PUBLIC_BAGGING_OBSERVABILITY === 'true';
 
 const logGalleryTiming = (event: string, startedAt: number, context: Record<string, unknown>) => {

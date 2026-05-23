@@ -32,6 +32,7 @@ type UnifiedProductCardProps = {
   newDropCreatedAt?: string | null;
   analyticsSourceScreen?: string;
   feedPosition?: number;
+  allowSignedFallback?: boolean;
   style?: StyleProp<ViewStyle>;
   onPress: () => void;
   onFavoritePress?: () => void;
@@ -61,6 +62,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   newDropCreatedAt,
   analyticsSourceScreen = 'market',
   feedPosition,
+  allowSignedFallback = true,
   style,
   onPress,
   onFavoritePress,
@@ -71,6 +73,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
     src: mediaSrc,
     fileId: mediaFileId,
     enabled: Boolean(mediaSrc || mediaFileId),
+    allowSignedFallback,
   });
   const cardHeight = height ?? Math.round(width * 1.58);
   const canPressAction = Boolean(onActionPress) && !actionBusy && !actionDisabled && !unavailable;

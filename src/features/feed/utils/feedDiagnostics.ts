@@ -12,9 +12,10 @@ type DiagnosticPrefix =
   | 'profile-menu-avatar'
   | 'profile'
   | 'catalog'
+  | 'brand-shop'
   | 'nav';
 
-type DebugScope = 'feed' | 'media' | 'scroll' | 'network' | 'nav' | 'boot' | 'auth' | 'analytics';
+type DebugScope = 'feed' | 'media' | 'scroll' | 'network' | 'nav' | 'boot' | 'auth' | 'analytics' | 'catalog';
 
 const DEBUG_SCOPE_BY_PREFIX: Record<DiagnosticPrefix, DebugScope> = {
   feed: 'feed',
@@ -28,8 +29,9 @@ const DEBUG_SCOPE_BY_PREFIX: Record<DiagnosticPrefix, DebugScope> = {
   'api-host': 'network',
   'brand-avatar': 'media',
   'profile-menu-avatar': 'media',
-  profile: 'feed',
-  catalog: 'feed',
+  profile: 'catalog',
+  catalog: 'catalog',
+  'brand-shop': 'catalog',
   nav: 'nav',
 };
 
@@ -56,15 +58,14 @@ const isScopeDebugFlagEnabled = (scope: DebugScope) => {
       return isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_AUTH);
     case 'analytics':
       return isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_ANALYTICS);
+    case 'catalog':
+      return isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_CATALOG);
   }
 };
 
 export const isThreadlyDebugEnabled = (scope: DebugScope) => {
   if (!__DEV__) return false;
-  return (
-    isTruthyFlag(process.env.EXPO_PUBLIC_DEBUG_THREADLY) ||
-    isScopeDebugFlagEnabled(scope)
-  );
+  return isScopeDebugFlagEnabled(scope);
 };
 
 const writeDevDiagnostic = (
@@ -129,6 +130,12 @@ export const profileDevWarn = (event: string, details?: Record<string, unknown>)
 
 export const catalogDevLog = (event: string, details?: Record<string, unknown>) =>
   writeDevDiagnostic('log', 'catalog', event, details);
+
+export const brandShopDevLog = (event: string, details?: Record<string, unknown>) =>
+  writeDevDiagnostic('log', 'brand-shop', event, details);
+
+export const brandShopDevWarn = (event: string, details?: Record<string, unknown>) =>
+  writeDevDiagnostic('warn', 'brand-shop', event, details);
 
 export const navDevLog = (event: string, details?: Record<string, unknown>) =>
   writeDevDiagnostic('log', 'nav', event, details);

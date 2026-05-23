@@ -151,17 +151,18 @@ async function main() {
 
   const catalogSource = fs.readFileSync(catalogPath, 'utf8');
   assert.match(catalogSource, /getBrandBadges\(/);
-  assert.match(catalogSource, /profile\?\.designsCount/);
-  assert.match(catalogSource, /profile\?\.collectionsCount/);
-  assert.match(catalogSource, /profile\?\.followersCount/);
-  assert.match(catalogSource, /profile\?\.totalThreads/);
-  assert.match(catalogSource, /profile\?\.totalLikes/);
+  assert.match(catalogSource, /const effectiveProfile = profileQuery\.data !== undefined \? profileQuery\.data : profile/);
+  assert.match(catalogSource, /effectiveProfile\?\.designsCount/);
+  assert.match(catalogSource, /effectiveProfile\?\.collectionsCount/);
+  assert.match(catalogSource, /effectiveProfile\?\.followersCount/);
+  assert.match(catalogSource, /effectiveProfile\?\.totalThreads/);
+  assert.match(catalogSource, /effectiveProfile\?\.totalLikes/);
   assert.match(catalogSource, /label:\s*totalThreads === 1 \? 'Thread' : 'Threads'/);
   assert.doesNotMatch(catalogSource, /label:\s*totalLikes === 1 \? 'Like' : 'Likes'/);
   assert.doesNotMatch(catalogSource, /totalShares.*stats\.push/s);
-  assert.match(catalogSource, /profile\?\.qrTargetUrl/);
-  assert.match(catalogSource, /profile\?\.publicProfileUrl/);
-  assert.match(catalogSource, /profile\?\.shareUrl/);
+  assert.match(catalogSource, /effectiveProfile\?\.qrTargetUrl/);
+  assert.match(catalogSource, /effectiveProfile\?\.publicProfileUrl/);
+  assert.match(catalogSource, /effectiveProfile\?\.shareUrl/);
   assert.match(catalogSource, /buildProfileUrlFromConfig/);
   assert.doesNotMatch(catalogSource, /https:\/\/threadly\.app\/brand/);
 

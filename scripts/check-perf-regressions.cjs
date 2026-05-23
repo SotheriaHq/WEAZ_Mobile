@@ -87,7 +87,18 @@ assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_
 assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_MEDIA', 'media diagnostics must be opt-in');
 assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_SCROLL', 'gesture scroll diagnostics must be opt-in');
 assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_NETWORK', 'API diagnostics must be opt-in');
+assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_CATALOG', 'catalog/shop diagnostics must be opt-in');
 assertIncludes('src/features/feed/utils/feedDiagnostics.ts', "case 'scroll'", 'scroll diagnostics must use their own debug scope');
+assertNotMatches('src/features/feed/utils/feedDiagnostics.ts', /EXPO_PUBLIC_DEBUG_THREADLY/, 'normal QA diagnostics must not be re-enabled by one global debug flag');
+
+assertIncludes('app/catalog/index.tsx', 'completedTaskRefreshKeyRef', 'completed design tasks must not force-refresh collections repeatedly on route remount');
+assertIncludes('app/catalog/index.tsx', 'THREADLY_SAVED_STATUS_STALE_TIME_MS', 'catalog saved checks must use query staleTime instead of repeating on rerender');
+assertIncludes('app/catalog/index.tsx', "queryKeys.saved.batch('COLLECTION', savedCatalogIds)", 'catalog saved checks must use a stable saved batch query key');
+assertIncludes('app/catalog/index.tsx', "activeTab === 'Shop'", 'brand products should not load while the Shop tab is inactive');
+assertIncludes('app/catalog/index.tsx', "activeTab === 'Reviews'", 'brand reviews should not load while the Reviews tab is inactive');
+assertIncludes('components/commerce/UnifiedProductCard.tsx', 'allowSignedFallback', 'product cards must expose signed fallback control');
+assertIncludes('components/catalog/BrandShopTab.tsx', 'allowSignedFallback={false}', 'public brand shop media must not request signed URLs first');
+assertIncludes('components/catalog/BrandShopTab.tsx', 'brandShopDevLog', 'brand shop diagnostics must be gated');
 
 if (failures.length > 0) {
   console.error('Performance regression guard failed:');

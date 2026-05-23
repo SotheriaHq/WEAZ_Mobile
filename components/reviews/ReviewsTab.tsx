@@ -35,9 +35,10 @@ type Props = {
   brandId?: string | null;
   productId?: string | null;
   compact?: boolean;
+  enabled?: boolean;
 };
 
-export default function ReviewsTab({ brandId, productId, compact = false }: Props) {
+export default function ReviewsTab({ brandId, productId, compact = false, enabled = true }: Props) {
   const { theme } = useTheme();
   const toast = useToast();
   const { user } = useAuth();
@@ -51,9 +52,10 @@ export default function ReviewsTab({ brandId, productId, compact = false }: Prop
         : queryKeys.reviews.brand(brandId, { limit: reviewLimit, viewerId: currentUserId }),
     [brandId, compact, currentUserId, productId, reviewLimit],
   );
-  const [items, setItems] = useState<ReviewDto[]>([]);
-  const [summary, setSummary] = useState<ReviewSummaryDto>(emptySummary);
-  const [loading, setLoading] = useState(true);
+  const initialCachedReviewList = queryClient.getQueryData<ReviewListDto>(reviewQueryKey);
+  const [items, setItems] = useState<ReviewDto[]>(() => initialCachedReviewList?.items ?? []);
+  const [summary, setSummary] = useState<ReviewSummaryDto>(() => initialCachedReviewList?.summary ?? emptySummary);
+  const [loading, setLoading] = useState(() => enabled && !initialCachedReviewList);
   const [error, setError] = useState<string | null>(null);
   const [featureDisabled, setFeatureDisabled] = useState(false);
   const [editingReview, setEditingReview] = useState<ReviewDto | null>(null);
@@ -66,6 +68,10 @@ export default function ReviewsTab({ brandId, productId, compact = false }: Prop
   }, []);
 
   const load = useCallback(async (options?: { forceRefresh?: boolean }) => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     if (!brandId && !productId) {
       setLoading(false);
       return;
@@ -106,7 +112,7 @@ export default function ReviewsTab({ brandId, productId, compact = false }: Prop
     } finally {
       setLoading(false);
     }
-  }, [applyList, brandId, currentUserId, productId, queryClient, reviewLimit, reviewQueryKey]);
+  }, [applyList, brandId, currentUserId, enabled, productId, queryClient, reviewLimit, reviewQueryKey]);
 
   useEffect(() => {
     void load();

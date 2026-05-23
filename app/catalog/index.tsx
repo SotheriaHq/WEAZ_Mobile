@@ -75,6 +75,8 @@ import {
   useBrandDraftsQuery,
   useBrandProfileQuery,
 } from '@/src/query/catalogQueries';
+import { THREADLY_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -212,7 +214,6 @@ export default function CatalogScreen() {
   const [designBackgroundTasks, setDesignBackgroundTasks] = useState<DesignEditorBackgroundTask[]>(
     () => readDesignEditorBackgroundTasks(),
   );
-  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -229,6 +230,7 @@ export default function CatalogScreen() {
   const [brandQrOpen, setBrandQrOpen] = useState(false);
   const [tabHeights, setTabHeights] = useState<Partial<Record<TabType, number>>>({});
   const tabPagerRef = useRef<ScrollView>(null);
+  const completedTaskRefreshKeyRef = useRef<string | null>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
   const activeTabPagerHeight = tabHeights[activeTab];
 
@@ -258,7 +260,7 @@ export default function CatalogScreen() {
   );
 
   const profileQuery = useBrandProfileQuery(targetBrandId, { enabled: Boolean(targetBrandId) });
-  const collectionOwnerId = getCollectionOwnerId(profileQuery.data ?? profile);
+  const collectionOwnerId = getCollectionOwnerId(profileQuery.data !== undefined ? profileQuery.data : profile);
   const collectionVisibility = visibilityFilter === 'Drafts'
     ? undefined
     : visibilityFilter.toUpperCase() as 'PUBLIC' | 'PRIVATE';
@@ -274,6 +276,9 @@ export default function CatalogScreen() {
     { enabled: Boolean(collectionOwnerId) && visibilityFilter !== 'Drafts' },
   );
   const draftsQuery = useBrandDraftsQuery({ enabled: isOwner && visibilityFilter === 'Drafts' });
+  const effectiveProfile = profileQuery.data !== undefined ? profileQuery.data : profile;
+  const effectiveCollections = collectionsQuery.data ?? collections;
+  const effectiveDrafts = draftsQuery.data ?? drafts;
 
   const fetchProfile = useCallback(async (options?: { forceRefresh?: boolean }): Promise<BrandProfileDto | null> => {
     if (!targetBrandId) {
@@ -285,7 +290,9 @@ export default function CatalogScreen() {
     try {
       const data = options?.forceRefresh
         ? await refreshBrandProfileQuery(queryClient, targetBrandId)
-        : profileQuery.data ?? profileRef.current;
+        : profileQuery.data !== undefined
+          ? profileQuery.data
+          : profileRef.current;
       if (!data) return null;
       profileRef.current = data;
       setProfile(data);
@@ -418,25 +425,6 @@ export default function CatalogScreen() {
       setDrafts(draftsQuery.data);
     }
   }, [draftsQuery.data]);
-
-  useEffect(() => {
-    if (!targetBrandId) {
-      setIsLoading(false);
-      return;
-    }
-    const listLoading = visibilityFilter === 'Drafts'
-      ? draftsQuery.isLoading && drafts.length === 0
-      : collectionsQuery.isLoading && collections.length === 0;
-    setIsLoading(Boolean((profileQuery.isLoading && !profileRef.current) || listLoading));
-  }, [
-    collections.length,
-    collectionsQuery.isLoading,
-    drafts.length,
-    draftsQuery.isLoading,
-    profileQuery.isLoading,
-    targetBrandId,
-    visibilityFilter,
-  ]);
 
   useEffect(() => {
     if (profileQuery.error) {
@@ -630,51 +618,53 @@ export default function CatalogScreen() {
     }
   }, [draftDeleteBusy, draftDeletePhrase, draftDeleteTarget, fetchCollections, toast, visibilityFilter]);
 
-  const ownerAvatar = useMemo(() => resolveProfileImageSource(profile as any), [profile]);
-  const visitorAvatar = useMemo(() => resolveProfileImageSource(profile as any), [profile]);
-  const visitorBanner = useMemo(() => resolveBannerImageSource(profile as any), [profile]);
+  const ownerAvatar = useMemo(() => resolveProfileImageSource(effectiveProfile as any), [effectiveProfile]);
+  const visitorAvatar = useMemo(() => resolveProfileImageSource(effectiveProfile as any), [effectiveProfile]);
+  const visitorBanner = useMemo(() => resolveBannerImageSource(effectiveProfile as any), [effectiveProfile]);
   const ownerAvatarUri = useResolvedImageUri({
     src: ownerAvatar.src ?? undefined,
     fileId: ownerAvatar.fileId ?? undefined,
+    allowSignedFallback: true,
   });
   const visitorAvatarUri = useResolvedImageUri({
     src: visitorAvatar.src ?? undefined,
     fileId: visitorAvatar.fileId ?? undefined,
+    allowSignedFallback: false,
   });
   const modalAvatarUri = isOwner
     ? ownerAvatarUri ?? ownerAvatar.src ?? null
     : visitorAvatarUri ?? visitorAvatar.src ?? null;
   const profileLocation =
-    profile?.location ||
-    [profile?.brandCity, profile?.brandState, profile?.brandCountry].filter(Boolean).join(', ') ||
+    effectiveProfile?.location ||
+    [effectiveProfile?.brandCity, effectiveProfile?.brandState, effectiveProfile?.brandCountry].filter(Boolean).join(', ') ||
     undefined;
   const profileShareUrl = useMemo(
     () =>
-      profile?.shareUrl ??
-      profile?.publicProfileUrl ??
-      profile?.qrTargetUrl ??
-      buildProfileUrlFromConfig(targetBrandId, profile?.username ?? user?.username ?? null),
+      effectiveProfile?.shareUrl ??
+      effectiveProfile?.publicProfileUrl ??
+      effectiveProfile?.qrTargetUrl ??
+      buildProfileUrlFromConfig(targetBrandId, effectiveProfile?.username ?? user?.username ?? null),
     [
-      profile?.publicProfileUrl,
-      profile?.qrTargetUrl,
-      profile?.shareUrl,
-      profile?.username,
+      effectiveProfile?.publicProfileUrl,
+      effectiveProfile?.qrTargetUrl,
+      effectiveProfile?.shareUrl,
+      effectiveProfile?.username,
       targetBrandId,
       user?.username,
     ],
   );
   const profileQrTargetUrl = useMemo(
     () =>
-      profile?.qrTargetUrl ??
-      profile?.publicProfileUrl ??
-      profile?.shareUrl ??
+      effectiveProfile?.qrTargetUrl ??
+      effectiveProfile?.publicProfileUrl ??
+      effectiveProfile?.shareUrl ??
       profileShareUrl,
-    [profile?.publicProfileUrl, profile?.qrTargetUrl, profile?.shareUrl, profileShareUrl],
+    [effectiveProfile?.publicProfileUrl, effectiveProfile?.qrTargetUrl, effectiveProfile?.shareUrl, profileShareUrl],
   );
   const profileShareMessage = useMemo(() => {
     if (!profileShareUrl) return undefined;
-    return `Check out ${profile?.brandFullName || 'this brand'} on Threadly: ${profileShareUrl}`;
-  }, [profile?.brandFullName, profileShareUrl]);
+    return `Check out ${effectiveProfile?.brandFullName || 'this brand'} on Threadly: ${profileShareUrl}`;
+  }, [effectiveProfile?.brandFullName, profileShareUrl]);
 
   // Handle share
   const handleNativeShareProfile = useCallback(async () => {
@@ -703,7 +693,7 @@ export default function CatalogScreen() {
     toast.success('Profile link copied.');
   }, [profileShareUrl, toast]);
 
-  const currentCollections = visibilityFilter === 'Drafts' ? drafts : collections;
+  const currentCollections = visibilityFilter === 'Drafts' ? effectiveDrafts : effectiveCollections;
   const visibleDesignBackgroundTasks = useMemo(() => {
     if (!isOwner || activeTab !== 'Collections') return [];
 
@@ -734,10 +724,10 @@ export default function CatalogScreen() {
         saleMaxPrice: null,
         saleStartAt: null,
         saleEndAt: null,
-        brandName: profile?.brandFullName ?? profile?.username ?? null,
-        username: profile?.username ?? null,
-        brandLogo: ownerAvatarUri ?? profile?.profileImage ?? null,
-        brandLogoFileId: profile?.profileImageId ?? profile?.logoImageId ?? null,
+        brandName: effectiveProfile?.brandFullName ?? effectiveProfile?.username ?? null,
+        username: effectiveProfile?.username ?? null,
+        brandLogo: ownerAvatarUri ?? effectiveProfile?.profileImage ?? null,
+        brandLogoFileId: effectiveProfile?.profileImageId ?? effectiveProfile?.logoImageId ?? null,
         isAvailableInStore: false,
         ownerId: userId ?? targetBrandId ?? '',
         createdAt: new Date(task.startedAt).toISOString(),
@@ -748,7 +738,7 @@ export default function CatalogScreen() {
             ? task.error ?? (task.action === 'draft' ? 'Draft save failed' : 'Publish failed')
             : task.message,
       })),
-    [ownerAvatarUri, profile, targetBrandId, userId, visibleDesignBackgroundTasks],
+    [effectiveProfile, ownerAvatarUri, targetBrandId, userId, visibleDesignBackgroundTasks],
   );
   const currentCollectionsWithBackgroundTasks = useMemo(() => {
     if (backgroundTaskCollections.length === 0) return currentCollections;
@@ -764,6 +754,18 @@ export default function CatalogScreen() {
       ...currentCollections.filter((collection) => !taskDesignIds.has(collection.id)),
     ];
   }, [backgroundTaskCollections, currentCollections, visibleDesignBackgroundTasks]);
+  const savedCatalogIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          currentCollectionsWithBackgroundTasks
+            .map((collection) => collection.id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ).sort(),
+    [currentCollectionsWithBackgroundTasks],
+  );
+  const savedCatalogIdsKey = savedCatalogIds.join('|');
 
   useEffect(() => {
     if (isOwner || status !== 'authenticated') {
@@ -771,16 +773,17 @@ export default function CatalogScreen() {
       return;
     }
 
-    const ids = currentCollectionsWithBackgroundTasks
-      .map((collection) => collection.id)
-      .filter(Boolean);
-    if (ids.length === 0) {
+    if (savedCatalogIds.length === 0) {
       setSavedCatalogById({});
       return;
     }
 
     let cancelled = false;
-    SavedItemsApi.checkBatch('COLLECTION', ids)
+    queryClient.fetchQuery({
+      queryKey: queryKeys.saved.batch('COLLECTION', savedCatalogIds),
+      queryFn: () => SavedItemsApi.checkBatch('COLLECTION', savedCatalogIds),
+      staleTime: THREADLY_SAVED_STATUS_STALE_TIME_MS,
+    })
       .then((result) => {
         if (cancelled) return;
         setSavedCatalogById(result);
@@ -790,32 +793,42 @@ export default function CatalogScreen() {
     return () => {
       cancelled = true;
     };
-  }, [currentCollectionsWithBackgroundTasks, isOwner, status]);
+  }, [isOwner, queryClient, savedCatalogIds, savedCatalogIdsKey, status]);
 
   useEffect(() => {
     const completedVisibleTasks = visibleDesignBackgroundTasks.filter((task) => task.status === 'complete');
     if (completedVisibleTasks.length === 0) return;
+    const completedTaskIds = completedVisibleTasks.map((task) => task.id).sort();
+    const refreshKey = `${visibilityFilter}:${completedTaskIds.join('|')}`;
+    if (completedTaskRefreshKeyRef.current === refreshKey) return;
+    completedTaskRefreshKeyRef.current = refreshKey;
+
+    completedVisibleTasks.forEach((task) => removeDesignEditorBackgroundTask(task.id));
+    setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
 
     let cancelled = false;
     void (async () => {
-      await fetchCollections(undefined, { forceRefresh: true });
-      if (cancelled) return;
-      completedVisibleTasks.forEach((task) => removeDesignEditorBackgroundTask(task.id));
-      setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
+      try {
+        await fetchCollections(undefined, { forceRefresh: true });
+      } catch {
+        if (!cancelled) {
+          completedTaskRefreshKeyRef.current = null;
+        }
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [fetchCollections, visibleDesignBackgroundTasks]);
+  }, [fetchCollections, visibilityFilter, visibleDesignBackgroundTasks]);
 
   const headerStats = useMemo<BrandHeaderStat[]>(() => {
-    const backendDesigns = readMetricNumber(profile?.designsCount) ?? readMetricNumber(profile?.collectionsCount);
-    const localDesigns = Math.max(collections.length, currentCollectionsWithBackgroundTasks.length);
+    const backendDesigns = readMetricNumber(effectiveProfile?.designsCount) ?? readMetricNumber(effectiveProfile?.collectionsCount);
+    const localDesigns = Math.max(effectiveCollections.length, currentCollectionsWithBackgroundTasks.length);
     const designsCount = backendDesigns ?? localDesigns;
-    const patchesCount = readMetricNumber(profile?.patchesCount) ?? readMetricNumber(profile?.followersCount) ?? 0;
-    const totalThreads = readMetricNumber(profile?.totalThreads) ?? readMetricNumber(profile?.totalLikes) ?? 0;
-    const totalReviews = readMetricNumber(profile?.totalReviews) ?? 0;
+    const patchesCount = readMetricNumber(effectiveProfile?.patchesCount) ?? readMetricNumber(effectiveProfile?.followersCount) ?? 0;
+    const totalThreads = readMetricNumber(effectiveProfile?.totalThreads) ?? readMetricNumber(effectiveProfile?.totalLikes) ?? 0;
+    const totalReviews = readMetricNumber(effectiveProfile?.totalReviews) ?? 0;
     const stats: BrandHeaderStat[] = [];
 
     stats.push({ value: formatCount(patchesCount), label: patchesCount === 1 ? 'Patch' : 'Patches' });
@@ -830,53 +843,63 @@ export default function CatalogScreen() {
 
     return stats.slice(0, 4);
   }, [
-    collections.length,
+    effectiveCollections.length,
     currentCollectionsWithBackgroundTasks.length,
-    profile?.collectionsCount,
-    profile?.designsCount,
-    profile?.followersCount,
-    profile?.patchesCount,
-    profile?.totalLikes,
-    profile?.totalThreads,
-    profile?.totalReviews,
+    effectiveProfile?.collectionsCount,
+    effectiveProfile?.designsCount,
+    effectiveProfile?.followersCount,
+    effectiveProfile?.patchesCount,
+    effectiveProfile?.totalLikes,
+    effectiveProfile?.totalThreads,
+    effectiveProfile?.totalReviews,
   ]);
   const headerContactItems = useMemo<BrandHeaderContactItem[]>(() => {
     const candidates: BrandHeaderContactItem[] = [
-      { label: 'Email', value: readContactValue(profile?.email) ?? '' },
-      { label: 'Phone', value: readContactValue(profile?.phoneNumber) ?? '' },
-      { label: 'Website', value: readContactValue(profile?.socialWebsite) ?? '' },
-      { label: 'Instagram', value: readContactValue(profile?.socialInstagram) ?? '' },
-      { label: 'Facebook', value: readContactValue(profile?.socialFacebook) ?? '' },
-      { label: 'X', value: readContactValue(profile?.socialTwitter) ?? '' },
+      { label: 'Email', value: readContactValue(effectiveProfile?.email) ?? '' },
+      { label: 'Phone', value: readContactValue(effectiveProfile?.phoneNumber) ?? '' },
+      { label: 'Website', value: readContactValue(effectiveProfile?.socialWebsite) ?? '' },
+      { label: 'Instagram', value: readContactValue(effectiveProfile?.socialInstagram) ?? '' },
+      { label: 'Facebook', value: readContactValue(effectiveProfile?.socialFacebook) ?? '' },
+      { label: 'X', value: readContactValue(effectiveProfile?.socialTwitter) ?? '' },
     ];
 
     return candidates.filter((item) => item.value.length > 0);
   }, [
-    profile?.email,
-    profile?.phoneNumber,
-    profile?.socialFacebook,
-    profile?.socialInstagram,
-    profile?.socialTwitter,
-    profile?.socialWebsite,
+    effectiveProfile?.email,
+    effectiveProfile?.phoneNumber,
+    effectiveProfile?.socialFacebook,
+    effectiveProfile?.socialInstagram,
+    effectiveProfile?.socialTwitter,
+    effectiveProfile?.socialWebsite,
   ]);
   const headerBadges = useMemo(
     () =>
       getBrandBadges({
-        brandVerified: Boolean(profile?.verified || profile?.verificationBadgeVisible),
-        storeVerified: profile?.verificationStatus === 'APPROVED',
-        isStoreOpen: profile?.isStoreOpen,
-        storeStatus: profile?.storeStatus,
-        verificationStatus: profile?.verificationStatus,
+        brandVerified: Boolean(effectiveProfile?.verified || effectiveProfile?.verificationBadgeVisible),
+        storeVerified: effectiveProfile?.verificationStatus === 'APPROVED',
+        isStoreOpen: effectiveProfile?.isStoreOpen,
+        storeStatus: effectiveProfile?.storeStatus,
+        verificationStatus: effectiveProfile?.verificationStatus,
       }),
     [
-      profile?.isStoreOpen,
-      profile?.storeStatus,
-      profile?.verificationBadgeVisible,
-      profile?.verificationStatus,
-      profile?.verified,
+      effectiveProfile?.isStoreOpen,
+      effectiveProfile?.storeStatus,
+      effectiveProfile?.verificationBadgeVisible,
+      effectiveProfile?.verificationStatus,
+      effectiveProfile?.verified,
     ],
   );
-  const showInitialSkeleton = isLoading && !profile && collections.length === 0 && drafts.length === 0;
+  const profileInitialLoading = profileQuery.isLoading && !effectiveProfile && !profileRef.current;
+  const listInitialLoading = visibilityFilter === 'Drafts'
+    ? draftsQuery.isLoading && effectiveDrafts.length === 0
+    : collectionsQuery.isLoading && effectiveCollections.length === 0;
+  const showInitialSkeleton = Boolean(
+    targetBrandId &&
+    !effectiveProfile &&
+    effectiveCollections.length === 0 &&
+    effectiveDrafts.length === 0 &&
+    (profileInitialLoading || listInitialLoading),
+  );
   const overlayScrollPadding = standardScreenBottomPadding;
 
   // Tab configuration
@@ -929,7 +952,12 @@ export default function CatalogScreen() {
       }
 
       const wasSaved = Boolean(savedCatalogById[collection.id]);
+      const savedBatchQueryKey = queryKeys.saved.batch('COLLECTION', savedCatalogIds);
       setSavedCatalogById((current) => ({ ...current, [collection.id]: !wasSaved }));
+      queryClient.setQueryData<Record<string, boolean>>(savedBatchQueryKey, (current) => ({
+        ...(current ?? {}),
+        [collection.id]: !wasSaved,
+      }));
       setSavingCatalogById((current) => ({ ...current, [collection.id]: true }));
 
       try {
@@ -952,6 +980,10 @@ export default function CatalogScreen() {
         }
       } catch {
         setSavedCatalogById((current) => ({ ...current, [collection.id]: wasSaved }));
+        queryClient.setQueryData<Record<string, boolean>>(savedBatchQueryKey, (current) => ({
+          ...(current ?? {}),
+          [collection.id]: wasSaved,
+        }));
         toast.error('Could not update saved items.');
       } finally {
         setSavingCatalogById((current) => {
@@ -961,7 +993,7 @@ export default function CatalogScreen() {
         });
       }
     },
-    [isOwner, savedCatalogById, status, targetBrandId, toast],
+    [isOwner, queryClient, savedCatalogById, savedCatalogIds, status, targetBrandId, toast],
   );
 
   const shareActionOptions = useMemo(
@@ -1050,7 +1082,7 @@ export default function CatalogScreen() {
         {/* Profile Header */}
         {isOwner ? (
           <OwnerCatalogMediaHeader
-            profile={profile}
+            profile={effectiveProfile}
             isLoading={false}
             stats={headerStats}
             contactItems={headerContactItems}
@@ -1073,12 +1105,12 @@ export default function CatalogScreen() {
           />
         ) : (
           <BrandProfileHeader
-            brandName={profile?.brandFullName || 'Your Brand'}
-            username={profile?.username || undefined}
+            brandName={effectiveProfile?.brandFullName || 'Your Brand'}
+            username={effectiveProfile?.username || undefined}
             location={profileLocation}
-            description={profile?.brandDescription ?? null}
+            description={effectiveProfile?.brandDescription ?? null}
             contactItems={headerContactItems}
-            tags={profile?.brandTags || []}
+            tags={effectiveProfile?.brandTags || []}
             stats={headerStats}
             badges={headerBadges}
             avatarUrl={visitorAvatarUri ?? visitorAvatar.src ?? undefined}
@@ -1172,12 +1204,13 @@ export default function CatalogScreen() {
             onLayout={(event) => handleTabPageLayout('Shop', event)}
             style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
           >
-            {containerWidth > 0 && targetBrandId ? (
+            {containerWidth > 0 && targetBrandId && (activeTab === 'Shop' || Boolean(routeProductId)) ? (
               <BrandShopTab
                 brandId={targetBrandId}
                 isOwner={isOwner}
                 containerWidth={containerWidth}
                 initialProductId={routeProductId ?? null}
+                enabled={activeTab === 'Shop' || Boolean(routeProductId)}
               />
             ) : (
               <View style={styles.tabContent} />
@@ -1188,8 +1221,8 @@ export default function CatalogScreen() {
             onLayout={(event) => handleTabPageLayout('Reviews', event)}
             style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
           >
-            {targetBrandId ? (
-              <BrandReviewsTab brandId={targetBrandId} />
+            {targetBrandId && activeTab === 'Reviews' ? (
+              <BrandReviewsTab brandId={targetBrandId} enabled={activeTab === 'Reviews'} />
             ) : (
               <View style={styles.tabContent} />
             )}
@@ -1213,7 +1246,7 @@ export default function CatalogScreen() {
 
       <AppQrSheet
         visible={brandQrOpen}
-        title={`${profile?.brandFullName || 'Brand'} QR code`}
+        title={`${effectiveProfile?.brandFullName || 'Brand'} QR code`}
         subtitle="Scan to open this public brand profile."
         qrValue={profileQrTargetUrl}
         displayUrl={profileShareUrl}
