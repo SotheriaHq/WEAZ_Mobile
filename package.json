@@ -18,7 +18,8 @@
     "test:notification-settings-contract": "node scripts/test-notification-settings-contract.js",
     "ci:design-system": "npm exec tsc -- --noEmit && node ../scripts/audit-mobile-design-system.js",
     "audit:theme": "node scripts/audit-theme-system.js",
-    "check:perf-regressions": "node scripts/check-perf-regressions.cjs"
+    "check:perf-regressions": "node scripts/check-perf-regressions.cjs",
+    "ci:phase8": "npm exec tsc -- --noEmit && npm run test:aspect-aware-media && npm run test:brand-profile-contract && npm run test:design-editor-contract && npm run test:store-api-contract && npm run check:perf-regressions"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
