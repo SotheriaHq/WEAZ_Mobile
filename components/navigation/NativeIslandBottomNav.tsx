@@ -221,7 +221,7 @@ export function NativeIslandBottomNav({
       }),
       Animated.timing(expandedOpacityAnim, {
         toValue: collapsed ? 0 : 1,
-        duration: collapsed ? 120 : 180,
+        duration: collapsed ? 220 : 180,
         easing,
         useNativeDriver: true,
       }),
@@ -297,16 +297,6 @@ export function NativeIslandBottomNav({
           },
         ]}
       >
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFillObject,
-            styles.navBaseFill,
-            {
-              backgroundColor: theme.colors.glassSurface,
-            },
-          ]}
-        />
         <BlurView
           tint={scheme === 'dark' ? 'dark' : 'light'}
           intensity={theme.colors.glassBlur as number}
@@ -318,7 +308,7 @@ export function NativeIslandBottomNav({
             StyleSheet.absoluteFillObject,
             styles.navGlassFill,
             {
-              backgroundColor: theme.colors.glassSurfaceStrong,
+              backgroundColor: scheme === 'dark' ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.18)',
               borderColor: theme.colors.glassBorder,
               borderRadius: NATIVE_ISLAND_NAV.radius,
             },
@@ -409,8 +399,8 @@ export function NativeIslandBottomNav({
                 accessibilityState={{ selected: Boolean(item.active && !item.disabled), disabled: item.disabled }}
                 accessibilityLabel={item.label}
                 disabled={item.disabled}
-                onPressIn={item.disabled ? undefined : () => onPressIn?.(item)}
-                onPress={item.disabled ? undefined : () => onSelect(item)}
+                onPressIn={item.disabled ? undefined : () => { onPressIn?.(item); onSelect(item); }}
+                onPress={undefined}
                 style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
               >
                 <NativeIslandTabIcon
@@ -440,10 +430,6 @@ const styles = StyleSheet.create({
   },
   navGlassFill: {
     borderWidth: StyleSheet.hairlineWidth,
-  },
-  navBaseFill: {
-    borderWidth: 0,
-    borderRadius: NATIVE_ISLAND_NAV.radius,
   },
   navBlur: {
     borderRadius: NATIVE_ISLAND_NAV.radius,
