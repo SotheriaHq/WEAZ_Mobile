@@ -47,6 +47,11 @@ import type { MarketItem } from '@/src/types/market';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
+import {
+  flushMarketSignals,
+  startMarketSignalRuntime,
+  trackMarketSignal,
+} from '@/src/services/marketSignals';
 
 const SIDE_PADDING = tokens.spacing.lg;
 const SECTION_GAP = tokens.spacing.xl;
@@ -123,6 +128,19 @@ function getItemPrice(item: MarketContentItem) {
 
 function getItemCreatedAt(item: MarketContentItem) {
   return item.kind === 'product' ? item.product.createdAt : item.design.createdAt;
+}
+
+function getMarketSignalTarget(item: MarketContentItem) {
+  if (item.kind === 'product') {
+    return {
+      targetType: 'PRODUCT' as const,
+      targetId: item.product.id,
+    };
+  }
+  return {
+    targetType: 'DESIGN' as const,
+    targetId: item.design.collectionId,
+  };
 }
 
 function getPopularity(item: MarketContentItem) {
@@ -1019,6 +1037,10 @@ export function MarketScreen() {
   const [favoriteBusyByKey, setFavoriteBusyByKey] = useState<Record<string, boolean>>({});
   const moodboardSectionSeenRef = useRef<string | null>(null);
   const moodboardSuggestionSeenRef = useRef<Set<string>>(new Set());
+  const viewedSectionKeysRef = useRef<Set<string>>(new Set());
+  const viewedItemKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => startMarketSignalRuntime(), []);
 
   const bottomClearance = standardScreenBottomPadding;
   const allItems = useMemo(() => buildContentItems(products, designs), [designs, products]);
@@ -1123,6 +1145,13 @@ export function MarketScreen() {
         sectionId: 'for-moodboard',
         itemCount: moodboardItems.length,
       });
+      trackMarketSignal({
+        targetType: 'SECTION',
+        targetId: 'for-moodboard',
+        signalType: 'MARKET_SECTION_VIEW',
+        surface: 'MARKET_HOME',
+        sectionKey: 'for-moodboard',
+      });
     }
 
     moodboardItems.forEach((item, index) => {
@@ -1136,6 +1165,16 @@ export function MarketScreen() {
         brandId: getItemBrandId(item),
         position: index,
         score: moodboardScoreByKey[item.key],
+      });
+      const target = getMarketSignalTarget(item);
+      trackMarketSignal({
+        ...target,
+        signalType: 'SUGGESTION_ITEM_VIEW',
+        surface: 'MARKET_HOME',
+        sectionKey: 'for-moodboard',
+        suggestionBlockKey: 'for-moodboard',
+        position: index,
+        metadata: { score: moodboardScoreByKey[item.key] },
       });
     });
   }, [moodboardItems, moodboardScoreByKey]);
@@ -1281,6 +1320,16 @@ export function MarketScreen() {
   }, [status, toast]);
 
   const openItem = useCallback((item: MarketContentItem) => {
+    const target = getMarketSignalTarget(item);
+    trackMarketSignal({
+      ...target,
+      signalType: 'OPEN',
+      surface: 'MARKET_HOME',
+      sectionKey: 'market-local',
+      metadata: { itemKind: item.kind },
+    });
+    void flushMarketSignals();
+
     if (item.kind === 'product') {
       router.push({ pathname: '/products/[productId]', params: { productId: item.product.id } } as any);
       return;
@@ -1299,6 +1348,14 @@ export function MarketScreen() {
   }, []);
 
   const openCollection = useCallback((collection: StoreCollectionSummary) => {
+    trackMarketSignal({
+      targetType: 'COLLECTION',
+      targetId: collection.id,
+      signalType: 'OPEN',
+      surface: 'MARKET_HOME',
+      sectionKey: 'latest-collections',
+    });
+    void flushMarketSignals();
     router.push({
       pathname: '/collection-viewer',
       params: { collectionId: collection.id, returnTo: '/(tabs)/discover' },
@@ -1416,10 +1473,24 @@ export function MarketScreen() {
   }, []);
 
   const setNewestView = useCallback(() => {
+    trackMarketSignal({
+      targetType: 'SECTION',
+      targetId: 'fresh-row',
+      signalType: 'MARKET_SECTION_VIEW_ALL_CLICK',
+      surface: 'MARKET_HOME',
+      sectionKey: 'fresh-row',
+    });
     setFilters((current) => ({ ...current, availability: 'all', sort: 'newest' }));
   }, []);
 
   const setCustomReadyView = useCallback(() => {
+    trackMarketSignal({
+      targetType: 'SECTION',
+      targetId: 'custom-ready-row',
+      signalType: 'MARKET_SECTION_VIEW_ALL_CLICK',
+      surface: 'MARKET_HOME',
+      sectionKey: 'custom-ready-row',
+    });
     setFilters((current) => ({ ...current, availability: 'custom_ready' }));
   }, []);
 
@@ -1449,6 +1520,86 @@ export function MarketScreen() {
     setCustomReadyView,
     setNewestView,
   ]);
+
+  const trackItemImpression = useCallback(
+    (item: MarketContentItem, sectionKey: string, position: number) => {
+      const target = getMarketSignalTarget(item);
+      const itemKey = `${sectionKey}:${target.targetType}:${target.targetId}:${position}`;
+      if (viewedItemKeysRef.current.has(itemKey)) return;
+      viewedItemKeysRef.current.add(itemKey);
+      if (viewedItemKeysRef.current.size > 500) {
+        viewedItemKeysRef.current.clear();
+      }
+      trackMarketSignal({
+        ...target,
+        signalType: 'IMPRESSION',
+        surface: 'MARKET_HOME',
+        sectionKey,
+        position,
+      });
+    },
+    [],
+  );
+
+  const trackSectionImpressions = useCallback(
+    (row: MarketRow) => {
+      if (row.type === 'EMPTY_STATE' || row.type === 'ERROR_STATE' || row.type === 'LOADING_MORE') {
+        return;
+      }
+
+      const sectionKey = row.id;
+      if (!viewedSectionKeysRef.current.has(sectionKey)) {
+        viewedSectionKeysRef.current.add(sectionKey);
+        trackMarketSignal({
+          targetType: 'SECTION',
+          targetId: sectionKey,
+          signalType: 'MARKET_SECTION_VIEW',
+          surface: 'MARKET_HOME',
+          sectionKey,
+        });
+      }
+
+      if (row.type === 'HERO_CAROUSEL') {
+        row.items.forEach((entry, index) => trackItemImpression(entry, sectionKey, index));
+      }
+      if (row.type === 'HORIZONTAL_CARD_ROW' || row.type === 'PRODUCT_GRID') {
+        row.items.forEach((entry, index) => trackItemImpression(entry, sectionKey, index));
+      }
+      if (row.type === 'COLLECTION_ROW') {
+        row.items.forEach((collection, index) => {
+          const itemKey = `${sectionKey}:COLLECTION:${collection.id}:${index}`;
+          if (viewedItemKeysRef.current.has(itemKey)) return;
+          viewedItemKeysRef.current.add(itemKey);
+          trackMarketSignal({
+            targetType: 'COLLECTION',
+            targetId: collection.id,
+            signalType: 'IMPRESSION',
+            surface: 'MARKET_HOME',
+            sectionKey,
+            position: index,
+          });
+        });
+      }
+      if (row.type === 'EDITORIAL_CARD' && row.item) {
+        trackItemImpression(row.item, sectionKey, 0);
+      }
+    },
+    [trackItemImpression],
+  );
+
+  const viewabilityConfigRef = useRef({
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 250,
+  });
+
+  const handleViewableRowsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: Array<{ item: MarketRow | null }> }) => {
+      viewableItems.forEach(({ item }) => {
+        if (item) trackSectionImpressions(item);
+      });
+    },
+    [trackSectionImpressions],
+  );
 
   const horizontalCardWidth = Math.min(184, Math.max(150, Math.round(width * 0.42)));
   const heroHeight = Math.min(236, Math.max(176, Math.round(height * 0.24)));
@@ -1650,6 +1801,8 @@ export function MarketScreen() {
           }
         }}
         onEndReachedThreshold={0.65}
+        viewabilityConfig={viewabilityConfigRef.current}
+        onViewableItemsChanged={handleViewableRowsChanged}
         removeClippedSubviews={false}
       />
 
