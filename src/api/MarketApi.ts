@@ -14,6 +14,128 @@ export type GetMarketFeedParams = {
   counts?: 'combined' | undefined;
 };
 
+export type MarketSectionSourceType =
+  | 'PRODUCT'
+  | 'COLLECTION'
+  | 'DESIGN'
+  | 'BRAND'
+  | 'MIXED';
+
+export type MarketSectionLayout =
+  | 'HORIZONTAL_RAIL'
+  | 'PRODUCT_GRID'
+  | 'COLLECTION_RAIL'
+  | 'CATEGORY_GRID'
+  | 'BRAND_RAIL';
+
+export type MarketSectionItem = {
+  id: string;
+  sourceId: string;
+  sourceType: MarketSectionSourceType;
+  entityType: 'PRODUCT' | 'COLLECTION' | 'DESIGN' | 'BRAND' | 'CATEGORY';
+  title: string;
+  subtitle?: string | null;
+  description?: string | null;
+  brand?: {
+    id?: string | null;
+    name?: string | null;
+    logoUrl?: string | null;
+  } | null;
+  media?: {
+    url?: string | null;
+    thumbnailUrl?: string | null;
+    type?: 'IMAGE' | 'VIDEO' | 'UNKNOWN';
+    alt?: string | null;
+  } | null;
+  price?: {
+    amount?: number | null;
+    saleAmount?: number | null;
+    effectiveAmount?: number | null;
+    currency?: string;
+  } | null;
+  priceRange?: {
+    min?: number | null;
+    max?: number | null;
+    currency?: string;
+  } | null;
+  availability?: {
+    totalStock?: number | null;
+    customOrderEnabled?: boolean;
+    standardCheckoutEnabled?: boolean;
+    isOnSale?: boolean;
+  } | null;
+  category?: {
+    id?: string | null;
+    slug?: string | null;
+    name?: string | null;
+  } | null;
+  tags?: string[];
+  stats?: {
+    views?: number | null;
+    threads?: number | null;
+    products?: number | null;
+  };
+  target?: {
+    type?: 'PRODUCT' | 'COLLECTION' | 'DESIGN' | 'BRAND' | 'CATEGORY';
+    id?: string | null;
+    key?: string | null;
+    route?: string | null;
+  };
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type MarketSection = {
+  key: string;
+  title: string;
+  subtitle?: string | null;
+  emotionalLabel?: string | null;
+  layout: MarketSectionLayout;
+  sourceType: MarketSectionSourceType;
+  items: MarketSectionItem[];
+  viewAll?: {
+    enabled: boolean;
+    key: string;
+    route: string;
+    label: string;
+  };
+  pagination?: {
+    limit: number;
+    hasNextPage: boolean;
+    nextCursor: string | null;
+  };
+  metadata?: {
+    ranking: string;
+    personalization: string;
+    minimumItems: number;
+    previewItemLimit: number;
+  };
+};
+
+export type MarketSectionsResponse = {
+  generatedAt: string;
+  sections: MarketSection[];
+  metadata?: {
+    version: string;
+    personalization: string;
+    cachePolicy: string;
+  };
+};
+
+export type MarketSectionDetailResponse = {
+  generatedAt: string;
+  section: MarketSection;
+};
+
+export type GetMarketSectionsParams = {
+  limit?: number;
+};
+
+export type GetMarketSectionDetailParams = {
+  cursor?: string | null;
+  limit?: number;
+};
+
 export type MarketFilterChip = {
   id: string;
   label: string;
@@ -555,6 +677,42 @@ export async function getMarketFeed(params?: GetMarketFeedParams, config?: Axios
     hasNextPage: Boolean((data as any).hasNextPage ?? items.length > 0),
     nextCursor: ((data as any).nextCursor as string | null | undefined) ?? null,
   };
+}
+
+export async function getMarketSections(
+  params?: GetMarketSectionsParams,
+  config?: AxiosRequestConfig,
+): Promise<MarketSectionsResponse> {
+  const response = await apiClient.get('/market/sections', {
+    ...config,
+    params: {
+      limit: params?.limit,
+      ...(config?.params ?? {}),
+    },
+  });
+  const data = unwrapData<MarketSectionsResponse>(response.data) ?? (response.data as MarketSectionsResponse);
+  return {
+    generatedAt: data.generatedAt,
+    sections: Array.isArray(data.sections) ? data.sections : [],
+    metadata: data.metadata,
+  };
+}
+
+export async function getMarketSectionDetail(
+  key: string,
+  params?: GetMarketSectionDetailParams,
+  config?: AxiosRequestConfig,
+): Promise<MarketSectionDetailResponse> {
+  const response = await apiClient.get(`/market/sections/${encodeURIComponent(key)}`, {
+    ...config,
+    params: {
+      cursor: params?.cursor ?? undefined,
+      limit: params?.limit,
+      ...(config?.params ?? {}),
+    },
+  });
+  const data = unwrapData<MarketSectionDetailResponse>(response.data) ?? (response.data as MarketSectionDetailResponse);
+  return data;
 }
 
 export async function getMarketFilterChips(): Promise<MarketFilterChip[]> {
