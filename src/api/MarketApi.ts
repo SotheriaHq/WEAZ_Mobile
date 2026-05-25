@@ -462,6 +462,10 @@ export type MarketSuppression = {
   updatedAt: string;
 };
 
+export type GetMarketSuppressionsParams = {
+  anonymousSessionId?: string;
+};
+
 export type ResetFeedPreferencesRequest = {
   resetType: 'FEED' | 'MARKET' | 'SUGGESTIONS' | 'ALL';
   reason?: string | null;
@@ -1101,6 +1105,25 @@ export async function deleteMarketSuppression(
     unwrapData<{ deleted: boolean; id: string }>(response.data) ??
     (response.data as { deleted: boolean; id: string })
   );
+}
+
+export async function getMarketSuppressions(
+  params?: GetMarketSuppressionsParams,
+  config?: AxiosRequestConfig,
+): Promise<MarketSuppression[]> {
+  const response = await apiClient.get('/market/suppressions', {
+    ...config,
+    params: {
+      anonymousSessionId: params?.anonymousSessionId,
+      ...(config?.params ?? {}),
+    },
+  });
+  const data = unwrapData<MarketSuppression[]>(response.data);
+  return Array.isArray(data)
+    ? data
+    : Array.isArray(response.data)
+      ? (response.data as MarketSuppression[])
+      : [];
 }
 
 export async function resetFeedPreferences(

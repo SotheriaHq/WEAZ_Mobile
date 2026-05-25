@@ -209,6 +209,12 @@ export default function SettingsScreen() {
             onPress: () => router.push('/size-guide' as never),
           },
           {
+            icon: 'MKT',
+            title: 'Market preferences',
+            subtitle: 'Hidden content and market reset controls',
+            onPress: () => router.push('/settings/market-preferences' as never),
+          },
+          {
             icon: '💳',
             title: 'Payment settings',
             subtitle: 'Cards, payouts, billing if available',
