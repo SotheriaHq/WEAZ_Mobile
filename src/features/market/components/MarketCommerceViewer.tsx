@@ -43,6 +43,7 @@ import { useToast } from '@/src/toast/ToastContext';
 import type { SizeRecommendationResponse } from '@/src/api/ProfileApi';
 import { CONFIDENCE_LABELS, SIZING_REGION_LABELS } from '@/src/utils/sizeRecommendation';
 import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
 
 type CommerceSourceType = Extract<BagSourceType, 'PRODUCT' | 'DESIGN'>;
 
@@ -771,6 +772,17 @@ export function MarketCommerceViewer({
               <ReviewsTab productId={normalizedSourceId} compact />
             </View>
           ) : null}
+
+          {sourceType === 'PRODUCT' ? (
+            <MobileMarketSuggestionBlocks
+              context="PRODUCT_DETAIL"
+              targetType="PRODUCT"
+              targetId={normalizedSourceId}
+              surface="PRODUCT_DETAIL"
+              screenContext="PRODUCT_DETAIL"
+              style={styles.suggestionBlocks}
+            />
+          ) : null}
         </ScrollView>
       ) : null}
     </View>
@@ -1105,6 +1117,10 @@ const styles = StyleSheet.create({
   },
   reviewSummaryWrap: {
     gap: tokens.spacing.sm,
+  },
+  suggestionBlocks: {
+    marginTop: tokens.spacing.lg,
+    paddingBottom: tokens.spacing.lg,
   },
   collapsedSheetContent: {
     flex: 1,

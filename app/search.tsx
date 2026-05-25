@@ -34,6 +34,7 @@ import {
   saveRecentSearch,
 } from '@/src/utils/searchHistory';
 import { perfMeasure } from '@/src/utils/perf';
+import MobileMarketSuggestionBlocks from '@/src/features/market/components/MobileMarketSuggestionBlocks';
 
 type FilterType = 'all' | SearchEntityType;
 
@@ -517,6 +518,16 @@ export default function SearchScreen() {
               <AppText variant="body" tone="muted">Try a different keyword, handle, or tag.</AppText>
             </View>
           </Card>
+        ) : null}
+
+        {resultState.status === 'empty' && normalizeQuery(query) ? (
+          <MobileMarketSuggestionBlocks
+            context="SEARCH_EMPTY"
+            targetType="QUERY"
+            query={normalizeQuery(query)}
+            surface="SEARCH"
+            screenContext="SEARCH_EMPTY"
+          />
         ) : null}
 
         {resultState.status === 'ready' ? (

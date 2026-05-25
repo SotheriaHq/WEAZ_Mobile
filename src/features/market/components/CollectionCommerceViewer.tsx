@@ -32,6 +32,7 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
 
 type CollectionCommerceViewerProps = {
   collectionId: string;
@@ -591,7 +592,17 @@ export function CollectionCommerceViewer({
             <AppText variant="body" tone="secondary">This collection does not have public products yet.</AppText>
           </View>
         }
-        ListFooterComponent={<View style={{ height: chrome.standardScreenBottomPadding + 120 }} />}
+        ListFooterComponent={
+          <View style={[styles.footerSuggestions, { paddingBottom: chrome.standardScreenBottomPadding + 120 }]}>
+            <MobileMarketSuggestionBlocks
+              context="COLLECTION_DETAIL"
+              targetType="COLLECTION"
+              targetId={normalizedCollectionId}
+              surface="COLLECTION_DETAIL"
+              screenContext="COLLECTION_DETAIL"
+            />
+          </View>
+        }
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       />
@@ -616,6 +627,10 @@ const styles = StyleSheet.create({
   },
   listContent: {
     gap: tokens.spacing.md,
+  },
+  footerSuggestions: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.sm,
   },
   header: {
     gap: tokens.spacing.md,
