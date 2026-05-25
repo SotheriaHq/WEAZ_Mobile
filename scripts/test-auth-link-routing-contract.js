@@ -14,6 +14,7 @@ const authLayoutPath = path.join(repoRoot, 'app', '(auth)', '_layout.tsx');
 const forgotPasswordPath = path.join(repoRoot, 'app', '(auth)', 'forgot-password.tsx');
 const loginPath = path.join(repoRoot, 'app', '(auth)', 'login.tsx');
 const signupPath = path.join(repoRoot, 'app', '(auth)', 'signup.tsx');
+const googleMarkPath = path.join(repoRoot, 'components', 'auth', 'GoogleMark.tsx');
 const googleHookPath = path.join(repoRoot, 'src', 'auth', 'useGoogleIdTokenRequest.ts');
 const appJsonPath = path.join(repoRoot, 'app.json');
 const packageJsonPath = path.join(repoRoot, 'package.json');
@@ -148,7 +149,12 @@ function main() {
   assert.match(loginSource, /loginStep === 'email'/, 'Mobile login must start in the email-first state.');
   assert.match(loginSource, /loginStep === 'password'/, 'Mobile login must render a password state.');
   assert.match(loginSource, /loginStep === 'google-only'/, 'Mobile login must render a Google-only state.');
-  assert.match(loginSource, /loginStep === 'generic'/, 'Mobile login must render a generic unknown state.');
+  assert.match(loginSource, /\| 'generic'/, 'Mobile login must keep the generic unknown-state type available.');
+  assert.match(
+    loginSource,
+    /toast\.error\('Invalid credentials'\)/,
+    'Mobile login must use generic unknown-account copy instead of exposing account existence.',
+  );
   assert.match(loginSource, /requestEmailLoginCode/, 'Mobile login must support email-code request.');
   assert.match(loginSource, /confirmEmailLoginCode/, 'Mobile login must support email-code confirmation.');
   assert.match(loginSource, /setupAccountPassword/, 'Mobile login must support first-password setup.');
@@ -161,6 +167,17 @@ function main() {
   assert.match(signupSource, /signup-google-button/, 'Mobile signup must render a Google signup action.');
   assert.match(signupSource, /signInWithGoogle\(\{\s*idToken,/s, 'Mobile signup must send Google ID token to backend auth.');
   assert.match(signupSource, /brandFullName: trimmedBrandName/, 'Mobile Google brand signup must send brand full name.');
+
+  const googleMarkSource = fs.readFileSync(googleMarkPath, 'utf8');
+  assert.match(googleMarkSource, /react-native-svg/, 'Mobile Google social mark must use an SVG component.');
+  assert.match(googleMarkSource, /fill="#1976D2"/, 'Mobile Google social mark must use brand-color SVG paths.');
+  assert.match(loginSource, /left=\{<GoogleMark \/>/, 'Mobile login Google button must render the Google SVG mark.');
+  assert.match(signupSource, /left=\{<GoogleMark \/>/, 'Mobile signup Google button must render the Google SVG mark.');
+  assert.doesNotMatch(
+    [loginSource, signupSource, googleMarkSource].join('\n'),
+    /\u{1F34E}/u,
+    'Mobile auth social buttons must not use the Apple emoji.',
+  );
 
   const googleHookSource = fs.readFileSync(googleHookPath, 'utf8');
   assert.match(googleHookSource, /expo-auth-session\/providers\/google/, 'Mobile Google auth must use Expo AuthSession Google provider.');
@@ -181,7 +198,7 @@ function main() {
     'Mobile Google auth must not treat the web Google client ID as an Android client ID.',
   );
   assert.doesNotMatch(
-    [mobileEnvExampleSource, authApiSource, loginSource, signupSource, googleHookSource].join('\n'),
+    [mobileEnvExampleSource, authApiSource, loginSource, signupSource, googleHookSource, googleMarkSource].join('\n'),
     /GOOGLE_CLIENT_SECRET|google-client-secret|client_secret/i,
     'Mobile source and env example must not contain a Google client secret.',
   );
