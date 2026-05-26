@@ -179,7 +179,7 @@ export default function MarketPreferencesScreen() {
   const confirmReset = useCallback(() => {
     Alert.alert(
       'Reset market preferences?',
-      'This resets market, feed, and suggestion learning. It does not delete your account, orders, saved items, products, collections, or hidden content list.',
+      'This records a fresh baseline for your market preferences. It does not delete your account, orders, saved items, products, collections, profile data, or hidden content list. Visible suggestions may adjust as you continue browsing and interacting.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -192,7 +192,7 @@ export default function MarketPreferencesScreen() {
               reason: 'mobile_settings_reset',
             })
               .then(() => {
-                toast.success('Market preferences reset.');
+                toast.success('Fresh market preference baseline recorded.');
               })
               .catch(() => {
                 toast.error('Could not reset market preferences.');
@@ -235,7 +235,7 @@ export default function MarketPreferencesScreen() {
           Reset market preferences
         </AppText>
         <AppText variant="captionRegular" tone="muted">
-          Creates a fresh preference marker for market, feed, and suggestion learning. Future recommendations may feel less tailored until new activity builds up.
+          Records a fresh baseline for your market preferences. It does not delete your account, orders, saved items, products, collections, profile data, or hidden content list. Visible suggestions may adjust as you continue browsing and interacting.
         </AppText>
       </View>
       <Button

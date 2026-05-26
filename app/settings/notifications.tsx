@@ -95,8 +95,8 @@ const ACTIVITY_ITEMS: ToggleConfig[] = [
   },
   {
     id: 'social.follows',
-    label: 'Follows',
-    description: 'New followers and profile interest.',
+    label: 'Profile patches',
+    description: 'When someone patches you or shows profile interest.',
     section: 'social',
     key: 'follows',
   },
@@ -109,7 +109,7 @@ const ACTIVITY_ITEMS: ToggleConfig[] = [
   },
   {
     id: 'social.patches',
-    label: 'Patches',
+    label: 'Brand patches',
     description: 'Patch requests and accepted patch activity.',
     section: 'social',
     key: 'patches',
@@ -186,7 +186,7 @@ const MESSAGING_ITEMS: ToggleConfig[] = [
   {
     id: 'messaging.reminders',
     label: 'Unread reminders',
-    description: 'Follow-up reminders for unread message threads.',
+    description: 'Reminders for unread message threads.',
     section: 'messaging',
     key: 'reminders',
   },

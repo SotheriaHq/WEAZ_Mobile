@@ -57,7 +57,7 @@ function describeNotification(item: MobileNotification) {
   const name = actorName(item);
   const excerpt = typeof item.payload?.excerpt === 'string' ? item.payload.excerpt : null;
 
-  if (type.includes('FOLLOW')) return `${name} started following you.`;
+  if (type.includes('FOLLOW')) return `${name} patched you.`;
   if (type.includes('COMMENT')) return `${name} commented on your design${excerpt ? `: "${excerpt}"` : '.'}`;
   if (type.includes('THREAD')) return `${name} threaded your design.`;
   if (type.includes('TAG_MENTION')) return `${name} mentioned you in new activity.`;
