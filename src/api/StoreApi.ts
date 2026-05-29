@@ -6,6 +6,7 @@ import type {
 } from '@/src/api/ProfileApi';
 import type { CatalogEntityType } from '@/src/features/catalog/catalogDomain';
 import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
+import { assertMobileCheckoutEnabled } from '@/src/features/checkout/mobileCheckoutGate';
 
 export type SizingRegion = ProfileSizingRegion | string;
 export type SizeRecommendationSnapshot = ProfileSizeRecommendationSnapshot;
@@ -1268,6 +1269,7 @@ export const MobileStoreApi = {
     rushSelected?: boolean;
     shippingAddress?: Record<string, unknown>;
   }): Promise<CustomPricePreview> {
+    assertMobileCheckoutEnabled();
     const response = await apiClient.post('/custom-orders/price-preview', {
       configurationId: payload.configurationId,
       measurementValues: payload.measurementValues,
@@ -1294,6 +1296,7 @@ export const MobileStoreApi = {
     customerName: string;
     noDirectMatchAcknowledged?: boolean;
   }): Promise<void> {
+    assertMobileCheckoutEnabled();
     const idempotencyKey = toIdempotencyKey();
 
     await apiClient.post(

@@ -5,6 +5,7 @@ import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
+import { getMobileCheckoutUnavailableMessage } from '@/src/features/checkout/mobileCheckoutGate';
 import { tokens } from '@/src/styles/tokens';
 
 type Props = {
@@ -55,11 +56,23 @@ export default function MyBagSheet({ visible, onClose }: Props) {
           <AppText variant="bodyBold">Total bag count</AppText>
           <AppText variant="bodyBold">{loading ? 'Loading...' : String(count.combinedCount)}</AppText>
         </View>
-        {!hasItems ? (
+        {hasItems ? (
+          <View style={styles.checkoutGate}>
+            <Button
+              title="Checkout unavailable"
+              disabled
+              fullWidth
+              testID="mobile-checkout-disabled-cta"
+            />
+            <AppText variant="caption" tone="muted">
+              {getMobileCheckoutUnavailableMessage()}
+            </AppText>
+          </View>
+        ) : (
           <AppText variant="caption" tone="muted">
-            Your bag is empty. Add a product or custom design request to start checkout.
+            Your bag is empty. Add a product or custom design request to save it for checkout.
           </AppText>
-        ) : null}
+        )}
       </View>
     </AppBottomSheet>
   );
@@ -76,6 +89,9 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.spacing.xs,
   },
   footer: {
+    gap: tokens.spacing.sm,
+  },
+  checkoutGate: {
     gap: tokens.spacing.sm,
   },
 });

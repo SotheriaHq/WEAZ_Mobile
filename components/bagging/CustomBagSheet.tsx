@@ -7,6 +7,10 @@ import { Input } from '@/components/ui/Input';
 import { ProfileApi, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { MobileStoreApi, type ProductBagStatus } from '@/src/api/StoreApi';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
+import {
+  getMobileCheckoutUnavailableMessage,
+  isMobileCheckoutEnabled,
+} from '@/src/features/checkout/mobileCheckoutGate';
 import { tokens } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
 import type { BagSourceType } from '@/src/api/StoreApi';
@@ -84,6 +88,7 @@ const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.
 export default function CustomBagSheet({ visible, product, status, onClose, onCompleted }: Props) {
   const toast = useToast();
   const { addCustomOrder, prepareBag, prepareSourceBag } = useMobileBagging();
+  const checkoutEnabled = isMobileCheckoutEnabled();
   const [values, setValues] = useState<Record<string, string>>({});
   const [customerName, setCustomerName] = useState('');
   const [email, setEmail] = useState('');
@@ -107,6 +112,21 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
     let active = true;
     setError(null);
     setManualQuoteRequired(false);
+
+    if (!checkoutEnabled) {
+      setLoadingProfile(false);
+      setValues({});
+      setCustomerName('');
+      setEmail('');
+      setPhone('');
+      setCity('');
+      setStateName('');
+      setCountry('Nigeria');
+      return () => {
+        active = false;
+      };
+    }
+
     setLoadingProfile(true);
 
     void Promise.all([ProfileApi.getMe(), ProfileApi.getSizeFit()])
@@ -138,7 +158,7 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
     return () => {
       active = false;
     };
-  }, [requiredKeys, status, visible]);
+  }, [checkoutEnabled, requiredKeys, status, visible]);
 
   const measurementValues = useMemo(
     () =>
@@ -175,12 +195,19 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
   }, [trimmedCity, trimmedCountry, trimmedCustomerName, trimmedEmail, trimmedPhone, trimmedState]);
 
   const canSubmit =
+    checkoutEnabled &&
     Boolean(product && status?.custom.configurationId) &&
     !loadingProfile &&
     !submitting &&
     (manualQuoteRequired || (missingKeys.length === 0 && missingContactFields.length === 0));
 
   const handleSubmit = async () => {
+    if (!checkoutEnabled) {
+      const message = getMobileCheckoutUnavailableMessage();
+      setError(message);
+      toast.info(message);
+      return;
+    }
     if (manualQuoteRequired) {
       onClose();
       return;
@@ -255,75 +282,89 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
     <AppBottomSheet
       visible={visible}
       title={`Custom bag for ${product?.name || 'this item'}`}
-      subtitle="Review the fitting values required for this product before adding it to your custom bag."
+      subtitle={checkoutEnabled
+        ? 'Review the fitting values required for this product before adding it to your custom bag.'
+        : 'Mobile custom checkout is paused for controlled MVP testing.'}
       onClose={onClose}
       showCloseButton
       onDone={handleSubmit}
-      doneLabel={manualQuoteRequired ? 'Close' : 'Add custom'}
+      doneLabel={checkoutEnabled ? (manualQuoteRequired ? 'Close' : 'Add custom') : 'Unavailable'}
       doneDisabled={!canSubmit}
       loading={submitting}
       scrollable
     >
       <View style={styles.group}>
-        {loadingProfile ? (
+        {!checkoutEnabled ? (
+          <AppText variant="body" tone="muted">
+            {getMobileCheckoutUnavailableMessage()}
+          </AppText>
+        ) : loadingProfile ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator size="small" />
             <AppText variant="body" tone="muted">Loading fittings...</AppText>
           </View>
         ) : null}
 
-        <View style={styles.group}>
-          <Input
-            label="Customer name"
-            value={customerName}
-            onChangeText={setCustomerName}
-            placeholder="Full name"
-            error={trimmedCustomerName.length > 0 && trimmedCustomerName.length < 3 ? 'Use at least 3 characters' : undefined}
-          />
-          <Input
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            placeholder="name@example.com"
-            error={trimmedEmail.length > 0 && !isValidEmail(trimmedEmail) ? 'Enter a valid email' : undefined}
-          />
-          <Input
-            label="Phone"
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-            placeholder="Phone number"
-            error={trimmedPhone.length > 0 && trimmedPhone.length < 6 ? 'Enter a reachable phone number' : undefined}
-          />
-          <Input label="City" value={city} onChangeText={setCity} placeholder="City" />
-          <Input label="State" value={stateName} onChangeText={setStateName} placeholder="State" />
-          <Input label="Country" value={country} onChangeText={setCountry} placeholder="Country" />
-        </View>
-
-        {requiredKeys.length > 0 ? (
-          <View style={styles.group}>
-            {requiredKeys.map((key) => (
+        {checkoutEnabled ? (
+          <>
+            <View style={styles.group}>
               <Input
-                key={key}
-                label={`${toTitleCase(key)} (cm)`}
-                value={values[key] ?? ''}
-                onChangeText={(value) => {
-                  setValues((current) => ({ ...current, [key]: value }));
-                }}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                error={missingKeys.includes(key) ? 'Required' : undefined}
+                label="Customer name"
+                value={customerName}
+                onChangeText={setCustomerName}
+                placeholder="Full name"
+                error={trimmedCustomerName.length > 0 && trimmedCustomerName.length < 3 ? 'Use at least 3 characters' : undefined}
               />
-            ))}
-          </View>
-        ) : (
-          <AppText variant="body" tone="muted">
-            This custom configuration does not require fitting measurements.
-          </AppText>
-        )}
+              <Input
+                label="Email"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                placeholder="name@example.com"
+                error={trimmedEmail.length > 0 && !isValidEmail(trimmedEmail) ? 'Enter a valid email' : undefined}
+              />
+              <Input
+                label="Phone"
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                placeholder="Phone number"
+                error={trimmedPhone.length > 0 && trimmedPhone.length < 6 ? 'Enter a reachable phone number' : undefined}
+              />
+              <Input label="City" value={city} onChangeText={setCity} placeholder="City" />
+              <Input label="State" value={stateName} onChangeText={setStateName} placeholder="State" />
+              <Input label="Country" value={country} onChangeText={setCountry} placeholder="Country" />
+            </View>
 
-        {manualQuoteRequired ? (
+            {requiredKeys.length > 0 ? (
+              <View style={styles.group}>
+                {requiredKeys.map((key) => (
+                  <Input
+                    key={key}
+                    label={`${toTitleCase(key)} (cm)`}
+                    value={values[key] ?? ''}
+                    onChangeText={(value) => {
+                      setValues((current) => ({ ...current, [key]: value }));
+                    }}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    error={missingKeys.includes(key) ? 'Required' : undefined}
+                  />
+                ))}
+              </View>
+            ) : (
+              <AppText variant="body" tone="muted">
+                This custom configuration does not require fitting measurements.
+              </AppText>
+            )}
+          </>
+        ) : null}
+
+        {!checkoutEnabled ? (
+          <AppText variant="caption" tone="muted">
+            You can keep browsing products and view existing orders in the mobile app.
+          </AppText>
+        ) : manualQuoteRequired ? (
           <AppText variant="body" tone="muted">
             This custom request needs brand review before it can be added to your bag.
           </AppText>

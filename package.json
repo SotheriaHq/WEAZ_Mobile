@@ -17,6 +17,7 @@
     "test:notification-routing-contract": "node scripts/test-notification-routing-contract.js",
     "test:notification-settings-contract": "node scripts/test-notification-settings-contract.js",
     "test:market-signal-queue-contract": "node scripts/test-market-signal-queue-contract.js",
+    "test:mobile-checkout-gate-contract": "node scripts/test-mobile-checkout-gate-contract.js",
     "ci:design-system": "npm exec tsc -- --noEmit && node ../scripts/audit-mobile-design-system.js",
     "audit:theme": "node scripts/audit-theme-system.js",
     "check:perf-regressions": "node scripts/check-perf-regressions.cjs",
