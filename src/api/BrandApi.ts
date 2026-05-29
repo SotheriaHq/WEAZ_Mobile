@@ -252,6 +252,14 @@ const categoriesCache: {
 } = { items: [], lastFetched: 0 };
 const CATEGORIES_TTL_MS = 5 * 60 * 1000;
 
+export function clearBrandApiSessionCaches() {
+  signedUrlCache.clear();
+  signedUrlPending.clear();
+  signedUrlMissingCache.clear();
+  brandProfileCache.clear();
+  brandProfilePending.clear();
+}
+
 // ─────────────────────────────────────────────────────────────
 // Helper Functions
 // ─────────────────────────────────────────────────────────────

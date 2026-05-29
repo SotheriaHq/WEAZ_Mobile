@@ -180,6 +180,12 @@ const setMissingUri = (key: string) => {
   resolvedUriMissingCache.set(key, Date.now() + MISSING_URI_TTL_MS);
 };
 
+export const clearResolvedImageUriCache = () => {
+  resolvedUriCache.clear();
+  resolvedUriMissingCache.clear();
+  pendingResolutions.clear();
+};
+
 export const resolveImageUri = async ({
   src,
   fileId,

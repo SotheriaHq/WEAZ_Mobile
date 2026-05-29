@@ -3,7 +3,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getMarketFeed, type GetMarketFeedParams } from '@/src/api/MarketApi';
 import type { FeedCacheIdentity, FeedPageResult, PersistedFeedSnapshot } from '@/src/features/feed/api/feed.dto';
 import { sanitizeFeedItems } from '@/src/features/feed/api/feed.schema';
-import { getFeedCacheMemoryKey, getPersistedFeedCacheKey } from '@/src/features/feed/utils/feedKeys';
+import {
+  getFeedCacheMemoryKey,
+  getPersistedFeedCacheKey,
+  PERSISTED_FEED_CACHE_PREFIX,
+} from '@/src/features/feed/utils/feedKeys';
 import { feedDevLog, feedDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 
 const FEED_CACHE_TTL_MS = 5 * 60_000;
@@ -120,6 +124,20 @@ export const writeCachedMarketFeed = async (
   }
 
   return snapshot;
+};
+
+export const clearCachedMarketFeed = async () => {
+  memoryCache.clear();
+
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const feedKeys = keys.filter((key) => key.startsWith(PERSISTED_FEED_CACHE_PREFIX));
+    if (feedKeys.length > 0) {
+      await AsyncStorage.multiRemove(feedKeys);
+    }
+  } catch {
+    // Feed cache cleanup must not block logout.
+  }
 };
 
 export const fetchMarketFeedPage = async (
