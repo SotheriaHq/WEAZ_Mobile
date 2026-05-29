@@ -131,6 +131,14 @@ export function resetUnreadNotificationCount() {
   setUnreadCount(0);
 }
 
+export function clearNotificationRealtimeSession() {
+  disconnectSocket();
+  activeSubscriptions = 0;
+  unreadCountRefreshPromise = null;
+  resetUnreadNotificationCount();
+  queryClient.removeQueries({ queryKey: queryKeys.notifications.unreadCount(), exact: true });
+}
+
 export async function refreshUnreadNotificationCount({
   authenticated,
   forceRefresh = false,

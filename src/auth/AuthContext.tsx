@@ -10,18 +10,19 @@ import {
 import {
   getAccessToken,
   getRefreshToken,
-  removeAccessToken,
-  removeRefreshToken,
   setAccessToken,
   setRefreshToken,
 } from '@/src/storage/secureStorage';
 import { googleAuth, type GoogleAuthParams } from '@/src/api/AuthApi';
-import { deactivateRegisteredPushTokenForLogout } from '@/src/notifications/pushTokenRegistration';
 import { queryClient, THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
 import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import {
+  ACTIVE_BRAND_STORAGE_KEY,
+  clearMobilePrivateSessionState,
+} from '@/src/auth/sessionCleanup';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -139,7 +140,6 @@ const INVISIBLE_AUTH_SPACING_REGEX =
 const CONTROL_CHAR_REGEX = /[\u0000-\u001F\u007F]/;
 
 let authBootstrapCompletionCount = 0;
-const ACTIVE_BRAND_STORAGE_KEY = 'threadly.activeBrandId';
 
 function devAuthLog(event: string, details?: Record<string, unknown>) {
   if (!isThreadlyDebugEnabled('auth')) return;
@@ -450,8 +450,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const notifyServer = options?.notifyServer ?? true;
     const refreshToken = refreshTokenState ?? (await getRefreshToken());
 
-    await deactivateRegisteredPushTokenForLogout().catch(() => undefined);
-
     if (notifyServer) {
       try {
         await apiClient.post('/auth/logout', {
@@ -470,14 +468,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSelectedActiveBrandId(null);
     selectedActiveBrandIdRef.current = null;
     setStatus('unauthenticated');
-    queryClient.removeQueries({ queryKey: queryKeys.auth.profile(), exact: true });
-    queryClient.removeQueries({ queryKey: queryKeys.notifications.unreadCount(), exact: true });
-    queryClient.removeQueries({ queryKey: queryKeys.messaging.unreadCount(), exact: true });
-    queryClient.removeQueries({ queryKey: queryKeys.store.bagCount(), exact: true });
-    queryClient.removeQueries({ queryKey: queryKeys.saved.root() });
-    await removeAccessToken();
-    await removeRefreshToken();
-    await SecureStore.deleteItemAsync(ACTIVE_BRAND_STORAGE_KEY).catch(() => {});
+    await clearMobilePrivateSessionState({ client: queryClient });
   }, [refreshTokenState]);
 
   const updateUser = useCallback((patch: Partial<AuthUser>) => {
@@ -767,6 +758,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(null);
           setRefreshTokenState(null);
           setUser(null);
+          await clearMobilePrivateSessionState({
+            client: queryClient,
+            deactivatePushToken: false,
+          });
           return;
         }
 

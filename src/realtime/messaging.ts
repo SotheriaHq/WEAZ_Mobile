@@ -242,6 +242,16 @@ export function resetUnreadMessageCount() {
   setUnreadCount(0);
 }
 
+export function clearMessagingRealtimeSession() {
+  disconnectSocket();
+  activeSubscriptions = 0;
+  unreadCountRefreshPromise = null;
+  activeMessageThreadId = null;
+  foregroundAlertKeys.clear();
+  resetUnreadMessageCount();
+  queryClient.removeQueries({ queryKey: queryKeys.messaging.unreadCount(), exact: true });
+}
+
 export async function refreshUnreadMessageCount({
   authenticated,
   forceRefresh = false,

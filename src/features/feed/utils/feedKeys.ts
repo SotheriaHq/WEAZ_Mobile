@@ -4,6 +4,8 @@ import type { FeedCacheIdentity } from '@/src/features/feed/api/feed.dto';
 const normalizePart = (value: string | null | undefined) =>
   (value && value.trim().length ? value.trim() : 'anonymous').replace(/[^a-zA-Z0-9._-]/g, '_');
 
+export const PERSISTED_FEED_CACHE_PREFIX = 'threadly.feed.';
+
 export const buildFeedCacheIdentity = ({
   tag,
   userId,
@@ -26,4 +28,4 @@ export const getFeedCacheMemoryKey = (identity: FeedCacheIdentity) =>
   ].join(':');
 
 export const getPersistedFeedCacheKey = (identity: FeedCacheIdentity) =>
-  `threadly.feed.${getFeedCacheMemoryKey(identity)}`;
+  `${PERSISTED_FEED_CACHE_PREFIX}${getFeedCacheMemoryKey(identity)}`;
