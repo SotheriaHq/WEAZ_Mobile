@@ -212,7 +212,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
 
   if (!mediaItems.length) {
     return (
-      <View style={StyleSheet.absoluteFillObject}>
+      <View style={StyleSheet.absoluteFill}>
         <FeedMediaSlide media={null} imageIndex={0} viewportWidth={width} viewportHeight={pageHeight} onPress={onContentPress} />
       </View>
     );
@@ -220,7 +220,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
 
   if (!hasMultipleItems) {
     return (
-      <View style={StyleSheet.absoluteFillObject}>
+      <View style={StyleSheet.absoluteFill}>
         <FeedMediaSlide
           media={stableMediaItems[0] ?? null}
           imageIndex={0}
@@ -233,7 +233,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   }
 
   return (
-    <View style={StyleSheet.absoluteFillObject}>
+    <View style={StyleSheet.absoluteFill}>
       <ScrollView
         ref={carouselRef}
         horizontal

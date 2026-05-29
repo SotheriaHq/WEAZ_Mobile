@@ -162,7 +162,7 @@ function OrderRow({ item }: { item: BuyerOrderSummary }) {
               containerStyle={styles.previewThumbFill}
               imageStyle={styles.previewThumbFill}
               fallback={
-                <View style={[StyleSheet.absoluteFillObject, styles.previewFallback]}>
+                <View style={[StyleSheet.absoluteFill, styles.previewFallback]}>
                   <AppText variant="subtitle">{item.kind === 'STANDARD' ? '🧵' : '✂️'}</AppText>
                 </View>
               }

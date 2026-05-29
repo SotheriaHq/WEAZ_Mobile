@@ -52,7 +52,9 @@ export function ThemeProvider({
 }) {
   const [mode, setModeState] = useState<ThemeMode>(initialMode);
   const [ready, setReady] = useState(bootstrapped);
-  const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(Appearance.getColorScheme());
+  const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(
+    Appearance.getColorScheme() ?? 'light',
+  );
 
   const setThemePreference = useCallback((next: ThemePreference) => {
     const normalized = normalizeThemePreference(next);

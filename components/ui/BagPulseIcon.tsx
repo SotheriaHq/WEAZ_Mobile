@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   ring: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   iconWrap: {
     alignItems: 'center',

@@ -113,7 +113,7 @@ async function hydrateMarketSignalState() {
                 .map(parseQueuedSignal)
                 .filter(
                   (entry): entry is QueuedMarketSignal =>
-                    Boolean(entry) && entry.queuedAt > lastClearedAt,
+                    entry != null && entry.queuedAt > lastClearedAt,
                 )
             : [];
         } catch {

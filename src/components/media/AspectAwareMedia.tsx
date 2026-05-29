@@ -207,10 +207,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   foregroundImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   backdropImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     transform: [{ scale: 1.08 }],
   },
   backdropStrong: {
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.04 }],
   },
   backdropWash: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   backdropWashSoft: {

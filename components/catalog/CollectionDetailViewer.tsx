@@ -153,7 +153,7 @@ function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null;
 
   if (!media) {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.emptySlide]}>
+      <View style={[StyleSheet.absoluteFill, styles.emptySlide]}>
         <AppText variant="display" tone="inverse">🖼️</AppText>
         <AppText variant="subtitle" tone="inverse">No views yet</AppText>
         <AppText variant="small" tone="muted" style={styles.emptySlideText}>This design does not have any media to browse.</AppText>
@@ -163,7 +163,7 @@ function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null;
 
   if (media.type === 'video') {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.videoSlide]}>
+      <View style={[StyleSheet.absoluteFill, styles.videoSlide]}>
         <AppText variant="display" tone="inverse">🎬</AppText>
         <AppText variant="subtitle" tone="inverse">Video view</AppText>
         <AppText variant="small" tone="muted" style={styles.videoCaption} numberOfLines={2}>
@@ -175,7 +175,7 @@ function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null;
 
   if (loading) {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.mediaLoadingSlide]}>
+      <View style={[StyleSheet.absoluteFill, styles.mediaLoadingSlide]}>
         <ThreadlyLogoLoader size={72} />
       </View>
     );
@@ -183,7 +183,7 @@ function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null;
 
   if (!uri) {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.brokenSlide]}>
+      <View style={[StyleSheet.absoluteFill, styles.brokenSlide]}>
         <AppText variant="display" tone="inverse">🖼️</AppText>
         <AppText variant="subtitle" tone="inverse">No image available</AppText>
         <AppText variant="small" tone="muted" style={styles.emptySlideText}>This media is unavailable right now.</AppText>
@@ -290,14 +290,14 @@ function LoopCarousel({
 
   if (!mediaItems.length) {
     return (
-      <View style={StyleSheet.absoluteFillObject} {...tapHandlers}>
+      <View style={StyleSheet.absoluteFill} {...tapHandlers}>
         <ViewerMediaSlide media={null} />
       </View>
     );
   }
 
   return (
-    <View style={StyleSheet.absoluteFillObject} {...tapHandlers}>
+    <View style={StyleSheet.absoluteFill} {...tapHandlers}>
       <ScrollView
         ref={carouselRef}
         horizontal
@@ -1127,7 +1127,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   ownerAvatarImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   ownerAvatarInitials: {
     color: '#fff',

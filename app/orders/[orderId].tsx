@@ -59,7 +59,7 @@ function DetailItemRow({ item }: { item: BuyerOrderItem }) {
           containerStyle={styles.itemThumbFill}
           imageStyle={styles.itemThumbFill}
           fallback={
-            <View style={[StyleSheet.absoluteFillObject, styles.thumbFallback]}>
+            <View style={[StyleSheet.absoluteFill, styles.thumbFallback]}>
               <AppText variant="captionBold" tone="primary">🧵</AppText>
             </View>
           }
@@ -284,7 +284,7 @@ export default function BuyerOrderDetailScreen() {
                 containerStyle={styles.heroThumbFill}
                 imageStyle={styles.heroThumbFill}
                 fallback={
-                  <View style={[StyleSheet.absoluteFillObject, styles.thumbFallback]}>
+                  <View style={[StyleSheet.absoluteFill, styles.thumbFallback]}>
                     <AppText variant="subtitle">{order.kind === 'STANDARD' ? '🧵' : '✂️'}</AppText>
                   </View>
                 }

@@ -323,7 +323,7 @@ function RailButton({ emoji, label, busy = false, onPress }: { emoji: string; la
       <BlurView
         intensity={theme.colors.glassBlur as number}
         tint={scheme === 'dark' ? 'dark' : 'light'}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
       <View style={styles.railButtonContent}>
         {busy ? <ActivityIndicator size="small" color={theme.colors.primary} /> : <AppText variant="caption">{emoji}</AppText>}
@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
     top: 0,
   },
   imageFallback: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.md,

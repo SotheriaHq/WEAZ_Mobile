@@ -175,7 +175,7 @@ export function StableImage({
 
 const styles = StyleSheet.create({
   imageLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
 });
 

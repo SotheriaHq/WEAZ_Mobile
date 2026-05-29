@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { BlurView } from 'expo-blur';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
 
 import { useAuth } from '@/src/auth/AuthContext';
@@ -2011,7 +2011,7 @@ export function MarketFeedScreen() {
         }
       }}
     >
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} translucent backgroundColor="transparent" />
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
 
       {!loading ? (
         <>
@@ -2347,7 +2347,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.95 }],
   },
   ownerAvatarImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   avatarWrap: {
     marginBottom: 8,
@@ -2362,7 +2362,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   userAvatarImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   profileMenuWrap: {
     position: 'absolute',
@@ -2397,7 +2397,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   profileMenuAvatarImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   profileMenuAvatarText: {
     fontSize: 18,

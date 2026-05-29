@@ -13,9 +13,10 @@ export function useMediaAspectRatio(
   uri?: string | null,
   initialAspectRatio?: number | null,
 ) {
+  const cachedInitialAspectRatio = uri ? aspectRatioCache.get(uri) : undefined;
   const initialValue =
     normalizeAspectRatio(initialAspectRatio) ??
-    (uri ? aspectRatioCache.get(uri) ?? null : null) ??
+    cachedInitialAspectRatio ??
     DEFAULT_ASPECT_RATIO;
 
   const [aspectRatio, setAspectRatio] = useState(initialValue);

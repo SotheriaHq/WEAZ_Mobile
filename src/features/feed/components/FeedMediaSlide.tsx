@@ -53,7 +53,7 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
 
   if (!media) {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.emptySlide, { backgroundColor: placeholderSurface }]}>
+      <View style={[StyleSheet.absoluteFill, styles.emptySlide, { backgroundColor: placeholderSurface }]}>
         <AppText variant="display">Image</AppText>
         <AppText variant="subtitle" tone="inverse">No views yet</AppText>
         <AppText variant="body" tone="secondary" style={styles.slideBody}>
@@ -65,7 +65,7 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
 
   if (media.type === 'video') {
     return (
-      <View style={[StyleSheet.absoluteFillObject, styles.videoSlide, { backgroundColor: placeholderSurface }]}>
+      <View style={[StyleSheet.absoluteFill, styles.videoSlide, { backgroundColor: placeholderSurface }]}>
         <AppText variant="display">Video</AppText>
         <AppText variant="subtitle" tone="inverse">Video view</AppText>
         <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.slideBody}>
@@ -79,7 +79,7 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={[StyleSheet.absoluteFillObject, { backgroundColor: placeholderSurface }]}
+      style={[StyleSheet.absoluteFill, { backgroundColor: placeholderSurface }]}
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={onPress ? `Show details for ${media.label || 'this design'}` : undefined}
     >
@@ -110,12 +110,12 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
 
 const styles = StyleSheet.create({
   pageImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width: undefined,
     height: undefined,
   },
   videoSlide: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,

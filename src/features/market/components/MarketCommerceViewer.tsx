@@ -790,7 +790,7 @@ export function MarketCommerceViewer({
 
   return (
     <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg }]}>
-      <StatusBar style="light" translucent backgroundColor="transparent" />
+      <StatusBar style="light" />
 
       <FlatList
         ref={mediaRef}
@@ -1137,7 +1137,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
   },
   stateOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     gap: tokens.spacing.md,

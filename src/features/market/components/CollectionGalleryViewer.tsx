@@ -193,7 +193,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
   if (loading && !status) {
     return (
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: chrome.insets.top }]}>
-        <StatusBar style={statusBarContrast(scheme)} translucent backgroundColor="transparent" />
+        <StatusBar style={statusBarContrast(scheme)} />
         <View style={styles.centerState}>
           <ActivityIndicator color={theme.colors.primary} />
           <AppText variant="bodyBold">Loading gallery</AppText>
@@ -205,7 +205,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
   if (error || !status) {
     return (
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: chrome.insets.top }]}>
-        <StatusBar style={statusBarContrast(scheme)} translucent backgroundColor="transparent" />
+        <StatusBar style={statusBarContrast(scheme)} />
         <View style={styles.centerState}>
           <AppText variant="subtitle">Gallery unavailable</AppText>
           <AppText variant="body" tone="secondary">{error ?? 'Try again later.'}</AppText>
@@ -219,7 +219,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
   if (media.length === 0) {
     return (
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: chrome.insets.top }]}>
-        <StatusBar style={statusBarContrast(scheme)} translucent backgroundColor="transparent" />
+        <StatusBar style={statusBarContrast(scheme)} />
         <View style={styles.centerState}>
           <AppText variant="subtitle">No media yet</AppText>
           <AppText variant="body" tone="secondary">This collection does not have gallery media available.</AppText>
@@ -231,7 +231,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
 
   return (
     <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg }]}>
-      <StatusBar style="light" translucent backgroundColor="transparent" />
+      <StatusBar style="light" />
       <FlatList
         ref={listRef}
         data={media}

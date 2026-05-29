@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   glowOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'transparent',
     borderRadius: 16,
   },

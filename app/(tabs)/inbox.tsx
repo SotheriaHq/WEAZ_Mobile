@@ -9,7 +9,7 @@ import {
   View,
   type ListRenderItemInfo,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 

@@ -475,7 +475,7 @@ export function CollectionCommerceViewer({
   if (loading && !status) {
     return (
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: chrome.insets.top }]}>
-        <StatusBar style={statusBarContrast(scheme)} translucent backgroundColor="transparent" />
+        <StatusBar style={statusBarContrast(scheme)} />
         <View style={styles.centerState}>
           <ActivityIndicator color={theme.colors.primary} />
           <AppText variant="bodyBold">Loading collection</AppText>
@@ -487,7 +487,7 @@ export function CollectionCommerceViewer({
   if (error || !status) {
     return (
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: chrome.insets.top }]}>
-        <StatusBar style={statusBarContrast(scheme)} translucent backgroundColor="transparent" />
+        <StatusBar style={statusBarContrast(scheme)} />
         <View style={styles.centerState}>
           <AppText variant="subtitle">Collection unavailable</AppText>
           <AppText variant="body" tone="secondary">{error ?? 'Try again later.'}</AppText>
@@ -502,7 +502,7 @@ export function CollectionCommerceViewer({
 
   return (
     <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: chrome.insets.top }]}>
-      <StatusBar style={statusBarContrast(scheme)} translucent backgroundColor="transparent" />
+      <StatusBar style={statusBarContrast(scheme)} />
       <FlatList
         data={status.products}
         keyExtractor={(item) => item.productId}

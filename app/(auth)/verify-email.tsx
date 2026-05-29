@@ -186,13 +186,13 @@ export default function VerifyEmailScreen() {
         colors={bgGradient}
         start={{ x: 0.2, y: 0 }}
         end={{ x: 0.8, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
       <LinearGradient
         colors={accentGradient}
         start={{ x: 1, y: 0 }}
         end={{ x: 0, y: 0.6 }}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
 
       <KeyboardAwareScrollView
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   formPanelBorder: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 28,
     borderWidth: 1,
   },

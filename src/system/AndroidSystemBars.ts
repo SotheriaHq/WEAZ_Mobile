@@ -1,5 +1,5 @@
 import * as NavigationBar from 'expo-navigation-bar';
-import { requireNativeModule } from 'expo-modules-core';
+import { requireNativeModule } from 'expo';
 import { AppState, Appearance, Platform, processColor } from 'react-native';
 import { useEffect } from 'react';
 
@@ -60,10 +60,6 @@ export async function applyAndroidSystemBarsPolicy(scheme: ResolvedTheme, reason
     {
       name: 'visibility',
       run: () => NavigationBar.setVisibilityAsync('visible'),
-    },
-    {
-      name: 'button-style',
-      run: () => NavigationBar.setButtonStyleAsync(buttonStyle),
     },
   ];
 

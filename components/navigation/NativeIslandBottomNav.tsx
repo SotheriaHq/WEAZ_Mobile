@@ -280,7 +280,7 @@ export function NativeIslandBottomNav({
   }
 
   return (
-    <View pointerEvents="box-none" style={StyleSheet.absoluteFillObject}>
+    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       <Animated.View
         style={[
           styles.navWrap,
@@ -300,12 +300,12 @@ export function NativeIslandBottomNav({
         <BlurView
           tint={scheme === 'dark' ? 'dark' : 'light'}
           intensity={theme.colors.glassBlur as number}
-          style={[StyleSheet.absoluteFillObject, styles.navBlur]}
+          style={[StyleSheet.absoluteFill, styles.navBlur]}
         />
         <View
           pointerEvents="none"
           style={[
-            StyleSheet.absoluteFillObject,
+            StyleSheet.absoluteFill,
             styles.navGlassFill,
             {
               backgroundColor: scheme === 'dark' ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.18)',
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   navModeLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

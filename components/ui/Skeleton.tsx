@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   postOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'space-between',
     padding: 16,
     paddingBottom: 80,

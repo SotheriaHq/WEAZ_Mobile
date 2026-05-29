@@ -890,9 +890,11 @@ export const normalizeLegacyMarketFeedItem = (raw: RawMarketItem): MarketItem | 
     username: ((owner as any).username as string) ?? ((raw as any).username as string) ?? null,
     brandLogo: ((owner as any).profileImage as string) ?? ((raw as any).brandLogo as string) ?? null,
     brandLogoFileId:
-      ((owner as any).profileImageId as string) ??
-      ((((owner as any).profileImageFile as Record<string, unknown> | undefined)?.id as string | undefined) ?? undefined) ??
-      (((raw as any).brandLogoFileId as string | undefined) ?? undefined) ??
+      ((owner as any).profileImageId as string | null | undefined) ??
+      (((owner as any).profileImageFile as Record<string, unknown> | undefined)?.id as
+        | string
+        | undefined) ??
+      ((raw as any).brandLogoFileId as string | null | undefined) ??
       null,
     minPrice: asNumber((collection as any).minPrice) ?? asNumber((raw as any).minPrice),
     maxPrice: asNumber((collection as any).maxPrice) ?? asNumber((raw as any).maxPrice),

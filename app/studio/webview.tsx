@@ -152,7 +152,7 @@ function StudioHeaderActions({
           containerStyle={styles.headerAvatarFill}
           imageStyle={styles.headerAvatarFill}
           fallback={
-            <View style={[StyleSheet.absoluteFillObject, styles.avatarInitialsBg, { backgroundColor: theme.colors.primarySoft }]}>
+            <View style={[StyleSheet.absoluteFill, styles.avatarInitialsBg, { backgroundColor: theme.colors.primarySoft }]}>
               <AppText variant="captionBold" tone="primary">{initials}</AppText>
             </View>
           }
@@ -273,7 +273,7 @@ function StudioProfileMenu({
                   containerStyle={styles.menuAvatarFill}
                   imageStyle={styles.menuAvatarFill}
                   fallback={
-                    <View style={[StyleSheet.absoluteFillObject, styles.avatarInitialsBg]}>
+                    <View style={[StyleSheet.absoluteFill, styles.avatarInitialsBg]}>
                       <AppText variant="subtitle" tone="primary">{initials}</AppText>
                     </View>
                   }
@@ -847,7 +847,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.xl,
@@ -860,7 +860,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
   },
   menuBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.16)',
   },
   menuWrap: {
@@ -920,7 +920,7 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     padding: tokens.spacing.xl,

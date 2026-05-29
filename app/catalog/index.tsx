@@ -23,7 +23,7 @@ import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { useSharedValue } from 'react-native-reanimated';
 import { useQueryClient } from '@tanstack/react-query';
 

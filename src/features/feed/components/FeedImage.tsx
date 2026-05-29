@@ -75,8 +75,8 @@ function FeedImagePlaceholder({ backgroundColor }: { backgroundColor: string }) 
   }, [shimmer]);
 
   return (
-    <View style={[StyleSheet.absoluteFillObject, { backgroundColor }]}>
-      <Animated.View style={[StyleSheet.absoluteFillObject, { opacity: shimmer, backgroundColor }]} />
+    <View style={[StyleSheet.absoluteFill, { backgroundColor }]}>
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: shimmer, backgroundColor }]} />
     </View>
   );
 }
@@ -232,7 +232,7 @@ export const FeedImage = React.memo(function FeedImage({
             imageWidth={resolvedImageWidth}
             imageHeight={resolvedImageHeight}
             imageAspectRatio={measuredAspectRatio}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
             strategyOverride={strategyOverride}
             recyclingKey={`${id}:${staleUri}:stale`}
             accessibilityLabel={label ?? 'Feed image'}
@@ -258,7 +258,7 @@ export const FeedImage = React.memo(function FeedImage({
         imageWidth={resolvedImageWidth}
         imageHeight={resolvedImageHeight}
         imageAspectRatio={measuredAspectRatio}
-        style={[StyleSheet.absoluteFillObject, { opacity: loadState === 'loaded' ? 1 : 0 }]}
+        style={[StyleSheet.absoluteFill, { opacity: loadState === 'loaded' ? 1 : 0 }]}
         strategyOverride={strategyOverride}
         recyclingKey={`${id}:${visibleUri}`}
         accessibilityLabel={label ?? 'Feed image'}
@@ -291,7 +291,7 @@ export const FeedImage = React.memo(function FeedImage({
 
 const styles = StyleSheet.create({
   root: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'hidden',
   },
   fallback: {

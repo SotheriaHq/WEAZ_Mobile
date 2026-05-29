@@ -174,7 +174,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
         intensity={theme.colors.glassBlur as number}
         style={[styles.copyOverlay, { maxHeight: Math.round(cardHeight * 0.2) }]}
       >
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.backdropStrong }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdropStrong }]} />
         <View style={styles.copyStack}>
           <View style={styles.titleBlock}>
             <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
@@ -235,13 +235,13 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.985 }],
   },
   media: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   mediaShade: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   fallback: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     gap: tokens.spacing.xs,

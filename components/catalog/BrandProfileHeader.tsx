@@ -222,7 +222,7 @@ function BannerHeader({
           <BlurView
             intensity={18}
             tint={scheme === 'dark' ? 'dark' : 'light'}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
           />
           <View style={[styles.loadingPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
             <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -305,13 +305,13 @@ function BannerHeader({
         <BlurView
           intensity={Math.max(14, Math.round(theme.colors.glassBlur * 0.5))}
           tint={scheme === 'dark' ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
         <View
           pointerEvents="none"
           style={[
-            StyleSheet.absoluteFillObject,
+            StyleSheet.absoluteFill,
             { backgroundColor: scheme === 'dark' ? 'rgba(0,0,0,0.14)' : 'rgba(8,10,18,0.08)' },
           ]}
         />
@@ -408,7 +408,7 @@ function OverlayAvatar({
           <BlurView
             intensity={16}
             tint="dark"
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
           />
           <ActivityIndicator size="small" color={theme.colors.primary} />
         </View>
@@ -940,10 +940,10 @@ const styles = StyleSheet.create({
     opacity: 0.56,
   },
   bannerShade: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   bannerLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1108,7 +1108,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarLoading: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: tokens.radius.xl - 4,
     alignItems: 'center',
     justifyContent: 'center',

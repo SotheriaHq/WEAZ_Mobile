@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   loaderOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

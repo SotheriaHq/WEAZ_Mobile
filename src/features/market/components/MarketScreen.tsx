@@ -654,7 +654,7 @@ function BlazingChip({
         style={StyleSheet.absoluteFill}
       />
       <BlurView tint="dark" intensity={22} style={styles.blazingCopy}>
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.backdrop }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdrop }]} />
         <AppText variant="captionBold" tone="inverse" numberOfLines={1}>{trend.label}</AppText>
         <AppText variant="caption" tone="inverse" numberOfLines={1}>
           {trend.count} live picks
@@ -732,7 +732,7 @@ function CollectionCard({
         </AppText>
       </View>
       <BlurView tint="dark" intensity={24} style={styles.collectionCopy}>
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.backdrop }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdrop }]} />
         <AppText variant="bodyBold" tone="inverse" numberOfLines={2}>
           {collection.title}
         </AppText>
@@ -1777,7 +1777,7 @@ export function MarketScreen() {
   if (loading && allItems.length === 0) {
     return (
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
-        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} translucent backgroundColor="transparent" />
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <MarketSkeleton bottomPadding={bottomClearance} />
       </SafeAreaView>
     );
@@ -1785,7 +1785,7 @@ export function MarketScreen() {
 
   return (
     <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} translucent backgroundColor="transparent" />
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <FlatList
         data={rowData}
         keyExtractor={(item) => item.id}
@@ -1896,7 +1896,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   heroImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   heroTopRow: {
     position: 'absolute',
@@ -1959,7 +1959,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   blazingFullImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   blazingCopy: {
     position: 'absolute',
@@ -1982,7 +1982,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   collectionImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   collectionCountPill: {
     position: 'absolute',
@@ -2037,7 +2037,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   editorialImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   editorialTag: {
     position: 'absolute',

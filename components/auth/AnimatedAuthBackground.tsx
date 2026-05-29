@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   orbContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'hidden',
   },
   orb: {

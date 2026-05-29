@@ -278,8 +278,8 @@ export default function CollectionCommentsSheet({
       presentationStyle="overFullScreen"
       onRequestClose={onClose}
     >
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
-        <Animated.View style={[StyleSheet.absoluteFillObject, { opacity }]}>
+      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>
           <Pressable style={styles.scrim} onPress={onClose} />
         </Animated.View>
 

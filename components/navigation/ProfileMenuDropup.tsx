@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   Animated,
   Easing,
@@ -307,7 +307,7 @@ export function ProfileMenuDropup({
                 style={({ pressed }) => [styles.item, pressed && styles.pressed]}
               >
                 <View style={styles.iconSlot}>
-                  <AppText variant="captionBold">🔔</AppText>
+                  <AppText variant="captionBold">??</AppText>
                 </View>
                 <View style={styles.textWrap}>
                   <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
@@ -324,7 +324,7 @@ export function ProfileMenuDropup({
                   style={({ pressed }) => [styles.item, pressed && styles.pressed]}
                 >
                   <View style={styles.iconSlot}>
-                    <AppText variant="captionBold">🧵</AppText>
+                    <AppText variant="captionBold">??</AppText>
                   </View>
                   <View style={styles.textWrap}>
                     <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
@@ -341,7 +341,7 @@ export function ProfileMenuDropup({
                 style={({ pressed }) => [styles.item, pressed && styles.pressed]}
               >
                 <View style={styles.iconSlot}>
-                  <AppText variant="captionBold">⚙️</AppText>
+                  <AppText variant="captionBold">??</AppText>
                 </View>
                 <View style={styles.textWrap}>
                   <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
@@ -357,7 +357,7 @@ export function ProfileMenuDropup({
                 style={({ pressed }) => [styles.item, styles.signOutItem, pressed && styles.pressed]}
               >
                 <View style={styles.iconSlot}>
-                  <AppText variant="captionBold">🚪</AppText>
+                  <AppText variant="captionBold">??</AppText>
                 </View>
                 <View style={styles.textWrap}>
                   <AppText variant="bodyBold" tone="danger" numberOfLines={1} ellipsizeMode="tail">
@@ -374,7 +374,7 @@ export function ProfileMenuDropup({
 
 const styles = StyleSheet.create({
   overlayRoot: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 250,
     elevation: 250,
   },
