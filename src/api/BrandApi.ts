@@ -6,6 +6,10 @@
 import { apiClient } from './httpClient';
 import type { CatalogEntityType } from '@/src/features/catalog/catalogDomain';
 import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
+import {
+  MOBILE_UPLOAD_POLICIES,
+  assertValidPickedUploadAsset,
+} from '@/src/utils/uploadValidation';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -1228,6 +1232,10 @@ export const brandApi = {
     try {
       const formData = new FormData();
       const fileName = uri.split('/').pop() ?? 'avatar.jpg';
+      assertValidPickedUploadAsset(
+        { uri, fileName, mimeType },
+        MOBILE_UPLOAD_POLICIES.profileImage,
+      );
       
       formData.append('file', {
         uri,
@@ -1253,6 +1261,10 @@ export const brandApi = {
     try {
       const formData = new FormData();
       const fileName = uri.split('/').pop() ?? 'banner.jpg';
+      assertValidPickedUploadAsset(
+        { uri, fileName, mimeType },
+        MOBILE_UPLOAD_POLICIES.bannerImage,
+      );
       
       formData.append('file', {
         uri,

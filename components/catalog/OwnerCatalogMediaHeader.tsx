@@ -9,6 +9,11 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useToast } from '@/src/toast/ToastContext';
 import { resolveBannerImageSource, resolveProfileImageSource } from '@/src/utils/profileImage';
+import {
+  MOBILE_UPLOAD_POLICIES,
+  getMobileUploadValidationMessage,
+  assertValidPickedUploadAsset,
+} from '@/src/utils/uploadValidation';
 
 type OwnerCatalogMediaHeaderProps = {
   profile: BrandProfileDto | null;
@@ -134,6 +139,21 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       }
 
       const asset = result.assets[0];
+      try {
+        assertValidPickedUploadAsset(
+          {
+            uri: asset.uri,
+            fileName: asset.fileName,
+            mimeType: asset.mimeType ?? 'image/jpeg',
+            fileSize: asset.fileSize,
+          },
+          MOBILE_UPLOAD_POLICIES.profileImage,
+        );
+      } catch (validationError) {
+        toast.error(getMobileUploadValidationMessage(validationError));
+        return;
+      }
+
       setPendingAvatar({ src: asset.uri, fileId: null });
       setAvatarLoading(true);
 
@@ -178,6 +198,21 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       }
 
       const asset = result.assets[0];
+      try {
+        assertValidPickedUploadAsset(
+          {
+            uri: asset.uri,
+            fileName: asset.fileName,
+            mimeType: asset.mimeType ?? 'image/jpeg',
+            fileSize: asset.fileSize,
+          },
+          MOBILE_UPLOAD_POLICIES.bannerImage,
+        );
+      } catch (validationError) {
+        toast.error(getMobileUploadValidationMessage(validationError));
+        return;
+      }
+
       setPendingBanner({ src: asset.uri, fileId: null });
       setBannerLoading(true);
 

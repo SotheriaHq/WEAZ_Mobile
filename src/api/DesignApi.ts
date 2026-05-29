@@ -1,5 +1,9 @@
 import { apiClient } from '@/src/api/httpClient';
 import { DESIGN_EDITOR_MAX_MEDIA } from '@/src/features/design-editor/designCreationRules';
+import {
+  MOBILE_UPLOAD_POLICIES,
+  assertValidPickedUploadAssets,
+} from '@/src/utils/uploadValidation';
 
 export type MobileDesignAsset = {
   id: string;
@@ -934,6 +938,10 @@ export async function saveDesignEditor(
   const existingMediaIds = filteredAssets
     .map((asset) => asset.existingMediaId)
     .filter((asset): asset is string => Boolean(asset));
+  assertValidPickedUploadAssets(localAssets, MOBILE_UPLOAD_POLICIES.designMedia, {
+    existingCount: existingMediaIds.length,
+    maxFiles: DESIGN_EDITOR_MAX_MEDIA,
+  });
 
   if (!payload.designId) {
     onProgress?.(0.1, 'Creating design draft...');
