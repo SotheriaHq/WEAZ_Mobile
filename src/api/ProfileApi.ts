@@ -363,13 +363,13 @@ export const ProfileApi = {
     return normalizeProfile(res.data);
   },
 
-  async updateProfile(userId: string, payload: {
+  async updateProfile(payload: {
     firstName: string;
     lastName: string;
     username: string;
     address?: string;
   }): Promise<UserProfile | null> {
-    const res = await apiClient.patch(`/auth/update-profile/${userId}`, payload);
+    const res = await apiClient.patch('/users/me/profile', payload);
     return normalizeProfile(res.data);
   },
 
@@ -387,7 +387,7 @@ export const ProfileApi = {
   },
 
   async getOrders(params?: { limit?: number; page?: number }): Promise<Order[]> {
-    const res = await apiClient.get('/order/my-orders', {
+    const res = await apiClient.get('/store/orders', {
       params: { limit: params?.limit ?? 20, page: params?.page ?? 1 },
     });
     return normalizeOrders(res.data);

@@ -517,7 +517,7 @@ export default function BuyerProfileScreen() {
         { section: 'size-fit', endpoint: '/users/me/size-fit', result: sizeFitResult },
         { section: 'saved', endpoint: '/saved/me', result: savedResult },
         { section: 'patches', endpoint: `/users/${user.id}/patches`, result: patchesResult },
-        { section: 'orders', endpoint: '/order/my-orders', result: ordersResult },
+        { section: 'orders', endpoint: '/store/orders', result: ordersResult },
       ].filter((entry) => entry.result.status === 'rejected');
 
       optionalFailures.forEach((entry) => {
@@ -680,7 +680,7 @@ export default function BuyerProfileScreen() {
     if (!profileRecord || savingProfile) return;
     setSavingProfile(true);
     try {
-      const updated = await ProfileApi.updateProfile(profileRecord.id, {
+      const updated = await ProfileApi.updateProfile({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         username: profileRecord.username,

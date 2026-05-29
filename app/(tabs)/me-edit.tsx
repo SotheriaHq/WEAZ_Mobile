@@ -145,7 +145,7 @@ export default function MeEditScreen() {
 
       setSaveState('saving');
       try {
-        const updated = await ProfileApi.updateProfile(profile.id, {
+        const updated = await ProfileApi.updateProfile({
           firstName: resolvedFirstName,
           lastName: resolvedLastName,
           username: profile.username,
