@@ -26,12 +26,14 @@ function assertBefore(source, first, second, label) {
   );
 }
 
-function assertGuardBeforePostInFunction(source, functionName, postNeedle, label) {
+function assertGuardBeforePostInFunction(source, functionName, postPattern, label) {
   const functionIndex = source.indexOf(functionName);
-  const postIndex = source.indexOf(postNeedle, functionIndex);
+  const functionSource = functionIndex >= 0 ? source.slice(functionIndex) : '';
+  const postMatchIndex = functionSource.search(postPattern);
+  const postIndex = postMatchIndex >= 0 ? functionIndex + postMatchIndex : -1;
   const guardIndex = source.indexOf('assertMobileCheckoutEnabled();', functionIndex);
   assert(functionIndex >= 0, `${label} is missing ${functionName}`);
-  assert(postIndex >= 0, `${label} is missing ${postNeedle}`);
+  assert(postIndex >= 0, `${label} is missing ${postPattern}`);
   assert(guardIndex >= 0, `${label} is missing checkout guard`);
   assert(
     guardIndex < postIndex,
@@ -85,13 +87,13 @@ assertIncludes(storeApi, 'assertMobileCheckoutEnabled', 'Store API checkout guar
 assertGuardBeforePostInFunction(
   storeApi,
   'async previewCustomPrice',
-  "apiClient.post('/custom-orders/price-preview'",
+  /apiClient\.post\(\s*['"]\/custom-orders\/price-preview['"]/,
   'custom price preview API',
 );
 assertGuardBeforePostInFunction(
   storeApi,
   'async addCustomOrderToBag',
-  "apiClient.post(\n      '/custom-orders'",
+  /apiClient\.post\(\s*['"]\/custom-orders['"]/,
   'custom order checkout API',
 );
 
