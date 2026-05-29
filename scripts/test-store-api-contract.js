@@ -2,7 +2,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const ts = require('typescript');
+
+const { compile, createScriptRequire } = require('./helpers/mobile-script-require');
 
 const repoRoot = path.resolve(__dirname, '..');
 const storeApiPath = path.join(repoRoot, 'src', 'api', 'StoreApi.ts');
@@ -13,35 +14,26 @@ const tabLayoutPath = path.join(repoRoot, 'app', '(tabs)', '_layout.tsx');
 const nativeIslandConfigPath = path.join(repoRoot, 'src', 'navigation', 'nativeIslandConfig.ts');
 
 function loadStoreApiWithMock(mockApiClient) {
-  const source = fs.readFileSync(storeApiPath, 'utf8');
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2020,
-      esModuleInterop: true,
-    },
-    fileName: storeApiPath,
-  }).outputText;
-
   const module = { exports: {} };
+  const scriptRequire = createScriptRequire({
+    repoRoot,
+    mocks: {
+      '@/src/api/httpClient': { apiClient: mockApiClient },
+      '@/src/features/catalog/catalogEntity': {
+        resolveCatalogEntityType: (item) => item?.entityType ?? 'PRODUCT',
+      },
+    },
+  });
   const sandbox = {
     module,
     exports: module.exports,
-    require: (request) => {
-      if (request === '@/src/api/httpClient') {
-        return { apiClient: mockApiClient };
-      }
-      if (request === '@/src/features/catalog/catalogEntity') {
-        return { resolveCatalogEntityType: (item) => item?.entityType ?? 'PRODUCT' };
-      }
-      return require(request);
-    },
+    require: (request) => scriptRequire(request, storeApiPath),
     URL,
     Intl,
     console,
   };
 
-  vm.runInNewContext(compiled, sandbox, { filename: storeApiPath });
+  vm.runInNewContext(compile(storeApiPath), sandbox, { filename: storeApiPath });
   return module.exports;
 }
 

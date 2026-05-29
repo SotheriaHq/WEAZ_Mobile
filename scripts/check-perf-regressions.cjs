@@ -83,6 +83,23 @@ assertIncludes('src/features/feed/media/mediaUrlResolver.ts', 'allowSignedFallba
 assertIncludes('src/features/feed/media/mediaCache.ts', 'isUsableImageHttpUrl', 'feed prefetch must require stable direct public URLs');
 assertIncludes('src/features/feed/components/FeedMediaCarousel.tsx', 'allowSignedFallback: false', 'feed carousel prefetch must not sign public media');
 assertIncludes('src/features/feed/components/MarketFeedScreen.tsx', 'lastSavedCheckKeyRef', 'feed saved status checks must dedupe stable item ID sets');
+assertIncludes('src/features/market/components/MarketScreen.tsx', 'MARKET_SEARCH_DEBOUNCE_MS', 'market search must debounce API-backed query changes');
+assertIncludes('src/features/market/components/MarketScreen.tsx', 'marketSnapshotCache', 'market screen must preserve recent data on navigation return');
+assertIncludes('src/features/market/components/MarketScreen.tsx', 'marketRequestInFlight', 'market screen must dedupe identical API batches');
+assertIncludes('src/features/market/components/MarketScreen.tsx', 'loadedMorePageKeysRef', 'market pagination must not refetch the same cursor page');
+assertIncludes('src/features/market/components/MarketScreen.tsx', "loadMarket('reset', { forceRefresh: true })", 'market explicit refresh must still bypass cache');
+assertNotMatches(
+  'src/features/market/components/MarketScreen.tsx',
+  /\[filters\.category,\s*filters\.maxPrice,\s*filters\.minPrice,\s*filters\.sort,\s*search\]/,
+  'market reset effect must not refetch on every raw search keystroke',
+);
+assertIncludes('app/search.tsx', 'SEARCH_SCREEN_DEBOUNCE_MS', 'search screen must debounce API-backed query changes');
+assertIncludes('app/search.tsx', 'activeSearchRequestKeyRef', 'search screen must dedupe duplicate in-flight searches');
+assertNotMatches(
+  'app/search.tsx',
+  /setFilterType\(option\.key\);[\s\S]{0,160}void runSearch\(query,\s*option\.key/,
+  'search filter changes must not fire immediate duplicate searches beside the debounced effect',
+);
 assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_FEED', 'feed diagnostics must be opt-in');
 assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_MEDIA', 'media diagnostics must be opt-in');
 assertIncludes('src/features/feed/utils/feedDiagnostics.ts', 'EXPO_PUBLIC_DEBUG_SCROLL', 'gesture scroll diagnostics must be opt-in');

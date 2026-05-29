@@ -2,7 +2,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const ts = require('typescript');
+
+const { compile, createScriptRequire } = require('./helpers/mobile-script-require');
 
 const repoRoot = path.resolve(__dirname, '..');
 const designApiPath = path.join(repoRoot, 'src', 'api', 'DesignApi.ts');
@@ -12,32 +13,23 @@ const composerPath = path.join(repoRoot, 'app', 'catalog', 'create-design', 'com
 const productRoutePath = path.join(repoRoot, 'app', 'products', '[productId].tsx');
 const marketCommerceViewerPath = path.join(repoRoot, 'src', 'features', 'market', 'components', 'MarketCommerceViewer.tsx');
 
-function compile(filePath) {
-  return ts.transpileModule(fs.readFileSync(filePath, 'utf8'), {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2020,
-      esModuleInterop: true,
-      jsx: ts.JsxEmit.React,
-    },
-    fileName: filePath,
-  }).outputText;
-}
-
 function loadDesignApi() {
   const module = { exports: {} };
+  const scriptRequire = createScriptRequire({
+    repoRoot,
+    mocks: {
+      '@/src/api/httpClient': {
+        apiClient: { get: async () => ({}), post: async () => ({}), patch: async () => ({}) },
+      },
+      '@/src/features/design-editor/designCreationRules': {
+        DESIGN_EDITOR_MAX_MEDIA: 6,
+      },
+    },
+  });
   const sandbox = {
     module,
     exports: module.exports,
-    require: (request) => {
-      if (request === '@/src/api/httpClient') {
-        return { apiClient: { get: async () => ({}), post: async () => ({}), patch: async () => ({}) } };
-      }
-      if (request === '@/src/features/design-editor/designCreationRules') {
-        return { DESIGN_EDITOR_MAX_MEDIA: 6 };
-      }
-      return require(request);
-    },
+    require: (request) => scriptRequire(request, designApiPath),
     FormData: global.FormData ?? function FormData() {},
     fetch: global.fetch ?? (async () => ({ ok: true })),
     console,

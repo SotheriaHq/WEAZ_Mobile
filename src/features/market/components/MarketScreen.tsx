@@ -23,7 +23,13 @@ import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
-import { MobileStoreApi, type StoreCollectionSummary, type StoreProduct } from '@/src/api/StoreApi';
+import {
+  MobileStoreApi,
+  type MarketplaceProductsResponse,
+  type StoreCollectionSummary,
+  type StoreCollectionsResponse,
+  type StoreProduct,
+} from '@/src/api/StoreApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
 import { getMarketFeed } from '@/src/api/MarketApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
@@ -43,7 +49,7 @@ import type { MarketContentItem, MarketFilters } from '@/src/features/market/typ
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
-import type { MarketItem } from '@/src/types/market';
+import type { MarketFeedResponse, MarketItem } from '@/src/types/market';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
@@ -58,6 +64,9 @@ const SECTION_GAP = tokens.spacing.xl;
 const CARD_GAP = tokens.spacing.md;
 const HERO_INTERVAL_MS = 3000;
 const PREFERRED_CATEGORIES = ['Ankara Fashion', 'Lacewear', 'Ready to Wear', 'Custom', 'Bridal'];
+const MARKET_SEARCH_DEBOUNCE_MS = 350;
+const MARKET_HOME_CACHE_TTL_MS = 3 * 60 * 1000;
+const MARKET_HOME_CACHE_MAX_ENTRIES = 12;
 
 type MarketRow =
   | { id: 'hero'; type: 'HERO_CAROUSEL'; items: MarketContentItem[] }
@@ -95,6 +104,27 @@ type BlazingTrend = {
 
 type ProductMarketItem = Extract<MarketContentItem, { entityType: 'PRODUCT' }>;
 type DesignMarketItem = Extract<MarketContentItem, { entityType: 'DESIGN' }>;
+
+type MarketSnapshot = {
+  products: StoreProduct[];
+  designs: MarketItem[];
+  collections: StoreCollectionSummary[];
+  productCursor: string | null;
+  designCursor: string | null;
+  productHasNext: boolean;
+  designHasNext: boolean;
+  collectionError: string | null;
+  cachedAt: number;
+};
+
+type MarketSettledResults = {
+  productResult: PromiseSettledResult<MarketplaceProductsResponse | null>;
+  designResult: PromiseSettledResult<MarketFeedResponse | null>;
+  collectionResult: PromiseSettledResult<StoreCollectionsResponse | null>;
+};
+
+const marketSnapshotCache = new Map<string, MarketSnapshot>();
+const marketRequestInFlight = new Map<string, Promise<MarketSettledResults>>();
 
 const toErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to load market right now.';
 
@@ -150,6 +180,115 @@ function getPopularity(item: MarketContentItem) {
 
 function normalizeSearch(value: string) {
   return value.trim().toLowerCase();
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delayMs);
+
+    return () => clearTimeout(timeout);
+  }, [delayMs, value]);
+
+  return debouncedValue;
+}
+
+function buildMarketQueryKey(filters: MarketFilters, searchValue: string) {
+  const minPrice = parsePriceFilter(filters.minPrice);
+  const maxPrice = parsePriceFilter(filters.maxPrice);
+  return JSON.stringify({
+    category: filters.category ?? null,
+    minPrice,
+    maxPrice,
+    sort: filters.sort,
+    search: normalizeSearch(searchValue),
+  });
+}
+
+function trimMarketSnapshotCache() {
+  while (marketSnapshotCache.size > MARKET_HOME_CACHE_MAX_ENTRIES) {
+    const oldestKey = marketSnapshotCache.keys().next().value;
+    if (!oldestKey) return;
+    marketSnapshotCache.delete(oldestKey);
+  }
+}
+
+function readMarketSnapshot(queryKey: string) {
+  const snapshot = marketSnapshotCache.get(queryKey);
+  if (!snapshot) return null;
+  return {
+    snapshot,
+    isFresh: Date.now() - snapshot.cachedAt < MARKET_HOME_CACHE_TTL_MS,
+  };
+}
+
+function writeMarketSnapshot(queryKey: string, snapshot: Omit<MarketSnapshot, 'cachedAt'>) {
+  marketSnapshotCache.set(queryKey, {
+    ...snapshot,
+    cachedAt: Date.now(),
+  });
+  trimMarketSnapshotCache();
+}
+
+function fetchMarketBatch(params: {
+  requestKey: string;
+  filters: MarketFilters;
+  search: string;
+  productCursor: string | null;
+  designCursor: string | null;
+  includeCollections: boolean;
+  includeProducts: boolean;
+  includeDesigns: boolean;
+}) {
+  const existing = marketRequestInFlight.get(params.requestKey);
+  if (existing) return existing;
+
+  const minPrice = parsePriceFilter(params.filters.minPrice);
+  const maxPrice = parsePriceFilter(params.filters.maxPrice);
+  const productRequest = params.includeProducts
+    ? MobileStoreApi.getMarketplaceProducts({
+        cursor: params.productCursor,
+        limit: 36,
+        category: params.filters.category,
+        minPrice,
+        maxPrice,
+        sortBy: params.filters.sort === 'popular' ? 'popular' : params.filters.sort,
+        search: params.search.trim() || null,
+      })
+    : Promise.resolve(null);
+  const designRequest = params.includeDesigns
+    ? getMarketFeed({
+        cursor: params.designCursor,
+        limit: 18,
+        tag: params.filters.category,
+        counts: 'combined',
+      })
+    : Promise.resolve(null);
+  const collectionRequest = params.includeCollections
+    ? MobileStoreApi.getStoreCollections({ limit: 12 })
+    : Promise.resolve(null);
+
+  const request = Promise.allSettled([
+    productRequest,
+    designRequest,
+    collectionRequest,
+  ]).then(([productResult, designResult, collectionResult]) => ({
+    productResult,
+    designResult,
+    collectionResult,
+  }));
+
+  marketRequestInFlight.set(params.requestKey, request);
+  void request.finally(() => {
+    if (marketRequestInFlight.get(params.requestKey) === request) {
+      marketRequestInFlight.delete(params.requestKey);
+    }
+  });
+
+  return request;
 }
 
 function buildContentItems(products: StoreProduct[], designs: MarketItem[]): MarketContentItem[] {
@@ -1017,24 +1156,40 @@ export function MarketScreen() {
   const { insets, standardScreenBottomPadding } = useScreenChrome();
   const { width, height } = useWindowDimensions();
   const { bagProduct, bagSource } = useMobileBagging();
-  const [products, setProducts] = useState<StoreProduct[]>([]);
-  const [designs, setDesigns] = useState<MarketItem[]>([]);
-  const [collections, setCollections] = useState<StoreCollectionSummary[]>([]);
-  const [productCursor, setProductCursor] = useState<string | null>(null);
-  const [designCursor, setDesignCursor] = useState<string | null>(null);
-  const [productHasNext, setProductHasNext] = useState(false);
-  const [designHasNext, setDesignHasNext] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const initialMarketSnapshotRef = useRef<MarketSnapshot | null>(
+    readMarketSnapshot(buildMarketQueryKey(DEFAULT_MARKET_FILTERS, ''))?.snapshot ?? null,
+  );
+  const [products, setProducts] = useState<StoreProduct[]>(() => initialMarketSnapshotRef.current?.products ?? []);
+  const [designs, setDesigns] = useState<MarketItem[]>(() => initialMarketSnapshotRef.current?.designs ?? []);
+  const [collections, setCollections] = useState<StoreCollectionSummary[]>(
+    () => initialMarketSnapshotRef.current?.collections ?? [],
+  );
+  const [productCursor, setProductCursor] = useState<string | null>(
+    () => initialMarketSnapshotRef.current?.productCursor ?? null,
+  );
+  const [designCursor, setDesignCursor] = useState<string | null>(
+    () => initialMarketSnapshotRef.current?.designCursor ?? null,
+  );
+  const [productHasNext, setProductHasNext] = useState(() => initialMarketSnapshotRef.current?.productHasNext ?? false);
+  const [designHasNext, setDesignHasNext] = useState(() => initialMarketSnapshotRef.current?.designHasNext ?? false);
+  const [loading, setLoading] = useState(() => !initialMarketSnapshotRef.current);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [collectionError, setCollectionError] = useState<string | null>(null);
+  const [collectionError, setCollectionError] = useState<string | null>(
+    () => initialMarketSnapshotRef.current?.collectionError ?? null,
+  );
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, MARKET_SEARCH_DEBOUNCE_MS);
   const [filters, setFilters] = useState<MarketFilters>(DEFAULT_MARKET_FILTERS);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [favoriteByKey, setFavoriteByKey] = useState<Record<string, boolean>>({});
   const [busyByKey, setBusyByKey] = useState<Record<string, boolean>>({});
   const [favoriteBusyByKey, setFavoriteBusyByKey] = useState<Record<string, boolean>>({});
+  const loadedMorePageKeysRef = useRef<Set<string>>(new Set());
+  const lastResetQueryKeyRef = useRef<string | null>(null);
+  const resetInFlightKeyRef = useRef<string | null>(null);
+  const moreInFlightKeyRef = useRef<string | null>(null);
   const moodboardSectionSeenRef = useRef<string | null>(null);
   const moodboardSuggestionSeenRef = useRef<Set<string>>(new Set());
   const viewedSectionKeysRef = useRef<Set<string>>(new Set());
@@ -1044,6 +1199,21 @@ export function MarketScreen() {
 
   const bottomClearance = standardScreenBottomPadding;
   const allItems = useMemo(() => buildContentItems(products, designs), [designs, products]);
+  const marketQueryKey = useMemo(
+    () => buildMarketQueryKey(filters, debouncedSearch),
+    [debouncedSearch, filters.category, filters.maxPrice, filters.minPrice, filters.sort],
+  );
+
+  const applyMarketSnapshot = useCallback((snapshot: MarketSnapshot) => {
+    setProducts(snapshot.products);
+    setDesigns(snapshot.designs);
+    setCollections(snapshot.collections);
+    setProductCursor(snapshot.productCursor);
+    setDesignCursor(snapshot.designCursor);
+    setProductHasNext(snapshot.productHasNext);
+    setDesignHasNext(snapshot.designHasNext);
+    setCollectionError(snapshot.collectionError);
+  }, []);
 
   const categoryOptions = useMemo(() => {
     const values = new Set<string>();
@@ -1180,85 +1350,174 @@ export function MarketScreen() {
   }, [moodboardItems, moodboardScoreByKey]);
 
   const loadMarket = useCallback(
-    async (mode: 'reset' | 'more') => {
+    async (mode: 'reset' | 'more', options?: { forceRefresh?: boolean }) => {
       if (mode === 'reset') {
+        const cached = options?.forceRefresh ? null : readMarketSnapshot(marketQueryKey);
+        if (cached) {
+          applyMarketSnapshot(cached.snapshot);
+          setError(null);
+          setLoading(false);
+          setCollectionError(cached.snapshot.collectionError);
+          if (cached.isFresh) {
+            lastResetQueryKeyRef.current = marketQueryKey;
+            return;
+          }
+        } else if (!options?.forceRefresh && lastResetQueryKeyRef.current === marketQueryKey && allItems.length > 0) {
+          return;
+        }
+
+        if (!options?.forceRefresh && resetInFlightKeyRef.current === marketQueryKey) {
+          return;
+        }
+
+        resetInFlightKeyRef.current = marketQueryKey;
+        loadedMorePageKeysRef.current.clear();
         setError(null);
         setCollectionError(null);
-        setLoading(true);
+        setLoading(!cached && allItems.length === 0);
       } else {
-        if (loadingMore || (!productHasNext && !designHasNext)) return;
+        const canFetchProducts = productHasNext && Boolean(productCursor);
+        const canFetchDesigns = designHasNext && Boolean(designCursor);
+        if (loadingMore || (!canFetchProducts && !canFetchDesigns)) return;
+        const pageKey = `${marketQueryKey}:p=${productCursor ?? ''}:d=${designCursor ?? ''}`;
+        if (moreInFlightKeyRef.current === pageKey || loadedMorePageKeysRef.current.has(pageKey)) return;
+        moreInFlightKeyRef.current = pageKey;
         setLoadingMore(true);
       }
 
       try {
-        const minPrice = parsePriceFilter(filters.minPrice);
-        const maxPrice = parsePriceFilter(filters.maxPrice);
-        const productRequest = MobileStoreApi.getMarketplaceProducts({
-          cursor: mode === 'more' ? productCursor : null,
-          limit: 36,
-          category: filters.category,
-          minPrice,
-          maxPrice,
-          sortBy: filters.sort === 'popular' ? 'popular' : filters.sort,
-          search: search.trim() || null,
+        const canFetchProducts = mode === 'reset' || (productHasNext && Boolean(productCursor));
+        const canFetchDesigns = mode === 'reset' || (designHasNext && Boolean(designCursor));
+        const pageKey =
+          mode === 'reset'
+            ? `${marketQueryKey}:reset`
+            : `${marketQueryKey}:p=${productCursor ?? ''}:d=${designCursor ?? ''}`;
+        const { productResult, designResult, collectionResult } = await fetchMarketBatch({
+          requestKey: pageKey,
+          filters,
+          search: debouncedSearch,
+          productCursor: mode === 'more' ? productCursor : null,
+          designCursor: mode === 'more' ? designCursor : null,
+          includeCollections: mode === 'reset',
+          includeProducts: canFetchProducts,
+          includeDesigns: canFetchDesigns,
         });
-        const designRequest = getMarketFeed({
-          cursor: mode === 'more' ? designCursor : null,
-          limit: 18,
-          tag: filters.category,
-          counts: 'combined',
-        });
-        const collectionRequest = mode === 'reset'
-          ? MobileStoreApi.getStoreCollections({ limit: 12 })
-          : Promise.resolve(null);
-
-        const [productResult, designResult, collectionResult] = await Promise.allSettled([
-          productRequest,
-          designRequest,
-          collectionRequest,
-        ]);
-        const productOk = productResult.status === 'fulfilled';
-        const designOk = designResult.status === 'fulfilled';
+        const productValue = productResult.status === 'fulfilled' ? productResult.value : null;
+        const designValue = designResult.status === 'fulfilled' ? designResult.value : null;
+        const collectionValue = collectionResult.status === 'fulfilled' ? collectionResult.value : null;
+        const productOk = productValue !== null;
+        const designOk = designValue !== null;
         const collectionOk = collectionResult.status === 'fulfilled';
 
         if (!productOk && !designOk) {
-          setError(toErrorMessage(productResult.reason ?? designResult.reason));
+          const failureReason =
+            productResult.status === 'rejected'
+              ? productResult.reason
+              : designResult.status === 'rejected'
+                ? designResult.reason
+                : null;
+          setError(toErrorMessage(failureReason));
         }
 
-        if (productOk) {
-          setProductCursor(productResult.value.nextCursor);
-          setProductHasNext(productResult.value.hasNextPage);
-          setProducts((current) => {
-            if (mode === 'reset') return productResult.value.items;
-            const seen = new Set(current.map((item) => item.id));
-            return [...current, ...productResult.value.items.filter((item) => !seen.has(item.id))];
-          });
+        let nextProducts: StoreProduct[] | null = null;
+        let nextDesigns: MarketItem[] | null = null;
+        let nextCollections: StoreCollectionSummary[] | null = null;
+        let nextProductCursor: string | null = null;
+        let nextDesignCursor: string | null = null;
+        let nextProductHasNext = false;
+        let nextDesignHasNext = false;
+        let nextCollectionError: string | null = null;
+
+        if (productValue) {
+          nextProductCursor = productValue.nextCursor;
+          nextProductHasNext = productValue.hasNextPage;
+          if (mode === 'reset') {
+            nextProducts = productValue.items;
+            setProducts(nextProducts);
+          } else {
+            setProducts((current) => {
+              const seen = new Set(current.map((item) => item.id));
+              const merged = [...current, ...productValue.items.filter((item) => !seen.has(item.id))];
+              nextProducts = merged;
+              return merged;
+            });
+          }
+          setProductCursor(nextProductCursor);
+          setProductHasNext(nextProductHasNext);
+        } else if (mode === 'reset') {
+          setProducts([]);
+          setProductCursor(null);
+          setProductHasNext(false);
+          nextProducts = [];
         }
 
-        if (designOk) {
-          setDesignCursor(designResult.value.nextCursor ?? null);
-          setDesignHasNext(Boolean(designResult.value.hasNextPage));
-          setDesigns((current) => {
-            if (mode === 'reset') return designResult.value.items;
-            const seen = new Set(current.map((item) => item.collectionId));
-            return [...current, ...designResult.value.items.filter((item) => !seen.has(item.collectionId))];
-          });
+        if (designValue) {
+          nextDesignCursor = designValue.nextCursor ?? null;
+          nextDesignHasNext = Boolean(designValue.hasNextPage);
+          if (mode === 'reset') {
+            nextDesigns = designValue.items;
+            setDesigns(nextDesigns);
+          } else {
+            setDesigns((current) => {
+              const seen = new Set(current.map((item) => item.collectionId));
+              const merged = [...current, ...designValue.items.filter((item) => !seen.has(item.collectionId))];
+              nextDesigns = merged;
+              return merged;
+            });
+          }
+          setDesignCursor(nextDesignCursor);
+          setDesignHasNext(nextDesignHasNext);
+        } else if (mode === 'reset') {
+          setDesigns([]);
+          setDesignCursor(null);
+          setDesignHasNext(false);
+          nextDesigns = [];
         }
 
         if (mode === 'reset') {
-          if (collectionOk && collectionResult.value) {
-            setCollections(collectionResult.value.items);
+          if (collectionOk && collectionValue) {
+            nextCollections = collectionValue.items;
+            setCollections(nextCollections);
             setCollectionError(null);
-          } else if (!collectionOk) {
-            setCollectionError(toErrorMessage(collectionResult.reason));
+          } else if (collectionResult.status === 'rejected') {
+            nextCollectionError = toErrorMessage(collectionResult.reason);
+            setCollectionError(nextCollectionError);
+            setCollections([]);
+            nextCollections = [];
           }
+
+          if (productValue || designValue) {
+            writeMarketSnapshot(marketQueryKey, {
+              products: nextProducts ?? [],
+              designs: nextDesigns ?? [],
+              collections: nextCollections ?? [],
+              productCursor: nextProductCursor,
+              designCursor: nextDesignCursor,
+              productHasNext: nextProductHasNext,
+              designHasNext: nextDesignHasNext,
+              collectionError: nextCollectionError,
+            });
+            lastResetQueryKeyRef.current = marketQueryKey;
+          }
+        } else {
+          loadedMorePageKeysRef.current.add(pageKey);
         }
       } finally {
-        if (mode === 'reset') setLoading(false);
-        else setLoadingMore(false);
+        if (mode === 'reset') {
+          if (resetInFlightKeyRef.current === marketQueryKey) {
+            resetInFlightKeyRef.current = null;
+          }
+          setLoading(false);
+        } else {
+          moreInFlightKeyRef.current = null;
+          setLoadingMore(false);
+        }
       }
     },
     [
+      allItems.length,
+      applyMarketSnapshot,
+      debouncedSearch,
       designCursor,
       designHasNext,
       filters.category,
@@ -1266,16 +1525,16 @@ export function MarketScreen() {
       filters.minPrice,
       filters.sort,
       loadingMore,
+      marketQueryKey,
       productCursor,
       productHasNext,
-      search,
     ],
   );
 
   useEffect(() => {
     void loadMarket('reset');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.category, filters.maxPrice, filters.minPrice, filters.sort, search]);
+  }, [marketQueryKey]);
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
@@ -1308,7 +1567,7 @@ export function MarketScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadMarket('reset');
+    await loadMarket('reset', { forceRefresh: true });
     setRefreshing(false);
   }, [loadMarket]);
 
@@ -1645,7 +1904,7 @@ export function MarketScreen() {
               error={item.error}
               cardWidth={horizontalCardWidth}
               onOpen={openCollection}
-              onRetry={() => void loadMarket('reset')}
+              onRetry={() => void loadMarket('reset', { forceRefresh: true })}
             />
           );
         case 'PRODUCT_GRID':
@@ -1671,10 +1930,10 @@ export function MarketScreen() {
             </View>
           );
         case 'ERROR_STATE':
-          return <MarketErrorState message={item.message} onRetry={() => void loadMarket('reset')} />;
+          return <MarketErrorState message={item.message} onRetry={() => void loadMarket('reset', { forceRefresh: true })} />;
         case 'EMPTY_STATE':
         default:
-          return <MarketEmptyState onClear={clearFilters} onRetry={() => void loadMarket('reset')} />;
+          return <MarketEmptyState onClear={clearFilters} onRetry={() => void loadMarket('reset', { forceRefresh: true })} />;
       }
     },
     [

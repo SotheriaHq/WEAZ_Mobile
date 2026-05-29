@@ -2,7 +2,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const ts = require('typescript');
+
+const { compile, createScriptRequire } = require('./helpers/mobile-script-require');
 
 const repoRoot = path.resolve(__dirname, '..');
 const brandApiPath = path.join(repoRoot, 'src', 'api', 'BrandApi.ts');
@@ -12,39 +13,27 @@ const badgePath = path.join(repoRoot, 'components', 'catalog', 'ProfileBadge.tsx
 const appBadgePath = path.join(repoRoot, 'components', 'ui', 'AppBadge.tsx');
 const brandHeaderPath = path.join(repoRoot, 'components', 'catalog', 'BrandProfileHeader.tsx');
 
-function compile(filePath) {
-  return ts.transpileModule(fs.readFileSync(filePath, 'utf8'), {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2020,
-      esModuleInterop: true,
-      jsx: ts.JsxEmit.React,
-    },
-    fileName: filePath,
-  }).outputText;
-}
-
 function loadBrandApiWithMock(mockApiClient) {
   const module = { exports: {} };
+  const scriptRequire = createScriptRequire({
+    repoRoot,
+    mocks: {
+      './httpClient': { apiClient: mockApiClient },
+      '@/src/api/httpClient': { apiClient: mockApiClient },
+      '@/src/features/catalog/catalogEntity': {
+        resolveCatalogEntityType: (value, fallback = null) => {
+          if (value && typeof value === 'object' && typeof value.entityType === 'string') {
+            return value.entityType;
+          }
+          return fallback;
+        },
+      },
+    },
+  });
   const sandbox = {
     module,
     exports: module.exports,
-    require: (request) => {
-      if (request === './httpClient' || request === '@/src/api/httpClient') {
-        return { apiClient: mockApiClient };
-      }
-      if (request === '@/src/features/catalog/catalogEntity') {
-        return {
-          resolveCatalogEntityType: (value, fallback = null) => {
-            if (value && typeof value === 'object' && typeof value.entityType === 'string') {
-              return value.entityType;
-            }
-            return fallback;
-          },
-        };
-      }
-      return require(request);
-    },
+    require: (request) => scriptRequire(request, brandApiPath),
     console,
   };
 
@@ -57,7 +46,7 @@ function loadFormatCount() {
   const sandbox = {
     module,
     exports: module.exports,
-    require,
+    require: createScriptRequire({ repoRoot }),
   };
 
   vm.runInNewContext(compile(formatCountPath), sandbox, { filename: formatCountPath });

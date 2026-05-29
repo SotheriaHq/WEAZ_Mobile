@@ -14,6 +14,7 @@ import {
   resolveMediaStrategy,
   type AspectAwareMediaStrategy,
 } from './aspectAwareMediaStrategy';
+import { tokens } from '@/src/styles/tokens';
 
 type AspectAwareMediaSource = string | { uri?: string | null } | null | undefined;
 
@@ -42,7 +43,9 @@ type MeasuredSize = {
   height: number;
 };
 
-const SOLID_DARK_SURFACE = '#0A0A0F';
+const SOLID_DARK_SURFACE = tokens.themes.dark.colors.surface;
+const BACKDROP_WASH_STRONG = tokens.themes.dark.colors.backdrop;
+const BACKDROP_WASH_SOFT = tokens.themes.dark.colors.glassSurfaceSoft;
 
 const isPositiveFinite = (value: number | null | undefined): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
@@ -222,9 +225,9 @@ const styles = StyleSheet.create({
   },
   backdropWash: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: BACKDROP_WASH_STRONG,
   },
   backdropWashSoft: {
-    backgroundColor: 'rgba(0,0,0,0.22)',
+    backgroundColor: BACKDROP_WASH_SOFT,
   },
 });

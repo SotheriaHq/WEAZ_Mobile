@@ -49,7 +49,7 @@ export function ThreadlySheet({
     >
       <View style={styles.modalRoot} accessibilityViewIsModal>
         <Pressable
-          style={[StyleSheet.absoluteFill, styles.backdrop]}
+          style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdropStrong }]}
           onPress={onClose}
           accessibilityRole="button"
           accessibilityLabel="Close sheet"
@@ -132,9 +132,6 @@ const styles = StyleSheet.create({
   modalRoot: {
     flex: 1,
     justifyContent: 'flex-end',
-  },
-  backdrop: {
-    backgroundColor: 'rgba(0,0,0,0.42)',
   },
   sheet: {
     maxHeight: '82%',

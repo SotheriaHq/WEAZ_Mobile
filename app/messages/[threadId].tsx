@@ -367,7 +367,7 @@ const MessageBubble = memo(function MessageBubble({
           <View style={[
             styles.quotedMessage,
             mine
-              ? { borderLeftColor: 'rgba(255,255,255,0.45)', backgroundColor: 'rgba(255,255,255,0.1)' }
+              ? { borderLeftColor: theme.colors.onPrimary, backgroundColor: theme.colors.primaryActive }
               : { borderLeftColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
           ]}>
             <AppText variant="captionBold" tone={mine ? 'inverse' : 'primary'} numberOfLines={1}>
@@ -410,8 +410,8 @@ const MessageBubble = memo(function MessageBubble({
               <AppText
                 variant="captionRegular"
                 style={item.deliveryStatus === 'READ'
-                  ? { color: '#93c5fd', fontWeight: '700' }
-                  : { color: 'rgba(255,255,255,0.55)' }}
+                  ? { color: theme.colors.primarySoft, fontWeight: '700' }
+                  : { color: theme.colors.onPrimary }}
               >
                 {item.deliveryStatus === 'READ' ? '✓✓' : item.deliveryStatus === 'DELIVERED' ? '✓✓' : '✓'}
               </AppText>

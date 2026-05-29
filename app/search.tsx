@@ -53,6 +53,7 @@ const FILTER_OPTIONS: Array<{ key: FilterType; label: string }> = [
   { key: 'product', label: 'Products' },
   { key: 'tag', label: 'Tags' },
 ];
+const SEARCH_SCREEN_DEBOUNCE_MS = 350;
 
 function getErrorMessage(error: unknown) {
   const message =
@@ -223,6 +224,7 @@ export default function SearchScreen() {
   const [resultState, setResultState] = useState<ResultState>({ status: 'idle' });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
+  const activeSearchRequestKeyRef = useRef<string | null>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
 
@@ -285,9 +287,13 @@ export default function SearchScreen() {
         return;
       }
 
+      const requestKey = `${normalized}::${nextType}`;
+      if (activeSearchRequestKeyRef.current === requestKey) return;
+
       searchAbortRef.current?.abort();
       const controller = new AbortController();
       searchAbortRef.current = controller;
+      activeSearchRequestKeyRef.current = requestKey;
 
       setResultState({ status: 'loading' });
       try {
@@ -314,6 +320,9 @@ export default function SearchScreen() {
         if (error instanceof Error && error.name === 'AbortError') return;
         setResultState({ status: 'error', message: getErrorMessage(error) });
       } finally {
+        if (activeSearchRequestKeyRef.current === requestKey) {
+          activeSearchRequestKeyRef.current = null;
+        }
         if (searchAbortRef.current === controller) {
           searchAbortRef.current = null;
         }
@@ -369,7 +378,7 @@ export default function SearchScreen() {
           searchAbortRef.current?.abort();
           setResultState({ status: 'idle' });
         }
-      }, 180);
+      }, SEARCH_SCREEN_DEBOUNCE_MS);
     });
 
     return () => {
@@ -470,9 +479,6 @@ export default function SearchScreen() {
                 key={option.key}
                 onPress={() => {
                   setFilterType(option.key);
-                  if (normalizeQuery(query)) {
-                    void runSearch(query, option.key, { saveToRecent: false });
-                  }
                 }}
                 style={[
                   styles.filterPill,
