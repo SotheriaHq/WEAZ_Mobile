@@ -17,6 +17,7 @@ import {
 import { queryKeys } from '@/src/query/queryKeys';
 import { clearMessagingRealtimeSession } from '@/src/realtime/messaging';
 import { clearNotificationRealtimeSession } from '@/src/realtime/notifications';
+import { clearMobileMarketSignalQueue } from '@/src/services/marketSignals';
 import { removeAccessToken, removeRefreshToken } from '@/src/storage/secureStorage';
 
 export const ACTIVE_BRAND_STORAGE_KEY = 'threadly.activeBrandId';
@@ -92,6 +93,7 @@ export async function clearMobilePrivateSessionState({
     SecureStore.deleteItemAsync(env.userStorageKey),
     purgeMobilePersistedQueryCache(),
     clearCachedMarketFeed(),
+    clearMobileMarketSignalQueue(),
     clearMobilePrivateAsyncStorage(),
   ]);
 }

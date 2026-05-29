@@ -38,6 +38,7 @@ function loadSessionCleanup(options = {}) {
     clearImageUri: 0,
     clearMessagingRealtime: 0,
     clearNotificationRealtime: 0,
+    clearMarketSignalQueue: 0,
     deactivatePushToken: 0,
     asyncStorageGetAllKeys: 0,
     asyncStorageMultiRemove: [],
@@ -142,6 +143,9 @@ function loadSessionCleanup(options = {}) {
       if (request === '@/src/realtime/notifications') {
         return { clearNotificationRealtimeSession: () => calls.clearNotificationRealtime++ };
       }
+      if (request === '@/src/services/marketSignals') {
+        return { clearMobileMarketSignalQueue: async () => calls.clearMarketSignalQueue++ };
+      }
       if (request === '@/src/storage/secureStorage') {
         return {
           removeAccessToken: async () => calls.removeAccessToken++,
@@ -182,6 +186,7 @@ async function main() {
   assert.equal(calls.clearImageUri, 1, 'logout should clear resolved image URI cache');
   assert.equal(calls.clearMessagingRealtime, 1, 'logout should disconnect messaging realtime');
   assert.equal(calls.clearNotificationRealtime, 1, 'logout should disconnect notification realtime');
+  assert.equal(calls.clearMarketSignalQueue, 1, 'logout should clear persisted market signal queue');
   assert.equal(calls.asyncStorageGetAllKeys, 1);
   assert.deepEqual(calls.asyncStorageMultiRemove[0], [
     'THREADLY_QUERY_CACHE_V1',
