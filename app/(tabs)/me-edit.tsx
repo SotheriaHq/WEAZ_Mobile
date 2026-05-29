@@ -11,6 +11,11 @@ import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
+import {
+  MOBILE_UPLOAD_POLICIES,
+  getMobileUploadValidationMessage,
+  assertValidPickedUploadAsset,
+} from '@/src/utils/uploadValidation';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { AppText } from '@/components/ui/AppText';
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -236,6 +241,21 @@ export default function MeEditScreen() {
     }
 
     const asset = result.assets[0];
+    try {
+      assertValidPickedUploadAsset(
+        {
+          uri: asset.uri,
+          fileName: asset.fileName,
+          mimeType: asset.mimeType ?? 'image/jpeg',
+          fileSize: asset.fileSize,
+        },
+        MOBILE_UPLOAD_POLICIES.profileImage,
+      );
+    } catch (validationError) {
+      toast.error(getMobileUploadValidationMessage(validationError));
+      return;
+    }
+
     const formData = new FormData();
     formData.append('file', {
       uri: asset.uri,

@@ -23,6 +23,11 @@ import { resolveIdentity } from '@/src/utils/identity';
 import { profileDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
+import {
+  MOBILE_UPLOAD_POLICIES,
+  getMobileUploadValidationMessage,
+  assertValidPickedUploadAsset,
+} from '@/src/utils/uploadValidation';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 
@@ -618,6 +623,21 @@ export default function BuyerProfileScreen() {
     if (result.canceled || !result.assets?.[0]) return;
 
     const asset = result.assets[0];
+    try {
+      assertValidPickedUploadAsset(
+        {
+          uri: asset.uri,
+          fileName: asset.fileName,
+          mimeType: asset.mimeType ?? 'image/jpeg',
+          fileSize: asset.fileSize,
+        },
+        MOBILE_UPLOAD_POLICIES.profileImage,
+      );
+    } catch (validationError) {
+      toast.error(getMobileUploadValidationMessage(validationError));
+      return;
+    }
+
     const formData = new FormData();
     formData.append('file', {
       uri: asset.uri,

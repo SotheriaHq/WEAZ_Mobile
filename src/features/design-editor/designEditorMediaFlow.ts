@@ -1,6 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
 
 import type { DesignEditorAsset } from '@/src/api/DesignApi';
+import {
+  MOBILE_UPLOAD_POLICIES,
+  validatePickedUploadAssets,
+} from '@/src/utils/uploadValidation';
 import { DESIGN_EDITOR_MAX_MEDIA } from './designCreationRules';
 
 export { DESIGN_EDITOR_MAX_MEDIA };
@@ -112,6 +116,20 @@ export async function pickDesignEditorMediaAssets({
 
   if (result.canceled || !result.assets?.length) {
     return { status: 'cancelled' };
+  }
+
+  const validationErrors = validatePickedUploadAssets(
+    result.assets.map((asset) => ({
+      uri: asset.uri,
+      fileName: asset.fileName,
+      mimeType: asset.mimeType ?? (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
+      fileSize: asset.fileSize,
+    })),
+    MOBILE_UPLOAD_POLICIES.designMedia,
+    { existingCount, maxFiles: maxMedia },
+  );
+  if (validationErrors.length > 0) {
+    return { status: 'limit', message: validationErrors[0] };
   }
 
   return {

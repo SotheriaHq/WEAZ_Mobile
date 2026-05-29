@@ -24,6 +24,10 @@ import type {
   ThreadOrderItem,
   UploadedMessageAttachment,
 } from '@/src/types/messaging';
+import {
+  MOBILE_UPLOAD_POLICIES,
+  assertValidPickedUploadAsset,
+} from '@/src/utils/uploadValidation';
 
 export type ListConversationsParams = {
   cursorLastMessageAt?: string | null;
@@ -543,6 +547,12 @@ export const MessagingApi = {
   },
 
   async uploadMessageAttachment(file: NativeMessageUpload): Promise<UploadedMessageAttachment> {
+    const isDocument =
+      file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    assertValidPickedUploadAsset(
+      { uri: file.uri, fileName: file.name, mimeType: file.type },
+      isDocument ? MOBILE_UPLOAD_POLICIES.messageDocument : MOBILE_UPLOAD_POLICIES.messageImage,
+    );
     const formData = new FormData();
     formData.append('file', {
       uri: file.uri,
@@ -550,7 +560,7 @@ export const MessagingApi = {
       type: file.type,
     } as any);
 
-    const endpoint = file.type === 'application/pdf'
+    const endpoint = isDocument
       ? '/uploads/message-document'
       : '/uploads/message-image';
     const response = await apiClient.post(endpoint, formData, {
