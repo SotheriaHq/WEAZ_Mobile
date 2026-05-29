@@ -1,12 +1,15 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   AppState,
   FlatList,
   KeyboardAvoidingView,
+  PanResponder,
   Platform,
   RefreshControl,
   StyleSheet,
+  TouchableOpacity,
   View,
   type ListRenderItemInfo,
 } from 'react-native';
@@ -39,6 +42,7 @@ import type {
   MessageContextParams,
   MessageReadRealtimeEvent,
   MessageItem,
+  QuotedMessage,
   ResolvedConversationRoute,
   ThreadOrderItem,
 } from '@/src/types/messaging';
@@ -259,17 +263,49 @@ function AttachmentPreview({ attachment, mine }: { attachment: MessageAttachment
   );
 }
 
+const SWIPE_REPLY_THRESHOLD = 56;
+
 const MessageBubble = memo(function MessageBubble({
   item,
   currentUserId,
+  onReply,
 }: {
   item: MessageItem;
   currentUserId: string | null;
+  onReply?: (msg: MessageItem) => void;
 }) {
   const { theme } = useTheme();
   const mine = Boolean(item.senderUserId && item.senderUserId === currentUserId);
   const system = item.kind !== 'USER' || item.senderRole === 'SYSTEM';
   const timestamp = formatMessageTime(item.createdAt);
+  const swipeAnim = useRef(new Animated.Value(0)).current;
+  const triggeredRef = useRef(false);
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_e, gs) =>
+      Math.abs(gs.dx) > 8 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+    onPanResponderMove: (_e, gs) => {
+      const dx = Math.max(0, Math.min(gs.dx, 80));
+      swipeAnim.setValue(dx);
+      if (dx >= SWIPE_REPLY_THRESHOLD && !triggeredRef.current) {
+        triggeredRef.current = true;
+        onReply?.(item);
+      }
+    },
+    onPanResponderRelease: () => {
+      triggeredRef.current = false;
+      Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4 }).start();
+    },
+    onPanResponderTerminate: () => {
+      triggeredRef.current = false;
+      Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4 }).start();
+    },
+  }), [item, onReply, swipeAnim]);
+
+  const designTitle = item.metadataJson?.contextDesignTitle;
+  const designCoverUrl = item.metadataJson?.contextDesignCoverUrl as string | undefined;
+  const hasDesignCard = Boolean(designTitle);
+  const replyIconOpacity = swipeAnim.interpolate({ inputRange: [0, SWIPE_REPLY_THRESHOLD], outputRange: [0, 1] });
 
   if (system) {
     return (
@@ -290,39 +326,99 @@ const MessageBubble = memo(function MessageBubble({
 
   return (
     <View style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowOther]}>
-      <View
+      {/* Reply swipe indicator */}
+      <Animated.View
         style={[
-          styles.messageBubble,
-          mine
-            ? { backgroundColor: theme.colors.primary }
-            : { backgroundColor: theme.colors.surfaceAlt },
+          styles.replyIndicator,
+          mine ? styles.replyIndicatorMine : styles.replyIndicatorOther,
+          { opacity: replyIconOpacity },
         ]}
+        pointerEvents="none"
       >
-        {item.bodyText ? (
-          <AppText variant="bodyRegular" tone={mine ? 'inverse' : 'default'}>
-            {item.bodyText}
-          </AppText>
-        ) : null}
-        {item.attachments.length > 0 ? (
-          <View style={styles.attachmentsWrap}>
-            {item.attachments.map((attachment) => (
-              <AttachmentPreview key={attachment.id} attachment={attachment} mine={mine} />
-            ))}
+        <AppText style={{ fontSize: 18 }}>↩️</AppText>
+      </Animated.View>
+
+      <Animated.View
+        style={[styles.bubbleColumn, mine ? styles.bubbleColumnMine : styles.bubbleColumnOther, { transform: [{ translateX: swipeAnim }] }]}
+        {...panResponder.panHandlers}
+      >
+        {/* Design context card — sits above the bubble, no fill */}
+        {hasDesignCard && (
+          <View style={[styles.designCard, { borderColor: theme.colors.border }]}>
+            {designCoverUrl ? (
+              <StableImage
+                uri={designCoverUrl}
+                containerStyle={styles.designCoverImage}
+                imageStyle={styles.designCoverImage}
+                resizeMode="cover"
+                fallback={<View style={[styles.designCoverImage, { backgroundColor: theme.colors.surfaceAlt }]} />}
+              />
+            ) : null}
+            <View style={[styles.designCardTitle, { backgroundColor: theme.colors.surface }]}>
+              <AppText variant="captionBold" tone="default" numberOfLines={1}>
+                🎨 {String(designTitle)}
+              </AppText>
+            </View>
+          </View>
+        )}
+
+        {/* Quoted reply reference */}
+        {item.quotedMessage ? (
+          <View style={[
+            styles.quotedMessage,
+            mine
+              ? { borderLeftColor: 'rgba(255,255,255,0.45)', backgroundColor: 'rgba(255,255,255,0.1)' }
+              : { borderLeftColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
+          ]}>
+            <AppText variant="captionBold" tone={mine ? 'inverse' : 'primary'} numberOfLines={1}>
+              {item.quotedMessage.senderName || item.quotedMessage.senderRole}
+            </AppText>
+            <AppText variant="captionRegular" tone={mine ? 'inverse' : 'muted'} numberOfLines={2}>
+              {item.quotedMessage.bodyText || '📎 Attachment'}
+            </AppText>
           </View>
         ) : null}
-        <View style={styles.messageMeta}>
-          {timestamp ? (
-            <AppText variant="captionRegular" tone={mine ? 'inverse' : 'muted'}>
-              {timestamp}
+
+        {/* Main message bubble */}
+        <View
+          style={[
+            styles.messageBubble,
+            mine
+              ? { backgroundColor: theme.colors.primary }
+              : { backgroundColor: theme.colors.surfaceAlt },
+          ]}
+        >
+          {item.bodyText ? (
+            <AppText variant="bodyRegular" tone={mine ? 'inverse' : 'default'}>
+              {item.bodyText}
             </AppText>
           ) : null}
-          {mine && item.deliveryStatus ? (
-            <AppText variant="captionRegular" tone={mine ? 'inverse' : 'muted'}>
-              {item.deliveryStatus === 'READ' ? 'Read' : item.deliveryStatus === 'DELIVERED' ? 'Delivered' : 'Sent'}
-            </AppText>
+          {item.attachments.length > 0 ? (
+            <View style={styles.attachmentsWrap}>
+              {item.attachments.map((attachment) => (
+                <AttachmentPreview key={attachment.id} attachment={attachment} mine={mine} />
+              ))}
+            </View>
           ) : null}
+          <View style={styles.messageMeta}>
+            {timestamp ? (
+              <AppText variant="captionRegular" tone={mine ? 'inverse' : 'muted'}>
+                {timestamp}
+              </AppText>
+            ) : null}
+            {mine && item.deliveryStatus ? (
+              <AppText
+                variant="captionRegular"
+                style={item.deliveryStatus === 'READ'
+                  ? { color: '#93c5fd', fontWeight: '700' }
+                  : { color: 'rgba(255,255,255,0.55)' }}
+              >
+                {item.deliveryStatus === 'READ' ? '✓✓' : item.deliveryStatus === 'DELIVERED' ? '✓✓' : '✓'}
+              </AppText>
+            ) : null}
+          </View>
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 });
@@ -459,6 +555,7 @@ export default function ChatThreadScreen() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [readWarning, setReadWarning] = useState<string | null>(null);
+  const [replyToMessage, setReplyToMessage] = useState<QuotedMessage | null>(null);
 
   const cursorRef = useRef<ConversationThread['endCursor']>(null);
   const requestIdRef = useRef(0);
@@ -666,6 +763,7 @@ export default function ChatThreadScreen() {
     setReadWarning(null);
     setSendError(null);
     setComposerText('');
+    setReplyToMessage(null);
 
     if (status === 'loading') {
       setPhase('loading');
@@ -778,6 +876,15 @@ export default function ChatThreadScreen() {
     void loadThread(activeContext, 'more');
   }, [activeContext, hasNextPage, loadThread, loadingMore, refreshing]);
 
+  const handleReply = useCallback((msg: MessageItem) => {
+    setReplyToMessage({
+      id: msg.id,
+      bodyText: msg.bodyText,
+      senderRole: msg.senderRole,
+      senderName: msg.sender?.name || msg.sender?.username || msg.senderRole,
+    });
+  }, []);
+
   const handleSend = useCallback(async () => {
     const targetThreadId = validId(activeContext?.threadId) ?? validId(activeContext?.conversationId);
     const bodyText = composerText.trim();
@@ -792,10 +899,12 @@ export default function ChatThreadScreen() {
         {
           bodyText,
           clientMessageId: createMessageClientId(),
+          ...(replyToMessage ? { replyToMessageId: replyToMessage.id } : {}),
         },
       );
 
       setComposerText('');
+      setReplyToMessage(null);
       if (response.message) {
         setMessages((current) => mergeMessages([response.message as MessageItem], current));
         setThread((current) => current ? { ...current, threadId: targetThreadId, conversationId: targetThreadId } : current);
@@ -809,13 +918,13 @@ export default function ChatThreadScreen() {
     } finally {
       setSending(false);
     }
-  }, [activeContext, composerText, loadThread, sending, toast]);
+  }, [activeContext, composerText, loadThread, replyToMessage, sending, toast]);
 
   const renderMessage = useCallback(
     ({ item }: ListRenderItemInfo<MessageItem>) => (
-      <MessageBubble item={item} currentUserId={user?.id ?? null} />
+      <MessageBubble item={item} currentUserId={user?.id ?? null} onReply={handleReply} />
     ),
-    [user?.id],
+    [handleReply, user?.id],
   );
 
   const keyExtractor = useCallback((item: MessageItem) => item.id, []);
@@ -938,6 +1047,22 @@ export default function ChatThreadScreen() {
                   {sendError}
                 </AppText>
               ) : null}
+              {/* Reply preview */}
+              {replyToMessage ? (
+                <View style={[styles.replyPreview, { borderLeftColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }]}>
+                  <View style={styles.replyPreviewContent}>
+                    <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+                      ↩️ {replyToMessage.senderName || replyToMessage.senderRole}
+                    </AppText>
+                    <AppText variant="captionRegular" tone="muted" numberOfLines={2}>
+                      {replyToMessage.bodyText || '📎 Attachment'}
+                    </AppText>
+                  </View>
+                  <TouchableOpacity onPress={() => setReplyToMessage(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <AppText style={{ fontSize: 16, color: theme.colors.textMuted }}>✕</AppText>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
               <View style={styles.composerRow}>
                 <Input
                   label="Message"
@@ -1053,6 +1178,7 @@ const styles = StyleSheet.create({
   },
   messageRow: {
     flexDirection: 'row',
+    position: 'relative',
   },
   messageRowMine: {
     justifyContent: 'flex-end',
@@ -1060,8 +1186,70 @@ const styles = StyleSheet.create({
   messageRowOther: {
     justifyContent: 'flex-start',
   },
+  bubbleColumn: {
+    maxWidth: '78%',
+    flexDirection: 'column',
+  },
+  bubbleColumnMine: {
+    alignItems: 'flex-end',
+  },
+  bubbleColumnOther: {
+    alignItems: 'flex-start',
+  },
+  replyIndicator: {
+    position: 'absolute',
+    top: '50%',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(128,128,128,0.15)',
+  },
+  replyIndicatorMine: {
+    left: 0,
+  },
+  replyIndicatorOther: {
+    right: 0,
+  },
+  designCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.lg,
+    overflow: 'hidden',
+    marginBottom: tokens.spacing.xs,
+    maxWidth: 240,
+  },
+  designCoverImage: {
+    width: '100%',
+    height: 120,
+  },
+  designCardTitle: {
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  quotedMessage: {
+    borderLeftWidth: 3,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    marginBottom: tokens.spacing.xs,
+    gap: tokens.spacing.xs,
+    maxWidth: '100%',
+  },
+  replyPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderLeftWidth: 3,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    gap: tokens.spacing.sm,
+  },
+  replyPreviewContent: {
+    flex: 1,
+    gap: 2,
+  },
   messageBubble: {
-    maxWidth: '82%',
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,

@@ -48,6 +48,21 @@ export type MessageAttachment = {
   };
 };
 
+export type MessageMetadata = {
+  contextDesignId?: string;
+  contextDesignTitle?: string;
+  contextDesignCoverFileId?: string;
+  contextDesignCoverUrl?: string;
+  [key: string]: unknown;
+};
+
+export type QuotedMessage = {
+  id: string;
+  bodyText: string | null;
+  senderRole: string;
+  senderName: string | null;
+};
+
 export type MessageItem = {
   id: string;
   threadId: string;
@@ -61,6 +76,8 @@ export type MessageItem = {
   deliveryStatus: MessageDeliveryStatus | null;
   sender: ConversationParticipant | null;
   attachments: MessageAttachment[];
+  metadataJson?: MessageMetadata | null;
+  quotedMessage?: QuotedMessage | null;
 };
 
 export type MessagingCursor = {
@@ -137,6 +154,7 @@ export type SendMessagePayload = {
   bodyText?: string;
   clientMessageId: string;
   attachmentFileIds?: string[];
+  replyToMessageId?: string;
 };
 
 export type StartConversationPayload = {
