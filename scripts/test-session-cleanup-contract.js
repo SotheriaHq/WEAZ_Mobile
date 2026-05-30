@@ -179,6 +179,7 @@ async function main() {
   assert.equal(calls.removeAccessToken, 1, 'logout should remove SecureStore access token');
   assert.equal(calls.removeRefreshToken, 1, 'logout should remove SecureStore refresh token');
   assert.ok(calls.secureDelete.includes('threadly.activeBrandId'), 'logout should clear active brand');
+  assert.ok(calls.secureDelete.includes('threadly.pendingBagAction.v1'), 'logout should clear pending bag action');
   assert.ok(calls.secureDelete.includes('THREADLY_USER'), 'logout should clear stored user profile');
   assert.equal(calls.purgePersistedQueryCache, 1, 'logout should purge persisted React Query cache');
   assert.equal(calls.clearFeedCache, 1, 'logout should clear feed cache');

@@ -23,15 +23,16 @@ const BagCountContext = createContext<BagCountContextValue | null>(null);
 
 export function BagCountProvider({ children }: { children: React.ReactNode }) {
   const { status, user } = useAuth();
+  const bagCountQueryKey = useMemo(() => queryKeys.store.bagCount(user?.id), [user?.id]);
   const [count, setCount] = useState<BagCount>(
-    () => queryClient.getQueryData<BagCount>(queryKeys.store.bagCount()) ?? EMPTY_BAG_COUNT,
+    () => queryClient.getQueryData<BagCount>(queryKeys.store.bagCount(user?.id)) ?? EMPTY_BAG_COUNT,
   );
   const [loading, setLoading] = useState(false);
   const inflightRefreshRef = useRef<Promise<BagCount> | null>(null);
 
   const refreshGlobalBagCount = useCallback(async (options?: { forceRefresh?: boolean }) => {
     if (status === 'loading') {
-      const cachedCount = queryClient.getQueryData<BagCount>(queryKeys.store.bagCount());
+      const cachedCount = queryClient.getQueryData<BagCount>(bagCountQueryKey);
       if (cachedCount) {
         setCount(cachedCount);
         return cachedCount;
@@ -42,12 +43,12 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
     if (status !== 'authenticated') {
       inflightRefreshRef.current = null;
       setCount(EMPTY_BAG_COUNT);
-      queryClient.removeQueries({ queryKey: queryKeys.store.bagCount(), exact: true });
+      queryClient.removeQueries({ queryKey: ['store', 'bagCount'] });
       return EMPTY_BAG_COUNT;
     }
 
     if (options?.forceRefresh) {
-      queryClient.removeQueries({ queryKey: queryKeys.store.bagCount(), exact: true });
+      queryClient.removeQueries({ queryKey: bagCountQueryKey, exact: true });
     }
 
     if (inflightRefreshRef.current) {
@@ -58,7 +59,7 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
     const request = (async () => {
       try {
         const nextCount = await queryClient.fetchQuery({
-          queryKey: queryKeys.store.bagCount(),
+          queryKey: bagCountQueryKey,
           queryFn: baggingService.getBagCount,
           staleTime: THREADLY_COUNT_STALE_TIME_MS,
         });
@@ -79,7 +80,7 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
     });
 
     return request;
-  }, [status]);
+  }, [bagCountQueryKey, status]);
 
   useEffect(() => {
     if (status === 'loading') return;

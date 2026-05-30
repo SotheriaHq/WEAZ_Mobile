@@ -579,6 +579,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async ({ email, password }: SignInParams) => {
     try {
+      setApiAuthToken(null);
+      setApiRefreshToken(null);
+      setToken(null);
+      setRefreshTokenState(null);
+      setUser(null);
+      setSelectedActiveBrandId(null);
+      selectedActiveBrandIdRef.current = null;
+      await clearMobilePrivateSessionState({
+        client: queryClient,
+        deactivatePushToken: false,
+      });
+
       const rawIdentifier = String(email ?? '');
       const rawPassword = String(password ?? '');
       const normalizedIdentifier = sanitizeLoginIdentifier(email);

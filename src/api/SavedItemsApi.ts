@@ -23,25 +23,37 @@ const savedPayloadForCatalogTarget = (target: CatalogTargetInput) => {
   return legacyTarget;
 };
 
+const getLifecycleUserId = () => {
+  const profile = queryClient.getQueryData<{
+    id?: string | null;
+    user?: { id?: string | null } | null;
+  }>(queryKeys.auth.profile());
+  return String(profile?.id ?? profile?.user?.id ?? '').trim() || null;
+};
+
+const savedRootQueryKey = () => queryKeys.saved.root(getLifecycleUserId());
+const savedBatchQueryKey = (targetType: SavedItemTargetType, targetIds: string[]) =>
+  queryKeys.saved.batch(getLifecycleUserId(), targetType, targetIds);
+
 export const SavedItemsApi = {
   async saveItem(targetType: SavedItemTargetType, targetId: string): Promise<void> {
     await apiClient.post('/saved', { targetType, targetId });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.saved.root() });
+    await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
   },
 
   async saveCatalogTarget(target: CatalogTargetInput): Promise<void> {
     await apiClient.post('/saved', savedPayloadForCatalogTarget(target));
-    await queryClient.invalidateQueries({ queryKey: queryKeys.saved.root() });
+    await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
   },
 
   async unsaveItem(targetType: SavedItemTargetType, targetId: string): Promise<void> {
     await apiClient.delete('/saved', { data: { targetType, targetId } });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.saved.root() });
+    await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
   },
 
   async unsaveCatalogTarget(target: CatalogTargetInput): Promise<void> {
     await apiClient.delete('/saved', { data: savedPayloadForCatalogTarget(target) });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.saved.root() });
+    await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
   },
 
   async checkBatch(targetType: SavedItemTargetType, targetIds: string[]): Promise<Record<string, boolean>> {
@@ -49,7 +61,7 @@ export const SavedItemsApi = {
     if (normalizedIds.length === 0) return {};
 
     return queryClient.fetchQuery({
-      queryKey: queryKeys.saved.batch(targetType, normalizedIds),
+      queryKey: savedBatchQueryKey(targetType, normalizedIds),
       queryFn: async () => {
         const response = await apiClient.post('/saved/check/batch', {
           targetType,

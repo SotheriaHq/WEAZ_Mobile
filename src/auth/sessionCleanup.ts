@@ -21,6 +21,7 @@ import { clearMobileMarketSignalQueue } from '@/src/services/marketSignals';
 import { removeAccessToken, removeRefreshToken } from '@/src/storage/secureStorage';
 
 export const ACTIVE_BRAND_STORAGE_KEY = 'threadly.activeBrandId';
+const PENDING_BAG_ACTION_STORAGE_KEY = 'threadly.pendingBagAction.v1';
 
 const PRIVATE_QUERY_ROOTS = new Set([
   'auth',
@@ -90,6 +91,7 @@ export async function clearMobilePrivateSessionState({
     removeAccessToken(),
     removeRefreshToken(),
     SecureStore.deleteItemAsync(ACTIVE_BRAND_STORAGE_KEY),
+    SecureStore.deleteItemAsync(PENDING_BAG_ACTION_STORAGE_KEY),
     SecureStore.deleteItemAsync(env.userStorageKey),
     purgeMobilePersistedQueryCache(),
     clearCachedMarketFeed(),

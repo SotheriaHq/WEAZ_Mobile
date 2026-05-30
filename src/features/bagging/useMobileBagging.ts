@@ -91,7 +91,7 @@ const resolveBagStatus = (
 };
 
 export function useMobileBagging() {
-  const { status: authStatus } = useAuth();
+  const { status: authStatus, user } = useAuth();
   const toast = useToast();
   const bagFlow = useBagFlow();
   const { count: globalBagCount, refreshGlobalBagCount } = useBagCount();
@@ -101,7 +101,7 @@ export function useMobileBagging() {
   const [statusBySourceKey, setStatusBySourceKey] = useState<Record<string, ProductBagStatus>>({});
   const [loadingByProductId, setLoadingByProductId] = useState<Record<string, boolean>>({});
   const [errorByProductId, setErrorByProductId] = useState<Record<string, string | null>>({});
-  const authStatusRef = useRef(authStatus);
+  const authIdentityRef = useRef(`${authStatus}:${user?.id ?? ''}`);
 
   const sourceKey = useCallback((sourceType: BagSourceType, sourceId: string) => toSourceKey(sourceType, sourceId), []);
 
@@ -126,11 +126,16 @@ export function useMobileBagging() {
   }, [refreshGlobalBagCount]);
 
   useEffect(() => {
-    if (authStatusRef.current !== authStatus) {
+    const nextIdentity = `${authStatus}:${user?.id ?? ''}`;
+    if (authIdentityRef.current !== nextIdentity) {
       clearCachedBagStatus();
-      authStatusRef.current = authStatus;
+      authIdentityRef.current = nextIdentity;
+      setStandardCart(null);
+      setCustomBag(null);
+      setStatusByProductId({});
+      setStatusBySourceKey({});
     }
-  }, [authStatus]);
+  }, [authStatus, user?.id]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {

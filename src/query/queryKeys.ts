@@ -25,6 +25,46 @@ const normalizeIdList = (values?: Array<string | null | undefined> | null) =>
     ),
   ).sort();
 
+type WishlistParams = Record<string, unknown> | null | undefined;
+
+const resolveWishlistArgs = (
+  userIdOrParams?: string | null | WishlistParams,
+  params?: WishlistParams,
+) => {
+  if (
+    userIdOrParams &&
+    typeof userIdOrParams === 'object' &&
+    !Array.isArray(userIdOrParams)
+  ) {
+    return { userId: '', params: userIdOrParams };
+  }
+
+  return {
+    userId: normalizeId(userIdOrParams as string | null | undefined),
+    params,
+  };
+};
+
+const resolveSavedBatchArgs = (
+  userIdOrTargetType?: string | null,
+  targetTypeOrIds?: string | null | Array<string | null | undefined>,
+  maybeTargetIds?: Array<string | null | undefined> | null,
+) => {
+  if (Array.isArray(targetTypeOrIds) || maybeTargetIds === undefined) {
+    return {
+      userId: '',
+      targetType: normalizeId(userIdOrTargetType),
+      targetIds: Array.isArray(targetTypeOrIds) ? targetTypeOrIds : maybeTargetIds,
+    };
+  }
+
+  return {
+    userId: normalizeId(userIdOrTargetType),
+    targetType: normalizeId(targetTypeOrIds),
+    targetIds: maybeTargetIds,
+  };
+};
+
 export const queryKeys = {
   auth: {
     profile: () => ['auth', 'profile'] as const,
@@ -63,9 +103,13 @@ export const queryKeys = {
   },
   store: {
     status: () => ['store', 'status'] as const,
-    cart: () => ['store', 'cart'] as const,
-    wishlist: (params?: Record<string, unknown> | null) => ['store', 'wishlist', normalizeRecord(params)] as const,
-    bagCount: () => ['store', 'bagCount'] as const,
+    cart: (userId?: string | null) => ['store', 'cart', normalizeId(userId)] as const,
+    wishlistRoot: (userId?: string | null) => ['store', 'wishlist', normalizeId(userId)] as const,
+    wishlist: (userIdOrParams?: string | null | WishlistParams, params?: WishlistParams) => {
+      const resolved = resolveWishlistArgs(userIdOrParams, params);
+      return ['store', 'wishlist', resolved.userId, normalizeRecord(resolved.params)] as const;
+    },
+    bagCount: (userId?: string | null) => ['store', 'bagCount', normalizeId(userId)] as const,
     brandProducts: (brandId?: string | null, params?: Record<string, unknown> | null) =>
       ['store', 'brandProducts', normalizeId(brandId), normalizeRecord(params)] as const,
   },
@@ -86,9 +130,15 @@ export const queryKeys = {
     unreadCount: () => ['messaging', 'unreadCount'] as const,
   },
   saved: {
-    root: () => ['saved'] as const,
-    batch: (targetType?: string | null, targetIds?: Array<string | null | undefined> | null) =>
-      ['saved', 'batch', normalizeId(targetType), normalizeIdList(targetIds)] as const,
+    root: (userId?: string | null) => ['saved', normalizeId(userId)] as const,
+    batch: (
+      userIdOrTargetType?: string | null,
+      targetTypeOrIds?: string | null | Array<string | null | undefined>,
+      maybeTargetIds?: Array<string | null | undefined> | null,
+    ) => {
+      const resolved = resolveSavedBatchArgs(userIdOrTargetType, targetTypeOrIds, maybeTargetIds);
+      return ['saved', resolved.userId, 'batch', resolved.targetType, normalizeIdList(resolved.targetIds)] as const;
+    },
   },
   reviews: {
     brand: (brandId?: string | null, params?: Record<string, unknown> | null) =>
