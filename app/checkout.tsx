@@ -1,5 +1,5 @@
-import MobileCheckoutUnavailableScreen from '@/src/features/checkout/MobileCheckoutUnavailableScreen';
+import MobileCheckoutScreen from '@/src/features/checkout/MobileCheckoutScreen';
 
 export default function CheckoutScreen() {
-  return <MobileCheckoutUnavailableScreen />;
+  return <MobileCheckoutScreen />;
 }

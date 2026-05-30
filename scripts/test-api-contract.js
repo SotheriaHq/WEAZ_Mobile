@@ -31,8 +31,6 @@ const apiSources = fs
 for (const [name, source] of apiSources) {
   assertNotIncludes(source, '/auth/update-profile/', name);
   assertNotIncludes(source, '/order/my-orders', name);
-  assertNotIncludes(source, '/payment/initialize-unified', name);
-  assertNotIncludes(source, 'Paystack', name);
 }
 
 const profileApi = read('src/api/ProfileApi.ts');
@@ -69,6 +67,12 @@ const mobileMe = read('app/(tabs)/me.tsx');
 assertIncludes(mobileMe, "endpoint: '/store/orders'", 'profile order diagnostic endpoint');
 
 const checkoutGate = read('src/features/checkout/mobileCheckoutGate.ts');
-assertIncludes(checkoutGate, 'MOBILE_CHECKOUT_ENABLED = false', 'mobile checkout gate');
+assertIncludes(checkoutGate, 'MOBILE_CHECKOUT_ENABLED = env.mobileCheckout.enabled', 'mobile checkout flag');
+
+const paymentApi = read('src/api/PaymentApi.ts');
+assertIncludes(paymentApi, "'/payment/initialize-unified'", 'mobile payment initialize');
+assertIncludes(paymentApi, "'/payment/verify'", 'mobile payment verification');
+assertIncludes(paymentApi, '`/payment/attempts/${encodeURIComponent(reference)}`', 'mobile payment attempt status');
+assertIncludes(paymentApi, "'Idempotency-Key': idempotencyKey", 'mobile payment idempotency');
 
 console.log('Mobile API contract parity checks passed.');

@@ -6,6 +6,7 @@ import { clearBrandApiSessionCaches } from '@/src/api/BrandApi';
 import { setApiAuthToken, setApiRefreshToken } from '@/src/api/httpClient';
 import { env } from '@/src/config/env';
 import { clearCachedMarketFeed } from '@/src/features/feed/api/feedApi';
+import { MOBILE_PENDING_CHECKOUT_STORAGE_KEY } from '@/src/features/checkout/mobileCheckoutPending';
 import { PERSISTED_FEED_CACHE_PREFIX } from '@/src/features/feed/utils/feedKeys';
 import { clearResolvedImageUriCache } from '@/src/hooks/useResolvedImageUri';
 import { deactivateRegisteredPushTokenForLogout } from '@/src/notifications/pushTokenRegistration';
@@ -92,6 +93,7 @@ export async function clearMobilePrivateSessionState({
     removeRefreshToken(),
     SecureStore.deleteItemAsync(ACTIVE_BRAND_STORAGE_KEY),
     SecureStore.deleteItemAsync(PENDING_BAG_ACTION_STORAGE_KEY),
+    SecureStore.deleteItemAsync(MOBILE_PENDING_CHECKOUT_STORAGE_KEY),
     SecureStore.deleteItemAsync(env.userStorageKey),
     purgeMobilePersistedQueryCache(),
     clearCachedMarketFeed(),

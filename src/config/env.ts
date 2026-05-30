@@ -8,7 +8,8 @@ type EnvKey =
   | 'EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID'
   | 'EXPO_PUBLIC_TOKEN_STORAGE_KEY'
   | 'EXPO_PUBLIC_USER_STORAGE_KEY'
-  | 'EXPO_PUBLIC_REFRESH_TOKEN_STORAGE_KEY';
+  | 'EXPO_PUBLIC_REFRESH_TOKEN_STORAGE_KEY'
+  | 'EXPO_PUBLIC_MOBILE_CHECKOUT_ENABLED';
 
 const getEnvVar = (key: EnvKey, fallback?: string): string => {
   const value = process.env[key];
@@ -38,6 +39,9 @@ const refreshTokenStorageKey = getEnvVar(
   'THREADLY_REFRESH_TOKEN',
 );
 const userStorageKey = getEnvVar('EXPO_PUBLIC_USER_STORAGE_KEY', 'THREADLY_USER');
+const mobileCheckoutEnabled = parseBoolean(
+  getEnvVar('EXPO_PUBLIC_MOBILE_CHECKOUT_ENABLED', 'true'),
+);
 
 export const env = {
   apiBaseUrl,
@@ -65,4 +69,7 @@ export const env = {
   tokenStorageKey,
   refreshTokenStorageKey,
   userStorageKey,
+  mobileCheckout: {
+    enabled: mobileCheckoutEnabled,
+  },
 } as const;

@@ -1,5 +1,5 @@
-import MobileCheckoutUnavailableScreen from '@/src/features/checkout/MobileCheckoutUnavailableScreen';
+import MobilePaymentScreen from '@/src/features/checkout/MobilePaymentScreen';
 
 export default function PaymentScreen() {
-  return <MobileCheckoutUnavailableScreen title="Payment unavailable" />;
+  return <MobilePaymentScreen />;
 }

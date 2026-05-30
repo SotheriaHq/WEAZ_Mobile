@@ -1,11 +1,11 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
-import { getMobileCheckoutUnavailableMessage } from '@/src/features/checkout/mobileCheckoutGate';
 import { tokens } from '@/src/styles/tokens';
 
 type Props = {
@@ -59,13 +59,16 @@ export default function MyBagSheet({ visible, onClose }: Props) {
         {hasItems ? (
           <View style={styles.checkoutGate}>
             <Button
-              title="Checkout unavailable"
-              disabled
+              title="Checkout"
               fullWidth
-              testID="mobile-checkout-disabled-cta"
+              testID="mobile-checkout-cta"
+              onPress={() => {
+                onClose();
+                router.push('/checkout' as never);
+              }}
             />
             <AppText variant="caption" tone="muted">
-              {getMobileCheckoutUnavailableMessage()}
+              Payment opens through the secure provider and is verified by Threadly before orders update.
             </AppText>
           </View>
         ) : (

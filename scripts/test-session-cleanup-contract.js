@@ -108,6 +108,9 @@ function loadSessionCleanup(options = {}) {
       if (request === '@/src/features/feed/utils/feedKeys') {
         return { PERSISTED_FEED_CACHE_PREFIX: 'threadly.feed.' };
       }
+      if (request === '@/src/features/checkout/mobileCheckoutPending') {
+        return { MOBILE_PENDING_CHECKOUT_STORAGE_KEY: 'threadly.mobileCheckout.pending.v1' };
+      }
       if (request === '@/src/hooks/useResolvedImageUri') {
         return { clearResolvedImageUriCache: () => calls.clearImageUri++ };
       }
@@ -180,6 +183,7 @@ async function main() {
   assert.equal(calls.removeRefreshToken, 1, 'logout should remove SecureStore refresh token');
   assert.ok(calls.secureDelete.includes('threadly.activeBrandId'), 'logout should clear active brand');
   assert.ok(calls.secureDelete.includes('threadly.pendingBagAction.v1'), 'logout should clear pending bag action');
+  assert.ok(calls.secureDelete.includes('threadly.mobileCheckout.pending.v1'), 'logout should clear pending mobile checkout');
   assert.ok(calls.secureDelete.includes('THREADLY_USER'), 'logout should clear stored user profile');
   assert.equal(calls.purgePersistedQueryCache, 1, 'logout should purge persisted React Query cache');
   assert.equal(calls.clearFeedCache, 1, 'logout should clear feed cache');

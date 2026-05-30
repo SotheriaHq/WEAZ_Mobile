@@ -60,6 +60,37 @@ import {
 } from './mobileRouting';
 import { resolveMobileAuthRoute } from './authLinkRouting';
 
+function resolvePaymentReturnRoute(url: string | null) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname || `/${parsed.hostname}`;
+    const isPaymentReturn =
+      path === '/payment' ||
+      path === '/bag/payment-return' ||
+      path.endsWith('/bag/payment-return');
+    if (!isPaymentReturn) {
+      return null;
+    }
+
+    const reference = parsed.searchParams.get('reference')?.trim();
+    if (!reference) {
+      return null;
+    }
+
+    return {
+      pathname: '/payment',
+      params: {
+        reference,
+        gateway: parsed.searchParams.get('gateway')?.trim() || 'PAYSTACK',
+        status: parsed.searchParams.get('status')?.trim() || undefined,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Notification routing handler for message notifications.
  * Processes incoming notifications and routes to appropriate screen.
@@ -166,6 +197,12 @@ export function useNotificationRouting() {
       const authRoute = resolveMobileAuthRoute(url);
       if (authRoute) {
         router.replace(authRoute as any);
+        return;
+      }
+
+      const paymentRoute = resolvePaymentReturnRoute(url);
+      if (paymentRoute) {
+        router.replace(paymentRoute as any);
         return;
       }
 
