@@ -38,7 +38,11 @@ const toTitleCase = (value: string) =>
 const extractMeasurements = (sizeFit: SizeFitProfile | null | undefined) => {
   const source = sizeFit?.measurements ?? {};
   return Object.entries(source).reduce<Record<string, string>>((acc, [key, value]) => {
-    const parsed = Number(value);
+    const raw =
+      value && typeof value === 'object' && 'value' in (value as Record<string, unknown>)
+        ? (value as Record<string, unknown>).value
+        : value;
+    const parsed = Number(raw);
     if (Number.isFinite(parsed) && parsed > 0) {
       acc[key] = String(parsed);
     }
@@ -61,11 +65,23 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
     () => (
       missingMeasurements.length > 0
         ? missingMeasurements
-        : status?.custom.freshnessState === 'STALE'
-          ? status.custom.requiredMeasurementKeys
+        : status?.custom.freshnessState === 'STALE' || status?.custom.freshnessState === 'VERY_STALE'
+          ? (
+              status.custom.veryStaleMeasurementKeys.length > 0
+                ? status.custom.veryStaleMeasurementKeys
+                : status.custom.staleMeasurementKeys.length > 0
+                  ? status.custom.staleMeasurementKeys
+                  : status.custom.requiredMeasurementKeys
+            )
           : []
     ),
-    [missingMeasurements, status?.custom.freshnessState, status?.custom.requiredMeasurementKeys],
+    [
+      missingMeasurements,
+      status?.custom.freshnessState,
+      status?.custom.requiredMeasurementKeys,
+      status?.custom.staleMeasurementKeys,
+      status?.custom.veryStaleMeasurementKeys,
+    ],
   );
 
   useEffect(() => {
@@ -154,8 +170,8 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
   return (
     <AppBottomSheet
       visible={visible}
-      title={`${status?.custom.freshnessState === 'STALE' ? 'Update' : 'Finish'} fittings for ${product?.name || 'this item'}`}
-      subtitle={status?.custom.freshnessState === 'STALE' ? 'Refresh the measurements required for this custom bag request.' : 'Add the missing measurements before continuing this custom bag request.'}
+      title={`${status?.custom.freshnessState === 'STALE' || status?.custom.freshnessState === 'VERY_STALE' ? 'Update' : 'Finish'} fittings for ${product?.name || 'this item'}`}
+      subtitle={status?.custom.freshnessState === 'STALE' || status?.custom.freshnessState === 'VERY_STALE' ? 'Refresh the measurements required for this bag request.' : 'Add the missing measurements before continuing this bag request.'}
       onClose={onClose}
       showCloseButton
       onDone={handleSave}
@@ -173,7 +189,7 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
         ) : null}
 
         <View style={styles.section}>
-          <AppText variant="subtitle">{status?.custom.freshnessState === 'STALE' ? 'Measurements to refresh' : 'Missing measurements'}</AppText>
+          <AppText variant="subtitle">{status?.custom.freshnessState === 'STALE' || status?.custom.freshnessState === 'VERY_STALE' ? 'Measurements to refresh' : 'Missing measurements'}</AppText>
           {measurementsToEdit.length > 0 ? (
             measurementsToEdit.map((measurement) => (
               <Input

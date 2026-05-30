@@ -21,6 +21,7 @@
     "test:market-signal-queue-contract": "node scripts/test-market-signal-queue-contract.js",
     "test:request-budget-contract": "node scripts/test-request-budget-contract.js",
     "test:mobile-checkout-gate-contract": "node scripts/test-mobile-checkout-gate-contract.js",
+    "test:measurement-bagging-contract": "node scripts/test-measurement-bagging-contract.js",
     "test:upload-validation-contract": "node scripts/test-upload-validation-contract.js",
     "ci:design-system": "npm exec tsc -- --noEmit && node ../scripts/audit-mobile-design-system.js",
     "audit:theme": "node scripts/audit-theme-system.js",

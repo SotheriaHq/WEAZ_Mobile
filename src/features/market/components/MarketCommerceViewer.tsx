@@ -450,7 +450,8 @@ export function MarketCommerceViewer({
       ? 'Custom request available'
       : 'Custom request unavailable';
   const customLabel = bagStatus?.custom.available
-    ? bagStatus.custom.freshnessState === 'STALE'
+    ? bagStatus.custom.freshnessState === 'STALE' ||
+      bagStatus.custom.freshnessState === 'VERY_STALE'
       ? 'Fittings need confirmation'
       : bagStatus.custom.fittingState === 'MISSING' || bagStatus.custom.fittingState === 'PARTIAL'
         ? 'Fittings needed'

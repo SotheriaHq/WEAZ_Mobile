@@ -150,6 +150,8 @@ export interface ProductBagStatus {
     requiredFreeformPointIds: string[];
     fittingsComplete: boolean;
     missingMeasurementKeys: string[];
+    staleMeasurementKeys: string[];
+    veryStaleMeasurementKeys: string[];
   };
   custom: {
     available: boolean;
@@ -160,11 +162,15 @@ export interface ProductBagStatus {
     requiredMeasurementKeys: string[];
     requiredFreeformPointIds: string[];
     fittingState: 'COMPLETE' | 'PARTIAL' | 'MISSING' | 'NOT_REQUIRED';
-    freshnessState: 'FRESH' | 'STALE' | 'MISSING' | 'PARTIAL' | 'NOT_REQUIRED';
+    freshnessState: 'FRESH' | 'STALE' | 'VERY_STALE' | 'MISSING' | 'PARTIAL' | 'NOT_REQUIRED';
     missingMeasurementKeys: string[];
+    staleMeasurementKeys: string[];
+    veryStaleMeasurementKeys: string[];
     measurementUpdatedAt: string | null;
     staleAfterDays: number;
     staleAt: string | null;
+    veryStaleAfterDays: number;
+    veryStaleAt: string | null;
     requiresStaleConfirmation: boolean;
   };
   duplicateState: {
@@ -585,6 +591,16 @@ const normalizeBagStatus = (
       ? custom.missingMeasurementKeys
       : customOrder.missingMeasurementKeys,
   );
+  const customStaleKeys = asStringList(
+    Array.isArray(custom.staleMeasurementKeys)
+      ? custom.staleMeasurementKeys
+      : customOrder.staleMeasurementKeys,
+  );
+  const customVeryStaleKeys = asStringList(
+    Array.isArray(custom.veryStaleMeasurementKeys)
+      ? custom.veryStaleMeasurementKeys
+      : customOrder.veryStaleMeasurementKeys,
+  );
   const fittingState =
     asString(custom.fittingState) ??
     (customRequiredKeys.length === 0
@@ -647,6 +663,8 @@ const normalizeBagStatus = (
       requiredFreeformPointIds: customFreeformIds,
       fittingsComplete: fittingState === 'COMPLETE' || fittingState === 'NOT_REQUIRED',
       missingMeasurementKeys: customMissingKeys,
+      staleMeasurementKeys: customStaleKeys,
+      veryStaleMeasurementKeys: customVeryStaleKeys,
     },
     custom: {
       available: customAvailable,
@@ -659,9 +677,13 @@ const normalizeBagStatus = (
       fittingState: fittingState as ProductBagStatus['custom']['fittingState'],
       freshnessState: freshnessState as ProductBagStatus['custom']['freshnessState'],
       missingMeasurementKeys: customMissingKeys,
+      staleMeasurementKeys: customStaleKeys,
+      veryStaleMeasurementKeys: customVeryStaleKeys,
       measurementUpdatedAt: asString(custom.measurementUpdatedAt),
       staleAfterDays: asNumber(custom.staleAfterDays, 14),
       staleAt: asString(custom.staleAt),
+      veryStaleAfterDays: asNumber(custom.veryStaleAfterDays, 30),
+      veryStaleAt: asString(custom.veryStaleAt),
       requiresStaleConfirmation: Boolean(custom.requiresStaleConfirmation),
     },
     duplicateState: {
@@ -698,7 +720,7 @@ const normalizeBagStatus = (
             ? 'OPEN_SELECTOR'
             : standardAvailable
               ? 'ADD_STANDARD'
-              : freshnessState === 'STALE'
+              : freshnessState === 'STALE' || freshnessState === 'VERY_STALE'
                 ? 'CONFIRM_STALE_FITTINGS'
                 : fittingState === 'MISSING' || fittingState === 'PARTIAL'
                 ? 'OPEN_FITTINGS'
@@ -1023,6 +1045,8 @@ export const MobileStoreApi = {
           requiredFreeformPointIds: [],
           fittingsComplete: false,
           missingMeasurementKeys: missingKeys,
+          staleMeasurementKeys: [],
+          veryStaleMeasurementKeys: [],
         },
         custom: {
           available: customAvailable,
@@ -1035,9 +1059,13 @@ export const MobileStoreApi = {
           fittingState,
           freshnessState: fittingState === 'MISSING' ? 'MISSING' : 'NOT_REQUIRED',
           missingMeasurementKeys: missingKeys,
+          staleMeasurementKeys: [],
+          veryStaleMeasurementKeys: [],
           measurementUpdatedAt: null,
           staleAfterDays: 14,
           staleAt: null,
+          veryStaleAfterDays: 30,
+          veryStaleAt: null,
           requiresStaleConfirmation: false,
         },
         duplicateState: {
@@ -1192,6 +1220,7 @@ export const MobileStoreApi = {
     selectedColor?: string;
     sizeRecommendationSnapshot?: SizeRecommendationSnapshot | Record<string, unknown>;
     manualOverrideReason?: string;
+    measurementOverrideAccepted?: boolean;
   }): Promise<CartState> {
     const response = await apiClient.post('/store/cart', {
       productId: payload.productId,
@@ -1200,6 +1229,7 @@ export const MobileStoreApi = {
       selectedColor: payload.selectedColor,
       sizeRecommendationSnapshot: payload.sizeRecommendationSnapshot,
       manualOverrideReason: payload.manualOverrideReason,
+      measurementOverrideAccepted: payload.measurementOverrideAccepted,
     });
     return unwrapData<CartState>(response.data);
   },

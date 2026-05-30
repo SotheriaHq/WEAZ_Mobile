@@ -332,7 +332,12 @@ export function useMobileBagging() {
         }
         return status;
       }
-      if (status.ui.defaultAction === 'CONFIRM_STALE_FITTINGS' || status.custom.requiresStaleConfirmation || status.custom.freshnessState === 'STALE') {
+      if (
+        status.ui.defaultAction === 'CONFIRM_STALE_FITTINGS' ||
+        status.custom.requiresStaleConfirmation ||
+        status.custom.freshnessState === 'STALE' ||
+        status.custom.freshnessState === 'VERY_STALE'
+      ) {
         if (bagFlow) {
           bagFlow.openStaleFittings(product, status);
         } else {

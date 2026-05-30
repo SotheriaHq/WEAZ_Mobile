@@ -21,6 +21,9 @@ import {
 type BagProductInput = {
   id: string;
   name?: string;
+  selectedSize?: string | null;
+  selectedColor?: string | null;
+  quantity?: number;
 };
 
 type Props = {
@@ -28,9 +31,18 @@ type Props = {
   product: BagProductInput | null;
   status: ProductBagStatus | null;
   onClose: () => void;
+  onRequireFittings?: (product: BagProductInput, status: ProductBagStatus) => void;
+  onRequireStaleConfirmation?: (product: BagProductInput, status: ProductBagStatus) => void;
 };
 
-export default function ProductBagSelectorSheet({ visible, product, status, onClose }: Props) {
+export default function ProductBagSelectorSheet({
+  visible,
+  product,
+  status,
+  onClose,
+  onRequireFittings,
+  onRequireStaleConfirmation,
+}: Props) {
   const { theme } = useTheme();
   const toast = useToast();
   const { status: authStatus } = useAuth();
@@ -170,6 +182,21 @@ export default function ProductBagSelectorSheet({ visible, product, status, onCl
     }
     if (!selectedVariantValid) {
       setSelectionError('This size and color combination is unavailable.');
+      return;
+    }
+    if (status.custom.fittingState === 'MISSING' || status.custom.fittingState === 'PARTIAL') {
+      onRequireFittings?.(product, status);
+      return;
+    }
+    if (
+      status.custom.requiresStaleConfirmation ||
+      status.custom.freshnessState === 'STALE' ||
+      status.custom.freshnessState === 'VERY_STALE'
+    ) {
+      onRequireStaleConfirmation?.(
+        { ...product, selectedSize, selectedColor, quantity },
+        status,
+      );
       return;
     }
 

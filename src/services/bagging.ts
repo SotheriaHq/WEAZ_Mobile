@@ -8,6 +8,7 @@ export type AddStandardBagPayload = {
   qty?: number;
   sizeRecommendationSnapshot?: SizeRecommendationSnapshot | Record<string, unknown>;
   manualOverrideReason?: string;
+  measurementOverrideAccepted?: boolean;
 };
 
 export type AddCustomOrderBagPayload = {
@@ -40,6 +41,7 @@ export async function addStandard({
   qty = 1,
   sizeRecommendationSnapshot,
   manualOverrideReason,
+  measurementOverrideAccepted,
 }: AddStandardBagPayload) {
   return MobileStoreApi.addToCart({
     productId,
@@ -48,6 +50,7 @@ export async function addStandard({
     selectedColor: color,
     sizeRecommendationSnapshot,
     manualOverrideReason,
+    measurementOverrideAccepted,
   });
 }
 
