@@ -58,6 +58,9 @@ function createScriptRequire({ repoRoot, mocks = {}, globals = {} }) {
       Intl,
       FormData: global.FormData,
       fetch: global.fetch,
+      process: {
+        env: process.env,
+      },
       ...globals,
     };
 
