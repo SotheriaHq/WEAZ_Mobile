@@ -88,7 +88,11 @@ const checkoutGate = read('src/features/checkout/mobileCheckoutGate.ts');
 assertIncludes(checkoutGate, 'MOBILE_CHECKOUT_ENABLED = env.mobileCheckout.enabled', 'mobile checkout flag');
 
 const paymentApi = read('src/api/PaymentApi.ts');
-assertIncludes(paymentApi, "apiClient.post(\n      '/payment/initialize-unified'", 'checkout remains backend-owned');
+assertMatches(
+  paymentApi,
+  /apiClient\.post\(\s*['"]\/payment\/initialize-unified['"]/,
+  'checkout remains backend-owned',
+);
 assertIncludes(paymentApi, "apiClient.post('/payment/verify'", 'checkout payment status remains backend-owned');
 
 console.log('Mobile lifecycle sync contract checks passed.');
