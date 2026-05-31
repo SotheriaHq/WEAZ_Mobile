@@ -22,6 +22,10 @@ function assertNotIncludes(source, forbidden, label) {
   );
 }
 
+function assertMatches(source, expected, label) {
+  assert(expected.test(source), `${label} must match ${expected}`);
+}
+
 const gate = read('src/features/checkout/mobileCheckoutGate.ts');
 assertIncludes(gate, 'MOBILE_CHECKOUT_ENABLED = env.mobileCheckout.enabled', 'mobile checkout flag');
 assertIncludes(gate, 'assertMobileCheckoutEnabled', 'mobile checkout guard');
@@ -31,10 +35,18 @@ assertIncludes(env, "EXPO_PUBLIC_MOBILE_CHECKOUT_ENABLED", 'mobile checkout env 
 assertIncludes(env, "getEnvVar('EXPO_PUBLIC_MOBILE_CHECKOUT_ENABLED', 'true')", 'mobile checkout default');
 
 const paymentApi = read('src/api/PaymentApi.ts');
-assertIncludes(paymentApi, "apiClient.post(\n      '/payment/initialize-unified'", 'payment initialize endpoint');
+assertMatches(
+  paymentApi,
+  /apiClient\.post\(\s*['"]\/payment\/initialize-unified['"]/,
+  'payment initialize endpoint',
+);
 assertIncludes(paymentApi, "{ headers: { 'Idempotency-Key': idempotencyKey } }", 'payment idempotency header');
 assertIncludes(paymentApi, "apiClient.post('/payment/verify'", 'payment verify endpoint');
-assertIncludes(paymentApi, 'apiClient.get(\n      `/payment/attempts/${encodeURIComponent(reference)}`', 'payment attempt endpoint');
+assertMatches(
+  paymentApi,
+  /apiClient\.get\(\s*`\/payment\/attempts\/\$\{encodeURIComponent\(reference\)\}`/,
+  'payment attempt endpoint',
+);
 assertNotIncludes(paymentApi, '/store/checkout', 'payment api');
 
 const checkoutRoute = read('app/checkout.tsx');
