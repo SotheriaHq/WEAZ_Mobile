@@ -30,6 +30,30 @@ const createCollectionBlock = brandApiSource.slice(
 assert.match(createCollectionBlock, /\/store-collections\/initialize/);
 assert.match(createCollectionBlock, /\/store-collections\/\$\{collectionId\}\/finalize/);
 assert.doesNotMatch(createCollectionBlock, /apiClient\.post\(['"`]\/collections/);
+assert.match(
+  brandApiSource,
+  /async getDrafts\(opts\?: \{[\s\S]*forceRefresh\?: boolean;[\s\S]*ownerId\?: string \| null;[\s\S]*\}\)/,
+  'Mobile draft loading should accept the owner id needed to include store collection drafts.',
+);
+assert.match(
+  brandApiSource,
+  /scope:\s*'store'[\s\S]*status:\s*'DRAFT'/,
+  'Mobile draft loading should include store collection drafts, not only design drafts.',
+);
+
+const catalogQueriesSource = readProjectFile('src', 'query', 'catalogQueries.ts');
+assert.match(
+  catalogQueriesSource,
+  /queryKeys\.brand\.collections\(options\?\.ownerId \?\? 'me', \{[\s\S]*scope: 'all',[\s\S]*status: 'DRAFT'/,
+  'Draft query keys should represent mixed design/store draft content.',
+);
+
+const catalogIndexSource = readProjectFile('app', 'catalog', 'index.tsx');
+assert.match(
+  catalogIndexSource,
+  /useBrandDraftsQuery\(\{[\s\S]*ownerId:\s*collectionOwnerId/,
+  'The catalog Drafts tab should pass the owner id so quick store drafts remain visible after creation.',
+);
 
 const createCollectionScreenSource = readProjectFile('app', 'catalog', 'create-collection.tsx');
 assert.match(createCollectionScreenSource, /routeKey:\s*'createCollection'/);

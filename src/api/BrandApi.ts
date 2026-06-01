@@ -955,9 +955,12 @@ export const brandApi = {
   /**
    * Get draft collections (owner only)
    */
-  async getDrafts(opts?: { forceRefresh?: boolean }): Promise<CollectionDto[]> {
+  async getDrafts(opts?: {
+    forceRefresh?: boolean;
+    ownerId?: string | null;
+  }): Promise<CollectionDto[]> {
     try {
-      const response = await apiClient.get(
+      const designDraftsRequest = apiClient.get(
         '/designs/my/drafts',
         opts?.forceRefresh
           ? {
@@ -969,10 +972,49 @@ export const brandApi = {
             }
           : undefined,
       );
-      return normalizeCollectionListPayload(response.data).items.map((item) => ({
-        ...item,
-        status: 'DRAFT',
-      }));
+
+      const storeDraftsRequest = opts?.ownerId
+        ? this.getCollections({
+            brandId: opts.ownerId,
+            scope: 'store',
+            status: 'DRAFT',
+            limit: 80,
+            forceRefresh: opts.forceRefresh,
+          }).then((result) => result.items)
+        : Promise.resolve<CollectionDto[]>([]);
+
+      const [designDraftsResult, storeDraftsResult] = await Promise.allSettled([
+        designDraftsRequest,
+        storeDraftsRequest,
+      ]);
+
+      const designDrafts =
+        designDraftsResult.status === 'fulfilled'
+          ? normalizeCollectionListPayload(designDraftsResult.value.data).items.map(
+              (item) => ({
+                ...item,
+                status: 'DRAFT' as const,
+              }),
+            )
+          : [];
+      const storeDrafts =
+        storeDraftsResult.status === 'fulfilled'
+          ? storeDraftsResult.value.map((item) => ({
+              ...item,
+              status: 'DRAFT' as const,
+              isAvailableInStore: true,
+            }))
+          : [];
+
+      const byId = new Map<string, CollectionDto>();
+      [...storeDrafts, ...designDrafts].forEach((item) => {
+        if (item.id) byId.set(item.id, item);
+      });
+
+      return Array.from(byId.values()).sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
     } catch (error) {
       console.error('Error fetching drafts:', error);
       return [];

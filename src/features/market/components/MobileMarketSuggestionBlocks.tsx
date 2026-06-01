@@ -14,6 +14,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Card } from '@/components/ui/Card';
 import { StableImage } from '@/components/ui/StableImage';
 import {
+  createMarketSuppression,
   getMarketSuggestions,
   type MarketSectionItem,
   type MarketSignalSurface,
@@ -30,6 +31,7 @@ import {
 } from '@/src/services/marketSignals';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { useToast } from '@/src/toast/ToastContext';
 
 type Props = {
   context: MarketSuggestionContext;
@@ -58,6 +60,9 @@ const getItemTargetId = (item: MarketSectionItem) =>
 
 const getStableItemKey = (item: MarketSectionItem) =>
   `${item.entityType}:${getItemTargetId(item)}:${item.id}`;
+
+const getSuggestionItemKey = (blockKey: string, item: MarketSectionItem) =>
+  `${blockKey}:${getStableItemKey(item)}`;
 
 const formatPrice = (item: MarketSectionItem) => {
   const value =
@@ -108,19 +113,25 @@ const navigateToSuggestion = (item: MarketSectionItem) => {
   }
 };
 
+type SuggestionCardProps = {
+  item: MarketSectionItem;
+  blockKey: string;
+  position: number;
+  surface: MarketSignalSurface;
+  screenContext: string;
+  hiddenBusy: boolean;
+  onHide: (item: MarketSectionItem, blockKey: string, position: number) => void;
+};
+
 function SuggestionCard({
   item,
   blockKey,
   position,
   surface,
   screenContext,
-}: {
-  item: MarketSectionItem;
-  blockKey: string;
-  position: number;
-  surface: MarketSignalSurface;
-  screenContext: string;
-}) {
+  hiddenBusy,
+  onHide,
+}: SuggestionCardProps) {
   const { theme } = useTheme();
   const image = item.media?.thumbnailUrl ?? item.media?.url ?? null;
 
@@ -139,59 +150,86 @@ function SuggestionCard({
   }, [blockKey, item, position, screenContext, surface]);
 
   return (
-    <Pressable
-      onPress={handlePress}
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.card,
         {
           backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border,
         },
-        pressed && styles.pressed,
       ]}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${item.title}`}
     >
-      <View style={[styles.imageWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
-        {image ? (
-          <StableImage
-            uri={image}
-            resizeMode="cover"
-            containerStyle={styles.image}
-            imageStyle={styles.image}
-          />
-        ) : (
-          <View style={styles.imageFallback}>
-            <AppText variant="subtitle" tone="muted">🧵</AppText>
-          </View>
-        )}
-      </View>
-      <View style={styles.cardCopy}>
-        <AppText variant="captionBold" numberOfLines={2}>
-          {item.title}
-        </AppText>
-        {item.subtitle ? (
-          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-            {item.subtitle}
+      <Pressable
+        onPress={handlePress}
+        style={({ pressed }) => [styles.cardTapTarget, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${item.title}`}
+      >
+        <View style={[styles.imageWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
+          {image ? (
+            <StableImage
+              uri={image}
+              resizeMode="cover"
+              containerStyle={styles.image}
+              imageStyle={styles.image}
+            />
+          ) : (
+            <View style={styles.imageFallback}>
+              <AppText variant="subtitle" tone="muted">
+                Pick
+              </AppText>
+            </View>
+          )}
+        </View>
+        <View style={styles.cardCopy}>
+          <AppText variant="captionBold" numberOfLines={2}>
+            {item.title}
           </AppText>
-        ) : null}
-        <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-          {formatPrice(item)}
+          {item.subtitle ? (
+            <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+              {item.subtitle}
+            </AppText>
+          ) : null}
+          <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+            {formatPrice(item)}
+          </AppText>
+        </View>
+      </Pressable>
+      <Pressable
+        onPress={() => onHide(item, blockKey, position)}
+        disabled={hiddenBusy}
+        style={({ pressed }) => [
+          styles.hideButton,
+          { borderColor: theme.colors.border },
+          pressed && styles.pressed,
+          hiddenBusy && styles.disabled,
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={`Hide ${item.title} from market suggestions`}
+      >
+        <AppText variant="captionBold" tone="muted">
+          {hiddenBusy ? 'Hiding...' : 'Not interested'}
         </AppText>
-      </View>
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
+
+type SuggestionBlockProps = {
+  block: MarketSuggestionBlock;
+  surface: MarketSignalSurface;
+  screenContext: string;
+  hiddenBusyKeys: Set<string>;
+  onHide: (item: MarketSectionItem, blockKey: string, position: number) => void;
+};
 
 function SuggestionBlock({
   block,
   surface,
   screenContext,
-}: {
-  block: MarketSuggestionBlock;
-  surface: MarketSignalSurface;
-  screenContext: string;
-}) {
+  hiddenBusyKeys,
+  onHide,
+}: SuggestionBlockProps) {
   return (
     <View style={styles.block}>
       <View style={styles.blockHeader}>
@@ -205,7 +243,7 @@ function SuggestionBlock({
       <FlatList
         data={block.items}
         horizontal
-        keyExtractor={(item) => `${block.blockKey}:${getStableItemKey(item)}`}
+        keyExtractor={(item) => getSuggestionItemKey(block.blockKey, item)}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.railContent}
         renderItem={({ item, index }) => (
@@ -215,6 +253,8 @@ function SuggestionBlock({
             position={index}
             surface={surface}
             screenContext={screenContext}
+            hiddenBusy={hiddenBusyKeys.has(getSuggestionItemKey(block.blockKey, item))}
+            onHide={onHide}
           />
         )}
       />
@@ -234,7 +274,10 @@ export function MobileMarketSuggestionBlocks({
   style,
 }: Props) {
   const { theme } = useTheme();
+  const toast = useToast();
   const [blocks, setBlocks] = useState<MarketSuggestionBlock[]>([]);
+  const [hiddenItemKeys, setHiddenItemKeys] = useState<Set<string>>(() => new Set());
+  const [hiddenBusyKeys, setHiddenBusyKeys] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -252,6 +295,7 @@ export function MobileMarketSuggestionBlocks({
   useEffect(() => {
     if (!canFetch) {
       setBlocks([]);
+      setHiddenItemKeys(new Set());
       setLoaded(false);
       return;
     }
@@ -276,6 +320,7 @@ export function MobileMarketSuggestionBlocks({
         if (controller.signal.aborted) return;
         const nextBlocks = (response.blocks ?? []).filter((block) => block.items.length > 0);
         setBlocks(nextBlocks);
+        setHiddenItemKeys(new Set());
         nextBlocks.forEach((block, index) => {
           trackMarketSignal({
             targetType: 'SUGGESTION_BLOCK',
@@ -313,9 +358,65 @@ export function MobileMarketSuggestionBlocks({
     targetType,
   ]);
 
+  const handleHideSuggestion = useCallback(
+    async (item: MarketSectionItem, blockKey: string, position: number) => {
+      const itemKey = getSuggestionItemKey(blockKey, item);
+      if (hiddenBusyKeys.has(itemKey)) return;
+
+      setHiddenBusyKeys((current) => new Set(current).add(itemKey));
+      setHiddenItemKeys((current) => new Set(current).add(itemKey));
+
+      try {
+        trackMarketSignal({
+          targetType: getItemTargetType(item),
+          targetId: getItemTargetId(item),
+          signalType: 'SUGGESTION_ITEM_HIDE',
+          surface,
+          suggestionBlockKey: blockKey,
+          screenContext,
+          position,
+        });
+        await createMarketSuppression({
+          anonymousSessionId: getMarketSignalAnonymousSessionId(),
+          targetType: getItemTargetType(item),
+          targetId: getItemTargetId(item),
+          brandId: item.brand?.id ?? null,
+          categoryId: item.category?.id ?? null,
+          suggestionBlockKey: blockKey,
+          suppressionType: 'NOT_INTERESTED',
+          reason: 'mobile-suggestion-item-hidden',
+        });
+        void flushMarketSignals();
+        toast.success('Suggestion hidden.');
+      } catch {
+        setHiddenItemKeys((current) => {
+          const next = new Set(current);
+          next.delete(itemKey);
+          return next;
+        });
+        toast.error('Could not hide that suggestion.');
+      } finally {
+        setHiddenBusyKeys((current) => {
+          const next = new Set(current);
+          next.delete(itemKey);
+          return next;
+        });
+      }
+    },
+    [hiddenBusyKeys, screenContext, surface, toast],
+  );
+
   const visibleBlocks = useMemo(
-    () => blocks.filter((block) => block.items.length > 0),
-    [blocks],
+    () =>
+      blocks
+        .map((block) => ({
+          ...block,
+          items: block.items.filter(
+            (item) => !hiddenItemKeys.has(getSuggestionItemKey(block.blockKey, item)),
+          ),
+        }))
+        .filter((block) => block.items.length > 0),
+    [blocks, hiddenItemKeys],
   );
 
   if (!canFetch) return null;
@@ -325,7 +426,9 @@ export function MobileMarketSuggestionBlocks({
     return (
       <Card padding="md" style={[styles.loadingCard, style]}>
         <ActivityIndicator size="small" color={theme.colors.primary} />
-        <AppText variant="body" tone="muted">Loading market picks...</AppText>
+        <AppText variant="body" tone="muted">
+          Loading market picks...
+        </AppText>
       </Card>
     );
   }
@@ -338,6 +441,8 @@ export function MobileMarketSuggestionBlocks({
           block={block}
           surface={surface}
           screenContext={screenContext}
+          hiddenBusyKeys={hiddenBusyKeys}
+          onHide={handleHideSuggestion}
         />
       ))}
     </View>
@@ -370,9 +475,15 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
   },
+  cardTapTarget: {
+    flex: 1,
+  },
   pressed: {
     opacity: 0.9,
     transform: [{ scale: 0.99 }],
+  },
+  disabled: {
+    opacity: 0.6,
   },
   imageWrap: {
     height: 172,
@@ -390,5 +501,11 @@ const styles = StyleSheet.create({
   cardCopy: {
     gap: tokens.spacing.xs,
     padding: tokens.spacing.sm,
+  },
+  hideButton: {
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.sm,
   },
 });

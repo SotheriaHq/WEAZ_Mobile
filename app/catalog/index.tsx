@@ -275,7 +275,10 @@ export default function CatalogScreen() {
     },
     { enabled: Boolean(collectionOwnerId) && visibilityFilter !== 'Drafts' },
   );
-  const draftsQuery = useBrandDraftsQuery({ enabled: isOwner && visibilityFilter === 'Drafts' });
+  const draftsQuery = useBrandDraftsQuery({
+    ownerId: collectionOwnerId,
+    enabled: isOwner && visibilityFilter === 'Drafts' && Boolean(collectionOwnerId),
+  });
   const effectiveProfile = profileQuery.data !== undefined ? profileQuery.data : profile;
   const effectiveCollections = collectionsQuery.data ?? collections;
   const effectiveDrafts = draftsQuery.data ?? drafts;
@@ -336,7 +339,7 @@ export default function CatalogScreen() {
     try {
       if (visibilityFilter === 'Drafts' && isOwner) {
         const data = options?.forceRefresh
-          ? await refreshBrandDraftsQuery(queryClient)
+          ? await refreshBrandDraftsQuery(queryClient, collectionOwnerId)
           : draftsQuery.data ?? drafts;
         catalogDevLog('load', {
           tab: visibilityFilter,

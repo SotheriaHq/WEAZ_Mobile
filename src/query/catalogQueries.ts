@@ -88,20 +88,34 @@ export async function refreshBrandCollectionsQuery(
   return result.items;
 }
 
-export function useBrandDraftsQuery(options?: EnabledOption) {
+export function useBrandDraftsQuery(
+  options?: EnabledOption & { ownerId?: string | null },
+) {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.designs.user('me', { status: 'DRAFT' });
+  const queryKey = queryKeys.brand.collections(options?.ownerId ?? 'me', {
+    scope: 'all',
+    status: 'DRAFT',
+  });
   return useQuery({
     queryKey,
-    queryFn: () => brandApi.getDrafts(),
+    queryFn: () => brandApi.getDrafts({ ownerId: options?.ownerId }),
     enabled: options?.enabled ?? true,
     initialData: () => queryClient.getQueryData(queryKey),
   });
 }
 
-export async function refreshBrandDraftsQuery(queryClient: QueryClient) {
-  const drafts = await brandApi.getDrafts({ forceRefresh: true });
-  queryClient.setQueryData(queryKeys.designs.user('me', { status: 'DRAFT' }), drafts);
+export async function refreshBrandDraftsQuery(
+  queryClient: QueryClient,
+  ownerId?: string | null,
+) {
+  const drafts = await brandApi.getDrafts({ ownerId, forceRefresh: true });
+  queryClient.setQueryData(
+    queryKeys.brand.collections(ownerId ?? 'me', {
+      scope: 'all',
+      status: 'DRAFT',
+    }),
+    drafts,
+  );
   return drafts;
 }
 
