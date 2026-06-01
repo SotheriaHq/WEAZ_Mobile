@@ -5,6 +5,7 @@ import {
   type BrandProfileDto,
   type CollectionDetailDto,
   type CollectionDto,
+  type CollectionPublicationStatus,
   type CollectionScope,
 } from '@/src/api/BrandApi';
 import { getDesignDetail, type DesignDetail } from '@/src/api/DesignApi';
@@ -17,7 +18,7 @@ type BrandCollectionsArgs = {
   ownerId?: string | null;
   scope?: CollectionScope;
   visibility?: 'PUBLIC' | 'PRIVATE';
-  status?: 'DRAFT' | 'PUBLISHED';
+  status?: CollectionPublicationStatus;
   limit?: number;
 };
 

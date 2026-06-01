@@ -5,7 +5,7 @@ import {
   MOBILE_UPLOAD_POLICIES,
   validatePickedUploadAssets,
 } from '@/src/utils/uploadValidation';
-import { DESIGN_EDITOR_MAX_MEDIA } from './designCreationRules';
+import { DESIGN_EDITOR_MAX_MEDIA, MEDIA_VIEW_SLOT_OPTIONS } from './designCreationRules';
 
 export { DESIGN_EDITOR_MAX_MEDIA };
 
@@ -43,6 +43,9 @@ function buildDesignEditorAssets(result: ImagePicker.ImagePickerAsset[], existin
       typeof asset.width === 'number' && typeof asset.height === 'number' && asset.height > 0
         ? asset.width / asset.height
         : null,
+    viewSlot:
+      MEDIA_VIEW_SLOT_OPTIONS[existingCount + index]?.value ??
+      MEDIA_VIEW_SLOT_OPTIONS[MEDIA_VIEW_SLOT_OPTIONS.length - 1].value,
   })) satisfies DesignEditorAsset[];
 }
 

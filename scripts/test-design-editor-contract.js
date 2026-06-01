@@ -23,6 +23,8 @@ function loadDesignApi() {
       },
       '@/src/features/design-editor/designCreationRules': {
         DESIGN_EDITOR_MAX_MEDIA: 6,
+        normalizeMediaViewSlot: (value) => value ?? null,
+        toBackendMediaViewSlot: (value) => (value === 'INSPIRATION' ? 'OTHER' : value ?? 'OTHER'),
       },
     },
   });
@@ -58,6 +60,9 @@ function main() {
   assert.match(designApiSource, /draftOnly:\s*payload\.action === 'draft'/);
   assert.ok(designApiSource.includes('`/designs/${designId}/finalize`'));
   assert.match(designApiSource, /designMetadata:\s*buildMetadata\(payload\)/);
+  assert.match(designApiSource, /viewSlot:\s*toBackendMediaViewSlot\(asset\.viewSlot\)/);
+  assert.match(designApiSource, /viewSlot:\s*toBackendMediaViewSlot\(upload\.viewSlot \?\? asset\.viewSlot\)/);
+  assert.match(designApiSource, /apiClient\.post\('\/store\/content-policy\/acknowledge'\)/);
   assert.doesNotMatch(designApiSource, /collectionMetadata:\s*buildMetadata\(payload\)/);
   assert.match(designApiSource, /const method = resolvePresignedUploadMethod\(upload\)/);
   assert.doesNotMatch(designApiSource, /if\s*\(upload\.method === 'POST'\)/);
@@ -100,6 +105,12 @@ function main() {
     /visibility:\s*targetVisibility/,
     'Design saves should route to the matching public, private, or draft catalog filter.',
   );
+  assert.ok(
+    providerSource.indexOf('const result = await saveDesignEditor') <
+      providerSource.indexOf("pathname: '/catalog'"),
+    'Mobile design editor must wait for the backend save before routing back to catalog.',
+  );
+  assert.match(providerSource, /getMissingRequiredMediaSlots/);
   assert.doesNotMatch(
     providerSource,
     /routeForDesignTarget\(result\.id/,

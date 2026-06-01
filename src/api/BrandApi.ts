@@ -89,7 +89,10 @@ export interface CollectionDto {
   title: string;
   description: string | null;
   visibility: 'PUBLIC' | 'PRIVATE';
-  status: 'DRAFT' | 'PUBLISHED';
+  status: CollectionPublicationStatus;
+  publicationStatus?: CollectionPublicationStatus | null;
+  reviewMode?: string | null;
+  submissionId?: string | null;
   coverImage: string | null;
   coverFileId: string | null;
   likesCount: number;
@@ -116,6 +119,15 @@ export interface CollectionDto {
 }
 
 export type CollectionScope = 'design' | 'store' | 'all';
+export type CollectionPublicationStatus =
+  | 'DRAFT'
+  | 'IN_REVIEW'
+  | 'CHANGES_REQUESTED'
+  | 'REJECTED'
+  | 'FAILED'
+  | 'PUBLISHED'
+  | 'ARCHIVED'
+  | 'REMOVED';
 
 const getCollectionBasePath = (scope?: CollectionScope) =>
   scope === 'store' ? '/store-collections' : scope === 'all' ? '/collections' : '/designs';
@@ -403,8 +415,20 @@ function normalizeVisibility(value: unknown): 'PUBLIC' | 'PRIVATE' {
   return String(value ?? '').toUpperCase() === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC';
 }
 
-function normalizeStatus(value: unknown): 'DRAFT' | 'PUBLISHED' {
-  return String(value ?? '').toUpperCase() === 'DRAFT' ? 'DRAFT' : 'PUBLISHED';
+function normalizeStatus(value: unknown): CollectionPublicationStatus {
+  const raw = String(value ?? '').toUpperCase();
+  if (
+    raw === 'DRAFT' ||
+    raw === 'IN_REVIEW' ||
+    raw === 'CHANGES_REQUESTED' ||
+    raw === 'REJECTED' ||
+    raw === 'FAILED' ||
+    raw === 'ARCHIVED' ||
+    raw === 'REMOVED'
+  ) {
+    return raw;
+  }
+  return 'PUBLISHED';
 }
 
 function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
@@ -665,6 +689,9 @@ function normalizeCollectionItem(payload: unknown): CollectionDto | null {
     description: asString(item.description),
     visibility: normalizeVisibility(item.visibility),
     status: normalizeStatus(item.status),
+    publicationStatus: normalizeStatus(item.publicationStatus ?? item.status),
+    reviewMode: asString(item.reviewMode),
+    submissionId: asString(item.submissionId),
     coverImage,
     coverFileId,
     likesCount: asNumber(item.threadsCount, asNumber(item.likesCount, 0)),
@@ -877,7 +904,7 @@ export const brandApi = {
   async getCollections(args?: {
     brandId?: string;
     visibility?: 'PUBLIC' | 'PRIVATE';
-    status?: 'DRAFT' | 'PUBLISHED';
+    status?: CollectionPublicationStatus;
     search?: string;
     page?: number;
     limit?: number;
@@ -896,7 +923,7 @@ export const brandApi = {
         ]);
         let merged = [...storeResult.items, ...designResult.items];
         if (args?.status) {
-          merged = merged.filter((item) => item.status === args.status);
+          merged = merged.filter((item) => (item.publicationStatus ?? item.status) === args.status);
         }
         if (args?.search) {
           const normalizedSearch = args.search.trim().toLowerCase();
@@ -934,7 +961,7 @@ export const brandApi = {
 
       let filtered = normalized.items;
       if (args?.status) {
-        filtered = filtered.filter((item) => item.status === args.status);
+        filtered = filtered.filter((item) => (item.publicationStatus ?? item.status) === args.status);
       }
       if (args?.search) {
         const normalizedSearch = args.search.trim().toLowerCase();

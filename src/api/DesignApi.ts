@@ -1,5 +1,12 @@
 import { apiClient } from '@/src/api/httpClient';
-import { DESIGN_EDITOR_MAX_MEDIA } from '@/src/features/design-editor/designCreationRules';
+import {
+  DESIGN_EDITOR_MAX_MEDIA,
+  normalizeMediaViewSlot,
+  toBackendMediaViewSlot,
+  type BackendMediaViewSlot,
+  type ContentPublicationStatus,
+  type MediaViewSlot,
+} from '@/src/features/design-editor/designCreationRules';
 import {
   MOBILE_UPLOAD_POLICIES,
   assertValidPickedUploadAssets,
@@ -12,6 +19,7 @@ export type MobileDesignAsset = {
   fileName: string;
   fileSize: number;
   mediaKind: 'image' | 'video';
+  viewSlot?: MediaViewSlot | string | null;
 };
 
 export type DesignEditorAsset = MobileDesignAsset & {
@@ -127,7 +135,7 @@ export type DesignDetail = {
   description: string;
   visibility: 'PUBLIC' | 'PRIVATE';
   type: 'MALE' | 'FEMALE' | 'EVERYBODY';
-  status: 'DRAFT' | 'PUBLISHED';
+  status: ContentPublicationStatus;
   categoryId: string;
   subCategoryId: string;
   filterSelection: DesignFilterSelection;
@@ -150,6 +158,7 @@ export type DesignDetail = {
     previewUrl?: string | null;
     aspectRatio?: number | null;
     mediaType: 'image' | 'video';
+    viewSlot?: MediaViewSlot | null;
   }>;
 };
 
@@ -227,6 +236,7 @@ type PresignedUpload = {
   uploadUrl: string;
   uploadFields?: Record<string, string> | null;
   method?: 'POST' | 'PUT';
+  viewSlot?: BackendMediaViewSlot | string | null;
 };
 
 export type InitializeDesignResponse = {
@@ -242,6 +252,7 @@ type UploadCompletion = {
   s3Key: string;
   actualSize: number;
   actualMimeType: string;
+  viewSlot?: BackendMediaViewSlot;
 };
 
 export type DesignCustomOrderConfigurationInput = {
@@ -338,6 +349,22 @@ const normalizeTargetAgeGroup = (value: unknown): DesignDetail['targetAgeGroup']
     return 'ADULT';
   }
   return null;
+};
+
+const normalizePublicationStatus = (value: unknown): ContentPublicationStatus => {
+  const raw = String(value ?? '').toUpperCase();
+  if (
+    raw === 'PUBLISHED' ||
+    raw === 'IN_REVIEW' ||
+    raw === 'CHANGES_REQUESTED' ||
+    raw === 'REJECTED' ||
+    raw === 'FAILED' ||
+    raw === 'ARCHIVED' ||
+    raw === 'REMOVED'
+  ) {
+    return raw;
+  }
+  return 'DRAFT';
 };
 
 const normalizeCustomOrderConfiguration = (raw: unknown): DesignCustomOrderConfiguration | null => {
@@ -461,7 +488,7 @@ const normalizeDetail = (payload: unknown): DesignDetail => {
         : String(source.type ?? '').toUpperCase() === 'FEMALE'
           ? 'FEMALE'
           : 'EVERYBODY',
-    status: String(source.status ?? '').toUpperCase() === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT',
+    status: normalizePublicationStatus(source.publicationStatus ?? source.status),
     categoryId: asString(source.categoryId) ?? '',
     subCategoryId: asString(source.subCategoryId) ?? asString(source.categoryTypeId) ?? '',
     filterSelection: mapFilterSelection(source.filters),
@@ -492,6 +519,7 @@ const normalizeDetail = (payload: unknown): DesignDetail => {
         aspectRatio: asNumber(item.aspectRatio),
         mediaType:
           String(item.type ?? item.mediaType ?? '').toUpperCase().includes('VIDEO') ? 'video' : 'image',
+        viewSlot: normalizeMediaViewSlot(asString(item.viewSlot) ?? asString(item.view_slot)),
       };
     }),
   };
@@ -562,6 +590,7 @@ async function uploadDesignAsset(
     s3Key: upload.expectedKey,
     actualSize: asset.fileSize,
     actualMimeType: asset.mimeType,
+    viewSlot: toBackendMediaViewSlot(upload.viewSlot ?? asset.viewSlot),
   };
 }
 
@@ -574,6 +603,7 @@ async function initializeNewDesignUploads(payload: DesignSavePayload): Promise<I
       name: asset.fileName,
       type: asset.mimeType,
       size: asset.fileSize,
+      viewSlot: toBackendMediaViewSlot(asset.viewSlot),
     })),
     isAvailableInStore: false,
     draftOnly: payload.action === 'draft',
@@ -880,6 +910,7 @@ export async function initializeExistingDesignMediaUploads(
       name: asset.fileName,
       type: asset.mimeType,
       size: asset.fileSize,
+      viewSlot: toBackendMediaViewSlot(asset.viewSlot),
     })),
   });
   return unwrapData<InitializeDesignResponse>(response.data);
@@ -908,6 +939,10 @@ export async function finalizeExistingDesign(
   );
 
   return unwrapData<unknown>(response.data);
+}
+
+export async function acknowledgeContentPolicy() {
+  await apiClient.post('/store/content-policy/acknowledge');
 }
 
 export async function reorderDesignMedia(designId: string, mediaIds: string[]) {
@@ -942,6 +977,10 @@ export async function saveDesignEditor(
     existingCount: existingMediaIds.length,
     maxFiles: DESIGN_EDITOR_MAX_MEDIA,
   });
+
+  if (payload.action === 'publish') {
+    await acknowledgeContentPolicy();
+  }
 
   if (!payload.designId) {
     onProgress?.(0.1, 'Creating design draft...');

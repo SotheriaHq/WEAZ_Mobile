@@ -37,6 +37,7 @@ function main() {
   const designMediaFlowSource = read(designMediaFlowPath);
   assert.match(designMediaFlowSource, /validatePickedUploadAssets/);
   assert.match(designMediaFlowSource, /status:\s*'limit'/);
+  assert.match(designMediaFlowSource, /viewSlot:/);
 
   const brandApiSource = read(brandApiPath);
   assert.match(brandApiSource, /assertValidPickedUploadAsset\([\s\S]*MOBILE_UPLOAD_POLICIES\.profileImage/);

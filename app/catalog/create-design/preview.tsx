@@ -17,6 +17,7 @@ import {
   DESIGN_SIZING_LABELS,
   DESIGN_TARGET_AGE_LABELS,
   DESIGN_VISIBILITY_LABELS,
+  getMediaViewSlotLabel,
 } from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -128,6 +129,9 @@ export default function CreateDesignPreviewScreen() {
   const isSaving = Boolean(saveState.action);
   const canDelete = deletePhrase === 'DELETE' && !isSaving;
   const selectedPreviewAsset = assets[selectedPreviewIndex] ?? null;
+  const selectedPreviewSlotLabel = selectedPreviewAsset
+    ? getMediaViewSlotLabel(selectedPreviewAsset.viewSlot)
+    : '';
   const saveProgressPercent = Math.max(0, Math.min(100, Math.round(saveState.progress * 100)));
 
   useAndroidOverlaySystemBars(deleteOpen, scheme, 'create-design-delete');
@@ -184,7 +188,9 @@ export default function CreateDesignPreviewScreen() {
             />
             <View style={[styles.heroBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
               <AppText variant="captionBold">
-                {selectedPreviewAsset.id === coverAssetId ? 'Cover' : `Asset ${selectedPreviewIndex + 1}`}
+                {selectedPreviewAsset.id === coverAssetId
+                  ? `Cover - ${selectedPreviewSlotLabel}`
+                  : selectedPreviewSlotLabel}
               </AppText>
             </View>
           </View>
@@ -215,10 +221,10 @@ export default function CreateDesignPreviewScreen() {
                 />
                 <View style={styles.assetThumbMeta}>
                   <AppText variant="captionBold" tone={index === selectedPreviewIndex ? 'primary' : 'default'}>
-                    {index === selectedPreviewIndex ? 'Previewing' : `Asset ${index + 1}`}
+                    {getMediaViewSlotLabel(asset.viewSlot)}
                   </AppText>
                   <AppText variant="captionRegular" tone="muted">
-                    {asset.id === coverAssetId ? 'Current cover' : 'Tap to preview'}
+                    {asset.id === coverAssetId ? 'Current cover' : index === selectedPreviewIndex ? 'Previewing' : 'Tap to preview'}
                   </AppText>
                 </View>
               </Pressable>
@@ -314,6 +320,9 @@ export default function CreateDesignPreviewScreen() {
           </AppText>
         ) : null}
         <Button title="Back to edit" variant="outline" onPress={() => router.replace('/catalog/create-design/composer' as any)} fullWidth />
+        <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+          Going live confirms these images belong to this design and match the selected views.
+        </AppText>
         <View style={styles.actionRow}>
           <Button
             title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}

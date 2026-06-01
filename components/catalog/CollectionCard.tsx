@@ -12,6 +12,7 @@ import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { getCatalogCardCopy, resolveCatalogCardBranch } from '@/src/features/catalog/catalogCardBranch';
+import { getContentStatusLabel } from '@/src/features/design-editor/designCreationRules';
 
 export interface CollectionCardProps {
   collection: CollectionDto;
@@ -118,6 +119,14 @@ export const CollectionCard = React.memo(function CollectionCard({
   const likeCountLabel = compactCount(collection.likesCount);
   const commentCountLabel = compactCount(collection.commentsCount);
   const threadCountLabel = compactCount(collection.postsCount);
+  const backendStatus = String(collection.publicationStatus ?? collection.status ?? '').toUpperCase();
+  const reviewStatusLabel =
+    backendStatus === 'IN_REVIEW' ||
+    backendStatus === 'CHANGES_REQUESTED' ||
+    backendStatus === 'REJECTED' ||
+    backendStatus === 'FAILED'
+      ? getContentStatusLabel(backendStatus)
+      : null;
 
   const disabled = Boolean(collection.clientStatus);
 
@@ -258,6 +267,16 @@ export const CollectionCard = React.memo(function CollectionCard({
                 <View style={[styles.statusPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
                   <AppText variant="captionBold" tone="primary" numberOfLines={1}>
                     Draft
+                  </AppText>
+                </View>
+              ) : isOwner && reviewStatusLabel ? (
+                <View style={[styles.statusPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
+                  <AppText
+                    variant="captionBold"
+                    tone={backendStatus === 'CHANGES_REQUESTED' ? 'primary' : backendStatus === 'REJECTED' ? 'danger' : 'muted'}
+                    numberOfLines={1}
+                  >
+                    {reviewStatusLabel}
                   </AppText>
                 </View>
               ) : null}

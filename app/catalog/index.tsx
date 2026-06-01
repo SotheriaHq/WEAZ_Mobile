@@ -83,8 +83,13 @@ import { queryKeys } from '@/src/query/queryKeys';
 // ─────────────────────────────────────────────────────────────
 
 type TabType = 'Collections' | 'Shop' | 'Reviews';
-type VisibilityType = 'Public' | 'Private' | 'Drafts';
+type VisibilityType = 'Public' | 'Private' | 'Drafts' | 'In Review' | 'Changes Requested' | 'Rejected';
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
+const REVIEW_VISIBILITY_STATUS: Partial<Record<VisibilityType, 'IN_REVIEW' | 'CHANGES_REQUESTED' | 'REJECTED'>> = {
+  'In Review': 'IN_REVIEW',
+  'Changes Requested': 'CHANGES_REQUESTED',
+  Rejected: 'REJECTED',
+};
 
 function readMetricNumber(value: unknown): number | null {
   const parsed = Number(value);
@@ -203,6 +208,9 @@ export default function CatalogScreen() {
     const key = String(value ?? '').trim().toLowerCase();
     if (key === 'private') return 'Private';
     if (key === 'drafts' || key === 'draft') return 'Drafts';
+    if (key === 'in review' || key === 'in_review' || key === 'in-review') return 'In Review';
+    if (key === 'changes requested' || key === 'changes_requested' || key === 'changes-requested') return 'Changes Requested';
+    if (key === 'rejected') return 'Rejected';
     return 'Public';
   };
 
@@ -261,10 +269,13 @@ export default function CatalogScreen() {
 
   const profileQuery = useBrandProfileQuery(targetBrandId, { enabled: Boolean(targetBrandId) });
   const collectionOwnerId = getCollectionOwnerId(profileQuery.data !== undefined ? profileQuery.data : profile);
-  const collectionVisibility = visibilityFilter === 'Drafts'
+  const reviewStatusFilter = REVIEW_VISIBILITY_STATUS[visibilityFilter];
+  const collectionVisibility = visibilityFilter === 'Drafts' || reviewStatusFilter
     ? undefined
     : visibilityFilter.toUpperCase() as 'PUBLIC' | 'PRIVATE';
-  const collectionStatusFilter = visibilityFilter === 'Drafts' ? 'DRAFT' : 'PUBLISHED';
+  const collectionStatusFilter = visibilityFilter === 'Drafts'
+    ? 'DRAFT'
+    : reviewStatusFilter ?? 'PUBLISHED';
   const collectionsQuery = useBrandCollectionsQuery(
     {
       ownerId: collectionOwnerId,

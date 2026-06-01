@@ -42,7 +42,15 @@ import {
   pickDesignEditorMediaAssets,
   type MediaPermissionIssue,
 } from './designEditorMediaFlow';
-import { DESIGN_REQUIRED_MEDIA_COUNT, normalizeDesignCreationSizingMode } from './designCreationRules';
+import {
+  DESIGN_REQUIRED_MEDIA_COUNT,
+  MEDIA_VIEW_SLOT_OPTIONS,
+  getMediaViewSlotLabel,
+  getMissingRequiredMediaSlots,
+  normalizeDesignCreationSizingMode,
+  normalizeMediaViewSlot,
+  type ContentPublicationStatus,
+} from './designCreationRules';
 import {
   createDesignEditorBackgroundTask,
   updateDesignEditorBackgroundTask,
@@ -208,6 +216,10 @@ function syncAssetsFromDetail(detail: DesignDetail): DesignEditorAsset[] {
     remoteFileId: media.fileId ?? null,
     remoteUrl: media.previewUrl ?? media.url ?? null,
     aspectRatio: media.aspectRatio ?? null,
+    viewSlot:
+      normalizeMediaViewSlot(media.viewSlot) ??
+      MEDIA_VIEW_SLOT_OPTIONS[index]?.value ??
+      MEDIA_VIEW_SLOT_OPTIONS[MEDIA_VIEW_SLOT_OPTIONS.length - 1].value,
   }));
 }
 
@@ -237,21 +249,25 @@ function hasMeaningfulDraftContent(form: FormState, tags: string[], filterSelect
 }
 
 function getPublishValidationMessage({
-  assetsCount,
+  assets,
   form,
   tags,
   filterValueIds,
   customMeasurementKeys,
 }: {
-  assetsCount: number;
+  assets: DesignEditorAsset[];
   form: FormState;
   tags: string[];
   filterValueIds: string[];
   customMeasurementKeys: string[];
 }) {
-  if (assetsCount === 0) return 'Add Front, Back, Left, and Right media before previewing.';
-  if (assetsCount < DESIGN_REQUIRED_MEDIA_COUNT) return 'Add Front, Back, Left, and Right media before previewing.';
-  if (assetsCount > DESIGN_EDITOR_MAX_MEDIA) return 'Remove extra media before previewing.';
+  const missingRequiredSlots = getMissingRequiredMediaSlots(assets);
+  if (assets.length === 0) return 'Add Front, Back, Left Side, and Right Side media before previewing.';
+  if (missingRequiredSlots.length > 0) {
+    return `Add ${missingRequiredSlots.map(getMediaViewSlotLabel).join(', ')} media before previewing.`;
+  }
+  if (assets.length < DESIGN_REQUIRED_MEDIA_COUNT) return 'Add Front, Back, Left Side, and Right Side media before previewing.';
+  if (assets.length > DESIGN_EDITOR_MAX_MEDIA) return 'Remove extra media before previewing.';
   if (form.title.trim().length === 0) return 'Add a title before previewing.';
   if (!form.categoryId) return 'Choose what this item is.';
   if (!form.subCategoryId) return 'Choose a garment type.';
@@ -322,7 +338,7 @@ export function DesignEditorProvider({
   const [customMeasurementKeys, setCustomMeasurementKeys] = useState<string[]>([]);
   const [originalMediaIds, setOriginalMediaIds] = useState<string[]>([]);
   const [activeDesignId, setActiveDesignId] = useState<string | null>(designId ?? null);
-  const [activeDesignStatus, setActiveDesignStatus] = useState<'DRAFT' | 'PUBLISHED'>(designId ? 'DRAFT' : 'DRAFT');
+  const [activeDesignStatus, setActiveDesignStatus] = useState<ContentPublicationStatus>('DRAFT');
   const [draftSessionToken, setDraftSessionToken] = useState<string | undefined>(undefined);
   const [draftVersion, setDraftVersion] = useState<number | undefined>(undefined);
   const [saveAction, setSaveAction] = useState<SaveAction | null>(null);
@@ -509,13 +525,13 @@ export function DesignEditorProvider({
   const publishValidationMessage = useMemo(
     () =>
       getPublishValidationMessage({
-        assetsCount: assets.length,
+        assets,
         form,
         tags,
         filterValueIds: selectedFilterValueIds,
         customMeasurementKeys,
       }),
-    [assets.length, customMeasurementKeys, form, selectedFilterValueIds, tags],
+    [assets, customMeasurementKeys, form, selectedFilterValueIds, tags],
   );
   const canSaveDraft =
     assets.length > 0 || hasMeaningfulDraftContent(form, tags, filterSelection);
@@ -745,58 +761,56 @@ export function DesignEditorProvider({
             ? 'Private'
             : 'Public';
 
-        router.replace({
-          pathname: '/catalog',
-          params: { tab: 'Collections', visibility: targetVisibility },
-        } as any);
+        try {
+          const result = await saveDesignEditor(
+            payload,
+            (value, message) => {
+              updateDesignEditorBackgroundTask(task.id, {
+                progress: value,
+                message,
+              });
+              if (mountedRef.current) {
+                setSaveProgress(value);
+                setSaveMessage(message);
+              }
+            },
+          );
 
-        void (async () => {
-          try {
-            const result = await saveDesignEditor(
-              payload,
-              (value, message) => {
-                updateDesignEditorBackgroundTask(task.id, {
-                  progress: value,
-                  message,
-                });
-                if (mountedRef.current) {
-                  setSaveProgress(value);
-                  setSaveMessage(message);
-                }
-              },
-            );
+          updateDesignEditorBackgroundTask(task.id, {
+            status: 'complete',
+            progress: 1,
+            designId: result.id,
+            message: action === 'publish' ? 'Design is live.' : 'Draft saved.',
+          });
+          toast.success(action === 'publish' ? 'Design is live.' : 'Draft saved.');
 
-            updateDesignEditorBackgroundTask(task.id, {
-              status: 'complete',
-              progress: 1,
-              designId: result.id,
-              message: action === 'publish' ? 'Design is live.' : 'Draft saved.',
-            });
-            toast.success(action === 'publish' ? 'Design is live.' : 'Draft saved.');
-
-            if (mountedRef.current) {
-              hydrateFromDetail(result.detail);
-              setActiveDesignId(result.id);
-              setDraftVersion(result.detail.draftVersion);
-            }
-          } catch (error: any) {
-            const message = extractApiErrorMessage(
-              error,
-              action === 'publish' ? 'Failed to publish design.' : 'Failed to save draft.',
-            );
-            updateDesignEditorBackgroundTask(task.id, {
-              status: 'failed',
-              progress: 1,
-              message: action === 'publish' ? 'Publish failed.' : 'Draft save failed.',
-              error: message,
-            });
-            toast.error(action === 'publish' ? mapCreatorMetadataError(message, 'Failed to publish design.') : message);
-          } finally {
-            if (mountedRef.current) {
-              setSaveAction(null);
-            }
+          if (mountedRef.current) {
+            hydrateFromDetail(result.detail);
+            setActiveDesignId(result.id);
+            setDraftVersion(result.detail.draftVersion);
           }
-        })();
+
+          router.replace({
+            pathname: '/catalog',
+            params: { tab: 'Collections', visibility: targetVisibility },
+          } as any);
+        } catch (error: any) {
+          const message = extractApiErrorMessage(
+            error,
+            action === 'publish' ? 'Failed to publish design.' : 'Failed to save draft.',
+          );
+          updateDesignEditorBackgroundTask(task.id, {
+            status: 'failed',
+            progress: 1,
+            message: action === 'publish' ? 'Publish failed.' : 'Draft save failed.',
+            error: message,
+          });
+          toast.error(action === 'publish' ? mapCreatorMetadataError(message, 'Failed to publish design.') : message);
+        } finally {
+          if (mountedRef.current) {
+            setSaveAction(null);
+          }
+        }
       } catch (error: any) {
         const message = extractApiErrorMessage(
           error,

@@ -1,11 +1,11 @@
 import React from 'react';
-import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
-type VisibilityOption = 'Public' | 'Private' | 'Drafts';
+type VisibilityOption = 'Public' | 'Private' | 'Drafts' | 'In Review' | 'Changes Requested' | 'Rejected';
 
 interface VisibilityFilterProps {
   selected: VisibilityOption;
@@ -82,7 +82,11 @@ export function VisibilityFilter({
 
   return (
     <View style={styles.outer}>
-      <View style={[styles.container, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[styles.container, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}
+      >
         <VisibilitySegment
           label="Public"
           isActive={selected === 'Public'}
@@ -101,7 +105,26 @@ export function VisibilityFilter({
             badge={draftsCount}
           />
         ) : null}
-      </View>
+        {showDrafts ? (
+          <>
+            <VisibilitySegment
+              label="In Review"
+              isActive={selected === 'In Review'}
+              onPress={() => onChange('In Review')}
+            />
+            <VisibilitySegment
+              label="Changes Requested"
+              isActive={selected === 'Changes Requested'}
+              onPress={() => onChange('Changes Requested')}
+            />
+            <VisibilitySegment
+              label="Rejected"
+              isActive={selected === 'Rejected'}
+              onPress={() => onChange('Rejected')}
+            />
+          </>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }
@@ -112,7 +135,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   container: {
-    maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,

@@ -24,10 +24,11 @@ import {
   DESIGN_CREATION_SIZING_OPTIONS,
   DESIGN_FIT_PREFERENCE_LABELS,
   DESIGN_MEDIA_SLOTS,
-  DESIGN_REQUIRED_MEDIA_COUNT,
   DESIGN_SIZING_LABELS,
   DESIGN_TARGET_AGE_LABELS,
   DESIGN_VISIBILITY_LABELS,
+  getMediaViewSlotLabel,
+  getMissingRequiredMediaSlots,
 } from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -216,10 +217,19 @@ export default function CreateDesignComposerScreen() {
     if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
     return max < min ? 'Maximum price must be greater than or equal to minimum price.' : null;
   }, [form.maxPrice, form.minPrice]);
+  const missingRequiredMediaSlots = useMemo(
+    () => getMissingRequiredMediaSlots(assets),
+    [assets],
+  );
   const missingRequiredFields = useMemo(() => {
     const missing: string[] = [];
-    if (assets.length === 0) missing.push('Add Front, Back, Left, and Right media.');
-    if (assets.length > 0 && assets.length < DESIGN_REQUIRED_MEDIA_COUNT) missing.push('Add Front, Back, Left, and Right media.');
+    if (assets.length === 0 || missingRequiredMediaSlots.length > 0) {
+      const slotText =
+        missingRequiredMediaSlots.length > 0
+          ? missingRequiredMediaSlots.map(getMediaViewSlotLabel).join(', ')
+          : 'Front, Back, Left Side, and Right Side';
+      missing.push(`Add ${slotText} media.`);
+    }
     if (form.title.trim().length === 0) missing.push('Add a title.');
     if (!form.categoryId) missing.push('Choose what this item is.');
     if (!form.subCategoryId) missing.push('Choose a garment type.');
@@ -241,6 +251,7 @@ export default function CreateDesignComposerScreen() {
     form.title,
     selectedDiscoveryFilterCount,
     selectedTags.length,
+    missingRequiredMediaSlots,
   ]);
   const canPreview = missingRequiredFields.length === 0;
 
@@ -451,7 +462,9 @@ export default function CreateDesignComposerScreen() {
                   <View key={asset.id} style={styles.assetCard}>
                     <StableImage uri={asset.remoteUrl ?? asset.uri} containerStyle={styles.assetPreview} imageStyle={styles.assetPreview} />
                     <View style={[styles.assetBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
-                      <AppText variant="captionBold">{DESIGN_MEDIA_SLOTS[index]}</AppText>
+                      <AppText variant="captionBold">
+                        {asset.viewSlot ? getMediaViewSlotLabel(asset.viewSlot) : DESIGN_MEDIA_SLOTS[index]}
+                      </AppText>
                     </View>
                     <View style={styles.assetActionRow}>
                       <Pressable onPress={() => setCoverAssetId(asset.id)}>
