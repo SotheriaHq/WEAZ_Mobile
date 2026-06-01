@@ -13,6 +13,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { getCatalogCardCopy, resolveCatalogCardBranch } from '@/src/features/catalog/catalogCardBranch';
 import { getContentStatusLabel } from '@/src/features/design-editor/designCreationRules';
+import { ContentReviewDecisionSheet } from './ContentReviewDecisionSheet';
 
 export interface CollectionCardProps {
   collection: CollectionDto;
@@ -90,6 +91,7 @@ export const CollectionCard = React.memo(function CollectionCard({
   const { theme } = useTheme();
   const [imageFailed, setImageFailed] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [reviewDecisionOpen, setReviewDecisionOpen] = useState(false);
   const scale = React.useRef(new Animated.Value(1)).current;
 
   const width = Math.round(cardWidth ?? (screenWidth - tokens.spacing.lg * 2 - tokens.spacing.md) / 2);
@@ -127,6 +129,8 @@ export const CollectionCard = React.memo(function CollectionCard({
     backendStatus === 'FAILED'
       ? getContentStatusLabel(backendStatus)
       : null;
+  const needsReviewDecision =
+    backendStatus === 'CHANGES_REQUESTED' || backendStatus === 'REJECTED';
 
   const disabled = Boolean(collection.clientStatus);
 
@@ -144,6 +148,7 @@ export const CollectionCard = React.memo(function CollectionCard({
   const showImage = Boolean(coverUri && !imageFailed);
 
   return (
+    <>
     <Animated.View
       testID={`catalog-card-${cardBranch}`}
       style={[
@@ -270,7 +275,12 @@ export const CollectionCard = React.memo(function CollectionCard({
                   </AppText>
                 </View>
               ) : isOwner && reviewStatusLabel ? (
-                <View style={[styles.statusPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
+                <Pressable
+                  onPress={needsReviewDecision ? () => setReviewDecisionOpen(true) : undefined}
+                  style={[styles.statusPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}
+                  accessibilityRole={needsReviewDecision ? 'button' : undefined}
+                  accessibilityLabel={needsReviewDecision ? `View ${reviewStatusLabel} feedback` : reviewStatusLabel}
+                >
                   <AppText
                     variant="captionBold"
                     tone={backendStatus === 'CHANGES_REQUESTED' ? 'primary' : backendStatus === 'REJECTED' ? 'danger' : 'muted'}
@@ -278,7 +288,7 @@ export const CollectionCard = React.memo(function CollectionCard({
                   >
                     {reviewStatusLabel}
                   </AppText>
-                </View>
+                </Pressable>
               ) : null}
 
               <AppText variant="smallBold" tone="inverse" numberOfLines={2}>
@@ -310,6 +320,15 @@ export const CollectionCard = React.memo(function CollectionCard({
         </View>
       </Pressable>
     </Animated.View>
+    <ContentReviewDecisionSheet
+      open={reviewDecisionOpen}
+      onClose={() => setReviewDecisionOpen(false)}
+      submissionId={collection.submissionId}
+      status={backendStatus}
+      title={displayTitle}
+      onEdit={onEdit ? () => onEdit(collection.id) : onPress}
+    />
+    </>
   );
 });
 

@@ -55,6 +55,9 @@ assertIncludes(storeApi, "apiClient.get('/custom-orders/checkout-bag'", 'custom 
 const marketApi = read('src/api/MarketApi.ts');
 assertIncludes(marketApi, "'/market/signals/batch'", 'market signal batch');
 
+const contentIntegrityApi = read('src/api/ContentIntegrityApi.ts');
+assertIncludes(contentIntegrityApi, '/content-integrity/submissions/${id}', 'owner content review reason endpoint');
+
 const messagingApi = read('src/api/MessagingApi.ts');
 assertIncludes(messagingApi, "'/messaging/inbox'", 'messaging inbox');
 assertIncludes(messagingApi, '/messaging/threads/', 'messaging thread routes');
