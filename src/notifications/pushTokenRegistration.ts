@@ -173,6 +173,7 @@ export async function clearStoredPushRegistration() {
 export async function registerAuthenticatedPushToken(params: {
   userId: string | null | undefined;
   authToken: string | null | undefined;
+  requirePushEnabled?: boolean;
 }): Promise<PushRegistrationResult> {
   const userId = readString(params.userId);
   const authToken = readString(params.authToken);
@@ -181,6 +182,17 @@ export async function registerAuthenticatedPushToken(params: {
   if (!userId || !authToken) return { status: 'skipped', reason: 'unauthenticated' };
   if (!apiBaseUrl) return { status: 'skipped', reason: 'api-base-url-missing' };
   if (isExpoGoAndroid()) return { status: 'skipped', reason: 'expo-go-android-unsupported' };
+
+  if (params.requirePushEnabled) {
+    try {
+      const settings = await NotificationsApi.getSettings();
+      if (settings?.push?.enabled !== true) {
+        return { status: 'skipped', reason: 'push-disabled' };
+      }
+    } catch {
+      return { status: 'skipped', reason: 'push-settings-unavailable' };
+    }
+  }
 
   const expoProjectId = resolveExpoProjectId();
   if (!expoProjectId) {
@@ -284,7 +296,11 @@ export function useAuthenticatedPushTokenRegistration(params: {
   useEffect(() => {
     if (!authenticated || !userId || !authToken) return;
 
-    void registerAuthenticatedPushToken({ userId, authToken }).catch((error) => {
+    void registerAuthenticatedPushToken({
+      userId,
+      authToken,
+      requirePushEnabled: true,
+    }).catch((error) => {
       if (__DEV__) {
         console.warn('Push token registration failed:', error);
       }

@@ -30,6 +30,7 @@ function loadPushRegistration(options = {}) {
   };
   const platform = { OS: options.platform ?? 'ios' };
   const notificationsApi = options.notificationsApi ?? {
+    getSettings: async () => ({ push: { enabled: true } }),
     registerPushToken: async () => ({ success: true }),
     deactivateCurrentPushToken: async () => ({ success: true }),
   };
@@ -176,6 +177,38 @@ async function main() {
       process.env.EXPO_PUBLIC_EAS_PROJECT_ID = previousEnvProjectId;
     }
   }
+
+  let settingsReadCount = 0;
+  let registerCallCount = 0;
+  const { exports: gatedExports } = loadPushRegistration({
+    constants: {
+      executionEnvironment: 'standalone',
+      expoConfig: {
+        version: '1.0.0',
+        extra: { eas: { projectId: 'configured-eas-project' } },
+      },
+    },
+    notificationsApi: {
+      getSettings: async () => {
+        settingsReadCount += 1;
+        return { push: { enabled: false } };
+      },
+      registerPushToken: async () => {
+        registerCallCount += 1;
+        return { success: true };
+      },
+      deactivateCurrentPushToken: async () => ({ success: true }),
+    },
+  });
+  const disabledPushResult = await gatedExports.registerAuthenticatedPushToken({
+    userId: 'user-1',
+    authToken: 'token',
+    requirePushEnabled: true,
+  });
+  assert.equal(disabledPushResult.status, 'skipped');
+  assert.equal(disabledPushResult.reason, 'push-disabled');
+  assert.equal(settingsReadCount, 1);
+  assert.equal(registerCallCount, 0);
 
   const storedRecord = JSON.stringify(previous);
   const failingApi = {
