@@ -4,17 +4,21 @@ import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 
 import { LOGO_ACCESSIBILITY_LABEL } from '@/src/config/productIdentity';
 
+const WEAZ_MARK_ASPECT_RATIO = 64 / 96;
+
 interface ThreadlyLogoProps {
   size?: number;
   style?: StyleProp<ViewStyle>;
 }
 
 export function ThreadlyLogo({ size = 32, style }: ThreadlyLogoProps) {
+  const width = Math.round(size * WEAZ_MARK_ASPECT_RATIO);
+
   return (
     <Svg
-      width={size}
+      width={width}
       height={size}
-      viewBox="0 0 32 32"
+      viewBox="0 0 64 96"
       fill="none"
       style={style}
       accessible
@@ -24,10 +28,10 @@ export function ThreadlyLogo({ size = 32, style }: ThreadlyLogoProps) {
       <Defs>
         <LinearGradient
           id="weaz-logo-gradient"
-          x1="8"
-          y1="3"
-          x2="24"
-          y2="29"
+          x1="17"
+          y1="7"
+          x2="48"
+          y2="91"
           gradientUnits="userSpaceOnUse"
         >
           <Stop offset="0" stopColor="#fff1a8" />
@@ -37,25 +41,23 @@ export function ThreadlyLogo({ size = 32, style }: ThreadlyLogoProps) {
         </LinearGradient>
       </Defs>
       <Path
-        d="M17.2 4.8c2.1 0 3.7 1.7 3.7 3.7s-1.6 3.7-3.7 3.7-3.7-1.7-3.7-3.7 1.6-3.7 3.7-3.7Z"
+        d="M35.2 8.2c5.2 0 9.2 4.1 9.2 9.3s-4 9.4-9.2 9.4-9.3-4.1-9.3-9.4 4.1-9.3 9.3-9.3Z"
         fill="url(#weaz-logo-gradient)"
       />
       <Path
-        d="M13.9 12.4 18.5 17.8l-1.1 7.7c-.4 2.2-.1 4.5.9 6.6l.9 1.9c-3.4-3.7-5.1-7.5-5-11.6l-4.2.6 3.9-10.6Z"
+        d="M28.1 29.1 40.5 43.8 36.9 60c-2.3 10.1-.9 20 4.8 30.2C30.6 80.8 25 69.1 25.4 55.8l-9.2 1.5 11.9-28.2Z"
         fill="url(#weaz-logo-gradient)"
-        transform="translate(0 -2.5) scale(1 0.92)"
       />
       <Path
-        d="M18.7 12.4 24 19.1l-1.6 6.9h-6.7l1.2-7.8 1.8-5.8Z"
+        d="M40.9 29.1 51.9 45.4 46.8 63.1H31.6l5.1-19.1 4.2-14.9Z"
         fill="url(#weaz-logo-gradient)"
-        transform="translate(0 -2.3) scale(1 0.93)"
       />
       <Path
-        d="M14.1 11.3 19.8 17.9"
+        d="M28.4 27.7 41.7 43.2"
         stroke="#fff6bd"
-        strokeWidth={0.7}
+        strokeWidth={1.45}
         strokeLinecap="round"
-        opacity={0.76}
+        opacity={0.78}
       />
     </Svg>
   );

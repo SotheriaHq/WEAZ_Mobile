@@ -14,9 +14,10 @@
   <rect width="512" height="512" rx="22" fill="url(#weaz-mobile-lockup-bg)"/>
   <rect x="126" y="74" width="260" height="364" stroke="#b46e24" stroke-width="3"/>
   <rect x="132" y="80" width="248" height="352" stroke="#e6c266" stroke-width="1.4"/>
-  <path d="M253 114c14 0 25 11 25 25s-11 25-25 25-25-11-25-25 11-25 25-25Z" fill="url(#weaz-mobile-lockup-gold)"/>
-  <path d="M225 176 259 216l-10 68c-4 28 0 56 13 84l8 18c-40-44-59-90-58-137l-40 5 34-78Z" fill="url(#weaz-mobile-lockup-gold)"/>
-  <path d="M264 174 315 236l-14 64h-62l10-75 15-51Z" fill="url(#weaz-mobile-lockup-gold)"/>
+  <path d="M257 104c14 0 25 11 25 25s-11 25-25 25-25-11-25-25 11-25 25-25Z" fill="url(#weaz-mobile-lockup-gold)"/>
+  <path d="M224 170 275 231l-15 64c-6 25-1 49 14 72-37-34-56-74-54-121l-42 6 46-82Z" fill="url(#weaz-mobile-lockup-gold)"/>
+  <path d="M277 170 323 238l-21 73h-63l21-79 17-62Z" fill="url(#weaz-mobile-lockup-gold)"/>
+  <path d="M225 165 281 230" stroke="#fff6bd" stroke-width="4" stroke-linecap="round" opacity=".75"/>
   <text x="256" y="368" text-anchor="middle" fill="url(#weaz-mobile-lockup-gold)" font-family="Georgia, 'Times New Roman', serif" font-size="54" letter-spacing="10">WEAZ</text>
   <text x="256" y="398" text-anchor="middle" fill="#d8b24a" font-family="Arial, sans-serif" font-size="15" letter-spacing="11">JUST WEAR</text>
 </svg>

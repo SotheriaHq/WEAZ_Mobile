@@ -508,6 +508,7 @@ export default function LoginScreen() {
                     setFlowError('');
                   }}
                   keyboardType="numeric"
+                  isPassword
                   testID="password-setup-code-input"
                 />
                 <View style={styles.inlineActions}>

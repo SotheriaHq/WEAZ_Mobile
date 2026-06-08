@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, TextInput, View, Pressable } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -69,7 +69,7 @@ export function FloatingLabelInput({
             {
               color: theme.colors.text,
               paddingLeft: icon ? 44 : tokens.spacing.lg,
-              paddingRight: isPassword ? 44 : tokens.spacing.lg,
+              paddingRight: isPassword ? 64 : tokens.spacing.lg,
               fontFamily: tokens.fontFamily.regular,
               fontSize: tokens.typography.body.size,
               lineHeight: tokens.typography.body.lineHeight,
@@ -82,8 +82,13 @@ export function FloatingLabelInput({
             style={styles.trailing}
             onPress={() => setPasswordVisible(!passwordVisible)}
             accessibilityRole="button"
+            accessibilityLabel={passwordVisible ? `Hide ${label}` : `Show ${label}`}
+            accessibilityState={{ expanded: passwordVisible }}
+            hitSlop={8}
           >
-            <AppText variant="subtitle">{passwordVisible ? '🙈' : '👁️'}</AppText>
+            <AppText variant="captionBold" tone="primary">
+              {passwordVisible ? 'Hide' : 'Show'}
+            </AppText>
           </Pressable>
         )}
       </View>
@@ -124,10 +129,11 @@ const styles = StyleSheet.create({
   },
   trailing: {
     position: 'absolute',
-    right: tokens.spacing.lg,
+    right: tokens.spacing.md,
     zIndex: 2,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.xs,
     height: '100%',
   },
   message: {
