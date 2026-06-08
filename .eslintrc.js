@@ -79,7 +79,7 @@ module.exports = {
       },
     },
     {
-      files: ['components/ui/**/*.tsx', 'components/catalog/Tabs.tsx', 'components/ui/ThreadlyLogo.tsx'],
+      files: ['components/ui/**/*.tsx', 'components/catalog/Tabs.tsx', 'components/ui/WeazLogo.tsx'],
       rules: {
         'no-restricted-syntax': 'off',
       },
@@ -88,7 +88,7 @@ module.exports = {
       files: [
         'components/ui/Input.tsx',
         'components/ui/StableImage.tsx',
-        'components/ui/ThreadlyLogo.tsx',
+        'components/ui/WeazLogo.tsx',
         'components/catalog/CollectionDetailViewer.tsx',
         'app/(tabs)/index.tsx',
       ],
