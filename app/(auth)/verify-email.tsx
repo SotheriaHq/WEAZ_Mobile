@@ -12,7 +12,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
+import { WeazLogo } from '@/components/ui/WeazLogo';
 
 type VerifyEmailState = 'verifying' | 'success' | 'error';
 
@@ -213,7 +213,7 @@ export default function VerifyEmailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to login"
           >
-            <ThreadlyLogo size={36} />
+            <WeazLogo size={36} />
           </Pressable>
         </View>
 

@@ -9,7 +9,7 @@ import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsShee
 import ThreadRailAction from './ThreadRailAction';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { Button } from '@/components/ui/Button';
-import { ThreadlyLogoLoader } from '@/components/ui/ThreadlyLogoLoader';
+import { WeazLogoLoader } from '@/components/ui/WeazLogoLoader';
 import { AspectAwareMedia } from '@/src/components/media/AspectAwareMedia';
 import {
   brandApi,
@@ -176,7 +176,7 @@ function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null;
   if (loading) {
     return (
       <View style={[StyleSheet.absoluteFill, styles.mediaLoadingSlide]}>
-        <ThreadlyLogoLoader size={72} />
+        <WeazLogoLoader size={72} />
       </View>
     );
   }

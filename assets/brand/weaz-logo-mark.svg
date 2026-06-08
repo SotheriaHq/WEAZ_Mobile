@@ -1,14 +1,16 @@
-<svg width="64" height="96" viewBox="0 0 64 96" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+<svg width="152" height="280" viewBox="180 96 152 280" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc" preserveAspectRatio="xMidYMid meet">
+  <title id="title">WEAZ logo mark</title>
+  <desc id="desc">A tall abstract gold fashion silhouette with a circular head, angular collar, and flowing lower form.</desc>
   <defs>
-    <linearGradient id="weaz-mobile-gold" x1="17" y1="7" x2="48" y2="91" gradientUnits="userSpaceOnUse">
+    <linearGradient id="weaz-gold" x1="190" y1="82" x2="330" y2="362" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#fff1a8"/>
       <stop offset="0.34" stop-color="#d8b24a"/>
       <stop offset="0.68" stop-color="#f8dc78"/>
       <stop offset="1" stop-color="#9f6419"/>
     </linearGradient>
   </defs>
-  <path d="M35.2 8.2c5.2 0 9.2 4.1 9.2 9.3s-4 9.4-9.2 9.4-9.3-4.1-9.3-9.4 4.1-9.3 9.3-9.3Z" fill="url(#weaz-mobile-gold)"/>
-  <path d="M28.1 29.1 40.5 43.8 36.9 60c-2.3 10.1-.9 20 4.8 30.2C30.6 80.8 25 69.1 25.4 55.8l-9.2 1.5 11.9-28.2Z" fill="url(#weaz-mobile-gold)"/>
-  <path d="M40.9 29.1 51.9 45.4 46.8 63.1H31.6l5.1-19.1 4.2-14.9Z" fill="url(#weaz-mobile-gold)"/>
-  <path d="M28.4 27.7 41.7 43.2" stroke="#fff6bd" stroke-width="1.45" stroke-linecap="round" opacity=".78"/>
+  <path d="M257 104c14 0 25 11 25 25s-11 25-25 25-25-11-25-25 11-25 25-25Z" fill="url(#weaz-gold)"/>
+  <path d="M224 170 275 231l-15 64c-6 25-1 49 14 72-37-34-56-74-54-121l-42 6 46-82Z" fill="url(#weaz-gold)"/>
+  <path d="M277 170 323 238l-21 73h-63l21-79 17-62Z" fill="url(#weaz-gold)"/>
+  <path d="M225 165 281 230" stroke="#fff6bd" stroke-width="4" stroke-linecap="round" opacity=".75"/>
 </svg>

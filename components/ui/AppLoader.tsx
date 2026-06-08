@@ -6,7 +6,7 @@ import { useTheme, type ThemeContextValue } from '@/src/theme/ThemeProvider';
 import { PRODUCT_NAME } from '@/src/config/productIdentity';
 import { tokens } from '@/src/styles/tokens';
 
-import { ThreadlyLogoLoader } from './ThreadlyLogoLoader';
+import { WeazLogoLoader } from './WeazLogoLoader';
 import { AppText } from '@/components/ui/AppText';
 
 type LoaderTone = 'light' | 'dark';
@@ -88,7 +88,7 @@ function LoaderBackdrop({ visualTheme }: { visualTheme: LoaderVisualTheme }) {
 function LoaderContent({ title = PRODUCT_NAME, message = 'Loading your feed', size = 88, visualTheme }: LoaderContentProps) {
   return (
     <View style={styles.content}>
-      <ThreadlyLogoLoader
+      <WeazLogoLoader
         size={size}
         showWordmark={false}
       />

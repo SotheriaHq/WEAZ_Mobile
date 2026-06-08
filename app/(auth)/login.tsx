@@ -10,7 +10,7 @@ import { GoogleMark } from '@/components/auth/GoogleMark';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
+import { WeazLogo } from '@/components/ui/WeazLogo';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
@@ -407,7 +407,7 @@ export default function LoginScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go to home"
           >
-            <ThreadlyLogo size={36} />
+            <WeazLogo size={36} />
           </Pressable>
         </Animated.View>
 

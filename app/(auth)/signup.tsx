@@ -22,7 +22,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
-import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
+import { WeazLogo } from '@/components/ui/WeazLogo';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
 import { GoogleMark } from '@/components/auth/GoogleMark';
 import { AccountTypeSelector } from '@/components/auth/AccountTypeSelector';
@@ -322,7 +322,7 @@ export default function SignupScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go to home"
           >
-            <ThreadlyLogo size={36} />
+            <WeazLogo size={36} />
           </Pressable>
         </Animated.View>
 

@@ -8,10 +8,10 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { ThreadlyLogo } from './ThreadlyLogo';
+import { WeazLogo } from './WeazLogo';
 import { PRODUCT_NAME } from '@/src/config/productIdentity';
 
-type ThreadlyLogoLoaderProps = {
+type WeazLogoLoaderProps = {
   size?: number;
   style?: StyleProp<ViewStyle>;
   showWordmark?: boolean;
@@ -21,7 +21,7 @@ type ThreadlyLogoLoaderProps = {
   messageColor?: string;
 };
 
-export function ThreadlyLogoLoader({
+export function WeazLogoLoader({
   size = 72,
   style,
   showWordmark = false,
@@ -29,7 +29,7 @@ export function ThreadlyLogoLoader({
   message = 'Loading your feed',
   titleColor = '#ffffff',
   messageColor = 'rgba(255,255,255,0.72)',
-}: ThreadlyLogoLoaderProps) {
+}: WeazLogoLoaderProps) {
   const pulse = useRef(new Animated.Value(0)).current;
   const drift = useRef(new Animated.Value(0)).current;
 
@@ -128,7 +128,7 @@ export function ThreadlyLogoLoader({
             transform: [{ scale }],
           }}
         >
-          <ThreadlyLogo size={size} />
+          <WeazLogo size={size} />
         </Animated.View>
       </View>
       {showWordmark ? (
@@ -188,4 +188,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ThreadlyLogoLoader;
+export default WeazLogoLoader;

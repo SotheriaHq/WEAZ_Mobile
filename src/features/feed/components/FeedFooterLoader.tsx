@@ -1,11 +1,11 @@
 import { StyleSheet, View } from 'react-native';
 
-import ThreadlyLogoLoader from '@/components/ui/ThreadlyLogoLoader';
+import WeazLogoLoader from '@/components/ui/WeazLogoLoader';
 
 export function FeedFooterLoader() {
   return (
     <View style={styles.root}>
-      <ThreadlyLogoLoader size={24} />
+      <WeazLogoLoader size={24} />
     </View>
   );
 }

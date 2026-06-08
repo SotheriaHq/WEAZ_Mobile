@@ -12,7 +12,7 @@ import { router } from 'expo-router';
 
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
-import ThreadlyLogoLoader from '@/components/ui/ThreadlyLogoLoader';
+import WeazLogoLoader from '@/components/ui/WeazLogoLoader';
 import { brandApi } from '@/src/api/BrandApi';
 import { ProfileApi } from '@/src/api/ProfileApi';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
@@ -279,7 +279,7 @@ export function ProfileMenuDropup({
                   {avatarUri ? (
                     <StableImage uri={avatarUri} containerStyle={styles.avatarImage} imageStyle={styles.avatarImage} />
                   ) : hasAvatarSource && avatarLoading ? (
-                    <ThreadlyLogoLoader size={22} />
+                    <WeazLogoLoader size={22} />
                   ) : (
                     <AppText variant="subtitle" tone="primary">
                       {initials}

@@ -3,7 +3,7 @@ import { Pressable } from 'react-native';
 import { router } from 'expo-router';
 
 import { Header } from '@/components/ui/Header';
-import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
+import { WeazLogo } from '@/components/ui/WeazLogo';
 import { PRODUCT_NAME } from '@/src/config/productIdentity';
 
 export function BrandHeader({ right }: { right?: React.ReactNode }) {
@@ -17,7 +17,7 @@ export function BrandHeader({ right }: { right?: React.ReactNode }) {
           accessibilityRole="button"
           accessibilityLabel="Go to home"
         >
-          <ThreadlyLogo size={32} />
+          <WeazLogo size={32} />
         </Pressable>
       }
       right={right}

@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { requestPasswordReset } from '@/src/api/AuthApi';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
-import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
+import { WeazLogo } from '@/components/ui/WeazLogo';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
 import { Button } from '@/components/ui/Button';
 import { AppText } from '@/components/ui/AppText';
@@ -105,7 +105,7 @@ export default function ForgotPasswordScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to login"
           >
-            <ThreadlyLogo size={36} />
+            <WeazLogo size={36} />
           </Pressable>
         </View>
 
