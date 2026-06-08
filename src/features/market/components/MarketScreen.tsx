@@ -466,7 +466,7 @@ function buildRows(args: {
     rows.push({
       id: 'fresh-row',
       type: 'HORIZONTAL_CARD_ROW',
-      title: 'Fresh on Threadly',
+      title: 'Fresh on WEAZ',
       subtitle: 'New products and custom-ready runway',
       items: freshItems,
       onSeeAll: setNewestView,
@@ -488,7 +488,7 @@ function buildRows(args: {
     id: 'latest-collections',
     type: 'COLLECTION_ROW',
     title: 'Latest Collections',
-    subtitle: 'Shop complete edits from Threadly brands',
+    subtitle: 'Shop complete edits from WEAZ brands',
     items: collections,
     error: collectionError,
   });
@@ -562,7 +562,7 @@ function MarketProductCard({
       width={width}
       height={height}
       title={getItemTitle(item)}
-      brandName={getItemBrand(item) ?? 'Threadly brand'}
+      brandName={getItemBrand(item) ?? 'WEAZ brand'}
       priceLabel={getItemPriceLabel(item)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
@@ -602,7 +602,7 @@ function MarketDesignCard({
       width={width}
       height={height}
       title={getItemTitle(item)}
-      brandName={getItemBrand(item) ?? 'Threadly brand'}
+      brandName={getItemBrand(item) ?? 'WEAZ brand'}
       priceLabel={getItemPriceLabel(item)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
@@ -876,7 +876,7 @@ function CollectionCard({
           {collection.title}
         </AppText>
         <AppText variant="caption" tone="inverse" numberOfLines={1}>
-          {collection.brandName ?? 'Threadly brand'}
+          {collection.brandName ?? 'WEAZ brand'}
         </AppText>
         <View style={styles.collectionMetaRow}>
           <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
@@ -1141,7 +1141,7 @@ function EditorialCard({
           {item ? `Build a look around ${getItemTitle(item)}` : 'Discover curated African fashion'}
         </AppText>
         <AppText variant="caption" tone="inverse" numberOfLines={2}>
-          Mix custom-ready design inspiration with ready-to-wear finds from Threadly brands.
+          Mix custom-ready design inspiration with ready-to-wear finds from WEAZ brands.
         </AppText>
         <AppText variant="captionBold" tone="primary">Read & Shop {String.fromCodePoint(0x2192)}</AppText>
       </View>

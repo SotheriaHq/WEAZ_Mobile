@@ -24,7 +24,7 @@ const SECTIONS: GuideSection[] = [
     title: 'Size labels are guides',
     body: [
       'XL, XXL, 2XL, 3XL, and numeric labels vary across brands, regions, fabrics, and cuts.',
-      'Threadly recommendations come from your saved measurements and approved structured chart data.',
+      'WEAZ recommendations come from your saved measurements and approved structured chart data.',
       'You can always change the recommended size before ordering.',
     ],
   },
@@ -33,7 +33,7 @@ const SECTIONS: GuideSection[] = [
     label: 'Nigeria/West Africa',
     title: 'No universal Nigerian chart',
     body: [
-      'Threadly does not use one universal Nigerian size chart.',
+      'WEAZ does not use one universal Nigerian size chart.',
       'Nigeria/West Africa support is body-measurement-first and can use product, brand, vendor, regional, UK, US, EU, or International mappings where appropriate.',
       'African brands can define approved structured charts for their own garments.',
     ],
@@ -53,7 +53,7 @@ const SECTIONS: GuideSection[] = [
     title: 'UK labels need chart context',
     body: [
       'UK sizing is common in Nigeria and West African retail contexts, but brand charts still matter.',
-      'Threadly displays UK labels when selected, while backend recommendations compare normalized measurements with approved ranges.',
+      'WEAZ displays UK labels when selected, while backend recommendations compare normalized measurements with approved ranges.',
     ],
   },
   {
@@ -62,7 +62,7 @@ const SECTIONS: GuideSection[] = [
     title: 'US labels are not direct formulas',
     body: [
       'US labels can differ from UK and EU labels by category and brand.',
-      'Threadly treats US as a chart and display preference, not a client-side formula.',
+      'WEAZ treats US as a chart and display preference, not a client-side formula.',
     ],
   },
   {
@@ -121,7 +121,7 @@ export default function SizeGuideScreen() {
         <View style={styles.headerCopy}>
           <AppText variant="h2">Size Guide / Charts</AppText>
           <AppText variant="body" tone="muted">
-            Sizing systems, measurements, and Threadly recommendation limits.
+            Sizing systems, measurements, and WEAZ recommendation limits.
           </AppText>
         </View>
       </View>

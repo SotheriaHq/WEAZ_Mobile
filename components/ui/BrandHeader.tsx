@@ -4,11 +4,12 @@ import { router } from 'expo-router';
 
 import { Header } from '@/components/ui/Header';
 import { ThreadlyLogo } from '@/components/ui/ThreadlyLogo';
+import { PRODUCT_NAME } from '@/src/config/productIdentity';
 
 export function BrandHeader({ right }: { right?: React.ReactNode }) {
   return (
     <Header
-      title="Threadly"
+      title={PRODUCT_NAME}
       left={
         <Pressable
           onPress={() => router.push('/')}

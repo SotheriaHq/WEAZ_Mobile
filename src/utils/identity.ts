@@ -38,7 +38,7 @@ export function resolveIdentity(source?: IdentitySource | null): ResolvedIdentit
     source?.brandName?.trim() ||
     source?.title?.trim() ||
     source?.username?.trim() ||
-    'Threadly User';
+    'WEAZ User';
   const handle = source?.username?.trim() ? `@${source.username.trim()}` : null;
   const avatar = resolveProfileImageSource(source);
 

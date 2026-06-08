@@ -266,7 +266,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
 
       <View style={[styles.overlay, { bottom: chrome.immersiveOverlayBottomClearance + tokens.spacing.md }]}>
         <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-          {status.collection.brandName ?? 'Threadly brand'}
+          {status.collection.brandName ?? 'WEAZ brand'}
         </AppText>
         <AppText variant="title" tone="inverse" numberOfLines={2}>
           {status.collection.title}

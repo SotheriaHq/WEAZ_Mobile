@@ -398,7 +398,7 @@ export function MarketCommerceViewer({
     product?.brandName ??
     getOwnerName(design?.owner) ??
     initialBrandName ??
-    'Threadly brand';
+    'WEAZ brand';
   const brandId = product?.brandId ?? initialBrandId ?? design?.owner?.id ?? null;
   const description = product?.description ?? design?.description ?? null;
   const productStock = product ? getTotalStock(product) : null;
@@ -721,7 +721,7 @@ export function MarketCommerceViewer({
                       <AppText variant="caption" tone="muted">
                         Region: {SIZING_REGION_LABELS[sizeRecommendation.selectedRegion]}
                       </AppText>
-                      {(sizeRecommendation.reasons.length ? sizeRecommendation.reasons : ['Threadly compared your saved measurements with approved chart ranges.']).map((reason) => (
+                      {(sizeRecommendation.reasons.length ? sizeRecommendation.reasons : ['WEAZ compared your saved measurements with approved chart ranges.']).map((reason) => (
                         <AppText key={reason} variant="caption">- {reason}</AppText>
                       ))}
                       <AppText variant="caption" tone="muted">

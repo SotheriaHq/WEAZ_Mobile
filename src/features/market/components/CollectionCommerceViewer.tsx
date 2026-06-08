@@ -337,7 +337,7 @@ export function CollectionCommerceViewer({
     try {
       await Share.share({
         title: status.collection.title,
-        message: `${status.collection.title}\n${status.collection.brandName ?? 'Threadly'}\n${routePath}`,
+        message: `${status.collection.title}\n${status.collection.brandName ?? 'WEAZ'}\n${routePath}`,
       });
     } catch (nextError) {
       toast.error(nextError instanceof Error ? nextError.message : 'Unable to share this collection.');
@@ -526,7 +526,7 @@ export function CollectionCommerceViewer({
 
             <CollectionCover status={status} />
             <View style={styles.titleStack}>
-              <AppText variant="captionBold" tone="primary" numberOfLines={1}>{status.collection.brandName ?? 'Threadly brand'}</AppText>
+              <AppText variant="captionBold" tone="primary" numberOfLines={1}>{status.collection.brandName ?? 'WEAZ brand'}</AppText>
               <AppText variant="h2" numberOfLines={2}>{status.collection.title}</AppText>
               <AppText variant="body" tone="secondary">{status.collection.description ?? 'Curated products from this brand.'}</AppText>
               <View style={styles.metaRow}>

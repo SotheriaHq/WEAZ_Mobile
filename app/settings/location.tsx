@@ -50,7 +50,7 @@ export default function LocationSettingsScreen() {
           </View>
           <AppText variant="h2">Share your location?</AppText>
           <AppText variant="body" tone="muted">
-            Threadly will ask before using your device location. Your precise location will not be shared with brands or other users from this screen.
+            WEAZ will ask before using your device location. Your precise location will not be shared with brands or other users from this screen.
           </AppText>
           <Button title="Share location" onPress={handleShareLocation} fullWidth />
         </Card>

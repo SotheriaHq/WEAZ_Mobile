@@ -855,7 +855,7 @@ export function BrandProfileHeader({
   onEditBanner,
 }: BrandProfileHeaderProps) {
   const { theme } = useTheme();
-  const effectiveName = brandName || username || 'Threadly Brand';
+  const effectiveName = brandName || username || 'WEAZ Brand';
   const { width } = useWindowDimensions();
   const useFullWidthStats = width < 380;
 

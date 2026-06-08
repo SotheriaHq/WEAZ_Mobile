@@ -489,7 +489,7 @@ export default function LoginScreen() {
               <View style={styles.statePanel}>
                 <AppText variant="bodyBold">This account uses Google sign-in.</AppText>
                 <AppText variant="caption" tone="muted" style={styles.statePanelText}>
-                  Continue with Google, or verify your email to create a Threadly password.
+                  Continue with Google, or verify your email to create a WEAZ password.
                 </AppText>
               </View>
             ) : null}
@@ -533,7 +533,7 @@ export default function LoginScreen() {
               <View style={styles.inlineFlow}>
                 <AppText variant="bodyBold">Create your password</AppText>
                 <AppText variant="caption" tone="muted">
-                  This creates your first Threadly password. You will sign in after it is saved.
+                  This creates your first WEAZ password. You will sign in after it is saved.
                 </AppText>
                 <FloatingLabelInput
                   label="New Password"
@@ -692,7 +692,7 @@ export default function LoginScreen() {
 
             <View style={styles.footerRow}>
               <AppText variant="body" tone="muted">
-                New to Threadly?
+                New to WEAZ?
               </AppText>
               <Pressable
                 onPress={() => router.push({ pathname: '/(auth)/signup', params: { next: nextPath } })}

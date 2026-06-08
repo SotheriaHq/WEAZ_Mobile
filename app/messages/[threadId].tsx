@@ -617,7 +617,7 @@ export default function ChatThreadScreen() {
     } else if (mode !== 'realtime') {
       setPhase('loading');
       setStateTitle('Loading conversation');
-      setStateBody('Fetching real messages from Threadly.');
+      setStateBody('Fetching real messages from WEAZ.');
     }
 
     try {

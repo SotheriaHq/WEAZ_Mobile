@@ -1,0 +1,14 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="weaz-mobile-gold" x1="15" y1="6" x2="49" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff1a8"/>
+      <stop offset="0.34" stop-color="#d8b24a"/>
+      <stop offset="0.68" stop-color="#f8dc78"/>
+      <stop offset="1" stop-color="#9f6419"/>
+    </linearGradient>
+  </defs>
+  <path d="M34.5 9.5c4.2 0 7.4 3.3 7.4 7.4s-3.2 7.5-7.4 7.5-7.5-3.3-7.5-7.5 3.3-7.4 7.5-7.4Z" fill="url(#weaz-mobile-gold)"/>
+  <path d="M27.8 25.4 37 36.1l-2.3 15.4c-.7 4.5-.1 8.9 1.8 13.1l1.7 3.8c-6.7-7.3-10.1-15-10-23.1l-8.4 1.1 7.7-21Z" fill="url(#weaz-mobile-gold)" transform="translate(0 -5) scale(1 0.92)"/>
+  <path d="M37.4 24.8 48 38.2l-3.2 13.9H31.7l2.4-15.7 3.3-11.6Z" fill="url(#weaz-mobile-gold)" transform="translate(0 -4.5) scale(1 0.93)"/>
+  <path d="M28.3 22.6 39.5 35.8" stroke="#fff6bd" stroke-width="1.35" stroke-linecap="round" opacity=".76"/>
+</svg>

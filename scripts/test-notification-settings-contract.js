@@ -136,7 +136,7 @@ async function main() {
   assert.match(routeSource, /NotificationsApi\.updateSettings\(/);
   assert.match(routeSource, /buildNotificationSettingsPatch\(patch\.section,\s*patch\.key,\s*patch\.value\)/);
   assert.match(routeSource, /registerAuthenticatedPushToken\(/);
-  assert.match(routeSource, /Notifications are enabled in Threadly, but disabled at device level\./);
+  assert.match(routeSource, /Notifications are enabled in WEAZ, but disabled at device level\./);
   assert.match(routeSource, /isValidQuietHour/);
 
   console.log('Notification settings contract tests passed.');

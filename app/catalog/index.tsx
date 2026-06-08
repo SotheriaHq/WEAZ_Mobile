@@ -677,7 +677,7 @@ export default function CatalogScreen() {
   );
   const profileShareMessage = useMemo(() => {
     if (!profileShareUrl) return undefined;
-    return `Check out ${effectiveProfile?.brandFullName || 'this brand'} on Threadly: ${profileShareUrl}`;
+    return `Check out ${effectiveProfile?.brandFullName || 'this brand'} on WEAZ: ${profileShareUrl}`;
   }, [effectiveProfile?.brandFullName, profileShareUrl]);
 
   // Handle share
@@ -940,7 +940,7 @@ export default function CatalogScreen() {
   const handleShareCollection = useCallback(
     async (collectionId: string) => {
       const collection = currentCollectionsWithBackgroundTasks.find((item) => item.id === collectionId);
-      const title = collection?.title?.trim() || 'Threadly catalog item';
+      const title = collection?.title?.trim() || 'WEAZ catalog item';
       const profileUrl = profileShareUrl ?? '';
       const url = profileUrl ? `${profileUrl}${profileUrl.includes('?') ? '&' : '?'}collectionId=${encodeURIComponent(collectionId)}` : '';
 

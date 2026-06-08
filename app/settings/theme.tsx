@@ -18,7 +18,7 @@ type ThemeOption = {
 
 const THEME_OPTIONS: ThemeOption[] = [
   { value: 'system', label: 'System Default', description: 'Matches your device appearance settings', icon: '💻' },
-  { value: 'light', label: 'Light', description: 'Always use the bright Threadly theme', icon: '☀️' },
+  { value: 'light', label: 'Light', description: 'Always use the bright WEAZ theme', icon: '☀️' },
   { value: 'dark', label: 'Dark', description: 'Always use the AMOLED-ready dark theme', icon: '🌙' },
 ];
 
@@ -47,7 +47,7 @@ export default function ThemeSettingsScreen() {
       >
         <View style={styles.descriptionWrap}>
           <AppText variant="captionRegular" tone="muted">
-            Choose how Threadly looks on this device. This setting is saved to your account and syncs across devices.
+            Choose how WEAZ looks on this device. This setting is saved to your account and syncs across devices.
           </AppText>
         </View>
 

@@ -37,7 +37,7 @@ function getErrorMessage(error: unknown) {
 
 function actorName(item: MobileNotification) {
   const fullName = [item.actor?.firstName, item.actor?.lastName].filter(Boolean).join(' ').trim();
-  return item.actor?.username || fullName || (item.type.toUpperCase().includes('SYSTEM') ? 'Threadly' : 'Someone');
+  return item.actor?.username || fullName || (item.type.toUpperCase().includes('SYSTEM') ? 'WEAZ' : 'Someone');
 }
 
 function compactTime(value: string) {
@@ -139,6 +139,7 @@ export default function NotificationsScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { status, token, user } = useAuth();
+  const hasAuthenticatedSession = status === 'authenticated' && Boolean(token) && Boolean(user?.id);
   const [items, setItems] = useState<MobileNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +148,9 @@ export default function NotificationsScreen() {
   const groups = useMemo(() => groupNotifications(items), [items]);
 
   const load = useCallback(async () => {
+    if (!hasAuthenticatedSession) {
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -161,11 +165,27 @@ export default function NotificationsScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [hasAuthenticatedSession]);
 
   useEffect(() => {
+    if (status === 'unauthenticated') {
+      setItems([]);
+      setLoading(false);
+      router.replace({
+        pathname: '/(auth)/login',
+        params: { next: '/notifications' },
+      } as any);
+      return;
+    }
+
+    if (status === 'loading') {
+      setItems([]);
+      setLoading(true);
+      return;
+    }
+
     void load();
-  }, [load]);
+  }, [load, status]);
 
   const handleOpenNotification = useCallback((item: MobileNotification) => {
     if (!item.isRead) {
@@ -200,12 +220,24 @@ export default function NotificationsScreen() {
   }, []);
 
   useNotificationRealtimeChannel({
-    enabled: status === 'authenticated' && Boolean(token) && Boolean(user?.id),
+    enabled: hasAuthenticatedSession,
     token,
     userId: user?.id ?? null,
     onCreated: handleRealtimeCreated,
     onDeleted: handleRealtimeDeleted,
   });
+
+  if (!hasAuthenticatedSession) {
+    return (
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+        <View style={styles.stateWrap}>
+          {status === 'loading' ? (
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+          ) : null}
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>

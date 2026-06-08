@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -25,6 +25,11 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import {
+  getRequiredLegalAcceptances,
+  LEGAL_PAYMENT_DOCUMENT_KEYS,
+  type LegalAcceptancePayload,
+} from '@/src/api/LegalApi';
 
 type CheckoutForm = {
   firstName: string;
@@ -99,6 +104,8 @@ export function MobileCheckoutScreen() {
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [paymentPolicyAccepted, setPaymentPolicyAccepted] = useState(false);
+  const [paymentLegalAcceptances, setPaymentLegalAcceptances] = useState<LegalAcceptancePayload[]>([]);
 
   const hasBagItems = count.combinedCount > 0;
   const fullName = useMemo(
@@ -113,6 +120,20 @@ export function MobileCheckoutScreen() {
     },
     [],
   );
+
+  useEffect(() => {
+    let active = true;
+    void getRequiredLegalAcceptances(LEGAL_PAYMENT_DOCUMENT_KEYS)
+      .then((acceptances) => {
+        if (active) setPaymentLegalAcceptances(acceptances);
+      })
+      .catch(() => {
+        if (active) setPaymentLegalAcceptances([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const beginCheckout = useCallback(async () => {
     if (!isMobileCheckoutEnabled()) {
@@ -130,6 +151,14 @@ export function MobileCheckoutScreen() {
     if (missing.length > 0) {
       setErrors(missing);
       toast.error('Complete the required delivery details.');
+      return;
+    }
+    if (!paymentPolicyAccepted) {
+      toast.error('Accept the Payment Policy before checkout.');
+      return;
+    }
+    if (paymentLegalAcceptances.length === 0) {
+      toast.error('Payment Policy version is unavailable. Try again.');
       return;
     }
 
@@ -152,7 +181,8 @@ export function MobileCheckoutScreen() {
         paymentData: {
           phone: trimmed.phone,
           email: trimmed.email,
-          consentAccepted: true,
+          consentAccepted: paymentPolicyAccepted,
+          legalAcceptances: paymentLegalAcceptances,
           billingSameAsShipping: true,
           channel: 'CARD',
         },
@@ -187,7 +217,16 @@ export function MobileCheckoutScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [auth.status, auth.user, form, fullName, refreshGlobalBagCount, toast]);
+  }, [
+    auth.status,
+    auth.user,
+    form,
+    fullName,
+    paymentLegalAcceptances,
+    paymentPolicyAccepted,
+    refreshGlobalBagCount,
+    toast,
+  ]);
 
   if (!isMobileCheckoutEnabled()) {
     return (
@@ -218,7 +257,7 @@ export function MobileCheckoutScreen() {
           <View style={styles.header}>
             <AppText variant="title">Secure checkout</AppText>
             <AppText variant="body" tone="muted">
-              Threadly recalculates the amount from your saved bag and verifies payment with the backend before any order is marked paid.
+              WEAZ recalculates the amount from your saved bag and verifies payment with the backend before any order is marked paid.
             </AppText>
           </View>
 
@@ -309,17 +348,50 @@ export function MobileCheckoutScreen() {
           <Card style={styles.card}>
             <AppText variant="subtitle">Payment</AppText>
             <AppText variant="body" tone="muted">
-              Card checkout opens in the secure provider page. Returning to Threadly only triggers backend verification; it never marks payment as complete locally.
+              Card checkout opens in the secure provider page. Returning to WEAZ only triggers backend verification; it never marks payment as complete locally.
             </AppText>
             {message ? (
               <AppText variant="caption" tone={message.includes('Unable') ? 'danger' : 'muted'}>
                 {message}
               </AppText>
             ) : null}
+            <Pressable
+              onPress={() => setPaymentPolicyAccepted((current) => !current)}
+              accessibilityRole="checkbox"
+              accessibilityLabel="Accept Payment Policy"
+              accessibilityState={{ checked: paymentPolicyAccepted }}
+              style={({ pressed }) => [
+                styles.consentRow,
+                {
+                  borderColor: theme.colors.border,
+                  backgroundColor: theme.colors.surfaceAlt,
+                  opacity: pressed ? 0.82 : 1,
+                },
+              ]}
+            >
+              <View style={[styles.checkbox, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
+                <AppText variant="captionBold" tone={paymentPolicyAccepted ? 'primary' : 'muted'}>
+                  {paymentPolicyAccepted ? 'OK' : ''}
+                </AppText>
+              </View>
+              <View style={styles.consentCopy}>
+                <AppText variant="smallBold">Payment Policy</AppText>
+                <AppText variant="caption" tone="muted">
+                  I confirm these details are correct and payment may require provider verification before fulfillment.
+                </AppText>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/legal/payment-policy' as never)}
+              accessibilityRole="button"
+              accessibilityLabel="View Payment Policy"
+            >
+              <AppText variant="captionBold" tone="primary">View Payment Policy</AppText>
+            </Pressable>
             <Button
               title={submitting ? 'Initializing...' : 'Continue to secure payment'}
               loading={submitting}
-              disabled={!hasBagItems || submitting}
+              disabled={!hasBagItems || submitting || !paymentPolicyAccepted}
               onPress={() => {
                 void beginCheckout();
               }}
@@ -363,6 +435,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
+  },
+  consentRow: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: tokens.spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.spacing.md,
+  },
+  checkbox: {
+    width: 28,
+    height: 28,
+    borderWidth: 1,
+    borderRadius: tokens.radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  consentCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
   fieldGrid: {
     gap: tokens.spacing.md,

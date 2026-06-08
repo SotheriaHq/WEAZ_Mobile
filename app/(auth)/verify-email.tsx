@@ -127,7 +127,7 @@ export default function VerifyEmailScreen() {
         <ActivityIndicator color={theme.colors.primary} />
         <AppText variant="title">Verifying email</AppText>
         <AppText variant="body" tone="muted">
-          Keep this screen open while Threadly confirms your email address.
+          Keep this screen open while WEAZ confirms your email address.
         </AppText>
       </View>
     </View>
@@ -225,7 +225,7 @@ export default function VerifyEmailScreen() {
           </AppText>
           <AppText variant="display">Confirm your email</AppText>
           <AppText variant="body" muted style={styles.subtitle}>
-            Use the secure link from your email to finish verifying your Threadly account.
+            Use the secure link from your email to finish verifying your WEAZ account.
           </AppText>
         </View>
 

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import { ThreadlyLogo } from './ThreadlyLogo';
+import { PRODUCT_NAME } from '@/src/config/productIdentity';
 
 type ThreadlyLogoLoaderProps = {
   size?: number;
@@ -24,7 +25,7 @@ export function ThreadlyLogoLoader({
   size = 72,
   style,
   showWordmark = false,
-  title = 'Threadly',
+  title = PRODUCT_NAME,
   message = 'Loading your feed',
   titleColor = '#ffffff',
   messageColor = 'rgba(255,255,255,0.72)',

@@ -59,11 +59,11 @@ function statusCopy(status?: PaymentAttemptStatus) {
       return 'This payment session expired. Return to checkout to start a fresh attempt.';
     case 'PROCESSING':
     case 'PENDING':
-      return 'Payment is still pending. Threadly will keep checking with the backend.';
+      return 'Payment is still pending. WEAZ will keep checking with the backend.';
     case 'REQUIRES_ACTION':
       return 'Complete the secure provider step, then return here for backend verification.';
     default:
-      return 'Threadly is checking the latest backend payment state.';
+      return 'WEAZ is checking the latest backend payment state.';
   }
 }
 
@@ -103,7 +103,7 @@ export function MobilePaymentScreen() {
           return loadAttempt(pending.reference);
         }
         setState('missing');
-        setMessage('Threadly could not find a payment reference to verify.');
+        setMessage('WEAZ could not find a payment reference to verify.');
         return null;
       }
 
@@ -252,7 +252,7 @@ export function MobilePaymentScreen() {
           <Card style={styles.card}>
             <AppText variant="title">Payment verification</AppText>
             <AppText variant="body" tone="muted">
-              Threadly verifies this payment against the backend and provider before updating any order state.
+              WEAZ verifies this payment against the backend and provider before updating any order state.
             </AppText>
             {reference ? (
               <AppText variant="caption" tone="muted">

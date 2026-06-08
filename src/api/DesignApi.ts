@@ -1,5 +1,9 @@
 import { apiClient } from '@/src/api/httpClient';
 import {
+  getRequiredLegalAcceptances,
+  LEGAL_CONTENT_PUBLISH_DOCUMENT_KEYS,
+} from '@/src/api/LegalApi';
+import {
   DESIGN_EDITOR_MAX_MEDIA,
   normalizeMediaViewSlot,
   toBackendMediaViewSlot,
@@ -876,7 +880,7 @@ export async function startDesignDraftSession(
   },
 ): Promise<DraftSessionResponse> {
   const response = await apiClient.post(`/designs/${designId}/draft-session`, {
-    deviceName: options?.deviceName ?? 'Threadly mobile',
+    deviceName: options?.deviceName ?? 'WEAZ mobile',
     forceNew: options?.forceNew ?? false,
     existingToken: options?.existingToken,
   });
@@ -942,7 +946,12 @@ export async function finalizeExistingDesign(
 }
 
 export async function acknowledgeContentPolicy() {
-  await apiClient.post('/store/content-policy/acknowledge');
+  const legalAcceptances = await getRequiredLegalAcceptances(
+    LEGAL_CONTENT_PUBLISH_DOCUMENT_KEYS,
+  );
+  await apiClient.post('/store/content-policy/acknowledge', {
+    legalAcceptances,
+  });
 }
 
 export async function reorderDesignMedia(designId: string, mediaIds: string[]) {

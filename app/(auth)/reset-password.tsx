@@ -285,7 +285,7 @@ export default function ResetPasswordScreen() {
           </AppText>
           <AppText variant="display">Choose a new password</AppText>
           <AppText variant="body" muted style={styles.subtitle}>
-            Use the secure link from your email to finish resetting your Threadly account.
+            Use the secure link from your email to finish resetting your WEAZ account.
           </AppText>
         </View>
 

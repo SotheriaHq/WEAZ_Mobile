@@ -1,4 +1,5 @@
 import { apiClient } from '@/src/api/httpClient';
+import type { LegalAcceptancePayload } from '@/src/api/LegalApi';
 
 export type AuthUserType = 'REGULAR' | 'BRAND';
 
@@ -14,6 +15,7 @@ export type GoogleAuthParams = {
   idToken: string;
   type?: AuthUserType;
   brandFullName?: string;
+  legalAcceptances?: LegalAcceptancePayload[];
 };
 
 export type LoginOptionsResponse = {
@@ -60,6 +62,11 @@ export type ConfirmPasswordResetResponse = {
 
 export type VerifyEmailResponse = {
   message?: string;
+};
+
+export type DeleteAccountParams = {
+  confirmationWord: string;
+  currentPassword: string;
 };
 
 function unwrapData<T>(payload: unknown): T {
@@ -122,4 +129,9 @@ export async function verifyEmail(token: string) {
   });
 
   return unwrapData<VerifyEmailResponse>(response.data);
+}
+
+export async function deleteAccount(params: DeleteAccountParams) {
+  const response = await apiClient.post('/auth/account/delete', params);
+  return unwrapData<{ message?: string }>(response.data);
 }

@@ -607,7 +607,7 @@ export function CollectionDetailViewer({
   const shareCollection = useCallback(async () => {
     if (!detail) return;
     try {
-      await Share.share({ message: `${detail.title} by ${brandName} on Threadly` });
+      await Share.share({ message: `${detail.title} by ${brandName} on WEAZ` });
     } catch {
       // Best effort.
     }

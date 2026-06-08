@@ -14,6 +14,7 @@ import {
   setRefreshToken,
 } from '@/src/storage/secureStorage';
 import { googleAuth, type GoogleAuthParams } from '@/src/api/AuthApi';
+import type { LegalAcceptancePayload } from '@/src/api/LegalApi';
 import { queryClient, THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
@@ -97,6 +98,7 @@ type SignUpParams = {
   password: string;
   type?: 'BRAND' | 'REGULAR';
   brandFullName?: string;
+  legalAcceptances?: LegalAcceptancePayload[];
 };
 
 type AuthContextValue = {
@@ -717,6 +719,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password: params.password,
         type: params.type ?? 'REGULAR',
         brandFullName: params.brandFullName?.trim() || undefined,
+        legalAcceptances: params.legalAcceptances,
       };
 
       const response = await apiClient.post('/auth/signup', payload);

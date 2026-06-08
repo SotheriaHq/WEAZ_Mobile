@@ -95,8 +95,8 @@ export async function pickDesignEditorMediaAssets({
             ? 'Allow camera access to capture a photo or video for this design.'
             : 'Allow photo library access to select design media from your device.'
           : source === 'camera'
-            ? 'Camera access is blocked. Open settings to allow Threadly to use your camera.'
-            : 'Photo library access is blocked. Open settings to allow Threadly to use your media.',
+            ? 'Camera access is blocked. Open settings to allow WEAZ to use your camera.'
+            : 'Photo library access is blocked. Open settings to allow WEAZ to use your media.',
         canAskAgain: Boolean(permission.canAskAgain),
       },
     };

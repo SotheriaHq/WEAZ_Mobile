@@ -4,7 +4,7 @@ import { defaultShouldDehydrateQuery } from '@tanstack/react-query';
 
 import { isPersistableThreadlyQueryKey } from '@/src/query/queryKeys';
 
-export const THREADLY_QUERY_CACHE_BUSTER = 'threadly-mobile-phase2-v1';
+export const THREADLY_QUERY_CACHE_BUSTER = 'Threadly-mobile-phase2-v1';
 export const THREADLY_QUERY_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
 export const THREADLY_QUERY_CACHE_STORAGE_KEY = 'THREADLY_QUERY_CACHE_V1';
 

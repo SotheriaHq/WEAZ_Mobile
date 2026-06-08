@@ -250,8 +250,9 @@ export default function SettingsScreen() {
         rows: [
           { icon: '❔', title: 'Help center', subtitle: 'Guides and common questions', onPress: () => comingSoon('Help center') },
           { icon: '⚠️', title: 'Report a problem', subtitle: 'Tell us what went wrong', onPress: () => comingSoon('Report a problem') },
-          { icon: '📄', title: 'Terms & conditions', onPress: () => comingSoon('Terms & conditions') },
-          { icon: '🔏', title: 'Privacy policy', onPress: () => comingSoon('Privacy policy') },
+          { icon: 'DOC', title: 'Terms & conditions', onPress: () => router.push('/legal/terms' as never) },
+          { icon: 'LOCK', title: 'Privacy policy', onPress: () => router.push('/legal/privacy' as never) },
+          { icon: 'LEGAL', title: 'Legal center', onPress: () => router.push('/legal' as never) },
         ],
       },
       {
@@ -268,9 +269,9 @@ export default function SettingsScreen() {
           {
             icon: '🗑️',
             title: 'Delete account',
-            subtitle: 'Permanently remove your Threadly account',
+            subtitle: 'Permanently remove your WEAZ account',
             danger: true,
-            onPress: () => comingSoon('Delete account'),
+            onPress: () => router.push('/settings/delete-account' as never),
           },
         ],
       },

@@ -143,7 +143,7 @@ export default function PublicProfileScreen() {
     if (!profile) return;
     try {
       await Share.share({
-        message: `View @${profile.username} on Threadly`,
+        message: `View @${profile.username} on WEAZ`,
         url: `https://threadly.app/profile/${profile.id}`,
       });
     } catch {

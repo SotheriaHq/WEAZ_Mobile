@@ -442,7 +442,7 @@ export default function SearchScreen() {
             value={query}
             onChangeText={setQuery}
             onSubmitEditing={onSubmitSearch}
-            placeholder="Search Threadly"
+            placeholder="Search WEAZ"
             returnKeyType="search"
             trailing={
               query.length > 0 ? (
@@ -500,7 +500,7 @@ export default function SearchScreen() {
           <Card>
             <View style={styles.stateBlock}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
-              <AppText variant="body" tone="muted">Searching Threadly...</AppText>
+              <AppText variant="body" tone="muted">Searching WEAZ...</AppText>
             </View>
           </Card>
         ) : null}
@@ -624,7 +624,7 @@ export default function SearchScreen() {
 
             {showPopularSection ? (
               <SearchSection
-                title="Popular on Threadly"
+                title="Popular on WEAZ"
                 rightAction={
                   <AppText variant="captionRegular" tone="muted">{suggestions?.trending?.length ?? 0} trending</AppText>
                 }

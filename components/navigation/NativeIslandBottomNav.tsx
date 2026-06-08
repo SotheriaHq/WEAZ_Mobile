@@ -1,11 +1,9 @@
 import React from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { usePathname } from 'expo-router';
 
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import {
   getNativeIslandContentClearance,
   getNativeIslandLayout,
@@ -32,7 +30,6 @@ type NativeIslandBottomNavProps = {
   onCollapsedPress?: () => void;
 };
 
-const COLLAPSED_MIN_WIDTH = 144;
 const COLLAPSED_MAX_WIDTH = 216;
 const COLLAPSED_ACTIVE_CHIP_WIDTH = 96;
 const COLLAPSED_ACTIVE_CHIP_COMPACT_WIDTH = 88;
@@ -60,9 +57,15 @@ function getCollapsedPreviewItems({
     return { leftItems: [], rightItems: [] };
   }
 
-  let leftCount = before.length > 0 && after.length > 0
-    ? Math.min(before.length, Math.floor(targetCount / 2))
-    : Math.min(before.length, targetCount);
+  if (before.length === 0) {
+    return { leftItems: [], rightItems: after.slice(0, targetCount) };
+  }
+
+  if (after.length === 0) {
+    return { leftItems: before.slice(-targetCount), rightItems: [] };
+  }
+
+  let leftCount = Math.min(before.length, Math.floor(targetCount / 2));
   let rightCount = Math.min(after.length, targetCount - leftCount);
 
   const remaining = targetCount - leftCount - rightCount;
@@ -163,31 +166,46 @@ export function NativeIslandBottomNav({
 }: NativeIslandBottomNavProps) {
   const { scheme, theme } = useTheme();
   const { windowWidth, islandLayout } = useScreenChrome();
-  const pathname = usePathname();
   const { bottomOffset, sideOffset, islandWidth } = islandLayout;
   const compact = items.length >= 6 || windowWidth < 380;
   const orderedItems = items;
   const activeIndex = Math.max(0, orderedItems.findIndex((item) => item.active && !item.disabled));
   const activeItem = orderedItems[activeIndex] ?? orderedItems[0];
-  const collapsedPreviewLimit = compact ? COLLAPSED_MAX_PREVIEW_ITEMS_COMPACT : COLLAPSED_MAX_PREVIEW_ITEMS;
+  const collapsedActiveChipWidth = compact ? COLLAPSED_ACTIVE_CHIP_COMPACT_WIDTH : COLLAPSED_ACTIVE_CHIP_WIDTH;
+  const collapsedPreviewWidth = compact ? COLLAPSED_PREVIEW_COMPACT_WIDTH : COLLAPSED_PREVIEW_WIDTH;
+  const collapsedMaxWidth = Math.min(
+    islandWidth,
+    COLLAPSED_MAX_WIDTH,
+    Math.max(
+      collapsedActiveChipWidth + COLLAPSED_HORIZONTAL_PADDING * 2,
+      Math.round(windowWidth * 0.58),
+    ),
+  );
+  const collapsedPreviewCapacity = Math.max(
+    0,
+    Math.floor(
+      (collapsedMaxWidth -
+        collapsedActiveChipWidth -
+        COLLAPSED_HORIZONTAL_PADDING * 2 +
+        COLLAPSED_ITEM_GAP) /
+        (collapsedPreviewWidth + COLLAPSED_ITEM_GAP),
+    ),
+  );
+  const desiredCollapsedPreviewLimit = compact
+    ? COLLAPSED_MAX_PREVIEW_ITEMS_COMPACT
+    : COLLAPSED_MAX_PREVIEW_ITEMS;
+  const collapsedPreviewLimit = Math.min(desiredCollapsedPreviewLimit, collapsedPreviewCapacity);
   const { leftItems: collapsedLeftItems, rightItems: collapsedRightItems } = React.useMemo(
     () => getCollapsedPreviewItems({ items: orderedItems, activeIndex, previewLimit: collapsedPreviewLimit }),
     [activeIndex, collapsedPreviewLimit, orderedItems],
   );
   const collapsedPreviewCount = collapsedLeftItems.length + collapsedRightItems.length;
-  const collapsedActiveChipWidth = compact ? COLLAPSED_ACTIVE_CHIP_COMPACT_WIDTH : COLLAPSED_ACTIVE_CHIP_WIDTH;
-  const collapsedPreviewWidth = compact ? COLLAPSED_PREVIEW_COMPACT_WIDTH : COLLAPSED_PREVIEW_WIDTH;
   const collapsedContentWidth =
     collapsedActiveChipWidth +
     collapsedPreviewCount * collapsedPreviewWidth +
     collapsedPreviewCount * COLLAPSED_ITEM_GAP +
     COLLAPSED_HORIZONTAL_PADDING * 2;
-  const collapsedMaxWidth = Math.min(
-    islandWidth,
-    COLLAPSED_MAX_WIDTH,
-    Math.max(COLLAPSED_MIN_WIDTH, Math.round(windowWidth * 0.58)),
-  );
-  const collapsedWidth = Math.min(collapsedMaxWidth, Math.max(COLLAPSED_MIN_WIDTH, collapsedContentWidth));
+  const collapsedWidth = Math.min(collapsedMaxWidth, collapsedContentWidth);
   const collapsedLeft = getCenteredLeft(windowWidth, collapsedWidth);
   const navLeft = collapsed ? collapsedLeft : sideOffset;
   const navWidth = collapsed ? collapsedWidth : islandWidth;
@@ -200,16 +218,23 @@ export function NativeIslandBottomNav({
 
   React.useEffect(() => {
     const easing = Easing.out(Easing.cubic);
+    navLeftAnim.stopAnimation();
+    navWidthAnim.stopAnimation();
+    collapsedOpacityAnim.stopAnimation();
+    expandedOpacityAnim.stopAnimation();
+    collapsedScaleAnim.stopAnimation();
+    expandedScaleAnim.stopAnimation();
+
     Animated.parallel([
       Animated.timing(navLeftAnim, {
         toValue: navLeft,
-        duration: 220,
+        duration: 260,
         easing,
         useNativeDriver: false,
       }),
       Animated.timing(navWidthAnim, {
         toValue: navWidth,
-        duration: 220,
+        duration: 260,
         easing,
         useNativeDriver: false,
       }),
@@ -227,13 +252,13 @@ export function NativeIslandBottomNav({
       }),
       Animated.timing(collapsedScaleAnim, {
         toValue: collapsed ? 1 : 0.96,
-        duration: 220,
+        duration: 240,
         easing,
         useNativeDriver: true,
       }),
       Animated.timing(expandedScaleAnim, {
         toValue: collapsed ? 0.98 : 1,
-        duration: 220,
+        duration: 240,
         easing,
         useNativeDriver: true,
       }),
@@ -250,31 +275,6 @@ export function NativeIslandBottomNav({
     navWidthAnim,
   ]);
 
-  React.useEffect(() => {
-    navDevLog('island-layout', {
-      pathname,
-      itemCount: items.length,
-      keys: items.map((item) => item.key),
-      labels: items.map((item) => item.label),
-      compact,
-      collapsed,
-      windowWidth,
-      islandWidth,
-      collapsedWidth,
-      collapsedLeft,
-      activeKey: items.find((item) => item.active)?.key ?? null,
-    });
-    navDevLog('collapsed-layout', {
-      pathname,
-      activeKey: activeItem?.key ?? null,
-      activeIndex,
-      leftPreviewKeys: collapsedLeftItems.map((item) => item.key),
-      rightPreviewKeys: collapsedRightItems.map((item) => item.key),
-      collapsedWidth,
-      collapsedLeft,
-      collapsed,
-    });
-  }, [activeIndex, activeItem?.key, collapsed, collapsedLeft, collapsedLeftItems, collapsedRightItems, collapsedWidth, compact, islandWidth, items, pathname, windowWidth]);
   if (items.length === 0) {
     return null;
   }
@@ -329,7 +329,7 @@ export function NativeIslandBottomNav({
           >
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Expand navigation. Current tab: ${activeItem?.label ?? 'Threadly'}`}
+              accessibilityLabel={`Expand navigation. Current tab: ${activeItem?.label ?? 'WEAZ'}`}
               onPress={() => {
                 onCollapsedPress?.();
               }}
@@ -468,6 +468,7 @@ const styles = StyleSheet.create({
   collapsedActiveChip: {
     height: 42,
     borderRadius: 21,
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 1,
@@ -559,6 +560,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   tabGlyphStack: {
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 1,

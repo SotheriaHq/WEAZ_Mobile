@@ -1,0 +1,12 @@
+<svg width="220" height="76" viewBox="0 0 220 76" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="weaz-mobile-word-gold" x1="20" y1="4" x2="200" y2="72" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff1a8"/>
+      <stop offset=".42" stop-color="#d8b24a"/>
+      <stop offset=".7" stop-color="#f8dc78"/>
+      <stop offset="1" stop-color="#9f6419"/>
+    </linearGradient>
+  </defs>
+  <text x="110" y="45" text-anchor="middle" fill="url(#weaz-mobile-word-gold)" font-family="Georgia, 'Times New Roman', serif" font-size="42" letter-spacing="8">WEAZ</text>
+  <text x="110" y="64" text-anchor="middle" fill="#d8b24a" font-family="Arial, sans-serif" font-size="11" letter-spacing="8">JUST WEAR</text>
+</svg>

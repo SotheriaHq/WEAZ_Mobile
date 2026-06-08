@@ -31,6 +31,10 @@ import { AppText } from '@/components/ui/AppText';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { Button } from '@/components/ui/Button';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
+import {
+  getRequiredLegalAcceptances,
+  LEGAL_SIGNUP_DOCUMENT_KEYS,
+} from '@/src/api/LegalApi';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -203,6 +207,9 @@ export default function SignupScreen() {
     setErrors({});
     setSubmitting(true);
     try {
+      const legalAcceptances = await getRequiredLegalAcceptances(
+        LEGAL_SIGNUP_DOCUMENT_KEYS,
+      );
       await signUp({
         firstName: trimmedFirstName,
         lastName: trimmedLastName,
@@ -210,8 +217,9 @@ export default function SignupScreen() {
         password: trimmedPassword,
         type: userType ?? 'REGULAR',
         ...(userType === 'BRAND' ? { brandFullName: trimmedBrandName } : {}),
+        legalAcceptances,
       });
-      toast.success('Welcome to Threadly! 🎉');
+      toast.success('Welcome to WEAZ! 🎉');
       setPendingNavigation(true);
     } catch (e: any) {
       const message =
@@ -250,12 +258,16 @@ export default function SignupScreen() {
     setGoogleSubmitting(true);
     try {
       const idToken = await googleTokenRequest.requestGoogleIdToken();
+      const legalAcceptances = await getRequiredLegalAcceptances(
+        LEGAL_SIGNUP_DOCUMENT_KEYS,
+      );
       await signInWithGoogle({
         idToken,
         type: userType ?? 'REGULAR',
         ...(userType === 'BRAND' ? { brandFullName: trimmedBrandName } : {}),
+        legalAcceptances,
       });
-      toast.success('Welcome to Threadly!');
+      toast.success('Welcome to WEAZ!');
       setPendingNavigation(true);
     } catch (e: any) {
       const message =
@@ -267,7 +279,7 @@ export default function SignupScreen() {
   };
 
   const isBrand = userType === 'BRAND';
-  const ctaTitle = isBrand ? 'CREATE BRAND' : 'JOIN THREADLY';
+  const ctaTitle = isBrand ? 'CREATE BRAND' : 'JOIN WEAZ';
 
   // Theme-derived colors
   const bgGradient = [theme.colors.bg, theme.colors.bg, theme.colors.bg] as const;
@@ -483,6 +495,22 @@ export default function SignupScreen() {
                 <AppText variant="captionBold" tone="primary">Privacy Policy</AppText>
               </AppText>
             </Pressable>
+            <View style={styles.legalLinksRow}>
+              <Pressable
+                onPress={() => router.push('/legal/terms' as never)}
+                accessibilityRole="button"
+                accessibilityLabel="View Terms of Service"
+              >
+                <AppText variant="captionBold" tone="primary">View Terms</AppText>
+              </Pressable>
+              <Pressable
+                onPress={() => router.push('/legal/privacy' as never)}
+                accessibilityRole="button"
+                accessibilityLabel="View Privacy Policy"
+              >
+                <AppText variant="captionBold" tone="primary">View Privacy</AppText>
+              </Pressable>
+            </View>
             {errors.acceptedTerms ? (
               <AppText variant="caption" tone="danger" style={styles.inlineError}>
                 {errors.acceptedTerms}
@@ -620,6 +648,12 @@ const styles = StyleSheet.create({
   },
   termsText: {
     flex: 1,
+  },
+  legalLinksRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.lg,
+    marginTop: tokens.spacing.xs,
+    paddingLeft: 36,
   },
   inlineError: {
     marginTop: -tokens.spacing.xs,
