@@ -131,6 +131,11 @@ export async function verifyEmail(token: string) {
   return unwrapData<VerifyEmailResponse>(response.data);
 }
 
+export async function resendVerificationEmail() {
+  const response = await apiClient.post<VerifyEmailResponse>('/auth/verify-email/resend');
+  return unwrapData<VerifyEmailResponse>(response.data);
+}
+
 export async function deleteAccount(params: DeleteAccountParams) {
   const response = await apiClient.post('/auth/account/delete', params);
   return unwrapData<{ message?: string }>(response.data);

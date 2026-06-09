@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
+import EmailVerificationNotice from '@/components/auth/EmailVerificationNotice';
 import { AppText } from '@/components/ui/AppText';
 import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Button } from '@/components/ui/Button';
@@ -809,6 +810,17 @@ export default function BuyerProfileScreen() {
             ) : null}
           </View>
         </View>
+
+        <EmailVerificationNotice
+          context="profile"
+          userId={user?.id}
+          email={user?.email}
+          emailVerified={
+            typeof user?.isEmailVerified === 'boolean'
+              ? user.isEmailVerified
+              : profileRecord?.isEmailVerified
+          }
+        />
 
         <View style={styles.actionGrid}>
           <ProfileAction emoji="✏️" label="Edit info" onPress={() => setEditOpen(true)} />

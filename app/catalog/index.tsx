@@ -45,6 +45,7 @@ import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { resolveBannerImageSource, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { BrandShopTab } from '@/components/catalog/BrandShopTab';
 import { BrandReviewsTab } from '@/components/catalog/BrandReviewsTab';
+import EmailVerificationNotice from '@/components/auth/EmailVerificationNotice';
 import { getBrandBadges } from '@/components/catalog/ProfileBadge';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -1156,6 +1157,17 @@ export default function CatalogScreen() {
           </View>
         ) : null}
 
+        {isOwner ? (
+          <View style={styles.verificationNoticeWrap}>
+            <EmailVerificationNotice
+              context="catalog"
+              userId={userId}
+              email={user?.email}
+              emailVerified={userEmailVerified}
+            />
+          </View>
+        ) : null}
+
         {/* Tabs */}
         <View style={[styles.tabsWrapper, { borderBottomColor: theme.colors.border }]}>
           <Tabs
@@ -1344,6 +1356,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.lg,
     paddingTop: tokens.spacing.md,
     paddingBottom: tokens.spacing.xs,
+  },
+  verificationNoticeWrap: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.sm,
   },
   catalogControls: {
     flexDirection: 'row',
