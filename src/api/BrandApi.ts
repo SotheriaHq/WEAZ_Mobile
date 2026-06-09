@@ -822,7 +822,18 @@ export const brandApi = {
       }
 
       const request = (async () => {
-        const response = await apiClient.get(`/brands/${cacheKey}`);
+        const response = await apiClient.get(
+          `/brands/${cacheKey}`,
+          forceRefresh
+            ? {
+                params: { _cb: Date.now() },
+                headers: {
+                  'Cache-Control': 'no-store',
+                  Pragma: 'no-cache',
+                },
+              }
+            : undefined,
+        );
         const profile = normalizeBrandProfile(response.data);
         brandProfileCache.set(cacheKey, {
           profile,
@@ -841,14 +852,24 @@ export const brandApi = {
     }
   },
 
+  invalidateBrandProfileCache(brandId?: string | null) {
+    const cacheKey = asString(brandId);
+    if (cacheKey) {
+      brandProfileCache.delete(cacheKey);
+      brandProfilePending.delete(cacheKey);
+      return;
+    }
+    brandProfileCache.clear();
+    brandProfilePending.clear();
+  },
+
   /**
    * Update brand profile
    */
   async updateProfile(brandId: string, payload: UpdateBrandProfilePayload): Promise<BrandProfileDto | null> {
     try {
       await apiClient.patch(`/brands/${brandId}`, payload);
-      brandProfileCache.delete(brandId);
-      brandProfilePending.delete(brandId);
+      this.invalidateBrandProfileCache(brandId);
       return this.getProfileById(brandId, { forceRefresh: true });
     } catch (error) {
       console.error('Error updating brand profile:', error);

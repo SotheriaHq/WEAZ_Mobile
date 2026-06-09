@@ -136,6 +136,7 @@ const getSignedUriExpiresAt = (uri: string) => {
 const shouldPreferFileIdResolution = (directSrc: string | null, normalizedFileId: string | null) => {
   if (!directSrc || !normalizedFileId) return false;
   if (!isUsableDirectHttpUrl(directSrc)) return true;
+  if (isS3LikeUrl(directSrc) && !hasSignedUrlParams(directSrc)) return true;
   if (!hasSignedUrlParams(directSrc)) return false;
 
   const expiresAt = getSignedUriExpiresAt(directSrc);

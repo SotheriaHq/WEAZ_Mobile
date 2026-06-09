@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, type View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { BrandProfileHeader, type BrandHeaderContactItem, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
 import type { ProfileBadgeModel } from '@/components/catalog/ProfileBadge';
 import { brandApi, type BrandProfileDto } from '@/src/api/BrandApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { queryKeys } from '@/src/query/queryKeys';
 import { useToast } from '@/src/toast/ToastContext';
 import { resolveBannerImageSource, resolveProfileImageSource } from '@/src/utils/profileImage';
 import {
@@ -66,6 +68,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   badges = [],
 }: OwnerCatalogMediaHeaderProps) {
   const { user, updateUser } = useAuth();
+  const queryClient = useQueryClient();
   const toast = useToast();
   const [avatarLoading, setAvatarLoading] = useState(false);
   const [bannerLoading, setBannerLoading] = useState(false);
@@ -168,6 +171,23 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
       });
+      const profileId = profile?.id ?? user?.id ?? null;
+      if (profileId) {
+        brandApi.invalidateBrandProfileCache(profileId);
+        queryClient.setQueryData(queryKeys.brand.profile(profileId), (current: BrandProfileDto | null | undefined) => {
+          if (!current) return current;
+          return {
+            ...current,
+            profileImage: uploaded.url,
+            profileImageId: uploaded.id,
+            profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
+            logoImage: uploaded.url,
+            logoImageId: uploaded.id,
+            logoImageMeta: { fileId: uploaded.id, id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
+          };
+        });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.brand.profile(profileId) });
+      }
       toast.success('Profile photo updated');
     } catch (error) {
       console.error('Avatar upload error:', error);
@@ -176,7 +196,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
     } finally {
       setAvatarLoading(false);
     }
-  }, [toast, updateUser]);
+  }, [profile?.id, queryClient, toast, updateUser, user?.id]);
 
   const handleEditBanner = useCallback(async () => {
     const hasPermission = await requestPhotoPermission(
@@ -227,6 +247,20 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
         bannerImageId: uploaded.id,
         bannerImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
       });
+      const profileId = profile?.id ?? user?.id ?? null;
+      if (profileId) {
+        brandApi.invalidateBrandProfileCache(profileId);
+        queryClient.setQueryData(queryKeys.brand.profile(profileId), (current: BrandProfileDto | null | undefined) => {
+          if (!current) return current;
+          return {
+            ...current,
+            bannerImage: uploaded.url,
+            bannerImageId: uploaded.id,
+            bannerImageMeta: { fileId: uploaded.id, id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
+          };
+        });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.brand.profile(profileId) });
+      }
       toast.success('Banner image updated');
     } catch (error) {
       console.error('Banner upload error:', error);
@@ -235,7 +269,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
     } finally {
       setBannerLoading(false);
     }
-  }, [toast, updateUser]);
+  }, [profile?.id, queryClient, toast, updateUser, user?.id]);
 
   return (
     <BrandProfileHeader

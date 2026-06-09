@@ -7,6 +7,7 @@ const { compile, createScriptRequire } = require('./helpers/mobile-script-requir
 
 const repoRoot = path.resolve(__dirname, '..');
 const brandApiPath = path.join(repoRoot, 'src', 'api', 'BrandApi.ts');
+const imageUriPath = path.join(repoRoot, 'src', 'hooks', 'useResolvedImageUri.ts');
 const formatCountPath = path.join(repoRoot, 'src', 'utils', 'formatCount.ts');
 const catalogPath = path.join(repoRoot, 'app', 'catalog', 'index.tsx');
 const badgePath = path.join(repoRoot, 'components', 'catalog', 'ProfileBadge.tsx');
@@ -51,6 +52,57 @@ function loadFormatCount() {
 
   vm.runInNewContext(compile(formatCountPath), sandbox, { filename: formatCountPath });
   return module.exports.formatCount;
+}
+
+function loadImageResolverWithMock(mockBrandApi) {
+  const module = { exports: {} };
+  const queryCalls = [];
+  const scriptRequire = createScriptRequire({
+    repoRoot,
+    mocks: {
+      react: {
+        useEffect: () => undefined,
+        useRef: (value) => ({ current: value }),
+        useState: (value) => [typeof value === 'function' ? value() : value, () => undefined],
+      },
+      'react-native': { Platform: { OS: 'ios' } },
+      'expo-image': { Image: { prefetch: async () => true } },
+      '@/src/api/BrandApi': { brandApi: mockBrandApi },
+      '@/src/features/feed/utils/feedDiagnostics': {
+        mediaDevLog: () => undefined,
+        mediaDevWarn: () => undefined,
+      },
+      '@/src/query/queryClient': {
+        queryClient: {
+          removeQueries: () => undefined,
+          fetchQuery: async ({ queryKey, queryFn }) => {
+            queryCalls.push(queryKey);
+            return queryFn();
+          },
+        },
+      },
+      '@/src/query/queryKeys': {
+        queryKeys: {
+          media: {
+            publicUrl: (fileId) => ['media', 'publicUrl', fileId],
+            signedUrl: (fileId) => ['media', 'signedUrl', fileId],
+          },
+        },
+      },
+    },
+  });
+  const sandbox = {
+    module,
+    exports: module.exports,
+    require: (request) => scriptRequire(request, imageUriPath),
+    console,
+    URL,
+    setTimeout,
+    clearTimeout,
+  };
+
+  vm.runInNewContext(compile(imageUriPath), sandbox, { filename: imageUriPath });
+  return { exports: module.exports, queryCalls };
 }
 
 async function main() {
@@ -131,6 +183,25 @@ async function main() {
   assert.equal(profile.publicProfileUrl, 'https://threadly.test/u/maison-vant');
   assert.equal(profile.qrTargetUrl, 'https://threadly.test/u/maison-vant');
   assert.equal(profile.shareUrl, 'https://threadly.test/u/maison-vant');
+
+  const resolverCalls = [];
+  const { exports: imageResolver } = loadImageResolverWithMock({
+    getPublicFileUrl: async (fileId) => {
+      resolverCalls.push(['public', fileId]);
+      return 'https://signed.example/banner.jpg';
+    },
+    getPrivateSignedFileUrl: async (fileId) => {
+      resolverCalls.push(['private', fileId]);
+      return null;
+    },
+  });
+  const resolvedBannerUri = await imageResolver.resolveImageUri({
+    src: 'https://voguely.s3.eu-north-1.amazonaws.com/BANNER_IMAGE/brand/banner.jpg',
+    fileId: 'banner-file-id',
+  });
+
+  assert.equal(resolvedBannerUri, 'https://signed.example/banner.jpg');
+  assert.deepEqual(resolverCalls, [['public', 'banner-file-id']]);
 
   const formatCount = loadFormatCount();
   assert.equal(formatCount(999), '999');
