@@ -41,7 +41,7 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
         onPressIn={() => animatePress(0.96, 90)}
         onPressOut={() => animatePress(1, 140)}
         disabled={disabled}
-        style={[
+        style={({ pressed }) => [
           styles.base,
           isSwatch && styles.swatchBase,
           isNav && styles.navBase,
@@ -53,8 +53,16 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
               ? selected ? theme.colors.primarySoft : 'transparent'
               : isNav
                 ? 'transparent'
-                : selected ? theme.colors.primary : theme.colors.surfaceAlt,
-            borderColor: isNav ? 'transparent' : selected ? theme.colors.primary : theme.colors.border,
+                : selected
+                  ? theme.colors.primary
+                  : pressed
+                    ? theme.colors.primarySoft
+                    : theme.colors.surfaceAlt,
+            borderColor: isNav
+              ? 'transparent'
+              : selected || pressed
+                ? theme.colors.primary
+                : theme.colors.border,
             borderBottomColor: isNav && selected ? theme.colors.primary : 'transparent',
             opacity: disabled ? 0.48 : 1,
           },

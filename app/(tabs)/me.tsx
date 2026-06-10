@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
+import ProfileImageModal from '@/components/profile/ProfileImageModal';
 import { ProfileApi, type Order, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
@@ -117,6 +118,8 @@ function buildFallbackProfile(user: AuthUser | null): UserProfile | null {
     address: null,
     location: null,
     profileVisibility: 'UNLOCKED',
+    profilePhotoUpdatedAt: user.profilePhotoUpdatedAt ?? null,
+    profilePhotoViewState: null,
     isEmailVerified: typeof user.isEmailVerified === 'boolean' ? user.isEmailVerified : false,
     createdAt: user.updatedAt ?? null,
   };
@@ -402,6 +405,7 @@ export default function BuyerProfileScreen() {
   const savedLooksOpenedTrackedRef = useRef(false);
   const [editOpen, setEditOpen] = useState(false);
   const [fittingsOpen, setFittingsOpen] = useState(false);
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingFittings, setSavingFittings] = useState(false);
   const [firstName, setFirstName] = useState('');
@@ -591,6 +595,11 @@ export default function BuyerProfileScreen() {
     enabled: Boolean(profileIdentity.avatarSrc || profileIdentity.avatarFileId),
   });
 
+  const handleViewAvatar = useCallback(() => {
+    if (!avatarUri && !profileIdentity.avatarSrc && !profileIdentity.avatarFileId) return;
+    setIsAvatarModalOpen(true);
+  }, [avatarUri, profileIdentity.avatarFileId, profileIdentity.avatarSrc]);
+
   const handleOpenNotifications = useCallback(() => {
     router.push('/notifications' as any);
   }, []);
@@ -652,10 +661,12 @@ export default function BuyerProfileScreen() {
         toast.error('Failed to upload photo.');
         return;
       }
+      const nextProfilePhotoUpdatedAt = new Date().toISOString();
       updateUser({
         profileImage: uploaded.url,
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
+        profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
       });
       setState((current) => {
         const nextProfile = current.profile ?? profileRecord;
@@ -668,6 +679,8 @@ export default function BuyerProfileScreen() {
             profileImage: uploaded.url,
             profileImageId: uploaded.id,
             profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
+            profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
+            profilePhotoViewState: null,
           },
         };
       });
@@ -785,7 +798,8 @@ export default function BuyerProfileScreen() {
         </View>
 
         <View style={styles.hero}>
-          <Pressable onPress={handlePickAvatar} style={({ pressed }) => [styles.avatarWrap, pressed ? styles.pressed : null]}>
+          <View style={styles.avatarWrap}>
+          <Pressable onPress={handleViewAvatar} style={({ pressed }) => [pressed ? styles.pressed : null]}>
             {avatarUri ? (
               <StableImage uri={avatarUri} containerStyle={styles.heroAvatar} imageStyle={styles.heroAvatar} />
             ) : (
@@ -793,10 +807,23 @@ export default function BuyerProfileScreen() {
                 <AppText variant="title" tone="primary">{profileIdentity.initials}</AppText>
               </View>
             )}
-            <View style={[styles.avatarBadge, { backgroundColor: theme.colors.surface }]}>
-              <AppText variant="captionBold">📷</AppText>
-            </View>
           </Pressable>
+            <Pressable
+              onPress={handlePickAvatar}
+              style={({ pressed }) => [
+                styles.avatarBadge,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: pressed ? theme.colors.primary : theme.colors.border,
+                },
+                pressed ? styles.pressed : null,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Edit profile photo"
+            >
+              <AppText variant="captionBold">📷</AppText>
+            </Pressable>
+          </View>
 
           <View style={styles.identityBlock}>
             <AppText variant="title" style={styles.centerText}>{profileIdentity.displayName}</AppText>
@@ -934,6 +961,12 @@ export default function BuyerProfileScreen() {
         ) : null}
       </ScrollView>
 
+      <ProfileImageModal
+        visible={isAvatarModalOpen}
+        imageUrl={avatarUri ?? profileIdentity.avatarSrc ?? null}
+        onClose={() => setIsAvatarModalOpen(false)}
+      />
+
       <AppBottomSheet
         visible={editOpen}
         title="Edit profile"
@@ -1060,6 +1093,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -85,8 +85,14 @@ export function AppSelectSheet({
               style={({ pressed }) => [
                 styles.optionCard,
                 {
-                  backgroundColor: theme.colors.surfaceAlt,
-                  borderColor: option.value === value ? theme.colors.primary : theme.colors.border,
+                  backgroundColor:
+                    option.value === value || pressed
+                      ? theme.colors.primarySoft
+                      : theme.colors.surfaceAlt,
+                  borderColor:
+                    option.value === value || pressed
+                      ? theme.colors.primary
+                      : theme.colors.border,
                 },
                 option.disabled && styles.optionDisabled,
                 pressed && !option.disabled && styles.optionPressed,

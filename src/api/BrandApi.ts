@@ -10,6 +10,7 @@ import {
   MOBILE_UPLOAD_POLICIES,
   assertValidPickedUploadAsset,
 } from '@/src/utils/uploadValidation';
+import type { ProfilePhotoViewState } from '@/src/types/profilePhoto';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -77,6 +78,8 @@ export interface BrandProfileDto {
     s3Url?: string | null;
     url?: string | null;
   } | null;
+  profilePhotoUpdatedAt?: string | null;
+  profilePhotoViewState?: ProfilePhotoViewState | null;
   username: string | null;
   email: string | null;
   firstName?: string | null;
@@ -609,6 +612,8 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
       s3Url: asString(logoMeta.s3Url) ?? asString(logoMeta.url),
       url: asString(logoMeta.url) ?? asString(logoMeta.s3Url),
     },
+    profilePhotoUpdatedAt: asString(source.profilePhotoUpdatedAt) ?? null,
+    profilePhotoViewState: (source.profilePhotoViewState as ProfilePhotoViewState | undefined) ?? null,
     username: asString(source.username),
     email:
       asString(source.email) ??

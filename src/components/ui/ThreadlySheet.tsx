@@ -98,8 +98,10 @@ export function ThreadlySheet({
                 style={({ pressed }) => [
                   styles.optionRow,
                   {
-                    backgroundColor: theme.colors.surfaceAlt,
-                    borderColor: theme.colors.border,
+                    backgroundColor: pressed
+                      ? theme.colors.primarySoft
+                      : theme.colors.surfaceAlt,
+                    borderColor: pressed ? theme.colors.primary : theme.colors.border,
                     opacity: option.disabled ? 0.52 : pressed ? 0.82 : 1,
                   },
                 ]}

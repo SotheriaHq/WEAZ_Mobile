@@ -9,7 +9,9 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { StableImage } from '@/components/ui/StableImage';
+import ProfileImageModal from '@/components/profile/ProfileImageModal';
 import { ProfileApi, type PatchedBrand, type UserProfile } from '@/src/api/ProfileApi';
+import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -84,6 +86,7 @@ export default function PublicProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!profileId) {
@@ -151,6 +154,29 @@ export default function PublicProfileScreen() {
     }
   }, [profile, toast]);
 
+  const handleViewAvatar = useCallback(() => {
+    if (!profile || (!avatarUri && !profile.profileImage && !profile.profileImageId)) return;
+    setIsAvatarModalOpen(true);
+
+    if (!profile.profilePhotoViewState?.canMarkViewed) return;
+
+    void ProfilePhotoViewApi.markViewed(profile.id)
+      .then((nextState) => {
+        setProfile((current) =>
+          current
+            ? {
+                ...current,
+                profilePhotoUpdatedAt: nextState.profilePhotoUpdatedAt,
+                profilePhotoViewState: nextState,
+              }
+            : current,
+        );
+      })
+      .catch((markError) => {
+        console.error('Failed to mark profile photo viewed', markError);
+      });
+  }, [avatarUri, profile]);
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
@@ -182,8 +208,10 @@ export default function PublicProfileScreen() {
           description={joinedLabel}
           avatarUrl={profile?.profileImage ?? undefined}
           avatarFileId={profile?.profileImageId ?? undefined}
+          profilePhotoViewState={profile?.profilePhotoViewState ?? null}
           bannerUrl={profile?.bannerImage ?? undefined}
           isOwner={false}
+          onViewAvatar={handleViewAvatar}
           onShare={handleShare}
           onBack={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/discover' as any))}
         />
@@ -224,6 +252,11 @@ export default function PublicProfileScreen() {
           <PublicProfileEmpty />
         )}
       </ScrollView>
+      <ProfileImageModal
+        visible={isAvatarModalOpen}
+        imageUrl={avatarUri ?? profile?.profileImage ?? null}
+        onClose={() => setIsAvatarModalOpen(false)}
+      />
     </SafeAreaView>
   );
 }

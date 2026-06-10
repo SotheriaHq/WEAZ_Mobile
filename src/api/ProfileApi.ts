@@ -1,5 +1,6 @@
 import { apiClient } from '@/src/api/httpClient';
 import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
+import type { ProfilePhotoViewState } from '@/src/types/profilePhoto';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -22,6 +23,8 @@ export interface UserProfile {
   address?: string | null;
   location?: string | null;
   profileVisibility: 'UNLOCKED' | 'LOCKED';
+  profilePhotoUpdatedAt?: string | null;
+  profilePhotoViewState?: ProfilePhotoViewState | null;
   isEmailVerified?: boolean;
   createdAt?: string | null;
 }
@@ -221,6 +224,8 @@ function normalizeProfile(raw: unknown): UserProfile | null {
     address: s.address ?? null,
     location: s.location ?? s.address ?? null,
     profileVisibility: s.profileVisibility === 'LOCKED' ? 'LOCKED' : 'UNLOCKED',
+    profilePhotoUpdatedAt: s.profilePhotoUpdatedAt ?? null,
+    profilePhotoViewState: s.profilePhotoViewState ?? null,
     isEmailVerified: Boolean(s.isEmailVerified),
     createdAt: typeof s.createdAt === 'string' ? s.createdAt : null,
   };

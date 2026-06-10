@@ -126,6 +126,10 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
               key={option.key}
               style={({ pressed }) => [
                 styles.option,
+                pressed && {
+                  backgroundColor: theme.colors.primarySoft,
+                  borderColor: theme.colors.primary,
+                },
                 pressed && styles.optionPressed,
                 index < options.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
               ]}

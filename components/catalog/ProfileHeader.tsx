@@ -9,6 +9,7 @@ import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import type { ProfilePhotoViewState } from '@/src/types/profilePhoto';
 
 interface ProfileHeaderProps {
   brandName: string;
@@ -18,6 +19,7 @@ interface ProfileHeaderProps {
   tags?: string[];
   avatarUrl?: string | null;
   avatarFileId?: string;
+  profilePhotoViewState?: ProfilePhotoViewState | null;
   bannerUrl?: string | null;
   bannerFileId?: string;
   isOwner?: boolean;
@@ -215,6 +217,7 @@ function ProfileAvatar({
   showAvatarImage,
   avatarUri,
   avatarLoading,
+  profilePhotoViewState,
   onAvatarError,
 }: {
   displayName: string;
@@ -225,10 +228,27 @@ function ProfileAvatar({
   showAvatarImage: boolean;
   avatarUri?: string | null;
   avatarLoading: boolean;
+  profilePhotoViewState?: ProfilePhotoViewState | null;
   onAvatarError: () => void;
 }) {
   const { theme } = useTheme();
   const initials = displayName.trim().charAt(0).toUpperCase() || 'T';
+  const hasVersion = Boolean(profilePhotoViewState?.profilePhotoUpdatedAt);
+  const ringColor =
+    showAvatarImage && hasVersion
+      ? profilePhotoViewState?.hasUnviewedUpdate
+        ? theme.colors.primary
+        : theme.colors.border
+      : theme.colors.bg;
+  const ringShadow = showAvatarImage && hasVersion && profilePhotoViewState?.hasUnviewedUpdate
+    ? {
+        shadowColor: theme.colors.primary,
+        shadowOpacity: 0.22,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 6,
+      }
+    : null;
 
   return (
     <Pressable
@@ -238,11 +258,12 @@ function ProfileAvatar({
       disabled={!handleAvatarPress}
       style={({ pressed }) => [
         styles.avatarWrapper,
-        { borderColor: theme.colors.bg },
+        { borderColor: ringColor },
+        ringShadow,
         pressed ? styles.pressedScale : null,
       ]}
       accessibilityRole={handleAvatarPress ? 'button' : undefined}
-      accessibilityLabel={isOwner ? 'Edit profile photo' : 'View profile photo'}
+      accessibilityLabel="View profile photo"
     >
       <Animated.View style={[styles.flexFill, { opacity: avatarLoading ? pulseAnim : 1 }]}>
         {showAvatarImage && avatarUri ? (
@@ -449,6 +470,7 @@ export const ProfileHeader = React.memo(function ProfileHeader({
   isLoading = false,
   avatarLoading = false,
   bannerLoading = false,
+  profilePhotoViewState,
   isPatched = false,
   patchLoading = false,
   onPatch,
@@ -504,7 +526,7 @@ export const ProfileHeader = React.memo(function ProfileHeader({
   }
 
   const bannerHeight = getBannerHeight(width);
-  const handleAvatarPress = onViewAvatar ?? (isOwner ? onEditAvatar : undefined);
+  const handleAvatarPress = onViewAvatar;
   const bannerUri = resolvedBannerUrl ?? bannerUrl;
   const avatarUri = resolvedAvatarUrl ?? avatarUrl;
   const showBannerImage = Boolean(bannerUri && !bannerFailed);
@@ -535,6 +557,7 @@ export const ProfileHeader = React.memo(function ProfileHeader({
             showAvatarImage={showAvatarImage}
             avatarUri={avatarUri}
             avatarLoading={avatarLoading}
+            profilePhotoViewState={profilePhotoViewState}
             onAvatarError={() => setAvatarFailed(true)}
           />
         </ProfileIdentityRow>

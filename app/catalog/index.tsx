@@ -31,6 +31,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
 import { canManageCatalog, getActiveBrandId } from '@/src/auth/brandAccess';
 import { brandApi, type BrandProfileDto, type CollectionDto } from '@/src/api/BrandApi';
+import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
 import { OwnerCatalogMediaHeader } from '@/components/catalog/OwnerCatalogMediaHeader';
 import { BrandProfileHeader, BrandProfileHeaderSkeleton, type BrandHeaderContactItem, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
@@ -321,6 +322,7 @@ export default function CatalogScreen() {
           profileImage: (data as any).profileImage,
           profileImageId: (data as any).profileImageId,
           profileImageFile: (data as any).profileImageFile,
+          profilePhotoUpdatedAt: (data as any).profilePhotoUpdatedAt,
           bannerImage: (data as any).bannerImage,
           bannerImageId: (data as any).bannerImageId,
           bannerImageFile: (data as any).bannerImageMeta,
@@ -422,6 +424,7 @@ export default function CatalogScreen() {
         profileImage: (data as any).profileImage,
         profileImageId: (data as any).profileImageId,
         profileImageFile: (data as any).profileImageFile,
+        profilePhotoUpdatedAt: (data as any).profilePhotoUpdatedAt,
         bannerImage: (data as any).bannerImage,
         bannerImageId: (data as any).bannerImageId,
         bannerImageFile: (data as any).bannerImageMeta,
@@ -680,6 +683,62 @@ export default function CatalogScreen() {
     if (!profileShareUrl) return undefined;
     return `Check out ${effectiveProfile?.brandFullName || 'this brand'} on WEAZ: ${profileShareUrl}`;
   }, [effectiveProfile?.brandFullName, profileShareUrl]);
+
+  const applyProfilePhotoViewState = useCallback(
+    (nextState: NonNullable<BrandProfileDto['profilePhotoViewState']>) => {
+      if (!targetBrandId) return;
+      setProfile((current) => {
+        const next = current
+          ? {
+              ...current,
+              profilePhotoUpdatedAt: nextState.profilePhotoUpdatedAt,
+              profilePhotoViewState: nextState,
+            }
+          : current;
+        profileRef.current = next;
+        return next;
+      });
+      queryClient.setQueryData(
+        queryKeys.brand.profile(targetBrandId),
+        (current: BrandProfileDto | null | undefined) =>
+          current
+            ? {
+                ...current,
+                profilePhotoUpdatedAt: nextState.profilePhotoUpdatedAt,
+                profilePhotoViewState: nextState,
+              }
+            : current,
+      );
+      brandApi.invalidateBrandProfileCache(targetBrandId);
+    },
+    [queryClient, targetBrandId],
+  );
+
+  const handleViewOwnerAvatar = useCallback(() => {
+    if (ownerAvatarUri || ownerAvatar.src) {
+      setIsAvatarModalOpen(true);
+    }
+  }, [ownerAvatar.src, ownerAvatarUri]);
+
+  const handleViewVisitorAvatar = useCallback(() => {
+    if (visitorAvatarUri || visitorAvatar.src) {
+      setIsAvatarModalOpen(true);
+    }
+    if (!targetBrandId || !effectiveProfile?.profilePhotoViewState?.canMarkViewed) {
+      return;
+    }
+    void ProfilePhotoViewApi.markViewed(targetBrandId)
+      .then(applyProfilePhotoViewState)
+      .catch((error) => {
+        console.error('Failed to mark profile photo viewed', error);
+      });
+  }, [
+    applyProfilePhotoViewState,
+    effectiveProfile?.profilePhotoViewState,
+    targetBrandId,
+    visitorAvatar.src,
+    visitorAvatarUri,
+  ]);
 
   // Handle share
   const handleNativeShareProfile = useCallback(async () => {
@@ -1107,11 +1166,7 @@ export default function CatalogScreen() {
               router.push({ pathname: '/catalog/edit-profile', params: { brandId: targetBrandId } } as any);
             }}
             onCreate={handleCreatePress}
-            onViewAvatar={() => {
-              if (ownerAvatarUri || ownerAvatar.src) {
-                setIsAvatarModalOpen(true);
-              }
-            }}
+            onViewAvatar={handleViewOwnerAvatar}
             onShare={() => setShareActionsOpen(true)}
             qrTargetUrl={profileQrTargetUrl}
             onOpenQr={() => setBrandQrOpen(true)}
@@ -1130,6 +1185,7 @@ export default function CatalogScreen() {
             badges={headerBadges}
             avatarUrl={visitorAvatarUri ?? visitorAvatar.src ?? undefined}
             avatarFileId={visitorAvatar.fileId ?? undefined}
+            profilePhotoViewState={effectiveProfile?.profilePhotoViewState ?? null}
             bannerUrl={visitorBanner.src ?? undefined}
             bannerFileId={visitorBanner.fileId ?? undefined}
             isOwner={false}
@@ -1137,11 +1193,7 @@ export default function CatalogScreen() {
             isPatched={isPatched}
             patchLoading={patchLoading}
             onPatch={status === 'authenticated' ? handlePatch : undefined}
-            onViewAvatar={() => {
-              if (visitorAvatarUri || visitorAvatar.src) {
-                setIsAvatarModalOpen(true);
-              }
-            }}
+            onViewAvatar={handleViewVisitorAvatar}
             onShare={() => setShareActionsOpen(true)}
             qrTargetUrl={profileQrTargetUrl}
             onOpenQr={() => setBrandQrOpen(true)}

@@ -13,6 +13,7 @@ import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import type { ProfilePhotoViewState } from '@/src/types/profilePhoto';
 
 const BRAND_DESCRIPTION_PREVIEW_LINES = 2;
 const BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH = 120;
@@ -38,6 +39,7 @@ export type BrandProfileHeaderProps = {
   badges?: ProfileBadgeModel[];
   avatarUrl?: string;
   avatarFileId?: string | null;
+  profilePhotoViewState?: ProfilePhotoViewState | null;
   bannerUrl?: string;
   bannerFileId?: string | null;
   isOwner?: boolean;
@@ -348,6 +350,7 @@ function OverlayAvatar({
   brandName,
   avatarUrl,
   avatarFileId,
+  profilePhotoViewState,
   avatarLoading,
   isOwner,
   onViewAvatar,
@@ -357,6 +360,7 @@ function OverlayAvatar({
   | 'brandName'
   | 'avatarUrl'
   | 'avatarFileId'
+  | 'profilePhotoViewState'
   | 'avatarLoading'
   | 'isOwner'
   | 'onViewAvatar'
@@ -369,7 +373,23 @@ function OverlayAvatar({
     allowSignedFallback: isOwner,
   });
   const initials = useMemo(() => compactInitials(brandName), [brandName]);
-  const avatarAction = onViewAvatar || (isOwner ? onEditAvatar : undefined);
+  const avatarAction = onViewAvatar;
+  const hasVersion = Boolean(profilePhotoViewState?.profilePhotoUpdatedAt);
+  const ringColor =
+    resolvedAvatar && hasVersion
+      ? profilePhotoViewState?.hasUnviewedUpdate
+        ? theme.colors.primary
+        : theme.colors.border
+      : theme.colors.surface;
+  const ringShadow = resolvedAvatar && hasVersion && profilePhotoViewState?.hasUnviewedUpdate
+    ? {
+        shadowColor: theme.colors.primary,
+        shadowOpacity: 0.24,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 8,
+      }
+    : null;
 
   return (
     <Pressable
@@ -379,12 +399,13 @@ function OverlayAvatar({
         styles.avatarFrame,
         {
           backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.surface,
+          borderColor: ringColor,
           opacity: pressed ? 0.86 : 1,
         },
+        ringShadow,
       ]}
       accessibilityRole={avatarAction ? 'button' : undefined}
-      accessibilityLabel={isOwner ? 'View or edit brand logo' : 'View brand logo'}
+      accessibilityLabel="View brand logo"
     >
       <View style={[styles.avatarImage, avatarLoading ? styles.uploadPreviewDim : null]}>
         {resolvedAvatar ? (
@@ -831,6 +852,7 @@ export function BrandProfileHeader({
   badges = [],
   avatarUrl,
   avatarFileId,
+  profilePhotoViewState,
   bannerUrl,
   bannerFileId,
   isOwner = false,
@@ -885,6 +907,7 @@ export function BrandProfileHeader({
           brandName={effectiveName}
           avatarUrl={avatarUrl}
           avatarFileId={avatarFileId}
+          profilePhotoViewState={profilePhotoViewState}
           avatarLoading={avatarLoading}
           isOwner={isOwner}
           onViewAvatar={onViewAvatar}

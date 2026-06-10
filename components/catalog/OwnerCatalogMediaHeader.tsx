@@ -166,10 +166,12 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       }
 
       setPendingAvatar({ src: uploaded.url, fileId: uploaded.id });
+      const nextProfilePhotoUpdatedAt = new Date().toISOString();
       updateUser({
         profileImage: uploaded.url,
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
+        profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
       });
       const profileId = profile?.id ?? user?.id ?? null;
       if (profileId) {
@@ -184,6 +186,16 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
             logoImage: uploaded.url,
             logoImageId: uploaded.id,
             logoImageMeta: { fileId: uploaded.id, id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
+            profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
+            profilePhotoViewState: current.profilePhotoViewState
+              ? {
+                  ...current.profilePhotoViewState,
+                  profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
+                  viewed: true,
+                  hasUnviewedUpdate: false,
+                  canMarkViewed: false,
+                }
+              : current.profilePhotoViewState,
           };
         });
         void queryClient.invalidateQueries({ queryKey: queryKeys.brand.profile(profileId) });
@@ -283,6 +295,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       badges={badges}
       avatarUrl={avatarUri ?? undefined}
       avatarFileId={pendingAvatar?.fileId ?? baseAvatar.fileId ?? undefined}
+      profilePhotoViewState={profile?.profilePhotoViewState ?? null}
       bannerUrl={bannerUri ?? undefined}
       bannerFileId={pendingBanner?.fileId ?? baseBanner.fileId ?? undefined}
       isOwner

@@ -71,6 +71,7 @@ export type AuthUser = {
     s3Url?: string | null;
     url?: string | null;
   } | null;
+  profilePhotoUpdatedAt?: string | null;
   bannerImage?: string | null;
   bannerImageId?: string | null;
   bannerImageFile?: {
@@ -325,6 +326,7 @@ function normalizeAuthUser(raw: unknown): AuthUser | null {
     profileImage: resolvedImage.src,
     profileImageId: resolvedImage.fileId,
     profileImageFile: normalizeAuthImageFile(source),
+    profilePhotoUpdatedAt: source.profilePhotoUpdatedAt ?? nestedUser?.profilePhotoUpdatedAt ?? null,
     bannerImage: source.bannerImage ?? nestedUser?.bannerImage ?? null,
     bannerImageId: source.bannerImageId ?? nestedUser?.bannerImageId ?? null,
     bannerImageFile: normalizeAuthBannerFile(source),

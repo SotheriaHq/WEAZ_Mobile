@@ -273,7 +273,11 @@ export function ProfileMenuDropup({
                 onPress={onOpenProfile}
                 accessibilityRole="button"
                 accessibilityLabel={`Open profile for ${displayName}`}
-                style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.identity,
+                  pressed && { backgroundColor: activeTheme.colors.primarySoft },
+                  pressed && styles.pressed,
+                ]}
               >
                 <View style={[styles.avatar, { backgroundColor: activeTheme.colors.primarySoft }]}> 
                   {avatarUri ? (
@@ -304,7 +308,11 @@ export function ProfileMenuDropup({
                 onPress={onOpenNotifications}
                 accessibilityRole="button"
                 accessibilityLabel="Open notifications"
-                style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.item,
+                  pressed && { backgroundColor: activeTheme.colors.primarySoft },
+                  pressed && styles.pressed,
+                ]}
               >
                 <View style={styles.iconSlot}>
                   <AppText variant="captionBold">??</AppText>
@@ -321,7 +329,11 @@ export function ProfileMenuDropup({
                   onPress={onOpenStudio}
                   accessibilityRole="button"
                   accessibilityLabel="Open studio"
-                  style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+                  style={({ pressed }) => [
+                    styles.item,
+                    pressed && { backgroundColor: activeTheme.colors.primarySoft },
+                    pressed && styles.pressed,
+                  ]}
                 >
                   <View style={styles.iconSlot}>
                     <AppText variant="captionBold">??</AppText>
@@ -338,7 +350,11 @@ export function ProfileMenuDropup({
                 onPress={handleOpenSettings}
                 accessibilityRole="button"
                 accessibilityLabel="Open settings"
-                style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.item,
+                  pressed && { backgroundColor: activeTheme.colors.primarySoft },
+                  pressed && styles.pressed,
+                ]}
               >
                 <View style={styles.iconSlot}>
                   <AppText variant="captionBold">??</AppText>
@@ -354,7 +370,12 @@ export function ProfileMenuDropup({
                 onPress={handleSignOut}
                 accessibilityRole="button"
                 accessibilityLabel="Sign out"
-                style={({ pressed }) => [styles.item, styles.signOutItem, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.item,
+                  styles.signOutItem,
+                  pressed && { backgroundColor: activeTheme.colors.primarySoft },
+                  pressed && styles.pressed,
+                ]}
               >
                 <View style={styles.iconSlot}>
                   <AppText variant="captionBold">??</AppText>
@@ -409,6 +430,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 8,
     minHeight: 52,
+    borderRadius: tokens.radius.lg,
   },
   nameRow: {
     flexDirection: 'row',
@@ -450,6 +472,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 8,
     minHeight: 48,
+    borderRadius: tokens.radius.lg,
   },
   signOutItem: {
     marginTop: tokens.spacing.xs,
