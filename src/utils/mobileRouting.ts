@@ -172,10 +172,19 @@ export function buildMessageNotificationRoute(target: MessageNotificationTarget)
 export function routeForSearchItem(item: SearchItem): RouterTarget {
   const metadata = (item.metadata ?? {}) as Record<string, unknown>;
   const ownerId = typeof metadata.ownerId === 'string' ? metadata.ownerId : null;
+  const profileUserId = typeof metadata.profileUserId === 'string' ? metadata.profileUserId : null;
   const brandId = typeof metadata.brandId === 'string' ? metadata.brandId : null;
   const brandOwnerId = typeof metadata.brandOwnerId === 'string' ? metadata.brandOwnerId : null;
 
   switch (item.type) {
+    case 'profile': {
+      const routeProfileId =
+        profileUserId ?? ownerId ?? item.id ?? parseHrefId(item.href, /\/profile\/([^/?#]+)/);
+      if (routeProfileId) {
+        return { pathname: '/profile/[id]', params: { id: routeProfileId } } as Href;
+      }
+      break;
+    }
     case 'brand': {
       const routeBrandId = ownerId ?? item.id ?? parseHrefId(item.href, /\/profile\/([^/?#]+)/);
       if (routeBrandId) {

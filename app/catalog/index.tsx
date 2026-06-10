@@ -715,10 +715,28 @@ export default function CatalogScreen() {
   );
 
   const handleViewOwnerAvatar = useCallback(() => {
-    if (ownerAvatarUri || ownerAvatar.src) {
-      setIsAvatarModalOpen(true);
+    if (!ownerAvatarUri && !ownerAvatar.src) {
+      return;
     }
-  }, [ownerAvatar.src, ownerAvatarUri]);
+
+    setIsAvatarModalOpen(true);
+
+    if (!targetBrandId || !effectiveProfile?.profilePhotoViewState?.canMarkViewed) {
+      return;
+    }
+
+    void ProfilePhotoViewApi.markViewed(targetBrandId)
+      .then(applyProfilePhotoViewState)
+      .catch((error) => {
+        console.error('Failed to mark profile photo viewed', error);
+      });
+  }, [
+    applyProfilePhotoViewState,
+    effectiveProfile?.profilePhotoViewState,
+    ownerAvatar.src,
+    ownerAvatarUri,
+    targetBrandId,
+  ]);
 
   const handleViewVisitorAvatar = useCallback(() => {
     if (visitorAvatarUri || visitorAvatar.src) {

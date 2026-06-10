@@ -47,6 +47,7 @@ type ResultState =
 
 const FILTER_OPTIONS: Array<{ key: FilterType; label: string }> = [
   { key: 'all', label: 'All' },
+  { key: 'profile', label: 'Profiles' },
   { key: 'brand', label: 'Brands' },
   { key: 'design', label: 'Runway' },
   { key: 'collection', label: 'Collections' },
@@ -97,6 +98,7 @@ function combineRecentQueries(
 
 function buildSuggestionItems(payload: SearchSuggestionResponse): SearchItem[] {
   return [
+    ...payload.profiles.items,
     ...payload.brands.items,
     ...payload.designs.items,
     ...payload.storeCollections.items,
@@ -167,7 +169,9 @@ function SearchResultRow({
   onPress: () => void;
 }) {
   const typeLabel =
-    item.type === 'brand'
+    item.type === 'profile'
+      ? 'Profile'
+      : item.type === 'brand'
       ? 'Brand'
       : item.type === 'design'
         ? 'Runway'
@@ -212,7 +216,7 @@ export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState(initialQuery);
   const [filterType, setFilterType] = useState<FilterType>(
-    initialType === 'brand' || initialType === 'design' || initialType === 'collection' || initialType === 'product' || initialType === 'tag'
+    initialType === 'profile' || initialType === 'brand' || initialType === 'design' || initialType === 'collection' || initialType === 'product' || initialType === 'tag'
       ? initialType
       : 'all',
   );
@@ -656,7 +660,7 @@ export default function SearchScreen() {
                   👀 What are you looking for?
                 </AppText>
                 <AppText variant="small" tone="muted" style={styles.defaultPromptCopy}>
-                  Search brands, runway looks, collections,{'\n'}products, or tags.
+                  Search profiles, brands, runway looks,{'\n'}collections, products, or tags.
                 </AppText>
               </View>
             ) : null}

@@ -15,12 +15,14 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import ProfileImageModal from '@/components/profile/ProfileImageModal';
 import { ProfileApi, type Order, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
+import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { createUnviewedProfilePhotoViewState } from '@/src/types/profilePhoto';
 import { resolveIdentity } from '@/src/utils/identity';
 import { profileDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
@@ -598,7 +600,35 @@ export default function BuyerProfileScreen() {
   const handleViewAvatar = useCallback(() => {
     if (!avatarUri && !profileIdentity.avatarSrc && !profileIdentity.avatarFileId) return;
     setIsAvatarModalOpen(true);
-  }, [avatarUri, profileIdentity.avatarFileId, profileIdentity.avatarSrc]);
+
+    const currentState = profileRecord?.profilePhotoViewState;
+    if (!profileRecord?.id || !currentState?.canMarkViewed) return;
+
+    void ProfilePhotoViewApi.markViewed(profileRecord.id)
+      .then((nextState) => {
+        setState((current) => {
+          const nextProfile = current.profile ?? profileRecord;
+          if (!nextProfile) return current;
+
+          return {
+            ...current,
+            profile: {
+              ...nextProfile,
+              profilePhotoUpdatedAt: nextState.profilePhotoUpdatedAt,
+              profilePhotoViewState: nextState,
+            },
+          };
+        });
+      })
+      .catch((markError) => {
+        console.error('Failed to mark profile photo viewed', markError);
+      });
+  }, [
+    avatarUri,
+    profileIdentity.avatarFileId,
+    profileIdentity.avatarSrc,
+    profileRecord,
+  ]);
 
   const handleOpenNotifications = useCallback(() => {
     router.push('/notifications' as any);
@@ -662,6 +692,10 @@ export default function BuyerProfileScreen() {
         return;
       }
       const nextProfilePhotoUpdatedAt = new Date().toISOString();
+      const nextProfilePhotoViewState = createUnviewedProfilePhotoViewState(
+        profileRecord.id,
+        nextProfilePhotoUpdatedAt,
+      );
       updateUser({
         profileImage: uploaded.url,
         profileImageId: uploaded.id,
@@ -680,7 +714,7 @@ export default function BuyerProfileScreen() {
             profileImageId: uploaded.id,
             profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
             profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
-            profilePhotoViewState: null,
+            profilePhotoViewState: nextProfilePhotoViewState,
           },
         };
       });

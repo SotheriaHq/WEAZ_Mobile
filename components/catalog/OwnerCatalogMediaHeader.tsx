@@ -10,6 +10,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { queryKeys } from '@/src/query/queryKeys';
 import { useToast } from '@/src/toast/ToastContext';
+import { createUnviewedProfilePhotoViewState } from '@/src/types/profilePhoto';
 import { resolveBannerImageSource, resolveProfileImageSource } from '@/src/utils/profileImage';
 import {
   MOBILE_UPLOAD_POLICIES,
@@ -167,13 +168,19 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
 
       setPendingAvatar({ src: uploaded.url, fileId: uploaded.id });
       const nextProfilePhotoUpdatedAt = new Date().toISOString();
+      const profileId = profile?.id ?? user?.id ?? null;
+      const nextProfilePhotoViewState = profileId
+        ? createUnviewedProfilePhotoViewState(
+            profileId,
+            nextProfilePhotoUpdatedAt,
+          )
+        : null;
       updateUser({
         profileImage: uploaded.url,
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
         profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
       });
-      const profileId = profile?.id ?? user?.id ?? null;
       if (profileId) {
         brandApi.invalidateBrandProfileCache(profileId);
         queryClient.setQueryData(queryKeys.brand.profile(profileId), (current: BrandProfileDto | null | undefined) => {
@@ -187,15 +194,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
             logoImageId: uploaded.id,
             logoImageMeta: { fileId: uploaded.id, id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
             profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
-            profilePhotoViewState: current.profilePhotoViewState
-              ? {
-                  ...current.profilePhotoViewState,
-                  profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
-                  viewed: true,
-                  hasUnviewedUpdate: false,
-                  canMarkViewed: false,
-                }
-              : current.profilePhotoViewState,
+            profilePhotoViewState: nextProfilePhotoViewState,
           };
         });
         void queryClient.invalidateQueries({ queryKey: queryKeys.brand.profile(profileId) });

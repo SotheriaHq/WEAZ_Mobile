@@ -15,3 +15,14 @@ export const createNeutralProfilePhotoViewState = (
   hasUnviewedUpdate: false,
   canMarkViewed: false,
 });
+
+export const createUnviewedProfilePhotoViewState = (
+  ownerId: string,
+  profilePhotoUpdatedAt: string,
+): ProfilePhotoViewState => ({
+  ownerId,
+  profilePhotoUpdatedAt,
+  viewed: false,
+  hasUnviewedUpdate: true,
+  canMarkViewed: true,
+});

@@ -1,4 +1,4 @@
-export type SearchEntityType = 'product' | 'brand' | 'design' | 'collection' | 'tag';
+export type SearchEntityType = 'profile' | 'product' | 'brand' | 'design' | 'collection' | 'tag';
 
 export interface SearchHighlightOffset {
   start: number;
@@ -51,6 +51,7 @@ export interface SearchSuggestionResponse {
   normalizedQuery: string;
   recent: SearchSuggestionLink[];
   trending: SearchTrendingLink[];
+  profiles: SearchSuggestionSection;
   products: SearchSuggestionSection;
   brands: SearchSuggestionSection;
   designs: SearchSuggestionSection;
