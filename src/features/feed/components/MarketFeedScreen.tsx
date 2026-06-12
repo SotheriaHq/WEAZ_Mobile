@@ -1014,7 +1014,7 @@ export function MarketFeedScreen() {
         if (chips.some((chip) => chip.id === current)) {
           return current;
         }
-        return DEFAULT_MARKET_FILTER_CHIPS[0].id;
+        return chips[0]?.id ?? DEFAULT_MARKET_FILTER_CHIPS[0].id;
       });
     });
 

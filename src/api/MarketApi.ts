@@ -151,12 +151,47 @@ export type GetMarketSectionDetailParams = {
   anonymousSessionId?: string;
 };
 
+export type FeedCategory = {
+  id: string;
+  key: string;
+  label: string;
+  description?: string | null;
+  surface?: 'DESIGN_FEED' | 'MARKET_HOME';
+  rankingProfileKey?: string | null;
+  displayOrder: number;
+  fallbackCategoryKey?: string | null;
+  requiresAuth?: boolean;
+  requiresPersonalization?: boolean;
+  isDefaultForGuest?: boolean;
+  isDefaultForNewUser?: boolean;
+  isDefaultForReturningUser?: boolean;
+  status?: 'ACTIVE';
+};
+
+export type FeedCategoriesResponse = {
+  generatedAt: string;
+  categories: FeedCategory[];
+  defaults?: {
+    guest?: string;
+    authenticatedNewUser?: string;
+    authenticatedReturningUser?: string;
+    selected?: string;
+  };
+  metadata?: {
+    version: string;
+    personalization: string;
+    cachePolicy: string;
+  };
+};
+
 export type MarketSuggestionContext =
   | 'PRODUCT_DETAIL'
   | 'COLLECTION_DETAIL'
   | 'BRAND_DETAIL'
+  | 'BRAND_STORE'
   | 'SEARCH_EMPTY'
-  | 'MARKET_SECTION_DETAIL';
+  | 'MARKET_SECTION_DETAIL'
+  | 'WISHLIST';
 
 export type MarketSuggestionTargetType =
   | 'PRODUCT'
@@ -224,6 +259,7 @@ export type GetMarketSuggestionsParams = {
   limit?: number;
   cursor?: string | null;
   anonymousSessionId?: string;
+  excludeIds?: string[];
 };
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
@@ -819,6 +855,25 @@ const mapSeededFiltersToChips = (payload: RawCategoryFiltersPayload): MarketFilt
     : DEFAULT_MARKET_FILTER_CHIPS;
 };
 
+const FEED_CATEGORY_BROAD_KEYS = new Set(['discover', 'explore', 'for-you']);
+
+const mapFeedCategoriesToChips = (payload: FeedCategoriesResponse | null | undefined): MarketFilterChip[] => {
+  const categories = Array.isArray(payload?.categories) ? payload.categories : [];
+  const chips = categories
+    .filter((category) => category.status === undefined || category.status === 'ACTIVE')
+    .sort((left, right) => {
+      if (left.displayOrder !== right.displayOrder) return left.displayOrder - right.displayOrder;
+      return left.key.localeCompare(right.key);
+    })
+    .map((category) => ({
+      id: category.key,
+      label: category.label,
+      tag: FEED_CATEGORY_BROAD_KEYS.has(category.key) ? null : category.key,
+    }));
+
+  return chips.length > 0 ? chips : DEFAULT_MARKET_FILTER_CHIPS;
+};
+
 export const normalizeLegacyMarketFeedItem = (raw: RawMarketItem): MarketItem | null => {
   const collection = asRecord(raw.collection);
   const owner = asRecord(collection.owner);
@@ -1039,6 +1094,17 @@ export async function getMarketSections(
   return normalizeMarketSectionsResponse(data);
 }
 
+export async function getFeedCategories(
+  config?: AxiosRequestConfig,
+): Promise<FeedCategoriesResponse> {
+  const response = await apiClient.get('/feed/categories', config);
+  const data = unwrapData<FeedCategoriesResponse>(response.data) ?? (response.data as FeedCategoriesResponse);
+  return {
+    ...data,
+    categories: Array.isArray(data.categories) ? data.categories : [],
+  };
+}
+
 export async function getMarketSectionDetail(
   key: string,
   params?: GetMarketSectionDetailParams,
@@ -1072,6 +1138,7 @@ export async function getMarketSuggestions(
       limit: params.limit,
       cursor: params.cursor ?? undefined,
       anonymousSessionId: params.anonymousSessionId,
+      excludeIds: params.excludeIds?.filter(Boolean).join(',') || undefined,
       ...(config?.params ?? {}),
     },
   });
@@ -1144,6 +1211,13 @@ export async function resetFeedPreferences(
 }
 
 export async function getMarketFilterChips(): Promise<MarketFilterChip[]> {
+  try {
+    const feedCategories = await getFeedCategories();
+    const chips = mapFeedCategoriesToChips(feedCategories);
+    if (chips.length > 0) return chips;
+  } catch {
+    // Fallback to seeded taxonomy chips below.
+  }
   try {
     const response = await apiClient.get('/categories/filters');
     const data = unwrapData<RawCategoryFiltersPayload>(response.data);

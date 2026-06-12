@@ -284,7 +284,9 @@ export function MobileMarketSuggestionBlocks({
 
   const normalizedQuery = query?.trim() ?? '';
   const canFetch =
-    context === 'SEARCH_EMPTY'
+    context === 'WISHLIST'
+      ? true
+      : context === 'SEARCH_EMPTY'
       ? normalizedQuery.length > 0
       : context === 'MARKET_SECTION_DETAIL'
         ? Boolean(sectionKey)

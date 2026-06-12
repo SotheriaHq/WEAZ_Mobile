@@ -31,7 +31,12 @@ import {
   type StoreProduct,
 } from '@/src/api/StoreApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
-import { getMarketFeed } from '@/src/api/MarketApi';
+import {
+  getMarketFeed,
+  getMarketSections,
+  type MarketSection,
+  type MarketSectionItem,
+} from '@/src/api/MarketApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
@@ -78,6 +83,12 @@ type MarketRow =
       subtitle?: string;
       items: MarketContentItem[];
       source?: 'moodboard';
+      onSeeAll?: () => void;
+    }
+  | {
+      id: string;
+      type: 'API_SECTION_ROW';
+      section: MarketSection;
       onSeeAll?: () => void;
     }
   | {
@@ -431,23 +442,27 @@ function buildRows(args: {
   allItems: MarketContentItem[];
   filteredItems: MarketContentItem[];
   moodboardItems: MarketContentItem[];
+  apiSections: MarketSection[];
   collections: StoreCollectionSummary[];
   collectionError: string | null;
   categoryOptions: string[];
   loadingMore: boolean;
   setNewestView: () => void;
   setCustomReadyView: () => void;
+  openApiSection: (sectionKey: string) => void;
 }) {
   const {
     allItems,
     filteredItems,
     moodboardItems,
+    apiSections,
     collections,
     collectionError,
     categoryOptions,
     loadingMore,
     setNewestView,
     setCustomReadyView,
+    openApiSection,
   } = args;
   const heroItems = filteredItems.filter(hasDisplayMedia).slice(0, 3);
   const rows: MarketRow[] = [];
@@ -460,6 +475,20 @@ function buildRows(args: {
   if (trends.length > 0) {
     rows.push({ id: 'blazing', type: 'BLAZING_ROW', trends });
   }
+
+  apiSections
+    .filter((section) => section.items.length > 0)
+    .forEach((section) => {
+      rows.push({
+        id: `api-section:${section.key}`,
+        type: 'API_SECTION_ROW',
+        section,
+        onSeeAll:
+          section.supportsViewAll || section.viewAll?.enabled
+            ? () => openApiSection(section.key)
+            : undefined,
+      });
+    });
 
   const freshItems = filteredItems.slice(0, 10);
   if (freshItems.length > 0) {
@@ -1049,6 +1078,130 @@ function HorizontalCardRow({
   );
 }
 
+function formatSectionItemPrice(item: MarketSectionItem) {
+  const currency =
+    item.price?.currency ?? item.priceRange?.currency ?? 'NGN';
+  const amount = item.price?.effectiveAmount ?? item.price?.amount ?? null;
+  if (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) {
+    return `${currency} ${Math.round(amount).toLocaleString()}`;
+  }
+  const min = item.priceRange?.min;
+  const max = item.priceRange?.max;
+  if (typeof min === 'number' && typeof max === 'number' && min > 0 && max > 0) {
+    return min === max
+      ? `${currency} ${Math.round(min).toLocaleString()}`
+      : `${currency} ${Math.round(min).toLocaleString()} - ${Math.round(max).toLocaleString()}`;
+  }
+  if (item.entityType === 'CATEGORY') return 'Explore';
+  if (item.entityType === 'BRAND') return `${item.stats?.products ?? 0} pieces`;
+  return 'View';
+}
+
+function ApiSectionCard({
+  item,
+  width,
+  onOpen,
+}: {
+  item: MarketSectionItem;
+  width: number;
+  onOpen: (item: MarketSectionItem) => void;
+}) {
+  const { theme } = useTheme();
+  const imageUri = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
+
+  return (
+    <Pressable
+      onPress={() => onOpen(item)}
+      style={({ pressed }) => [
+        styles.apiSectionCard,
+        { width, backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        pressed && styles.pressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${item.title}`}
+    >
+      {imageUri ? (
+        <StableImage
+          uri={imageUri}
+          resizeMode="cover"
+          containerStyle={styles.apiSectionImage}
+          imageStyle={styles.apiSectionImage}
+        />
+      ) : (
+        <View style={[styles.apiSectionImage, { backgroundColor: theme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }]}>
+          <AppText variant="title" tone="muted">
+            {item.entityType === 'CATEGORY' ? String.fromCodePoint(0x25A6) : item.title.slice(0, 1).toUpperCase()}
+          </AppText>
+        </View>
+      )}
+      <View style={styles.apiSectionCardBody}>
+        <View style={[styles.apiTypePill, { backgroundColor: theme.colors.primarySoft }]}>
+          <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+            {item.entityType}
+          </AppText>
+        </View>
+        <AppText variant="bodyBold" numberOfLines={2}>
+          {item.title}
+        </AppText>
+        {item.subtitle ? (
+          <AppText variant="caption" tone="muted" numberOfLines={1}>
+            {item.subtitle}
+          </AppText>
+        ) : null}
+        <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+          {formatSectionItemPrice(item)}
+        </AppText>
+      </View>
+    </Pressable>
+  );
+}
+
+function ApiSectionRow({
+  section,
+  cardWidth,
+  onOpen,
+  onSeeAll,
+}: {
+  section: MarketSection;
+  cardWidth: number;
+  onOpen: (item: MarketSectionItem, sectionKey: string) => void;
+  onSeeAll?: () => void;
+}) {
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleBlock}>
+          <AppText variant="subtitle">{section.title}</AppText>
+          {section.subtitle ? (
+            <AppText variant="caption" tone="muted" numberOfLines={1}>
+              {section.subtitle}
+            </AppText>
+          ) : null}
+        </View>
+        {onSeeAll ? (
+          <Pressable onPress={onSeeAll} hitSlop={tokens.spacing.sm} accessibilityRole="button" accessibilityLabel={`See all ${section.title}`}>
+            <AppText variant="captionBold" tone="primary">See all</AppText>
+          </Pressable>
+        ) : null}
+      </View>
+      <FlatList
+        data={section.items}
+        horizontal
+        keyExtractor={(item) => `${item.entityType}:${item.sourceId}`}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.horizontalCardsContent}
+        renderItem={({ item }) => (
+          <ApiSectionCard
+            item={item}
+            width={cardWidth}
+            onOpen={(entry) => onOpen(entry, section.key)}
+          />
+        )}
+      />
+    </View>
+  );
+}
+
 function ProductGridSection({
   title,
   items,
@@ -1179,6 +1332,7 @@ export function MarketScreen() {
   const [collectionError, setCollectionError] = useState<string | null>(
     () => initialMarketSnapshotRef.current?.collectionError ?? null,
   );
+  const [apiSections, setApiSections] = useState<MarketSection[]>([]);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, MARKET_SEARCH_DEBOUNCE_MS);
   const [filters, setFilters] = useState<MarketFilters>(DEFAULT_MARKET_FILTERS);
@@ -1213,6 +1367,15 @@ export function MarketScreen() {
     setProductHasNext(snapshot.productHasNext);
     setDesignHasNext(snapshot.designHasNext);
     setCollectionError(snapshot.collectionError);
+  }, []);
+
+  const loadApiSections = useCallback(async () => {
+    try {
+      const response = await getMarketSections({ limit: 8 });
+      setApiSections(response.sections ?? []);
+    } catch {
+      setApiSections([]);
+    }
   }, []);
 
   const categoryOptions = useMemo(() => {
@@ -1537,6 +1700,10 @@ export function MarketScreen() {
   }, [marketQueryKey]);
 
   useEffect(() => {
+    void loadApiSections();
+  }, [loadApiSections]);
+
+  useEffect(() => {
     const next: Record<string, boolean> = {};
     products.forEach((product) => {
       next[`product:${product.id}`] = Boolean(product.isWishlisted);
@@ -1567,9 +1734,12 @@ export function MarketScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadMarket('reset', { forceRefresh: true });
+    await Promise.all([
+      loadMarket('reset', { forceRefresh: true }),
+      loadApiSections(),
+    ]);
     setRefreshing(false);
-  }, [loadMarket]);
+  }, [loadApiSections, loadMarket]);
 
   const requireAuth = useCallback(() => {
     if (status === 'authenticated') return true;
@@ -1619,6 +1789,72 @@ export function MarketScreen() {
       pathname: '/collection-viewer',
       params: { collectionId: collection.id, returnTo: '/(tabs)/discover' },
     } as any);
+  }, []);
+
+  const openApiSection = useCallback((sectionKey: string) => {
+    if (!sectionKey) return;
+    trackMarketSignal({
+      targetType: 'SECTION',
+      targetId: sectionKey,
+      signalType: 'MARKET_SECTION_VIEW_ALL_CLICK',
+      surface: 'MARKET_HOME',
+      sectionKey,
+    });
+    void flushMarketSignals();
+    router.push({
+      pathname: '/market-section',
+      params: { sectionKey },
+    } as any);
+  }, []);
+
+  const openApiSectionItem = useCallback((item: MarketSectionItem, sectionKey: string) => {
+    const targetType = item.target?.type ?? item.entityType;
+    const targetId = item.target?.id ?? item.sourceId;
+    trackMarketSignal({
+      targetType,
+      targetId: targetId ?? item.sourceId,
+      signalType: 'OPEN',
+      surface: 'MARKET_HOME',
+      sectionKey,
+      metadata: { sourceType: item.sourceType, entityType: item.entityType },
+    });
+    void flushMarketSignals();
+
+    if (targetType === 'PRODUCT' && targetId) {
+      router.push({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
+      return;
+    }
+    if (targetType === 'DESIGN' && targetId) {
+      router.push({
+        pathname: '/market-viewer',
+        params: {
+          sourceType: 'DESIGN',
+          sourceId: targetId,
+          brandId: item.brand?.id ?? undefined,
+          title: item.title,
+          brandName: item.brand?.name ?? '',
+          priceLabel: formatSectionItemPrice(item),
+        },
+      } as any);
+      return;
+    }
+    if (targetType === 'COLLECTION' && targetId) {
+      router.push({
+        pathname: '/collection-viewer',
+        params: { collectionId: targetId, returnTo: '/(tabs)/discover' },
+      } as any);
+      return;
+    }
+    if (targetType === 'BRAND' && targetId) {
+      router.push({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
+      return;
+    }
+    if (targetType === 'CATEGORY') {
+      setFilters((current) => ({
+        ...current,
+        category: item.category?.name ?? item.category?.slug ?? item.title,
+      }));
+    }
   }, []);
 
   const setBusy = useCallback((key: string, busy: boolean) => {
@@ -1755,20 +1991,25 @@ export function MarketScreen() {
 
   const rowData = useMemo<MarketRow[]>(() => {
     if (error) return [{ id: 'error', type: 'ERROR_STATE', message: error }];
-    if (filteredItems.length === 0 && collections.length === 0) return [{ id: 'empty', type: 'EMPTY_STATE' }];
+    if (filteredItems.length === 0 && collections.length === 0 && apiSections.length === 0) {
+      return [{ id: 'empty', type: 'EMPTY_STATE' }];
+    }
     return buildRows({
       allItems,
       filteredItems,
       moodboardItems,
+      apiSections,
       collections,
       collectionError,
       categoryOptions,
       loadingMore,
       setNewestView,
       setCustomReadyView,
+      openApiSection,
     });
   }, [
     allItems,
+    apiSections,
     categoryOptions,
     collectionError,
     collections,
@@ -1776,6 +2017,7 @@ export function MarketScreen() {
     filteredItems,
     loadingMore,
     moodboardItems,
+    openApiSection,
     setCustomReadyView,
     setNewestView,
   ]);
@@ -1806,7 +2048,7 @@ export function MarketScreen() {
         return;
       }
 
-      const sectionKey = row.id;
+      const sectionKey = row.type === 'API_SECTION_ROW' ? row.section.key : row.id;
       if (!viewedSectionKeysRef.current.has(sectionKey)) {
         viewedSectionKeysRef.current.add(sectionKey);
         trackMarketSignal({
@@ -1823,6 +2065,23 @@ export function MarketScreen() {
       }
       if (row.type === 'HORIZONTAL_CARD_ROW' || row.type === 'PRODUCT_GRID') {
         row.items.forEach((entry, index) => trackItemImpression(entry, sectionKey, index));
+      }
+      if (row.type === 'API_SECTION_ROW') {
+        row.section.items.forEach((entry, index) => {
+          const targetType = entry.target?.type ?? entry.entityType;
+          const targetId = entry.target?.id ?? entry.sourceId;
+          const itemKey = `${sectionKey}:${targetType}:${targetId}:${index}`;
+          if (viewedItemKeysRef.current.has(itemKey)) return;
+          viewedItemKeysRef.current.add(itemKey);
+          trackMarketSignal({
+            targetType,
+            targetId: targetId ?? entry.sourceId,
+            signalType: 'IMPRESSION',
+            surface: 'MARKET_HOME',
+            sectionKey: row.section.key,
+            position: index,
+          });
+        });
       }
       if (row.type === 'COLLECTION_ROW') {
         row.items.forEach((collection, index) => {
@@ -1895,6 +2154,15 @@ export function MarketScreen() {
               source={item.source}
             />
           );
+        case 'API_SECTION_ROW':
+          return (
+            <ApiSectionRow
+              section={item.section}
+              cardWidth={horizontalCardWidth}
+              onOpen={openApiSectionItem}
+              onSeeAll={item.onSeeAll}
+            />
+          );
         case 'COLLECTION_ROW':
           return (
             <CollectionRow
@@ -1948,6 +2216,7 @@ export function MarketScreen() {
       horizontalCardWidth,
       loadMarket,
       openCollection,
+      openApiSectionItem,
       openItem,
       theme.colors.primary,
       width,
@@ -2279,6 +2548,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.xs,
+    justifyContent: 'center',
+  },
+  apiSectionCard: {
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  apiSectionImage: {
+    width: '100%',
+    aspectRatio: 4 / 5,
+  },
+  apiSectionCardBody: {
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.xs,
+  },
+  apiTypePill: {
+    alignSelf: 'flex-start',
+    minHeight: 24,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.sm,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   gridStack: {
