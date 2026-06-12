@@ -240,15 +240,6 @@ function ProfileAvatar({
         ? theme.colors.primary
         : theme.colors.border
       : theme.colors.bg;
-  const ringShadow = showAvatarImage && hasVersion && profilePhotoViewState?.hasUnviewedUpdate
-    ? {
-        shadowColor: theme.colors.primary,
-        shadowOpacity: 0.22,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 8 },
-        elevation: 6,
-      }
-    : null;
 
   return (
     <Pressable
@@ -259,7 +250,6 @@ function ProfileAvatar({
       style={({ pressed }) => [
         styles.avatarWrapper,
         { borderColor: ringColor },
-        ringShadow,
         pressed ? styles.pressedScale : null,
       ]}
       accessibilityRole={handleAvatarPress ? 'button' : undefined}
@@ -662,7 +652,6 @@ const styles = StyleSheet.create({
     borderRadius: PROFILE_LAYOUT.avatarOuterRadius,
     borderWidth: PROFILE_LAYOUT.avatarBorderWidth,
     overflow: 'hidden',
-    ...tokens.elevation.md,
   },
   avatarImage: {
     width: '100%',

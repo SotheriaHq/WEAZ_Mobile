@@ -12,6 +12,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens, type AppTheme } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
+import { useAppStateListener } from '@/src/hooks/useAppStateListener';
 import { Chip } from '@/components/ui/Chip';
 import { IconButton } from '@/components/ui/IconButton';
 import { Button } from '@/components/ui/Button';
@@ -641,6 +642,11 @@ export function MarketFeedScreen() {
     windowHeight,
     immersiveOverlayBottomClearance,
   } = useScreenChrome();
+  
+  // Invalidate market feed when app comes to foreground
+  // Prevents stale data after backgrounding
+  useAppStateListener([['market', 'feed'], ['market', 'sections']], 5 * 60 * 1000);
+  
   const feedListRef = useRef<FlatList<FeedListEntry> | null>(null);
   const initializedLoopKeyRef = useRef<string | null>(null);
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>(DEFAULT_MARKET_FILTER_CHIPS);

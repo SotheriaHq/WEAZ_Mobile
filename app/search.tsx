@@ -97,13 +97,17 @@ function combineRecentQueries(
 }
 
 function buildSuggestionItems(payload: SearchSuggestionResponse): SearchItem[] {
+  const sectionItems = (section?: { items?: SearchItem[] } | null) =>
+    Array.isArray(section?.items) ? section.items : [];
+  const tags = Array.isArray(payload.tags) ? payload.tags : [];
+
   return [
-    ...payload.profiles.items,
-    ...payload.brands.items,
-    ...payload.designs.items,
-    ...payload.storeCollections.items,
-    ...payload.products.items,
-    ...payload.tags.map((tag) => ({
+    ...sectionItems(payload.profiles),
+    ...sectionItems(payload.brands),
+    ...sectionItems(payload.designs),
+    ...sectionItems(payload.storeCollections),
+    ...sectionItems(payload.products),
+    ...tags.map((tag) => ({
       id: tag.id,
       type: 'tag' as const,
       title: tag.title,
@@ -113,6 +117,17 @@ function buildSuggestionItems(payload: SearchSuggestionResponse): SearchItem[] {
   ]
     .sort((left, right) => right.score - left.score)
     .slice(0, 12);
+}
+
+function getRecentQueryForSearchItem(item: SearchItem) {
+  if (item.type === 'profile') {
+    const handle = item.subtitle?.trim();
+    if (handle?.startsWith('@') && handle.length > 1) {
+      return handle;
+    }
+  }
+
+  return item.title.trim();
 }
 
 function SearchSection({
@@ -228,6 +243,7 @@ export default function SearchScreen() {
   const [resultState, setResultState] = useState<ResultState>({ status: 'idle' });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
+  const searchRequestIdRef = useRef(0);
   const activeSearchRequestKeyRef = useRef<string | null>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -296,6 +312,8 @@ export default function SearchScreen() {
 
       searchAbortRef.current?.abort();
       const controller = new AbortController();
+      const nextSearchRequestId = searchRequestIdRef.current + 1;
+      searchRequestIdRef.current = nextSearchRequestId;
       searchAbortRef.current = controller;
       activeSearchRequestKeyRef.current = requestKey;
 
@@ -307,6 +325,7 @@ export default function SearchScreen() {
           page: 1,
           limit: 24,
         }, controller.signal);
+        if (searchRequestIdRef.current !== nextSearchRequestId || controller.signal.aborted) return;
         if (payload.items.length === 0) {
           setResultState({ status: 'empty' });
         } else {
@@ -322,6 +341,7 @@ export default function SearchScreen() {
         }
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') return;
+        if (searchRequestIdRef.current !== nextSearchRequestId) return;
         setResultState({ status: 'error', message: getErrorMessage(error) });
       } finally {
         if (activeSearchRequestKeyRef.current === requestKey) {
@@ -405,7 +425,7 @@ export default function SearchScreen() {
   }, [autoSubmit, filterType, initialQuery, runSearch]);
 
   const openSearchItem = useCallback((item: SearchItem) => {
-    void saveRecentSearch(item.title);
+    void saveRecentSearch(getRecentQueryForSearchItem(item));
     router.push(routeForSearchItem(item));
   }, []);
 
@@ -422,7 +442,12 @@ export default function SearchScreen() {
   const onClearQuery = useCallback(() => {
     suggestAbortRef.current?.abort();
     searchAbortRef.current?.abort();
+    requestIdRef.current += 1;
+    searchRequestIdRef.current += 1;
     setQuery('');
+    setSuggestions(null);
+    setSuggestionsError(null);
+    setSuggestionsLoading(false);
     setResultState({ status: 'idle' });
   }, []);
 

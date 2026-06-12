@@ -381,15 +381,6 @@ function OverlayAvatar({
         ? theme.colors.primary
         : theme.colors.border
       : theme.colors.surface;
-  const ringShadow = resolvedAvatar && hasVersion && profilePhotoViewState?.hasUnviewedUpdate
-    ? {
-        shadowColor: theme.colors.primary,
-        shadowOpacity: 0.24,
-        shadowRadius: 16,
-        shadowOffset: { width: 0, height: 8 },
-        elevation: 8,
-      }
-    : null;
 
   return (
     <Pressable
@@ -402,7 +393,6 @@ function OverlayAvatar({
           borderColor: ringColor,
           opacity: pressed ? 0.86 : 1,
         },
-        ringShadow,
       ]}
       accessibilityRole={avatarAction ? 'button' : undefined}
       accessibilityLabel="View brand logo"
@@ -1113,26 +1103,25 @@ const styles = StyleSheet.create({
     width: 116,
     height: 116,
     borderRadius: tokens.radius.xl,
-    borderWidth: 4,
+    borderWidth: 3,
     overflow: 'visible',
-    ...tokens.elevation.md,
   },
   avatarImage: {
     width: '100%',
     height: '100%',
-    borderRadius: tokens.radius.xl - 4,
+    borderRadius: tokens.radius.xl - 3,
     overflow: 'hidden',
   },
   avatarFallback: {
     width: '100%',
     height: '100%',
-    borderRadius: tokens.radius.xl - 4,
+    borderRadius: tokens.radius.xl - 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarLoading: {
     ...StyleSheet.absoluteFill,
-    borderRadius: tokens.radius.xl - 4,
+    borderRadius: tokens.radius.xl - 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1143,7 +1132,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: tokens.radius.full,
-    borderWidth: 2,
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },

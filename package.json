@@ -22,6 +22,7 @@
     "test:email-verification-notice-contract": "node scripts/test-email-verification-notice-contract.js",
     "test:market-signal-queue-contract": "node scripts/test-market-signal-queue-contract.js",
     "test:request-budget-contract": "node scripts/test-request-budget-contract.js",
+    "test:search-contract": "node scripts/test-search-contract.js",
     "test:trust-safety-contract": "node scripts/test-trust-safety-contract.js",
     "test:mobile-checkout-gate-contract": "node scripts/test-mobile-checkout-contract.js",
     "test:mobile-checkout-contract": "node scripts/test-mobile-checkout-contract.js",

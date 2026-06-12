@@ -179,7 +179,7 @@ export function routeForSearchItem(item: SearchItem): RouterTarget {
   switch (item.type) {
     case 'profile': {
       const routeProfileId =
-        profileUserId ?? ownerId ?? item.id ?? parseHrefId(item.href, /\/profile\/([^/?#]+)/);
+        profileUserId ?? ownerId ?? parseHrefId(item.href, /\/profile\/([^/?#]+)/) ?? item.id;
       if (routeProfileId) {
         return { pathname: '/profile/[id]', params: { id: routeProfileId } } as Href;
       }
