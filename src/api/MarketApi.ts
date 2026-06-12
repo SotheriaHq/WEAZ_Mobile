@@ -109,6 +109,8 @@ export type MarketSection = {
   layout: MarketSectionLayout;
   sourceType: MarketSectionSourceType;
   items: MarketSectionItem[];
+  supportsViewAll?: boolean;
+  viewAllLabel?: string | null;
   viewAll?: {
     enabled: boolean;
     key: string;
@@ -334,6 +336,11 @@ export type MarketSignalTargetType =
   | 'SUGGESTION_BLOCK';
 
 export type MarketSignalType =
+  | 'SECTION_VIEW'
+  | 'SECTION_VIEW_ALL_CLICK'
+  | 'ITEM_IMPRESSION'
+  | 'ITEM_VIEW'
+  | 'ITEM_CLICK'
   | 'IMPRESSION'
   | 'VIEW'
   | 'CLICK'

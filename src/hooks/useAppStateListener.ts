@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
-import { AppState } from 'react-native';
+import { useEffect, useMemo, useRef } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
+import { THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 
 /**
  * Hook to invalidate queries when app comes to foreground.
@@ -11,24 +12,40 @@ import { useQueryClient } from '@tanstack/react-query';
  */
 export const useAppStateListener = (queryPatterns: (string | string[])[] = [], staleTimeMs?: number) => {
   const queryClient = useQueryClient();
+  const staleThresholdMs = staleTimeMs ?? THREADLY_QUERY_STALE_TIME_MS;
+  const lastInactiveAtRef = useRef<number | null>(null);
+  const appStateRef = useRef(AppState.currentState);
+  const patternKey = JSON.stringify(queryPatterns);
+  const normalizedPatterns = useMemo(
+    () => {
+      const patterns = JSON.parse(patternKey) as (string | string[])[];
+      return patterns.map((pattern) =>
+        Array.isArray(pattern) ? pattern : [pattern],
+      );
+    },
+    [patternKey],
+  );
 
   useEffect(() => {
-    const handleAppStateChange = (nextAppState: string) => {
-      if (nextAppState === 'active') {
-        // App has come to foreground
-        // Invalidate queries matching patterns to trigger refresh
-        queryPatterns.forEach((pattern) => {
-          if (typeof pattern === 'string') {
-            queryClient.invalidateQueries({
-              queryKey: [pattern],
-              exact: false,
-            });
-          } else if (Array.isArray(pattern)) {
-            queryClient.invalidateQueries({
-              queryKey: pattern,
-              exact: false,
-            });
-          }
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      const previousAppState = appStateRef.current;
+      appStateRef.current = nextAppState;
+
+      if (nextAppState === 'inactive' || nextAppState === 'background') {
+        lastInactiveAtRef.current = Date.now();
+        return;
+      }
+
+      if (nextAppState === 'active' && previousAppState !== 'active') {
+        const inactiveAt = lastInactiveAtRef.current;
+        const backgroundAgeMs = inactiveAt ? Date.now() - inactiveAt : Number.POSITIVE_INFINITY;
+        if (backgroundAgeMs < staleThresholdMs) return;
+
+        normalizedPatterns.forEach((queryKey) => {
+          queryClient.invalidateQueries({
+            queryKey,
+            exact: false,
+          });
         });
       }
     };
@@ -38,7 +55,7 @@ export const useAppStateListener = (queryPatterns: (string | string[])[] = [], s
     return () => {
       subscription.remove();
     };
-  }, [queryClient, queryPatterns]);
+  }, [normalizedPatterns, queryClient, staleThresholdMs]);
 };
 
 export default useAppStateListener;
