@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -95,7 +95,6 @@ export default function CreateDesignComposerScreen() {
     retryBootstrap,
   } = useDesignEditor();
   const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ openPicker?: string | string[]; pickerSource?: string | string[] }>();
   const openPickerParam = Array.isArray(params.openPicker) ? params.openPicker[0] : params.openPicker;
   const pickerSourceParam = Array.isArray(params.pickerSource) ? params.pickerSource[0] : params.pickerSource;
@@ -424,7 +423,7 @@ export default function CreateDesignComposerScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <AppBackButton fallbackHref="/catalog" />
         <View style={styles.headerCopy}>
@@ -435,7 +434,7 @@ export default function CreateDesignComposerScreen() {
         </View>
       </View>
 
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <ScrollView
           style={styles.flex}
           showsVerticalScrollIndicator={false}
@@ -633,7 +632,7 @@ export default function CreateDesignComposerScreen() {
             {
               backgroundColor: theme.colors.bg,
               borderTopColor: theme.colors.border,
-              paddingBottom: Math.max(insets.bottom, tokens.spacing.md),
+              paddingBottom: tokens.spacing.md,
               paddingHorizontal: tokens.spacing.lg,
             },
           ]}

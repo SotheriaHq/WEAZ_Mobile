@@ -41,12 +41,20 @@ function supportsNativeNotificationModule() {
 
 async function getNotificationsModule() {
   if (!supportsNativeNotificationModule()) return null;
-  notificationsModulePromise ??= import('expo-notifications').catch((error) => {
-    if (__DEV__) {
-      console.warn('Unable to load expo-notifications:', error);
-    }
-    return null;
-  });
+  if (notificationsModulePromise !== null) return notificationsModulePromise;
+  // Use .then(onFulfilled, onRejected) so the rejection handler is attached
+  // synchronously — prevents React Native's unhandled-rejection detector from
+  // firing during Metro's lazy-bundling window before .catch() would attach.
+  notificationsModulePromise = import('expo-notifications').then(
+    (mod) => mod,
+    (error) => {
+      if (__DEV__) {
+        console.warn('Unable to load expo-notifications:', error);
+      }
+      notificationsModulePromise = null; // clear so a later call retries after Metro bundles
+      return null;
+    },
+  );
   return notificationsModulePromise;
 }
 

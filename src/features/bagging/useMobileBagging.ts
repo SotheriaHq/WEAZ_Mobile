@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
-import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
+import { useBagFlow } from '@/src/features/bagging/BagFlowContext';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { MobileStoreApi, type BagSourceType, type CartState, type CustomBagState, type ProductBagStatus } from '@/src/api/StoreApi';
 import { baggingService, type AddCustomOrderBagPayload, type AddStandardBagPayload } from '@/src/services/bagging';

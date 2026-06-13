@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 
 import type { DesignEditorAsset } from '@/src/api/DesignApi';
+import { compressPickedImage } from '@/src/utils/imageCompression';
 import {
   MOBILE_UPLOAD_POLICIES,
   validatePickedUploadAssets,
@@ -30,7 +31,9 @@ function createHandoffToken() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function buildDesignEditorAssets(result: ImagePicker.ImagePickerAsset[], existingCount: number) {
+type ProcessedPickerAsset = ImagePicker.ImagePickerAsset & { fileSize?: number | null };
+
+function buildDesignEditorAssets(result: ProcessedPickerAsset[], existingCount: number) {
   return result.map((asset, index) => ({
     id: `${asset.assetId ?? asset.uri}_${Date.now()}_${existingCount + index}`,
     uri: asset.uri,
@@ -121,8 +124,38 @@ export async function pickDesignEditorMediaAssets({
     return { status: 'cancelled' };
   }
 
+  // Compress every image asset before validation.
+  // Videos are passed through unchanged.
+  // On compression failure the original asset is used — validation will then
+  // catch it if it exceeds the size limit.
+  const processedAssets = await Promise.all(
+    result.assets.map(async (asset) => {
+      if (asset.type === 'video') return asset;
+      try {
+        const compressed = await compressPickedImage(
+          asset.uri,
+          asset.width ?? 0,
+          asset.height ?? 0,
+          asset.fileName,
+          'designMedia',
+        );
+        return {
+          ...asset,
+          uri: compressed.uri,
+          width: compressed.width,
+          height: compressed.height,
+          mimeType: compressed.mimeType,
+          fileName: compressed.fileName,
+          fileSize: undefined, // post-compression; size check is intentionally skipped
+        };
+      } catch {
+        return asset;
+      }
+    }),
+  );
+
   const validationErrors = validatePickedUploadAssets(
-    result.assets.map((asset) => ({
+    processedAssets.map((asset) => ({
       uri: asset.uri,
       fileName: asset.fileName,
       mimeType: asset.mimeType ?? (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
@@ -137,6 +170,6 @@ export async function pickDesignEditorMediaAssets({
 
   return {
     status: 'success',
-    assets: buildDesignEditorAssets(result.assets, existingCount),
+    assets: buildDesignEditorAssets(processedAssets, existingCount),
   };
 }

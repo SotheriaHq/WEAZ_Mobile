@@ -11,11 +11,12 @@
       "supportsTablet": true
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/weaz-adaptive-icon.png",
-        "backgroundColor": "#0b0710"
-      },
-      "predictiveBackGestureEnabled": false
+      "package": "com.sotheriahq.weaz",
+  "adaptiveIcon": {
+    "foregroundImage": "./assets/images/weaz-adaptive-icon.png",
+    "backgroundColor": "#0b0710"
+  },
+  "predictiveBackGestureEnabled": false
     },
     "web": {
       "bundler": "metro",
@@ -43,8 +44,8 @@
           "position": "absolute",
           "backgroundColor": "#00000001",
           "borderColor": "#00000001",
-          "barStyle": "light",
-          "visibility": "visible",
+          "style": "light",
+          "hidden": false,
           "enforceContrast": false
         }
       ],
@@ -59,8 +60,8 @@
         "position": "absolute",
         "backgroundColor": "#00000001",
         "borderColor": "#00000001",
-        "barStyle": "light",
-        "visibility": "visible",
+        "style": "light",
+        "hidden": false,
         "enforceContrast": false
       },
       "eas": {

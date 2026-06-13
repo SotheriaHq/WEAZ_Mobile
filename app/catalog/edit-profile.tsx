@@ -11,6 +11,7 @@ import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
+import { compressPickedImage } from '@/src/utils/imageCompression';
 import {
   MOBILE_UPLOAD_POLICIES,
   getMobileUploadValidationMessage,
@@ -419,15 +420,20 @@ export default function BrandProfileEditScreen() {
       return;
     }
 
-    const asset = result.assets[0];
+    const raw = result.assets[0];
+    let asset = { uri: raw.uri, fileName: raw.fileName, mimeType: raw.mimeType ?? 'image/jpeg' };
+    try {
+      const compressed = await compressPickedImage(
+        raw.uri, raw.width ?? 0, raw.height ?? 0, raw.fileName, 'profileImage',
+      );
+      asset = { uri: compressed.uri, fileName: compressed.fileName, mimeType: compressed.mimeType };
+    } catch {
+      // compression failed — validate original (may reject if >2 MB)
+    }
+
     try {
       assertValidPickedUploadAsset(
-        {
-          uri: asset.uri,
-          fileName: asset.fileName,
-          mimeType: asset.mimeType ?? 'image/jpeg',
-          fileSize: asset.fileSize,
-        },
+        { uri: asset.uri, fileName: asset.fileName, mimeType: asset.mimeType },
         MOBILE_UPLOAD_POLICIES.profileImage,
       );
     } catch (validationError) {
@@ -437,7 +443,7 @@ export default function BrandProfileEditScreen() {
 
     setSaveState('saving');
     try {
-      const uploaded = await brandApi.uploadAvatar(asset.uri, asset.mimeType ?? 'image/jpeg');
+      const uploaded = await brandApi.uploadAvatar(asset.uri, asset.mimeType);
       if (!uploaded) {
         throw new Error('Upload failed');
       }

@@ -23,6 +23,12 @@ module.exports = ({ config } = {}) => {
 
   return {
     ...baseConfig,
+
+      android: {
+      ...(baseConfig.android ?? {}),
+      package: readString(process.env.EXPO_PUBLIC_ANDROID_PACKAGE) ?? 'com.sotheriahq.weaz',
+    },
+
     extra,
   };
 };

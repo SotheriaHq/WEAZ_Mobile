@@ -315,7 +315,7 @@ export function ProfileMenuDropup({
                 ]}
               >
                 <View style={styles.iconSlot}>
-                  <AppText variant="captionBold">??</AppText>
+                  <AppText variant="captionBold">{'\u{1F514}'}</AppText>
                 </View>
                 <View style={styles.textWrap}>
                   <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
@@ -336,7 +336,7 @@ export function ProfileMenuDropup({
                   ]}
                 >
                   <View style={styles.iconSlot}>
-                    <AppText variant="captionBold">??</AppText>
+                    <AppText variant="captionBold">{'\u{1F3A8}'}</AppText>
                   </View>
                   <View style={styles.textWrap}>
                     <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
@@ -357,7 +357,7 @@ export function ProfileMenuDropup({
                 ]}
               >
                 <View style={styles.iconSlot}>
-                  <AppText variant="captionBold">??</AppText>
+                  <AppText variant="captionBold">{'⚙️'}</AppText>
                 </View>
                 <View style={styles.textWrap}>
                   <AppText variant="bodyBold" numberOfLines={1} ellipsizeMode="tail">
@@ -378,7 +378,7 @@ export function ProfileMenuDropup({
                 ]}
               >
                 <View style={styles.iconSlot}>
-                  <AppText variant="captionBold">??</AppText>
+                  <AppText variant="captionBold">{'\u{1F6AA}'}</AppText>
                 </View>
                 <View style={styles.textWrap}>
                   <AppText variant="bodyBold" tone="danger" numberOfLines={1} ellipsizeMode="tail">

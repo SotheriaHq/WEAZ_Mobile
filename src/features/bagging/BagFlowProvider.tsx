@@ -1,7 +1,5 @@
 import React, {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -26,16 +24,12 @@ import StaleFittingConfirmationSheet from '@/components/bagging/StaleFittingConf
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { baggingService } from '@/src/services/bagging';
 import type { BagSourceType } from '@/src/api/StoreApi';
+import { BagFlowContext } from '@/src/features/bagging/BagFlowContext';
+import type { BagFlowProductInput } from '@/src/features/bagging/BagFlowContext';
 
-type BagProductInput = {
-  id: string;
-  name?: string;
-  sourceType?: BagSourceType;
-  sourceId?: string;
-  selectedSize?: string | null;
-  selectedColor?: string | null;
-  quantity?: number;
-};
+export { useBagFlow } from '@/src/features/bagging/BagFlowContext';
+
+type BagProductInput = BagFlowProductInput;
 
 type BagFlowTarget = {
   product: BagProductInput;
@@ -61,27 +55,6 @@ type PendingBagAction = {
 };
 
 const PENDING_BAG_ACTION_KEY = 'threadly.pendingBagAction.v1';
-
-type BagFlowContextValue = {
-  openSelector: (product: BagProductInput, status: ProductBagStatus) => void;
-  openCustomFlow: (product: BagProductInput, status: ProductBagStatus) => void;
-  openFittings: (product: BagProductInput, status: ProductBagStatus) => void;
-  openStaleFittings: (product: BagProductInput, status: ProductBagStatus) => void;
-  openAuthPrompt: (
-    product: BagProductInput,
-    action: BagDefaultAction,
-    resume?: () => void | Promise<void>,
-  ) => void;
-  openExistingBag: (product: BagProductInput, status: ProductBagStatus) => void;
-  openMyBag: () => void;
-  closeActiveFlow: () => void;
-};
-
-const BagFlowContext = createContext<BagFlowContextValue | null>(null);
-
-export function useBagFlow() {
-  return useContext(BagFlowContext);
-}
 
 export function BagFlowProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
