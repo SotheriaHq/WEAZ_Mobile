@@ -368,7 +368,7 @@ export default function CollectionCommentsSheet({
             />
           )}
 
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View
               style={[
                 styles.commentInput,

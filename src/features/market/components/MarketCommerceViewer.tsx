@@ -35,6 +35,8 @@ import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { queryClient, THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
@@ -279,11 +281,25 @@ export function MarketCommerceViewer({
     loadingByProductId,
   } = useMobileBagging();
 
-  const [product, setProduct] = useState<StoreProduct | null>(null);
-  const [design, setDesign] = useState<CollectionDetailDto | null>(null);
+  // Seed from React Query cache so returning to a previously viewed item shows
+  // content immediately and revalidates in the background (no full-screen loader).
+  const initialSourceId = String(sourceId ?? '').trim();
+  const productCacheKey = queryKeys.store.product(initialSourceId);
+  const designCacheKey = queryKeys.brand.collectionDetail(initialSourceId, 'design');
+  const cachedProduct =
+    sourceType === 'PRODUCT'
+      ? queryClient.getQueryData<StoreProduct>(productCacheKey) ?? null
+      : null;
+  const cachedDesign =
+    sourceType === 'DESIGN'
+      ? queryClient.getQueryData<CollectionDetailDto>(designCacheKey) ?? null
+      : null;
+
+  const [product, setProduct] = useState<StoreProduct | null>(cachedProduct);
+  const [design, setDesign] = useState<CollectionDetailDto | null>(cachedDesign);
   const [bagStatus, setBagStatus] = useState<ProductBagStatus | null>(null);
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!(cachedProduct || cachedDesign));
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [sheetExpanded, setSheetExpanded] = useState(false);
@@ -310,12 +326,24 @@ export function MarketCommerceViewer({
     }
 
     const startedAt = Date.now();
-    setLoading(true);
+    // Only show the full-screen loader when there is nothing cached to render.
+    const productKey = queryKeys.store.product(normalizedSourceId);
+    const designKey = queryKeys.brand.collectionDetail(normalizedSourceId, 'design');
+    const hasCached = Boolean(
+      sourceType === 'PRODUCT'
+        ? queryClient.getQueryData(productKey)
+        : queryClient.getQueryData(designKey),
+    );
+    setLoading(!hasCached);
     setError(null);
     try {
       if (sourceType === 'PRODUCT') {
         const [nextProduct, nextStatus] = await Promise.all([
-          MobileStoreApi.getProductById(normalizedSourceId),
+          queryClient.fetchQuery({
+            queryKey: productKey,
+            queryFn: () => MobileStoreApi.getProductById(normalizedSourceId),
+            staleTime: THREADLY_QUERY_STALE_TIME_MS,
+          }),
           prepareBag(normalizedSourceId).catch(() => null),
         ]);
         setProduct(nextProduct);
@@ -326,7 +354,11 @@ export function MarketCommerceViewer({
       }
 
       const [nextDesign, nextStatus] = await Promise.all([
-        brandApi.getCollectionDetail(normalizedSourceId, { scope: 'design' }),
+        queryClient.fetchQuery({
+          queryKey: designKey,
+          queryFn: () => brandApi.getCollectionDetail(normalizedSourceId, { scope: 'design' }),
+          staleTime: THREADLY_QUERY_STALE_TIME_MS,
+        }),
         prepareSourceBag('DESIGN', normalizedSourceId).catch(() => null),
       ]);
       if (!nextDesign) {

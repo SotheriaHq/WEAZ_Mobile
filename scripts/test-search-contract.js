@@ -82,7 +82,11 @@ assert.match(searchApi, /normalizeSearchResponse/);
 
 assert.match(mobileRouting, /case 'profile'/);
 assert.match(mobileRouting, /pathname: '\/profile\/\[id\]'/);
-assert.doesNotMatch(mobileRouting, /case 'profile':[\s\S]{0,260}pathname: '\/catalog\/\[brandId\]'/);
+// Phase 1: brand-owning profile results (carrying brand metadata) must reach the
+// brand catalogue, while plain user profiles still open the public profile. The
+// previous guard forbidding any catalog routing inside the profile case is
+// intentionally removed; the runtime fixtures below enforce both behaviors.
+assert.match(mobileRouting, /isBrandProfile[\s\S]{0,160}pathname: '\/catalog\/\[brandId\]'/);
 
 const { routeForSearchItem } = loadMobileRouting();
 
@@ -164,6 +168,32 @@ assert.deepEqual(
   {
     pathname: '/catalog/[brandId]',
     params: { brandId: 'owner-1' },
+  },
+);
+
+// Phase 1: a profile result that owns a brand storefront (brandId/brandName in
+// metadata) must open the brand catalogue using its owner user id, since the
+// backend collapses the standalone brand row into this richer profile row.
+assert.deepEqual(
+  toJson(routeForSearchItem({
+    id: 'brand-owner-profile',
+    type: 'profile',
+    title: 'Avery',
+    subtitle: '@avery',
+    href: '/profile/owner-9',
+    score: 100,
+    metadata: {
+      profileUserId: 'owner-9',
+      ownerId: 'owner-9',
+      brandId: 'brand-9',
+      brandName: 'Avery',
+      resultKind: 'identity',
+      isStoreOpen: true,
+    },
+  })),
+  {
+    pathname: '/catalog/[brandId]',
+    params: { brandId: 'owner-9' },
   },
 );
 

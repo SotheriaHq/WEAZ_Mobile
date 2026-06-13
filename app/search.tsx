@@ -460,6 +460,39 @@ export default function SearchScreen() {
 
   const contentBottom = insets.bottom + LAYOUT.TAB_BAR_HEIGHT + tokens.spacing.xl;
 
+  const filtersRow = (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      style={styles.filterScroller}
+      contentContainerStyle={styles.filterRow}
+    >
+      {FILTER_OPTIONS.map((option) => {
+        const selected = option.key === filterType;
+        return (
+          <Pressable
+            key={option.key}
+            onPress={() => {
+              setFilterType(option.key);
+            }}
+            style={[
+              styles.filterPill,
+              {
+                backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
+                borderColor: selected ? theme.colors.primary : theme.colors.border,
+              },
+            ]}
+          >
+            <AppText variant="captionBold" tone={selected ? 'primary' : 'muted'}>
+              {option.label}
+            </AppText>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
@@ -490,40 +523,41 @@ export default function SearchScreen() {
         </View>
       </View>
 
+      {resultState.status === 'ready' ? (
+        // Results render in a single virtualized list (not a FlatList nested in a
+        // non-scrolling ScrollView) so large result sets recycle rows.
+        <FlatList
+          data={resultState.items}
+          keyExtractor={(item) => `${item.type}-${item.id}`}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.content, { paddingBottom: contentBottom }]}
+          ListHeaderComponent={
+            <View style={styles.resultsHeader}>
+              {filtersRow}
+              <View style={styles.sectionHeader}>
+                <AppText variant="subtitle">Results</AppText>
+                <AppText variant="captionRegular" tone="muted">
+                  {resultState.items.length} matches
+                </AppText>
+              </View>
+            </View>
+          }
+          ItemSeparatorComponent={() => <View style={{ height: tokens.spacing.xs }} />}
+          renderItem={({ item }) => (
+            <SearchResultRow item={item} onPress={() => openSearchItem(item)} />
+          )}
+          initialNumToRender={12}
+          windowSize={9}
+          removeClippedSubviews
+        />
+      ) : (
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.content, { paddingBottom: contentBottom }]}
       >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.filterScroller}
-          contentContainerStyle={styles.filterRow}
-        >
-          {FILTER_OPTIONS.map((option) => {
-            const selected = option.key === filterType;
-            return (
-              <Pressable
-                key={option.key}
-                onPress={() => {
-                  setFilterType(option.key);
-                }}
-                style={[
-                  styles.filterPill,
-                  {
-                    backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
-                    borderColor: selected ? theme.colors.primary : theme.colors.border,
-                  },
-                ]}
-              >
-                <AppText variant="captionBold" tone={selected ? 'primary' : 'muted'}>
-                  {option.label}
-                </AppText>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        {filtersRow}
 
         {resultState.status === 'loading' ? (
           <Card>
@@ -565,28 +599,7 @@ export default function SearchScreen() {
           />
         ) : null}
 
-        {resultState.status === 'ready' ? (
-          <SearchSection
-            title="Results"
-            rightAction={
-              <AppText variant="captionRegular" tone="muted">
-                {resultState.items.length} matches
-              </AppText>
-            }
-          >
-            <Card padding="md">
-              <FlatList
-                data={resultState.items}
-                scrollEnabled={false}
-                keyExtractor={(item) => `${item.type}-${item.id}`}
-                ItemSeparatorComponent={() => <View style={{ height: tokens.spacing.xs }} />}
-                renderItem={({ item }) => (
-                  <SearchResultRow item={item} onPress={() => openSearchItem(item)} />
-                )}
-              />
-            </Card>
-          </SearchSection>
-        ) : (
+        {
           <>
             {showSuggestionRetry ? (
               <View style={[styles.suggestionRetryRow, { borderColor: theme.colors.border }]}>
@@ -690,8 +703,9 @@ export default function SearchScreen() {
               </View>
             ) : null}
           </>
-        )}
+        }
       </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -726,6 +740,10 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.lg,
     paddingHorizontal: tokens.spacing.md,
     paddingTop: tokens.spacing.md,
+  },
+  resultsHeader: {
+    gap: tokens.spacing.lg,
+    marginBottom: tokens.spacing.lg,
   },
   filterScroller: {
     alignSelf: 'stretch',

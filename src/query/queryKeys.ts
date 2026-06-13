@@ -112,12 +112,17 @@ export const queryKeys = {
     bagCount: (userId?: string | null) => ['store', 'bagCount', normalizeId(userId)] as const,
     brandProducts: (brandId?: string | null, params?: Record<string, unknown> | null) =>
       ['store', 'brandProducts', normalizeId(brandId), normalizeRecord(params)] as const,
+    product: (productId?: string | null) => ['store', 'product', normalizeId(productId)] as const,
   },
   config: {
     uploadLimits: () => ['config', 'uploadLimits'] as const,
   },
   categories: {
     filters: (view?: string | null) => ['categories', 'filters', normalizeId(view)] as const,
+    designCategories: () => ['categories', 'designCategories'] as const,
+  },
+  measurementPoints: {
+    byGender: (gender?: string | null) => ['measurementPoints', normalizeId(gender) || 'all'] as const,
   },
   media: {
     publicUrl: (fileId?: string | null) => ['media', 'publicUrl', normalizeId(fileId)] as const,
@@ -150,11 +155,18 @@ export const queryKeys = {
 
 export const isPersistableThreadlyQueryKey = (queryKey: readonly unknown[]) => {
   const [root, scope] = queryKey;
-  if (root === 'brand' || root === 'design' || root === 'designs' || root === 'config' || root === 'categories') {
+  if (
+    root === 'brand' ||
+    root === 'design' ||
+    root === 'designs' ||
+    root === 'config' ||
+    root === 'categories' ||
+    root === 'measurementPoints'
+  ) {
     return true;
   }
   if (root === 'store') {
-    return scope === 'brandProducts';
+    return scope === 'brandProducts' || scope === 'product';
   }
   if (root === 'media') {
     return scope === 'publicUrl';

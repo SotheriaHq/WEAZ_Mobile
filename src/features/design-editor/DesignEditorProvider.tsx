@@ -11,10 +11,8 @@ import { Linking } from 'react-native';
 import { router } from 'expo-router';
 
 import {
-  getDesignCategories,
   getDesignDetail,
   getActiveDesignCustomConfiguration,
-  getMeasurementPoints,
   deleteDesign,
   saveDesignEditor,
   startDesignDraftSession,
@@ -29,7 +27,13 @@ import {
   type MeasurementPointOption,
 } from '@/src/api/DesignApi';
 import { useAuthSession } from '@/src/auth/AuthContext';
-import { fetchDesignFilterDimensionsQuery } from '@/src/query/bootstrapQueries';
+import {
+  fetchDesignCategoriesQuery,
+  fetchDesignFilterDimensionsQuery,
+  fetchMeasurementPointsQuery,
+} from '@/src/query/bootstrapQueries';
+import { queryClient } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
 import { useToast } from '@/src/toast/ToastContext';
 import {
   getSelectedFilterValueIds,
@@ -326,7 +330,11 @@ export function DesignEditorProvider({
   const [booting, setBooting] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [draftConflict, setDraftConflict] = useState<DraftSessionResponse | null>(null);
-  const [categories, setCategories] = useState<DesignCategoryOption[]>([]);
+  // Seed metadata from the React Query cache so reopening the creator paints the
+  // option lists instantly while the cached fetchers revalidate in the background.
+  const [categories, setCategories] = useState<DesignCategoryOption[]>(
+    () => queryClient.getQueryData<DesignCategoryOption[]>(queryKeys.categories.designCategories()) ?? [],
+  );
   const [filterDimensions, setFilterDimensions] = useState<FilterDimensionOption[]>([]);
   const [measurementPoints, setMeasurementPoints] = useState<MeasurementPointOption[]>([]);
   const [customOrderConfigurations, setCustomOrderConfigurations] = useState<DesignCustomOrderConfiguration[]>([]);
@@ -348,6 +356,10 @@ export function DesignEditorProvider({
 
   const bootstrappedRef = useRef(false);
   const mountedRef = useRef(true);
+  // Tracks the last measurement-point gender we requested so the bootstrap call
+  // and the audience-change effect never fire a duplicate request for the same
+  // gender during creator bootstrapping.
+  const lastMeasurementGenderRef = useRef<string | null>(null);
   const normalizedAssetHandoffToken = assetHandoffToken?.trim() || undefined;
 
   useEffect(() => {
@@ -370,12 +382,31 @@ export function DesignEditorProvider({
   }, []);
 
   const loadMeasurementPoints = useCallback(async (audience: Audience) => {
+    const gender = measurementGenderForAudience(audience);
+    const genderKey = gender ?? 'all';
+    // Skip duplicate requests for the same resolved gender (e.g. the audience
+    // effect firing right after bootstrap already loaded the same gender).
+    if (lastMeasurementGenderRef.current === genderKey) {
+      return;
+    }
+    lastMeasurementGenderRef.current = genderKey;
+
+    // Paint cached measurement points immediately if present.
+    const cached = queryClient.getQueryData<MeasurementPointOption[]>(
+      queryKeys.measurementPoints.byGender(gender ?? null),
+    );
+    if (cached) {
+      setMeasurementPoints(cached);
+    }
+
     try {
-      const gender = measurementGenderForAudience(audience);
-      const points = await getMeasurementPoints(gender ? { gender } : undefined);
+      const points = await fetchMeasurementPointsQuery(gender);
       setMeasurementPoints(points);
     } catch {
-      setMeasurementPoints([]);
+      lastMeasurementGenderRef.current = null;
+      if (!cached) {
+        setMeasurementPoints([]);
+      }
     }
   }, []);
 
@@ -385,7 +416,7 @@ export function DesignEditorProvider({
       setLoadingError(null);
       try {
         const [categoriesResult, filtersResult] = await Promise.allSettled([
-          getDesignCategories(),
+          fetchDesignCategoriesQuery(),
           fetchDesignFilterDimensionsQuery(),
         ]);
 

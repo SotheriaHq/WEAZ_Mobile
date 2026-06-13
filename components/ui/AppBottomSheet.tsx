@@ -136,7 +136,11 @@ export function AppBottomSheet({
         </Pressable>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          // Edge-to-edge (Expo SDK 56+) resizes the Android window for the
+          // keyboard natively. Adding 'height'/'padding' here would double-offset
+          // and clip the footer/action buttons, so Android relies on the native
+          // resize while iOS (no native resize) uses padding.
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardWrap}
         >
           <Animated.View

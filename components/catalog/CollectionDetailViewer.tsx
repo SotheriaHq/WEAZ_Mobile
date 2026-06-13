@@ -19,7 +19,7 @@ import {
 } from '@/src/api/BrandApi';
 import { toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import { useAuth } from '@/src/auth/AuthContext';
-import { resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { useDiscreteTapGesture } from '@/src/hooks/useDiscreteTapGesture';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { getAvatarFallback } from '@/src/utils/profileImage';
@@ -435,38 +435,30 @@ export function CollectionDetailViewer({
     }
 
     const medias = Array.isArray(response.medias) ? response.medias : [];
-    const nextItems = await Promise.all(
-      medias.map(async (media, index) => {
-        const directUrl = getCollectionMediaDirectUrl(media);
-        const fileId = getCollectionMediaFileId(media);
-        const url = (await resolveImageUri({
-          src: directUrl,
-          fileId,
-          debugContext: {
-            designId: collectionId,
-            mediaIndex: index,
-            fileId,
-            sourceField: fileId ? 'collection.media.fileId' : 'collection.media.url',
-          },
-        })) ?? '';
-        return {
-          id: media.id || media.file?.id || `${collectionId}-${index}`,
-          collectionId,
-          mediaIndex: index,
-          url,
-          fileId,
-          type: getMediaType(media),
-          label: media.caption ?? media.file?.originalName ?? response.title,
-          threadsCount: typeof media.threadsCount === 'number' ? media.threadsCount : 0,
-          imageWidth: getMediaNumber(media, 'width') ?? getMediaNumber(media, 'naturalWidth') ?? getMediaNumber(media, 'imageWidth'),
-          imageHeight:
-            getMediaNumber(media, 'height') ?? getMediaNumber(media, 'naturalHeight') ?? getMediaNumber(media, 'imageHeight'),
-          imageAspectRatio: getMediaNumber(media, 'aspectRatio'),
-          blurhash: getMediaString(media, ['blurhash', 'blurHash']),
-          dominantColor: getMediaString(media, ['dominantColor']),
-        } satisfies ViewerMedia;
-      }),
-    );
+    // Do NOT block the screen on signing every image up front. Store the raw
+    // direct url + fileId and let each ViewerMediaSlide resolve/sign its own
+    // media progressively via useResolvedImageAsset. This lets the detail shell
+    // mount immediately while media fills in per-slide.
+    const nextItems = medias.map((media, index) => {
+      const directUrl = getCollectionMediaDirectUrl(media);
+      const fileId = getCollectionMediaFileId(media);
+      return {
+        id: media.id || media.file?.id || `${collectionId}-${index}`,
+        collectionId,
+        mediaIndex: index,
+        url: directUrl ?? '',
+        fileId,
+        type: getMediaType(media),
+        label: media.caption ?? media.file?.originalName ?? response.title,
+        threadsCount: typeof media.threadsCount === 'number' ? media.threadsCount : 0,
+        imageWidth: getMediaNumber(media, 'width') ?? getMediaNumber(media, 'naturalWidth') ?? getMediaNumber(media, 'imageWidth'),
+        imageHeight:
+          getMediaNumber(media, 'height') ?? getMediaNumber(media, 'naturalHeight') ?? getMediaNumber(media, 'imageHeight'),
+        imageAspectRatio: getMediaNumber(media, 'aspectRatio'),
+        blurhash: getMediaString(media, ['blurhash', 'blurHash']),
+        dominantColor: getMediaString(media, ['dominantColor']),
+      } satisfies ViewerMedia;
+    });
 
     const normalizedItems = nextItems.filter((item) => Boolean(item.id));
     const nextThreadState = normalizedItems.reduce<Record<string, { threaded: boolean; count: number }>>((acc, item) => {

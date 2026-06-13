@@ -180,6 +180,17 @@ export function routeForSearchItem(item: SearchItem): RouterTarget {
     case 'profile': {
       const routeProfileId =
         profileUserId ?? ownerId ?? parseHrefId(item.href, /\/profile\/([^/?#]+)/) ?? item.id;
+      // Backend search `dedupeIdentity` collapses a brand result into its richer
+      // owner profile row, so brand identities (e.g. Avery) arrive here as a
+      // `profile` item carrying brand metadata. Route those to the brand
+      // catalogue/store visitor screen, not the generic public/patched-brands
+      // profile. `/brands/:id` resolves by owner user id, which is `profileUserId`
+      // (== ownerId == item.id for profiles), matching how `brand` items route.
+      const brandName = typeof metadata.brandName === 'string' ? metadata.brandName.trim() : '';
+      const isBrandProfile = Boolean(brandId) || brandName.length > 0;
+      if (isBrandProfile && routeProfileId) {
+        return { pathname: '/catalog/[brandId]', params: { brandId: routeProfileId } } as Href;
+      }
       if (routeProfileId) {
         return { pathname: '/profile/[id]', params: { id: routeProfileId } } as Href;
       }
