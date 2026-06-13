@@ -69,6 +69,7 @@ import { formatCount } from '@/src/utils/formatCount';
 import { env } from '@/src/config/env';
 import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
 import { perfMark } from '@/src/utils/perf';
+import { navPerf } from '@/src/utils/navPerf';
 import {
   refreshBrandCollectionsQuery,
   refreshBrandDraftsQuery,
@@ -1131,6 +1132,8 @@ export default function CatalogScreen() {
       }
 
       perfMark('catalog-plus-tap');
+      navPerf.tap('create_design');
+      navPerf.navigationCalled();
       router.push({
         pathname: '/catalog/create-design/composer',
         params: {

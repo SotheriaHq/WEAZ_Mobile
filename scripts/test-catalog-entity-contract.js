@@ -41,9 +41,14 @@ assert.match(marketScreenSource, /entityType:\s*'PRODUCT' as const/);
 assert.match(marketScreenSource, /entityType:\s*'DESIGN' as const/);
 assert.match(marketScreenSource, /function MarketProductCard/);
 assert.match(marketScreenSource, /function MarketDesignCard/);
-assert.match(marketScreenSource, /typeLabel="Product"/);
-assert.match(marketScreenSource, /typeLabel="Design"/);
-assert.match(marketScreenSource, /actionLabel=\{canRequestCustomOrder \? 'Request' : undefined\}/);
+// Product vs Design cards are now distinguished by entityType branching in
+// MarketCard (the prior `typeLabel="Product"/"Design"` props were removed when
+// the cards were unified onto UnifiedProductCard). Assert the live contract.
+assert.match(marketScreenSource, /props\.item\.entityType === 'PRODUCT'/);
+assert.match(marketScreenSource, /const canRequestCustomOrder = isCustomReady\(item\)/);
+// Design custom-order action label now uses the shared BAG_IT_LABEL constant
+// instead of a hardcoded 'Request' string.
+assert.match(marketScreenSource, /actionLabel=\{canRequestCustomOrder \? BAG_IT_LABEL : undefined\}/);
 
 assert.match(catalogCardBranchSource, /resolveCatalogCardBranch/);
 assert.match(catalogCardBranchSource, /primaryActionKind:\s*'view-design'/);

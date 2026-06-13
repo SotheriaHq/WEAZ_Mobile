@@ -20,6 +20,7 @@ import {
 import { toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { navPerf } from '@/src/utils/navPerf';
 import { useDiscreteTapGesture } from '@/src/hooks/useDiscreteTapGesture';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { getAvatarFallback } from '@/src/utils/profileImage';
@@ -422,6 +423,17 @@ export function CollectionDetailViewer({
   useEffect(() => {
     threadingMediaByIdRef.current = threadingMediaById;
   }, [threadingMediaById]);
+
+  useEffect(() => {
+    navPerf.screenMounted('design_detail');
+  }, []);
+
+  useEffect(() => {
+    if (!loading && detail) {
+      navPerf.firstVisibleUi('design_detail');
+      navPerf.dataReady('design_detail');
+    }
+  }, [loading, detail]);
 
   const applyDetailResponse = useCallback(async (response: CollectionDetailDto | null) => {
     if (!response) {

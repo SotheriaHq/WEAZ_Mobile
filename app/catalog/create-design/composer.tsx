@@ -34,6 +34,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import type { DesignEditorMediaSource } from '@/src/features/design-editor/designEditorMediaFlow';
 import { perfMeasure } from '@/src/utils/perf';
+import { navPerf } from '@/src/utils/navPerf';
 import {
   CREATOR_AUDIENCE_OPTIONS,
   CREATOR_METADATA_HELP,
@@ -263,7 +264,15 @@ export default function CreateDesignComposerScreen() {
 
   useEffect(() => {
     perfMeasure('catalog-plus-to-composer', 'catalog-plus-tap');
+    navPerf.screenMounted('create_design');
+    navPerf.firstVisibleUi('create_design');
   }, []);
+
+  useEffect(() => {
+    if (!booting) {
+      navPerf.dataReady('create_design');
+    }
+  }, [booting]);
 
   useEffect(() => {
     if (!shouldOpenInitialPicker || initialPickerStartedRef.current || isEditMode) return;

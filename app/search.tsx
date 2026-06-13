@@ -34,6 +34,7 @@ import {
   saveRecentSearch,
 } from '@/src/utils/searchHistory';
 import { perfMeasure } from '@/src/utils/perf';
+import { navPerf } from '@/src/utils/navPerf';
 import MobileMarketSuggestionBlocks from '@/src/features/market/components/MobileMarketSuggestionBlocks';
 
 type FilterType = 'all' | SearchEntityType;
@@ -425,7 +426,10 @@ export default function SearchScreen() {
   }, [autoSubmit, filterType, initialQuery, runSearch]);
 
   const openSearchItem = useCallback((item: SearchItem) => {
+    navPerf.tap(`search→${item.type}`);
+    // Recent-search persistence is fire-and-forget; navigation must not wait on it.
     void saveRecentSearch(getRecentQueryForSearchItem(item));
+    navPerf.navigationCalled();
     router.push(routeForSearchItem(item));
   }, []);
 

@@ -4,6 +4,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { IconButton, type IconButtonVariant } from '@/components/ui/IconButton';
+import { navPerf } from '@/src/utils/navPerf';
 
 type Props = {
   onPress?: () => void;
@@ -30,15 +31,18 @@ export function AppBackButton({
       variant={variant}
       style={style}
       onPress={() => {
+        navPerf.tap('back');
         if (onPress) {
           onPress();
           return;
         }
         if (router.canGoBack()) {
+          navPerf.navigationCalled();
           router.back();
           return;
         }
         if (fallbackHref) {
+          navPerf.navigationCalled();
           router.replace(fallbackHref as any);
         }
       }}

@@ -62,7 +62,9 @@ function main() {
   assert.match(designApiSource, /designMetadata:\s*buildMetadata\(payload\)/);
   assert.match(designApiSource, /viewSlot:\s*toBackendMediaViewSlot\(asset\.viewSlot\)/);
   assert.match(designApiSource, /viewSlot:\s*toBackendMediaViewSlot\(upload\.viewSlot \?\? asset\.viewSlot\)/);
-  assert.match(designApiSource, /apiClient\.post\('\/store\/content-policy\/acknowledge'\)/);
+  // The acknowledge call passes a request body, so allow args after the path
+  // (the previous regex required `acknowledge')` with no arguments and drifted).
+  assert.match(designApiSource, /apiClient\.post\('\/store\/content-policy\/acknowledge'/);
   assert.doesNotMatch(designApiSource, /collectionMetadata:\s*buildMetadata\(payload\)/);
   assert.match(designApiSource, /const method = resolvePresignedUploadMethod\(upload\)/);
   assert.doesNotMatch(designApiSource, /if\s*\(upload\.method === 'POST'\)/);

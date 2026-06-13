@@ -37,6 +37,7 @@ import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { queryClient, THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
+import { navPerf } from '@/src/utils/navPerf';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
@@ -388,8 +389,21 @@ export function MarketCommerceViewer({
   }, [authStatus, normalizedSourceId, prepareBag, prepareSourceBag, sourceType]);
 
   useEffect(() => {
+    // Shell (media pager + action cluster) renders immediately; the loader is an
+    // overlay, so mount == first visible UI here.
+    navPerf.screenMounted('product_detail');
+    navPerf.firstVisibleUi('product_detail');
+  }, []);
+
+  useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!loading && (product || design)) {
+      navPerf.dataReady('product_detail');
+    }
+  }, [loading, product, design]);
 
   useEffect(() => {
     if (sourceType !== 'PRODUCT' || authStatus !== 'authenticated' || !normalizedSourceId) {
