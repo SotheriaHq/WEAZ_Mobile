@@ -216,9 +216,6 @@ export function CatalogIslandBottomNav() {
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
-      setIsIslandExpanded(false);
-      setOptimisticActiveKey(item.key);
-
       if (item.key === 'profile') {
         handleProfilePress();
         return;
@@ -229,11 +226,11 @@ export function CatalogIslandBottomNav() {
       lastProfileTabPressAtRef.current = 0;
 
       if (item.key === 'designs') {
-        router.push('/' as any);
+        router.replace('/' as any);
       } else if (item.key === 'market') {
-        router.push('/(tabs)/discover' as any);
+        router.replace('/(tabs)/discover' as any);
       } else if (item.key === 'inbox') {
-        router.push('/(tabs)/inbox' as any);
+        router.replace('/(tabs)/inbox' as any);
       }
     },
     [clearProfileTabTimer, handleProfilePress],

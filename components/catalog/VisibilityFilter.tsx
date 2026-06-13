@@ -82,49 +82,57 @@ export function VisibilityFilter({
 
   return (
     <View style={styles.outer}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.container, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}
-      >
-        <VisibilitySegment
-          label="Public"
-          isActive={selected === 'Public'}
-          onPress={() => onChange('Public')}
-        />
-        <VisibilitySegment
-          label="Private"
-          isActive={selected === 'Private'}
-          onPress={() => onChange('Private')}
-        />
-        {showDrafts ? (
+      {/* pillFrame is a static wrapper so the pill background/border stays fixed
+          while chips scroll inside. Moving these styles out of contentContainerStyle
+          prevents the Android bug where borderRadius on a ScrollView content container
+          renders as a rectangle. nestedScrollEnabled allows this horizontal scroll
+          to work correctly inside the horizontal tab pager. */}
+      <View style={[styles.pillFrame, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}>
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipContent}
+        >
           <VisibilitySegment
-            label="Drafts"
-            isActive={selected === 'Drafts'}
-            onPress={() => onChange('Drafts')}
-            badge={draftsCount}
+            label="Public"
+            isActive={selected === 'Public'}
+            onPress={() => onChange('Public')}
           />
-        ) : null}
-        {showDrafts ? (
-          <>
+          <VisibilitySegment
+            label="Private"
+            isActive={selected === 'Private'}
+            onPress={() => onChange('Private')}
+          />
+          {showDrafts ? (
             <VisibilitySegment
-              label="In Review"
-              isActive={selected === 'In Review'}
-              onPress={() => onChange('In Review')}
+              label="Drafts"
+              isActive={selected === 'Drafts'}
+              onPress={() => onChange('Drafts')}
+              badge={draftsCount}
             />
-            <VisibilitySegment
-              label="Changes Requested"
-              isActive={selected === 'Changes Requested'}
-              onPress={() => onChange('Changes Requested')}
-            />
-            <VisibilitySegment
-              label="Rejected"
-              isActive={selected === 'Rejected'}
-              onPress={() => onChange('Rejected')}
-            />
-          </>
-        ) : null}
-      </ScrollView>
+          ) : null}
+          {showDrafts ? (
+            <>
+              <VisibilitySegment
+                label="In Review"
+                isActive={selected === 'In Review'}
+                onPress={() => onChange('In Review')}
+              />
+              <VisibilitySegment
+                label="Changes Requested"
+                isActive={selected === 'Changes Requested'}
+                onPress={() => onChange('Changes Requested')}
+              />
+              <VisibilitySegment
+                label="Rejected"
+                isActive={selected === 'Rejected'}
+                onPress={() => onChange('Rejected')}
+              />
+            </>
+          ) : null}
+        </ScrollView>
+      </View>
     </View>
   );
 }
@@ -132,15 +140,18 @@ export function VisibilityFilter({
 const styles = StyleSheet.create({
   outer: {
     flex: 1,
-    alignItems: 'center',
   },
-  container: {
+  pillFrame: {
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.xs,
+    overflow: 'hidden',
+  },
+  chipContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
-    borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: tokens.spacing.xs,
   },
   segment: {
     minHeight: 32,

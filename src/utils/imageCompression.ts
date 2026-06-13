@@ -1,5 +1,3 @@
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-
 type CompressionProfile = 'profileImage' | 'bannerImage' | 'designMedia' | 'messageImage';
 
 // Max dimension is applied to the LONGEST side only.
@@ -20,16 +18,16 @@ export type CompressedImage = {
   fileName: string;
 };
 
-/**
- * Compress a picked image while preserving its aspect ratio.
- *
- * - If the longest side exceeds the profile's maxLongSide, both dimensions are
- *   scaled down proportionally (no crop, no stretch).
- * - The result is always saved as JPEG at the profile's quality level.
- * - fileSize is intentionally not returned — callers should omit it from
- *   subsequent validation so the size check is skipped (the compressed output
- *   is always well under the 2 MB limit after this step).
- */
+// expo-image-manipulator is a native module that requires a native rebuild
+// (expo prebuild / dev-client build) to be available. We require it lazily
+// inside the function so a missing native module does NOT crash the module
+// graph at load time — callers already have try/catch and fall back to the
+// original uncompressed image when this throws.
+function loadManipulator(): typeof import('expo-image-manipulator') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require('expo-image-manipulator') as typeof import('expo-image-manipulator');
+}
+
 export async function compressPickedImage(
   uri: string,
   originalWidth: number,
@@ -37,6 +35,7 @@ export async function compressPickedImage(
   originalFileName: string | null | undefined,
   profile: CompressionProfile,
 ): Promise<CompressedImage> {
+  const { manipulateAsync, SaveFormat } = loadManipulator();
   const cfg = PROFILES[profile];
   const longSide = Math.max(originalWidth, originalHeight);
 

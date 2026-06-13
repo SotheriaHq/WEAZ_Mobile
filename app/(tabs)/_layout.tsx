@@ -205,7 +205,6 @@ export default function TabLayout() {
         return;
       }
 
-      setIsIslandExpanded(false);
       if (item.key !== NATIVE_ISLAND_KEYS.bag) {
         setOptimisticActiveKey(item.key as NativeIslandKey);
       }

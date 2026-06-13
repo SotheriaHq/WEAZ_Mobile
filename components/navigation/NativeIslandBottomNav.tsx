@@ -217,7 +217,8 @@ export function NativeIslandBottomNav({
   const expandedScaleAnim = React.useRef(new Animated.Value(collapsed ? 0.98 : 1)).current;
 
   React.useEffect(() => {
-    const easing = Easing.out(Easing.cubic);
+    const containerEasing = Easing.out(Easing.cubic);
+    const fadeEasing = Easing.out(Easing.quad);
     navLeftAnim.stopAnimation();
     navWidthAnim.stopAnimation();
     collapsedOpacityAnim.stopAnimation();
@@ -225,42 +226,50 @@ export function NativeIslandBottomNav({
     collapsedScaleAnim.stopAnimation();
     expandedScaleAnim.stopAnimation();
 
+    // All animations use useNativeDriver: false so they run on the same JS thread
+    // as the layout (width/left) animations. Mixing drivers causes desync that
+    // produces the "shaking" effect where items clip before they finish fading.
     Animated.parallel([
       Animated.timing(navLeftAnim, {
         toValue: navLeft,
-        duration: 260,
-        easing,
+        duration: 160,
+        easing: containerEasing,
         useNativeDriver: false,
       }),
       Animated.timing(navWidthAnim, {
         toValue: navWidth,
-        duration: 260,
-        easing,
+        duration: 160,
+        easing: containerEasing,
         useNativeDriver: false,
       }),
+      // Collapse: show collapsed chip quickly (140ms). Expand: hide it fast (80ms).
       Animated.timing(collapsedOpacityAnim, {
         toValue: collapsed ? 1 : 0,
-        duration: collapsed ? 180 : 120,
-        easing,
-        useNativeDriver: true,
+        duration: collapsed ? 140 : 80,
+        easing: fadeEasing,
+        useNativeDriver: false,
       }),
+      // Collapse: fade items out fast (80ms) BEFORE container finishes shrinking (160ms)
+      // so items never get visibly clipped. Expand: delay 20ms then fade in over 140ms
+      // so items reach full opacity as the container reaches full width.
       Animated.timing(expandedOpacityAnim, {
         toValue: collapsed ? 0 : 1,
-        duration: collapsed ? 220 : 180,
-        easing,
-        useNativeDriver: true,
+        duration: collapsed ? 80 : 140,
+        delay: collapsed ? 0 : 20,
+        easing: fadeEasing,
+        useNativeDriver: false,
       }),
       Animated.timing(collapsedScaleAnim, {
         toValue: collapsed ? 1 : 0.96,
-        duration: 240,
-        easing,
-        useNativeDriver: true,
+        duration: 160,
+        easing: containerEasing,
+        useNativeDriver: false,
       }),
       Animated.timing(expandedScaleAnim, {
         toValue: collapsed ? 0.98 : 1,
-        duration: 240,
-        easing,
-        useNativeDriver: true,
+        duration: 160,
+        easing: containerEasing,
+        useNativeDriver: false,
       }),
     ]).start();
   }, [
@@ -330,9 +339,7 @@ export function NativeIslandBottomNav({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Expand navigation. Current tab: ${activeItem?.label ?? 'WEAZ'}`}
-              onPress={() => {
-                onCollapsedPress?.();
-              }}
+              onPressIn={() => onCollapsedPress?.()}
               style={({ pressed }) => [styles.collapsedButton, pressed && styles.navItemPressed]}
             >
               <View style={styles.collapsedContentRow} pointerEvents="none">
@@ -425,7 +432,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderTopWidth: 0,
     shadowOffset: { width: 0, height: 8 },
-    overflow: 'hidden',
+    // overflow: 'hidden' intentionally absent — elevation + overflow:hidden on the
+    // same animated view causes Android to drop child layers. navItems handles clipping.
     zIndex: 100,
   },
   navGlassFill: {

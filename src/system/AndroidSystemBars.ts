@@ -59,7 +59,18 @@ export async function applyAndroidSystemBarsPolicy(scheme: ResolvedTheme, reason
   const operations: NavigationBarOperation[] = [
     {
       name: 'visibility',
-      run: () => NavigationBar.setVisibilityAsync('visible'),
+      // NavigationBar.NavigationBar.setHidden is the newer API (attached to the
+      // component function in .android.js). Fall back to deprecated setVisibilityAsync
+      // for builds where the native binding hasn't shipped yet — both are functionally
+      // equivalent (show the nav bar). The try/catch is needed because a synchronous
+      // throw here escapes Promise.allSettled; async rejections are already handled.
+      run: () => {
+        try {
+          return NavigationBar.NavigationBar.setHidden(false);
+        } catch {
+          return NavigationBar.setVisibilityAsync('visible');
+        }
+      },
     },
   ];
 

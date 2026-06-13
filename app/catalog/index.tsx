@@ -240,6 +240,9 @@ export default function CatalogScreen() {
   const [brandQrOpen, setBrandQrOpen] = useState(false);
   const [tabHeights, setTabHeights] = useState<Partial<Record<TabType, number>>>({});
   const tabPagerRef = useRef<ScrollView>(null);
+  // Tracks whether the last tab change came from a user swipe. When true, the
+  // activeTab effect skips the programmatic scrollTo to avoid fighting the pager.
+  const tabChangeFromSwipeRef = useRef(false);
   const completedTaskRefreshKeyRef = useRef<string | null>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
   const activeTabPagerHeight = tabHeights[activeTab];
@@ -522,9 +525,10 @@ export default function CatalogScreen() {
     const idx = TAB_ORDER.indexOf(activeTab);
     if (idx >= 0) {
       tabSwipeProgress.value = idx;
-      if (containerWidth > 0) {
+      if (!tabChangeFromSwipeRef.current && containerWidth > 0) {
         tabPagerRef.current?.scrollTo({ x: idx * containerWidth, animated: true });
       }
+      tabChangeFromSwipeRef.current = false;
     }
   }, [activeTab, containerWidth, tabSwipeProgress]);
 
@@ -567,6 +571,7 @@ export default function CatalogScreen() {
       const nextTab = TAB_ORDER[nextIndex];
       tabSwipeProgress.value = nextIndex;
       if (nextTab && nextTab !== activeTab) {
+        tabChangeFromSwipeRef.current = true;
         setActiveTab(nextTab);
       }
     },
@@ -1300,7 +1305,7 @@ export default function CatalogScreen() {
             onLayout={(event) => handleTabPageLayout('Shop', event)}
             style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
           >
-            {containerWidth > 0 && targetBrandId && (activeTab === 'Shop' || Boolean(routeProductId)) ? (
+            {containerWidth > 0 && targetBrandId ? (
               <BrandShopTab
                 brandId={targetBrandId}
                 isOwner={isOwner}
@@ -1308,9 +1313,7 @@ export default function CatalogScreen() {
                 initialProductId={routeProductId ?? null}
                 enabled={activeTab === 'Shop' || Boolean(routeProductId)}
               />
-            ) : (
-              <View style={styles.tabContent} />
-            )}
+            ) : null}
           </View>
 
           <View
