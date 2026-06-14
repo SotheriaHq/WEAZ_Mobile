@@ -564,11 +564,12 @@ async function uploadDesignAsset(
     for (const [key, value] of Object.entries(upload.uploadFields ?? {})) {
       formData.append(key, value);
     }
-    formData.append('file', {
-      uri: asset.uri,
-      type: asset.mimeType,
-      name: asset.fileName,
-    } as any);
+    const filePart = {
+      uri: String(asset.uri),
+      type: String(asset.mimeType || 'application/octet-stream'),
+      name: String(asset.fileName || `upload-${Date.now()}.bin`),
+    };
+    formData.append('file', filePart as any);
 
     const response = await fetch(upload.uploadUrl, {
       method: 'POST',
@@ -983,6 +984,7 @@ export async function deleteDesign(designId: string) {
 export async function saveDesignEditor(
   payload: DesignSavePayload,
   onProgress?: (value: number, message: string) => void,
+  onDesignCreated?: (designId: string) => void,
 ): Promise<{ id: string; detail: DesignDetail }> {
   const trimmedTitle = payload.title.trim() || 'Untitled design';
   
@@ -1033,12 +1035,14 @@ export async function saveDesignEditor(
       ...payload,
       title: trimmedTitle,
       assets: processedFilteredAssets,
+      action: 'draft', // FORCE draft on initialize, only finalize can publish
     });
     const designId = resolveDesignIdFromInitializeResponse(initialized);
 
     if (!designId) {
       throw new Error('The design draft could not be created.');
     }
+    onDesignCreated?.(designId);
 
     const uploads = Array.isArray(initialized.uploads) ? initialized.uploads : [];
     const completions: UploadCompletion[] = [];

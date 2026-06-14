@@ -24,8 +24,15 @@ function extractSuggestions(payload: unknown): TagSuggestion[] {
           : [];
 
   return items
-    .map((item: RawTagSuggestion) => {
-      const name = typeof item?.name === 'string' ? item.name.trim() : typeof item?.tag === 'string' ? item.tag.trim() : '';
+    .map((item: any) => {
+      const name =
+        typeof item === 'string'
+          ? item.trim()
+          : typeof item?.name === 'string'
+            ? item.name.trim()
+            : typeof item?.tag === 'string'
+              ? item.tag.trim()
+              : '';
       const usageCount = Number(item?.usageCount ?? item?.count ?? 0);
       return {
         name,

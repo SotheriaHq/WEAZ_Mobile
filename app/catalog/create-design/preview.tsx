@@ -179,16 +179,23 @@ export default function CreateDesignPreviewScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
       >
-        {selectedPreviewAsset ? (
+        {assets.length > 0 ? (
           <View style={styles.heroWrap}>
-            <StableImage
-              uri={selectedPreviewAsset.remoteUrl ?? selectedPreviewAsset.uri}
-              containerStyle={styles.heroImage}
-              imageStyle={styles.heroImage}
-            />
-            <View style={[styles.heroBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
+            {assets.map((asset, index) => (
+              <View 
+                key={asset.id} 
+                style={[StyleSheet.absoluteFill, { opacity: index === selectedPreviewIndex ? 1 : 0, zIndex: index === selectedPreviewIndex ? 1 : 0 }]}
+              >
+                <StableImage
+                  uri={asset.remoteUrl ?? asset.uri}
+                  containerStyle={styles.heroImage}
+                  imageStyle={styles.heroImage}
+                />
+              </View>
+            ))}
+            <View style={[styles.heroBadge, { backgroundColor: theme.colors.surfaceOverlay, zIndex: 10 }]}>
               <AppText variant="captionBold">
-                {selectedPreviewAsset.id === coverAssetId
+                {selectedPreviewAsset?.id === coverAssetId
                   ? `Cover - ${selectedPreviewSlotLabel}`
                   : selectedPreviewSlotLabel}
               </AppText>

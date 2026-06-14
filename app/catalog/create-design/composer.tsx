@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -139,6 +139,21 @@ export default function CreateDesignComposerScreen() {
     height: number;
   } | null>(null);
 
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
   const audienceLabel = getAudienceLabel(form.audience);
   const sizingLabel = DESIGN_SIZING_LABELS[form.sizingMode];
   const fitPreferenceLabel = DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference];
@@ -251,16 +266,16 @@ export default function CreateDesignComposerScreen() {
         missingRequiredMediaSlots.length > 0
           ? missingRequiredMediaSlots.map(getMediaViewSlotLabel).join(', ')
           : 'Front, Back, Left Side, and Right Side';
-      missing.push(`Add ${slotText} media.`);
+      missing.push(`Selected media (${slotText})`);
     }
-    if (form.title.trim().length === 0) missing.push('Add a title.');
-    if (!form.categoryId) missing.push('Choose what this item is.');
-    if (!form.subCategoryId) missing.push('Choose a garment type.');
-    if (!form.audience) missing.push('Choose who this item is for.');
-    if (selectedDiscoveryFilterCount === 0) missing.push('Add at least one style detail.');
-    if (selectedTags.length === 0) missing.push('Add at least one hashtag.');
-    if (form.customOrderEnabled && customMeasurementKeys.length === 0) missing.push('Choose required custom-order fields.');
-    if (form.customOrderEnabled && (!form.baseProductionCharge || !form.fabricCostPerYard)) missing.push('Add custom-order pricing.');
+    if (form.title.trim().length === 0) missing.push('Title');
+    if (!form.categoryId) missing.push('What is it?');
+    if (!form.subCategoryId) missing.push('Garment type');
+    if (!form.audience) missing.push('Who is it for?');
+    if (selectedDiscoveryFilterCount === 0) missing.push('Style details');
+    if (selectedTags.length === 0) missing.push('Tags');
+    if (form.customOrderEnabled && customMeasurementKeys.length === 0) missing.push('Required custom-order fields');
+    if (form.customOrderEnabled && (!form.baseProductionCharge || !form.fabricCostPerYard)) missing.push('Custom order pricing (Base charge & Fabric cost)');
     return missing;
   }, [
     assets.length,
@@ -538,7 +553,7 @@ export default function CreateDesignComposerScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.flex}>
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <View style={styles.header}>
           <AppBackButton fallbackHref="/catalog" />
@@ -749,7 +764,7 @@ export default function CreateDesignComposerScreen() {
             {
               backgroundColor: theme.colors.bg,
               borderTopColor: theme.colors.border,
-              paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
+              paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']) + keyboardHeight,
               paddingHorizontal: tokens.spacing.lg,
             },
           ]}
@@ -1027,6 +1042,39 @@ export default function CreateDesignComposerScreen() {
                 containerStyle={styles.priceInput}
               />
             </View>
+            <View style={[styles.switchRow, { marginTop: tokens.spacing.md }]}>
+              <View style={styles.switchCopy}>
+                <AppText variant="bodyBold">Rush orders</AppText>
+                <AppText variant="captionRegular" tone="muted">
+                  Allow buyers to pay extra for faster production.
+                </AppText>
+              </View>
+              <Switch
+                value={form.rushEnabled}
+                onValueChange={(value) => updateField('rushEnabled', value)}
+              />
+            </View>
+            {form.rushEnabled ? (
+              <View style={styles.priceRow}>
+                <Input
+                  label="Rush fee"
+                  value={form.rushFee}
+                  onChangeText={(value) => updateField('rushFee', value.replace(/[^0-9.]/g, ''))}
+                  keyboardType="decimal-pad"
+                  placeholder="2000"
+                  containerStyle={styles.priceInput}
+                />
+                <Input
+                  label="Rush time"
+                  value={form.rushProductionLeadDays}
+                  onChangeText={(value) => updateField('rushProductionLeadDays', value.replace(/[^0-9]/g, ''))}
+                  keyboardType="numeric"
+                  placeholder="3"
+                  containerStyle={styles.priceInput}
+                  helperText="Days to produce."
+                />
+              </View>
+            ) : null}
             <View style={styles.priceRow}>
               <Input
                 label="Delivery min days"
@@ -1072,6 +1120,13 @@ export default function CreateDesignComposerScreen() {
               onChangeText={(value) => updateField('buyerInstructionText', value)}
               multiline
               placeholder="Any special instructions for buyers..."
+            />
+            <Input
+              label="Private notes"
+              value={form.notes}
+              onChangeText={(value) => updateField('notes', value)}
+              multiline
+              placeholder="Internal notes about this configuration..."
             />
             <Input
               label="Revision policy"
@@ -1179,7 +1234,7 @@ export default function CreateDesignComposerScreen() {
         </AppText>
       </AppBottomSheet>
     </SafeAreaView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

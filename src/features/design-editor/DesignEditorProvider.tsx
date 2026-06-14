@@ -92,6 +92,10 @@ type FormState = {
   fallbackOutputYards: string;
   fitPreference: FitPreference;
   targetAgeGroup: TargetAgeGroup;
+  rushEnabled: boolean;
+  rushFee: string;
+  rushProductionLeadDays: string;
+  notes: string;
 };
 
 type SaveAction = 'draft' | 'publish';
@@ -166,6 +170,10 @@ const INITIAL_FORM: FormState = {
   fallbackOutputYards: '4',
   fitPreference: 'REGULAR',
   targetAgeGroup: 'ADULT',
+  rushEnabled: false,
+  rushFee: '',
+  rushProductionLeadDays: '',
+  notes: '',
 };
 
 const DesignEditorContext = createContext<ContextValue | null>(null);
@@ -205,6 +213,10 @@ function syncFormFromDetail(detail: DesignDetail): FormState {
     fallbackOutputYards: '4',
     fitPreference: detail.fitPreference ?? 'REGULAR',
     targetAgeGroup: detail.targetAgeGroup ?? 'ADULT',
+    rushEnabled: false,
+    rushFee: '',
+    rushProductionLeadDays: '',
+    notes: '',
   };
 }
 
@@ -310,6 +322,15 @@ function extractApiErrorMessage(error: any, fallback: string) {
   }
 
   if (error instanceof Error && error.message) {
+    if (
+      error.message.toLowerCase().includes('network') ||
+      error.message.toLowerCase().includes('formdata') ||
+      error.message.toLowerCase().includes('timeout') ||
+      error.message.toLowerCase().includes('unsupported') ||
+      error.message.toLowerCase().includes('json')
+    ) {
+      return fallback;
+    }
     return error.message;
   }
 
@@ -727,7 +748,10 @@ export function DesignEditorProvider({
               requiredFreeformPointIds: [],
               baseProductionCharge: form.baseProductionCharge,
               fabricCostPerYard: form.fabricCostPerYard,
-              rushEnabled: false,
+              rushEnabled: form.rushEnabled,
+              rushFee: form.rushFee || undefined,
+              rushProductionLeadDays: form.rushProductionLeadDays ? Number(form.rushProductionLeadDays) : undefined,
+              notes: form.notes || undefined,
               productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : 7,
               deliveryMinDays: form.deliveryMinDays ? Number(form.deliveryMinDays) : 2,
               deliveryMaxDays: form.deliveryMaxDays ? Number(form.deliveryMaxDays) : 5,
@@ -816,6 +840,9 @@ export function DesignEditorProvider({
                 setSaveProgress(value);
                 setSaveMessage(message);
               }
+            },
+            (id) => {
+              setActiveDesignId(id);
             },
           );
 
