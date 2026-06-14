@@ -25,6 +25,8 @@ import {
   useMessagingRealtimeChannel,
   useUnreadMessageCount,
 } from '@/src/realtime/messaging';
+import { resolveProfileImageSource } from '@/src/utils/profileImage';
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { navPerf } from '@/src/utils/navPerf';
 import { applyAndroidSystemBarsPolicy } from '@/src/system/AndroidSystemBars';
@@ -66,6 +68,18 @@ export default function TabLayout() {
   const canOpenProfileMenu = status === 'authenticated';
   const profileNavLabel = canOpenProfileMenu ? 'Me' : 'Sign In';
   const profileNavEmoji = canOpenProfileMenu ? NATIVE_ISLAND_ICONS.profile : NATIVE_ISLAND_ICONS.signIn;
+  // Resolve the signed-in user's profile photo so the "Me" island item shows the
+  // real avatar instead of the default 👤 emoji. Falls back to the emoji when no
+  // image is available or while it resolves.
+  const profileAvatarSource = resolveProfileImageSource(user);
+  const { uri: profileAvatarResolvedUri } = useResolvedImageAsset({
+    src: profileAvatarSource.src,
+    fileId: profileAvatarSource.fileId,
+    enabled: canOpenProfileMenu && Boolean(profileAvatarSource.src || profileAvatarSource.fileId),
+  });
+  const profileNavAvatarUri = canOpenProfileMenu
+    ? profileAvatarResolvedUri ?? profileAvatarSource.src ?? null
+    : null;
   const { bottomOffset: islandBottomOffset, islandWidth } = islandLayout;
   const isRootTabPath =
     pathname === '/' ||
@@ -155,6 +169,7 @@ export default function TabLayout() {
         isBrand,
         profileLabel: profileNavLabel,
         profileIcon: profileNavEmoji,
+        profileAvatarUri: profileNavAvatarUri,
         profileBadge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
         inboxBadge: canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
         bagBadge: bagCount.combinedCount,
@@ -166,6 +181,7 @@ export default function TabLayout() {
       isBrand,
       messageCountReady,
       notificationCountReady,
+      profileNavAvatarUri,
       profileNavEmoji,
       profileNavLabel,
       unreadMessageCount,

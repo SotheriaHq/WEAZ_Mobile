@@ -22,6 +22,8 @@ import {
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { resolveProfileImageSource } from '@/src/utils/profileImage';
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 const NAV_EMOJI = {
@@ -192,6 +194,18 @@ export function CatalogIslandBottomNav() {
     userId: user?.id ?? null,
   });
 
+  // Resolve the signed-in user's profile photo so the "Profile" island item shows
+  // the real avatar instead of the default 👤 emoji.
+  const profileAvatarSource = resolveProfileImageSource(user);
+  const { uri: profileAvatarResolvedUri } = useResolvedImageAsset({
+    src: profileAvatarSource.src,
+    fileId: profileAvatarSource.fileId,
+    enabled: canOpenProfileMenu && Boolean(profileAvatarSource.src || profileAvatarSource.fileId),
+  });
+  const profileNavAvatarUri = canOpenProfileMenu
+    ? profileAvatarResolvedUri ?? profileAvatarSource.src ?? null
+    : null;
+
   const items = useMemo<NativeIslandNavItem[]>(
     () => [
       { key: 'designs', label: 'Runway', emoji: NAV_EMOJI.designs, active: displayedActiveKey === 'designs' },
@@ -207,11 +221,12 @@ export function CatalogIslandBottomNav() {
         key: 'profile',
         label: 'Profile',
         emoji: '👤',
+        avatarUri: profileNavAvatarUri,
         active: displayedActiveKey === 'profile',
         badge: notificationCountReady ? unreadNotificationCount : undefined,
       },
     ],
-    [displayedActiveKey, messageCountReady, notificationCountReady, unreadMessageCount, unreadNotificationCount],
+    [displayedActiveKey, messageCountReady, notificationCountReady, profileNavAvatarUri, unreadMessageCount, unreadNotificationCount],
   );
 
   const handleSelect = useCallback(

@@ -34,6 +34,7 @@ export function buildNativeIslandItems(args: {
   isBrand: boolean;
   profileLabel: string;
   profileIcon: string;
+  profileAvatarUri?: string | null;
   profileBadge?: number;
   inboxBadge?: number;
   bagBadge?: number;
@@ -69,6 +70,7 @@ export function buildNativeIslandItems(args: {
       key: NATIVE_ISLAND_KEYS.profile,
       label: args.profileLabel,
       emoji: args.profileIcon,
+      avatarUri: args.profileAvatarUri ?? null,
       active: args.activeKey === NATIVE_ISLAND_KEYS.profile,
       badge: args.profileBadge,
     },

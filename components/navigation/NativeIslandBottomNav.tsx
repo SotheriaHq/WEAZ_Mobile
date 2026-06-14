@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { AppText } from '@/components/ui/AppText';
@@ -17,6 +17,10 @@ export type NativeIslandNavItem = {
   key: string;
   label: string;
   emoji: string;
+  // When set (e.g. the signed-in user's resolved profile photo for the "Me"
+  // item), the island renders this image as a rounded-square glyph instead of
+  // the emoji. Falls back to the emoji when null/undefined.
+  avatarUri?: string | null;
   active?: boolean;
   disabled?: boolean;
   badge?: number;
@@ -91,12 +95,14 @@ function getCenteredLeft(windowWidth: number, width: number) {
 export function NativeIslandTabIcon({
   label,
   emoji,
+  avatarUri,
   focused,
   badge,
   compact,
 }: {
   label: string;
   emoji: string;
+  avatarUri?: string | null;
   focused: boolean;
   badge?: number;
   compact?: boolean;
@@ -127,9 +133,17 @@ export function NativeIslandTabIcon({
         <View style={chipStyle}>
           <View style={styles.tabGlyphStack}>
             <View style={styles.tabEmojiWrap}>
-              <Text style={[styles.tabEmoji, { fontSize: focused ? 20 : 19, opacity: focused ? 1 : 0.76 }]}>
-                {emoji}
-              </Text>
+              {avatarUri ? (
+                <Image
+                  source={{ uri: avatarUri }}
+                  style={[styles.tabAvatar, { opacity: focused ? 1 : 0.82 }]}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={[styles.tabEmoji, { fontSize: focused ? 20 : 19, opacity: focused ? 1 : 0.76 }]}>
+                  {emoji}
+                </Text>
+              )}
             </View>
             <View style={styles.tabLabelWrap}>
               <AppText
@@ -345,9 +359,17 @@ export function NativeIslandBottomNav({
               <View style={styles.collapsedContentRow} pointerEvents="none">
                 {collapsedLeftItems.map((item) => (
                   <View key={item.key} style={[styles.collapsedDeckItem, { width: collapsedPreviewWidth }]}>
-                    <Text style={styles.collapsedDeckEmoji}>
-                      {item.emoji}
-                    </Text>
+                    {item.avatarUri ? (
+                      <Image
+                        source={{ uri: item.avatarUri }}
+                        style={styles.collapsedDeckAvatar}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={styles.collapsedDeckEmoji}>
+                        {item.emoji}
+                      </Text>
+                    )}
                     {typeof item.badge === 'number' && item.badge > 0 ? (
                       <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
                     ) : null}
@@ -362,7 +384,15 @@ export function NativeIslandBottomNav({
                     },
                   ]}
                 >
-                  <Text style={styles.collapsedActiveEmoji}>{activeItem?.emoji ?? String.fromCodePoint(0x2022)}</Text>
+                  {activeItem?.avatarUri ? (
+                    <Image
+                      source={{ uri: activeItem.avatarUri }}
+                      style={styles.collapsedActiveAvatar}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text style={styles.collapsedActiveEmoji}>{activeItem?.emoji ?? String.fromCodePoint(0x2022)}</Text>
+                  )}
                   <AppText
                     variant="captionBold"
                     tone="primary"
@@ -375,9 +405,17 @@ export function NativeIslandBottomNav({
                 </View>
                 {collapsedRightItems.map((item) => (
                   <View key={item.key} style={[styles.collapsedDeckItem, { width: collapsedPreviewWidth }]}>
-                    <Text style={styles.collapsedDeckEmoji}>
-                      {item.emoji}
-                    </Text>
+                    {item.avatarUri ? (
+                      <Image
+                        source={{ uri: item.avatarUri }}
+                        style={styles.collapsedDeckAvatar}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={styles.collapsedDeckEmoji}>
+                        {item.emoji}
+                      </Text>
+                    )}
                     {typeof item.badge === 'number' && item.badge > 0 ? (
                       <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
                     ) : null}
@@ -413,6 +451,7 @@ export function NativeIslandBottomNav({
                 <NativeIslandTabIcon
                   label={item.label}
                   emoji={item.emoji}
+                  avatarUri={item.avatarUri}
                   focused={Boolean(item.active && !item.disabled)}
                   badge={item.badge}
                   compact={compact}
@@ -558,6 +597,23 @@ const styles = StyleSheet.create({
   tabEmoji: {
     lineHeight: 20,
     textAlign: 'center',
+  },
+  // Rule 6: avatars are rounded-square, never circles.
+  tabAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+  },
+  collapsedActiveAvatar: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+  },
+  collapsedDeckAvatar: {
+    width: 16,
+    height: 16,
+    borderRadius: 5,
+    opacity: 0.7,
   },
   tabGlyphWrap: {
     position: 'relative',

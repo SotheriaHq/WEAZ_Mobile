@@ -586,7 +586,19 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
       (derivedLocation || null) ??
       null,
     brandTags: tagSource
-      .map((tag) => asString(tag))
+      .map((tag) => {
+        // Tags may arrive as plain strings or as objects ({ name|label|tag|value }).
+        // Resolve both shapes so brand tags reliably populate in the UI.
+        if (typeof tag === 'string') return asString(tag);
+        const tagRecord = asRecord(tag);
+        return (
+          asString(tagRecord.name) ??
+          asString(tagRecord.label) ??
+          asString(tagRecord.tag) ??
+          asString(tagRecord.value) ??
+          asString(tagRecord.normalizedName)
+        );
+      })
       .filter((tag): tag is string => Boolean(tag)),
     socialInstagram:
       asString(source.socialInstagram) ??

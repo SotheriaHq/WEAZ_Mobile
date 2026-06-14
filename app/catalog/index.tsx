@@ -194,7 +194,7 @@ export default function CatalogScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const { standardScreenBottomPadding } = useScreenChrome();
   const { user } = useAuth();
-  const { status, userId, userEmailVerified, updateUser } = useAuthSession();
+  const { status, userId, userType, userEmailVerified, updateUser } = useAuthSession();
   const toast = useToast();
   const queryClient = useQueryClient();
   const isDark = scheme === 'dark';
@@ -265,7 +265,14 @@ export default function CatalogScreen() {
   const activeBrandId = getActiveBrandId(user);
   const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
   const targetBrandId = routeBrandId || activeBrandId || null;
-  const patchEnabled = Boolean(!isOwner && status === 'authenticated' && targetBrandId);
+  // Patching is a REGULAR-user-only action. The backend `patches/check` endpoint
+  // is guarded by UserTypeGuard(REGULAR) and 403s for BRAND/owner/guest viewers,
+  // which surfaced as a runtime "Endpoint requires user type REGULAR" error.
+  // Only call it when the current viewer is an authenticated REGULAR user who is
+  // not the owner of this brand.
+  const patchEnabled = Boolean(
+    !isOwner && status === 'authenticated' && userType === 'REGULAR' && targetBrandId,
+  );
   const {
     isPatched,
     loading: patchLoading,
@@ -500,6 +507,16 @@ export default function CatalogScreen() {
     setVisibilityFilter(normalizeVisibility(routeVisibility));
   }, [routeVisibility]);
 
+  // Visitors only ever see published public content. Owner-only sub-filters
+  // (Private/Drafts/In Review/Changes Requested/Rejected) must never be selected
+  // for a non-owner — force the Public filter so the visitor view cannot request
+  // or display owner-only statuses, and the sub-filter bar is hidden below.
+  useEffect(() => {
+    if (!isOwner && visibilityFilter !== 'Public') {
+      setVisibilityFilter('Public');
+    }
+  }, [isOwner, visibilityFilter]);
+
   useEffect(() => {
     setIsAvatarModalOpen(false);
   }, [isOwner, targetBrandId]);
@@ -627,6 +644,31 @@ export default function CatalogScreen() {
       params: { designId: id },
     } as any);
   }, []);
+
+  // Dismiss a failed publish/draft background task from the Needs-attention banner.
+  const handleDismissFailedTask = useCallback((taskId: string) => {
+    removeDesignEditorBackgroundTask(taskId);
+    setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
+  }, []);
+
+  // Retry a failed publish/draft: route to the editor pre-populated with the
+  // previous design when we have its id, otherwise open a fresh composer. The
+  // failed task is cleared so it no longer lingers.
+  const handleRetryFailedTask = useCallback(
+    (task: DesignEditorBackgroundTask) => {
+      removeDesignEditorBackgroundTask(task.id);
+      setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
+      if (task.designId) {
+        router.push({
+          pathname: '/designs/[designId]/edit',
+          params: { designId: task.designId },
+        } as any);
+        return;
+      }
+      router.push('/catalog/create-design/composer' as any);
+    },
+    [],
+  );
 
   const handleDeleteCollection = useCallback((id: string) => {
     const target = [...drafts, ...collections].find((collection) => collection.id === id);
@@ -810,9 +852,21 @@ export default function CatalogScreen() {
       return visibilityFilter === 'Public';
     });
   }, [activeTab, designBackgroundTasks, isOwner, visibilityFilter]);
+  // Failed publish/draft attempts must NEVER render as cards in the Public/Private
+  // grid (they showed as "Validation failed / Image unavailable" cards). Only
+  // in-progress ("running") tasks render as optimistic cards; failed tasks are
+  // surfaced separately in the Needs-attention banner with Retry/Dismiss.
+  const failedDesignTasks = useMemo(
+    () => visibleDesignBackgroundTasks.filter((task) => task.status === 'failed'),
+    [visibleDesignBackgroundTasks],
+  );
+  const runningDesignBackgroundTasks = useMemo(
+    () => visibleDesignBackgroundTasks.filter((task) => task.status === 'running'),
+    [visibleDesignBackgroundTasks],
+  );
   const backgroundTaskCollections = useMemo<CollectionDto[]>(
     () =>
-      visibleDesignBackgroundTasks.map((task) => ({
+      runningDesignBackgroundTasks.map((task) => ({
         id: task.id,
         entityType: 'DESIGN',
         title: task.title,
@@ -839,19 +893,16 @@ export default function CatalogScreen() {
         ownerId: userId ?? targetBrandId ?? '',
         createdAt: new Date(task.startedAt).toISOString(),
         updatedAt: new Date(task.updatedAt).toISOString(),
-        clientStatus: task.status === 'failed' ? 'publish-failed' : 'publishing',
-        clientStatusMessage:
-          task.status === 'failed'
-            ? task.error ?? (task.action === 'draft' ? 'Draft save failed' : 'Publish failed')
-            : task.message,
+        clientStatus: 'publishing',
+        clientStatusMessage: task.message,
       })),
-    [effectiveProfile, ownerAvatarUri, targetBrandId, userId, visibleDesignBackgroundTasks],
+    [effectiveProfile, ownerAvatarUri, targetBrandId, userId, runningDesignBackgroundTasks],
   );
   const currentCollectionsWithBackgroundTasks = useMemo(() => {
     if (backgroundTaskCollections.length === 0) return currentCollections;
 
     const taskDesignIds = new Set(
-      visibleDesignBackgroundTasks
+      runningDesignBackgroundTasks
         .map((task) => task.designId)
         .filter((id): id is string => Boolean(id)),
     );
@@ -860,7 +911,7 @@ export default function CatalogScreen() {
       ...backgroundTaskCollections,
       ...currentCollections.filter((collection) => !taskDesignIds.has(collection.id)),
     ];
-  }, [backgroundTaskCollections, currentCollections, visibleDesignBackgroundTasks]);
+  }, [backgroundTaskCollections, currentCollections, runningDesignBackgroundTasks]);
   const savedCatalogIds = useMemo(
     () =>
       Array.from(
@@ -1269,7 +1320,7 @@ export default function CatalogScreen() {
             isLoading={false}
             isPatched={isPatched}
             patchLoading={patchLoading}
-            onPatch={status === 'authenticated' ? handlePatch : undefined}
+            onPatch={patchEnabled ? handlePatch : undefined}
             onViewAvatar={handleViewVisitorAvatar}
             onShare={() => setShareActionsOpen(true)}
             qrTargetUrl={profileQrTargetUrl}
@@ -1325,14 +1376,54 @@ export default function CatalogScreen() {
             onLayout={(event) => handleTabPageLayout('Collections', event)}
             style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
           >
-              <View style={styles.catalogControls}>
-                <VisibilityFilter
-                  selected={visibilityFilter}
-                  onChange={setVisibilityFilter}
-                  showDrafts={isOwner}
-                  draftsCount={drafts.length}
-                />
-              </View>
+              {isOwner ? (
+                <View style={styles.catalogControls}>
+                  <VisibilityFilter
+                    selected={visibilityFilter}
+                    onChange={setVisibilityFilter}
+                    showDrafts={isOwner}
+                    draftsCount={drafts.length}
+                  />
+                </View>
+              ) : null}
+
+              {isOwner && failedDesignTasks.length > 0 ? (
+                <View style={styles.failedTaskList}>
+                  {failedDesignTasks.map((task) => (
+                    <View
+                      key={task.id}
+                      style={[
+                        styles.failedTaskCard,
+                        { backgroundColor: theme.colors.surface, borderColor: theme.colors.danger },
+                      ]}
+                    >
+                      <AppText variant="captionBold" tone="danger" numberOfLines={1}>
+                        ⚠️ {task.action === 'draft' ? 'Draft failed' : 'Publish failed'}
+                      </AppText>
+                      <AppText variant="bodyBold" numberOfLines={1}>
+                        {task.title}
+                      </AppText>
+                      <AppText variant="captionRegular" tone="muted" numberOfLines={2}>
+                        {task.error ?? task.message ?? 'Something went wrong. Please try again.'}
+                      </AppText>
+                      <View style={styles.failedTaskActions}>
+                        <Button
+                          title="Retry / Edit"
+                          variant="primary"
+                          size="sm"
+                          onPress={() => handleRetryFailedTask(task)}
+                        />
+                        <Button
+                          title="Dismiss"
+                          variant="outline"
+                          size="sm"
+                          onPress={() => handleDismissFailedTask(task.id)}
+                        />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
 
               <CollectionsGrid
                 collections={currentCollectionsWithBackgroundTasks}
@@ -1503,6 +1594,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.lg,
     paddingTop: tokens.spacing.md,
     gap: tokens.spacing.sm,
+  },
+  failedTaskList: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+  },
+  failedTaskCard: {
+    borderWidth: 1,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.xs,
+  },
+  failedTaskActions: {
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.xs,
   },
   searchBox: {
     flex: 1,
