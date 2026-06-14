@@ -121,6 +121,9 @@ export const queryKeys = {
     filters: (view?: string | null) => ['categories', 'filters', normalizeId(view)] as const,
     designCategories: () => ['categories', 'designCategories'] as const,
   },
+  tags: {
+    popular: (limit?: number | null) => ['tags', 'popular', limit ?? 50] as const,
+  },
   measurementPoints: {
     byGender: (gender?: string | null) => ['measurementPoints', normalizeId(gender) || 'all'] as const,
   },

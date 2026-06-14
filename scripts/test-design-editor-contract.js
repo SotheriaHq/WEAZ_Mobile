@@ -58,6 +58,13 @@ function main() {
   const designApiSource = fs.readFileSync(designApiPath, 'utf8');
   assert.match(designApiSource, /apiClient\.post\('\/designs\/initialize'/);
   assert.match(designApiSource, /draftOnly:\s*payload\.action === 'draft'/);
+  // The backend DesignMetadataDto does not include isAvailableInStore and runs a
+  // whitelist ValidationPipe, so the field must never be sent on initialize.
+  assert.doesNotMatch(
+    designApiSource,
+    /isAvailableInStore:\s*(false|true)/,
+    'Design initialize payload must not send isAvailableInStore (backend rejects unknown fields).',
+  );
   assert.ok(designApiSource.includes('`/designs/${designId}/finalize`'));
   assert.match(designApiSource, /designMetadata:\s*buildMetadata\(payload\)/);
   assert.match(designApiSource, /viewSlot:\s*toBackendMediaViewSlot\(asset\.viewSlot\)/);
@@ -107,6 +114,23 @@ function main() {
     /visibility:\s*targetVisibility/,
     'Design saves should route to the matching public, private, or draft catalog filter.',
   );
+  // Go Live must route by the design's resolved publication status so newly
+  // submitted (IN_REVIEW) designs land on the In Review tab, not Public.
+  assert.match(
+    providerSource,
+    /case 'IN_REVIEW':\s*\n\s*return 'In Review';/,
+    'Go Live must route IN_REVIEW designs to the In Review tab.',
+  );
+  assert.match(
+    providerSource,
+    /resolvePublishVisibility\(result\.detail\.status\)/,
+    'Publish routing must be derived from the saved design publication status.',
+  );
+  assert.match(
+    providerSource,
+    /invalidateQueries\(\{\s*queryKey:\s*\['brand',\s*'collections'\]/,
+    'Go Live must invalidate the owner brand collections cache.',
+  );
   assert.ok(
     providerSource.indexOf('const result = await saveDesignEditor') <
       providerSource.indexOf("pathname: '/catalog'"),
@@ -125,6 +149,59 @@ function main() {
   assert.match(composerSource, /draftCategoryId/);
   assert.match(composerSource, /Use selection/);
   assert.match(composerSource, /loading=\{tagsLoading\}/);
+  // Tags must render/select from a cached query and feed the multi-select sheet.
+  assert.match(
+    composerSource,
+    /queryKeys\.tags\.popular\(50\)/,
+    'Hashtags must load through the cached tags query key.',
+  );
+  assert.match(
+    composerSource,
+    /options=\{tagOptions\}/,
+    'Hashtag sheet must be fed the resolved tag options so suggestions render.',
+  );
+  // Required indicators must be inline asterisks, not spelled-out "Required" values.
+  assert.doesNotMatch(
+    composerSource,
+    /:\s*'Required'/,
+    'Composer must not display the literal "Required" text as a field value.',
+  );
+
+  const requiredLabelSource = fs.readFileSync(
+    path.join(repoRoot, 'components', 'ui', 'RequiredFieldLabel.tsx'),
+    'utf8',
+  );
+  assert.match(
+    requiredLabelSource,
+    /tone="danger">\s*\*/,
+    'RequiredFieldLabel must render an inline red asterisk, not the word "Required".',
+  );
+  assert.doesNotMatch(
+    requiredLabelSource,
+    />\s*Required\s*</,
+    'RequiredFieldLabel must not spell out "Required".',
+  );
+
+  // Image compression must degrade gracefully when the native module is missing.
+  const compressionSource = fs.readFileSync(
+    path.join(repoRoot, 'src', 'utils', 'imageCompression.ts'),
+    'utf8',
+  );
+  assert.match(
+    compressionSource,
+    /function getManipulator\(\)/,
+    'Image compression must guard native module availability.',
+  );
+  assert.match(
+    compressionSource,
+    /if \(!manipulator\) \{\s*\n\s*return originalImage\(/,
+    'Image compression must fall back to the original image when the native module is unavailable.',
+  );
+  assert.match(
+    compressionSource,
+    /catch \{\s*\n\s*return originalImage\(/,
+    'Image compression must never throw — it returns the original image on failure.',
+  );
 
   const brandApiSource = fs.readFileSync(brandApiPath, 'utf8');
   assert.match(

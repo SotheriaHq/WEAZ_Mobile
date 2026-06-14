@@ -11,6 +11,8 @@ type Props = {
   value?: string | null;
   /** Tone for the inline value (e.g. "danger" to flag a required-missing field). */
   valueTone?: 'muted' | 'danger' | 'primary' | 'default';
+  /** Renders an inline red asterisk beside the title (no spelled-out "Required"). */
+  required?: boolean;
   leading?: string | React.ReactNode;
   trailing?: React.ReactNode;
   disabled?: boolean;
@@ -24,6 +26,7 @@ export function OptionRow({
   subtitle,
   value,
   valueTone = 'muted',
+  required = false,
   leading,
   trailing,
   disabled,
@@ -51,6 +54,7 @@ export function OptionRow({
       <View style={styles.copy}>
         <AppText variant="bodyBold" numberOfLines={1}>
           {title}
+          {required ? <AppText variant="bodyBold" tone="danger"> *</AppText> : null}
         </AppText>
         {subtitle ? (
           <AppText variant="captionRegular" tone="muted" numberOfLines={2}>

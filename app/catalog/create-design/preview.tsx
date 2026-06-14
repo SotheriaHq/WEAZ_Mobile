@@ -318,15 +318,25 @@ export default function CreateDesignPreviewScreen() {
           <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
             Add at least one field or one media item to save a draft.
           </AppText>
-        ) : null}
-        <Button title="Back to edit" variant="outline" onPress={() => router.replace('/catalog/create-design/composer' as any)} fullWidth />
-        <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-          Going live confirms these images belong to this design and match the selected views.
-        </AppText>
+        ) : (
+          <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+            Going live confirms these images belong to this design and match the selected views.
+          </AppText>
+        )}
+        {/* Compact footer row: ← Edit | Save Draft | Go Live (Issue #12). */}
         <View style={styles.actionRow}>
           <View style={styles.actionButton}>
             <Button
-              title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
+              title="← Edit"
+              variant="outline"
+              disabled={isSaving}
+              onPress={() => router.replace('/catalog/create-design/composer' as any)}
+              fullWidth
+            />
+          </View>
+          <View style={styles.actionButton}>
+            <Button
+              title={saveState.action === 'draft' ? 'Saving…' : 'Save Draft'}
               variant="secondary"
               loading={saveState.action === 'draft'}
               disabled={!canSaveDraft || isSaving}
@@ -336,7 +346,7 @@ export default function CreateDesignPreviewScreen() {
           </View>
           <View style={styles.actionButton}>
             <Button
-              title={saveState.action === 'publish' ? 'Going live...' : 'Go live'}
+              title={saveState.action === 'publish' ? 'Going live…' : 'Go Live'}
               loading={saveState.action === 'publish'}
               disabled={!canPublish || isSaving}
               onPress={() => void save('publish')}

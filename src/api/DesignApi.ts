@@ -609,7 +609,12 @@ async function initializeNewDesignUploads(payload: DesignSavePayload): Promise<I
       size: asset.fileSize,
       viewSlot: toBackendMediaViewSlot(asset.viewSlot),
     })),
-    isAvailableInStore: false,
+    // NOTE: do NOT send `isAvailableInStore` — it is not part of the backend
+    // InitializeDesignUploadDto/DesignMetadataDto and the global ValidationPipe
+    // runs with forbidNonWhitelisted, so including it 400s with
+    // "property isAvailableInStore should not exist". Availability (RTW / custom
+    // only / both) is expressed via `sizingMode` + `customOrderEnabled`, which
+    // are already part of buildMetadata above.
     draftOnly: payload.action === 'draft',
   });
 

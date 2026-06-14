@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
@@ -31,6 +32,7 @@ import {
   getMissingRequiredMediaSlots,
 } from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
+import { queryKeys } from '@/src/query/queryKeys';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import type { DesignEditorMediaSource } from '@/src/features/design-editor/designEditorMediaFlow';
 import { perfMeasure } from '@/src/utils/perf';
@@ -97,6 +99,7 @@ export default function CreateDesignComposerScreen() {
   } = useDesignEditor();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ openPicker?: string | string[]; pickerSource?: string | string[]; blank?: string | string[] }>();
   const openPickerParam = Array.isArray(params.openPicker) ? params.openPicker[0] : params.openPicker;
   const pickerSourceParam = Array.isArray(params.pickerSource) ? params.pickerSource[0] : params.pickerSource;
@@ -140,10 +143,18 @@ export default function CreateDesignComposerScreen() {
   const sizingLabel = DESIGN_SIZING_LABELS[form.sizingMode];
   const fitPreferenceLabel = DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference];
   const targetAgeLabel = DESIGN_TARGET_AGE_LABELS[form.targetAgeGroup];
+  // Reflect the actual availability selection instead of a static label so the
+  // chosen state (custom order vs standard) is always visible (Issue #6).
+  const availabilityLabel =
+    form.customOrderEnabled ||
+    form.sizingMode === 'CUSTOM' ||
+    form.sizingMode === 'RTW_PLUS_FITTINGS'
+      ? 'Custom order'
+      : 'Standard';
   const selectedSubCategory =
     selectedCategory?.subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
-  const categoryValue = selectedCategory?.name ?? 'Required';
-  const garmentTypeValue = selectedSubCategory?.name ?? (selectedCategory ? 'Required' : 'Choose item first');
+  const categoryValue = selectedCategory?.name ?? 'Select';
+  const garmentTypeValue = selectedSubCategory?.name ?? (selectedCategory ? 'Select' : 'Choose item first');
 
   const categoryOptions = useMemo(
     () => categories.map((category) => ({ value: category.id, label: category.name })),
@@ -346,29 +357,45 @@ export default function CreateDesignComposerScreen() {
     };
   }, [handlePickMedia, initialPickerSource, isEditMode, shouldOpenInitialPicker]);
 
-  const loadTags = useCallback(async (isActive: () => boolean = () => true) => {
-    setTagsLoading(true);
-    setTagError(null);
+  const loadTags = useCallback(
+    async (isActive: () => boolean = () => true, options?: { forceRefresh?: boolean }) => {
+      // Seed from the React Query cache so re-opening the hashtag sheet shows the
+      // popular tags immediately instead of flashing a loader (Issue #2).
+      const cacheKey = queryKeys.tags.popular(50);
+      const cached = queryClient.getQueryData<{ name: string; usageCount: number }[]>(cacheKey);
+      if (cached && cached.length > 0 && !options?.forceRefresh) {
+        if (isActive()) {
+          setTagSuggestions(cached);
+          setTagError(null);
+        }
+      } else {
+        setTagsLoading(true);
+      }
+      setTagError(null);
 
-    await TagsApi.getTags(50)
-      .then((items) => {
+      try {
+        const items = await queryClient.fetchQuery({
+          queryKey: cacheKey,
+          queryFn: () => TagsApi.getTags(50),
+          staleTime: 5 * 60 * 1000,
+        });
         if (isActive()) {
           setTagSuggestions(items);
           setTagError(null);
         }
-      })
-      .catch(() => {
-        if (isActive()) {
+      } catch {
+        if (isActive() && !(cached && cached.length > 0)) {
           setTagSuggestions([]);
           setTagError('Could not load hashtags. You can still add your own.');
         }
-      })
-      .finally(() => {
+      } finally {
         if (isActive()) {
           setTagsLoading(false);
         }
-      });
-  }, []);
+      }
+    },
+    [queryClient],
+  );
 
   useEffect(() => {
     if (!tagsOpen) return;
@@ -600,6 +627,7 @@ export default function CreateDesignComposerScreen() {
                 <OptionRow
                   leading="🏷️"
                   title="What is it?"
+                  required
                   subtitle="Choose the garment or item family."
                   value={categoryValue}
                   valueTone={form.categoryId ? 'muted' : 'danger'}
@@ -608,6 +636,7 @@ export default function CreateDesignComposerScreen() {
                 <OptionRow
                   leading="💸"
                   title="Garment type"
+                  required
                   subtitle="Choose the specific garment type."
                   value={garmentTypeValue}
                   valueTone={form.subCategoryId ? 'muted' : 'danger'}
@@ -627,8 +656,9 @@ export default function CreateDesignComposerScreen() {
                 />
                 <OptionRow
                   title="Style details"
+                  required
                   subtitle="Style, fabric, color family, and fit."
-                  value={styleDetailsCount > 0 ? `${styleDetailsCount} selected` : selectedDiscoveryFilterCount > 0 ? 'Optional' : 'Required'}
+                  value={styleDetailsCount > 0 ? `${styleDetailsCount} selected` : selectedDiscoveryFilterCount > 0 ? 'Optional' : 'Select'}
                   valueTone={selectedDiscoveryFilterCount > 0 ? 'muted' : 'danger'}
                   onPress={() => setStyleDetailsOpen(true)}
                 />
@@ -653,7 +683,7 @@ export default function CreateDesignComposerScreen() {
                   leading="📦"
                   title="Availability"
                   subtitle={`${sizingLabel} · ${fitPreferenceLabel}`}
-                  value="Open"
+                  value={availabilityLabel}
                   onPress={() => setAvailabilityOpen(true)}
                 />
                 <OptionRow
@@ -670,8 +700,9 @@ export default function CreateDesignComposerScreen() {
                 <OptionRow
                   leading="⚙️"
                   title="Hashtags"
+                  required
                   subtitle="Add searchable social tags."
-                  value={selectedTags.length > 0 ? `${selectedTags.length} selected` : 'Required'}
+                  value={selectedTags.length > 0 ? `${selectedTags.length} selected` : 'Select'}
                   valueTone={selectedTags.length > 0 ? 'muted' : 'danger'}
                   divider={false}
                   onPress={() => setTagsOpen(true)}
@@ -833,7 +864,7 @@ export default function CreateDesignComposerScreen() {
         emptyMessage="No suggestions found. Type a hashtag and tap Add."
         errorMessage={tagError}
         loading={tagsLoading}
-        onRetry={() => void loadTags()}
+        onRetry={() => void loadTags(() => true, { forceRefresh: true })}
         maxSelected={10}
         popularLabel="Popular Hashtags:"
         searchInputLabel="Search hashtags"

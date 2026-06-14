@@ -786,11 +786,23 @@ export function DesignEditorProvider({
           designId: activeDesignId,
           message: action === 'publish' ? 'Going live...' : 'Saving draft...',
         });
-        const targetVisibility = action === 'draft'
-          ? 'Drafts'
-          : form.visibility === 'PRIVATE'
-            ? 'Private'
-            : 'Public';
+        const resolvePublishVisibility = (status?: string | null) => {
+          // After Go Live, route by the design's resolved publication status so
+          // the owner lands on the tab that actually contains the item. Newly
+          // submitted designs are typically IN_REVIEW (not Public).
+          switch (String(status ?? '').toUpperCase()) {
+            case 'IN_REVIEW':
+              return 'In Review';
+            case 'CHANGES_REQUESTED':
+              return 'Changes Requested';
+            case 'REJECTED':
+              return 'Rejected';
+            case 'PUBLISHED':
+              return form.visibility === 'PRIVATE' ? 'Private' : 'Public';
+            default:
+              return form.visibility === 'PRIVATE' ? 'Private' : 'Public';
+          }
+        };
 
         try {
           const result = await saveDesignEditor(
@@ -820,6 +832,15 @@ export function DesignEditorProvider({
             setActiveDesignId(result.id);
             setDraftVersion(result.detail.draftVersion);
           }
+
+          // Invalidate owner content caches so the new/updated item appears in the
+          // correct tab (e.g. In Review) and is removed from any stale Public list.
+          void queryClient.invalidateQueries({ queryKey: ['brand', 'collections'] });
+          void queryClient.invalidateQueries({ queryKey: ['designs', 'user'] });
+          void queryClient.invalidateQueries({ queryKey: ['design', 'detail', result.id] });
+
+          const targetVisibility =
+            action === 'draft' ? 'Drafts' : resolvePublishVisibility(result.detail.status);
 
           router.replace({
             pathname: '/catalog',

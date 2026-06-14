@@ -14,20 +14,64 @@ export type CompressedImage = {
   uri: string;
   width: number;
   height: number;
-  mimeType: 'image/jpeg';
+  // 'image/jpeg' when compression ran; the original/inferred mime when we fell
+  // back to the uncompressed image (e.g. native module unavailable).
+  mimeType: string;
   fileName: string;
+  // True when the original image was returned without compression. Callers can
+  // use this for diagnostics; it is safe to ignore.
+  compressed?: boolean;
 };
 
 // expo-image-manipulator is a native module that requires a native rebuild
-// (expo prebuild / dev-client build) to be available. We require it lazily
-// inside the function so a missing native module does NOT crash the module
-// graph at load time — callers already have try/catch and fall back to the
-// original uncompressed image when this throws.
-function loadManipulator(): typeof import('expo-image-manipulator') {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  return require('expo-image-manipulator') as typeof import('expo-image-manipulator');
+// (expo prebuild / dev-client build) to be available. We require it lazily so a
+// missing native module does NOT crash the module graph at load time, and we
+// remember when it is unavailable so we do not repeatedly trigger the
+// "Cannot find native module 'ExpoImageManipulator'" error on every pick.
+let manipulatorModule: typeof import('expo-image-manipulator') | null | undefined;
+
+function getManipulator(): typeof import('expo-image-manipulator') | null {
+  if (manipulatorModule !== undefined) return manipulatorModule;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('expo-image-manipulator') as typeof import('expo-image-manipulator');
+    // Touch the API we rely on so a lazily-thrown native binding surfaces here
+    // (and is cached as unavailable) rather than at call time.
+    manipulatorModule = typeof mod?.manipulateAsync === 'function' ? mod : null;
+  } catch {
+    manipulatorModule = null;
+  }
+  return manipulatorModule;
 }
 
+function inferMimeType(fileName: string | null | undefined, uri: string): string {
+  const source = String(fileName || uri || '').toLowerCase();
+  if (source.endsWith('.png')) return 'image/png';
+  if (source.endsWith('.webp')) return 'image/webp';
+  if (source.endsWith('.heic') || source.endsWith('.heif')) return 'image/heic';
+  if (source.endsWith('.gif')) return 'image/gif';
+  return 'image/jpeg';
+}
+
+function originalImage(
+  uri: string,
+  originalWidth: number,
+  originalHeight: number,
+  originalFileName: string | null | undefined,
+): CompressedImage {
+  return {
+    uri,
+    width: originalWidth,
+    height: originalHeight,
+    mimeType: inferMimeType(originalFileName, uri),
+    fileName: originalFileName?.trim() || `image-${Date.now()}.jpg`,
+    compressed: false,
+  };
+}
+
+// Never throws. Compresses with expo-image-manipulator when available, and
+// otherwise (or on any failure) returns the original image unchanged so image
+// selection cannot crash. Compression is therefore best-effort/optional.
 export async function compressPickedImage(
   uri: string,
   originalWidth: number,
@@ -35,34 +79,44 @@ export async function compressPickedImage(
   originalFileName: string | null | undefined,
   profile: CompressionProfile,
 ): Promise<CompressedImage> {
-  const { manipulateAsync, SaveFormat } = loadManipulator();
-  const cfg = PROFILES[profile];
-  const longSide = Math.max(originalWidth, originalHeight);
-
-  const actions: Parameters<typeof manipulateAsync>[1] = [];
-
-  if (longSide > cfg.maxLongSide && longSide > 0) {
-    const scale = cfg.maxLongSide / longSide;
-    actions.push({
-      resize: {
-        width: Math.round(originalWidth * scale),
-        height: Math.round(originalHeight * scale),
-      },
-    });
+  const manipulator = getManipulator();
+  if (!manipulator) {
+    return originalImage(uri, originalWidth, originalHeight, originalFileName);
   }
 
-  const result = await manipulateAsync(uri, actions, {
-    compress: cfg.quality,
-    format: SaveFormat.JPEG,
-  });
+  try {
+    const { manipulateAsync, SaveFormat } = manipulator;
+    const cfg = PROFILES[profile];
+    const longSide = Math.max(originalWidth, originalHeight);
 
-  const baseName = (originalFileName ?? 'image').replace(/\.[^.]+$/, '');
+    const actions: Parameters<typeof manipulateAsync>[1] = [];
 
-  return {
-    uri: result.uri,
-    width: result.width,
-    height: result.height,
-    mimeType: 'image/jpeg',
-    fileName: `${baseName}.jpg`,
-  };
+    if (longSide > cfg.maxLongSide && longSide > 0) {
+      const scale = cfg.maxLongSide / longSide;
+      actions.push({
+        resize: {
+          width: Math.round(originalWidth * scale),
+          height: Math.round(originalHeight * scale),
+        },
+      });
+    }
+
+    const result = await manipulateAsync(uri, actions, {
+      compress: cfg.quality,
+      format: SaveFormat.JPEG,
+    });
+
+    const baseName = (originalFileName ?? 'image').replace(/\.[^.]+$/, '');
+
+    return {
+      uri: result.uri,
+      width: result.width,
+      height: result.height,
+      mimeType: 'image/jpeg',
+      fileName: `${baseName}.jpg`,
+      compressed: true,
+    };
+  } catch {
+    return originalImage(uri, originalWidth, originalHeight, originalFileName);
+  }
 }
