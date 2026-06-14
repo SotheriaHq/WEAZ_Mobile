@@ -755,7 +755,7 @@ export default function BuyerProfileScreen() {
       setEditOpen(false);
       toast.success('Profile updated.');
     } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Could not update profile.');
+      toast.error('Could not update profile. Please try again.');
     } finally {
       setSavingProfile(false);
     }
@@ -778,7 +778,7 @@ export default function BuyerProfileScreen() {
       setFittingsOpen(false);
       toast.success('Fittings updated.');
     } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Could not update fittings.');
+      toast.error('Could not update fittings. Please try again.');
     } finally {
       setSavingFittings(false);
     }

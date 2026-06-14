@@ -30,7 +30,7 @@ type Props = {
   visible: boolean;
   title?: string;
   subtitle?: string;
-  children: React.ReactNode;
+  children: React.ReactNode | (() => React.ReactNode);
   onClose: () => void;
   showCloseButton?: boolean;
   onDone?: () => void;
@@ -185,7 +185,7 @@ export function AppBottomSheet({
               </View>
             ) : null}
 
-            <Body {...bodyProps}>{children}</Body>
+            <Body {...bodyProps}>{typeof children === 'function' ? children() : children}</Body>
 
             {footer ? <View style={styles.footer}>{footer}</View> : null}
           </Animated.View>

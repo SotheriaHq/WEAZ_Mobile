@@ -150,7 +150,7 @@ export default function MyReviewsScreen() {
       toast.success('Review deleted');
       setDeleteReview(null);
     } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Unable to delete review');
+      toast.error('Unable to delete review. Please try again.');
     } finally {
       setDeleting(false);
     }

@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import Constants from 'expo-constants';
-import * as ExpoNotifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import type * as ExpoNotifications from 'expo-notifications';
 
 import {
   NotificationsApi,
@@ -78,7 +78,12 @@ function isExpoGoAndroid() {
 
 async function getNotificationsModule() {
   if (Platform.OS === 'web' || isExpoGoAndroid()) return null;
-  return ExpoNotifications;
+  try {
+    return await Promise.resolve().then(() => require('expo-notifications') as ExpoNotificationsModule);
+  } catch (error) {
+    console.warn('[Notifications] Native module expo-notifications is unavailable.', error);
+    return null;
+  }
 }
 
 async function ensureNotificationPermission(NotificationsModule: ExpoNotificationsModule) {

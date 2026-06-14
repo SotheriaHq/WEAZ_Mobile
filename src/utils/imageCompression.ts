@@ -30,15 +30,41 @@ export type CompressedImage = {
 // "Cannot find native module 'ExpoImageManipulator'" error on every pick.
 let manipulatorModule: typeof import('expo-image-manipulator') | null | undefined;
 
+function isManipulatorAvailable() {
+  // Expo SDK 50+ JSI modules
+  if ((globalThis as any).expo?.modules?.ExpoImageManipulator) {
+    return true;
+  }
+  // Legacy or standard native modules
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { NativeModulesProxy } = require('expo-modules-core');
+    if (NativeModulesProxy && NativeModulesProxy.ExpoImageManipulator) {
+      return true;
+    }
+  } catch (err) {
+    // Ignore
+  }
+  return false;
+}
+
 function getManipulator(): typeof import('expo-image-manipulator') | null {
   if (manipulatorModule !== undefined) return manipulatorModule;
+  
+  if (!isManipulatorAvailable()) {
+    console.warn('[ImageCompression] Native module ExpoImageManipulator is unavailable. Falling back to original image.');
+    manipulatorModule = null;
+    return null;
+  }
+
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require('expo-image-manipulator') as typeof import('expo-image-manipulator');
     // Touch the API we rely on so a lazily-thrown native binding surfaces here
     // (and is cached as unavailable) rather than at call time.
     manipulatorModule = typeof mod?.manipulateAsync === 'function' ? mod : null;
-  } catch {
+  } catch (err) {
+    console.warn('[ImageCompression] Failed to load ExpoImageManipulator:', err);
     manipulatorModule = null;
   }
   return manipulatorModule;

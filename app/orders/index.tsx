@@ -254,7 +254,7 @@ export default function OrdersScreen() {
     } catch (nextError) {
       const responseStatus = (nextError as { status?: number })?.status;
       if (responseStatus !== 401 && responseStatus !== 403) {
-        toast.error(nextError instanceof Error ? nextError.message : 'Could not load review prompts.');
+        toast.error('Could not load review prompts.');
       }
     }
   }, [status, toast]);
@@ -277,7 +277,7 @@ export default function OrdersScreen() {
       setReviewPrompts((current) => current.filter((item) => item.id !== prompt.id));
       toast.success('Review prompt skipped.');
     } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Could not skip review prompt.');
+      toast.error('Could not skip review prompt. Please try again.');
     } finally {
       setSkippingPromptId(null);
     }

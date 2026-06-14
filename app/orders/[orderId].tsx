@@ -141,7 +141,7 @@ export default function BuyerOrderDetailScreen() {
       setOrder(updated);
       toast.success('Delivery confirmation submitted.');
     } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Could not confirm delivery.');
+      toast.error('Could not confirm delivery. Please try again.');
     } finally {
       setSaving(false);
     }

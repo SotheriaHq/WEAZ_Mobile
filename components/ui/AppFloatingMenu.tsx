@@ -52,38 +52,30 @@ function resolveMenuPosition({
 
 export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, onClose }: Props) {
   const { scheme, theme } = useTheme();
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [measuredPosition, setMeasuredPosition] = useState<{ top: number; left: number } | null>(null);
   const menuWidth = 188;
 
   useAndroidOverlaySystemBars(visible, scheme, 'floating-menu');
 
-  const updateMenuPosition = useCallback(
-    (metrics: { pageX: number; pageY: number; width: number; height: number }) => {
-      setMenuPosition(resolveMenuPosition({ ...metrics, menuWidth }));
-    },
-    [menuWidth],
-  );
+  const resolvedPosition = visible && anchorMetrics
+    ? resolveMenuPosition({ ...anchorMetrics, menuWidth })
+    : measuredPosition;
 
   useEffect(() => {
-    if (!visible) return;
-
-    if (anchorMetrics) {
-      updateMenuPosition(anchorMetrics);
+    if (!visible) {
+      if (measuredPosition) setMeasuredPosition(null);
       return;
     }
+
+    if (anchorMetrics) return;
 
     if (anchorRef.current?.measureInWindow) {
       anchorRef.current.measureInWindow((pageX: number, pageY: number, width: number, height: number) => {
         if (width <= 0 || height <= 0) return;
-        updateMenuPosition({
-          pageX,
-          pageY,
-          width,
-          height,
-        });
+        setMeasuredPosition(resolveMenuPosition({ pageX, pageY, width, height, menuWidth }));
       });
     }
-  }, [anchorMetrics, anchorRef, updateMenuPosition, visible]);
+  }, [anchorMetrics, anchorRef, measuredPosition, visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -96,7 +88,7 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
     return () => backHandler.remove();
   }, [visible, onClose]);
 
-  if (!visible || !menuPosition) return null;
+  if (!visible || !resolvedPosition) return null;
 
   return (
     <Modal
@@ -114,8 +106,8 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
             {
               backgroundColor: theme.colors.surfaceAlt,
               borderColor: theme.colors.border,
-              top: menuPosition.top,
-              left: menuPosition.left,
+              top: resolvedPosition.top,
+              left: resolvedPosition.left,
               width: menuWidth,
               ...tokens.elevation.sm,
             },

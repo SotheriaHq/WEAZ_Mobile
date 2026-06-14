@@ -305,19 +305,28 @@ export default function CreateDesignComposerScreen() {
         key: 'camera',
         icon: '📷',
         title: 'Camera',
-        onPress: () => void handlePickMedia('camera'),
+        onPress: () => {
+          setMediaOpen(false);
+          setTimeout(() => void handlePickMedia('camera'), 350);
+        },
       },
       {
         key: 'library',
         icon: '🖼️',
         title: 'Photo library',
-        onPress: () => void handlePickMedia('library'),
+        onPress: () => {
+          setMediaOpen(false);
+          setTimeout(() => void handlePickMedia('library'), 350);
+        },
       },
       {
         key: 'attachment',
         icon: '📎',
         title: 'Attachment',
-        onPress: () => void handlePickMedia('library'),
+        onPress: () => {
+          setMediaOpen(false);
+          setTimeout(() => void handlePickMedia('library'), 350);
+        },
       },
     ],
     [handlePickMedia],
@@ -529,18 +538,18 @@ export default function CreateDesignComposerScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <AppBackButton fallbackHref="/catalog" />
-        <View style={styles.headerCopy}>
-          <AppText variant="title">Create design</AppText>
-          <AppText variant="captionRegular" tone="muted">
-            Edit the required fields, then preview.
-          </AppText>
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+        <View style={styles.header}>
+          <AppBackButton fallbackHref="/catalog" />
+          <View style={styles.headerCopy}>
+            <AppText variant="title">Create design</AppText>
+            <AppText variant="captionRegular" tone="muted">
+              Edit the required fields, then preview.
+            </AppText>
+          </View>
         </View>
-      </View>
 
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           style={styles.flex}
           showsVerticalScrollIndicator={false}
@@ -750,8 +759,8 @@ export default function CreateDesignComposerScreen() {
               Add at least one field or one media item to save a draft.
             </AppText>
           ) : !canPreview ? (
-            <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-              Complete the fields marked in red above to preview and go live.
+            <AppText variant="captionRegular" tone="danger" style={styles.draftHelper}>
+              Required: {missingRequiredFields[0]} {missingRequiredFields.length > 1 ? `(+${missingRequiredFields.length - 1} more)` : ''}
             </AppText>
           ) : null}
           <View style={styles.actionRow}>
@@ -775,7 +784,7 @@ export default function CreateDesignComposerScreen() {
             </View>
           </View>
         </View>
-      </KeyboardAvoidingView>
+
 
       <AppSelectSheet
         visible={privacyOpen}
@@ -1113,7 +1122,7 @@ export default function CreateDesignComposerScreen() {
         onClose={() => setStyleDetailsOpen(false)}
         showCloseButton
       >
-        {renderDiscoverySections(styleDetailDimensions, 'Style details could not load. You can still save a draft.')}
+        {() => renderDiscoverySections(styleDetailDimensions, 'Style details could not load. You can still save a draft.')}
       </AppBottomSheet>
 
       <AppBottomSheet
@@ -1123,7 +1132,7 @@ export default function CreateDesignComposerScreen() {
         onClose={() => setHeritageOpen(false)}
         showCloseButton
       >
-        {renderDiscoverySections(heritageDimensions, 'Cultural vibe options could not load. You can still save a draft.')}
+        {() => renderDiscoverySections(heritageDimensions, 'Cultural vibe options could not load. You can still save a draft.')}
       </AppBottomSheet>
 
       <AppBottomSheet
@@ -1133,7 +1142,7 @@ export default function CreateDesignComposerScreen() {
         onClose={() => setOccasionOpen(false)}
         showCloseButton
       >
-        {renderDiscoverySections(occasionDimensions, 'Occasion options could not load. You can still save a draft.')}
+        {() => renderDiscoverySections(occasionDimensions, 'Occasion options could not load. You can still save a draft.')}
       </AppBottomSheet>
 
       <AppFloatingMenu
@@ -1170,6 +1179,7 @@ export default function CreateDesignComposerScreen() {
         </AppText>
       </AppBottomSheet>
     </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -15,6 +15,7 @@ import {
   MOBILE_UPLOAD_POLICIES,
   assertValidPickedUploadAssets,
 } from '@/src/utils/uploadValidation';
+import { compressPickedImage } from '@/src/utils/imageCompression';
 
 export type MobileDesignAsset = {
   id: string;
@@ -24,6 +25,8 @@ export type MobileDesignAsset = {
   fileSize: number;
   mediaKind: 'image' | 'video';
   viewSlot?: MediaViewSlot | string | null;
+  width?: number;
+  height?: number;
 };
 
 export type DesignEditorAsset = MobileDesignAsset & {
@@ -982,11 +985,39 @@ export async function saveDesignEditor(
   onProgress?: (value: number, message: string) => void,
 ): Promise<{ id: string; detail: DesignDetail }> {
   const trimmedTitle = payload.title.trim() || 'Untitled design';
-  const filteredAssets = payload.assets.slice(0, DESIGN_EDITOR_MAX_MEDIA);
-  const localAssets = filteredAssets.filter((asset) => !asset.existingMediaId);
-  const existingMediaIds = filteredAssets
+  
+  onProgress?.(0.05, 'Preparing media...');
+  const processedFilteredAssets = await Promise.all(
+    payload.assets.slice(0, DESIGN_EDITOR_MAX_MEDIA).map(async (asset) => {
+      if (asset.mediaKind === 'video' || asset.existingMediaId) return asset;
+      try {
+        const compressed = await compressPickedImage(
+          asset.uri,
+          asset.width ?? 0,
+          asset.height ?? 0,
+          asset.fileName,
+          'designMedia',
+        );
+        return {
+          ...asset,
+          uri: compressed.uri,
+          width: compressed.width,
+          height: compressed.height,
+          mimeType: compressed.mimeType,
+          fileName: compressed.fileName,
+          fileSize: 0, // Bypass size check on client side for compressed images
+        };
+      } catch {
+        return asset; // Fallback to original
+      }
+    })
+  );
+
+  const localAssets = processedFilteredAssets.filter((asset) => !asset.existingMediaId);
+  const existingMediaIds = processedFilteredAssets
     .map((asset) => asset.existingMediaId)
     .filter((asset): asset is string => Boolean(asset));
+    
   assertValidPickedUploadAssets(localAssets, MOBILE_UPLOAD_POLICIES.designMedia, {
     existingCount: existingMediaIds.length,
     maxFiles: DESIGN_EDITOR_MAX_MEDIA,
@@ -1001,7 +1032,7 @@ export async function saveDesignEditor(
     const initialized = await initializeNewDesignUploads({
       ...payload,
       title: trimmedTitle,
-      assets: filteredAssets,
+      assets: processedFilteredAssets,
     });
     const designId = resolveDesignIdFromInitializeResponse(initialized);
 
@@ -1014,7 +1045,7 @@ export async function saveDesignEditor(
 
     for (let index = 0; index < uploads.length; index += 1) {
       const upload = uploads[index];
-      const asset = filteredAssets[index];
+      const asset = processedFilteredAssets[index];
       if (!asset) continue;
       onProgress?.(
         0.2 + ((index + 1) / Math.max(uploads.length, 1)) * 0.55,
@@ -1034,7 +1065,7 @@ export async function saveDesignEditor(
       {
         ...payload,
         title: trimmedTitle,
-        assets: filteredAssets,
+        assets: processedFilteredAssets,
       },
       completions,
     );
@@ -1096,7 +1127,7 @@ export async function saveDesignEditor(
 
   const detail = await getDesignDetail(payload.designId, { forceRefresh: true });
   const finalMediaIds = detail.medias.map((media) => media.id);
-  const orderedExistingMediaIds = filteredAssets
+  const orderedExistingMediaIds = processedFilteredAssets
     .map((asset) => asset.existingMediaId)
     .filter((mediaId): mediaId is string => Boolean(mediaId && finalMediaIds.includes(mediaId)));
   const appendedMediaIds = finalMediaIds.filter((mediaId) => !orderedExistingMediaIds.includes(mediaId));

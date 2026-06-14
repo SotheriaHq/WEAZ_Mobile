@@ -1,7 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 
 import type { DesignEditorAsset } from '@/src/api/DesignApi';
-import { compressPickedImage } from '@/src/utils/imageCompression';
 import {
   MOBILE_UPLOAD_POLICIES,
   validatePickedUploadAssets,
@@ -42,6 +41,8 @@ function buildDesignEditorAssets(result: ProcessedPickerAsset[], existingCount: 
       asset.fileName ?? `design-${existingCount + index + 1}.${asset.type === 'video' ? 'mp4' : 'jpg'}`,
     fileSize: asset.fileSize ?? 0,
     mediaKind: asset.type === 'video' ? 'video' : 'image',
+    width: asset.width,
+    height: asset.height,
     aspectRatio:
       typeof asset.width === 'number' && typeof asset.height === 'number' && asset.height > 0
         ? asset.width / asset.height
@@ -124,35 +125,16 @@ export async function pickDesignEditorMediaAssets({
     return { status: 'cancelled' };
   }
 
-  // Compress every image asset before validation.
-  // Videos are passed through unchanged.
-  // On compression failure the original asset is used — validation will then
-  // catch it if it exceeds the size limit.
-  const processedAssets = await Promise.all(
-    result.assets.map(async (asset) => {
-      if (asset.type === 'video') return asset;
-      try {
-        const compressed = await compressPickedImage(
-          asset.uri,
-          asset.width ?? 0,
-          asset.height ?? 0,
-          asset.fileName,
-          'designMedia',
-        );
-        return {
-          ...asset,
-          uri: compressed.uri,
-          width: compressed.width,
-          height: compressed.height,
-          mimeType: compressed.mimeType,
-          fileName: compressed.fileName,
-          fileSize: undefined, // post-compression; size check is intentionally skipped
-        };
-      } catch {
-        return asset;
-      }
-    }),
-  );
+  // Compression is deferred until save/upload time to ensure the local
+  // preview appears instantly. We set fileSize to undefined for images
+  // so size validation is skipped at pick time (videos keep their size).
+  const processedAssets = result.assets.map((asset) => {
+    if (asset.type === 'video') return asset;
+    return {
+      ...asset,
+      fileSize: undefined,
+    };
+  });
 
   const validationErrors = validatePickedUploadAssets(
     processedAssets.map((asset) => ({

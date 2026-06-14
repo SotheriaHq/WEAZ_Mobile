@@ -1199,28 +1199,31 @@ export default function CatalogScreen() {
   const launchComposer = useCallback(
     (opts: { source?: DesignEditorMediaSource; openPicker: boolean }) => {
       setCreateOptionsOpen(false);
+      navPerf.tap('create_design');
       navPerf.mark('create_design_option_selected');
-      navPerf.mark('create_design_navigation_called');
-      navPerf.navigationCalled();
-      router.push({
-        pathname: '/catalog/create-design/composer',
-        params: opts.openPicker
-          ? { openPicker: '1', pickerSource: opts.source ?? 'library' }
-          : { blank: '1' },
-      } as any);
+      
+      setTimeout(() => {
+        requestAnimationFrame(() => {
+          navPerf.mark('create_design_navigation_called');
+          navPerf.navigationCalled();
+          router.push({
+            pathname: '/catalog/create-design/composer',
+            params: opts.openPicker
+              ? { openPicker: '1', pickerSource: opts.source ?? 'library' }
+              : { blank: '1' },
+          } as any);
+        });
+      }, 350);
     },
     [],
   );
 
-  // The catalogue `+` opens an option sheet immediately; it does NOT route.
   const handleCreatePress = useCallback(() => {
     if (canManageCatalog(user) && userEmailVerified === false) {
       toast.error('Verify your email before creating designs.');
       return;
     }
     perfMark('catalog-plus-tap');
-    navPerf.tap('create_design');
-    navPerf.mark('options_sheet_opened');
     captureCreateAnchorMetrics();
     setCreateOptionsOpen(true);
   }, [captureCreateAnchorMetrics, toast, user, userEmailVerified]);

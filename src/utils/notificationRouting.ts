@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { router, usePathname } from 'expo-router';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import * as ExpoNotifications from 'expo-notifications';
+import type * as ExpoNotifications from 'expo-notifications';
 import { resolveExpoProjectId } from '@/src/notifications/pushTokenRegistration';
 import { shouldPresentMessageForegroundPushNotification } from '@/src/realtime/messaging';
 
@@ -33,13 +33,14 @@ function getForegroundNotificationBehavior(notification?: ExpoNotifications.Noti
   };
 }
 
-async function getNotificationsModule() {
+async function getNotificationsModule(): Promise<ExpoNotificationsModule | null> {
   if (isExpoGoAndroid()) return null;
-  return ExpoNotifications;
-  // ("Requiring unknown module …") — before any .then()/.catch() is attached —
-  // which surfaces as a red-box error at boot. Wrapping the call inside
-  // `Promise.resolve().then(...)` moves the import() into a microtask so a
-  // synchronous throw is captured as a normal rejection and handled here.
+  try {
+    return await Promise.resolve().then(() => require('expo-notifications'));
+  } catch (error) {
+    console.warn('[Notifications] Native module expo-notifications is unavailable.', error);
+    return null;
+  }
 }
 
 import { useAuth } from '@/src/auth/AuthContext';

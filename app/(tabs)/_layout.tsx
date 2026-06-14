@@ -121,7 +121,9 @@ export default function TabLayout() {
     lastProfileTabPressAtRef.current = 0;
     setProfileMenuVisible(false);
     setOptimisticActiveKey(NATIVE_ISLAND_KEYS.profile);
-    router.push((isBrand ? '/catalog' : '/(tabs)/me') as any);
+    requestAnimationFrame(() => {
+      router.push((isBrand ? '/catalog' : '/(tabs)/me') as any);
+    });
   }, [clearProfileTabTimer, isBrand]);
 
   const handleProfilePress = useCallback(
@@ -255,9 +257,11 @@ export default function TabLayout() {
               : null;
         if (navFlow) {
           navPerf.tap(navFlow);
-          navPerf.navigationCalled();
         }
-        router.replace(nextRoute as any);
+        requestAnimationFrame(() => {
+          if (navFlow) navPerf.navigationCalled();
+          router.replace(nextRoute as any);
+        });
       }
     },
     [bagFlow, clearProfileTabTimer, handleProfilePress, isBrand, refreshGlobalBagCount],
