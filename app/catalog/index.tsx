@@ -52,7 +52,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
-import { AppActionSheet } from '@/components/ui/AppActionSheet';
+import { AppActionSheet, type AppActionSheetOption } from '@/components/ui/AppActionSheet';
 import { AppQrSheet } from '@/components/ui/AppQrSheet';
 import { BrandSwitcherSheet } from '@/components/brand/BrandSwitcherSheet';
 import type { DesignEditorMediaSource } from '@/src/features/design-editor/designEditorMediaFlow';
@@ -238,6 +238,7 @@ export default function CatalogScreen() {
   const [savedCatalogById, setSavedCatalogById] = useState<Record<string, boolean>>({});
   const [savingCatalogById, setSavingCatalogById] = useState<Record<string, boolean>>({});
   const [shareActionsOpen, setShareActionsOpen] = useState(false);
+  const [createOptionsOpen, setCreateOptionsOpen] = useState(false);
   const [brandQrOpen, setBrandQrOpen] = useState(false);
   const [tabHeights, setTabHeights] = useState<Partial<Record<TabType, number>>>({});
   const tabPagerRef = useRef<ScrollView>(null);
@@ -1124,30 +1125,63 @@ export default function CatalogScreen() {
     [handleCopyProfileLink, handleNativeShareProfile, profileQrTargetUrl, profileShareUrl],
   );
 
-  const handleLaunchCreateDesign = useCallback(
-    (source: DesignEditorMediaSource) => {
-      if (canManageCatalog(user) && userEmailVerified === false) {
-        toast.error('Verify your email before creating designs.');
-        return;
-      }
-
-      perfMark('catalog-plus-tap');
-      navPerf.tap('create_design');
+  // Continue into the composer, optionally auto-opening the media picker for the
+  // chosen source. Called only AFTER the user picks an option in the sheet — the
+  // `+` button itself must never route straight into the composer.
+  const launchComposer = useCallback(
+    (opts: { source?: DesignEditorMediaSource; openPicker: boolean }) => {
+      setCreateOptionsOpen(false);
+      navPerf.mark('create_design_option_selected');
+      navPerf.mark('create_design_navigation_called');
       navPerf.navigationCalled();
       router.push({
         pathname: '/catalog/create-design/composer',
-        params: {
-          openPicker: '1',
-          pickerSource: source,
-        },
+        params: opts.openPicker
+          ? { openPicker: '1', pickerSource: opts.source ?? 'library' }
+          : { blank: '1' },
       } as any);
     },
-    [toast, user, userEmailVerified],
+    [],
   );
 
+  // The catalogue `+` opens an option sheet immediately; it does NOT route.
   const handleCreatePress = useCallback(() => {
-    handleLaunchCreateDesign('library');
-  }, [handleLaunchCreateDesign]);
+    if (canManageCatalog(user) && userEmailVerified === false) {
+      toast.error('Verify your email before creating designs.');
+      return;
+    }
+    perfMark('catalog-plus-tap');
+    navPerf.tap('create_design');
+    navPerf.mark('options_sheet_opened');
+    setCreateOptionsOpen(true);
+  }, [toast, user, userEmailVerified]);
+
+  const createDesignOptions = useMemo<AppActionSheetOption[]>(
+    () => [
+      {
+        key: 'camera',
+        title: 'Camera',
+        description: 'Capture a new photo or video',
+        icon: '📷',
+        onPress: () => launchComposer({ source: 'camera', openPicker: true }),
+      },
+      {
+        key: 'library',
+        title: 'Choose from library',
+        description: 'Pick existing photos or videos',
+        icon: '🖼️',
+        onPress: () => launchComposer({ source: 'library', openPicker: true }),
+      },
+      {
+        key: 'blank',
+        title: 'Start a design',
+        description: 'Open the composer and add media later',
+        icon: '🧵',
+        onPress: () => launchComposer({ openPicker: false }),
+      },
+    ],
+    [launchComposer],
+  );
 
   if (showInitialSkeleton) {
     return (
@@ -1344,6 +1378,14 @@ export default function CatalogScreen() {
         subtitle={profileShareUrl ?? 'Profile link is not available yet.'}
         options={shareActionOptions}
         onClose={() => setShareActionsOpen(false)}
+      />
+
+      <AppActionSheet
+        visible={createOptionsOpen}
+        title="Create a design"
+        subtitle="Choose how you want to start."
+        options={createDesignOptions}
+        onClose={() => setCreateOptionsOpen(false)}
       />
 
       <AppQrSheet

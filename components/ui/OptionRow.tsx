@@ -9,6 +9,8 @@ type Props = {
   title: string;
   subtitle?: string | null;
   value?: string | null;
+  /** Tone for the inline value (e.g. "danger" to flag a required-missing field). */
+  valueTone?: 'muted' | 'danger' | 'primary' | 'default';
   leading?: string | React.ReactNode;
   trailing?: React.ReactNode;
   disabled?: boolean;
@@ -21,6 +23,7 @@ export function OptionRow({
   title,
   subtitle,
   value,
+  valueTone = 'muted',
   leading,
   trailing,
   disabled,
@@ -56,7 +59,7 @@ export function OptionRow({
         ) : null}
       </View>
       <View style={styles.trailingWrap}>
-        {trailing ?? (value ? <AppText variant="captionBold" tone="muted">{value}</AppText> : <AppText variant="subtitle" tone="muted">›</AppText>)}
+        {trailing ?? (value ? <AppText variant="captionBold" tone={valueTone}>{value}</AppText> : <AppText variant="subtitle" tone="muted">›</AppText>)}
       </View>
     </View>
   );

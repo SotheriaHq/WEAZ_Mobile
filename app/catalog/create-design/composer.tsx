@@ -96,9 +96,13 @@ export default function CreateDesignComposerScreen() {
     retryBootstrap,
   } = useDesignEditor();
   const { theme } = useTheme();
-  const params = useLocalSearchParams<{ openPicker?: string | string[]; pickerSource?: string | string[] }>();
+  const params = useLocalSearchParams<{ openPicker?: string | string[]; pickerSource?: string | string[]; blank?: string | string[] }>();
   const openPickerParam = Array.isArray(params.openPicker) ? params.openPicker[0] : params.openPicker;
   const pickerSourceParam = Array.isArray(params.pickerSource) ? params.pickerSource[0] : params.pickerSource;
+  const blankParam = Array.isArray(params.blank) ? params.blank[0] : params.blank;
+  // The user explicitly chose "Start a design" (no media yet) — keep the empty
+  // composer open instead of bouncing back to the catalogue.
+  const isBlankStart = blankParam === '1' || blankParam === 'true';
   const shouldOpenInitialPicker = openPickerParam === '1' || openPickerParam === 'true';
   const initialPickerSource: DesignEditorMediaSource = pickerSourceParam === 'camera' ? 'camera' : 'library';
   const hasEverHadAssetsRef = useRef(false);
@@ -265,9 +269,11 @@ export default function CreateDesignComposerScreen() {
   useEffect(() => {
     perfMeasure('catalog-plus-to-composer', 'catalog-plus-tap');
     navPerf.screenMounted('create_design');
+    navPerf.mark('composer_mounted');
     navPerf.firstVisibleUi('create_design');
   }, []);
 
+  // data_ready = all metadata finished loading (full readiness).
   useEffect(() => {
     if (!booting) {
       navPerf.dataReady('create_design');
@@ -369,11 +375,29 @@ export default function CreateDesignComposerScreen() {
   const shouldRedirectEmptyCreate =
     !booting &&
     !isEditMode &&
+    !isBlankStart &&
     assets.length === 0 &&
     !hasEverHadAssetsRef.current &&
     !shouldOpenInitialPicker &&
     !initialPickerPending &&
     !permissionIssue;
+
+  // Only block the whole screen behind a loader when we are loading an EXISTING
+  // design's saved values (edit mode). For a brand-new design the shell + footer
+  // actions must appear IMMEDIATELY — metadata (categories, style details,
+  // measurement points) fills in progressively into the already-usable form.
+  // This is what fixes "action buttons missing" and the multi-second blank gap.
+  const showFullScreenLoader =
+    (booting && isEditMode && !shouldOpenInitialPicker) || shouldRedirectEmptyCreate;
+
+  // usable_ui = the form + footer actions are actually interactive (not hidden
+  // behind the full-screen loader). Distinct from data_ready (all metadata in).
+  useEffect(() => {
+    if (!showFullScreenLoader) {
+      navPerf.mark('usable_ui');
+      navPerf.mark('footer_actions_visible');
+    }
+  }, [showFullScreenLoader]);
 
   useEffect(() => {
     if (shouldRedirectEmptyCreate) {
@@ -427,7 +451,7 @@ export default function CreateDesignComposerScreen() {
     [filterSelection, toggleFilterValue],
   );
 
-  if ((booting && !shouldOpenInitialPicker) || shouldRedirectEmptyCreate) {
+  if (showFullScreenLoader) {
     return <AppLoaderScreen message="Loading composer" />;
   }
 
@@ -454,12 +478,17 @@ export default function CreateDesignComposerScreen() {
             <View style={styles.sectionTopRow}>
               <View style={styles.sectionTitleCopy}>
                 <AppText variant="bodyBold">Selected media</AppText>
-                <AppText variant="captionRegular" tone="muted">
+                <AppText
+                  variant="captionRegular"
+                  tone={initialPickerPending ? 'muted' : missingRequiredMediaSlots.length > 0 || assets.length === 0 ? 'danger' : 'muted'}
+                >
                   {initialPickerPending
                     ? 'Opening media picker...'
-                    : assets.length > 0
-                      ? `${assets.length}/${DESIGN_EDITOR_MAX_MEDIA} selected`
-                      : 'No media selected yet'}
+                    : assets.length === 0
+                      ? 'Required: add Front, Back, Left Side, and Right Side'
+                      : missingRequiredMediaSlots.length > 0
+                        ? `Required: add ${missingRequiredMediaSlots.map(getMediaViewSlotLabel).join(', ')}`
+                        : `${assets.length}/${DESIGN_EDITOR_MAX_MEDIA} selected`}
                 </AppText>
               </View>
               <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
@@ -525,6 +554,7 @@ export default function CreateDesignComposerScreen() {
                   title="What is it?"
                   subtitle="Choose the garment or item family."
                   value={categoryValue}
+                  valueTone={form.categoryId ? 'muted' : 'danger'}
                   onPress={() => openCategorySheet('category')}
                 />
                 <OptionRow
@@ -532,6 +562,7 @@ export default function CreateDesignComposerScreen() {
                   title="Garment type"
                   subtitle="Choose the specific garment type."
                   value={garmentTypeValue}
+                  valueTone={form.subCategoryId ? 'muted' : 'danger'}
                   onPress={() => openCategorySheet('subcategory')}
                 />
                 <OptionRow
@@ -550,6 +581,7 @@ export default function CreateDesignComposerScreen() {
                   title="Style details"
                   subtitle="Style, fabric, color family, and fit."
                   value={styleDetailsCount > 0 ? `${styleDetailsCount} selected` : selectedDiscoveryFilterCount > 0 ? 'Optional' : 'Required'}
+                  valueTone={selectedDiscoveryFilterCount > 0 ? 'muted' : 'danger'}
                   onPress={() => setStyleDetailsOpen(true)}
                 />
                 <OptionRow
@@ -592,6 +624,7 @@ export default function CreateDesignComposerScreen() {
                   title="Hashtags"
                   subtitle="Add searchable social tags."
                   value={selectedTags.length > 0 ? `${selectedTags.length} selected` : 'Required'}
+                  valueTone={selectedTags.length > 0 ? 'muted' : 'danger'}
                   divider={false}
                   onPress={() => setTagsOpen(true)}
                 />
@@ -621,19 +654,6 @@ export default function CreateDesignComposerScreen() {
             </Card>
           ) : null}
 
-          {missingRequiredFields.length > 0 ? (
-            <Card padding="md" style={[styles.requiredCard, { borderColor: theme.colors.border }]}>
-              <AppText variant="bodyBold">Required before preview</AppText>
-              <View style={styles.requiredList}>
-                {missingRequiredFields.map((message) => (
-                  <AppText key={message} variant="captionRegular" tone="muted">
-                    {message}
-                  </AppText>
-                ))}
-              </View>
-            </Card>
-          ) : null}
-
         </ScrollView>
         <View
           style={[
@@ -649,6 +669,10 @@ export default function CreateDesignComposerScreen() {
           {!canSaveDraft ? (
             <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
               Add at least one field or one media item to save a draft.
+            </AppText>
+          ) : !canPreview ? (
+            <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+              Complete the fields marked in red above to preview and go live.
             </AppText>
           ) : null}
           <View style={styles.actionRow}>

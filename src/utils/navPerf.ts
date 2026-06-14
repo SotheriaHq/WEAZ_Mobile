@@ -20,14 +20,23 @@ type NavStage =
   | 'navigation_called'
   | 'screen_mounted'
   | 'first_visible_ui'
-  | 'data_ready';
+  // usable_ui = the user can actually act (footer/actions reachable, form
+  // interactive) — distinct from first_visible_ui (something merely appeared).
+  | 'usable_ui'
+  | 'footer_actions_visible'
+  | 'options_sheet_opened'
+  | 'profile_image_loaded'
+  | 'data_ready'
+  // background_data_ready = non-critical data (counts/signals/diagnostics)
+  // settled; it must never gate usable_ui.
+  | 'background_data_ready';
 
 let activeFlow: string | null = null;
 let tapAt = 0;
 
 const enabled = () => isThreadlyDebugEnabled('nav');
 
-const emit = (stage: NavStage, flow: string) => {
+const emit = (stage: string, flow: string) => {
   const sinceTap = tapAt ? Date.now() - tapAt : null;
   console.log(`[NAV_PERF] ${stage} ${flow}${sinceTap == null ? '' : ` +${sinceTap}ms`}`);
 };
@@ -57,6 +66,17 @@ export const navPerf = {
     if (!enabled()) return;
     const f = flow ?? activeFlow;
     if (f) emit('first_visible_ui', f);
+  },
+  /**
+   * Generic marker for the usability-focused stages that aren't part of the
+   * fixed tap→data_ready spine (usable_ui, footer_actions_visible,
+   * options_sheet_opened, profile_image_loaded, background_data_ready, etc.).
+   * Reuses the active flow + tap timestamp so the `+ms` offset stays comparable.
+   */
+  mark(stage: string, flow?: string) {
+    if (!enabled()) return;
+    const f = flow ?? activeFlow;
+    if (f) emit(stage, f);
   },
   /** Record when the destination's primary data is ready; ends the flow. */
   dataReady(flow?: string) {
