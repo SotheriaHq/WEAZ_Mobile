@@ -95,4 +95,26 @@ assertMatches(
 );
 assertIncludes(paymentApi, "apiClient.post('/payment/verify'", 'checkout payment status remains backend-owned');
 
+// Content publication status normalization must be exhaustive and fail closed.
+// HARD RULE: no review-state, processing, missing, or unknown status may default
+// to PUBLISHED, otherwise unapproved content leaks onto mobile public surfaces.
+const brandApi = read('src/api/BrandApi.ts');
+assertIncludes(brandApi, "| 'PROCESSING'", 'publication status union includes PROCESSING');
+assertIncludes(brandApi, "| 'UNKNOWN'", 'publication status union includes UNKNOWN fallback');
+assertMatches(
+  brandApi,
+  /case 'PROCESSING':[\s\S]{0,160}return 'PROCESSING';/,
+  'PROCESSING normalizes to PROCESSING, never PUBLISHED',
+);
+assertMatches(
+  brandApi,
+  /case 'PUBLISHED':\s*\n\s*return 'PUBLISHED';/,
+  "only an explicit backend 'PUBLISHED' resolves to PUBLISHED",
+);
+assertMatches(
+  brandApi,
+  /default:[\s\S]{0,200}return 'UNKNOWN';/,
+  'unknown/missing status fails closed to UNKNOWN, never PUBLISHED',
+);
+
 console.log('Mobile lifecycle sync contract checks passed.');

@@ -124,13 +124,15 @@ export interface CollectionDto {
 export type CollectionScope = 'design' | 'store' | 'all';
 export type CollectionPublicationStatus =
   | 'DRAFT'
+  | 'PROCESSING'
   | 'IN_REVIEW'
   | 'CHANGES_REQUESTED'
   | 'REJECTED'
   | 'FAILED'
   | 'PUBLISHED'
   | 'ARCHIVED'
-  | 'REMOVED';
+  | 'REMOVED'
+  | 'UNKNOWN';
 
 const getCollectionBasePath = (scope?: CollectionScope) =>
   scope === 'store' ? '/store-collections' : scope === 'all' ? '/collections' : '/designs';
@@ -418,20 +420,36 @@ function normalizeVisibility(value: unknown): 'PUBLIC' | 'PRIVATE' {
   return String(value ?? '').toUpperCase() === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC';
 }
 
+// Exhaustively map every backend CollectionStatus to a client publication
+// status. HARD RULE: only an explicit backend "PUBLISHED" may resolve to
+// PUBLISHED. Review-state, processing, missing, or unknown statuses must NEVER
+// default to PUBLISHED, otherwise unapproved content leaks onto public surfaces.
 function normalizeStatus(value: unknown): CollectionPublicationStatus {
   const raw = String(value ?? '').toUpperCase();
-  if (
-    raw === 'DRAFT' ||
-    raw === 'IN_REVIEW' ||
-    raw === 'CHANGES_REQUESTED' ||
-    raw === 'REJECTED' ||
-    raw === 'FAILED' ||
-    raw === 'ARCHIVED' ||
-    raw === 'REMOVED'
-  ) {
-    return raw;
+  switch (raw) {
+    case 'PUBLISHED':
+      return 'PUBLISHED';
+    case 'DRAFT':
+      return 'DRAFT';
+    case 'PROCESSING':
+      // Upload/media processing in progress — treated as non-public, never PUBLISHED.
+      return 'PROCESSING';
+    case 'IN_REVIEW':
+      return 'IN_REVIEW';
+    case 'CHANGES_REQUESTED':
+      return 'CHANGES_REQUESTED';
+    case 'REJECTED':
+      return 'REJECTED';
+    case 'FAILED':
+      return 'FAILED';
+    case 'ARCHIVED':
+      return 'ARCHIVED';
+    case 'REMOVED':
+      return 'REMOVED';
+    default:
+      // Unknown/missing status — fail closed (hidden), never PUBLISHED.
+      return 'UNKNOWN';
   }
-  return 'PUBLISHED';
 }
 
 function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
