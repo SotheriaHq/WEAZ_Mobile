@@ -29,6 +29,7 @@ import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { navPerf } from '@/src/utils/navPerf';
 import { applyAndroidSystemBarsPolicy } from '@/src/system/AndroidSystemBars';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import {
   NATIVE_ISLAND_ICONS,
   NATIVE_ISLAND_KEYS,
@@ -56,6 +57,8 @@ export default function TabLayout() {
   const [messageCountReady, setMessageCountReady] = useState(false);
   const lastBackPressAtRef = useRef(0);
   const lastProfileTabPressAtRef = useRef(0);
+  const lastNotificationRefreshAttemptAtRef = useRef(0);
+  const lastMessageRefreshAttemptAtRef = useRef(0);
   const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [optimisticActiveKey, setOptimisticActiveKey] = useState<NativeIslandKey | null>(null);
 
@@ -77,6 +80,7 @@ export default function TabLayout() {
   const displayedActiveKey = optimisticActiveKey ?? activeIslandKey;
 
   const refreshUnreadNotificationCount = useCallback(async () => {
+    lastNotificationRefreshAttemptAtRef.current = Date.now();
     const ready = await refreshSharedUnreadNotificationCount({
       authenticated: status === 'authenticated',
     });
@@ -84,6 +88,7 @@ export default function TabLayout() {
   }, [status]);
 
   const refreshUnreadMessageCount = useCallback(async () => {
+    lastMessageRefreshAttemptAtRef.current = Date.now();
     const ready = await refreshSharedUnreadMessageCount({
       authenticated: status === 'authenticated',
     });
@@ -271,6 +276,9 @@ export default function TabLayout() {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
+        if (Date.now() - lastNotificationRefreshAttemptAtRef.current < THREADLY_COUNT_STALE_TIME_MS) {
+          return;
+        }
         void refreshUnreadNotificationCount();
       }
     });
@@ -283,6 +291,9 @@ export default function TabLayout() {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
+        if (Date.now() - lastMessageRefreshAttemptAtRef.current < THREADLY_COUNT_STALE_TIME_MS) {
+          return;
+        }
         void refreshUnreadMessageCount();
       }
     });

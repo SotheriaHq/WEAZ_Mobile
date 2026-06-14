@@ -53,6 +53,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
 import { AppActionSheet, type AppActionSheetOption } from '@/components/ui/AppActionSheet';
+import { AppFloatingMenu, type FloatingMenuOption } from '@/components/ui/AppFloatingMenu';
 import { AppQrSheet } from '@/components/ui/AppQrSheet';
 import { BrandSwitcherSheet } from '@/components/brand/BrandSwitcherSheet';
 import type { DesignEditorMediaSource } from '@/src/features/design-editor/designEditorMediaFlow';
@@ -239,6 +240,13 @@ export default function CatalogScreen() {
   const [savingCatalogById, setSavingCatalogById] = useState<Record<string, boolean>>({});
   const [shareActionsOpen, setShareActionsOpen] = useState(false);
   const [createOptionsOpen, setCreateOptionsOpen] = useState(false);
+  const createAnchorRef = useRef<View | null>(null);
+  const [createAnchorMetrics, setCreateAnchorMetrics] = useState<{
+    pageX: number;
+    pageY: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const [brandQrOpen, setBrandQrOpen] = useState(false);
   const [tabHeights, setTabHeights] = useState<Partial<Record<TabType, number>>>({});
   const tabPagerRef = useRef<ScrollView>(null);
@@ -1125,6 +1133,15 @@ export default function CatalogScreen() {
     [handleCopyProfileLink, handleNativeShareProfile, profileQrTargetUrl, profileShareUrl],
   );
 
+  const captureCreateAnchorMetrics = useCallback(() => {
+    requestAnimationFrame(() => {
+      createAnchorRef.current?.measureInWindow((pageX, pageY, width, height) => {
+        if (width <= 0 || height <= 0) return;
+        setCreateAnchorMetrics({ pageX, pageY, width, height });
+      });
+    });
+  }, []);
+
   // Continue into the composer, optionally auto-opening the media picker for the
   // chosen source. Called only AFTER the user picks an option in the sheet — the
   // `+` button itself must never route straight into the composer.
@@ -1153,30 +1170,28 @@ export default function CatalogScreen() {
     perfMark('catalog-plus-tap');
     navPerf.tap('create_design');
     navPerf.mark('options_sheet_opened');
+    captureCreateAnchorMetrics();
     setCreateOptionsOpen(true);
-  }, [toast, user, userEmailVerified]);
+  }, [captureCreateAnchorMetrics, toast, user, userEmailVerified]);
 
-  const createDesignOptions = useMemo<AppActionSheetOption[]>(
+  const createDesignOptions = useMemo<FloatingMenuOption[]>(
     () => [
       {
         key: 'camera',
-        title: 'Camera',
-        description: 'Capture a new photo or video',
         icon: '📷',
+        title: 'Camera',
         onPress: () => launchComposer({ source: 'camera', openPicker: true }),
       },
       {
         key: 'library',
-        title: 'Choose from library',
-        description: 'Pick existing photos or videos',
         icon: '🖼️',
+        title: 'Photo library',
         onPress: () => launchComposer({ source: 'library', openPicker: true }),
       },
       {
         key: 'blank',
-        title: 'Start a design',
-        description: 'Open the composer and add media later',
         icon: '🧵',
+        title: 'Start blank',
         onPress: () => launchComposer({ openPicker: false }),
       },
     ],
@@ -1226,6 +1241,8 @@ export default function CatalogScreen() {
               router.push({ pathname: '/catalog/edit-profile', params: { brandId: targetBrandId } } as any);
             }}
             onCreate={handleCreatePress}
+            createAnchorRef={createAnchorRef}
+            onCreateAnchorLayout={captureCreateAnchorMetrics}
             onViewAvatar={handleViewOwnerAvatar}
             onShare={() => setShareActionsOpen(true)}
             qrTargetUrl={profileQrTargetUrl}
@@ -1380,10 +1397,10 @@ export default function CatalogScreen() {
         onClose={() => setShareActionsOpen(false)}
       />
 
-      <AppActionSheet
+      <AppFloatingMenu
         visible={createOptionsOpen}
-        title="Create a design"
-        subtitle="Choose how you want to start."
+        anchorRef={createAnchorRef}
+        anchorMetrics={createAnchorMetrics}
         options={createDesignOptions}
         onClose={() => setCreateOptionsOpen(false)}
       />

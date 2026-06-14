@@ -29,6 +29,7 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
   );
   const [loading, setLoading] = useState(false);
   const inflightRefreshRef = useRef<Promise<BagCount> | null>(null);
+  const lastRefreshAttemptAtRef = useRef(0);
 
   const refreshGlobalBagCount = useCallback(async (options?: { forceRefresh?: boolean }) => {
     if (status === 'loading') {
@@ -55,6 +56,7 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
       return inflightRefreshRef.current;
     }
 
+    lastRefreshAttemptAtRef.current = Date.now();
     setLoading(true);
     const request = (async () => {
       try {
@@ -92,6 +94,9 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
+        if (Date.now() - lastRefreshAttemptAtRef.current < THREADLY_COUNT_STALE_TIME_MS) {
+          return;
+        }
         void refreshGlobalBagCount();
       }
     });

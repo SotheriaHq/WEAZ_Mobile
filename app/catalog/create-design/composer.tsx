@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
+import { AppFloatingMenu, type FloatingMenuOption } from '@/components/ui/AppFloatingMenu';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { AppMultiSelectSheet, AppSelectSheet } from '@/components/ui/AppSelectSheet';
 import { AppText } from '@/components/ui/AppText';
@@ -15,7 +16,6 @@ import { Input } from '@/components/ui/Input';
 import { OptionRow } from '@/components/ui/OptionRow';
 import { RequiredFieldLabel } from '@/components/ui/RequiredFieldLabel';
 import { StableImage } from '@/components/ui/StableImage';
-import { ThreadlySheet } from '@/src/components/ui/ThreadlySheet';
 import type { FilterDimensionOption } from '@/src/api/DesignApi';
 import TagsApi from '@/src/api/TagsApi';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
@@ -96,6 +96,7 @@ export default function CreateDesignComposerScreen() {
     retryBootstrap,
   } = useDesignEditor();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ openPicker?: string | string[]; pickerSource?: string | string[]; blank?: string | string[] }>();
   const openPickerParam = Array.isArray(params.openPicker) ? params.openPicker[0] : params.openPicker;
   const pickerSourceParam = Array.isArray(params.pickerSource) ? params.pickerSource[0] : params.pickerSource;
@@ -127,6 +128,13 @@ export default function CreateDesignComposerScreen() {
   const [tagError, setTagError] = useState<string | null>(null);
   const [tagsLoading, setTagsLoading] = useState(false);
   const [initialPickerPending, setInitialPickerPending] = useState(shouldOpenInitialPicker);
+  const mediaAnchorRef = useRef<View | null>(null);
+  const [mediaAnchorMetrics, setMediaAnchorMetrics] = useState<{
+    pageX: number;
+    pageY: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   const audienceLabel = getAudienceLabel(form.audience);
   const sizingLabel = DESIGN_SIZING_LABELS[form.sizingMode];
@@ -264,6 +272,44 @@ export default function CreateDesignComposerScreen() {
       return pickMedia(source);
     },
     [pickMedia],
+  );
+
+  const captureMediaAnchorMetrics = useCallback(() => {
+    requestAnimationFrame(() => {
+      mediaAnchorRef.current?.measureInWindow((pageX, pageY, width, height) => {
+        if (width <= 0 || height <= 0) return;
+        setMediaAnchorMetrics({ pageX, pageY, width, height });
+      });
+    });
+  }, []);
+
+  const openMediaMenu = useCallback(() => {
+    captureMediaAnchorMetrics();
+    setMediaOpen(true);
+  }, [captureMediaAnchorMetrics]);
+
+  const mediaMenuOptions = useMemo<FloatingMenuOption[]>(
+    () => [
+      {
+        key: 'camera',
+        icon: '📷',
+        title: 'Camera',
+        onPress: () => void handlePickMedia('camera'),
+      },
+      {
+        key: 'library',
+        icon: '🖼️',
+        title: 'Photo library',
+        onPress: () => void handlePickMedia('library'),
+      },
+      {
+        key: 'attachment',
+        icon: '📎',
+        title: 'Attachment',
+        onPress: () => void handlePickMedia('library'),
+      },
+    ],
+    [handlePickMedia],
   );
 
   useEffect(() => {
@@ -491,7 +537,9 @@ export default function CreateDesignComposerScreen() {
                         : `${assets.length}/${DESIGN_EDITOR_MAX_MEDIA} selected`}
                 </AppText>
               </View>
-              <Button title="+" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
+              <View ref={mediaAnchorRef} onLayout={captureMediaAnchorMetrics} collapsable={false}>
+                <Button title="+" size="sm" variant="ghost" onPress={openMediaMenu} />
+              </View>
             </View>
             {assets.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaStrip}>
@@ -661,7 +709,7 @@ export default function CreateDesignComposerScreen() {
             {
               backgroundColor: theme.colors.bg,
               borderTopColor: theme.colors.border,
-              paddingBottom: tokens.spacing.md,
+              paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
               paddingHorizontal: tokens.spacing.lg,
             },
           ]}
@@ -676,20 +724,24 @@ export default function CreateDesignComposerScreen() {
             </AppText>
           ) : null}
           <View style={styles.actionRow}>
-            <Button
-              title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
-              variant="secondary"
-              loading={saveState.action === 'draft'}
-              disabled={!canSaveDraft}
-              onPress={() => void save('draft')}
-              style={styles.actionButton}
-            />
-            <Button
-              title="Preview"
-              disabled={!canPreview}
-              onPress={() => router.push('/catalog/create-design/preview' as any)}
-              style={styles.actionButton}
-            />
+            <View style={styles.actionButton}>
+              <Button
+                title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
+                variant="secondary"
+                loading={saveState.action === 'draft'}
+                disabled={!canSaveDraft}
+                onPress={() => void save('draft')}
+                fullWidth
+              />
+            </View>
+            <View style={styles.actionButton}>
+              <Button
+                title="Preview"
+                disabled={!canPreview}
+                onPress={() => router.push('/catalog/create-design/preview' as any)}
+                fullWidth
+              />
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -799,8 +851,12 @@ export default function CreateDesignComposerScreen() {
         showCloseButton
         footer={
           <View style={styles.sheetActionRow}>
-            <Button title="Cancel" variant="outline" onPress={() => setPriceOpen(false)} style={styles.actionButton} />
-            <Button title="Done" disabled={Boolean(priceError)} onPress={() => setPriceOpen(false)} style={styles.actionButton} />
+            <View style={styles.actionButton}>
+              <Button title="Cancel" variant="outline" onPress={() => setPriceOpen(false)} fullWidth />
+            </View>
+            <View style={styles.actionButton}>
+              <Button title="Done" disabled={Boolean(priceError)} onPress={() => setPriceOpen(false)} fullWidth />
+            </View>
           </View>
         }
       >
@@ -1049,28 +1105,12 @@ export default function CreateDesignComposerScreen() {
         {renderDiscoverySections(occasionDimensions, 'Occasion options could not load. You can still save a draft.')}
       </AppBottomSheet>
 
-      <ThreadlySheet
+      <AppFloatingMenu
         visible={mediaOpen}
-        title="Add media"
-        subtitle="Choose how to add a reference image for this design."
+        anchorRef={mediaAnchorRef}
+        anchorMetrics={mediaAnchorMetrics}
+        options={mediaMenuOptions}
         onClose={() => setMediaOpen(false)}
-        options={[
-          {
-            label: 'Camera',
-            icon: <AppText variant="subtitle">📷</AppText>,
-            onSelect: () => void handlePickMedia('camera'),
-          },
-          {
-            label: 'Select from library',
-            icon: <AppText variant="subtitle">🖼️</AppText>,
-            onSelect: () => void handlePickMedia('library'),
-          },
-          {
-            label: 'Attachment',
-            icon: <AppText variant="subtitle">📎</AppText>,
-            onSelect: () => void handlePickMedia('library'),
-          },
-        ]}
       />
 
       <AppBottomSheet

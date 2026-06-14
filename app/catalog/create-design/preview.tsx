@@ -288,7 +288,7 @@ export default function CreateDesignPreviewScreen() {
             backgroundColor: theme.colors.bg,
             borderTopColor: theme.colors.border,
             paddingHorizontal: tokens.spacing.lg,
-            paddingBottom: Math.max(insets.bottom, tokens.spacing.md),
+            paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
           },
         ]}
       >
@@ -324,21 +324,25 @@ export default function CreateDesignPreviewScreen() {
           Going live confirms these images belong to this design and match the selected views.
         </AppText>
         <View style={styles.actionRow}>
-          <Button
-            title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
-            variant="secondary"
-            loading={saveState.action === 'draft'}
-            disabled={!canSaveDraft || isSaving}
-            onPress={() => void save('draft')}
-            style={styles.actionButton}
-          />
-          <Button
-            title={saveState.action === 'publish' ? 'Going live...' : 'Go live'}
-            loading={saveState.action === 'publish'}
-            disabled={!canPublish || isSaving}
-            onPress={() => void save('publish')}
-            style={styles.actionButton}
-          />
+          <View style={styles.actionButton}>
+            <Button
+              title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
+              variant="secondary"
+              loading={saveState.action === 'draft'}
+              disabled={!canSaveDraft || isSaving}
+              onPress={() => void save('draft')}
+              fullWidth
+            />
+          </View>
+          <View style={styles.actionButton}>
+            <Button
+              title={saveState.action === 'publish' ? 'Going live...' : 'Go live'}
+              loading={saveState.action === 'publish'}
+              disabled={!canPublish || isSaving}
+              onPress={() => void save('publish')}
+              fullWidth
+            />
+          </View>
         </View>
         {activeDesignId && isDraft ? (
           <Button title="Delete draft" variant="danger" onPress={() => setDeleteOpen(true)} fullWidth />
