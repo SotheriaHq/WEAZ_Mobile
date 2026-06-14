@@ -42,19 +42,24 @@ function supportsNativeNotificationModule() {
 async function getNotificationsModule() {
   if (!supportsNativeNotificationModule()) return null;
   if (notificationsModulePromise !== null) return notificationsModulePromise;
-  // Use .then(onFulfilled, onRejected) so the rejection handler is attached
-  // synchronously — prevents React Native's unhandled-rejection detector from
-  // firing during Metro's lazy-bundling window before .catch() would attach.
-  notificationsModulePromise = import('expo-notifications').then(
-    (mod) => mod,
-    (error) => {
-      if (__DEV__) {
-        console.warn('Unable to load expo-notifications:', error);
-      }
-      notificationsModulePromise = null; // clear so a later call retries after Metro bundles
-      return null;
-    },
-  );
+  // IMPORTANT: in dev, Metro lazily bundles `expo-notifications` (~750 modules).
+  // Until that finishes, `import('expo-notifications')` can throw SYNCHRONOUSLY
+  // ("Requiring unknown module …") — before any .then()/.catch() is attached —
+  // which surfaces as a red-box error at boot. Wrapping the call inside
+  // `Promise.resolve().then(...)` moves the import() into a microtask so a
+  // synchronous throw is captured as a normal rejection and handled here.
+  notificationsModulePromise = Promise.resolve()
+    .then(() => import('expo-notifications'))
+    .then(
+      (mod) => mod,
+      (error) => {
+        if (__DEV__) {
+          console.warn('Unable to load expo-notifications:', error);
+        }
+        notificationsModulePromise = null; // clear so a later call retries after Metro bundles
+        return null;
+      },
+    );
   return notificationsModulePromise;
 }
 

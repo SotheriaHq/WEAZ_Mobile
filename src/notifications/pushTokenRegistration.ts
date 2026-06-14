@@ -79,12 +79,19 @@ function isExpoGoAndroid() {
 async function getNotificationsModule() {
   if (Platform.OS === 'web' || isExpoGoAndroid()) return null;
 
-  notificationsModulePromise ??= import('expo-notifications').catch((error) => {
-    if (__DEV__) {
-      console.warn('Unable to load expo-notifications for push token registration:', error);
-    }
-    return null;
-  });
+  // Defer the import() into a microtask so a SYNCHRONOUS Metro "Requiring
+  // unknown module" throw during dev lazy-bundling becomes a handled rejection
+  // instead of a red-box crash (a bare `import(...).catch()` cannot catch a
+  // synchronous throw from the import expression itself).
+  notificationsModulePromise ??= Promise.resolve()
+    .then(() => import('expo-notifications'))
+    .catch((error) => {
+      if (__DEV__) {
+        console.warn('Unable to load expo-notifications for push token registration:', error);
+      }
+      notificationsModulePromise = null; // allow a retry after Metro finishes bundling
+      return null;
+    });
 
   return notificationsModulePromise;
 }
