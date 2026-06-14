@@ -27,6 +27,7 @@ import { resolveIdentity } from '@/src/utils/identity';
 import { profileDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
+import { navPerf } from '@/src/utils/navPerf';
 import { compressPickedImage } from '@/src/utils/imageCompression';
 import {
   MOBILE_UPLOAD_POLICIES,
@@ -290,6 +291,10 @@ function SavedDesignCard({ item }: { item: SavedItem }) {
           ? item.collectionId ?? item.targetId
           : item.collectionId ?? item.targetId;
   const onPress = () => {
+    // Dev-only nav timing. Destination (product/design/collection) emits its own
+    // screen_mounted/data_ready; this measures tap→navigation_called.
+    navPerf.tap('wishlist→product');
+    navPerf.navigationCalled();
     if (item.targetType === 'PRODUCT') {
       router.push({ pathname: '/products/[productId]', params: { productId: destinationId } } as any);
       return;

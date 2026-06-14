@@ -10,6 +10,7 @@ import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { navPerf } from '@/src/utils/navPerf';
 
 type SettingsRow = {
   icon: string;
@@ -89,6 +90,13 @@ export default function SettingsScreen() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const isBrand = hasActiveBrandMembership(user);
+
+  // Static screen — shell, first paint, and data are all ready at mount.
+  React.useEffect(() => {
+    navPerf.screenMounted('profile→settings');
+    navPerf.firstVisibleUi('profile→settings');
+    navPerf.dataReady('profile→settings');
+  }, []);
 
   const comingSoon = React.useCallback(
     (title: string) => {

@@ -7,6 +7,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { tokens } from '@/src/styles/tokens';
+import { navPerf } from '@/src/utils/navPerf';
 
 type Props = {
   visible: boolean;
@@ -64,6 +65,8 @@ export default function MyBagSheet({ visible, onClose }: Props) {
               testID="mobile-checkout-cta"
               onPress={() => {
                 onClose();
+                navPerf.tap('bag→checkout');
+                navPerf.navigationCalled();
                 router.push('/checkout' as never);
               }}
             />

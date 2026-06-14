@@ -28,6 +28,7 @@ import {
 } from '@/src/realtime/messaging';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { navPerf } from '@/src/utils/navPerf';
 import type { ConversationListResponse, ConversationSummary } from '@/src/types/messaging';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 
@@ -489,6 +490,8 @@ export default function InboxScreen() {
   }, [hasNextPage, loadConversations, loading, loadingMore, refreshing]);
 
   const handlePressConversation = useCallback((item: ConversationSummary) => {
+    navPerf.tap('inbox→thread');
+    navPerf.navigationCalled();
     router.push({
       pathname: '/messages/[threadId]',
       params: buildThreadParams(item),

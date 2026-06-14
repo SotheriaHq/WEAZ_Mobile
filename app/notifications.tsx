@@ -20,6 +20,7 @@ import {
 import { LAYOUT, tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { routeForNotification } from '@/src/utils/mobileRouting';
+import { navPerf } from '@/src/utils/navPerf';
 
 type NotificationGroup = {
   title: string;
@@ -196,6 +197,11 @@ export default function NotificationsScreen() {
         setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, isRead: false } : entry)));
       });
     }
+    // Target route varies (product/design/post/thread/profile); the destination
+    // screen emits its own screen_mounted/data_ready under its flow label, while
+    // this measures tap→navigation_called for the notification open.
+    navPerf.tap('notifications→target');
+    navPerf.navigationCalled();
     router.push(routeForNotification(item));
   }, []);
 

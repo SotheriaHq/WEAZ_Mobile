@@ -26,6 +26,7 @@ import {
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { navPerf } from '@/src/utils/navPerf';
 import { MobileMarketSuggestionBlocks } from '@/src/features/market/components/MobileMarketSuggestionBlocks';
 
 type Props = {
@@ -218,6 +219,16 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
     },
     [cursor, hasNextPage, loadingMore, section, sectionKey],
   );
+
+  // Dev-only nav timing for market→section. Shell/skeleton renders at mount;
+  // data is ready once the initial section load settles.
+  useEffect(() => {
+    navPerf.screenMounted('market→section');
+    navPerf.firstVisibleUi('market→section');
+  }, []);
+  useEffect(() => {
+    if (!loading) navPerf.dataReady('market→section');
+  }, [loading]);
 
   useEffect(() => {
     void loadSection('reset');

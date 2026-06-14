@@ -26,6 +26,7 @@ import {
   useUnreadMessageCount,
 } from '@/src/realtime/messaging';
 import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
+import { navPerf } from '@/src/utils/navPerf';
 import { applyAndroidSystemBarsPolicy } from '@/src/system/AndroidSystemBars';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import {
@@ -224,6 +225,17 @@ export default function TabLayout() {
 
       const nextRoute = getNativeIslandRoute(item.key, isBrand);
       if (nextRoute) {
+        // Dev-only nav timing for the two primary tab feed switches.
+        const navFlow =
+          item.key === NATIVE_ISLAND_KEYS.market
+            ? 'tabs→market'
+            : item.key === NATIVE_ISLAND_KEYS.designs
+              ? 'tabs→runway'
+              : null;
+        if (navFlow) {
+          navPerf.tap(navFlow);
+          navPerf.navigationCalled();
+        }
         router.replace(nextRoute as any);
       }
     },
@@ -421,6 +433,8 @@ export default function TabLayout() {
           lastProfileTabPressAtRef.current = 0;
           setProfileMenuVisible(false);
           clearSelectionState();
+          navPerf.tap('profile→settings');
+          navPerf.navigationCalled();
           router.push('/settings' as any);
         }}
         scheme={scheme}

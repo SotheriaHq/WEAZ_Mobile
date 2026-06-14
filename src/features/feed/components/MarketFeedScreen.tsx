@@ -44,6 +44,7 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { perfMark } from '@/src/utils/perf';
+import { navPerf } from '@/src/utils/navPerf';
 import { fetchMarketFilterChipsQuery } from '@/src/query/bootstrapQueries';
 import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
 import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
@@ -695,6 +696,16 @@ export function MarketFeedScreen() {
   const STALE_THRESHOLD_MS = 60_000; // 60 seconds
 
   const showBlockingLoader = loading && items.length === 0;
+
+  // Dev-only nav timing for tabs→runway. Shell (skeleton or cached items)
+  // renders at mount; data is ready once the initial feed load settles.
+  useEffect(() => {
+    navPerf.screenMounted('tabs→runway');
+    navPerf.firstVisibleUi('tabs→runway');
+  }, []);
+  useEffect(() => {
+    if (!loading) navPerf.dataReady('tabs→runway');
+  }, [loading]);
 
   const skeletonOpacity = useRef(new Animated.Value(1)).current;
   const [isSkeletonFadingOut, setIsSkeletonFadingOut] = useState(false);

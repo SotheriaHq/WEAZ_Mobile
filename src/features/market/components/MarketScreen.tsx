@@ -63,6 +63,7 @@ import {
   startMarketSignalRuntime,
   trackMarketSignal,
 } from '@/src/services/marketSignals';
+import { navPerf } from '@/src/utils/navPerf';
 
 const SIDE_PADDING = tokens.spacing.lg;
 const SECTION_GAP = tokens.spacing.xl;
@@ -1351,6 +1352,16 @@ export function MarketScreen() {
 
   useEffect(() => startMarketSignalRuntime(), []);
 
+  // Dev-only nav timing for tabs→market. Shell renders at mount (cached snapshot
+  // or skeleton); data is ready once the initial market load settles.
+  useEffect(() => {
+    navPerf.screenMounted('tabs→market');
+    navPerf.firstVisibleUi('tabs→market');
+  }, []);
+  useEffect(() => {
+    if (!loading) navPerf.dataReady('tabs→market');
+  }, [loading]);
+
   const bottomClearance = standardScreenBottomPadding;
   const allItems = useMemo(() => buildContentItems(products, designs), [designs, products]);
   const marketQueryKey = useMemo(
@@ -1801,6 +1812,8 @@ export function MarketScreen() {
       sectionKey,
     });
     void flushMarketSignals();
+    navPerf.tap('market→section');
+    navPerf.navigationCalled();
     router.push({
       pathname: '/market-section',
       params: { sectionKey },

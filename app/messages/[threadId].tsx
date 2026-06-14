@@ -35,6 +35,7 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { navPerf } from '@/src/utils/navPerf';
 import type {
   ConversationParticipant,
   ConversationThread,
@@ -556,6 +557,16 @@ export default function ChatThreadScreen() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [readWarning, setReadWarning] = useState<string | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<QuotedMessage | null>(null);
+
+  // Dev-only nav timing for inbox→thread. Shell (header + skeleton) renders at
+  // mount; primary data is ready when the load phase settles to 'ready'.
+  useEffect(() => {
+    navPerf.screenMounted('inbox→thread');
+    navPerf.firstVisibleUi('inbox→thread');
+  }, []);
+  useEffect(() => {
+    if (phase === 'ready') navPerf.dataReady('inbox→thread');
+  }, [phase]);
 
   const cursorRef = useRef<ConversationThread['endCursor']>(null);
   const requestIdRef = useRef(0);
