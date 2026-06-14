@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import Constants from 'expo-constants';
+import * as ExpoNotifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
@@ -10,7 +11,7 @@ import {
 } from '@/src/api/NotificationsApi';
 import { getActiveApiBaseUrl } from '@/src/api/httpClient';
 
-type ExpoNotificationsModule = typeof import('expo-notifications');
+type ExpoNotificationsModule = typeof ExpoNotifications;
 
 export type PushRegistrationRecord = {
   userId: string;
@@ -26,7 +27,6 @@ type PushRegistrationResult =
 
 const PUSH_REGISTRATION_STORAGE_KEY = 'threadly.pushTokenRegistration.v1';
 
-let notificationsModulePromise: Promise<ExpoNotificationsModule | null> | null = null;
 let inFlightRegistrationKey: string | null = null;
 let inFlightRegistrationPromise: Promise<PushRegistrationResult> | null = null;
 let lastSuccessfulRegistrationKey: string | null = null;
@@ -78,22 +78,7 @@ function isExpoGoAndroid() {
 
 async function getNotificationsModule() {
   if (Platform.OS === 'web' || isExpoGoAndroid()) return null;
-
-  // Defer the import() into a microtask so a SYNCHRONOUS Metro "Requiring
-  // unknown module" throw during dev lazy-bundling becomes a handled rejection
-  // instead of a red-box crash (a bare `import(...).catch()` cannot catch a
-  // synchronous throw from the import expression itself).
-  notificationsModulePromise ??= Promise.resolve()
-    .then(() => import('expo-notifications'))
-    .catch((error) => {
-      if (__DEV__) {
-        console.warn('Unable to load expo-notifications for push token registration:', error);
-      }
-      notificationsModulePromise = null; // allow a retry after Metro finishes bundling
-      return null;
-    });
-
-  return notificationsModulePromise;
+  return ExpoNotifications;
 }
 
 async function ensureNotificationPermission(NotificationsModule: ExpoNotificationsModule) {

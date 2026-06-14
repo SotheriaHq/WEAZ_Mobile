@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { router, usePathname } from 'expo-router';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import type * as Notifications from 'expo-notifications';
+import * as ExpoNotifications from 'expo-notifications';
 import { resolveExpoProjectId } from '@/src/notifications/pushTokenRegistration';
 import { shouldPresentMessageForegroundPushNotification } from '@/src/realtime/messaging';
 
@@ -12,16 +12,14 @@ import { shouldPresentMessageForegroundPushNotification } from '@/src/realtime/m
 const isExpoGo = (): boolean => Constants.executionEnvironment === 'storeClient';
 const isExpoGoAndroid = (): boolean => isExpoGo() && Platform.OS === 'android';
 
-type ExpoNotificationsModule = typeof import('expo-notifications');
-
-let notificationsModulePromise: Promise<ExpoNotificationsModule | null> | null = null;
+type ExpoNotificationsModule = typeof ExpoNotifications;
 let pushConfigurationPromise: Promise<{
   token?: string;
   error?: string;
   unsupported?: boolean;
 }> | null = null;
 
-function getForegroundNotificationBehavior(notification?: Notifications.Notification | null) {
+function getForegroundNotificationBehavior(notification?: ExpoNotifications.Notification | null) {
   const shouldPresent = shouldPresentMessageForegroundPushNotification(
     notification?.request?.content?.data ?? null,
   );
@@ -35,32 +33,13 @@ function getForegroundNotificationBehavior(notification?: Notifications.Notifica
   };
 }
 
-function supportsNativeNotificationModule() {
-  return !isExpoGoAndroid();
-}
-
 async function getNotificationsModule() {
-  if (!supportsNativeNotificationModule()) return null;
-  if (notificationsModulePromise !== null) return notificationsModulePromise;
-  // IMPORTANT: in dev, Metro lazily bundles `expo-notifications` (~750 modules).
-  // Until that finishes, `import('expo-notifications')` can throw SYNCHRONOUSLY
+  if (isExpoGoAndroid()) return null;
+  return ExpoNotifications;
   // ("Requiring unknown module …") — before any .then()/.catch() is attached —
   // which surfaces as a red-box error at boot. Wrapping the call inside
   // `Promise.resolve().then(...)` moves the import() into a microtask so a
   // synchronous throw is captured as a normal rejection and handled here.
-  notificationsModulePromise = Promise.resolve()
-    .then(() => import('expo-notifications'))
-    .then(
-      (mod) => mod,
-      (error) => {
-        if (__DEV__) {
-          console.warn('Unable to load expo-notifications:', error);
-        }
-        notificationsModulePromise = null; // clear so a later call retries after Metro bundles
-        return null;
-      },
-    );
-  return notificationsModulePromise;
 }
 
 import { useAuth } from '@/src/auth/AuthContext';
@@ -188,7 +167,7 @@ export function useNotificationRouting() {
    * Handle a notification tap or deep link.
    */
   const handleNotification = useCallback((
-    notification: Notifications.Notification | null,
+    notification: ExpoNotifications.Notification | null,
   ) => {
     if (!notification) return;
 
@@ -258,7 +237,7 @@ async function configurePushNotificationsOnce(): Promise<{
   error?: string;
   unsupported?: boolean;
 }> {
-  if (!supportsNativeNotificationModule()) {
+  if (isExpoGoAndroid()) {
     return { error: 'Push notifications are not available in Expo Go on Android.', unsupported: true };
   }
 
@@ -340,7 +319,7 @@ async function configurePushNotificationsOnce(): Promise<{
  * Returns the notification that launched the app, if any.
  */
 export async function handleInitialNotification(): Promise<{
-  notification: Notifications.Notification | null;
+  notification: ExpoNotifications.Notification | null;
   error?: string;
 }> {
   const NotificationsModule = await getNotificationsModule();
@@ -361,8 +340,8 @@ export async function handleInitialNotification(): Promise<{
  * Returns unsubscribe function.
  */
 export function setupNotificationListeners(
-  onNotificationReceived: (notification: Notifications.Notification) => void,
-  onNotificationResponse: (response: Notifications.NotificationResponse) => void,
+  onNotificationReceived: (notification: ExpoNotifications.Notification) => void,
+  onNotificationResponse: (response: ExpoNotifications.NotificationResponse) => void,
 ): () => void {
   let mounted = true;
   let cleanup: (() => void) | null = null;
