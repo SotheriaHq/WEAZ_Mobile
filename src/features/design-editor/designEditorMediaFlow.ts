@@ -110,13 +110,11 @@ export async function pickDesignEditorMediaAssets({
     source === 'camera'
       ? await ImagePicker.launchCameraAsync({
           mediaTypes: ['images', 'videos'],
-          quality: 0.9,
           base64: false,
         })
       : await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images', 'videos'],
           allowsMultipleSelection: true,
-          quality: 0.9,
           selectionLimit: remainingSlots,
           base64: false,
         });

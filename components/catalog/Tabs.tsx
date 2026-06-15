@@ -40,6 +40,75 @@ interface TabsProps {
 }
 
 // ─────────────────────────────────────────────────────────────
+// TabItem Component
+// ─────────────────────────────────────────────────────────────
+
+interface TabItemProps {
+  tab: Tab;
+  tabIndex: number;
+  activeTab: string;
+  swipeProgress?: SharedValue<number>;
+  handlePress: (key: string) => void;
+  handleTabLayout: (key: string, x: number, width: number) => void;
+  scrollable: boolean;
+  theme: any;
+}
+
+function TabItem({ tab, tabIndex, activeTab, swipeProgress, handlePress, handleTabLayout, scrollable, theme }: TabItemProps) {
+  const isActiveReact = tab.key === activeTab;
+
+  const animatedLabelStyle = useAnimatedStyle(() => {
+    let isActive = false;
+    if (swipeProgress) {
+      isActive = Math.round(swipeProgress.value) === tabIndex;
+    } else {
+      isActive = tab.key === activeTab;
+    }
+
+    return {
+      fontFamily: isActive ? tokens.fontFamily.bold : tokens.fontFamily.medium,
+      color: isActive ? theme.colors.primary : theme.colors.textMuted,
+    };
+  }, [activeTab, swipeProgress, tab.key, tabIndex, theme]);
+
+  return (
+    <Pressable
+      key={tab.key}
+      onPress={() => handlePress(tab.key)}
+      onLayout={(e: LayoutChangeEvent) => {
+        const { x, width } = e.nativeEvent.layout;
+        handleTabLayout(tab.key, x, width);
+      }}
+      style={({ pressed }) => [
+        styles.tab,
+        scrollable ? styles.tabScrollable : styles.tabFixed,
+        pressed && { opacity: 0.7 },
+      ]}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: isActiveReact }}
+    >
+      <Animated.Text
+        style={[
+          styles.tabLabel,
+          { fontSize: tokens.typography.caption.size, lineHeight: tokens.typography.caption.lineHeight },
+          animatedLabelStyle,
+        ]}
+      >
+        {tab.label}
+      </Animated.Text>
+
+      {typeof tab.badge === 'number' && tab.badge > 0 && (
+        <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
+          <AppText variant="caption" tone="inverse" style={styles.badgeText}>
+            {tab.badge > 99 ? '99+' : tab.badge}
+          </AppText>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────
 
@@ -141,42 +210,19 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, swipePr
   return (
     <View style={[styles.container, { borderBottomColor: theme.colors.border }]}>
       <TabContainer {...containerProps}>
-        {tabs.map((tab) => {
-          const isActive = tab.key === activeTab;
-          return (
-            <Pressable
-              key={tab.key}
-              onPress={() => handlePress(tab.key)}
-              onLayout={(e: LayoutChangeEvent) => {
-                const { x, width } = e.nativeEvent.layout;
-                handleTabLayout(tab.key, x, width);
-              }}
-              style={({ pressed }) => [
-                styles.tab,
-                scrollable ? styles.tabScrollable : styles.tabFixed,
-                pressed && { opacity: 0.7 },
-              ]}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: isActive }}
-            >
-              <AppText
-                variant={isActive ? 'captionBold' : 'captionRegular'}
-                tone={isActive ? 'primary' : 'muted'}
-                style={styles.tabLabel}
-              >
-                {tab.label}
-              </AppText>
-
-              {typeof tab.badge === 'number' && tab.badge > 0 && (
-                <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
-                  <AppText variant="caption" tone="inverse" style={styles.badgeText}>
-                    {tab.badge > 99 ? '99+' : tab.badge}
-                  </AppText>
-                </View>
-              )}
-            </Pressable>
-          );
-        })}
+        {tabs.map((tab, index) => (
+          <TabItem
+            key={tab.key}
+            tab={tab}
+            tabIndex={index}
+            activeTab={activeTab}
+            swipeProgress={swipeProgress}
+            handlePress={handlePress}
+            handleTabLayout={handleTabLayout}
+            scrollable={scrollable}
+            theme={theme}
+          />
+        ))}
       </TabContainer>
 
       {/* Animated underline — primary accent */}

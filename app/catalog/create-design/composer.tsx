@@ -100,11 +100,12 @@ export default function CreateDesignComposerScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ blank?: string | string[] }>();
+  const params = useLocalSearchParams<{ blank?: string | string[]; autoOpenPickerSource?: string | string[] }>();
   const blankParam = Array.isArray(params.blank) ? params.blank[0] : params.blank;
+  const autoOpenPickerSourceParam = Array.isArray(params.autoOpenPickerSource) ? params.autoOpenPickerSource[0] : params.autoOpenPickerSource;
   // The user explicitly chose "Start a design" (no media yet) — keep the empty
   // composer open instead of bouncing back to the catalogue.
-  const isBlankStart = blankParam === '1' || blankParam === 'true';
+  const isBlankStart = blankParam === '1' || blankParam === 'true' || !!autoOpenPickerSourceParam;
   const hasEverHadAssetsRef = useRef(false);
 
   const [privacyOpen, setPrivacyOpen] = useState(false);
@@ -371,11 +372,27 @@ export default function CreateDesignComposerScreen() {
     if (mediaOpen || !pendingPickerSource) return;
     const source = pendingPickerSource;
     const handle = InteractionManager.runAfterInteractions(() => {
-      setPendingPickerSource(null);
-      void handlePickMedia(source);
+      setTimeout(() => {
+        setPendingPickerSource(null);
+        void handlePickMedia(source);
+      }, 50);
     });
     return () => handle.cancel();
   }, [mediaOpen, pendingPickerSource, handlePickMedia]);
+
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenPickerSourceParam && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      const source = autoOpenPickerSourceParam as 'camera' | 'library';
+      const handle = InteractionManager.runAfterInteractions(() => {
+        setTimeout(() => {
+          void handlePickMedia(source);
+        }, 300); // Wait for route transition slide-in to visibly finish
+      });
+      return () => handle.cancel();
+    }
+  }, [autoOpenPickerSourceParam, handlePickMedia]);
 
   useEffect(() => {
     perfMeasure('catalog-plus-to-composer', 'catalog-plus-tap');
@@ -390,15 +407,6 @@ export default function CreateDesignComposerScreen() {
       navPerf.dataReady('create_design');
     }
   }, [booting]);
-
-  const [transitionReady, setTransitionReady] = useState(false);
-
-  useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      setTransitionReady(true);
-    });
-    return () => handle.cancel();
-  }, []);
 
 
 
@@ -500,11 +508,9 @@ export default function CreateDesignComposerScreen() {
 
   // usable_ui = the form + footer actions are actually interactive
   useEffect(() => {
-    if (transitionReady) {
-      navPerf.mark('usable_ui');
-      navPerf.mark('footer_actions_visible');
-    }
-  }, [transitionReady]);
+    navPerf.mark('usable_ui');
+    navPerf.mark('footer_actions_visible');
+  }, []);
 
   useEffect(() => {
     if (shouldRedirectEmptyCreate) {
@@ -558,7 +564,7 @@ export default function CreateDesignComposerScreen() {
     [filterSelection, toggleFilterValue],
   );
 
-  if (!transitionReady || (booting && isEditMode)) {
+  if (booting && isEditMode) {
     return <AppLoaderScreen message="Loading composer" />;
   }
 

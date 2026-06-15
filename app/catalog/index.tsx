@@ -25,7 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
-import { useSharedValue } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -275,10 +275,16 @@ export default function CatalogScreen() {
   const createAnchorRef = useRef<View | null>(null);
   const [brandQrOpen, setBrandQrOpen] = useState(false);
   const [tabHeights, setTabHeights] = useState<Partial<Record<TabType, number>>>({});
-  const tabPagerRef = useRef<ScrollView>(null);
-  // Tracks whether the last tab change came from a user swipe. When true, the
-  // activeTab effect skips the programmatic scrollTo to avoid fighting the pager.
-  const tabChangeFromSwipeRef = useRef(false);
+  const tabPagerRef = useRef<Animated.ScrollView>(null);
+  const isProgrammaticScrollRef = useRef(false);
+  const programmaticScrollTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const activeTabRef = useRef(activeTab);
+  const hasInitialScrolledRef = useRef(false);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
   const completedTaskRefreshKeyRef = useRef<string | null>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
   const activeTabPagerHeight = tabHeights[activeTab];
@@ -607,15 +613,14 @@ export default function CatalogScreen() {
   );
 
   useEffect(() => {
-    const idx = TAB_ORDER.indexOf(activeTab);
-    if (idx >= 0) {
-      tabSwipeProgress.value = idx;
-      if (!tabChangeFromSwipeRef.current && containerWidth > 0) {
-        tabPagerRef.current?.scrollTo({ x: idx * containerWidth, animated: true });
+    if (containerWidth > 0 && !hasInitialScrolledRef.current) {
+      hasInitialScrolledRef.current = true;
+      const idx = TAB_ORDER.indexOf(activeTabRef.current);
+      if (idx > 0) {
+        tabPagerRef.current?.scrollTo({ x: idx * containerWidth, animated: false });
       }
-      tabChangeFromSwipeRef.current = false;
     }
-  }, [activeTab, containerWidth, tabSwipeProgress]);
+  }, [containerWidth]);
 
   // Refresh
   const handleRefresh = async () => {
@@ -633,6 +638,13 @@ export default function CatalogScreen() {
       const nextTab = key as TabType;
       const index = TAB_ORDER.indexOf(nextTab);
       if (index < 0) return;
+
+      isProgrammaticScrollRef.current = true;
+      clearTimeout(programmaticScrollTimeout.current);
+      programmaticScrollTimeout.current = setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 500);
+
       setActiveTab(nextTab);
       if (containerWidth > 0) {
         tabPagerRef.current?.scrollTo({ x: index * containerWidth, animated: true });
@@ -641,26 +653,40 @@ export default function CatalogScreen() {
     [containerWidth],
   );
 
-  const handleTabPagerScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const handlePageChangeSync = useCallback((nextIndex: number) => {
+    if (!isProgrammaticScrollRef.current) {
+      const nextTab = TAB_ORDER[nextIndex];
+      if (nextTab && nextTab !== activeTabRef.current) {
+        setActiveTab(nextTab);
+      }
+    }
+  }, []);
+
+  const handleTabPagerScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
       if (containerWidth <= 0) return;
-      tabSwipeProgress.value = event.nativeEvent.contentOffset.x / containerWidth;
+      const progress = event.contentOffset.x / containerWidth;
+      tabSwipeProgress.value = progress;
+      const nextIndex = Math.max(0, Math.min(2, Math.round(progress)));
+      runOnJS(handlePageChangeSync)(nextIndex);
     },
-    [containerWidth, tabSwipeProgress],
-  );
+  }, [containerWidth, handlePageChangeSync, tabSwipeProgress]);
 
   const handleTabPagerMomentumEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      isProgrammaticScrollRef.current = false;
+      clearTimeout(programmaticScrollTimeout.current);
       if (containerWidth <= 0) return;
-      const nextIndex = Math.max(0, Math.min(TAB_ORDER.length - 1, Math.round(event.nativeEvent.contentOffset.x / containerWidth)));
+
+      const progress = event.nativeEvent.contentOffset.x / containerWidth;
+      const nextIndex = Math.max(0, Math.min(TAB_ORDER.length - 1, Math.round(progress)));
       const nextTab = TAB_ORDER[nextIndex];
-      tabSwipeProgress.value = nextIndex;
-      if (nextTab && nextTab !== activeTab) {
-        tabChangeFromSwipeRef.current = true;
+      
+      if (nextTab && nextTab !== activeTabRef.current) {
         setActiveTab(nextTab);
       }
     },
-    [activeTab, containerWidth, tabSwipeProgress],
+    [containerWidth],
   );
 
   const handleTabPageLayout = useCallback((tab: TabType, event: LayoutChangeEvent) => {
@@ -1248,25 +1274,16 @@ export default function CatalogScreen() {
       navPerf.tap('create_design');
       navPerf.mark('create_design_option_selected');
 
-      const doLaunch = async () => {
+      const doLaunch = () => {
+        navPerf.mark('create_design_navigation_called');
+        navPerf.navigationCalled();
+        
         if (opts.openPicker && opts.source) {
-          const result = await pickDesignEditorMediaAssets({ source: opts.source });
-          if (result.status === 'success' && result.assets.length > 0) {
-            const token = stageDesignEditorAssetBundle(result.assets);
-            navPerf.mark('create_design_navigation_called');
-            navPerf.navigationCalled();
-            router.push({
-              pathname: '/catalog/create-design/composer',
-              params: { handoffToken: token, brandId: targetBrandId },
-            } as any);
-          } else if (result.status === 'limit') {
-            toast.error(result.message);
-          } else if (result.status === 'permission') {
-            toast.error(result.issue.message);
-          }
+          router.push({
+            pathname: '/catalog/create-design/composer',
+            params: { autoOpenPickerSource: opts.source, brandId: targetBrandId },
+          } as any);
         } else {
-          navPerf.mark('create_design_navigation_called');
-          navPerf.navigationCalled();
           router.push({
             pathname: '/catalog/create-design/composer',
             params: { blank: '1', brandId: targetBrandId },
@@ -1274,9 +1291,7 @@ export default function CatalogScreen() {
         }
       };
 
-      requestAnimationFrame(() => {
-        void doLaunch();
-      });
+      doLaunch();
     },
     [targetBrandId, toast],
   );
@@ -1426,7 +1441,7 @@ export default function CatalogScreen() {
 
 
 
-        <ScrollView
+        <Animated.ScrollView
           ref={tabPagerRef}
           horizontal
           pagingEnabled
@@ -1542,7 +1557,7 @@ export default function CatalogScreen() {
               <View style={styles.tabContent} />
             )}
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
       </ScrollView>
 
       <MobileProfileImageModal

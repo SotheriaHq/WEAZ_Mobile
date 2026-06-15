@@ -58,7 +58,6 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
-  const pendingCallback = useRef<(() => void) | null>(null);
 
   const menuWidth = 188;
 
@@ -76,7 +75,6 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
       if (!internalVisible) {
         setInternalVisible(true);
         setIsClosing(false);
-        pendingCallback.current = null;
         
         fadeAnim.setValue(0);
         scaleAnim.setValue(0.95);
@@ -133,22 +131,12 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
       setInternalVisible(false);
       setIsClosing(false);
       onClose(); // notify parent
-      
-      if (pendingCallback.current) {
-        const callback = pendingCallback.current;
-        pendingCallback.current = null;
-        
-        // Wait for React to process the unmount of this modal and its backdrops
-        InteractionManager.runAfterInteractions(() => {
-          callback();
-        });
-      }
     });
   };
 
   const handleOptionPress = (optionOnPress: () => void) => {
     if (isClosing) return;
-    pendingCallback.current = optionOnPress;
+    optionOnPress();
     handleClose();
   };
 

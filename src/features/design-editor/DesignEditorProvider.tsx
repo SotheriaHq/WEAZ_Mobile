@@ -361,8 +361,30 @@ export function DesignEditorProvider({
   const [customOrderConfigurations, setCustomOrderConfigurations] = useState<DesignCustomOrderConfiguration[]>([]);
   const [selectedCustomOrderConfigurationId, setSelectedCustomOrderConfigurationId] = useState('');
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
-  const [assets, setAssets] = useState<DesignEditorAsset[]>([]);
-  const [coverAssetId, setCoverAssetIdState] = useState<string | null>(null);
+
+  // Eagerly consume staged assets so they are instantly visible during the route transition,
+  // instead of waiting for categories/metadata to load.
+  const initialStagedAssets = useMemo(() => {
+    const token = assetHandoffToken?.trim();
+    if (!designId && token) {
+      return consumeDesignEditorAssetBundle(token);
+    }
+    return null;
+  }, [assetHandoffToken, designId]);
+
+  const [assets, setAssets] = useState<DesignEditorAsset[]>(() => {
+    if (initialStagedAssets?.length) {
+      return initialStagedAssets.slice(0, DESIGN_EDITOR_MAX_MEDIA);
+    }
+    return [];
+  });
+
+  const [coverAssetId, setCoverAssetIdState] = useState<string | null>(() => {
+    if (initialStagedAssets?.length) {
+      return initialStagedAssets[0]?.id ?? null;
+    }
+    return null;
+  });
   const [filterSelection, setFilterSelection] = useState<DesignFilterSelection>({});
   const [customMeasurementKeys, setCustomMeasurementKeys] = useState<string[]>([]);
   const [originalMediaIds, setOriginalMediaIds] = useState<string[]>([]);
@@ -470,14 +492,7 @@ export function DesignEditorProvider({
 
         setCustomOrderConfigurations([]);
 
-        if (!activeDesignId && normalizedAssetHandoffToken) {
-          const stagedAssets = consumeDesignEditorAssetBundle(normalizedAssetHandoffToken);
-          if (stagedAssets?.length) {
-            setAssets(stagedAssets.slice(0, DESIGN_EDITOR_MAX_MEDIA));
-            setCoverAssetIdState(stagedAssets[0]?.id ?? null);
-            setOriginalMediaIds([]);
-          }
-        }
+        // Staged assets are now consumed eagerly during state initialization (see initialStagedAssets above).
 
         if (activeDesignId) {
           const detail = await getDesignDetail(activeDesignId);
