@@ -1149,13 +1149,21 @@ export default function CatalogScreen() {
   const listInitialLoading = visibilityFilter === 'Drafts'
     ? draftsQuery.isLoading && effectiveDrafts.length === 0
     : collectionsQuery.isLoading && effectiveCollections.length === 0;
-  const showInitialSkeleton = !transitionReady || Boolean(
-    targetBrandId &&
-    !effectiveProfile &&
-    effectiveCollections.length === 0 &&
-    effectiveDrafts.length === 0 &&
-    (profileInitialLoading || listInitialLoading),
-  );
+  // Warm return must never flash a skeleton. If cached/previous catalogue content
+  // already exists, render it immediately — the transitionReady defer (which only
+  // exists to avoid heavy synchronous work during the nav animation) must not blank
+  // an already-populated screen. The skeleton is reserved for genuine cold loads.
+  const hasCachedCatalogContent =
+    Boolean(effectiveProfile) ||
+    effectiveCollections.length > 0 ||
+    effectiveDrafts.length > 0;
+  const showInitialSkeleton =
+    !hasCachedCatalogContent &&
+    (!transitionReady ||
+      Boolean(
+        targetBrandId &&
+        (profileInitialLoading || listInitialLoading),
+      ));
   const overlayScrollPadding = standardScreenBottomPadding;
 
   // Tab configuration

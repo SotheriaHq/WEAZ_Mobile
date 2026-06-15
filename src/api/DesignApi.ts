@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { apiClient } from '@/src/api/httpClient';
 import {
   getRequiredLegalAcceptances,
@@ -561,26 +560,87 @@ async function uploadDesignAsset(
   const method = resolvePresignedUploadMethod(upload);
 
   if (method === 'POST') {
+    // S3 presigned POST (createPresignedPost). The signed policy fields MUST be
+    // appended BEFORE the file, and the file part MUST be appended last.
     const formData = new FormData();
     for (const [key, value] of Object.entries(upload.uploadFields ?? {})) {
       formData.append(key, String(value));
     }
-    const filePart = {
+    // The S3 policy pins `$Content-Type` to the server's trusted content type
+    // (the `Content-Type` value inside uploadFields). The multipart file part MUST
+    // carry that exact same type, otherwise S3 rejects with an access-denied /
+    // policy-condition error. Do NOT use the raw asset mimeType here — it may have
+    // been normalized server-side (e.g. image/jpg -> image/jpeg) or changed by
+    // compression, which would break the `["eq", "$Content-Type", ...]` condition.
+    const signedContentType =
+      (upload.uploadFields?.['Content-Type'] as string | undefined) ??
+      asset.mimeType ??
+      'application/octet-stream';
+    formData.append('file', {
       uri: String(asset.uri),
-      type: String(asset.mimeType || 'application/octet-stream'),
+      type: String(signedContentType),
       name: String(asset.fileName || `upload-${Date.now()}.bin`),
-    };
-    
-    formData.append('file', JSON.parse(JSON.stringify(filePart)));
+    } as any);
 
-    const response = await axios.post(upload.uploadUrl, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    // CRITICAL (native upload fix): do NOT set the Content-Type header manually.
+    // On web the browser injects the multipart boundary even when the header is
+    // set to 'multipart/form-data', but React Native does NOT — a manual header
+    // ships without a boundary, so S3 cannot parse the body and rejects every
+    // upload. This is exactly why Save Draft / Publish worked on web but failed
+    // on native. Letting RN's fetch build the request sets
+    // `multipart/form-data; boundary=...` correctly. We use fetch (not the shared
+    // axios apiClient) so no JWT/interceptor headers are attached to the S3 POST.
+    let response: Response;
+    try {
+      response = await fetch(upload.uploadUrl, {
+        method: 'POST',
+        body: formData,
+      });
+    } catch (networkError: any) {
+      // A throw here (before any response) is a transport failure: the file URI
+      // could not be read/streamed, TLS/cleartext blocked, or the connection
+      // dropped. Log it so it is not hidden behind the generic toast.
+      console.warn('[design-upload] S3 POST transport error', {
+        message: typeof networkError?.message === 'string' ? networkError.message : 'request failed',
+        uploadHost: (() => {
+          try {
+            return new URL(upload.uploadUrl).host;
+          } catch {
+            return null;
+          }
+        })(),
+        fileName: asset.fileName,
+        hasUri: Boolean(asset.uri),
+      });
+      throw new Error('S3 upload failed (network)');
+    }
 
-    if (response.status < 200 || response.status >= 300) {
-      throw new Error(`Upload failed with status ${response.status}`);
+    if (!response.ok) {
+      // S3 returns an XML body explaining exactly why (EntityTooSmall = 0-byte
+      // upload, AccessDenied = policy/Content-Type mismatch, etc.). Surface it in
+      // the logs so the real cause is never hidden behind the generic toast.
+      const detail = await response.text().catch(() => '');
+      const s3Code = /<Code>([^<]+)<\/Code>/.exec(detail)?.[1] ?? null;
+      const s3Message = /<Message>([^<]+)<\/Message>/.exec(detail)?.[1] ?? null;
+      console.warn('[design-upload] S3 POST rejected', {
+        status: response.status,
+        s3Code,
+        s3Message,
+        uploadHost: (() => {
+          try {
+            return new URL(upload.uploadUrl).host;
+          } catch {
+            return null;
+          }
+        })(),
+        fileName: asset.fileName,
+        declaredType: signedContentType,
+        assetMimeType: asset.mimeType,
+        hasUri: Boolean(asset.uri),
+      });
+      throw new Error(
+        `S3 upload failed (${response.status}${s3Code ? ` ${s3Code}` : ''})`,
+      );
     }
   } else {
     const fileResponse = await fetch(asset.uri);

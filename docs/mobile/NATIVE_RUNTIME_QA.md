@@ -180,3 +180,30 @@
   “undefined is not a function”, “native module”, generic “Validation failed”, status-code
   text, etc.) to the fallback; known field-validation messages are still mapped to friendly
   guidance by `mapCreatorMetadataError` on publish.
+
+## Native Save Draft / Publish failure — ROOT CAUSE + permanent fix
+
+- **Symptom:** Save Draft and Go Live both failed on native but worked on web.
+- **Root cause:** The backend issues an **S3 presigned POST** (`createPresignedPost`,
+  multipart with policy `Fields`) for design media. `uploadDesignAsset` (in
+  `src/api/DesignApi.ts`) uploaded via `axios.post(s3Url, formData, { headers: {
+  'Content-Type': 'multipart/form-data' } })`. A manually-set `multipart/form-data`
+  header ships **without a boundary** on React Native (the browser silently injects the
+  boundary on web, which is why web worked). With no boundary, S3 cannot parse the body
+  and rejects the upload, so the whole initialize→upload→finalize flow failed for every
+  draft/publish.
+- **Fix:** upload via React Native `fetch(uploadUrl, { method: 'POST', body: formData })`
+  with **no Content-Type header**, so RN sets `multipart/form-data; boundary=…` correctly.
+  Policy fields are appended before the `file` part (S3 requires the file last). `fetch`
+  (not the shared axios `apiClient`) is used so no JWT/interceptor headers attach to the
+  S3 POST. No new package was added (note: `expo-file-system` is not installed and was
+  intentionally avoided).
+- **Smoke:** add ≥1 media item → Save Draft → appears in Drafts; → Go Live → moves to In
+  Review. Confirm no upload error toast.
+
+## Catalogue warm-return skeleton flash — fix
+- `showInitialSkeleton` was `!transitionReady || …`, forcing the skeleton on every mount
+  (transitionReady starts false) even when the React Query cache was warm — so returning
+  to Catalogue flashed the skeleton. Now gated on `!hasCachedCatalogContent`: if cached
+  profile/collections/drafts exist, content renders immediately; the skeleton is reserved
+  for genuine cold loads. Cold-load behavior is unchanged.
