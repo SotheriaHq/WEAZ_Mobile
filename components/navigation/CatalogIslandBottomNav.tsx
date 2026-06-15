@@ -247,12 +247,19 @@ export function CatalogIslandBottomNav() {
       clearProfileTabTimer();
       lastProfileTabPressAtRef.current = 0;
 
+      // Use navigate (NOT replace). The Catalogue screen is pushed on top of the
+      // already-mounted (tabs) navigator. `router.replace` swaps the top route for
+      // a BRAND-NEW (tabs) instance, which remounts Runway/Market/Inbox and
+      // re-runs their initial fetch (the visible skeleton + GET /collections/market
+      // on every return). `router.navigate` pops back to the existing (tabs)
+      // instance and just switches the active tab, so those screens keep their
+      // already-loaded state.
       if (item.key === 'designs') {
-        router.replace('/' as any);
+        router.navigate('/' as any);
       } else if (item.key === 'market') {
-        router.replace('/(tabs)/discover' as any);
+        router.navigate('/(tabs)/discover' as any);
       } else if (item.key === 'inbox') {
-        router.replace('/(tabs)/inbox' as any);
+        router.navigate('/(tabs)/inbox' as any);
       }
     },
     [clearProfileTabTimer, handleProfilePress],

@@ -582,66 +582,67 @@ async function uploadDesignAsset(
       name: String(asset.fileName || `upload-${Date.now()}.bin`),
     } as any);
 
-    // CRITICAL (native upload fix): do NOT set the Content-Type header manually.
-    // On web the browser injects the multipart boundary even when the header is
-    // set to 'multipart/form-data', but React Native does NOT — a manual header
-    // ships without a boundary, so S3 cannot parse the body and rejects every
-    // upload. This is exactly why Save Draft / Publish worked on web but failed
-    // on native. Letting RN's fetch build the request sets
-    // `multipart/form-data; boundary=...` correctly. We use fetch (not the shared
-    // axios apiClient) so no JWT/interceptor headers are attached to the S3 POST.
-    let response: Response;
-    try {
-      response = await fetch(upload.uploadUrl, {
-        method: 'POST',
-        body: formData,
-      });
-    } catch (networkError: any) {
-      // A throw here (before any response) is a transport failure: the file URI
-      // could not be read/streamed, TLS/cleartext blocked, or the connection
-      // dropped. Log it so it is not hidden behind the generic toast.
-      console.warn('[design-upload] S3 POST transport error', {
-        message: typeof networkError?.message === 'string' ? networkError.message : 'request failed',
-        uploadHost: (() => {
-          try {
-            return new URL(upload.uploadUrl).host;
-          } catch {
-            return null;
-          }
-        })(),
-        fileName: asset.fileName,
-        hasUri: Boolean(asset.uri),
-      });
-      throw new Error('S3 upload failed (network)');
-    }
-
-    if (!response.ok) {
-      // S3 returns an XML body explaining exactly why (EntityTooSmall = 0-byte
-      // upload, AccessDenied = policy/Content-Type mismatch, etc.). Surface it in
-      // the logs so the real cause is never hidden behind the generic toast.
-      const detail = await response.text().catch(() => '');
-      const s3Code = /<Code>([^<]+)<\/Code>/.exec(detail)?.[1] ?? null;
-      const s3Message = /<Message>([^<]+)<\/Message>/.exec(detail)?.[1] ?? null;
-      console.warn('[design-upload] S3 POST rejected', {
-        status: response.status,
-        s3Code,
-        s3Message,
-        uploadHost: (() => {
-          try {
-            return new URL(upload.uploadUrl).host;
-          } catch {
-            return null;
-          }
-        })(),
-        fileName: asset.fileName,
-        declaredType: signedContentType,
-        assetMimeType: asset.mimeType,
-        hasUri: Boolean(asset.uri),
-      });
-      throw new Error(
-        `S3 upload failed (${response.status}${s3Code ? ` ${s3Code}` : ''})`,
-      );
-    }
+    // CRITICAL native upload path: use XMLHttpRequest, NOT the global fetch.
+    // On Expo SDK 56 the global `fetch` is Expo's "winter" fetch, whose
+    // convertFormData does NOT support React Native's `{ uri, name, type }` file
+    // parts — it throws "Unsupported FormDataPart implementation" (it only accepts
+    // Blob/File). React Native's XMLHttpRequest streams `{ uri }` parts natively
+    // from disk AND sets `multipart/form-data; boundary=...` automatically (we must
+    // NOT set Content-Type ourselves or the boundary is dropped and S3 can't parse
+    // the body). XHR is used directly (not the axios apiClient) so no JWT headers
+    // attach to the S3 POST.
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', upload.uploadUrl);
+      const uploadHost = (() => {
+        try {
+          return new URL(upload.uploadUrl).host;
+        } catch {
+          return null;
+        }
+      })();
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+          return;
+        }
+        // S3 returns an XML body explaining exactly why (EntityTooSmall = 0-byte
+        // upload, AccessDenied = policy/Content-Type mismatch, etc.).
+        const detail = xhr.responseText || '';
+        const s3Code = /<Code>([^<]+)<\/Code>/.exec(detail)?.[1] ?? null;
+        const s3Message = /<Message>([^<]+)<\/Message>/.exec(detail)?.[1] ?? null;
+        console.warn('[design-upload] S3 POST rejected', {
+          status: xhr.status,
+          s3Code,
+          s3Message,
+          uploadHost,
+          fileName: asset.fileName,
+          declaredType: signedContentType,
+          assetMimeType: asset.mimeType,
+        });
+        // Map the most common, user-actionable S3 rejection to a clear message;
+        // everything else stays generic (and is scrubbed upstream).
+        if (s3Code === 'EntityTooLarge') {
+          reject(
+            new Error(
+              'This image is too large. Please choose a photo under 2 MB (or update the app to enable automatic compression).',
+            ),
+          );
+          return;
+        }
+        reject(new Error(`S3 upload failed (${xhr.status}${s3Code ? ` ${s3Code}` : ''})`));
+      };
+      xhr.onerror = () => {
+        console.warn('[design-upload] S3 POST transport error', {
+          status: xhr.status,
+          uploadHost,
+          fileName: asset.fileName,
+          hasUri: Boolean(asset.uri),
+        });
+        reject(new Error('S3 upload failed (network)'));
+      };
+      xhr.send(formData as any);
+    });
   } else {
     const fileResponse = await fetch(asset.uri);
     const blob = await fileResponse.blob();
@@ -1070,7 +1071,13 @@ export async function saveDesignEditor(
           height: compressed.height,
           mimeType: compressed.mimeType,
           fileName: compressed.fileName,
-          fileSize: 0, // Bypass size check on client side for compressed images
+          // Only bypass the client size check when compression ACTUALLY ran (it
+          // produces a small JPEG). If the native image manipulator was
+          // unavailable and we fell back to the original full-size photo,
+          // KEEP the real fileSize so assertValidPickedUploadAssets rejects it
+          // up front with a clear "must be N MB or smaller" message instead of
+          // letting the oversized original hit S3 and fail with EntityTooLarge.
+          fileSize: compressed.compressed ? 0 : asset.fileSize,
         };
       } catch {
         return asset; // Fallback to original

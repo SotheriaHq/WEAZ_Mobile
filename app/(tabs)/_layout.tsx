@@ -122,7 +122,9 @@ export default function TabLayout() {
     setProfileMenuVisible(false);
     setOptimisticActiveKey(NATIVE_ISLAND_KEYS.profile);
     setTimeout(() => {
-      router.push((isBrand ? '/catalog' : '/(tabs)/me') as any);
+      // navigate (not push) so an already-mounted Catalogue/Me instance is reused
+      // instead of mounting a fresh copy on every visit.
+      router.navigate((isBrand ? '/catalog' : '/(tabs)/me') as any);
     }, 50);
   }, [clearProfileTabTimer, isBrand]);
 
@@ -260,7 +262,9 @@ export default function TabLayout() {
         }
         setTimeout(() => {
           if (navFlow) navPerf.navigationCalled();
-          router.replace(nextRoute as any);
+          // navigate (not replace) so switching between island tabs reuses the
+          // existing tab screens instead of remounting them and refetching.
+          router.navigate(nextRoute as any);
         }, 50);
       }
     },
