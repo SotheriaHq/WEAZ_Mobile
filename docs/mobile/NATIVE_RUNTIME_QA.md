@@ -81,3 +81,52 @@
   with keyboard up on iOS **and** Android; (3) custom order sheet inputs and the hashtag
   search input stay visible; (4) verify Android edge-to-edge: footer not covered and not
   over-lifted.
+
+## Catalogue UX + Failed-content Cleanup
+
+### Bottom clearance smoke test (PARTIAL — device verification required)
+- The catalogue uses one scroll owner: the outer vertical ScrollView in
+  `app/catalog/index.tsx`. Its `paddingBottom` = `standardScreenBottomPadding`
+  (island clearance 88 + safe-area bottom) + `xl`, so the last card row clears the
+  bottom island/nav.
+- The Shop tab's embedded branch (`BrandShopTab`, `scrollEnabled=false`) previously
+  wrapped content in a nested `<ScrollView scrollEnabled={false}>` that collapsed /
+  measured unreliably inside the height-measured pager, clipping the lower product
+  rows. It is now a plain `View`, so the pager's `onLayout` measures the true content
+  height and every row scrolls fully above the island.
+- Device check: scroll Content, Shop, Drafts, In Review, Needs Attention to the last
+  row — no card is hidden behind the island and there is no gray dead-zone.
+
+### Tab scroll smoke test (PARTIAL — device verification required)
+- All three tab pages (Content / Shop / Reviews) are now plain Views that report a
+  real content height to the pager `onLayout`; no nested non-scroll ScrollView
+  collapses the height. Empty states measure their natural height (no fake lock).
+- Device check: switch tabs repeatedly and confirm scrolling stays consistent and the
+  Shop grid scrolls to the final product.
+
+### Tab state preservation
+- Reviews is no longer conditionally unmounted; it stays mounted and is gated by its
+  `enabled` prop (it no-ops its fetch while inactive), so switching tabs no longer
+  remounts/reloads the whole Reviews body.
+- Status tabs (Public / Private / Drafts / In Review / Needs Attention) read from the
+  always-on React Query caches added in Phase 1B, so switching shows cached content
+  immediately instead of clearing to empty. Normal tab switches do not `_cb`
+  cache-bust; `_cb` is only added on explicit force-refresh (pull-to-refresh).
+
+### Draft vs Needs Attention status rules
+- Drafts = intentional `DRAFT` only. Backend `getMyDraftCollections` filters
+  `status: 'DRAFT'` (no FAILED/PROCESSING leak); a DRAFT with missing media is still a
+  legitimate draft the owner can edit/delete.
+- Needs Attention = `FAILED` / `PROCESSING` only (server items via
+  `useBrandNeedsAttentionQuery`; `CHANGES_REQUESTED` is NOT included here).
+- Changes Requested = its own tab. Public = only `PUBLISHED` (backend forces
+  `status=PUBLISHED` + `visibility=PUBLIC` for non-owner viewers — not frontend-only).
+
+### Failed item Retry / Edit / Delete / Dismiss behavior
+- Local-only failed background tasks render in the Needs-Attention banner with
+  **Retry/Edit** (re-opens the editor) and **Dismiss** (clears the client task).
+- Persisted failed/processing items render as owner cards in Needs Attention; the card
+  `⋯` menu provides **Edit** (re-opens the design editor) and **Delete**
+  (`brandApi.deleteCollection`, confirm-to-delete).
+- Failed/processing/draft items are never shown to public visitors (backend visibility
+  enforcement above).

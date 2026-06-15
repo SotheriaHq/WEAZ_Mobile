@@ -1510,7 +1510,10 @@ export default function CatalogScreen() {
             onLayout={(event) => handleTabPageLayout('Reviews', event)}
             style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
           >
-            {targetBrandId && activeTab === 'Reviews' ? (
+            {/* Keep the Reviews tab mounted (gated by `enabled`) so switching tabs
+                preserves its state instead of remounting/reloading the whole tab
+                body each time. ReviewsTab no-ops its fetch while disabled. */}
+            {targetBrandId ? (
               <BrandReviewsTab brandId={targetBrandId} enabled={activeTab === 'Reviews'} />
             ) : (
               <View style={styles.tabContent} />

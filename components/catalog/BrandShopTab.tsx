@@ -892,7 +892,12 @@ export function BrandShopTab({
           ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
         />
       ) : (
-        <ScrollView scrollEnabled={false}>
+        // Embedded mode (scrollEnabled=false): the parent catalogue ScrollView is
+        // the single scroll owner. A nested non-scroll ScrollView here collapsed /
+        // measured unreliably, which clipped the lower product rows and made the
+        // Shop tab feel scroll-locked. A plain View reports its true content height
+        // to the pager's onLayout so every row scrolls fully above the bottom island.
+        <View>
           {listHeader}
           <View
             style={[
@@ -917,7 +922,7 @@ export function BrandShopTab({
               />
             ))}
           </View>
-        </ScrollView>
+        </View>
       )}
 
       <Modal
