@@ -26,6 +26,7 @@ import {
   refreshUnreadMessageCount,
   useMessagingRealtimeChannel,
 } from '@/src/realtime/messaging';
+import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { navPerf } from '@/src/utils/navPerf';
@@ -35,6 +36,12 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 type FilterKey = 'all' | 'unread' | 'orders';
 type InboxCursor = ConversationListResponse['endCursor'];
 type LoadMode = 'reset' | 'refresh' | 'more' | 'realtime';
+
+type InboxWarmSnapshot = {
+  conversations: ConversationSummary[];
+  cursor: InboxCursor;
+  hasNextPage: boolean;
+};
 
 const PAGE_SIZE = 50;
 const REALTIME_REFRESH_DEBOUNCE_MS = 400;
@@ -276,7 +283,9 @@ export default function InboxScreen() {
   const { theme } = useTheme();
   const { standardScreenBottomPadding } = useScreenChrome();
   const { status, token, user } = useAuth();
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const inboxWarmStateKey = user?.id ? `inbox:${user.id}` : null;
+  const initialWarmInboxSnapshot = inboxWarmStateKey ? readWarmScreenState<InboxWarmSnapshot>(inboxWarmStateKey) : null;
+  const [conversations, setConversations] = useState<ConversationSummary[]>(() => initialWarmInboxSnapshot?.conversations ?? []);
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchExpanded, setSearchExpanded] = useState(false);
@@ -302,6 +311,41 @@ export default function InboxScreen() {
   const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleRealtimeRefreshRef = useRef<() => void>(() => undefined);
   const skipInitialFocusRefreshRef = useRef(true);
+  const conversationsRef = useRef<ConversationSummary[]>(initialWarmInboxSnapshot?.conversations ?? []);
+  const [warmInboxSnapshot, setWarmInboxSnapshot] = useState<InboxWarmSnapshot | null>(() => initialWarmInboxSnapshot);
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  useEffect(() => {
+    if (!inboxWarmStateKey) {
+      setConversations([]);
+      setWarmInboxSnapshot(null);
+      setLoading(false);
+      hasNextPageRef.current = true;
+      setHasNextPage(false);
+      return;
+    }
+
+    const cachedSnapshot = readWarmScreenState<InboxWarmSnapshot>(inboxWarmStateKey);
+    if (cachedSnapshot) {
+      setConversations(cachedSnapshot.conversations);
+      setWarmInboxSnapshot(cachedSnapshot);
+      setLoading(false);
+      cursorRef.current = cachedSnapshot.cursor;
+      hasNextPageRef.current = cachedSnapshot.hasNextPage;
+      setHasNextPage(cachedSnapshot.hasNextPage);
+      return;
+    }
+
+    setConversations([]);
+    setWarmInboxSnapshot(null);
+    setLoading(status === 'authenticated');
+    cursorRef.current = null;
+    hasNextPageRef.current = true;
+    setHasNextPage(false);
+  }, [inboxWarmStateKey, status]);
 
   const filteredConversations = useMemo(
     () => conversations.filter((item) => matchesFilter(item, activeFilter) && matchesSearch(item, searchQuery)),
@@ -318,6 +362,7 @@ export default function InboxScreen() {
       }
 
       const isReset = mode !== 'more';
+      const cachedSnapshot = isReset && inboxWarmStateKey ? readWarmScreenState<InboxWarmSnapshot>(inboxWarmStateKey) : null;
       if (fetchInFlightRef.current) {
         if (isReset) {
           pendingReloadRef.current = true;
@@ -328,7 +373,7 @@ export default function InboxScreen() {
 
       fetchInFlightRef.current = true;
       if (mode === 'reset') {
-        setLoading(true);
+        setLoading(!cachedSnapshot);
         setError(null);
       } else if (mode === 'refresh') {
         setRefreshing(true);
@@ -350,7 +395,17 @@ export default function InboxScreen() {
         cursorRef.current = response.endCursor;
         hasNextPageRef.current = response.hasNextPage;
         setHasNextPage(response.hasNextPage);
-        setConversations((current) => (isReset ? response.items : mergeConversationPages(current, response.items)));
+        const nextConversations = isReset ? response.items : mergeConversationPages(conversationsRef.current, response.items);
+        setConversations(nextConversations);
+        if (inboxWarmStateKey) {
+          const nextSnapshot = {
+            conversations: nextConversations,
+            cursor: response.endCursor,
+            hasNextPage: response.hasNextPage,
+          };
+          setWarmInboxSnapshot(nextSnapshot);
+          writeWarmScreenState(inboxWarmStateKey, nextSnapshot);
+        }
       } catch (nextError) {
         setError(getErrorMessage(nextError));
       } finally {
@@ -392,14 +447,28 @@ export default function InboxScreen() {
     cursorRef.current = null;
     hasNextPageRef.current = true;
     setHasNextPage(false);
-    setConversations([]);
     setError(null);
     setSearchQuery('');
     setSearchExpanded(false);
     setActiveFilter('all');
 
+    const cachedSnapshot = inboxWarmStateKey ? readWarmScreenState<InboxWarmSnapshot>(inboxWarmStateKey) : null;
+    if (cachedSnapshot) {
+      setConversations(cachedSnapshot.conversations);
+      setWarmInboxSnapshot(cachedSnapshot);
+      cursorRef.current = cachedSnapshot.cursor;
+      hasNextPageRef.current = cachedSnapshot.hasNextPage;
+      setHasNextPage(cachedSnapshot.hasNextPage);
+      setLoading(false);
+    } else {
+      setConversations([]);
+      setWarmInboxSnapshot(null);
+      if (status === 'authenticated') {
+        setLoading(true);
+      }
+    }
+
     if (status === 'authenticated') {
-      setLoading(true);
       void loadConversations('reset');
       void refreshUnreadMessageCount({ authenticated: true });
       return;
@@ -567,9 +636,9 @@ export default function InboxScreen() {
             onPress={() => router.push({ pathname: '/(auth)/login', params: { next: '/(tabs)/inbox' } } as any)}
           />
         </View>
-      ) : loading ? (
+      ) : loading && !warmInboxSnapshot ? (
         <MessagesSkeleton bottomPadding={bottomPadding} />
-      ) : error && !hasLoadedConversations ? (
+      ) : error && !hasLoadedConversations && !warmInboxSnapshot ? (
         <View style={stateContainerStyle}>
           <AppText variant="subtitle">Could not load messages</AppText>
           <AppText variant="body" tone="muted" style={styles.stateText}>{error}</AppText>

@@ -18,6 +18,12 @@ import { useToast } from '@/src/toast/ToastContext';
 import { resolveIdentity } from '@/src/utils/identity';
 import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
+
+type PublicProfileSnapshot = {
+  profile: UserProfile | null;
+  patches: PatchedBrand[];
+};
 
 function formatJoinLabel(value?: string | null): string | null {
   if (!value) return null;
@@ -81,12 +87,20 @@ export default function PublicProfileScreen() {
   const { standardScreenBottomPadding } = useScreenChrome();
 
   const profileId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [patches, setPatches] = useState<PatchedBrand[]>([]);
-  const [loading, setLoading] = useState(true);
+  const warmProfileStateKey = profileId ? `public-profile:${profileId}` : null;
+  const initialWarmProfileState = warmProfileStateKey ? readWarmScreenState<PublicProfileSnapshot>(warmProfileStateKey) : null;
+  const [profile, setProfile] = useState<UserProfile | null>(() => initialWarmProfileState?.profile ?? null);
+  const [patches, setPatches] = useState<PatchedBrand[]>(() => initialWarmProfileState?.patches ?? []);
+  const [loading, setLoading] = useState(() => !initialWarmProfileState);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [hasWarmProfileSnapshot, setHasWarmProfileSnapshot] = useState(() => Boolean(initialWarmProfileState));
+
+  useEffect(() => {
+    if (!warmProfileStateKey || !profile) return;
+    writeWarmScreenState(warmProfileStateKey, { profile, patches });
+  }, [patches, profile, warmProfileStateKey]);
 
   const load = useCallback(async () => {
     if (!profileId) {
@@ -97,7 +111,10 @@ export default function PublicProfileScreen() {
       return;
     }
 
-    setLoading(true);
+    const cachedState = warmProfileStateKey ? readWarmScreenState<PublicProfileSnapshot>(warmProfileStateKey) : null;
+    if (!cachedState) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -106,26 +123,40 @@ export default function PublicProfileScreen() {
         ProfileApi.getPatches(profileId),
       ]);
 
-      if (profileResult.status === 'fulfilled') {
-        setProfile(profileResult.value);
-      } else {
-        throw profileResult.reason instanceof Error ? profileResult.reason : new Error('Failed to load profile');
+      const nextProfile =
+        profileResult.status === 'fulfilled' && profileResult.value
+          ? profileResult.value
+          : cachedState?.profile ?? null;
+      const nextPatches =
+        patchesResult.status === 'fulfilled'
+          ? patchesResult.value
+          : cachedState?.patches ?? [];
+
+      setProfile(nextProfile);
+      setPatches(nextPatches);
+      setHasWarmProfileSnapshot(true);
+
+      if (warmProfileStateKey) {
+        writeWarmScreenState(warmProfileStateKey, {
+          profile: nextProfile,
+          patches: nextPatches,
+        });
       }
 
-      if (patchesResult.status === 'fulfilled') {
-        setPatches(patchesResult.value);
-      } else {
-        setPatches([]);
+      if (profileResult.status === 'rejected' && !cachedState) {
+        throw profileResult.reason instanceof Error ? profileResult.reason : new Error('Failed to load profile');
       }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Unable to load profile.');
-      setProfile(null);
-      setPatches([]);
+      if (!cachedState) {
+        setProfile(null);
+        setPatches([]);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [profileId]);
+  }, [profileId, warmProfileStateKey]);
 
   useEffect(() => {
     void load();
@@ -177,7 +208,7 @@ export default function PublicProfileScreen() {
       });
   }, [avatarUri, profile]);
 
-  if (loading) {
+  if (loading && !hasWarmProfileSnapshot) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />

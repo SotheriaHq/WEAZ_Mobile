@@ -36,6 +36,7 @@ import {
 import { perfMeasure } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
 import MobileMarketSuggestionBlocks from '@/src/features/market/components/MobileMarketSuggestionBlocks';
+import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
 
 type FilterType = 'all' | SearchEntityType;
 
@@ -241,7 +242,6 @@ export default function SearchScreen() {
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
   const [localRecent, setLocalRecent] = useState<string[]>([]);
   const [hiddenRecent, setHiddenRecent] = useState<string[]>([]);
-  const [resultState, setResultState] = useState<ResultState>({ status: 'idle' });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
   const searchRequestIdRef = useRef(0);
@@ -250,6 +250,9 @@ export default function SearchScreen() {
   const searchAbortRef = useRef<AbortController | null>(null);
 
   const normalizedQuery = normalizeQuery(query);
+  const searchResultCacheKey = normalizedQuery ? `${normalizedQuery}::${filterType}` : null;
+  const initialWarmResultState = searchResultCacheKey ? readWarmScreenState<ResultState>(searchResultCacheKey) : null;
+  const [resultState, setResultState] = useState<ResultState>(() => initialWarmResultState ?? { status: 'idle' });
   const recentQueries = useMemo(
     () => combineRecentQueries(localRecent, suggestions?.recent ?? [], hiddenRecent),
     [hiddenRecent, localRecent, suggestions?.recent],
@@ -311,6 +314,8 @@ export default function SearchScreen() {
       const requestKey = `${normalized}::${nextType}`;
       if (activeSearchRequestKeyRef.current === requestKey) return;
 
+      const cachedResult = readWarmScreenState<ResultState>(requestKey);
+
       searchAbortRef.current?.abort();
       const controller = new AbortController();
       const nextSearchRequestId = searchRequestIdRef.current + 1;
@@ -318,7 +323,11 @@ export default function SearchScreen() {
       searchAbortRef.current = controller;
       activeSearchRequestKeyRef.current = requestKey;
 
-      setResultState({ status: 'loading' });
+      if (cachedResult) {
+        setResultState(cachedResult);
+      } else {
+        setResultState({ status: 'loading' });
+      }
       try {
         const payload = await SearchApi.search({
           q: normalized,
@@ -327,15 +336,15 @@ export default function SearchScreen() {
           limit: 24,
         }, controller.signal);
         if (searchRequestIdRef.current !== nextSearchRequestId || controller.signal.aborted) return;
-        if (payload.items.length === 0) {
-          setResultState({ status: 'empty' });
-        } else {
-          setResultState({
-            status: 'ready',
-            items: payload.items,
-            hasNextPage: payload.meta.hasNextPage,
-          });
-        }
+        const nextResult: ResultState = payload.items.length === 0
+          ? { status: 'empty' }
+          : {
+              status: 'ready',
+              items: payload.items,
+              hasNextPage: payload.meta.hasNextPage,
+            };
+        setResultState(nextResult);
+        writeWarmScreenState(requestKey, nextResult);
         if (options.saveToRecent !== false) {
           await saveRecentSearch(normalized);
           setLocalRecent(await getLocalRecentSearches());
@@ -343,7 +352,12 @@ export default function SearchScreen() {
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') return;
         if (searchRequestIdRef.current !== nextSearchRequestId) return;
-        setResultState({ status: 'error', message: getErrorMessage(error) });
+        if (cachedResult) {
+          return;
+        }
+        const nextErrorState: ResultState = { status: 'error', message: getErrorMessage(error) };
+        setResultState(nextErrorState);
+        writeWarmScreenState(requestKey, nextErrorState);
       } finally {
         if (activeSearchRequestKeyRef.current === requestKey) {
           activeSearchRequestKeyRef.current = null;

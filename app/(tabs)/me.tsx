@@ -16,6 +16,7 @@ import { StableImage } from '@/components/ui/StableImage';
 import ProfileImageModal from '@/components/profile/ProfileImageModal';
 import { ProfileApi, type Order, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
+import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
@@ -404,13 +405,16 @@ export default function BuyerProfileScreen() {
   const toast = useToast();
   const params = useLocalSearchParams<{ tab?: string | string[] }>();
   const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  const warmProfileStateKey = user?.id ? `me:${user.id}` : null;
+  const initialWarmProfileState = warmProfileStateKey ? readWarmScreenState<ProfileState>(warmProfileStateKey) : null;
 
-  const [state, setState] = useState<ProfileState>(() => createEmptyProfileState());
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<ProfileState>(() => initialWarmProfileState ?? createEmptyProfileState());
+  const [loading, setLoading] = useState(() => !initialWarmProfileState);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Saved');
-  const [transitionReady, setTransitionReady] = useState(false);
+  const [transitionReady, setTransitionReady] = useState(() => Boolean(initialWarmProfileState));
+  const [hasWarmProfileSnapshot, setHasWarmProfileSnapshot] = useState(() => Boolean(initialWarmProfileState));
 
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => {
@@ -440,6 +444,11 @@ export default function BuyerProfileScreen() {
   const lastUserIdRef = useRef<string | null>(null);
   const redirectToAuthRef = useRef(false);
 
+  useEffect(() => {
+    if (!warmProfileStateKey || !state.profile) return;
+    writeWarmScreenState(warmProfileStateKey, state);
+  }, [state, warmProfileStateKey]);
+
   const fallbackProfile = useMemo(() => buildFallbackProfile(user), [user]);
   const profileRecord = state.profile ?? fallbackProfile;
   const profileIdentity = useMemo(() => resolveIdentity(profileRecord), [profileRecord]);
@@ -467,10 +476,13 @@ export default function BuyerProfileScreen() {
       redirectToAuthRef.current = false;
       if (lastUserIdRef.current !== user.id) {
         lastUserIdRef.current = user.id;
-        setState(createEmptyProfileState());
+        const cachedState = warmProfileStateKey ? readWarmScreenState<ProfileState>(warmProfileStateKey) : null;
+        setState(cachedState ?? createEmptyProfileState());
         setError(null);
-        setLoading(true);
+        setLoading(!cachedState);
         setRefreshing(false);
+        setHasWarmProfileSnapshot(Boolean(cachedState));
+        setTransitionReady(Boolean(cachedState));
       }
       return;
     }
@@ -481,6 +493,8 @@ export default function BuyerProfileScreen() {
     setError(null);
     setLoading(false);
     setRefreshing(false);
+    setHasWarmProfileSnapshot(false);
+    setTransitionReady(false);
   }, [status, user?.id]);
 
   useEffect(() => {
@@ -510,7 +524,7 @@ export default function BuyerProfileScreen() {
     }
 
     const requestId = ++loadRequestIdRef.current;
-    if (!silent) {
+    if (!silent && !hasWarmProfileSnapshot) {
       setLoading(true);
     }
     setError(null);
@@ -557,6 +571,18 @@ export default function BuyerProfileScreen() {
         patches: nextPatches,
         orders: nextOrders,
       });
+      setHasWarmProfileSnapshot(true);
+      setTransitionReady(true);
+
+      if (warmProfileStateKey) {
+        writeWarmScreenState(warmProfileStateKey, {
+          profile: nextProfile,
+          sizeFit: nextSizeFit,
+          saved: nextSaved,
+          patches: nextPatches,
+          orders: nextOrders,
+        });
+      }
 
       if (profileFailed) {
         setError('Profile could not refresh right now.');
@@ -569,6 +595,8 @@ export default function BuyerProfileScreen() {
         ...current,
         profile: fallbackProfile,
       }));
+      setHasWarmProfileSnapshot(true);
+      setTransitionReady(true);
       setError(nextError instanceof Error ? nextError.message : 'Unable to load your profile.');
     } finally {
       if (requestId === loadRequestIdRef.current) {
@@ -807,7 +835,7 @@ export default function BuyerProfileScreen() {
     ]);
   }, [signOut]);
 
-  if (!transitionReady || status === 'loading' || (status === 'authenticated' && loading)) {
+  if (status === 'loading' || (!hasWarmProfileSnapshot && (!transitionReady || (status === 'authenticated' && loading)))) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <BrandHeader />
