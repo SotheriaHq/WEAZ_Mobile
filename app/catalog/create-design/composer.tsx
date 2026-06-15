@@ -646,135 +646,158 @@ export default function CreateDesignComposerScreen() {
             )}
           </View>
 
-          <View style={styles.copyBlock}>
-                <RequiredFieldLabel required>Title</RequiredFieldLabel>
-                <Input
-                  label="Title"
-                  hideLabel
-                  variant="bare"
-                  value={form.title}
-                  onChangeText={(value) => updateField('title', value)}
-                  placeholder="Title"
-                  containerStyle={styles.copyField}
-                />
-                <View style={[styles.copyDivider, { backgroundColor: theme.colors.border }]} />
-                <RequiredFieldLabel>Description</RequiredFieldLabel>
-                <Input
-                  label="Description"
-                  hideLabel
-                  variant="bare"
-                  value={form.description}
-                  onChangeText={(value) => updateField('description', value)}
-                  placeholder="Description"
-                  multiline
-                  containerStyle={styles.copyField}
-                />
-          </View>
+          {missingRequiredFields.length > 0 && canSaveDraft ? (
+            <Card padding="md" style={[styles.formCard, { borderColor: theme.colors.danger, backgroundColor: theme.colors.surfaceAlt }]}>
+              <AppText variant="bodyBold" tone="danger">Missing required fields</AppText>
+              <AppText variant="captionRegular" tone="muted" style={{ marginTop: tokens.spacing.xs }}>
+                {missingRequiredFields.join(' • ')}
+              </AppText>
+            </Card>
+          ) : null}
 
           <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
-                <OptionRow
-                  leading="🌍"
-                  title="Who can see this?"
-                  value={PRIVACY_OPTIONS.find((entry) => entry.value === form.visibility)?.label ?? 'Everyone'}
-                  onPress={() => setPrivacyOpen(true)}
-                />
-                <OptionRow
-                  leading="🏷️"
-                  title="What is it?"
-                  required
-                  subtitle="Choose the garment or item family."
-                  value={categoryValue}
-                  valueTone={form.categoryId ? 'muted' : 'danger'}
-                  onPress={() => openCategorySheet('category')}
-                />
-                <OptionRow
-                  leading="💸"
-                  title="Garment type"
-                  required
-                  subtitle="Choose the specific garment type."
-                  value={garmentTypeValue}
-                  valueTone={form.subCategoryId ? 'muted' : 'danger'}
-                  onPress={() => openCategorySheet('subcategory')}
-                />
-                <OptionRow
-                  title="Who is it for?"
-                  subtitle="Helps buyers discover styles that fit them."
-                  value={audienceLabel}
-                  onPress={() => setAudienceOpen(true)}
-                />
-                <OptionRow
-                  title="Age group"
-                  subtitle="Choose whether this is designed for adults or kids."
-                  value={targetAgeLabel}
-                  onPress={() => setAgeGroupOpen(true)}
-                />
-                <OptionRow
-                  title="Style details"
-                  required
-                  subtitle="Style, fabric, color family, and fit."
-                  value={styleDetailsCount > 0 ? `${styleDetailsCount} selected` : selectedDiscoveryFilterCount > 0 ? 'Optional' : 'Select'}
-                  valueTone={selectedDiscoveryFilterCount > 0 ? 'muted' : 'danger'}
-                  onPress={() => setStyleDetailsOpen(true)}
-                />
-                <OptionRow
-                  title="Cultural vibe"
-                  subtitle="Heritage signals like Ankara, Aso Ebi, or Adire."
-                  value={heritageCount > 0 ? `${heritageCount} selected` : 'Optional'}
-                  onPress={() => setHeritageOpen(true)}
-                />
-                <OptionRow
-                  title="Where would you wear it?"
-                  subtitle="Wedding, office, party, church, or everyday wear."
-                  value={occasionCount > 0 ? `${occasionCount} selected` : 'Optional'}
-                  onPress={() => setOccasionOpen(true)}
-                />
-                <OptionRow
-                  title="Price"
-                  value={formatPriceSummary(form.minPrice, form.maxPrice)}
-                  onPress={() => setPriceOpen(true)}
-                />
-                <OptionRow
-                  leading="📦"
-                  title="Availability"
-                  subtitle={`${sizingLabel} · ${fitPreferenceLabel}`}
-                  value={availabilityLabel}
-                  onPress={() => setAvailabilityOpen(true)}
-                />
-                <OptionRow
-                  leading="🧵"
-                  title="Custom orders"
-                  subtitle={
-                    form.customOrderEnabled
-                      ? `${customMeasurementKeys.length} field${customMeasurementKeys.length === 1 ? '' : 's'}`
-                      : 'Off'
-                  }
-                  value={form.customOrderEnabled ? 'Enabled' : 'Disabled'}
-                  onPress={() => setCustomOrdersOpen(true)}
-                />
-                <OptionRow
-                  leading="⚙️"
-                  title="Hashtags"
-                  required
-                  subtitle="Add searchable social tags."
-                  value={selectedTags.length > 0 ? `${selectedTags.length} selected` : 'Select'}
-                  valueTone={selectedTags.length > 0 ? 'muted' : 'danger'}
-                  divider={false}
-                  onPress={() => setTagsOpen(true)}
-                />
-                {selectedTags.length > 0 ? (
-                  <View style={styles.selectedTagPreview}>
-                    {selectedTags.map((tag) => (
-                      <Chip
-                        key={tag}
-                        label={normalizeHashtagLabel(tag)}
-                        selected
-                        onPress={() => {
-                          updateField('tagsInput', selectedTags.filter((entry) => entry !== tag).join(', '));
-                        }}
-                      />
-                    ))}
-                  </View>
-                ) : null}
+            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>Basic details</AppText>
+            <View style={styles.copyBlock}>
+              <RequiredFieldLabel required>Title</RequiredFieldLabel>
+              <Input
+                label="Title"
+                hideLabel
+                variant="bare"
+                value={form.title}
+                onChangeText={(value) => updateField('title', value)}
+                placeholder="Title"
+                containerStyle={styles.copyField}
+              />
+              <View style={[styles.copyDivider, { backgroundColor: theme.colors.border }]} />
+              <RequiredFieldLabel>Description</RequiredFieldLabel>
+              <Input
+                label="Description"
+                hideLabel
+                variant="bare"
+                value={form.description}
+                onChangeText={(value) => updateField('description', value)}
+                placeholder="Description"
+                multiline
+                containerStyle={styles.copyField}
+              />
+            </View>
+          </Card>
+
+          <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
+            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>Categorization</AppText>
+            <OptionRow
+              leading="🏷️"
+              title="What is it?"
+              required
+              subtitle="Choose the garment or item family."
+              value={categoryValue}
+              valueTone={form.categoryId ? 'muted' : 'danger'}
+              onPress={() => openCategorySheet('category')}
+            />
+            <OptionRow
+              leading="💸"
+              title="Garment type"
+              required
+              subtitle="Choose the specific garment type."
+              value={garmentTypeValue}
+              valueTone={form.subCategoryId ? 'muted' : 'danger'}
+              onPress={() => openCategorySheet('subcategory')}
+            />
+            <OptionRow
+              leading="⚙️"
+              title="Hashtags"
+              required
+              subtitle="Add searchable social tags."
+              value={selectedTags.length > 0 ? `${selectedTags.length} selected` : 'Select'}
+              valueTone={selectedTags.length > 0 ? 'muted' : 'danger'}
+              divider={false}
+              onPress={() => setTagsOpen(true)}
+            />
+            {selectedTags.length > 0 ? (
+              <View style={styles.selectedTagPreview}>
+                {selectedTags.map((tag) => (
+                  <Chip
+                    key={tag}
+                    label={normalizeHashtagLabel(tag)}
+                    selected
+                    onPress={() => {
+                      updateField('tagsInput', selectedTags.filter((entry) => entry !== tag).join(', '));
+                    }}
+                  />
+                ))}
+              </View>
+            ) : null}
+          </Card>
+
+          <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
+            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>Audience & Style</AppText>
+            <OptionRow
+              title="Who is it for?"
+              subtitle="Helps buyers discover styles that fit them."
+              value={audienceLabel}
+              onPress={() => setAudienceOpen(true)}
+            />
+            <OptionRow
+              title="Age group"
+              subtitle="Choose whether this is designed for adults or kids."
+              value={targetAgeLabel}
+              onPress={() => setAgeGroupOpen(true)}
+            />
+            <OptionRow
+              title="Style details"
+              required
+              subtitle="Style, fabric, color family, and fit."
+              value={styleDetailsCount > 0 ? `${styleDetailsCount} selected` : selectedDiscoveryFilterCount > 0 ? 'Optional' : 'Select'}
+              valueTone={selectedDiscoveryFilterCount > 0 ? 'muted' : 'danger'}
+              onPress={() => setStyleDetailsOpen(true)}
+            />
+            <OptionRow
+              title="Cultural vibe"
+              subtitle="Heritage signals like Ankara, Aso Ebi, or Adire."
+              value={heritageCount > 0 ? `${heritageCount} selected` : 'Optional'}
+              onPress={() => setHeritageOpen(true)}
+            />
+            <OptionRow
+              title="Where would you wear it?"
+              subtitle="Wedding, office, party, church, or everyday wear."
+              value={occasionCount > 0 ? `${occasionCount} selected` : 'Optional'}
+              divider={false}
+              onPress={() => setOccasionOpen(true)}
+            />
+          </Card>
+
+          <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
+            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>Availability & Pricing</AppText>
+            <OptionRow
+              title="Price"
+              value={formatPriceSummary(form.minPrice, form.maxPrice)}
+              onPress={() => setPriceOpen(true)}
+            />
+            <OptionRow
+              leading="📦"
+              title="Availability"
+              subtitle={`${sizingLabel} · ${fitPreferenceLabel}`}
+              value={availabilityLabel}
+              onPress={() => setAvailabilityOpen(true)}
+            />
+            <OptionRow
+              leading="🧵"
+              title="Custom orders"
+              subtitle={
+                form.customOrderEnabled
+                  ? `${customMeasurementKeys.length} field${customMeasurementKeys.length === 1 ? '' : 's'}`
+                  : 'Off'
+              }
+              value={form.customOrderEnabled ? 'Enabled' : 'Disabled'}
+              onPress={() => setCustomOrdersOpen(true)}
+            />
+            <OptionRow
+              leading="🌍"
+              title="Who can see this?"
+              value={PRIVACY_OPTIONS.find((entry) => entry.value === form.visibility)?.label ?? 'Everyone'}
+              divider={false}
+              onPress={() => setPrivacyOpen(true)}
+            />
           </Card>
 
           {loadingError ? (
@@ -1346,9 +1369,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   copyBlock: {
-    gap: tokens.spacing.md,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
+    marginTop: tokens.spacing.xs,
+  },
+  sectionHeaderTitle: {
+    marginBottom: tokens.spacing.md,
+    color: tokens.colors.primary,
   },
   copyField: {
     paddingVertical: tokens.spacing.xs,

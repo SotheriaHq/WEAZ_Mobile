@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, ScrollView } from 'react-native';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
@@ -210,16 +210,40 @@ export function AppMultiSelectSheet({
   };
 
   const displayedOptions = useMemo(() => {
-    const baseOptions = searchText.trim() ? searchResults : options;
-    return baseOptions
-      .map((opt) => {
-        if ('name' in opt) { // TagSuggestion
-          return { value: opt.name, label: `#${opt.name}`, usageCount: opt.usageCount, disabled: false };
-        } else { // SelectSheetOption
-          return { value: opt.value, label: opt.label, usageCount: (opt as any).usageCount ?? 0, disabled: opt.disabled };
-        }
-      })
-      .filter((opt) => !selectedSet.has(opt.value));
+    const trimmed = searchText.trim().toLowerCase();
+    let mappedOptions = [];
+
+    if (!trimmed) {
+      mappedOptions = options.map((opt) => ({
+        value: opt.value,
+        label: opt.label,
+        usageCount: (opt as any).usageCount ?? 0,
+        disabled: opt.disabled,
+      }));
+    } else {
+      const localFiltered = options
+        .filter((opt) => opt.label.toLowerCase().includes(trimmed) || opt.value.toLowerCase().includes(trimmed))
+        .map((opt) => ({
+          value: opt.value,
+          label: opt.label,
+          usageCount: (opt as any).usageCount ?? 0,
+          disabled: opt.disabled,
+        }));
+        
+      const localValues = new Set(localFiltered.map((o) => o.value));
+      const networkMapped = searchResults
+        .filter((opt) => !localValues.has(opt.name))
+        .map((opt) => ({
+          value: opt.name,
+          label: `#${opt.name}`,
+          usageCount: opt.usageCount,
+          disabled: false,
+        }));
+        
+      mappedOptions = [...localFiltered, ...networkMapped];
+    }
+
+    return mappedOptions.filter((opt) => !selectedSet.has(opt.value));
   }, [searchText, searchResults, options, selectedSet]);
 
   const addCustomTag = () => {
@@ -241,10 +265,11 @@ export function AppMultiSelectSheet({
         onChange(draft);
         onClose();
       }}
+      scrollable={false}
       doneLabel="Done"
     >
       <SelectSheetState
-        loading={loading || isSearching}
+        loading={(loading || isSearching) && displayedOptions.length === 0}
         errorMessage={errorMessage}
         onRetry={onRetry}
         empty={displayedOptions.length === 0 && selectedOptions.length === 0}
@@ -278,22 +303,25 @@ export function AppMultiSelectSheet({
           </View>
         </View>
       ) : null}
-      {!searchText.trim() && options.length > 0 ? (
-        <AppText variant="bodyBold" style={styles.sectionTitle}>{popularLabel}</AppText>
-      ) : null}
-      <View style={styles.optionWrap}>
-        {displayedOptions.map((option) => (
-          <Chip
-            key={option.value}
-            label={option.label}
-            selected={selectedSet.has(option.value)}
-            disabled={option.disabled}
-            onPress={() => {
-              if (!option.disabled) toggle(option.value);
-            }}
-          />
-        ))}
-      </View>
+      
+      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        {!searchText.trim() && options.length > 0 ? (
+          <AppText variant="bodyBold" style={styles.sectionTitle}>{popularLabel}</AppText>
+        ) : null}
+        <View style={styles.optionWrap}>
+          {displayedOptions.map((option) => (
+            <Chip
+              key={option.value}
+              label={option.label}
+              selected={selectedSet.has(option.value)}
+              disabled={option.disabled}
+              onPress={() => {
+                if (!option.disabled) toggle(option.value);
+              }}
+            />
+          ))}
+        </View>
+      </ScrollView>
       <View style={styles.customTagRow}>
         <Input
           label={customInputLabel}
@@ -379,9 +407,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: tokens.spacing.sm,
     alignItems: 'flex-end',
+    marginTop: tokens.spacing.md,
   },
   customTagInput: {
     flex: 1,
+  },
+  scrollArea: {
+    flexShrink: 1,
+    marginTop: tokens.spacing.sm,
   },
 });
 

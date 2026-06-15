@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { apiClient } from '@/src/api/httpClient';
 import {
   getRequiredLegalAcceptances,
@@ -569,15 +570,16 @@ async function uploadDesignAsset(
       type: String(asset.mimeType || 'application/octet-stream'),
       name: String(asset.fileName || `upload-${Date.now()}.bin`),
     };
-    // Parse/stringify to ensure it is a completely plain object with no hidden prototypes
+    
     formData.append('file', JSON.parse(JSON.stringify(filePart)));
 
-    const response = await fetch(upload.uploadUrl, {
-      method: 'POST',
-      body: formData,
+    const response = await axios.post(upload.uploadUrl, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
     });
 
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       throw new Error(`Upload failed with status ${response.status}`);
     }
   } else {
