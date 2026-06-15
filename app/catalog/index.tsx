@@ -57,7 +57,11 @@ import { AppActionSheet, type AppActionSheetOption } from '@/components/ui/AppAc
 import { AppFloatingMenu, type FloatingMenuOption } from '@/components/ui/AppFloatingMenu';
 import { AppQrSheet } from '@/components/ui/AppQrSheet';
 import { BrandSwitcherSheet } from '@/components/brand/BrandSwitcherSheet';
-import type { DesignEditorMediaSource } from '@/src/features/design-editor/designEditorMediaFlow';
+import {
+  pickDesignEditorMediaAssets,
+  stageDesignEditorAssetBundle,
+  type DesignEditorMediaSource,
+} from '@/src/features/design-editor/designEditorMediaFlow';
 import {
   readDesignEditorBackgroundTasks,
   removeDesignEditorBackgroundTask,
@@ -1243,19 +1247,38 @@ export default function CatalogScreen() {
     (opts: { source?: DesignEditorMediaSource; openPicker: boolean }) => {
       navPerf.tap('create_design');
       navPerf.mark('create_design_option_selected');
-      
+
+      const doLaunch = async () => {
+        if (opts.openPicker && opts.source) {
+          const result = await pickDesignEditorMediaAssets({ source: opts.source });
+          if (result.status === 'success' && result.assets.length > 0) {
+            const token = stageDesignEditorAssetBundle(result.assets);
+            navPerf.mark('create_design_navigation_called');
+            navPerf.navigationCalled();
+            router.push({
+              pathname: '/catalog/create-design/composer',
+              params: { handoffToken: token, brandId: targetBrandId },
+            } as any);
+          } else if (result.status === 'limit') {
+            toast.error(result.message);
+          } else if (result.status === 'permission') {
+            toast.error(result.issue.message);
+          }
+        } else {
+          navPerf.mark('create_design_navigation_called');
+          navPerf.navigationCalled();
+          router.push({
+            pathname: '/catalog/create-design/composer',
+            params: { blank: '1', brandId: targetBrandId },
+          } as any);
+        }
+      };
+
       requestAnimationFrame(() => {
-        navPerf.mark('create_design_navigation_called');
-        navPerf.navigationCalled();
-        router.push({
-          pathname: '/catalog/create-design/composer',
-          params: opts.openPicker
-            ? { openPicker: '1', pickerSource: opts.source ?? 'library' }
-            : { blank: '1' },
-        } as any);
+        void doLaunch();
       });
     },
-    [],
+    [targetBrandId, toast],
   );
 
   const createMenuRef = useRef<{ open: (e?: any) => void } | null>(null);

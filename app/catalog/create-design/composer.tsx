@@ -100,17 +100,12 @@ export default function CreateDesignComposerScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ openPicker?: string | string[]; pickerSource?: string | string[]; blank?: string | string[] }>();
-  const openPickerParam = Array.isArray(params.openPicker) ? params.openPicker[0] : params.openPicker;
-  const pickerSourceParam = Array.isArray(params.pickerSource) ? params.pickerSource[0] : params.pickerSource;
+  const params = useLocalSearchParams<{ blank?: string | string[] }>();
   const blankParam = Array.isArray(params.blank) ? params.blank[0] : params.blank;
   // The user explicitly chose "Start a design" (no media yet) — keep the empty
   // composer open instead of bouncing back to the catalogue.
   const isBlankStart = blankParam === '1' || blankParam === 'true';
-  const shouldOpenInitialPicker = openPickerParam === '1' || openPickerParam === 'true';
-  const initialPickerSource: DesignEditorMediaSource = pickerSourceParam === 'camera' ? 'camera' : 'library';
   const hasEverHadAssetsRef = useRef(false);
-  const initialPickerStartedRef = useRef(false);
 
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -134,7 +129,6 @@ export default function CreateDesignComposerScreen() {
   const [tagSuggestions, setTagSuggestions] = useState<{ name: string; usageCount: number }[]>([]);
   const [tagError, setTagError] = useState<string | null>(null);
   const [tagsLoading, setTagsLoading] = useState(false);
-  const [initialPickerPending, setInitialPickerPending] = useState(shouldOpenInitialPicker);
   const mediaAnchorRef = useRef<View | null>(null);
   const [mediaAnchorMetrics, setMediaAnchorMetrics] = useState<{
     pageX: number;
@@ -406,23 +400,7 @@ export default function CreateDesignComposerScreen() {
     return () => handle.cancel();
   }, []);
 
-  useEffect(() => {
-    if (!transitionReady || !shouldOpenInitialPicker || initialPickerStartedRef.current || isEditMode) return;
-    initialPickerStartedRef.current = true;
 
-    let active = true;
-    // We can safely call this immediately now because we waited for transitionReady
-    setInitialPickerPending(true);
-    void handlePickMedia(initialPickerSource).finally(() => {
-      if (active) {
-        setInitialPickerPending(false);
-      }
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [handlePickMedia, initialPickerSource, isEditMode, shouldOpenInitialPicker, transitionReady]);
 
   const loadTags = useCallback(
     async (isActive: () => boolean = () => true, options?: { forceRefresh?: boolean }) => {
@@ -518,26 +496,15 @@ export default function CreateDesignComposerScreen() {
     !isBlankStart &&
     assets.length === 0 &&
     !hasEverHadAssetsRef.current &&
-    !shouldOpenInitialPicker &&
-    !initialPickerPending &&
     !permissionIssue;
 
-  // Only block the whole screen behind a loader when we are loading an EXISTING
-  // design's saved values (edit mode). For a brand-new design the shell + footer
-  // actions must appear IMMEDIATELY — metadata (categories, style details,
-  // measurement points) fills in progressively into the already-usable form.
-  // This is what fixes "action buttons missing" and the multi-second blank gap.
-  const showFullScreenLoader =
-    !transitionReady || (booting && isEditMode && !shouldOpenInitialPicker) || shouldRedirectEmptyCreate || initialPickerPending;
-
-  // usable_ui = the form + footer actions are actually interactive (not hidden
-  // behind the full-screen loader). Distinct from data_ready (all metadata in).
+  // usable_ui = the form + footer actions are actually interactive
   useEffect(() => {
-    if (!showFullScreenLoader) {
+    if (transitionReady) {
       navPerf.mark('usable_ui');
       navPerf.mark('footer_actions_visible');
     }
-  }, [showFullScreenLoader]);
+  }, [transitionReady]);
 
   useEffect(() => {
     if (shouldRedirectEmptyCreate) {
@@ -591,8 +558,8 @@ export default function CreateDesignComposerScreen() {
     [filterSelection, toggleFilterValue],
   );
 
-  if (showFullScreenLoader) {
-    return <AppLoaderScreen message={initialPickerPending ? "Opening media library..." : "Loading composer"} />;
+  if (!transitionReady || (booting && isEditMode)) {
+    return <AppLoaderScreen message="Loading composer" />;
   }
 
   return (
@@ -630,11 +597,9 @@ export default function CreateDesignComposerScreen() {
                 <AppText variant="bodyBold">Selected media</AppText>
                 <AppText
                   variant="captionRegular"
-                  tone={initialPickerPending ? 'muted' : missingRequiredMediaSlots.length > 0 || assets.length === 0 ? 'danger' : 'muted'}
+                  tone={missingRequiredMediaSlots.length > 0 || assets.length === 0 ? 'danger' : 'muted'}
                 >
-                  {initialPickerPending
-                    ? 'Opening media picker...'
-                    : assets.length === 0
+                  {assets.length === 0
                       ? 'Required: add Front, Back, Left Side, and Right Side'
                       : missingRequiredMediaSlots.length > 0
                         ? `Required: add ${missingRequiredMediaSlots.map(getMediaViewSlotLabel).join(', ')}`

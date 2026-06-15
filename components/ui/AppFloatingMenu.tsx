@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { BackHandler, Dimensions, Modal, Pressable, StyleSheet, View, Animated } from 'react-native';
+import { BackHandler, Dimensions, Modal, Pressable, StyleSheet, View, Animated, InteractionManager } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
@@ -137,10 +137,11 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
       if (pendingCallback.current) {
         const callback = pendingCallback.current;
         pendingCallback.current = null;
-        // The modal is set to unmount synchronously (animationType="none"),
-        // and since we removed the visible backdrop, there is no double-collapse visual bug.
-        // We can execute routing immediately to ensure zero latency.
-        callback();
+        
+        // Wait for React to process the unmount of this modal and its backdrops
+        InteractionManager.runAfterInteractions(() => {
+          callback();
+        });
       }
     });
   };
