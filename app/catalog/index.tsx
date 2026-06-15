@@ -77,6 +77,8 @@ import {
   refreshBrandProfileQuery,
   useBrandCollectionsQuery,
   useBrandDraftsQuery,
+  useBrandInReviewQuery,
+  useBrandNeedsAttentionQuery,
   useBrandProfileQuery,
 } from '@/src/query/catalogQueries';
 import { THREADLY_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
@@ -87,7 +89,7 @@ import { queryKeys } from '@/src/query/queryKeys';
 // ─────────────────────────────────────────────────────────────
 
 type TabType = 'Collections' | 'Shop' | 'Reviews';
-type VisibilityType = 'Public' | 'Private' | 'Drafts' | 'In Review' | 'Changes Requested' | 'Rejected';
+type VisibilityType = 'Public' | 'Private' | 'Drafts' | 'In Review' | 'Changes Requested' | 'Rejected' | 'Needs Attention';
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
 const REVIEW_VISIBILITY_STATUS: Partial<Record<VisibilityType, 'IN_REVIEW' | 'CHANGES_REQUESTED' | 'REJECTED'>> = {
   'In Review': 'IN_REVIEW',
@@ -306,14 +308,37 @@ export default function CatalogScreen() {
       status: collectionStatusFilter,
       limit: 80,
     },
-    { enabled: Boolean(collectionOwnerId) && visibilityFilter !== 'Drafts' },
+    {
+      enabled:
+        Boolean(collectionOwnerId) &&
+        visibilityFilter !== 'Drafts' &&
+        visibilityFilter !== 'Needs Attention' &&
+        visibilityFilter !== 'In Review',
+    },
   );
   const draftsQuery = useBrandDraftsQuery({
     ownerId: collectionOwnerId,
-    enabled: isOwner && visibilityFilter === 'Drafts' && Boolean(collectionOwnerId),
+    enabled: isOwner && Boolean(collectionOwnerId),
+  });
+  const needsAttentionQuery = useBrandNeedsAttentionQuery({
+    ownerId: collectionOwnerId,
+    enabled: isOwner && Boolean(collectionOwnerId),
+  });
+  // Always-on so In Review count/content preloads on catalogue entry rather than
+  // only after the In Review tab is tapped.
+  const inReviewQuery = useBrandInReviewQuery({
+    ownerId: collectionOwnerId,
+    enabled: isOwner && Boolean(collectionOwnerId),
   });
   const effectiveProfile = profileQuery.data !== undefined ? profileQuery.data : profile;
-  const effectiveCollections = collectionsQuery.data ?? collections;
+  let effectiveCollections = collectionsQuery.data ?? collections;
+  if (visibilityFilter === 'Drafts') {
+    effectiveCollections = draftsQuery.data ?? drafts;
+  } else if (visibilityFilter === 'Needs Attention') {
+    effectiveCollections = needsAttentionQuery.data ?? [];
+  } else if (visibilityFilter === 'In Review') {
+    effectiveCollections = inReviewQuery.data ?? [];
+  }
   const effectiveDrafts = draftsQuery.data ?? drafts;
 
   const fetchProfile = useCallback(async (options?: { forceRefresh?: boolean }): Promise<BrandProfileDto | null> => {
@@ -847,9 +872,10 @@ export default function CatalogScreen() {
     if (!isOwner || activeTab !== 'Collections') return [];
 
     return designBackgroundTasks.filter((task) => {
-      if (task.action === 'draft') return visibilityFilter === 'Drafts';
-      if (task.visibility === 'PRIVATE') return visibilityFilter === 'Private';
-      return visibilityFilter === 'Public';
+      if (visibilityFilter === 'Needs Attention') return true;
+      if (visibilityFilter === 'Drafts' && task.action === 'draft') return true;
+      // Do not leak optimistic PROCESSING/FAILED into Public or Private
+      return false;
     });
   }, [activeTab, designBackgroundTasks, isOwner, visibilityFilter]);
   // Failed publish/draft attempts must NEVER render as cards in the Public/Private
@@ -1385,7 +1411,9 @@ export default function CatalogScreen() {
                     selected={visibilityFilter}
                     onChange={setVisibilityFilter}
                     showDrafts={isOwner}
-                    draftsCount={drafts.length}
+                    draftsCount={effectiveDrafts.length}
+                    needsAttentionCount={needsAttentionQuery.data?.length ?? 0}
+                    inReviewCount={inReviewQuery.data?.length ?? 0}
                   />
                 </View>
               ) : null}

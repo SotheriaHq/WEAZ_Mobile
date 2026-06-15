@@ -18,7 +18,7 @@ type BrandCollectionsArgs = {
   ownerId?: string | null;
   scope?: CollectionScope;
   visibility?: 'PUBLIC' | 'PRIVATE';
-  status?: CollectionPublicationStatus;
+  status?: CollectionPublicationStatus | CollectionPublicationStatus[];
   limit?: number;
 };
 
@@ -99,8 +99,67 @@ export function useBrandDraftsQuery(
   });
   return useQuery({
     queryKey,
-    queryFn: () => brandApi.getDrafts({ ownerId: options?.ownerId }),
-    enabled: options?.enabled ?? true,
+    queryFn: async () => {
+      // Drafts use the dedicated /designs/my/drafts endpoint (merged with store
+      // drafts) via brandApi.getDrafts. `getMyDrafts` never existed and crashed
+      // with "undefined is not a function" on catalogue entry.
+      return brandApi.getDrafts({ ownerId: options?.ownerId });
+    },
+    enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
+    initialData: () => queryClient.getQueryData(queryKey),
+  });
+}
+
+export function useBrandNeedsAttentionQuery(
+  options?: EnabledOption & { ownerId?: string | null },
+) {
+  const queryClient = useQueryClient();
+  // Needs Attention = FAILED / PROCESSING only. CHANGES_REQUESTED keeps its own
+  // "Changes Requested" tab and must NOT be bucketed here.
+  const statusFilter: any = ['FAILED', 'PROCESSING'];
+  const queryKey = queryKeys.brand.collections(options?.ownerId ?? 'me', {
+    scope: 'all',
+    status: statusFilter,
+  });
+  return useQuery({
+    queryKey,
+    queryFn: async () => {
+      const result = await brandApi.getCollections({
+        brandId: options?.ownerId ?? undefined,
+        scope: 'all',
+        status: statusFilter,
+        limit: 50,
+      });
+      return result.items;
+    },
+    enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
+    initialData: () => queryClient.getQueryData(queryKey),
+  });
+}
+
+export function useBrandInReviewQuery(
+  options?: EnabledOption & { ownerId?: string | null },
+) {
+  const queryClient = useQueryClient();
+  // Dedicated always-on query so the In Review count/content preloads on
+  // catalogue entry instead of waiting until the In Review tab is tapped.
+  const statusFilter: any = 'IN_REVIEW';
+  const queryKey = queryKeys.brand.collections(options?.ownerId ?? 'me', {
+    scope: 'all',
+    status: statusFilter,
+  });
+  return useQuery({
+    queryKey,
+    queryFn: async () => {
+      const result = await brandApi.getCollections({
+        brandId: options?.ownerId ?? undefined,
+        scope: 'all',
+        status: statusFilter,
+        limit: 50,
+      });
+      return result.items;
+    },
+    enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
     initialData: () => queryClient.getQueryData(queryKey),
   });
 }

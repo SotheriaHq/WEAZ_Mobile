@@ -120,8 +120,6 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
     [cardWidth, isOwner, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts],
   );
 
-  const keyExtractor = useCallback((item: CollectionDto) => item.id, []);
-
   // Loading skeleton
   if (isLoading && collections.length === 0) {
     return (
@@ -148,34 +146,25 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   }
 
   return (
-    <FlatList
-      data={collections}
-      renderItem={renderItem}
-      keyExtractor={keyExtractor}
-      key={`catalog-grid-${resolvedNumColumns}`}
-      numColumns={resolvedNumColumns}
-      scrollEnabled={false}
-      contentContainerStyle={[
+    <View
+      style={[
         styles.grid,
         {
           paddingHorizontal: screenPadding,
           paddingVertical: GRID_LAYOUT.verticalPadding,
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: columnGap,
+          rowGap: rowGap,
         },
       ]}
-      columnWrapperStyle={resolvedNumColumns > 1 ? [styles.row, { gap: columnGap, marginBottom: rowGap }] : undefined}
-      showsVerticalScrollIndicator={false}
-      onEndReached={onEndReached}
-      onEndReachedThreshold={0.5}
-      refreshControl={
-        onRefresh ? (
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={theme.colors.primary}
-          />
-        ) : undefined
-      }
-    />
+    >
+      {collections.map((item, index) => (
+        <React.Fragment key={item.id}>
+          {renderItem({ item, index })}
+        </React.Fragment>
+      ))}
+    </View>
   );
 });
 

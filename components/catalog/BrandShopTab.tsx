@@ -860,12 +860,12 @@ export function BrandShopTab({
                   : 'This brand has not published any store products yet.',
               },
         )
-      ) : (
+      ) : scrollEnabled ? (
         <FlatList
           data={filteredProducts}
           keyExtractor={(item) => item.id}
           numColumns={2}
-          scrollEnabled={scrollEnabled}
+          scrollEnabled={true}
           ListHeaderComponent={listHeader}
           columnWrapperStyle={{ gap: CARD_GAP }}
           contentContainerStyle={[
@@ -891,6 +891,33 @@ export function BrandShopTab({
           )}
           ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
         />
+      ) : (
+        <ScrollView scrollEnabled={false}>
+          {listHeader}
+          <View
+            style={[
+              styles.gridContainer,
+              { paddingHorizontal: SIDE_PADDING, paddingBottom: gridBottomPadding },
+              { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP, rowGap: CARD_GAP }
+            ]}
+          >
+            {filteredProducts.map((item) => (
+              <ProductCard
+                key={item.id}
+                product={item}
+                width={cardWidth}
+                wishlisted={Boolean(wishlistByProductId[item.id])}
+                standardBagged={Boolean(cartByProductId[item.id])}
+                customBagged={Boolean(customBagByProductId[item.id])}
+                busy={Boolean(busyByProductId[item.id] || loadingByProductId[item.id])}
+                pulseStatus={getPulseStatus(item.id, getTotalStock(item) <= 0 && !item.customOrderEnabled)}
+                onPress={() => {
+                  void openProductDetail(item);
+                }}
+              />
+            ))}
+          </View>
+        </ScrollView>
       )}
 
       <Modal

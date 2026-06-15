@@ -76,7 +76,7 @@ export const queryKeys = {
       filters?: {
         scope?: CollectionScopeKey;
         visibility?: CollectionVisibilityKey;
-        status?: string | null;
+        status?: string | string[] | null;
         limit?: number | null;
       },
     ) =>

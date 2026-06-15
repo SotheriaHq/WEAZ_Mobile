@@ -515,7 +515,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const currentToken = token ?? (await getAccessToken());
 
     if (!currentToken) {
-      await signOut();
+      // No token at all → already logged out. Clear local state only; do NOT
+      // POST /auth/logout (there is no session to revoke and it just 401s).
+      await signOut({ notifyServer: false });
       return false;
     }
 
@@ -545,7 +547,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (statusCode === 403) {
         return false;
       }
-      await signOut();
+      // /auth/profile 401 (or network failure) during bootstrap means the stored
+      // token is already invalid — there is no live session to revoke. Clear
+      // local state without the spurious POST /auth/logout that itself 401s.
+      await signOut({ notifyServer: false });
       return false;
     }
   }, [applyActiveBrandSelection, signOut, token]);

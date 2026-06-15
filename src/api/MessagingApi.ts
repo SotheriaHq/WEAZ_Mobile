@@ -554,11 +554,12 @@ export const MessagingApi = {
       isDocument ? MOBILE_UPLOAD_POLICIES.messageDocument : MOBILE_UPLOAD_POLICIES.messageImage,
     );
     const formData = new FormData();
-    formData.append('file', {
-      uri: file.uri,
-      name: file.name,
-      type: file.type,
-    } as any);
+    const filePart = {
+      uri: String(file.uri),
+      name: String(file.name),
+      type: String(file.type),
+    };
+    formData.append('file', JSON.parse(JSON.stringify(filePart)));
 
     const endpoint = isDocument
       ? '/uploads/message-document'

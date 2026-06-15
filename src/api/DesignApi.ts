@@ -562,14 +562,15 @@ async function uploadDesignAsset(
   if (method === 'POST') {
     const formData = new FormData();
     for (const [key, value] of Object.entries(upload.uploadFields ?? {})) {
-      formData.append(key, value);
+      formData.append(key, String(value));
     }
     const filePart = {
       uri: String(asset.uri),
       type: String(asset.mimeType || 'application/octet-stream'),
       name: String(asset.fileName || `upload-${Date.now()}.bin`),
     };
-    formData.append('file', filePart as any);
+    // Parse/stringify to ensure it is a completely plain object with no hidden prototypes
+    formData.append('file', JSON.parse(JSON.stringify(filePart)));
 
     const response = await fetch(upload.uploadUrl, {
       method: 'POST',

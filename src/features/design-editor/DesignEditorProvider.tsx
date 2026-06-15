@@ -377,6 +377,7 @@ export function DesignEditorProvider({
 
   const bootstrappedRef = useRef(false);
   const mountedRef = useRef(true);
+  const isSavingRef = useRef(false);
   // Tracks the last measurement-point gender we requested so the bootstrap call
   // and the audience-change effect never fire a duplicate request for the same
   // gender during creator bootstrapping.
@@ -703,7 +704,7 @@ export function DesignEditorProvider({
 
   const save = useCallback(
     async (action: SaveAction) => {
-      if (saveAction) {
+      if (saveAction || isSavingRef.current) {
         return;
       }
       if (draftConflict?.hasConflict) {
@@ -730,6 +731,7 @@ export function DesignEditorProvider({
       setSaveAction(action);
       setSaveProgress(0);
       setSaveMessage(action === 'publish' ? 'Preparing to go live...' : 'Preparing draft...');
+      isSavingRef.current = true;
 
       try {
         const allowedFilterDimensionIds = new Set(filterDimensions.map((dimension) => dimension.id));
@@ -886,6 +888,7 @@ export function DesignEditorProvider({
           });
           toast.error(action === 'publish' ? mapCreatorMetadataError(message, 'Failed to publish design.') : message);
         } finally {
+          isSavingRef.current = false;
           if (mountedRef.current) {
             setSaveAction(null);
           }
@@ -896,6 +899,7 @@ export function DesignEditorProvider({
           action === 'publish' ? 'Failed to publish design.' : 'Failed to save draft.',
         );
         toast.error(action === 'publish' ? mapCreatorMetadataError(message, 'Failed to publish design.') : message);
+        isSavingRef.current = false;
         setSaveAction(null);
       }
     },

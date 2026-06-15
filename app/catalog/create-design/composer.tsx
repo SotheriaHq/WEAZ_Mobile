@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { InteractionManager, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -124,6 +124,10 @@ export default function CreateDesignComposerScreen() {
   const [heritageOpen, setHeritageOpen] = useState(false);
   const [occasionOpen, setOccasionOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
+  // Source chosen in the media option sheet, launched only AFTER the sheet has
+  // fully dismissed so the app sheet/backdrop never lingers behind the system
+  // picker (see the pending-picker effect below).
+  const [pendingPickerSource, setPendingPickerSource] = useState<'camera' | 'library' | null>(null);
   const [categoryStep, setCategoryStep] = useState<'category' | 'subcategory'>('category');
   const [draftCategoryId, setDraftCategoryId] = useState('');
   const [draftSubCategoryId, setDraftSubCategoryId] = useState('');
@@ -154,6 +158,31 @@ export default function CreateDesignComposerScreen() {
       hideSubscription.remove();
     };
   }, []);
+
+  // Android keyboard handling depends on whether the OS resized the window
+  // (edge-to-edge `adjustResize`). When it resizes, the RN root height shrinks
+  // and the sticky footer is lifted natively — adding our own offset would
+  // double-count and float the footer too high. When it does NOT resize, the
+  // footer stays behind the keyboard unless we lift it manually. We detect the
+  // resize by comparing the live window height to the no-keyboard baseline, so
+  // the footer ends up just above the keyboard on both configurations.
+  const { height: windowHeight } = useWindowDimensions();
+  const baseWindowHeightRef = useRef(windowHeight);
+  if (keyboardHeight === 0 && windowHeight > baseWindowHeightRef.current) {
+    baseWindowHeightRef.current = windowHeight;
+  }
+  const androidWindowResized =
+    Platform.OS === 'android' &&
+    keyboardHeight > 0 &&
+    baseWindowHeightRef.current - windowHeight > keyboardHeight * 0.5;
+  const footerKeyboardLift =
+    keyboardHeight > 0
+      ? Platform.OS === 'ios'
+        ? keyboardHeight
+        : androidWindowResized
+          ? 0
+          : Math.max(0, keyboardHeight - insets.bottom)
+      : 0;
   const audienceLabel = getAudienceLabel(form.audience);
   const sizingLabel = DESIGN_SIZING_LABELS[form.sizingMode];
   const fitPreferenceLabel = DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference];
@@ -322,7 +351,7 @@ export default function CreateDesignComposerScreen() {
         title: 'Camera',
         onPress: () => {
           setMediaOpen(false);
-          setTimeout(() => void handlePickMedia('camera'), 350);
+          setPendingPickerSource('camera');
         },
       },
       {
@@ -331,7 +360,7 @@ export default function CreateDesignComposerScreen() {
         title: 'Photo library',
         onPress: () => {
           setMediaOpen(false);
-          setTimeout(() => void handlePickMedia('library'), 350);
+          setPendingPickerSource('library');
         },
       },
       {
@@ -340,12 +369,27 @@ export default function CreateDesignComposerScreen() {
         title: 'Attachment',
         onPress: () => {
           setMediaOpen(false);
-          setTimeout(() => void handlePickMedia('library'), 350);
+          setPendingPickerSource('library');
         },
       },
     ],
-    [handlePickMedia],
+    [],
   );
+
+  // Sequencing guard: only one sheet/picker is active at a time. Once the media
+  // option sheet has closed (mediaOpen === false), wait for its dismissal
+  // animation/interactions to settle, then launch the system picker. This stops
+  // the system picker from opening on top of a still-collapsing app sheet (the
+  // "layered/double-collapse" bug).
+  useEffect(() => {
+    if (mediaOpen || !pendingPickerSource) return;
+    const source = pendingPickerSource;
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setPendingPickerSource(null);
+      void handlePickMedia(source);
+    });
+    return () => handle.cancel();
+  }, [mediaOpen, pendingPickerSource, handlePickMedia]);
 
   useEffect(() => {
     perfMeasure('catalog-plus-to-composer', 'catalog-plus-tap');
@@ -568,8 +612,15 @@ export default function CreateDesignComposerScreen() {
         <ScrollView
           style={styles.flex}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            // Extra bottom room while the keyboard is up so the focused field can
+            // scroll clear of the keyboard instead of sitting behind it.
+            keyboardHeight > 0 ? { paddingBottom: tokens.spacing.md + keyboardHeight } : null,
+          ]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
           <View style={styles.mediaSection}>
             <View style={styles.sectionTopRow}>
@@ -764,7 +815,12 @@ export default function CreateDesignComposerScreen() {
             {
               backgroundColor: theme.colors.bg,
               borderTopColor: theme.colors.border,
-              paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']) + keyboardHeight,
+              // footerKeyboardLift resolves the keyboard offset per platform AND
+              // per Android resize state (see the detection above) so the footer
+              // sits just above the keyboard without double-counting.
+              paddingBottom:
+                Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']) +
+                footerKeyboardLift,
               paddingHorizontal: tokens.spacing.lg,
             },
           ]}
@@ -987,6 +1043,7 @@ export default function CreateDesignComposerScreen() {
         subtitle="Expose every required field buyers must provide."
         onClose={() => setCustomOrdersOpen(false)}
         showCloseButton
+        scrollable
       >
         <View style={styles.switchRow}>
           <View style={styles.switchCopy}>

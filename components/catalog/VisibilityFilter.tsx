@@ -5,13 +5,15 @@ import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
-type VisibilityOption = 'Public' | 'Private' | 'Drafts' | 'In Review' | 'Changes Requested' | 'Rejected';
+type VisibilityOption = 'Public' | 'Private' | 'Drafts' | 'In Review' | 'Changes Requested' | 'Rejected' | 'Needs Attention';
 
 interface VisibilityFilterProps {
   selected: VisibilityOption;
   onChange: (value: VisibilityOption) => void;
   showDrafts?: boolean;
   draftsCount?: number;
+  needsAttentionCount?: number;
+  inReviewCount?: number;
 }
 
 interface SegmentProps {
@@ -77,6 +79,8 @@ export function VisibilityFilter({
   onChange,
   showDrafts = false,
   draftsCount = 0,
+  needsAttentionCount = 0,
+  inReviewCount = 0,
 }: VisibilityFilterProps) {
   const { theme } = useTheme();
 
@@ -104,20 +108,25 @@ export function VisibilityFilter({
             isActive={selected === 'Private'}
             onPress={() => onChange('Private')}
           />
-          {showDrafts ? (
-            <VisibilitySegment
-              label="Drafts"
-              isActive={selected === 'Drafts'}
-              onPress={() => onChange('Drafts')}
-              badge={draftsCount}
-            />
-          ) : null}
-          {showDrafts ? (
+          {showDrafts && (
             <>
+              <VisibilitySegment
+                label="Needs Attention"
+                isActive={selected === 'Needs Attention'}
+                onPress={() => onChange('Needs Attention')}
+                badge={needsAttentionCount}
+              />
+              <VisibilitySegment
+                label="Drafts"
+                isActive={selected === 'Drafts'}
+                onPress={() => onChange('Drafts')}
+                badge={draftsCount}
+              />
               <VisibilitySegment
                 label="In Review"
                 isActive={selected === 'In Review'}
                 onPress={() => onChange('In Review')}
+                badge={inReviewCount}
               />
               <VisibilitySegment
                 label="Changes Requested"
@@ -130,7 +139,7 @@ export function VisibilityFilter({
                 onPress={() => onChange('Rejected')}
               />
             </>
-          ) : null}
+          )}
         </ScrollView>
       </View>
     </View>

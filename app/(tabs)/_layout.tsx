@@ -121,9 +121,9 @@ export default function TabLayout() {
     lastProfileTabPressAtRef.current = 0;
     setProfileMenuVisible(false);
     setOptimisticActiveKey(NATIVE_ISLAND_KEYS.profile);
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       router.push((isBrand ? '/catalog' : '/(tabs)/me') as any);
-    });
+    }, 50);
   }, [clearProfileTabTimer, isBrand]);
 
   const handleProfilePress = useCallback(
@@ -258,10 +258,10 @@ export default function TabLayout() {
         if (navFlow) {
           navPerf.tap(navFlow);
         }
-        requestAnimationFrame(() => {
+        setTimeout(() => {
           if (navFlow) navPerf.navigationCalled();
           router.replace(nextRoute as any);
-        });
+        }, 50);
       }
     },
     [bagFlow, clearProfileTabTimer, handleProfilePress, isBrand, refreshGlobalBagCount],
@@ -283,12 +283,18 @@ export default function TabLayout() {
 
   useEffect(() => {
     setNotificationCountReady(false);
-    void refreshUnreadNotificationCount();
+    const timer = setTimeout(() => {
+      void refreshUnreadNotificationCount();
+    }, 500);
+    return () => clearTimeout(timer);
   }, [refreshUnreadNotificationCount, user?.id]);
 
   useEffect(() => {
     setMessageCountReady(false);
-    void refreshUnreadMessageCount();
+    const timer = setTimeout(() => {
+      void refreshUnreadMessageCount();
+    }, 500);
+    return () => clearTimeout(timer);
   }, [refreshUnreadMessageCount, user?.id]);
 
   useEffect(() => {

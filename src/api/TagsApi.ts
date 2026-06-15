@@ -13,15 +13,24 @@ type RawTagSuggestion = {
 };
 
 function extractSuggestions(payload: unknown): TagSuggestion[] {
-  const items = Array.isArray(payload)
-    ? payload
-    : Array.isArray((payload as any)?.items)
-      ? (payload as any).items
-      : Array.isArray((payload as any)?.data?.items)
-        ? (payload as any).data.items
-        : Array.isArray((payload as any)?.data)
-          ? (payload as any).data
-          : [];
+  let items: any[] = [];
+  
+  if (Array.isArray(payload)) {
+    items = payload;
+  } else if (payload && typeof payload === 'object') {
+    const p = payload as any;
+    if (Array.isArray(p.items)) {
+      items = p.items;
+    } else if (Array.isArray(p.data)) {
+      items = p.data;
+    } else if (p.data && typeof p.data === 'object') {
+      if (Array.isArray(p.data.items)) {
+        items = p.data.items;
+      } else if (Array.isArray(p.data.data)) {
+        items = p.data.data;
+      }
+    }
+  }
 
   return items
     .map((item: any) => {
