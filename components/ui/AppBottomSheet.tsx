@@ -65,13 +65,9 @@ export function AppBottomSheet({
   const [mounted, setMounted] = useState(visible);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const isDark = scheme === 'dark';
-  const androidBottomGap = Platform.OS === 'android' ? Math.max(0, insets.bottom) : 0;
-  const sheetPaddingBottom =
-    Platform.OS === 'android'
-      ? tokens.spacing.lg
-      : keyboardHeight > 0
-        ? tokens.spacing.lg
-        : Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm);
+  const sheetPaddingBottom = keyboardHeight > 0
+    ? tokens.spacing.lg
+    : Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm);
 
   useAndroidOverlaySystemBars(visible, scheme, 'bottom-sheet');
 
@@ -122,6 +118,10 @@ export function AppBottomSheet({
     ? {
         showsVerticalScrollIndicator: false,
         keyboardShouldPersistTaps: 'handled' as const,
+        keyboardDismissMode: 'interactive' as const,
+        // KeyboardAvoidingView already lifts the sheet; don't also inset the
+        // ScrollView content on iOS or the avoidance double-counts.
+        automaticallyAdjustKeyboardInsets: false,
         contentContainerStyle: styles.bodyContent,
       }
     : { style: styles.bodyContent };
@@ -141,14 +141,13 @@ export function AppBottomSheet({
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close sheet">
           <Animated.View style={[StyleSheet.absoluteFill, backdropStyle, { backgroundColor: theme.colors.backdrop }]} />
         </Pressable>
-
         <KeyboardAvoidingView
-          // Edge-to-edge (Expo SDK 56+) resizes the Android window for the
-          // keyboard natively. Adding 'height'/'padding' here would double-offset
-          // and clip the footer/action buttons, so Android relies on the native
-          // resize while iOS (no native resize) uses padding.
+          // React Native modal KeyboardAvoidingView bug on Android:
+          // A React Native <Modal> is hosted in its own Dialog window that does NOT inherit the
+          // activity's adjustResize. However, KeyboardAvoidingView padding calculations often leave
+          // ghost padding behind when closed. So we apply manual paddingBottom via state instead on Android.
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardWrap}
+          style={[styles.keyboardWrap, Platform.OS === 'android' && { paddingBottom: keyboardHeight }]}
         >
           <Animated.View
             style={[
@@ -156,9 +155,12 @@ export function AppBottomSheet({
               {
                 backgroundColor: theme.colors.bottomSheetSurface,
                 borderColor: theme.colors.border,
-                marginBottom: androidBottomGap,
                 paddingBottom: sheetPaddingBottom,
               },
+              // While the keyboard is open, shrink the max height so the lifted
+              // sheet cannot run off the top of the screen and the body ScrollView
+              // can reach the focused input + Add button.
+              keyboardHeight > 0 ? styles.sheetKeyboardOpen : null,
               sheetStyle,
               style,
             ]}
@@ -220,6 +222,10 @@ const styles = StyleSheet.create({
     paddingTop: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     gap: tokens.spacing.md,
+  },
+  sheetKeyboardOpen: {
+    // Lifted by KeyboardAvoidingView padding; allow it to fill the remaining space above the keyboard
+    maxHeight: '100%',
   },
   handle: {
     width: 46,

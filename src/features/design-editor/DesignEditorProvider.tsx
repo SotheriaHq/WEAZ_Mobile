@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Linking } from 'react-native';
+import { Linking, LayoutAnimation } from 'react-native';
 import { router } from 'expo-router';
 
 import {
@@ -301,40 +301,61 @@ function getPublishValidationMessage({
   return null;
 }
 
+// Generic technical/transport noise that must never reach the user. Field-level
+// validation text (e.g. "categoryId should not be empty") is intentionally NOT
+// listed here so mapCreatorMetadataError can still turn it into friendly guidance.
+const TECHNICAL_ERROR_NOISE = [
+  'network',
+  'formdata',
+  'timeout',
+  'unsupported',
+  'json',
+  'axios',
+  'request failed',
+  'status code',
+  'validation failed',
+  'internal server error',
+  'native module',
+  'undefined is not',
+  'is not a function',
+  'cannot read',
+  'null is not',
+  'socket',
+  'econn',
+];
+
+function isTechnicalErrorNoise(message: string) {
+  const normalized = message.toLowerCase();
+  return TECHNICAL_ERROR_NOISE.some((keyword) => normalized.includes(keyword));
+}
+
 function extractApiErrorMessage(error: any, fallback: string) {
   const responseData = error?.response?.data;
   const responseMessage = responseData?.message;
 
+  let candidate: string | null = null;
   if (Array.isArray(responseMessage)) {
-    return responseMessage.join(', ');
+    candidate = responseMessage.join(', ');
+  } else if (typeof responseMessage === 'string') {
+    candidate = responseMessage;
+  } else if (
+    responseMessage &&
+    typeof responseMessage === 'object' &&
+    typeof responseMessage.message === 'string'
+  ) {
+    candidate = responseMessage.message;
+  } else if (typeof responseData?.error === 'string') {
+    candidate = responseData.error;
+  } else if (error instanceof Error && error.message) {
+    candidate = error.message;
   }
 
-  if (typeof responseMessage === 'string') {
-    return responseMessage;
+  // Any transport/runtime noise (Axios, FormData, native module, undefined-is-not-
+  // a-function, generic "Validation failed", etc.) is replaced by the safe fallback.
+  if (!candidate || isTechnicalErrorNoise(candidate)) {
+    return fallback;
   }
-
-  if (responseMessage && typeof responseMessage === 'object' && typeof responseMessage.message === 'string') {
-    return responseMessage.message;
-  }
-
-  if (typeof responseData?.error === 'string') {
-    return responseData.error;
-  }
-
-  if (error instanceof Error && error.message) {
-    if (
-      error.message.toLowerCase().includes('network') ||
-      error.message.toLowerCase().includes('formdata') ||
-      error.message.toLowerCase().includes('timeout') ||
-      error.message.toLowerCase().includes('unsupported') ||
-      error.message.toLowerCase().includes('json')
-    ) {
-      return fallback;
-    }
-    return error.message;
-  }
-
-  return fallback;
+  return candidate;
 }
 
 export function DesignEditorProvider({
@@ -617,10 +638,14 @@ export function DesignEditorProvider({
   }, [categories.length, form.subCategoryId, selectedCategory]);
 
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
+    if (key === 'customOrderEnabled' || key === 'rushEnabled' || key === 'sizingMode' || key === 'audience') {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
 
   const toggleFilterValue = useCallback((dimensionId: string, valueId: string, isMulti: boolean) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setFilterSelection((prev) => {
       const current = prev[dimensionId] ?? [];
       let nextValues: string[];
@@ -643,6 +668,7 @@ export function DesignEditorProvider({
   }, []);
 
   const toggleMeasurementKey = useCallback((key: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setCustomMeasurementKeys((prev) =>
       prev.includes(key) ? prev.filter((entry) => entry !== key) : [...prev, key],
     );
@@ -679,6 +705,7 @@ export function DesignEditorProvider({
 
     setPermissionIssue(null);
 
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setAssets((prev) => {
       return [...prev, ...result.assets].slice(0, DESIGN_EDITOR_MAX_MEDIA);
     });
@@ -702,6 +729,7 @@ export function DesignEditorProvider({
   }, []);
 
   const removeAsset = useCallback((assetId: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setAssets((prev) => {
       const next = prev.filter((asset) => asset.id !== assetId);
       if (coverAssetId === assetId) {
@@ -891,9 +919,11 @@ export function DesignEditorProvider({
             params: { tab: 'Collections', visibility: targetVisibility },
           } as any);
         } catch (error: any) {
+          const draftFallback = 'We couldn’t save this draft. Please try again.';
+          const publishFallback = 'We couldn’t publish this design. Please try again.';
           const message = extractApiErrorMessage(
             error,
-            action === 'publish' ? 'Failed to publish design.' : 'Failed to save draft.',
+            action === 'publish' ? publishFallback : draftFallback,
           );
           updateDesignEditorBackgroundTask(task.id, {
             status: 'failed',
@@ -901,7 +931,9 @@ export function DesignEditorProvider({
             message: action === 'publish' ? 'Publish failed.' : 'Draft save failed.',
             error: message,
           });
-          toast.error(action === 'publish' ? mapCreatorMetadataError(message, 'Failed to publish design.') : message);
+          toast.error(
+            action === 'publish' ? mapCreatorMetadataError(message, publishFallback) : message,
+          );
         } finally {
           isSavingRef.current = false;
           if (mountedRef.current) {
@@ -909,11 +941,15 @@ export function DesignEditorProvider({
           }
         }
       } catch (error: any) {
+        const draftFallback = 'We couldn’t save this draft. Please try again.';
+        const publishFallback = 'We couldn’t publish this design. Please try again.';
         const message = extractApiErrorMessage(
           error,
-          action === 'publish' ? 'Failed to publish design.' : 'Failed to save draft.',
+          action === 'publish' ? publishFallback : draftFallback,
         );
-        toast.error(action === 'publish' ? mapCreatorMetadataError(message, 'Failed to publish design.') : message);
+        toast.error(
+          action === 'publish' ? mapCreatorMetadataError(message, publishFallback) : message,
+        );
         isSavingRef.current = false;
         setSaveAction(null);
       }

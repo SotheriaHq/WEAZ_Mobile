@@ -117,6 +117,7 @@ export async function pickDesignEditorMediaAssets({
           allowsMultipleSelection: true,
           selectionLimit: remainingSlots,
           base64: false,
+          presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN,
         });
 
   if (result.canceled || !result.assets?.length) {

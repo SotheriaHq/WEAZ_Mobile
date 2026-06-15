@@ -143,13 +143,15 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
   if (!internalVisible) return null;
 
   return (
-    <View
-      style={[
-        StyleSheet.absoluteFill,
-        { zIndex: 9999, elevation: 999 } // Ensure it sits above all other content on the screen
-      ]}
-      pointerEvents="box-none"
+    <Modal
+      transparent
+      visible={internalVisible}
+      animationType="none"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={handleClose}
     >
+      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <Pressable style={StyleSheet.absoluteFill} onPress={handleClose}>
         <Animated.View 
           style={[
@@ -196,16 +198,14 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
                 ]}
                 onPress={() => handleOptionPress(option.onPress)}
               >
-                <AppText variant="body">
-                  {option.icon}
-                </AppText>
-                <AppText variant="body">{option.title}</AppText>
-              </Pressable>
-            );
-          })}
-        </Animated.View>
-      </Pressable>
-    </View>
+                  <AppText variant="body">{option.title}</AppText>
+                </Pressable>
+              );
+            })}
+          </Animated.View>
+        </Pressable>
+      </View>
+    </Modal>
   );
 }
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { InteractionManager, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, View, useWindowDimensions } from 'react-native';
+import { InteractionManager, Keyboard, KeyboardAvoidingView, LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Switch, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -138,15 +138,29 @@ export default function CreateDesignComposerScreen() {
     height: number;
   } | null>(null);
 
+  const [renderSheets, setRenderSheets] = useState(false);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setRenderSheets(true);
+    });
+    return () => handle.cancel();
+  }, []);
+
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
     const showSubscription = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => setKeyboardHeight(e.endCoordinates.height)
+      (e) => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setKeyboardHeight(e.endCoordinates.height);
+      }
     );
     const hideSubscription = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => setKeyboardHeight(0)
+      () => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setKeyboardHeight(0);
+      }
     );
     return () => {
       showSubscription.remove();
@@ -337,7 +351,6 @@ export default function CreateDesignComposerScreen() {
         icon: '📷',
         title: 'Camera',
         onPress: () => {
-          setMediaOpen(false);
           setPendingPickerSource('camera');
         },
       },
@@ -346,7 +359,6 @@ export default function CreateDesignComposerScreen() {
         icon: '🖼️',
         title: 'Photo library',
         onPress: () => {
-          setMediaOpen(false);
           setPendingPickerSource('library');
         },
       },
@@ -355,7 +367,6 @@ export default function CreateDesignComposerScreen() {
         icon: '📎',
         title: 'Attachment',
         onPress: () => {
-          setMediaOpen(false);
           setPendingPickerSource('library');
         },
       },
@@ -385,12 +396,7 @@ export default function CreateDesignComposerScreen() {
     if (autoOpenPickerSourceParam && !autoOpenedRef.current) {
       autoOpenedRef.current = true;
       const source = autoOpenPickerSourceParam as 'camera' | 'library';
-      const handle = InteractionManager.runAfterInteractions(() => {
-        setTimeout(() => {
-          void handlePickMedia(source);
-        }, 300); // Wait for route transition slide-in to visibly finish
-      });
-      return () => handle.cancel();
+      void handlePickMedia(source);
     }
   }, [autoOpenPickerSourceParam, handlePickMedia]);
 
@@ -810,7 +816,7 @@ export default function CreateDesignComposerScreen() {
                 title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
                 variant="secondary"
                 loading={saveState.action === 'draft'}
-                disabled={!canSaveDraft}
+                disabled={!canSaveDraft || Boolean(saveState.action)}
                 onPress={() => void save('draft')}
                 fullWidth
               />
@@ -826,9 +832,10 @@ export default function CreateDesignComposerScreen() {
           </View>
         </View>
 
-
-      <AppSelectSheet
-        visible={privacyOpen}
+      {renderSheets ? (
+        <>
+          <AppSelectSheet
+            visible={privacyOpen}
         title="Who can see this?"
         subtitle={CREATOR_METADATA_HELP.visibility}
         options={PRIVACY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
@@ -1260,6 +1267,8 @@ export default function CreateDesignComposerScreen() {
           You can close this sheet and tap Camera or Select from library again at any time.
         </AppText>
       </AppBottomSheet>
+      </>
+      ) : null}
     </SafeAreaView>
     </KeyboardAvoidingView>
   );

@@ -196,12 +196,25 @@ const CreateMenuWrapper = forwardRef<{ open: (e?: any) => void }, { options: Flo
 
   useImperativeHandle(ref, () => ({
     open: (e?: any) => {
-      if (e?.nativeEvent && e.nativeEvent.pageX != null) {
-        setMetrics({ pageX: e.nativeEvent.pageX, pageY: e.nativeEvent.pageY, width: 40, height: 40 });
+      if (props.anchorRef?.current) {
+        props.anchorRef.current.measureInWindow((x: number, y: number, w: number, h: number) => {
+          if (w > 0 && h > 0) {
+            setMetrics({ pageX: x, pageY: y, width: w, height: h });
+          } else if (e?.nativeEvent && e.nativeEvent.pageX != null) {
+            setMetrics({ pageX: e.nativeEvent.pageX, pageY: e.nativeEvent.pageY, width: 40, height: 40 });
+          } else {
+            setMetrics(null);
+          }
+          setOpen(true);
+        });
       } else {
-        setMetrics(null);
+        if (e?.nativeEvent && e.nativeEvent.pageX != null) {
+          setMetrics({ pageX: e.nativeEvent.pageX, pageY: e.nativeEvent.pageY, width: 40, height: 40 });
+        } else {
+          setMetrics(null);
+        }
+        setOpen(true);
       }
-      setOpen(true);
     }
   }));
 

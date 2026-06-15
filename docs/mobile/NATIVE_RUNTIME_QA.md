@@ -130,3 +130,53 @@
   (`brandApi.deleteCollection`, confirm-to-delete).
 - Failed/processing/draft items are never shown to public visitors (backend visibility
   enforcement above).
+
+## Create-Design Keyboard + Save Draft + Publish
+
+### Keyboard — bottom sheets (tags / custom order / policies) (PARTIAL — device verification required)
+- Root cause: a React Native `<Modal>` is hosted in its own Dialog window that does
+  NOT inherit the activity's `adjustResize`, so the Android keyboard overlapped sheet
+  content. `AppBottomSheet`'s `KeyboardAvoidingView` previously used
+  `behavior={undefined}` on Android (trusting a native resize that never happens for
+  modals) — the Hashtags search input, suggestions and Add button slid under the
+  keyboard.
+- Fix (`components/ui/AppBottomSheet.tsx`): `behavior="padding"` on BOTH platforms;
+  while the keyboard is open the sheet `maxHeight` drops to 70% so the lifted sheet
+  cannot run off the top; the body ScrollView uses `keyboardShouldPersistTaps="handled"`
+  + `keyboardDismissMode="interactive"` and disables `automaticallyAdjustKeyboardInsets`
+  (KAV already lifts, avoid double-count). This covers the tag selector, the custom
+  order sheet, and the notes/revision/return/defect policy fields (all `AppBottomSheet`).
+- Smoke test (tag selector): open Hashtags → tap the search input → keyboard opens →
+  the search input, typed text, suggestions, and the **Add** button all stay visible;
+  the Done button in the sheet header stays reachable.
+- Smoke test (custom order/policies): open Custom Orders → focus rush fee / notes /
+  revision / return / defect inputs → each stays visible above the keyboard and the
+  sheet scrolls to reach lower fields.
+- Main create-design form + sticky footer keyboard handling is unchanged from the
+  earlier Phase 1B pass (ScrollView keyboard padding + platform/Android-resize-aware
+  `footerKeyboardLift`).
+
+### Save Draft expected behavior
+- One tap = one save flow. Guarded by `saveAction || isSavingRef` in the provider and by
+  `disabled={... || saveState.action}` on the composer and preview buttons.
+- `activeDesignId` is stored via `onDesignCreated` right after `/designs/initialize`, so a
+  retry after a later failure reuses the existing design (update path) instead of
+  re-initializing — no duplicate design records.
+- Payload includes title, description, media assets, selected views, category/garment,
+  style details (filterValueIds), tags, price, custom-order config, rush settings, and
+  notes/policies. Saved as DRAFT → appears in Drafts, never Public. Form data is
+  preserved on failure (the editor screen is not torn down).
+
+### Go Live / Publish expected behavior
+- One tap = one publish flow (same guards). `/designs/initialize` is always forced to
+  DRAFT; only `finalize` with `action: 'publish'` advances the lifecycle. Result moves to
+  IN_REVIEW and the owner is routed to the In Review tab. Public never shows
+  DRAFT/PROCESSING/FAILED/IN_REVIEW/CHANGES_REQUESTED (backend-enforced).
+
+### Allowed user-facing error messages
+- Save Draft failure: **“We couldn’t save this draft. Please try again.”**
+- Publish failure: **“We couldn’t publish this design. Please try again.”**
+- `extractApiErrorMessage` scrubs transport/runtime noise (Axios, FormData, “unsupported”,
+  “undefined is not a function”, “native module”, generic “Validation failed”, status-code
+  text, etc.) to the fallback; known field-validation messages are still mapped to friendly
+  guidance by `mapCreatorMetadataError` on publish.
