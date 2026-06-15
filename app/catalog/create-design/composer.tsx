@@ -175,14 +175,6 @@ export default function CreateDesignComposerScreen() {
     Platform.OS === 'android' &&
     keyboardHeight > 0 &&
     baseWindowHeightRef.current - windowHeight > keyboardHeight * 0.5;
-  const footerKeyboardLift =
-    keyboardHeight > 0
-      ? Platform.OS === 'ios'
-        ? keyboardHeight
-        : androidWindowResized
-          ? 0
-          : Math.max(0, keyboardHeight - insets.bottom)
-      : 0;
   const audienceLabel = getAudienceLabel(form.audience);
   const sizingLabel = DESIGN_SIZING_LABELS[form.sizingMode];
   const fitPreferenceLabel = DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference];
@@ -405,25 +397,32 @@ export default function CreateDesignComposerScreen() {
     }
   }, [booting]);
 
+  const [transitionReady, setTransitionReady] = useState(false);
+
   useEffect(() => {
-    if (!shouldOpenInitialPicker || initialPickerStartedRef.current || isEditMode) return;
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setTransitionReady(true);
+    });
+    return () => handle.cancel();
+  }, []);
+
+  useEffect(() => {
+    if (!transitionReady || !shouldOpenInitialPicker || initialPickerStartedRef.current || isEditMode) return;
     initialPickerStartedRef.current = true;
 
     let active = true;
-    const timer = setTimeout(() => {
-      setInitialPickerPending(true);
-      void handlePickMedia(initialPickerSource).finally(() => {
-        if (active) {
-          setInitialPickerPending(false);
-        }
-      });
-    }, 0);
+    // We can safely call this immediately now because we waited for transitionReady
+    setInitialPickerPending(true);
+    void handlePickMedia(initialPickerSource).finally(() => {
+      if (active) {
+        setInitialPickerPending(false);
+      }
+    });
 
     return () => {
       active = false;
-      clearTimeout(timer);
     };
-  }, [handlePickMedia, initialPickerSource, isEditMode, shouldOpenInitialPicker]);
+  }, [handlePickMedia, initialPickerSource, isEditMode, shouldOpenInitialPicker, transitionReady]);
 
   const loadTags = useCallback(
     async (isActive: () => boolean = () => true, options?: { forceRefresh?: boolean }) => {
@@ -529,7 +528,7 @@ export default function CreateDesignComposerScreen() {
   // measurement points) fills in progressively into the already-usable form.
   // This is what fixes "action buttons missing" and the multi-second blank gap.
   const showFullScreenLoader =
-    (booting && isEditMode && !shouldOpenInitialPicker) || shouldRedirectEmptyCreate;
+    !transitionReady || (booting && isEditMode && !shouldOpenInitialPicker) || shouldRedirectEmptyCreate || initialPickerPending;
 
   // usable_ui = the form + footer actions are actually interactive (not hidden
   // behind the full-screen loader). Distinct from data_ready (all metadata in).
@@ -593,11 +592,14 @@ export default function CreateDesignComposerScreen() {
   );
 
   if (showFullScreenLoader) {
-    return <AppLoaderScreen message="Loading composer" />;
+    return <AppLoaderScreen message={initialPickerPending ? "Opening media library..." : "Loading composer"} />;
   }
 
   return (
-    <View style={styles.flex}>
+    <KeyboardAvoidingView 
+      style={styles.flex} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <View style={styles.header}>
           <AppBackButton fallbackHref="/catalog" />
@@ -815,12 +817,9 @@ export default function CreateDesignComposerScreen() {
             {
               backgroundColor: theme.colors.bg,
               borderTopColor: theme.colors.border,
-              // footerKeyboardLift resolves the keyboard offset per platform AND
-              // per Android resize state (see the detection above) so the footer
-              // sits just above the keyboard without double-counting.
-              paddingBottom:
-                Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']) +
-                footerKeyboardLift,
+              paddingBottom: keyboardHeight > 0 && Platform.OS === 'ios'
+                ? tokens.spacing.lg // keyboard covers the safe area
+                : Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
               paddingHorizontal: tokens.spacing.lg,
             },
           ]}
@@ -1291,7 +1290,7 @@ export default function CreateDesignComposerScreen() {
         </AppText>
       </AppBottomSheet>
     </SafeAreaView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

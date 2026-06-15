@@ -24,7 +24,6 @@ type OwnerCatalogMediaHeaderProps = {
   onEditProfile?: () => void;
   onCreate?: () => void;
   createAnchorRef?: React.RefObject<View | null>;
-  onCreateAnchorLayout?: () => void;
   onShare?: () => void;
   qrTargetUrl?: string | null;
   onOpenQr?: () => void;
@@ -57,7 +56,6 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   onEditProfile,
   onCreate,
   createAnchorRef,
-  onCreateAnchorLayout,
   onShare,
   qrTargetUrl,
   onOpenQr,
@@ -306,7 +304,6 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       onEditProfile={onEditProfile}
       onCreate={onCreate}
       createAnchorRef={createAnchorRef}
-      onCreateAnchorLayout={onCreateAnchorLayout}
       onShare={onShare}
       qrTargetUrl={qrTargetUrl}
       onOpenQr={onOpenQr}

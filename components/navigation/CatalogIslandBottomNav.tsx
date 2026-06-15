@@ -91,14 +91,21 @@ export function CatalogIslandBottomNav() {
     clearProfileTabTimer();
     lastProfileTabPressAtRef.current = 0;
     setOptimisticActiveKey('profile');
-    router.push((isBrand ? '/catalog' : '/(tabs)/me') as any);
-  }, [clearProfileTabTimer, isBrand]);
+    
+    // Use navigate instead of push. Pushing a duplicate complex screen onto the stack
+    // causes a massive memory spike and multi-second UI thread blocking. Navigate will
+    // smoothly jump back to the existing screen if it's already in the stack.
+    const targetRoute = isBrand ? '/catalog' : '/(tabs)/me';
+    if (pathname !== targetRoute) {
+      router.navigate(targetRoute as any);
+    }
+  }, [clearProfileTabTimer, isBrand, pathname]);
 
   const handleProfilePress = useCallback(() => {
     setOptimisticActiveKey('profile');
 
     if (!canOpenProfileMenu) {
-      router.push('/(tabs)/me' as any);
+      router.navigate('/(tabs)/me' as any);
       return;
     }
 

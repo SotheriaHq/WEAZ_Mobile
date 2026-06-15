@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -10,7 +11,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
+
 import Animated, {
   Easing,
   runOnJS,
@@ -62,14 +63,26 @@ export function AppBottomSheet({
   const translateY = useSharedValue(28);
   const opacity = useSharedValue(0);
   const [mounted, setMounted] = useState(visible);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const isDark = scheme === 'dark';
   const androidBottomGap = Platform.OS === 'android' ? Math.max(0, insets.bottom) : 0;
   const sheetPaddingBottom =
     Platform.OS === 'android'
       ? tokens.spacing.lg
-      : Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm);
+      : keyboardHeight > 0
+        ? tokens.spacing.lg
+        : Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm);
 
   useAndroidOverlaySystemBars(visible, scheme, 'bottom-sheet');
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -126,13 +139,7 @@ export function AppBottomSheet({
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close sheet">
-          <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-            <BlurView
-              tint={isDark ? 'dark' : 'light'}
-              intensity={Platform.OS === 'android' ? 24 : 38}
-              style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdrop }]}
-            />
-          </Animated.View>
+          <Animated.View style={[StyleSheet.absoluteFill, backdropStyle, { backgroundColor: theme.colors.backdrop }]} />
         </Pressable>
 
         <KeyboardAvoidingView

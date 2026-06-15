@@ -5,9 +5,10 @@
  * Rule 5: emoji-only markers | Rule 6: rounded-square avatars
  */
 
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
   BackHandler,
+  InteractionManager,
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -185,6 +186,32 @@ const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => 
 // Main Component
 // ─────────────────────────────────────────────────────────────
 
+const CreateMenuWrapper = forwardRef<{ open: (e?: any) => void }, { options: FloatingMenuOption[], anchorRef: React.RefObject<any> }>((props, ref) => {
+  const [open, setOpen] = useState(false);
+  const [metrics, setMetrics] = useState<{ pageX: number; pageY: number; width: number; height: number } | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    open: (e?: any) => {
+      if (e?.nativeEvent && e.nativeEvent.pageX != null) {
+        setMetrics({ pageX: e.nativeEvent.pageX, pageY: e.nativeEvent.pageY, width: 40, height: 40 });
+      } else {
+        setMetrics(null);
+      }
+      setOpen(true);
+    }
+  }));
+
+  return (
+    <AppFloatingMenu
+      visible={open}
+      anchorRef={props.anchorRef}
+      anchorMetrics={metrics}
+      options={props.options}
+      onClose={() => setOpen(false)}
+    />
+  );
+});
+
 export default function CatalogScreen() {
   const { brandId: routeBrandId, tab: routeTabParam, visibility: routeVisibilityParam, productId: routeProductIdParam } = useLocalSearchParams<{
     brandId?: string;
@@ -241,14 +268,7 @@ export default function CatalogScreen() {
   const [savedCatalogById, setSavedCatalogById] = useState<Record<string, boolean>>({});
   const [savingCatalogById, setSavingCatalogById] = useState<Record<string, boolean>>({});
   const [shareActionsOpen, setShareActionsOpen] = useState(false);
-  const [createOptionsOpen, setCreateOptionsOpen] = useState(false);
   const createAnchorRef = useRef<View | null>(null);
-  const [createAnchorMetrics, setCreateAnchorMetrics] = useState<{
-    pageX: number;
-    pageY: number;
-    width: number;
-    height: number;
-  } | null>(null);
   const [brandQrOpen, setBrandQrOpen] = useState(false);
   const [tabHeights, setTabHeights] = useState<Partial<Record<TabType, number>>>({});
   const tabPagerRef = useRef<ScrollView>(null);
@@ -258,6 +278,15 @@ export default function CatalogScreen() {
   const completedTaskRefreshKeyRef = useRef<string | null>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
   const activeTabPagerHeight = tabHeights[activeTab];
+
+  const [transitionReady, setTransitionReady] = useState(false);
+
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setTransitionReady(true);
+    });
+    return () => handle.cancel();
+  }, []);
 
   useEffect(() => {
     profileRef.current = profile;
@@ -1077,7 +1106,7 @@ export default function CatalogScreen() {
   const listInitialLoading = visibilityFilter === 'Drafts'
     ? draftsQuery.isLoading && effectiveDrafts.length === 0
     : collectionsQuery.isLoading && effectiveCollections.length === 0;
-  const showInitialSkeleton = Boolean(
+  const showInitialSkeleton = !transitionReady || Boolean(
     targetBrandId &&
     !effectiveProfile &&
     effectiveCollections.length === 0 &&
@@ -1210,49 +1239,35 @@ export default function CatalogScreen() {
     [handleCopyProfileLink, handleNativeShareProfile, profileQrTargetUrl, profileShareUrl],
   );
 
-  const captureCreateAnchorMetrics = useCallback(() => {
-    requestAnimationFrame(() => {
-      createAnchorRef.current?.measureInWindow((pageX, pageY, width, height) => {
-        if (width <= 0 || height <= 0) return;
-        setCreateAnchorMetrics({ pageX, pageY, width, height });
-      });
-    });
-  }, []);
-
-  // Continue into the composer, optionally auto-opening the media picker for the
-  // chosen source. Called only AFTER the user picks an option in the sheet — the
-  // `+` button itself must never route straight into the composer.
   const launchComposer = useCallback(
     (opts: { source?: DesignEditorMediaSource; openPicker: boolean }) => {
-      setCreateOptionsOpen(false);
       navPerf.tap('create_design');
       navPerf.mark('create_design_option_selected');
       
-      setTimeout(() => {
-        requestAnimationFrame(() => {
-          navPerf.mark('create_design_navigation_called');
-          navPerf.navigationCalled();
-          router.push({
-            pathname: '/catalog/create-design/composer',
-            params: opts.openPicker
-              ? { openPicker: '1', pickerSource: opts.source ?? 'library' }
-              : { blank: '1' },
-          } as any);
-        });
-      }, 350);
+      requestAnimationFrame(() => {
+        navPerf.mark('create_design_navigation_called');
+        navPerf.navigationCalled();
+        router.push({
+          pathname: '/catalog/create-design/composer',
+          params: opts.openPicker
+            ? { openPicker: '1', pickerSource: opts.source ?? 'library' }
+            : { blank: '1' },
+        } as any);
+      });
     },
     [],
   );
 
-  const handleCreatePress = useCallback(() => {
+  const createMenuRef = useRef<{ open: (e?: any) => void } | null>(null);
+
+  const handleCreatePress = useCallback((e?: any) => {
     if (canManageCatalog(user) && userEmailVerified === false) {
       toast.error('Verify your email before creating designs.');
       return;
     }
     perfMark('catalog-plus-tap');
-    captureCreateAnchorMetrics();
-    setCreateOptionsOpen(true);
-  }, [captureCreateAnchorMetrics, toast, user, userEmailVerified]);
+    createMenuRef.current?.open(e);
+  }, [toast, user, userEmailVerified]);
 
   const createDesignOptions = useMemo<FloatingMenuOption[]>(
     () => [
@@ -1322,7 +1337,6 @@ export default function CatalogScreen() {
             }}
             onCreate={handleCreatePress}
             createAnchorRef={createAnchorRef}
-            onCreateAnchorLayout={captureCreateAnchorMetrics}
             onViewAvatar={handleViewOwnerAvatar}
             onShare={() => setShareActionsOpen(true)}
             qrTargetUrl={profileQrTargetUrl}
@@ -1519,13 +1533,7 @@ export default function CatalogScreen() {
         onClose={() => setShareActionsOpen(false)}
       />
 
-      <AppFloatingMenu
-        visible={createOptionsOpen}
-        anchorRef={createAnchorRef}
-        anchorMetrics={createAnchorMetrics}
-        options={createDesignOptions}
-        onClose={() => setCreateOptionsOpen(false)}
-      />
+      <CreateMenuWrapper ref={createMenuRef} anchorRef={createAnchorRef} options={createDesignOptions} />
 
       <AppQrSheet
         visible={brandQrOpen}

@@ -51,7 +51,7 @@ export type BrandProfileHeaderProps = {
   onPatch?: () => void;
   onMessage?: () => void;
   onEditProfile?: () => void;
-  onCreate?: () => void;
+  onCreate?: (e?: any) => void;
   createAnchorRef?: React.RefObject<View | null>;
   onCreateAnchorLayout?: () => void;
   onShare?: () => void;
@@ -756,7 +756,7 @@ function BrandProfileActions({
         {onCreate ? (
           <View ref={createAnchorRef} onLayout={onCreateAnchorLayout} collapsable={false}>
             <Pressable
-              onPress={onCreate}
+              onPress={(e) => onCreate?.(e)}
               style={({ pressed }) => [
                 styles.squareAction,
                 {

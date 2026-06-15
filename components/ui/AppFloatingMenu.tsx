@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { BackHandler, Dimensions, Modal, Pressable, StyleSheet, View } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { BackHandler, Dimensions, Modal, Pressable, StyleSheet, View, Animated } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
@@ -52,93 +52,171 @@ function resolveMenuPosition({
 
 export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, onClose }: Props) {
   const { scheme, theme } = useTheme();
-  const [measuredPosition, setMeasuredPosition] = useState<{ top: number; left: number } | null>(null);
+  
+  const [internalVisible, setInternalVisible] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const pendingCallback = useRef<(() => void) | null>(null);
+
   const menuWidth = 188;
 
-  useAndroidOverlaySystemBars(visible, scheme, 'floating-menu');
+  const windowWidth = Dimensions.get('window').width;
+  const windowHeight = Dimensions.get('window').height;
 
-  const resolvedPosition = visible && anchorMetrics
+  const resolvedPosition = anchorMetrics
     ? resolveMenuPosition({ ...anchorMetrics, menuWidth })
-    : measuredPosition;
+    : { top: windowHeight / 2 - 100, left: windowWidth / 2 - menuWidth / 2 };
+
+  useAndroidOverlaySystemBars(internalVisible, scheme, 'floating-menu');
 
   useEffect(() => {
-    if (!visible) {
-      if (measuredPosition) setMeasuredPosition(null);
-      return;
+    if (visible) {
+      if (!internalVisible) {
+        setInternalVisible(true);
+        setIsClosing(false);
+        pendingCallback.current = null;
+        
+        fadeAnim.setValue(0);
+        scaleAnim.setValue(0.95);
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scaleAnim, {
+            toValue: 1,
+            speed: 20,
+            bounciness: 2,
+            useNativeDriver: true,
+          })
+        ]).start();
+      }
+    } else {
+      if (internalVisible && !isClosing) {
+        handleClose();
+      }
     }
-
-    if (anchorMetrics) return;
-
-    if (anchorRef.current?.measureInWindow) {
-      anchorRef.current.measureInWindow((pageX: number, pageY: number, width: number, height: number) => {
-        if (width <= 0 || height <= 0) return;
-        setMeasuredPosition(resolveMenuPosition({ pageX, pageY, width, height, menuWidth }));
-      });
-    }
-  }, [anchorMetrics, anchorRef, measuredPosition, visible]);
+    // Only react to the parent's `visible` prop changing.
+    // internalVisible and isClosing are managed internally and should not trigger re-evaluations that reset state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!internalVisible) return;
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
+      handleClose();
       return true;
     });
 
     return () => backHandler.remove();
-  }, [visible, onClose]);
+  }, [internalVisible]);
 
-  if (!visible || !resolvedPosition) return null;
+  const handleClose = () => {
+    if (isClosing) return;
+    setIsClosing(true);
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.95,
+        duration: 120,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      setInternalVisible(false);
+      setIsClosing(false);
+      onClose(); // notify parent
+      
+      if (pendingCallback.current) {
+        const callback = pendingCallback.current;
+        pendingCallback.current = null;
+        // The modal is set to unmount synchronously (animationType="none"),
+        // and since we removed the visible backdrop, there is no double-collapse visual bug.
+        // We can execute routing immediately to ensure zero latency.
+        callback();
+      }
+    });
+  };
+
+  const handleOptionPress = (optionOnPress: () => void) => {
+    if (isClosing) return;
+    pendingCallback.current = optionOnPress;
+    handleClose();
+  };
+
+  if (!internalVisible) return null;
 
   return (
-    <Modal
-      transparent
-      visible={visible}
-      animationType="fade"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={onClose}
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        { zIndex: 9999, elevation: 999 } // Ensure it sits above all other content on the screen
+      ]}
+      pointerEvents="box-none"
     >
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-        <View
+      <Pressable style={StyleSheet.absoluteFill} onPress={handleClose}>
+        <Animated.View 
+          style={[
+            StyleSheet.absoluteFill, 
+            { 
+              backgroundColor: 'transparent',
+              // Opacity isn't strictly necessary for transparent, but keeping it to match the view structure
+              opacity: fadeAnim 
+            }
+          ]} 
+        />
+        <Animated.View
           style={[
             styles.menu,
             {
-              backgroundColor: theme.colors.surfaceAlt,
+              backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
               top: resolvedPosition.top,
               left: resolvedPosition.left,
               width: menuWidth,
-              ...tokens.elevation.sm,
+              opacity: fadeAnim,
+              transform: [{ scale: scaleAnim }],
+              ...tokens.elevation.md,
             },
           ]}
         >
-          {options.map((option, index) => (
-            <Pressable
-              key={option.key}
-              style={({ pressed }) => [
-                styles.option,
-                pressed && {
-                  backgroundColor: theme.colors.primarySoft,
-                  borderColor: theme.colors.primary,
-                },
-                pressed && styles.optionPressed,
-                index < options.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
-              ]}
-              onPress={() => {
-                onClose();
-                requestAnimationFrame(option.onPress);
-              }}
-            >
-              <AppText variant="body">
-                {option.icon}
-              </AppText>
-              <AppText variant="body">{option.title}</AppText>
-            </Pressable>
-          ))}
-        </View>
+          {options.map((option, index) => {
+            const isFirst = index === 0;
+            const isLast = index === options.length - 1;
+            
+            return (
+              <Pressable
+                key={option.key}
+                disabled={isClosing}
+                style={({ pressed }) => [
+                  styles.option,
+                  isFirst && { borderTopLeftRadius: tokens.radius.lg - 1, borderTopRightRadius: tokens.radius.lg - 1 },
+                  isLast && { borderBottomLeftRadius: tokens.radius.lg - 1, borderBottomRightRadius: tokens.radius.lg - 1 },
+                  pressed && {
+                    backgroundColor: theme.colors.primarySoft,
+                  },
+                  pressed && styles.optionPressed,
+                  !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+                ]}
+                onPress={() => handleOptionPress(option.onPress)}
+              >
+                <AppText variant="body">
+                  {option.icon}
+                </AppText>
+                <AppText variant="body">{option.title}</AppText>
+              </Pressable>
+            );
+          })}
+        </Animated.View>
       </Pressable>
-    </Modal>
+    </View>
   );
 }
 

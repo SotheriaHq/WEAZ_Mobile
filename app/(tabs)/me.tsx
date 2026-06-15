@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View, InteractionManager } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -410,6 +410,14 @@ export default function BuyerProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Saved');
+  const [transitionReady, setTransitionReady] = useState(false);
+
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setTransitionReady(true);
+    });
+    return () => handle.cancel();
+  }, []);
   const savedLooksOpenedTrackedRef = useRef(false);
   const [editOpen, setEditOpen] = useState(false);
   const [fittingsOpen, setFittingsOpen] = useState(false);
@@ -799,7 +807,7 @@ export default function BuyerProfileScreen() {
     ]);
   }, [signOut]);
 
-  if (status === 'loading' || (status === 'authenticated' && loading)) {
+  if (!transitionReady || status === 'loading' || (status === 'authenticated' && loading)) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <BrandHeader />
