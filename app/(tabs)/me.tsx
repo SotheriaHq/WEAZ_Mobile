@@ -514,8 +514,9 @@ export default function BuyerProfileScreen() {
     const normalized = requestedTab.trim().toLowerCase();
     if (normalized === 'patches') setActiveTab('Patches');
     if (normalized === 'orders') {
-      // navigate (not replace) so Me stays behind Orders and back returns here.
-      topLevelNavigate('/orders' as any);
+      // Query-param redirect (?tab=orders), not a user tap: replace so we don't
+      // leave an empty Me?tab=orders entry in history behind Orders.
+      router.replace('/orders' as any);
       return;
     }
     if (normalized === 'saved') setActiveTab('Saved');

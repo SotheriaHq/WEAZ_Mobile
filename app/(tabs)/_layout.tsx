@@ -43,6 +43,19 @@ import {
 
 const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
 
+// Keep Runway (`index`) as the tab shell's anchor route now that Catalogue is
+// also a (hidden) tab — without this, adding sibling screens can shift Expo
+// Router's default/initial tab.
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
+// Focused catalogue sub-flows are full-screen editors/viewers that must not be
+// covered by the floating island (matches the pre-migration behaviour when
+// catalogue rendered its own island and hid it for these routes). `/catalog`
+// and the visitor `/catalog/[brandId]` keep the island.
+const FOCUSED_CATALOG_FLOW = /^\/catalog\/(view|create-design|create-collection|edit-profile)(\/|$)/;
+
 export default function TabLayout() {
   const { scheme, theme } = useTheme();
   const { status, token, user } = useAuth();
@@ -92,6 +105,7 @@ export default function TabLayout() {
     return mapPathnameToIslandKey(pathname);
   }, [pathname]);
   const displayedActiveKey = optimisticActiveKey ?? activeIslandKey;
+  const hideIslandForFocusedFlow = FOCUSED_CATALOG_FLOW.test(pathname);
 
   const refreshUnreadNotificationCount = useCallback(async () => {
     lastNotificationRefreshAttemptAtRef.current = Date.now();
@@ -432,15 +446,29 @@ export default function TabLayout() {
             href: null,
           }}
         />
+
+        {/* Catalogue is a first-class, persistent top-level destination but is
+            navigated to programmatically via the island (brand "Profile"), so it
+            is hidden from the tab bar with href: null. Living inside (tabs) gives
+            it tab-level lifetime while keeping the public /catalog URL (the
+            (tabs) route group is omitted from the path). */}
+        <Tabs.Screen
+          name="catalog"
+          options={{
+            href: null,
+          }}
+        />
       </Tabs>
 
-      <NativeIslandBottomNav
-        items={islandItems}
-        onSelect={handleSelect}
-        onPressIn={markOptimisticActive}
-        collapsed={!isIslandExpanded}
-        onCollapsedPress={() => setIsIslandExpanded(true)}
-      />
+      {hideIslandForFocusedFlow ? null : (
+        <NativeIslandBottomNav
+          items={islandItems}
+          onSelect={handleSelect}
+          onPressIn={markOptimisticActive}
+          collapsed={!isIslandExpanded}
+          onCollapsedPress={() => setIsIslandExpanded(true)}
+        />
+      )}
 
       <ProfileMenuDropup
         visible={profileMenuVisible}

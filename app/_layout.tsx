@@ -391,7 +391,8 @@ function RootStack() {
       }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
-      <Stack.Screen name="catalog" options={{ headerShown: false }} />
+      {/* Catalogue moved into the (tabs) group for persistent top-level lifetime;
+          the /catalog URL is unchanged (route groups are omitted from the path). */}
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
       <Stack.Screen name="reviews/index" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="messages/[threadId]" options={{ headerShown: false, animation: 'slide_from_right' }} />

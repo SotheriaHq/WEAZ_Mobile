@@ -86,7 +86,7 @@
 
 ### Bottom clearance smoke test (PARTIAL — device verification required)
 - The catalogue uses one scroll owner: the outer vertical ScrollView in
-  `app/catalog/index.tsx`. Its `paddingBottom` = `standardScreenBottomPadding`
+  `app/(tabs)/catalog/index.tsx`. Its `paddingBottom` = `standardScreenBottomPadding`
   (island clearance 88 + safe-area bottom) + `xl`, so the last card row clears the
   bottom island/nav.
 - The Shop tab's embedded branch (`BrandShopTab`, `scrollEnabled=false`) previously
@@ -207,3 +207,32 @@
   to Catalogue flashed the skeleton. Now gated on `!hasCachedCatalogContent`: if cached
   profile/collections/drafts exist, content renders immediately; the skeleton is reserved
   for genuine cold loads. Cold-load behavior is unchanged.
+
+## Catalogue persistent-tab migration + single island nav (PARTIAL — device verification required)
+- **Catalogue is now a persistent top-level tab.** `app/catalog/**` moved to
+  `app/(tabs)/catalog/**` and is registered as a hidden `Tabs.Screen name="catalog"`
+  (`href: null`) in `app/(tabs)/_layout.tsx`. Living inside the `(tabs)` group gives it
+  tab-level lifetime (kept mounted, no separate route lifecycle), so warm returns reuse the
+  existing instance instead of remounting.
+- **`/catalog` URL is unchanged.** Expo Router route groups (`(tabs)`) are omitted from the
+  path, so `/catalog`, `/catalog/[brandId]`, `/catalog/create-design/*`, `/catalog/view/*`,
+  `/catalog/edit-profile`, `/catalog/create-collection` all resolve exactly as before. No
+  notification/deeplink/search routing strings changed.
+- **Single island nav rule.** There is now exactly one floating island, rendered once by the
+  tab shell (`app/(tabs)/_layout.tsx`). The old per-area `CatalogIslandBottomNav` was deleted
+  (the tab-shell island overlays the catalogue tab too). The shell hides that island for the
+  focused catalogue sub-flows via `FOCUSED_CATALOG_FLOW`
+  (`/catalog/(view|create-design|create-collection|edit-profile)`), matching the prior
+  full-screen behaviour. `/catalog` and the visitor `/catalog/[brandId]` keep the island.
+- **Note:** the unified island shows the standard 5 items (Runway, Market, Bag, Messages,
+  Profile/Me); the brand "Profile" slot still routes to `/catalog`. The previous
+  catalogue-only island omitted Bag — this is the one intentional behavioural change.
+- **Android hardware back** from catalogue is still owned by the catalogue screen's own
+  `useFocusEffect` BackHandler (back if history, else `navigate('/(tabs)')`), which runs ahead
+  of the tab-shell exit handler. Catalogue is intentionally NOT in `isRootTabPath`.
+- **Duplicate-island regression check (device):** open `/catalog`, a visitor brand
+  `/catalog/[brandId]`, then push create-design / edit-profile / a collection viewer — confirm
+  exactly one island on `/catalog` + visitor, and zero on the focused editor/viewer flows.
+- **Persistent-mount note:** catalogue is a heavy screen kept mounted as a tab. Only one
+  catalogue tab instance exists (visitor `[brandId]` is a separate pushed screen, not a second
+  copy); React Query keys/provider are untouched, so the move does not trigger a refetch storm.

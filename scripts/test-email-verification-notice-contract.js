@@ -7,7 +7,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 const authApi = read('src/api/AuthApi.ts');
 const notice = read('components/auth/EmailVerificationNotice.tsx');
-const catalog = read('app/catalog/index.tsx');
+const catalog = read('app/(tabs)/catalog/index.tsx');
 const profile = read('app/(tabs)/me.tsx');
 
 assert.match(

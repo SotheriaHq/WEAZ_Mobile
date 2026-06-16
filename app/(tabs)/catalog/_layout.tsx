@@ -1,37 +1,26 @@
 /**
  * Catalog Layout - Mobile
- * Stack layout for catalog-related screens
+ * Stack layout for catalog-related screens.
+ *
+ * Catalogue now lives INSIDE the `(tabs)` group (registered as a hidden
+ * `Tabs.Screen` in `app/(tabs)/_layout.tsx`), so the single canonical floating
+ * island nav is rendered once by the tab shell and overlays every tab — this one
+ * included. This layout therefore renders no island of its own; doing so would
+ * stack a second bottom nav bar. The tab shell hides that island for the focused
+ * catalogue sub-flows (create-design, view, create-collection, edit-profile) to
+ * preserve the previous full-screen, island-free behaviour.
  */
 
-import { Stack, usePathname } from 'expo-router';
-
-import CatalogIslandBottomNav from '@/components/navigation/CatalogIslandBottomNav';
+import { Stack } from 'expo-router';
 
 export default function CatalogLayout() {
-  const pathname = usePathname();
-  const firstCatalogSegment = pathname.split('/')[2] ?? '';
-  const isFocusedCatalogFlow =
-    firstCatalogSegment === 'view' ||
-    firstCatalogSegment === 'create-design' ||
-    firstCatalogSegment === 'create-collection' ||
-    firstCatalogSegment === 'edit-profile';
-  const showIsland =
-    pathname === '/catalog' ||
-    (Boolean(firstCatalogSegment) &&
-      !isFocusedCatalogFlow &&
-      /^\/catalog\/[^/]+\/?$/.test(pathname));
-
   return (
-    <>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="[brandId]" />
-        <Stack.Screen name="view/[collectionId]" />
-        <Stack.Screen name="create-design" />
-        <Stack.Screen name="create-collection" />
-      </Stack>
-      {/* Full-screen viewer/editor routes intentionally hide bottom nav to avoid covering primary media and form controls. */}
-      {showIsland ? <CatalogIslandBottomNav /> : null}
-    </>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="[brandId]" />
+      <Stack.Screen name="view/[collectionId]" />
+      <Stack.Screen name="create-design" />
+      <Stack.Screen name="create-collection" />
+    </Stack>
   );
 }
