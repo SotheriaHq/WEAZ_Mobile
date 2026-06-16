@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -240,7 +241,7 @@ export default function BuyerOrderDetailScreen() {
             <AppText variant="subtitle">Could not load order</AppText>
             <AppText variant="body" tone="muted" style={styles.centerText}>{error || 'This order is unavailable.'}</AppText>
             <Button title="Retry" onPress={() => void load()} />
-            <Button title="Back to orders" variant="secondary" onPress={() => router.replace('/orders' as any)} />
+            <Button title="Back to orders" variant="secondary" onPress={() => backOrNavigate('/orders' as any)} />
           </Card>
         </View>
       </SafeAreaView>

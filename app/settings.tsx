@@ -11,6 +11,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { navPerf } from '@/src/utils/navPerf';
+import { topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 type SettingsRow = {
   icon: string;
@@ -196,13 +197,13 @@ export default function SettingsScreen() {
             icon: '🗂️',
             title: 'Saved runway',
             subtitle: 'Runway looks you want to revisit',
-            onPress: () => router.push({ pathname: '/(tabs)/me', params: { tab: 'saved' } } as never),
+            onPress: () => topLevelNavigate({ pathname: '/(tabs)/me', params: { tab: 'saved' } } as never),
           },
           {
             icon: '📏',
             title: 'Measurements / My fits',
             subtitle: 'Saved fittings for custom orders',
-            onPress: () => router.push('/(tabs)/me' as never),
+            onPress: () => topLevelNavigate('/(tabs)/me' as never),
           },
           {
             icon: 'FIT',
@@ -292,8 +293,8 @@ export default function SettingsScreen() {
       {
         title: 'Studio / Brand',
         rows: [
-          { icon: '🏷️', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => router.push('/catalog' as never) },
-          { icon: '🧵', title: 'Catalog settings', subtitle: 'Runway, products, collections', onPress: () => router.push('/catalog' as never) },
+          { icon: '🏷️', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => topLevelNavigate('/catalog' as never) },
+          { icon: '🧵', title: 'Catalog settings', subtitle: 'Runway, products, collections', onPress: () => topLevelNavigate('/catalog' as never) },
           { icon: '✅', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => router.push('/studio' as never) },
           { icon: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => router.push('/studio' as never) },
         ],

@@ -29,6 +29,7 @@ import { profileDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
 import { navPerf } from '@/src/utils/navPerf';
+import { topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { compressPickedImage } from '@/src/utils/imageCompression';
 import {
   MOBILE_UPLOAD_POLICIES,
@@ -513,7 +514,8 @@ export default function BuyerProfileScreen() {
     const normalized = requestedTab.trim().toLowerCase();
     if (normalized === 'patches') setActiveTab('Patches');
     if (normalized === 'orders') {
-      router.replace('/orders' as any);
+      // navigate (not replace) so Me stays behind Orders and back returns here.
+      topLevelNavigate('/orders' as any);
       return;
     }
     if (normalized === 'saved') setActiveTab('Saved');
@@ -1000,7 +1002,7 @@ export default function BuyerProfileScreen() {
               title="No saved looks yet"
               body="Save looks you love for inspiration so you can revisit them quickly from here."
               cta="Browse Runway"
-              onPress={() => router.push('/(tabs)' as any)}
+              onPress={() => topLevelNavigate('/(tabs)' as any)}
             />
           ) : (
             <View style={styles.savedGrid}>
@@ -1018,7 +1020,7 @@ export default function BuyerProfileScreen() {
               title="No patched brands yet"
               body="Patch the brands you want to keep close and their latest drops will stay within reach."
               cta="Discover brands"
-              onPress={() => router.push('/(tabs)/discover' as any)}
+              onPress={() => topLevelNavigate('/(tabs)/discover' as any)}
             />
           ) : (
             <View style={styles.listStack}>
@@ -1036,7 +1038,7 @@ export default function BuyerProfileScreen() {
               title="No orders yet"
               body="When you buy from the market, your order history and status updates will show up here."
               cta="Open market"
-              onPress={() => router.push('/(tabs)/discover' as any)}
+              onPress={() => topLevelNavigate('/(tabs)/discover' as any)}
             />
           ) : (
             <View style={styles.listStack}>

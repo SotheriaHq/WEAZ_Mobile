@@ -43,7 +43,9 @@ export function AppBackButton({
         }
         if (fallbackHref) {
           navPerf.navigationCalled();
-          router.replace(fallbackHref as any);
+          // navigate (not replace) so the top-level fallback reuses its warm
+          // instance instead of being remounted and refetched on return.
+          router.navigate(fallbackHref as any);
         }
       }}
       testID="app-back-button"

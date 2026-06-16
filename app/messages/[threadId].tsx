@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { router, useLocalSearchParams } from 'expo-router';
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -997,7 +998,7 @@ export default function ChatThreadScreen() {
             actionTitle={phase === 'error' && activeContext ? 'Retry' : 'Back to Messages'}
             onAction={phase === 'error' && activeContext
               ? () => void loadThread(activeContext, 'reset')
-              : () => router.replace('/(tabs)/inbox' as any)}
+              : () => backOrNavigate('/(tabs)/inbox' as any)}
           />
         ) : (
           <>

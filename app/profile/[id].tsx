@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { backOrNavigate, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
@@ -75,7 +76,7 @@ function PublicProfileEmpty() {
       <AppText variant="body" tone="muted" style={styles.emptyBody}>
         This profile has not patched any brands that are visible right now.
       </AppText>
-      <Button title="Open discover" onPress={() => router.push('/(tabs)/discover' as any)} />
+      <Button title="Open discover" onPress={() => topLevelNavigate('/(tabs)/discover' as any)} />
     </Card>
   );
 }
@@ -221,7 +222,7 @@ export default function PublicProfileScreen() {
           brandName=""
           isOwner={false}
           isLoading
-          onBack={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/discover' as any)}
+          onBack={() => backOrNavigate('/(tabs)/discover' as any)}
         />
       </SafeAreaView>
     );
@@ -249,7 +250,7 @@ export default function PublicProfileScreen() {
           isOwner={false}
           onViewAvatar={handleViewAvatar}
           onShare={handleShare}
-          onBack={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/discover' as any))}
+          onBack={() => backOrNavigate('/(tabs)/discover' as any)}
         />
 
         <Card padding="lg" style={styles.summaryCard}>

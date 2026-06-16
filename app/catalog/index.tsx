@@ -74,6 +74,7 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { formatCount } from '@/src/utils/formatCount';
 import { env } from '@/src/config/env';
 import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 import { perfMark } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
 import {
@@ -99,6 +100,9 @@ type VisibilityType = 'Public' | 'Private' | 'Drafts' | 'In Review' | 'Changes R
 type CatalogUiLifetimeState = {
   activeTab: TabType;
   visibilityFilter: VisibilityType;
+  // Outer vertical scroll offset, preserved so a warm return restores the exact
+  // reading position (not just the active tab/filter). UI-only lifetime state.
+  scrollY?: number;
 };
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
 const REVIEW_VISIBILITY_STATUS: Partial<Record<VisibilityType, 'IN_REVIEW' | 'CHANGES_REQUESTED' | 'REJECTED'>> = {
@@ -311,14 +315,22 @@ export default function CatalogScreen() {
   const [brandQrOpen, setBrandQrOpen] = useState(false);
   const [tabHeights, setTabHeights] = useState<Partial<Record<TabType, number>>>({});
   const tabPagerRef = useRef<Animated.ScrollView>(null);
+  const outerScrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef<number>(initialCatalogUiStateRef.current?.scrollY ?? 0);
+  const hasRestoredScrollRef = useRef(false);
   const isProgrammaticScrollRef = useRef(false);
   const programmaticScrollTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const activeTabRef = useRef(activeTab);
+  const visibilityFilterRef = useRef(visibilityFilter);
   const hasInitialScrolledRef = useRef(false);
 
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
+
+  useEffect(() => {
+    visibilityFilterRef.current = visibilityFilter;
+  }, [visibilityFilter]);
 
   const completedTaskRefreshKeyRef = useRef<string | null>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
@@ -602,17 +614,26 @@ export default function CatalogScreen() {
     }
   }, [catalogUiStateKey, routeTab, routeVisibility]);
 
+  // Single writer for the catalogue's warm UI lifetime state (active tab, filter,
+  // and outer scroll offset). Reads the latest values from refs so the scroll
+  // handler can persist without forcing a re-render on every scroll frame.
+  const persistCatalogUiState = useCallback(() => {
+    if (!catalogUiStateKey) return;
+    writeWarmScreenUiState<CatalogUiLifetimeState>(catalogUiStateKey, {
+      activeTab: activeTabRef.current,
+      visibilityFilter: visibilityFilterRef.current,
+      scrollY: scrollYRef.current,
+    });
+  }, [catalogUiStateKey]);
+
   useEffect(() => {
     if (!catalogUiStateKey) return;
     if (skipNextCatalogUiPersistRef.current) {
       skipNextCatalogUiPersistRef.current = false;
       return;
     }
-    writeWarmScreenUiState<CatalogUiLifetimeState>(catalogUiStateKey, {
-      activeTab,
-      visibilityFilter,
-    });
-  }, [activeTab, catalogUiStateKey, visibilityFilter]);
+    persistCatalogUiState();
+  }, [activeTab, catalogUiStateKey, persistCatalogUiState, visibilityFilter]);
 
   useEffect(() => {
     if (!routeTab) return;
@@ -645,11 +666,9 @@ export default function CatalogScreen() {
   }, [isOwner, targetBrandId]);
 
   const handleBackNavigation = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace('/(tabs)');
+    // navigate (not replace) on the no-history fallback so the persistent tab
+    // shell is reused instead of remounted/refetched.
+    backOrNavigate('/(tabs)');
   }, []);
 
   useFocusEffect(
@@ -662,7 +681,8 @@ export default function CatalogScreen() {
           return true;
         }
 
-        router.replace('/(tabs)');
+        // navigate (not replace) so the persistent tab shell is reused.
+        router.navigate('/(tabs)');
         toast.info('Returned to Home. Press back again there to exit.');
         return true;
       });
@@ -756,6 +776,33 @@ export default function CatalogScreen() {
       current[tab] === height ? current : { ...current, [tab]: height }
     ));
   }, []);
+
+  // Track the outer vertical scroll offset (cheap ref write — no re-render) and
+  // persist it to warm UI state when scrolling settles, so a warm return can
+  // restore the exact reading position.
+  const handleOuterScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollYRef.current = event.nativeEvent.contentOffset.y;
+  }, []);
+
+  const handleOuterScrollSettled = useCallback(() => {
+    persistCatalogUiState();
+  }, [persistCatalogUiState]);
+
+  // Restore the saved vertical scroll position once the content is tall enough to
+  // accept it (active tab height measured + container width known). Runs once.
+  useEffect(() => {
+    if (hasRestoredScrollRef.current) return;
+    const targetY = initialCatalogUiStateRef.current?.scrollY ?? 0;
+    if (targetY <= 0) {
+      hasRestoredScrollRef.current = true;
+      return;
+    }
+    if (containerWidth <= 0 || !activeTabPagerHeight) return;
+    hasRestoredScrollRef.current = true;
+    requestAnimationFrame(() => {
+      outerScrollRef.current?.scrollTo({ y: targetY, animated: false });
+    });
+  }, [activeTabPagerHeight, containerWidth]);
 
   // Handle patch/unpatch
   const handlePatch = async () => {
@@ -1412,6 +1459,7 @@ export default function CatalogScreen() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
       <ScrollView
+        ref={outerScrollRef}
         style={styles.scrollView}
         scrollIndicatorInsets={{ bottom: overlayScrollPadding }}
         contentContainerStyle={[
@@ -1419,6 +1467,10 @@ export default function CatalogScreen() {
           { paddingBottom: overlayScrollPadding + tokens.spacing.xl },
         ]}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={handleOuterScroll}
+        onScrollEndDrag={handleOuterScrollSettled}
+        onMomentumScrollEnd={handleOuterScrollSettled}
         onLayout={(e: LayoutChangeEvent) => setContainerWidth(e.nativeEvent.layout.width)}
         refreshControl={
           <RefreshControl
