@@ -443,6 +443,11 @@ export default function BuyerProfileScreen() {
   const loadRequestIdRef = useRef(0);
   const lastUserIdRef = useRef<string | null>(null);
   const redirectToAuthRef = useRef(false);
+  const stateRef = useRef(state);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     if (!warmProfileStateKey || !state.profile) return;
@@ -539,14 +544,15 @@ export default function BuyerProfileScreen() {
 
       if (requestId !== loadRequestIdRef.current) return;
 
+      const previousState = stateRef.current;
       const nextProfile =
         profileResult.status === 'fulfilled' && profileResult.value
           ? profileResult.value
-          : fallbackProfile;
-      const nextSizeFit = sizeFitResult.status === 'fulfilled' ? sizeFitResult.value : null;
-      const nextSaved = savedResult.status === 'fulfilled' ? savedResult.value : [];
-      const nextPatches = patchesResult.status === 'fulfilled' ? patchesResult.value : [];
-      const nextOrders = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
+          : previousState.profile ?? fallbackProfile;
+      const nextSizeFit = sizeFitResult.status === 'fulfilled' ? sizeFitResult.value : previousState.sizeFit;
+      const nextSaved = savedResult.status === 'fulfilled' ? savedResult.value : previousState.saved;
+      const nextPatches = patchesResult.status === 'fulfilled' ? patchesResult.value : previousState.patches;
+      const nextOrders = ordersResult.status === 'fulfilled' ? ordersResult.value : previousState.orders;
       const profileFailed = profileResult.status === 'rejected' && !isNotFoundError(profileResult.reason);
       const optionalFailures = [
         { section: 'size-fit', endpoint: '/users/me/size-fit', result: sizeFitResult },

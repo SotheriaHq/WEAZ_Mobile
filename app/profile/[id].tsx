@@ -21,7 +21,7 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
 
 type PublicProfileSnapshot = {
-  profile: UserProfile | null;
+  profile: UserProfile;
   patches: PatchedBrand[];
 };
 
@@ -89,13 +89,14 @@ export default function PublicProfileScreen() {
   const profileId = Array.isArray(params.id) ? params.id[0] : params.id;
   const warmProfileStateKey = profileId ? `public-profile:${profileId}` : null;
   const initialWarmProfileState = warmProfileStateKey ? readWarmScreenState<PublicProfileSnapshot>(warmProfileStateKey) : null;
+  const hasInitialWarmProfileSnapshot = Boolean(initialWarmProfileState?.profile);
   const [profile, setProfile] = useState<UserProfile | null>(() => initialWarmProfileState?.profile ?? null);
   const [patches, setPatches] = useState<PatchedBrand[]>(() => initialWarmProfileState?.patches ?? []);
-  const [loading, setLoading] = useState(() => !initialWarmProfileState);
+  const [loading, setLoading] = useState(() => !hasInitialWarmProfileSnapshot);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
-  const [hasWarmProfileSnapshot, setHasWarmProfileSnapshot] = useState(() => Boolean(initialWarmProfileState));
+  const [hasWarmProfileSnapshot, setHasWarmProfileSnapshot] = useState(() => hasInitialWarmProfileSnapshot);
 
   useEffect(() => {
     if (!warmProfileStateKey || !profile) return;
@@ -112,7 +113,8 @@ export default function PublicProfileScreen() {
     }
 
     const cachedState = warmProfileStateKey ? readWarmScreenState<PublicProfileSnapshot>(warmProfileStateKey) : null;
-    if (!cachedState) {
+    const cachedProfile = cachedState?.profile ?? null;
+    if (!cachedProfile) {
       setLoading(true);
     }
     setError(null);
@@ -126,7 +128,7 @@ export default function PublicProfileScreen() {
       const nextProfile =
         profileResult.status === 'fulfilled' && profileResult.value
           ? profileResult.value
-          : cachedState?.profile ?? null;
+          : cachedProfile;
       const nextPatches =
         patchesResult.status === 'fulfilled'
           ? patchesResult.value
@@ -134,21 +136,24 @@ export default function PublicProfileScreen() {
 
       setProfile(nextProfile);
       setPatches(nextPatches);
-      setHasWarmProfileSnapshot(true);
 
-      if (warmProfileStateKey) {
+      if (nextProfile && warmProfileStateKey) {
+        setHasWarmProfileSnapshot(true);
         writeWarmScreenState(warmProfileStateKey, {
           profile: nextProfile,
           patches: nextPatches,
         });
       }
 
-      if (profileResult.status === 'rejected' && !cachedState) {
+      if (profileResult.status === 'rejected' && !cachedProfile) {
         throw profileResult.reason instanceof Error ? profileResult.reason : new Error('Failed to load profile');
+      }
+      if (!nextProfile && !cachedProfile) {
+        throw new Error('Profile not found.');
       }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Unable to load profile.');
-      if (!cachedState) {
+      if (!cachedProfile) {
         setProfile(null);
         setPatches([]);
       }

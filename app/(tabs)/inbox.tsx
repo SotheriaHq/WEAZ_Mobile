@@ -420,7 +420,7 @@ export default function InboxScreen() {
         }
       }
     },
-    [status],
+    [inboxWarmStateKey, status],
   );
 
   const scheduleRealtimeRefresh = useCallback(() => {

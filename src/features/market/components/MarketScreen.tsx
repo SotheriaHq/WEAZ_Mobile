@@ -1345,6 +1345,14 @@ export function MarketScreen() {
   const lastResetQueryKeyRef = useRef<string | null>(null);
   const resetInFlightKeyRef = useRef<string | null>(null);
   const moreInFlightKeyRef = useRef<string | null>(null);
+  const productsRef = useRef(products);
+  const designsRef = useRef(designs);
+  const collectionsRef = useRef(collections);
+  const productCursorRef = useRef(productCursor);
+  const designCursorRef = useRef(designCursor);
+  const productHasNextRef = useRef(productHasNext);
+  const designHasNextRef = useRef(designHasNext);
+  const collectionErrorRef = useRef(collectionError);
   const moodboardSectionSeenRef = useRef<string | null>(null);
   const moodboardSuggestionSeenRef = useRef<Set<string>>(new Set());
   const viewedSectionKeysRef = useRef<Set<string>>(new Set());
@@ -1361,6 +1369,38 @@ export function MarketScreen() {
   useEffect(() => {
     if (!loading) navPerf.dataReady('tabs→market');
   }, [loading]);
+
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
+
+  useEffect(() => {
+    designsRef.current = designs;
+  }, [designs]);
+
+  useEffect(() => {
+    collectionsRef.current = collections;
+  }, [collections]);
+
+  useEffect(() => {
+    productCursorRef.current = productCursor;
+  }, [productCursor]);
+
+  useEffect(() => {
+    designCursorRef.current = designCursor;
+  }, [designCursor]);
+
+  useEffect(() => {
+    productHasNextRef.current = productHasNext;
+  }, [productHasNext]);
+
+  useEffect(() => {
+    designHasNextRef.current = designHasNext;
+  }, [designHasNext]);
+
+  useEffect(() => {
+    collectionErrorRef.current = collectionError;
+  }, [collectionError]);
 
   const bottomClearance = standardScreenBottomPadding;
   const allItems = useMemo(() => buildContentItems(products, designs), [designs, products]);
@@ -1385,7 +1425,7 @@ export function MarketScreen() {
       const response = await getMarketSections({ limit: 8 });
       setApiSections(response.sections ?? []);
     } catch {
-      setApiSections([]);
+      // Keep the last visible sections on transient refresh failures.
     }
   }, []);
 
@@ -1536,7 +1576,11 @@ export function MarketScreen() {
             lastResetQueryKeyRef.current = marketQueryKey;
             return;
           }
-        } else if (!options?.forceRefresh && lastResetQueryKeyRef.current === marketQueryKey && allItems.length > 0) {
+        } else if (
+          !options?.forceRefresh &&
+          lastResetQueryKeyRef.current === marketQueryKey &&
+          (allItems.length > 0 || collectionsRef.current.length > 0)
+        ) {
           return;
         }
 
@@ -1548,7 +1592,7 @@ export function MarketScreen() {
         loadedMorePageKeysRef.current.clear();
         setError(null);
         setCollectionError(null);
-        setLoading(!cached && allItems.length === 0);
+        setLoading(!cached && allItems.length === 0 && collectionsRef.current.length === 0);
       } else {
         const canFetchProducts = productHasNext && Boolean(productCursor);
         const canFetchDesigns = designHasNext && Boolean(designCursor);
@@ -1582,8 +1626,15 @@ export function MarketScreen() {
         const productOk = productValue !== null;
         const designOk = designValue !== null;
         const collectionOk = collectionResult.status === 'fulfilled';
+        const previousProducts = productsRef.current;
+        const previousDesigns = designsRef.current;
+        const previousCollections = collectionsRef.current;
+        const hasVisibleMarketState =
+          previousProducts.length > 0 ||
+          previousDesigns.length > 0 ||
+          previousCollections.length > 0;
 
-        if (!productOk && !designOk) {
+        if (!productOk && !designOk && !hasVisibleMarketState) {
           const failureReason =
             productResult.status === 'rejected'
               ? productResult.reason
@@ -1593,14 +1644,14 @@ export function MarketScreen() {
           setError(toErrorMessage(failureReason));
         }
 
-        let nextProducts: StoreProduct[] | null = null;
-        let nextDesigns: MarketItem[] | null = null;
-        let nextCollections: StoreCollectionSummary[] | null = null;
-        let nextProductCursor: string | null = null;
-        let nextDesignCursor: string | null = null;
-        let nextProductHasNext = false;
-        let nextDesignHasNext = false;
-        let nextCollectionError: string | null = null;
+        let nextProducts: StoreProduct[] | null = mode === 'reset' ? previousProducts : null;
+        let nextDesigns: MarketItem[] | null = mode === 'reset' ? previousDesigns : null;
+        let nextCollections: StoreCollectionSummary[] | null = mode === 'reset' ? previousCollections : null;
+        let nextProductCursor: string | null = mode === 'reset' ? productCursorRef.current : null;
+        let nextDesignCursor: string | null = mode === 'reset' ? designCursorRef.current : null;
+        let nextProductHasNext = mode === 'reset' ? productHasNextRef.current : false;
+        let nextDesignHasNext = mode === 'reset' ? designHasNextRef.current : false;
+        let nextCollectionError: string | null = mode === 'reset' ? collectionErrorRef.current : null;
 
         if (productValue) {
           nextProductCursor = productValue.nextCursor;
@@ -1618,11 +1669,6 @@ export function MarketScreen() {
           }
           setProductCursor(nextProductCursor);
           setProductHasNext(nextProductHasNext);
-        } else if (mode === 'reset') {
-          setProducts([]);
-          setProductCursor(null);
-          setProductHasNext(false);
-          nextProducts = [];
         }
 
         if (designValue) {
@@ -1641,11 +1687,6 @@ export function MarketScreen() {
           }
           setDesignCursor(nextDesignCursor);
           setDesignHasNext(nextDesignHasNext);
-        } else if (mode === 'reset') {
-          setDesigns([]);
-          setDesignCursor(null);
-          setDesignHasNext(false);
-          nextDesigns = [];
         }
 
         if (mode === 'reset') {
@@ -1656,11 +1697,9 @@ export function MarketScreen() {
           } else if (collectionResult.status === 'rejected') {
             nextCollectionError = toErrorMessage(collectionResult.reason);
             setCollectionError(nextCollectionError);
-            setCollections([]);
-            nextCollections = [];
           }
 
-          if (productValue || designValue) {
+          if (productValue || designValue || collectionValue) {
             writeMarketSnapshot(marketQueryKey, {
               products: nextProducts ?? [],
               designs: nextDesigns ?? [],

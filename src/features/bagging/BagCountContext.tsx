@@ -30,6 +30,11 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
   const inflightRefreshRef = useRef<Promise<BagCount> | null>(null);
   const lastRefreshAttemptAtRef = useRef(0);
+  const countRef = useRef(count);
+
+  useEffect(() => {
+    countRef.current = count;
+  }, [count]);
 
   const refreshGlobalBagCount = useCallback(async (options?: { forceRefresh?: boolean }) => {
     if (status === 'loading') {
@@ -38,7 +43,7 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
         setCount(cachedCount);
         return cachedCount;
       }
-      return EMPTY_BAG_COUNT;
+      return countRef.current;
     }
 
     if (status !== 'authenticated') {
@@ -49,7 +54,7 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (options?.forceRefresh) {
-      queryClient.removeQueries({ queryKey: bagCountQueryKey, exact: true });
+      await queryClient.invalidateQueries({ queryKey: bagCountQueryKey, exact: true });
     }
 
     if (inflightRefreshRef.current) {
@@ -68,8 +73,9 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
         setCount(nextCount);
         return nextCount;
       } catch {
-        setCount(EMPTY_BAG_COUNT);
-        return EMPTY_BAG_COUNT;
+        const fallbackCount = queryClient.getQueryData<BagCount>(bagCountQueryKey) ?? countRef.current;
+        setCount(fallbackCount);
+        return fallbackCount;
       }
     })();
 

@@ -28,7 +28,7 @@ import { ProfileApi } from '@/src/api/ProfileApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
 import { DEFAULT_MARKET_FILTER_CHIPS, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
-import { fetchMarketFeedPage, readCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
+import { fetchMarketFeedPage, readCachedMarketFeed, readMemoryCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { buildFeedCacheIdentity } from '@/src/features/feed/utils/feedKeys';
 import { brandAvatarDevLog, feedDevLog, feedLoadDevLog, feedMediaDevLog, layoutDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import type { MarketItem } from '@/src/types/market';
@@ -150,6 +150,15 @@ const isValidMediaItem = (item: MarketItem): boolean => {
   const hasUri = normalizeStableUri(media.url) || normalizeStableUri(media.fileId);
   return Boolean(hasUri);
 };
+
+const sortFeedItemsForDisplay = (feedItems: MarketItem[]) =>
+  [...feedItems].sort((a, b) => {
+    const aValid = isValidMediaItem(a);
+    const bValid = isValidMediaItem(b);
+    if (aValid && !bValid) return -1;
+    if (!aValid && bValid) return 1;
+    return 0;
+  });
 
 const normalizeStableUri = (value?: string | null) => {
   const normalized = typeof value === 'string' ? value.trim() : '';
@@ -647,6 +656,15 @@ export function MarketFeedScreen() {
   // Invalidate market feed when app comes to foreground
   // Prevents stale data after backgrounding
   useAppStateListener([['market', 'feed'], ['market', 'sections']], 5 * 60 * 1000);
+
+  const initialFeedCacheRef = useRef<ReturnType<typeof readMemoryCachedMarketFeed> | null | undefined>(undefined);
+  if (initialFeedCacheRef.current === undefined) {
+    initialFeedCacheRef.current = readMemoryCachedMarketFeed(buildFeedCacheIdentity({
+      tag: DEFAULT_MARKET_FILTER_CHIPS[0]?.tag ?? null,
+      userId: status === 'authenticated' ? user?.id ?? null : null,
+    }));
+  }
+  const initialFeedSnapshot = initialFeedCacheRef.current?.snapshot ?? null;
   
   const feedListRef = useRef<FlatList<FeedListEntry> | null>(null);
   const initializedLoopKeyRef = useRef<string | null>(null);
@@ -667,7 +685,9 @@ export function MarketFeedScreen() {
   const metaOverlayHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [visibleMetaCollectionId, setVisibleMetaCollectionId] = useState<string | null>(null);
 
-  const [items, setItems] = useState<MarketItem[]>([]);
+  const [items, setItems] = useState<MarketItem[]>(() =>
+    initialFeedSnapshot ? sortFeedItemsForDisplay(initialFeedSnapshot.items) : [],
+  );
   const [collectionMediaMap, setCollectionMediaMap] = useState<Record<string, FeedViewerMedia[]>>({});
   const collectionMediaMapRef = useRef<Record<string, FeedViewerMedia[]>>({});
   // Carousel index is tracked in module-level carouselIndexMap (persists across remounts).
@@ -684,18 +704,20 @@ export function MarketFeedScreen() {
   const viewedFeedItemKeysRef = useRef<Set<string>>(new Set());
   const [patchedBrandIds, setPatchedBrandIds] = useState<Set<string>>(new Set());
   const [patchingBrandIds, setPatchingBrandIds] = useState<Record<string, boolean>>({});
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [nextCursor, setNextCursor] = useState<string | null>(() => initialFeedSnapshot?.nextCursor ?? null);
+  const [hasNextPage, setHasNextPage] = useState(() => initialFeedSnapshot?.hasNextPage ?? false);
+  const [loading, setLoading] = useState(() => !initialFeedSnapshot);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isNetworkError, setIsNetworkError] = useState(false);
+  const [hasLoadedFirstPage, setHasLoadedFirstPage] = useState(() => Boolean(initialFeedSnapshot));
+  const hasLoadedFirstPageRef = useRef(Boolean(initialFeedSnapshot));
 
   // Staleness guards - prevent refetch on every tab focus
   const lastPatchFetchRef = useRef<number>(0);
   const STALE_THRESHOLD_MS = 60_000; // 60 seconds
 
-  const showBlockingLoader = loading && items.length === 0;
+  const showBlockingLoader = loading && !hasLoadedFirstPage;
 
   // Dev-only nav timing for tabs→runway. Shell (skeleton or cached items)
   // renders at mount; data is ready once the initial feed load settles.
@@ -1071,15 +1093,9 @@ export function MarketFeedScreen() {
     });
     const cached = await readCachedMarketFeed(cacheIdentity);
     const startedAt = Date.now();
+    const wasColdLoad = !cached && !hasLoadedFirstPageRef.current;
     if (cached) {
-      // Sort cached items to prioritize valid media
-      const sortedCachedItems = [...cached.snapshot.items].sort((a, b) => {
-        const aValid = isValidMediaItem(a);
-        const bValid = isValidMediaItem(b);
-        if (aValid && !bValid) return -1;
-        if (!aValid && bValid) return 1;
-        return 0;
-      });
+      const sortedCachedItems = sortFeedItemsForDisplay(cached.snapshot.items);
       devLog('HomeFeed', 'Cache applied', sortedCachedItems.slice(0, 5).map((item, idx) => ({
         index: idx,
         id: item.id,
@@ -1096,6 +1112,8 @@ export function MarketFeedScreen() {
       setItems(sortedCachedItems);
       setNextCursor(cached.snapshot.nextCursor);
       setHasNextPage(cached.snapshot.hasNextPage);
+      hasLoadedFirstPageRef.current = true;
+      setHasLoadedFirstPage(true);
       feedLoadDevLog('summary', {
         cacheHit: true,
         blockingSkeleton: false,
@@ -1114,7 +1132,7 @@ export function MarketFeedScreen() {
       setLoading(true);
       feedLoadDevLog('summary', {
         cacheHit: false,
-        blockingSkeleton: true,
+        blockingSkeleton: wasColdLoad,
         fetchMs: 0,
         itemCount: 0,
       });
@@ -1135,14 +1153,7 @@ export function MarketFeedScreen() {
         validity: isValidMediaItem(item) ? 'valid' : 'invalid',
         isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
       })));
-      // Sort items to prioritize valid media (invalid items moved to end)
-      const sortedItems = [...res.items].sort((a, b) => {
-        const aValid = isValidMediaItem(a);
-        const bValid = isValidMediaItem(b);
-        if (aValid && !bValid) return -1;
-        if (!aValid && bValid) return 1;
-        return 0;
-      });
+      const sortedItems = sortFeedItemsForDisplay(res.items);
       devLog('HomeFeed', 'After sort', sortedItems.slice(0, 5).map((item, idx) => ({
         index: idx,
         id: item.id,
@@ -1157,9 +1168,11 @@ export function MarketFeedScreen() {
       setItems(sortedItems);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
+      hasLoadedFirstPageRef.current = true;
+      setHasLoadedFirstPage(true);
       feedLoadDevLog('summary', {
         cacheHit: Boolean(cached),
-        blockingSkeleton: !cached && sortedItems.length === 0,
+        blockingSkeleton: wasColdLoad,
         fetchMs: Date.now() - startedAt,
         itemCount: sortedItems.length,
       });
@@ -1959,14 +1972,7 @@ export function MarketFeedScreen() {
 
     try {
       const res = await fetchMarketFeedPage({ cursor: null, tag: activeTag, counts: 'combined' });
-      // Sort items to prioritize valid media (invalid items moved to end)
-      const sortedItems = [...res.items].sort((a, b) => {
-        const aValid = isValidMediaItem(a);
-        const bValid = isValidMediaItem(b);
-        if (aValid && !bValid) return -1;
-        if (!aValid && bValid) return 1;
-        return 0;
-      });
+      const sortedItems = sortFeedItemsForDisplay(res.items);
       await writeCachedMarketFeed(buildFeedCacheIdentity({
         tag: activeTag,
         userId: status === 'authenticated' ? user?.id ?? null : null,
@@ -1978,8 +1984,10 @@ export function MarketFeedScreen() {
       setItems(sortedItems);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
+      hasLoadedFirstPageRef.current = true;
+      setHasLoadedFirstPage(true);
     } catch (err) {
-      if (items.length === 0) {
+      if (!hasLoadedFirstPageRef.current) {
         const message = toErrorMessage(err);
         setError(message);
         setIsNetworkError(isLikelyNetworkError(message));

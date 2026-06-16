@@ -315,6 +315,7 @@ export default function SearchScreen() {
       if (activeSearchRequestKeyRef.current === requestKey) return;
 
       const cachedResult = readWarmScreenState<ResultState>(requestKey);
+      const reusableCachedResult = cachedResult?.status === 'error' ? null : cachedResult;
 
       searchAbortRef.current?.abort();
       const controller = new AbortController();
@@ -323,8 +324,8 @@ export default function SearchScreen() {
       searchAbortRef.current = controller;
       activeSearchRequestKeyRef.current = requestKey;
 
-      if (cachedResult) {
-        setResultState(cachedResult);
+      if (reusableCachedResult) {
+        setResultState(reusableCachedResult);
       } else {
         setResultState({ status: 'loading' });
       }
@@ -352,12 +353,11 @@ export default function SearchScreen() {
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') return;
         if (searchRequestIdRef.current !== nextSearchRequestId) return;
-        if (cachedResult) {
+        if (reusableCachedResult) {
           return;
         }
         const nextErrorState: ResultState = { status: 'error', message: getErrorMessage(error) };
         setResultState(nextErrorState);
-        writeWarmScreenState(requestKey, nextErrorState);
       } finally {
         if (activeSearchRequestKeyRef.current === requestKey) {
           activeSearchRequestKeyRef.current = null;

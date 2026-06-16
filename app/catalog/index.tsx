@@ -88,6 +88,7 @@ import {
 } from '@/src/query/catalogQueries';
 import { THREADLY_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
+import { readWarmScreenUiState, writeWarmScreenUiState } from '@/src/state/screenWarmState';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -95,6 +96,10 @@ import { queryKeys } from '@/src/query/queryKeys';
 
 type TabType = 'Collections' | 'Shop' | 'Reviews';
 type VisibilityType = 'Public' | 'Private' | 'Drafts' | 'In Review' | 'Changes Requested' | 'Rejected' | 'Needs Attention';
+type CatalogUiLifetimeState = {
+  activeTab: TabType;
+  visibilityFilter: VisibilityType;
+};
 const TAB_ORDER: TabType[] = ['Collections', 'Shop', 'Reviews'];
 const REVIEW_VISIBILITY_STATUS: Partial<Record<VisibilityType, 'IN_REVIEW' | 'CHANGES_REQUESTED' | 'REJECTED'>> = {
   'In Review': 'IN_REVIEW',
@@ -128,6 +133,10 @@ function buildProfileUrlFromConfig(brandId: string | null, username?: string | n
     : `/profile/${encodeURIComponent(brandId)}`;
 
   return `${baseUrl}${path}`;
+}
+
+function buildCatalogUiStateKey(targetBrandId: string, isOwner: boolean) {
+  return `catalog:${isOwner ? 'owner' : 'visitor'}:${targetBrandId}`;
 }
 
 function CatalogLoadingSkeleton({ bottomPadding }: { bottomPadding: number }) {
@@ -244,6 +253,15 @@ export default function CatalogScreen() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const isDark = scheme === 'dark';
+  const activeBrandId = getActiveBrandId(user);
+  const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
+  const targetBrandId = routeBrandId || activeBrandId || null;
+  const catalogUiStateKey = targetBrandId ? buildCatalogUiStateKey(targetBrandId, isOwner) : null;
+  const initialCatalogUiStateRef = useRef<CatalogUiLifetimeState | null>(
+    catalogUiStateKey ? readWarmScreenUiState<CatalogUiLifetimeState>(catalogUiStateKey) : null,
+  );
+  const lastCatalogUiStateKeyRef = useRef<string | null>(catalogUiStateKey);
+  const skipNextCatalogUiPersistRef = useRef(false);
 
   const routeTab = Array.isArray(routeTabParam) ? routeTabParam[0] : routeTabParam;
   const routeVisibility = Array.isArray(routeVisibilityParam) ? routeVisibilityParam[0] : routeVisibilityParam;
@@ -277,8 +295,12 @@ export default function CatalogScreen() {
 
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<TabType>(() => normalizeTab(routeTab));
-  const [visibilityFilter, setVisibilityFilter] = useState<VisibilityType>(() => normalizeVisibility(routeVisibility));
+  const [activeTab, setActiveTab] = useState<TabType>(() =>
+    routeTab ? normalizeTab(routeTab) : initialCatalogUiStateRef.current?.activeTab ?? 'Collections',
+  );
+  const [visibilityFilter, setVisibilityFilter] = useState<VisibilityType>(() =>
+    routeVisibility ? normalizeVisibility(routeVisibility) : initialCatalogUiStateRef.current?.visibilityFilter ?? 'Public',
+  );
   const [draftDeleteTarget, setDraftDeleteTarget] = useState<CollectionDto | null>(null);
   const [draftDeletePhrase, setDraftDeletePhrase] = useState('');
   const [draftDeleteBusy, setDraftDeleteBusy] = useState(false);
@@ -315,10 +337,6 @@ export default function CatalogScreen() {
     profileRef.current = profile;
   }, [profile]);
 
-  // Determine if owner view
-  const activeBrandId = getActiveBrandId(user);
-  const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
-  const targetBrandId = routeBrandId || activeBrandId || null;
   // Patching is a REGULAR-user-only action. The backend `patches/check` endpoint
   // is guarded by UserTypeGuard(REGULAR) and 403s for BRAND/owner/guest viewers,
   // which surfaced as a runtime "Endpoint requires user type REGULAR" error.
@@ -570,6 +588,34 @@ export default function CatalogScreen() {
   );
 
   useEffect(() => {
+    if (!catalogUiStateKey) return;
+    if (lastCatalogUiStateKeyRef.current === catalogUiStateKey) return;
+
+    lastCatalogUiStateKeyRef.current = catalogUiStateKey;
+    skipNextCatalogUiPersistRef.current = true;
+    const savedUiState = readWarmScreenUiState<CatalogUiLifetimeState>(catalogUiStateKey);
+    if (!routeTab && savedUiState?.activeTab) {
+      setActiveTab(savedUiState.activeTab);
+    }
+    if (!routeVisibility && savedUiState?.visibilityFilter) {
+      setVisibilityFilter(savedUiState.visibilityFilter);
+    }
+  }, [catalogUiStateKey, routeTab, routeVisibility]);
+
+  useEffect(() => {
+    if (!catalogUiStateKey) return;
+    if (skipNextCatalogUiPersistRef.current) {
+      skipNextCatalogUiPersistRef.current = false;
+      return;
+    }
+    writeWarmScreenUiState<CatalogUiLifetimeState>(catalogUiStateKey, {
+      activeTab,
+      visibilityFilter,
+    });
+  }, [activeTab, catalogUiStateKey, visibilityFilter]);
+
+  useEffect(() => {
+    if (!routeTab) return;
     setActiveTab(normalizeTab(routeTab));
   }, [routeTab]);
 
