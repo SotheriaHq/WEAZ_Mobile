@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
 
 type ThreadRailActionProps = {
@@ -208,17 +209,19 @@ export default function ThreadRailAction({
         accessibilityState={{ selected: threaded, disabled: busy }}
       >
         <Animated.View style={[styles.iconWrap, iconStyle]}>
-          <Text style={[styles.threadEmoji, threaded && styles.threadEmojiActive]}>
+          <AppText variant="display" style={[styles.threadEmoji, threaded && styles.threadEmojiActive]}>
             {THREAD_EMOJI}
-          </Text>
+          </AppText>
         </Animated.View>
       </Pressable>
-      <Text
+      <AppText
+        variant="navLabel"
+        tone="inverse"
         style={[styles.count, threaded && styles.countActive]}
         numberOfLines={1}
       >
         {displayedCountLabel}
-      </Text>
+      </AppText>
     </View>
   );
 }
@@ -250,8 +253,6 @@ const styles = StyleSheet.create({
   },
   threadEmoji: {
     color: '#fff',
-    fontSize: 32,
-    lineHeight: 38,
     textAlign: 'center',
     textShadowColor: 'rgba(0, 0, 0, 0.45)',
     textShadowOffset: { width: 0, height: 1 },
@@ -262,11 +263,6 @@ const styles = StyleSheet.create({
   },
   count: {
     width: 88,
-    color: '#fff',
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '900',
-    fontFamily: tokens.fontFamily.bold,
     textAlign: 'center',
     textShadowColor: 'rgba(0, 0, 0, 0.55)',
     textShadowOffset: { width: 0, height: 1 },

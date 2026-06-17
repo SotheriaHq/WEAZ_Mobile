@@ -58,14 +58,14 @@ export const tokens = {
   themes: {
     light: {
       colors: {
-        bg: '#F4F6FA',
+        bg: '#F0F2F5',
         surface: '#ffffff',
         surfaceAlt: '#E9EEF5',
         surfaceOverlay: '#FFFFFF',
         overlay: 'rgba(255,255,255,0.75)',
         text: '#0B1220',
         textSecondary: '#334155',
-        textMuted: '#64748B',
+        textMuted: '#475569',
         textInverse: '#ffffff',
         border: '#D4DCE8',
         primary: '#9333EA',
@@ -161,22 +161,44 @@ export const tokens = {
   typography: {
     /** 32px / 700 — hero splash, big editorial headers */
     display: { size: 32, weight: '700' as const, lineHeight: 38 },
+    /** 24px / 700 — primary screen titles */
+    screenTitle: { size: 24, weight: '700' as const, lineHeight: 30 },
     /** 24px / 700 — primary mobile titles */
     title: { size: 24, weight: '700' as const, lineHeight: 30 },
+    /** 24px / 700 — profile names */
+    profileName: { size: 24, weight: '700' as const, lineHeight: 30 },
+    /** 22px / 700 — brand names */
+    brandName: { size: 22, weight: '700' as const, lineHeight: 28 },
+    /** 18px / 600 — section headers */
+    sectionTitle: { size: 18, weight: '600' as const, lineHeight: 24 },
     /** 18px / 600 — section headers and strong subtitles */
     subtitle: { size: 18, weight: '600' as const, lineHeight: 24 },
+    /** 16px / 600 — card titles */
+    cardTitle: { size: 16, weight: '600' as const, lineHeight: 22 },
     /** 16px / 500 — main body content */
-    body: { size: 16, weight: '500' as const, lineHeight: 22 },
+    body: { size: 16, weight: '500' as const, lineHeight: 24 },
+    /** 16px / 400 — highly readable body text */
+    bodyReadable: { size: 16, weight: '400' as const, lineHeight: 24 },
+    /** 16px / 600 — button labels */
+    buttonLabel: { size: 16, weight: '600' as const, lineHeight: 22 },
+    /** 16px / 600 — action labels */
+    actionLabel: { size: 16, weight: '600' as const, lineHeight: 22 },
     /** 12px / 500 — supporting meta text */
-    caption: { size: 12, weight: '500' as const, lineHeight: 15 },
+    caption: { size: 12, weight: '500' as const, lineHeight: 16 },
+    /** 12px / 500 — meta */
+    meta: { size: 12, weight: '500' as const, lineHeight: 16 },
+    /** 12px / 700 — badge labels */
+    badgeLabel: { size: 12, weight: '700' as const, lineHeight: 16 },
+    /** 11px / 600 — nav labels */
+    navLabel: { size: 11, weight: '600' as const, lineHeight: 14 },
 
     // Compatibility aliases for existing mobile code during migration.
     h1: { size: 24, weight: '700' as const, lineHeight: 30 },
     h2: { size: 18, weight: '600' as const, lineHeight: 24 },
     h3: { size: 18, weight: '600' as const, lineHeight: 24 },
-    bodyBold: { size: 16, weight: '600' as const, lineHeight: 22 },
-    small: { size: 12, weight: '500' as const, lineHeight: 15 },
-    smallBold: { size: 12, weight: '600' as const, lineHeight: 15 },
+    bodyBold: { size: 16, weight: '600' as const, lineHeight: 24 },
+    small: { size: 12, weight: '500' as const, lineHeight: 16 },
+    smallBold: { size: 12, weight: '600' as const, lineHeight: 16 },
 
     // ── Legacy flat values kept for backward-compat with existing screens ──
     // New code should use the tier objects above instead.

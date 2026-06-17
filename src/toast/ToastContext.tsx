@@ -103,7 +103,7 @@ function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: str
       ]}
     >
       <MaterialIcons name={colors.iconName} size={20} color={colors.icon} />
-      <AppText style={styles.toastText} numberOfLines={2}>
+      <AppText variant="bodyReadable" tone="inverse" numberOfLines={2}>
         {toast.message}
       </AppText>
       <Pressable onPress={dismissToast} hitSlop={8}>
@@ -227,9 +227,5 @@ const styles = StyleSheet.create({
   },
   toastText: {
     flex: 1,
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
   },
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { AppText } from '@/components/ui/AppText';
@@ -76,17 +76,18 @@ export function NativeIslandTabIcon({
                   resizeMode="cover"
                 />
               ) : (
-                <Text style={[styles.tabEmoji, { opacity: focused ? 1 : 0.76 }]}>
+                <AppText variant="title" style={[styles.tabEmoji, { opacity: focused ? 1 : 0.76 }]}>
                   {emoji}
-                </Text>
+                </AppText>
               )}
             </View>
             <View style={styles.tabLabelWrap}>
               <AppText
-                variant="captionBold"
+                variant="navLabel"
                 tone={focused ? 'primary' : 'secondary'}
                 numberOfLines={1}
                 style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
+                maxFontSizeMultiplier={1.2}
               >
                 {label}
               </AppText>
@@ -96,7 +97,7 @@ export function NativeIslandTabIcon({
         {typeof badge === 'number' && badge > 0 ? (
           <View style={styles.badgeWrap} pointerEvents="none">
             <View style={[styles.badge, { backgroundColor: theme.colors.badgeRed }]}>
-              <AppText variant="captionBold" tone="inverse">
+              <AppText variant="badgeLabel" tone="inverse">
                 {badge > 99 ? '99+' : badge}
               </AppText>
             </View>
@@ -293,8 +294,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   tabEmoji: {
-    fontSize: 20,
-    lineHeight: 20,
     textAlign: 'center',
   },
   // Rule 6: avatars are rounded-square, never circles.

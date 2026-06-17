@@ -19,6 +19,7 @@ import { ThemeBackendSync } from '@/src/theme/ThemeBackendSync';
 import { normalizeThemePreference } from '@/src/types/theme';
 import { AuthProvider } from '@/src/auth/AuthContext';
 import { setNetworkTraceScreen } from '@/src/api/networkTrace';
+import { setFontFallbackMode } from '@/src/styles/FontMode';
 
 import { ToastProvider } from '@/src/toast/ToastContext';
 import { useToast } from '@/src/toast/ToastContext';
@@ -320,6 +321,20 @@ export default function RootLayout() {
   });
   const [themeBootstrapReady, setThemeBootstrapReady] = useState(false);
   const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode>('system');
+  const [fontsTimeout, setFontsTimeout] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const timer = setTimeout(() => {
+      if (isMounted) {
+        setFontsTimeout(true);
+      }
+    }, 3000);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     rootLayoutMountCount += 1;
@@ -359,7 +374,18 @@ export default function RootLayout() {
     };
   }, []);
 
-  if (!loaded || !themeBootstrapReady) {
+  const fontsReady = loaded || fontsTimeout || !!error;
+  
+  useEffect(() => {
+    if (fontsReady && !loaded) {
+      setFontFallbackMode(true);
+      if (__DEV__) {
+        console.warn('[boot] Font loading failed or timed out. Locked to system font fallback.');
+      }
+    }
+  }, [fontsReady, loaded]);
+
+  if (!fontsReady || !themeBootstrapReady) {
     return <StartupFallback />;
   }
 

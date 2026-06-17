@@ -254,6 +254,7 @@ function LoopCarousel({
   onTap: () => void;
   onDoubleTap?: () => void;
 }) {
+  const { theme } = useTheme();
   const { width } = useWindowDimensions();
   const carouselRef = useRef<ScrollView>(null);
   const hasMultipleItems = mediaItems.length > 1;
@@ -356,7 +357,7 @@ function LoopCarousel({
           {mediaItems.map((item, index) => (
             <View
               key={`${item.id}-${index}`}
-              style={[styles.dot, index === safeActiveIndex && styles.dotActive]}
+              style={[styles.dot, index === safeActiveIndex && [styles.dotActive, { backgroundColor: theme.colors.textInverse }]]}
             />
           ))}
         </View>
@@ -816,7 +817,7 @@ export function CollectionDetailViewer({
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: '#000' }]}>
+    <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>
       <View style={{ width, height, overflow: 'hidden' }}>
         <LoopCarousel
           mediaItems={mediaItems}
@@ -974,21 +975,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 10,
   },
-  errorEmoji: {
-    fontSize: 40,
-  },
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-  },
+  errorEmoji: {},
+  errorTitle: {},
   errorText: {
-    fontSize: 14,
     textAlign: 'center',
-    lineHeight: 20,
   },
   requestStateText: {
-    fontSize: 13,
-    fontWeight: '600',
     textAlign: 'center',
   },
   errorActions: {
@@ -1014,23 +1006,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#111',
   },
   videoEmoji: {
-    fontSize: 34,
     marginBottom: 8,
-    color: '#fff',
   },
   videoTitle: {
-    fontSize: 18,
-    fontWeight: '800',
     textAlign: 'center',
-    color: '#fff',
   },
   videoCaption: {
     marginTop: 6,
-    fontSize: 13,
-    fontWeight: '500',
     textAlign: 'center',
-    lineHeight: 18,
-    color: '#CBD5E1',
   },
   emptySlide: {
     alignItems: 'center',
@@ -1039,21 +1022,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#111',
   },
   emptySlideEmoji: {
-    fontSize: 36,
     marginBottom: 8,
-    color: '#fff',
   },
-  emptySlideTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#fff',
-  },
+  emptySlideTitle: {},
   emptySlideText: {
     marginTop: 6,
-    fontSize: 13,
-    lineHeight: 18,
     textAlign: 'center',
-    color: '#94A3B8',
   },
   slideImage: {
     width: '100%',
@@ -1098,11 +1072,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  glassButtonText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
+  glassButtonText: {},
   glassIconBtn: {
     backgroundColor: '#121826',
     borderRadius: 999,
@@ -1113,10 +1083,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#273244',
   },
-  glassIconText: {
-    fontSize: 18,
-    lineHeight: 22,
-  },
+  glassIconText: {},
   ownerAvatarWrap: {
     marginBottom: 2,
   },
@@ -1135,9 +1102,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
   },
   ownerAvatarInitials: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '900',
     letterSpacing: 0.4,
   },
   rightRail: {
@@ -1162,15 +1126,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  railEmoji: {
-    fontSize: 21,
-    lineHeight: 23,
-  },
-  railLabel: {
-    color: '#CBD5E1',
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  railEmoji: {},
+  railLabel: {},
   dotRow: {
     position: 'absolute',
     bottom: 112,
@@ -1189,7 +1146,6 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     width: 18,
-    backgroundColor: '#fff',
   },
   infoOverlay: {
     position: 'absolute',
@@ -1211,28 +1167,10 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  infoBrandName: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  infoBrandHandle: {
-    color: '#CBD5E1',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  infoTitle: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '900',
-    lineHeight: 26,
-  },
-  infoDescription: {
-    color: '#F8FAFC',
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '500',
-  },
+  infoBrandName: {},
+  infoBrandHandle: {},
+  infoTitle: {},
+  infoDescription: {},
   infoPillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1246,9 +1184,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#273244',
   },
-  infoPillText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  infoPillText: {},
 });

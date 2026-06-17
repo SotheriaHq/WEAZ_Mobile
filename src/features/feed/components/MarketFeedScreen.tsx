@@ -2460,22 +2460,11 @@ const styles = StyleSheet.create({
   profileMenuAvatarImage: {
     ...StyleSheet.absoluteFill,
   },
-  profileMenuAvatarText: {
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  profileMenuChevron: {
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  profileMenuTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
+  profileMenuAvatarText: {},
+  profileMenuChevron: {},
+  profileMenuTitle: {},
   profileMenuSubtitle: {
     marginTop: 2,
-    fontSize: 12,
-    fontWeight: '600',
   },
   profileMenuItem: {
     flexDirection: 'row',
@@ -2489,7 +2478,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   profileMenuEmoji: {
-    fontSize: 18,
     width: 24,
     textAlign: 'center',
   },
@@ -2497,15 +2485,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  profileMenuItemTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  profileMenuItemTitle: {},
   profileMenuItemSubtitle: {
     marginTop: 2,
-    fontSize: 12,
-    fontWeight: '500',
-    lineHeight: 15,
   },
   railItem: {
     width: 88,
@@ -2519,9 +2501,6 @@ const styles = StyleSheet.create({
   railCountLabel: {
     width: 88,
     textAlign: 'center',
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '900',
     textShadowColor: 'rgba(0, 0, 0, 0.55)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
