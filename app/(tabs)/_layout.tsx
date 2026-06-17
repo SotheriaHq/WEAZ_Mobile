@@ -134,20 +134,22 @@ export default function TabLayout() {
   }, []);
 
   const scheduleRouteAfterFrame = useCallback((navFlow: string, run: () => void) => {
+    // SINGLE frame yield (was two nested rAFs). The island's active indicator is
+    // now driven by local state in NativeIslandBottomNav and paints on the same
+    // press, so it no longer needs the route call held back two frames to look
+    // instant. One frame is still enough to let the pressed/active feedback
+    // commit before router.navigate runs (which on a cold first-visit can block
+    // the JS thread), but it halves the dead time between the active indicator
+    // and the actual route call — which, combined with detachInactiveScreens,
+    // is what closes the "old screen still visible" gap.
     const token = pendingRouteTokenRef.current + 1;
     pendingRouteTokenRef.current = token;
     cancelPendingRouteFrame();
     pendingRouteFrameRef.current = requestAnimationFrame(() => {
-      if (pendingRouteTokenRef.current !== token) {
-        pendingRouteFrameRef.current = null;
-        return;
-      }
-      pendingRouteFrameRef.current = requestAnimationFrame(() => {
-        pendingRouteFrameRef.current = null;
-        if (pendingRouteTokenRef.current !== token) return;
-        navPerf.frameYieldBeforeRoute(navFlow);
-        run();
-      });
+      pendingRouteFrameRef.current = null;
+      if (pendingRouteTokenRef.current !== token) return;
+      navPerf.frameYieldBeforeRoute(navFlow);
+      run();
     });
   }, [cancelPendingRouteFrame]);
 
@@ -354,8 +356,27 @@ export default function TabLayout() {
   return (
     <>
       <Tabs
+        // detachInactiveScreens={false} is the core "instant screen response"
+        // lever. By default React Navigation sets it true on native, which
+        // DETACHES every inactive tab from the native view hierarchy AND freezes
+        // its React tree (react-freeze). Switching tabs then has to re-attach +
+        // unfreeze + repaint the destination — that is the visible gap where the
+        // island active indicator has already flipped but the OLD screen is still
+        // on screen while the target paints late. Keeping inactive tabs attached
+        // and live (after their first lazy mount) makes a tab switch an instant
+        // z-order swap of an already-painted surface — the behaviour users expect
+        // from WhatsApp/Instagram. The set is bounded (Runway, Market, Messages,
+        // Me/Profile, Catalogue), lists inside stay virtualized, and heavy data
+        // refresh stays gated behind useFocusEffect so background tabs do not
+        // refetch. This is NOT a server-data cache and does not touch
+        // screenWarmState.
+        detachInactiveScreens={false}
         screenOptions={{
           headerShown: false,
+          // Keep the destination's React tree live while blurred so a re-focus is
+          // a pure visibility swap with no unfreeze render. Pairs with
+          // detachInactiveScreens={false} above.
+          freezeOnBlur: false,
           tabBarStyle: {
             display: 'none',
           },
