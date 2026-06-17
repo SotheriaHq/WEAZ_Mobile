@@ -155,13 +155,19 @@ export const CollectionCard = React.memo(function CollectionCard({
         styles.card,
         {
           width,
+          // Explicit height guarantees the card can never collapse into a thin
+          // line. Elevation lives here (NOT combined with overflow:hidden) — on
+          // Android, elevation + overflow:hidden on the same view drops child
+          // layers, which is what made draft cards render as gray slivers. The
+          // rounded clipping is delegated to the inner cardClip view below.
+          height: imageHeight,
           backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.border,
           opacity: disabled ? 0.82 : 1,
           transform: [{ scale }],
         },
       ]}
     >
+      <View style={[styles.cardClip, { borderColor: theme.colors.border }]}>
       <Pressable
         onPress={disabled ? undefined : onPress}
         onPressIn={disabled ? undefined : () => animate(0.98)}
@@ -319,6 +325,7 @@ export const CollectionCard = React.memo(function CollectionCard({
           </LinearGradient>
         </View>
       </Pressable>
+      </View>
     </Animated.View>
     <ContentReviewDecisionSheet
       open={reviewDecisionOpen}
@@ -410,14 +417,21 @@ function SocialMetric({ emoji, value, label, onPress }: { emoji: string; value: 
 
 const styles = StyleSheet.create({
   card: {
+    // Shadow/elevation only — NO overflow:hidden here (see render comment).
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
     shadowColor: tokens.colors.dark,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.12,
     shadowRadius: 14,
     elevation: 5,
+  },
+  cardClip: {
+    // Clipping + border live on a non-elevated child so Android keeps the
+    // card's children laid out (prevents the thin-line collapse).
+    flex: 1,
+    borderRadius: tokens.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
   pressable: {
     flex: 1,

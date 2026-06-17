@@ -1502,7 +1502,7 @@ export default function CatalogScreen() {
 
   if (showInitialSkeleton) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.surface }]} edges={['top']}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
         <CatalogLoadingSkeleton bottomPadding={overlayScrollPadding} />
       </SafeAreaView>
@@ -1589,13 +1589,13 @@ export default function CatalogScreen() {
         )}
 
         {isOwner ? (
-          <View style={styles.brandSwitcherWrap}>
+          <View style={[styles.brandSwitcherWrap, { backgroundColor: theme.colors.surface }]}>
             <BrandSwitcherSheet />
           </View>
         ) : null}
 
         {isOwner ? (
-          <View style={styles.verificationNoticeWrap}>
+          <View style={[styles.verificationNoticeWrap, { backgroundColor: theme.colors.surface }]}>
             <EmailVerificationNotice
               context="catalog"
               userId={userId}
@@ -1606,7 +1606,7 @@ export default function CatalogScreen() {
         ) : null}
 
         {/* Tabs */}
-        <View style={[styles.tabsWrapper, { borderBottomColor: theme.colors.border }]}>
+        <View style={[styles.tabsWrapper, { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
           <Tabs
             tabs={tabs}
             activeTab={activeTab}
@@ -1626,7 +1626,7 @@ export default function CatalogScreen() {
           scrollEventThrottle={16}
           onScroll={handleTabPagerScroll}
           onMomentumScrollEnd={handleTabPagerMomentumEnd}
-          style={[styles.tabPager, { height: activeTabPagerHeight ?? estimatedPagerHeight }]}
+          style={[styles.tabPager, { height: activeTabPagerHeight ?? estimatedPagerHeight, backgroundColor: theme.colors.surface }]}
           contentContainerStyle={styles.tabPagerContent}
         >
           <View

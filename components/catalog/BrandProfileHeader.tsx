@@ -158,8 +158,10 @@ function HeaderIconButton({
         {value}
       </AppText>
       {typeof badgeCount === 'number' && badgeCount > 0 ? (
-        <View style={[styles.headerIconBadge, { backgroundColor: theme.colors.danger, borderColor: theme.colors.surface }]}>
-          <AppText variant="statLabel" style={[styles.headerIconBadgeText, { color: theme.colors.textInverse }]}>
+        // Notification count: no background pill — the number renders in the
+        // system/brand color and bold, matching the runway + island convention.
+        <View style={styles.headerIconBadge} pointerEvents="none">
+          <AppText variant="badgeLabel" tone="primary" style={styles.headerIconBadgeText}>
             {badgeCount > 99 ? '99+' : badgeCount}
           </AppText>
         </View>
@@ -630,8 +632,22 @@ function BrandDescription({ description }: { description?: string | null }) {
   );
 }
 
+// Facebook-style metadata: an emoji icon stands in for the verbose label, the
+// value sits directly in front in tiny/bold text with no pill background.
+const CONTACT_EMOJI: Record<string, string> = {
+  email: '✉️', // ✉️
+  phone: '📞', // 📞
+  website: '🌐', // 🌐 web
+  instagram: '📷', // 📸 instagram
+  facebook: '📘', // 📘
+  x: '✖️', // ✖️
+};
+
+function getContactEmoji(label: string): string {
+  return CONTACT_EMOJI[label.trim().toLowerCase()] ?? '🔗'; // 🔗 fallback
+}
+
 function BrandContactItems({ items = [] }: { items?: BrandHeaderContactItem[] }) {
-  const { theme } = useTheme();
   const visibleItems = items.filter((item) => item.value.trim().length > 0);
 
   if (visibleItems.length === 0) return null;
@@ -639,17 +655,15 @@ function BrandContactItems({ items = [] }: { items?: BrandHeaderContactItem[] })
   return (
     <View style={styles.contactWrap}>
       {visibleItems.map((item) => (
-        <View
+        <AppText
           key={`${item.label}-${item.value}`}
-          style={[styles.contactChip, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
+          variant="smallBold"
+          tone="default"
+          numberOfLines={1}
+          style={styles.contactLine}
         >
-          <AppText variant="captionBold" tone="muted" numberOfLines={1}>
-            {item.label}
-          </AppText>
-          <AppText variant="captionRegular" tone="secondary" numberOfLines={1} style={styles.contactValue}>
-            {item.value}
-          </AppText>
-        </View>
+          {getContactEmoji(item.label)} {item.value}
+        </AppText>
       ))}
     </View>
   );
@@ -1044,19 +1058,14 @@ const styles = StyleSheet.create({
   },
   headerIconBadge: {
     position: 'absolute',
-    top: -2,
-    right: -2,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
+    top: -tokens.spacing.xs,
+    right: -tokens.spacing.xs,
+    minWidth: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 1.5,
   },
   headerIconBadgeText: {
-    fontSize: 10,
-    lineHeight: 12,
+    textAlign: 'center',
   },
   bannerNameChip: {
     position: 'absolute',
@@ -1288,25 +1297,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   contactWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.lg,
     marginTop: tokens.spacing.sm,
   },
-  contactChip: {
+  contactLine: {
     maxWidth: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.full,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
-  },
-  contactValue: {
-    minWidth: 0,
-    flexShrink: 1,
   },
   squareAction: {
     width: 52,

@@ -40,6 +40,7 @@ import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { useUnreadNotificationCount } from '@/src/realtime/notifications';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { perfMark } from '@/src/utils/perf';
@@ -646,6 +647,9 @@ export function MarketFeedScreen() {
   const { status, user } = useAuth();
   const toast = useToast();
   const requireAuth = useAuthAction();
+  // Single shared notification source — same store the catalog/profile bell and
+  // the island "Me" badge read from, so every 🔔 count stays in sync with web.
+  const unreadNotificationCount = useUnreadNotificationCount();
   const {
     insets,
     windowHeight,
@@ -2107,6 +2111,13 @@ export function MarketFeedScreen() {
                     accessibilityLabel="Notifications"
                   >
                     <AppText variant="bodyBold" style={styles.headerEmoji}>🔔</AppText>
+                    {unreadNotificationCount > 0 ? (
+                      <View style={styles.headerBadge} pointerEvents="none">
+                        <AppText variant="badgeLabel" tone="primary" style={styles.headerBadgeText}>
+                          {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                        </AppText>
+                      </View>
+                    ) : null}
                   </Pressable>
                   <Pressable
                     onPress={handleOpenSearch}
@@ -2305,6 +2316,19 @@ const styles = StyleSheet.create({
   headerEmoji: {
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
+  },
+  // No-bg count: the number renders in the system/brand color, bold, matching
+  // the catalog/profile bell + island convention (single source of truth).
+  headerBadge: {
+    position: 'absolute',
+    top: -tokens.spacing.xs,
+    right: -tokens.spacing.xs,
+    minWidth: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerBadgeText: {
+    textAlign: 'center',
   },
   headerActions: {
     flexDirection: 'row',

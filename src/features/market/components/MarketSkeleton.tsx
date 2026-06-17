@@ -22,7 +22,7 @@ export function MarketSkeleton({ bottomPadding = tokens.spacing.md }: { bottomPa
   const heroHeight = Math.min(236, Math.max(176, Math.round(height * 0.24)));
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.colors.bg, paddingBottom: bottomPadding }]}>
+    <View style={[styles.root, { backgroundColor: theme.colors.surface, paddingBottom: bottomPadding }]}>
       <View style={styles.header}>
         <Skeleton width={44} height={44} borderRadius={tokens.radius.md} />
         <View style={styles.headerTitle}>
