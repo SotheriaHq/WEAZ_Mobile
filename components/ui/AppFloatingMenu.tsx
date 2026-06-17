@@ -45,7 +45,7 @@ function resolveMenuPosition({
   const preferredLeft = pageX + width - menuWidth + tokens.spacing.xs;
 
   return {
-    top: pageY + height + 2,
+    top: pageY + height + 12,
     left: Math.min(Math.max(preferredLeft, minLeft), maxLeft),
   };
 }

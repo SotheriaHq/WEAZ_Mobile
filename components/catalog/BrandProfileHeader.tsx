@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, Linking, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
+import { FontAwesome5 } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -253,7 +254,7 @@ function BannerHeader({
       ) : null}
 
       <View style={styles.bannerControls}>
-        <HeaderIconButton label="Go back" value="‹" onPress={onBack} bare />
+        <HeaderIconButton label="Go back" value="👈" onPress={onBack} bare />
         <View style={styles.bannerRightControls}>
           {!isOwner ? (
             <HeaderIconButton label="Search" value="🔍" onPress={onSearch} bare />
@@ -264,63 +265,7 @@ function BannerHeader({
         </View>
       </View>
 
-      {qrTargetUrl || onOpenQr ? (
-        <View
-          pointerEvents="box-none"
-          style={[
-            styles.bannerQrSlot,
-            {
-              width: qrPanelSize,
-              height: qrPanelSize,
-              right: tokens.spacing.lg,
-              top: isTablet ? 68 : 72,
-            },
-          ]}
-        >
-          <Pressable
-            onPress={onOpenQr}
-            disabled={!onOpenQr}
-            style={({ pressed }) => [
-              styles.qrButton,
-              {
-                width: qrPanelSize,
-                height: qrPanelSize,
-                backgroundColor: qrTargetUrl ? tokens.themes.light.colors.surface : theme.colors.glassSurfaceStrong,
-                borderColor: theme.colors.glassBorder,
-                opacity: pressed ? 0.82 : 1,
-              },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Show brand QR code"
-          >
-            {qrTargetUrl ? (
-              <QRCode
-                value={qrTargetUrl}
-                size={qrCodeSize}
-                color={tokens.themes.light.colors.text}
-                backgroundColor={tokens.themes.light.colors.surface}
-                quietZone={2}
-              />
-            ) : (
-              <View
-                style={[
-                  styles.qrPlaceholder,
-                  {
-                    width: qrCodeSize,
-                    height: qrCodeSize,
-                    backgroundColor: theme.colors.glassSurface,
-                    borderColor: theme.colors.glassBorder,
-                  },
-                ]}
-              >
-                <AppText variant="captionBold" tone="muted">
-                  QR
-                </AppText>
-              </View>
-            )}
-          </Pressable>
-        </View>
-      ) : null}
+
 
       <View style={[styles.bannerNameChip, { backgroundColor: 'transparent', borderColor: theme.colors.glassBorder }]}>
         <BlurView
@@ -632,39 +577,84 @@ function BrandDescription({ description }: { description?: string | null }) {
   );
 }
 
-// Facebook-style metadata: an emoji icon stands in for the verbose label, the
-// value sits directly in front in tiny/bold text with no pill background.
-const CONTACT_EMOJI: Record<string, string> = {
-  email: '✉️', // ✉️
-  phone: '📞', // 📞
-  website: '🌐', // 🌐 web
-  instagram: '📷', // 📸 instagram
-  facebook: '📘', // 📘
-  x: '✖️', // ✖️
-};
-
-function getContactEmoji(label: string): string {
-  return CONTACT_EMOJI[label.trim().toLowerCase()] ?? '🔗'; // 🔗 fallback
+function ContactIcon({ label }: { label: string }) {
+  const normalized = label.trim().toLowerCase();
+  const { theme } = useTheme();
+  switch (normalized) {
+    case 'instagram': return <FontAwesome5 name="instagram" size={14} color="#E1306C" />;
+    case 'facebook': return <FontAwesome5 name="facebook" size={14} color="#1877F2" />;
+    case 'x':
+    case 'twitter': return <FontAwesome5 name="twitter" size={14} color="#1DA1F2" />;
+    case 'email': return <FontAwesome5 name="envelope" size={14} color={theme.colors.textSecondary} />;
+    case 'phone': return <FontAwesome5 name="phone" size={14} color={theme.colors.textSecondary} />;
+    case 'website': return <FontAwesome5 name="globe" size={14} color={theme.colors.textSecondary} />;
+    default: return <FontAwesome5 name="link" size={14} color={theme.colors.textSecondary} />;
+  }
 }
 
-function BrandContactItems({ items = [] }: { items?: BrandHeaderContactItem[] }) {
-  const visibleItems = items.filter((item) => item.value.trim().length > 0);
+function getContactUrl(label: string, value: string): string | null {
+  const normalized = label.trim().toLowerCase();
+  const cleanValue = value.trim();
+  switch (normalized) {
+    case 'instagram': return `https://instagram.com/${cleanValue.replace('@', '')}`;
+    case 'facebook': return `https://facebook.com/${cleanValue}`;
+    case 'x':
+    case 'twitter': return `https://twitter.com/${cleanValue.replace('@', '')}`;
+    case 'email': return `mailto:${cleanValue}`;
+    case 'phone': return `tel:${cleanValue.replace(/[^0-9+]/g, '')}`;
+    case 'website': return cleanValue.startsWith('http') ? cleanValue : `https://${cleanValue}`;
+    default: return null;
+  }
+}
 
-  if (visibleItems.length === 0) return null;
+function BrandContactItems({
+  items = [],
+  qrTargetUrl,
+  onOpenQr,
+}: {
+  items?: BrandHeaderContactItem[];
+  qrTargetUrl?: string | null;
+  onOpenQr?: () => void;
+}) {
+  const visibleItems = items.filter((item) => item.value.trim().length > 0);
+  const hasQr = Boolean(qrTargetUrl || onOpenQr);
+  const { theme } = useTheme();
+
+  if (visibleItems.length === 0 && !hasQr) return null;
 
   return (
     <View style={styles.contactWrap}>
       {visibleItems.map((item) => (
-        <AppText
-          key={`${item.label}-${item.value}`}
-          variant="smallBold"
-          tone="default"
-          numberOfLines={1}
-          style={styles.contactLine}
+        <Pressable 
+          key={`${item.label}-${item.value}`} 
+          style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs }}
+          onPress={() => {
+            const url = getContactUrl(item.label, item.value);
+            if (url) {
+              Linking.openURL(url).catch(() => console.log('Failed to open URL:', url));
+            }
+          }}
+          hitSlop={8}
         >
-          {getContactEmoji(item.label)} {item.value}
-        </AppText>
+          <ContactIcon label={item.label} />
+          <AppText
+            variant="smallBold"
+            tone="primary"
+            numberOfLines={1}
+            style={styles.contactLine}
+          >
+            {item.value}
+          </AppText>
+        </Pressable>
       ))}
+      {hasQr ? (
+        <Pressable onPress={onOpenQr} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs }}>
+          <FontAwesome5 name="qrcode" size={14} color={theme.colors.textSecondary} />
+          <AppText variant="smallBold" tone="primary" numberOfLines={1} style={styles.contactLine}>
+            QR code
+          </AppText>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -672,19 +662,24 @@ function BrandContactItems({ items = [] }: { items?: BrandHeaderContactItem[] })
 function BrandProfileDetails({
   description,
   contactItems,
+  qrTargetUrl,
+  onOpenQr,
 }: {
   description?: string | null;
   contactItems?: BrandHeaderContactItem[];
+  qrTargetUrl?: string | null;
+  onOpenQr?: () => void;
 }) {
   const hasDescription = Boolean(description?.trim());
   const hasContact = Boolean(contactItems?.some((item) => item.value.trim().length > 0));
+  const hasQr = Boolean(qrTargetUrl || onOpenQr);
 
-  if (!hasDescription && !hasContact) return null;
+  if (!hasDescription && !hasContact && !hasQr) return null;
 
   return (
     <View>
       <BrandDescription description={description} />
-      <BrandContactItems items={contactItems} />
+      <BrandContactItems items={contactItems} qrTargetUrl={qrTargetUrl} onOpenQr={onOpenQr} />
     </View>
   );
 }
@@ -952,7 +947,7 @@ export function BrandProfileHeader({
         </View>
       ) : null}
 
-      <BrandProfileDetails description={description} contactItems={contactItems} />
+      <BrandProfileDetails description={description} contactItems={contactItems} qrTargetUrl={qrTargetUrl} onOpenQr={onOpenQr} />
 
       <BrandProfileActions
         isOwner={isOwner}
@@ -1006,7 +1001,7 @@ const styles = StyleSheet.create({
   },
   bannerControls: {
     position: 'absolute',
-    top: tokens.spacing.lg,
+    top: 0,
     left: tokens.spacing.lg,
     right: tokens.spacing.lg,
     flexDirection: 'row',
@@ -1058,8 +1053,8 @@ const styles = StyleSheet.create({
   },
   headerIconBadge: {
     position: 'absolute',
-    top: -tokens.spacing.xs,
-    right: -tokens.spacing.xs,
+    top: 4,
+    right: 8,
     minWidth: 16,
     alignItems: 'center',
     justifyContent: 'center',

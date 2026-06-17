@@ -2276,9 +2276,9 @@ const styles = StyleSheet.create({
   },
   headerChipsContent: {
     flexGrow: 1,
-    gap: 2,
+    gap: 12,
     justifyContent: 'center',
-    paddingHorizontal: 2,
+    paddingHorizontal: 12,
     alignItems: 'center',
   },
   headerRow: {
@@ -2309,7 +2309,7 @@ const styles = StyleSheet.create({
   },
   headerFilterChip: {
     minHeight: 30,
-    paddingHorizontal: 2,
+    paddingHorizontal: 8,
     paddingTop: 1,
     paddingBottom: 3,
   },

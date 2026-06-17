@@ -49,6 +49,37 @@ export const unstable_settings = {
 // and the visitor `/catalog/[brandId]` keep the island.
 const FOCUSED_CATALOG_FLOW = /^\/catalog\/(view|create-design|create-collection|edit-profile)(\/|$)/;
 
+type ExpoTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
+type HiddenTabNavigation = ExpoTabBarProps['navigation'];
+type TabNavigationActionType = 'JUMP_TO' | 'PRELOAD';
+
+function createTabNavigationAction(type: TabNavigationActionType, name: string) {
+  return {
+    type,
+    payload: { name },
+  };
+}
+
+function getFocusedTabName(navigation: HiddenTabNavigation | null) {
+  const state = navigation?.getState();
+  if (!state) return null;
+  return state.routes[state.index]?.name ?? null;
+}
+
+function hasTabRoute(navigation: HiddenTabNavigation | null, name: string) {
+  const state = navigation?.getState();
+  if (!state) return false;
+  return state.routeNames.includes(name) || state.routes.some((route) => route.name === name);
+}
+
+function getIslandTabRouteName(key: string, isBrand: boolean) {
+  if (key === NATIVE_ISLAND_KEYS.designs) return 'index';
+  if (key === NATIVE_ISLAND_KEYS.market) return 'discover';
+  if (key === NATIVE_ISLAND_KEYS.inbox) return 'inbox';
+  if (key === NATIVE_ISLAND_KEYS.profile) return isBrand ? 'catalog' : 'me';
+  return null;
+}
+
 function getIslandNavFlow(item: NativeIslandNavItem, isBrand: boolean, isAuthenticated: boolean) {
   if (item.key === NATIVE_ISLAND_KEYS.designs) return 'tabs→runway';
   if (item.key === NATIVE_ISLAND_KEYS.market) return 'tabs→market';
@@ -76,6 +107,8 @@ export default function TabLayout() {
   const lastNotificationRefreshAttemptAtRef = useRef(0);
   const lastMessageRefreshAttemptAtRef = useRef(0);
   const pendingRouteFrameRef = useRef<number | null>(null);
+  const tabNavigationRef = useRef<HiddenTabNavigation | null>(null);
+  const preloadedTabNamesRef = useRef<Set<string>>(new Set());
   const [optimisticActiveKey, setOptimisticActiveKey] = useState<NativeIslandKey | null>(null);
 
   const isBrand = hasActiveBrandMembership(user);
@@ -132,6 +165,49 @@ export default function TabLayout() {
     pendingRouteFrameRef.current = null;
   }, []);
 
+  const renderHiddenTabBar = useCallback((props: ExpoTabBarProps) => {
+    tabNavigationRef.current = props.navigation;
+    return null;
+  }, []);
+
+  const dispatchTabNavigationAction = useCallback((type: TabNavigationActionType, name: string) => {
+    const navigation = tabNavigationRef.current;
+    if (!hasTabRoute(navigation, name)) {
+      return false;
+    }
+
+    if (type === 'PRELOAD' && getFocusedTabName(navigation) === name) {
+      return true;
+    }
+
+    navigation?.dispatch(createTabNavigationAction(type, name));
+    return true;
+  }, []);
+
+  const jumpToIslandTab = useCallback(
+    (tabName: string, fallbackRoute: string) => {
+      if (dispatchTabNavigationAction('JUMP_TO', tabName)) {
+        return;
+      }
+
+      router.navigate(fallbackRoute as any);
+    },
+    [dispatchTabNavigationAction],
+  );
+
+  const preloadIslandTab = useCallback(
+    (tabName: string) => {
+      if (preloadedTabNamesRef.current.has(tabName)) {
+        return;
+      }
+
+      if (dispatchTabNavigationAction('PRELOAD', tabName)) {
+        preloadedTabNamesRef.current.add(tabName);
+      }
+    },
+    [dispatchTabNavigationAction],
+  );
+
   const scheduleRouteAfterFrame = useCallback((navFlow: string, run: () => void) => {
     // Decouple the route call from the active-indicator commit (do NOT make this
     // synchronous). The island sets its active state locally on press, so it
@@ -142,10 +218,10 @@ export default function TabLayout() {
     // synchronous version we tried) is what made the indicator feel slow again:
     // it inherited the navigation render cost.
     //
-    // The destination now paints fast because (1) detachInactiveScreens={false}
-    // keeps visited tabs warm and (2) the island's live Android blur no longer
-    // re-composites over the screen during the swap — so the one-frame gap
-    // between the instant indicator and the screen is imperceptible.
+    // Top-level island routes use the tab navigator's direct JUMP_TO path where
+    // possible, and likely cold tabs are preloaded after first paint. The
+    // one-frame gap lets the indicator paint without inheriting destination
+    // render cost.
     cancelPendingRouteFrame();
     pendingRouteFrameRef.current = requestAnimationFrame(() => {
       pendingRouteFrameRef.current = null;
@@ -156,6 +232,26 @@ export default function TabLayout() {
 
   useEffect(() => cancelPendingRouteFrame, [cancelPendingRouteFrame]);
 
+  useEffect(() => {
+    if (status === 'loading') return;
+
+    const nextTabsToWarm = ['discover'];
+    if (status === 'authenticated') {
+      nextTabsToWarm.push('inbox');
+      nextTabsToWarm.push(isBrand ? 'catalog' : 'me');
+    }
+
+    const timers = nextTabsToWarm.map((tabName, index) =>
+      setTimeout(() => {
+        preloadIslandTab(tabName);
+      }, 900 + index * 450),
+    );
+
+    return () => {
+      timers.forEach((timer) => clearTimeout(timer));
+    };
+  }, [isBrand, preloadIslandTab, status]);
+
   const navigateToProfile = useCallback(() => {
     setOptimisticActiveKey(NATIVE_ISLAND_KEYS.profile);
     // navigate (not push) so an already-mounted Catalogue/Me instance is reused
@@ -163,9 +259,9 @@ export default function TabLayout() {
     const navFlow = isBrand ? 'tabs→catalog' : 'tabs→me';
     scheduleRouteAfterFrame(navFlow, () => {
       navPerf.navigationCalled(navFlow);
-      router.navigate((isBrand ? '/catalog' : '/(tabs)/me') as any);
+      jumpToIslandTab(isBrand ? 'catalog' : 'me', isBrand ? '/catalog' : '/(tabs)/me');
     });
-  }, [isBrand, scheduleRouteAfterFrame]);
+  }, [isBrand, jumpToIslandTab, scheduleRouteAfterFrame]);
 
   const handleProfilePress = useCallback(
     () => {
@@ -257,15 +353,27 @@ export default function TabLayout() {
       const nextRoute = item.targetRoute ?? getNativeIslandRoute(item.key, isBrand);
       if (nextRoute) {
         const navFlow = item.navFlow ?? getIslandNavFlow(item, isBrand, canOpenProfileMenu);
+        const tabRouteName = getIslandTabRouteName(item.key, isBrand);
         scheduleRouteAfterFrame(navFlow, () => {
           navPerf.navigationCalled(navFlow);
-          // navigate (not replace) so switching between island tabs reuses the
-          // existing tab screens instead of remounting them and refetching.
+          if (tabRouteName) {
+            jumpToIslandTab(tabRouteName, nextRoute);
+            return;
+          }
+
           router.navigate(nextRoute as any);
         });
       }
     },
-    [bagFlow, cancelPendingRouteFrame, canOpenProfileMenu, handleProfilePress, isBrand, scheduleRouteAfterFrame],
+    [
+      bagFlow,
+      cancelPendingRouteFrame,
+      canOpenProfileMenu,
+      handleProfilePress,
+      isBrand,
+      jumpToIslandTab,
+      scheduleRouteAfterFrame,
+    ],
   );
 
   useEffect(() => {
@@ -357,27 +465,13 @@ export default function TabLayout() {
   return (
     <>
       <Tabs
-        // detachInactiveScreens={false} is the core "instant screen response"
-        // lever. By default React Navigation sets it true on native, which
-        // DETACHES every inactive tab from the native view hierarchy AND freezes
-        // its React tree (react-freeze). Switching tabs then has to re-attach +
-        // unfreeze + repaint the destination — that is the visible gap where the
-        // island active indicator has already flipped but the OLD screen is still
-        // on screen while the target paints late. Keeping inactive tabs attached
-        // and live (after their first lazy mount) makes a tab switch an instant
-        // z-order swap of an already-painted surface — the behaviour users expect
-        // from WhatsApp/Instagram. The set is bounded (Runway, Market, Messages,
-        // Me/Profile, Catalogue), lists inside stay virtualized, and heavy data
-        // refresh stays gated behind useFocusEffect so background tabs do not
-        // refetch. This is NOT a server-data cache and does not touch
-        // screenWarmState.
-        detachInactiveScreens={false}
+        // Render no default tab bar; the floating island owns the visible UI and
+        // uses this hidden tabbar's navigation object for direct JUMP_TO/PRELOAD
+        // actions.
+        tabBar={renderHiddenTabBar}
         screenOptions={{
           headerShown: false,
-          // Keep the destination's React tree live while blurred so a re-focus is
-          // a pure visibility swap with no unfreeze render. Pairs with
-          // detachInactiveScreens={false} above.
-          freezeOnBlur: false,
+          lazy: true,
           tabBarStyle: {
             display: 'none',
           },

@@ -204,12 +204,12 @@ export function NativeIslandBottomNav({
   const handleItemPressIn = React.useCallback(
     (item: NativeIslandNavItem) => {
       const navFlow = item.navFlow ?? item.key;
-      navPerf.tap(navFlow);
-      navPerf.pressedFeedbackVisible(navFlow);
-      navPerf.activeIndicatorIntent(navFlow);
       setPressedItemKey(item.key);
       setImmediateActiveKey(item.key);
       setImmediateActiveNavFlow(navFlow);
+      navPerf.tap(navFlow);
+      navPerf.pressedFeedbackVisible(navFlow);
+      navPerf.activeIndicatorIntent(navFlow);
       onPressIn?.(item);
       onSelect(item);
     },

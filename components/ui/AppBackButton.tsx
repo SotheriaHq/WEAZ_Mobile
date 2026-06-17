@@ -36,7 +36,7 @@ export function AppBackButton({
   const scheduleBackRouteAfterFrame = React.useCallback((run: () => void) => {
     // Defer one frame so the pressed feedback paints before navigating — keeps the
     // back tap feeling instant. Single rAF (decoupled, not synchronous, not two
-    // frames). The back target is kept warm by detachInactiveScreens={false}.
+    // frames).
     cancelPendingRouteFrame();
     pendingRouteFrameRef.current = requestAnimationFrame(() => {
       pendingRouteFrameRef.current = null;

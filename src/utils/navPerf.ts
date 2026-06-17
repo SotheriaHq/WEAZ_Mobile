@@ -8,7 +8,8 @@ import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostic
  * device/emulator. Output is gated by `isThreadlyDebugEnabled('nav')`, which is
  * itself `__DEV__`-only and opt-in via `EXPO_PUBLIC_DEBUG_NAV=1`. It produces no
  * output in production builds and stays silent in dev unless the flag is set, so
- * there is never user-visible log spam.
+ * there is never user-visible log spam. Logs are buffered off the tap path so
+ * Metro/console IO does not become part of the timing we are measuring.
  *
  * Navigation is sequential (the user taps one thing at a time), so a single
  * module-level "active flow" timer is sufficient. Call `tap(flow)` from the
@@ -42,12 +43,24 @@ type NavStage =
 
 let activeFlow: string | null = null;
 let tapAt = 0;
+let pendingLogFlush: ReturnType<typeof setTimeout> | null = null;
+let pendingLogLines: string[] = [];
 
 const enabled = () => isThreadlyDebugEnabled('nav');
 
 const emit = (stage: string, flow: string) => {
   const sinceTap = tapAt ? Date.now() - tapAt : null;
-  console.log(`[NAV_PERF] ${stage} ${flow}${sinceTap == null ? '' : ` +${sinceTap}ms`}`);
+  const line = `[NAV_PERF] ${stage} ${flow}${sinceTap == null ? '' : ` +${sinceTap}ms`}`;
+
+  pendingLogLines.push(line);
+  if (pendingLogFlush !== null) return;
+
+  pendingLogFlush = setTimeout(() => {
+    pendingLogFlush = null;
+    const lines = pendingLogLines;
+    pendingLogLines = [];
+    lines.forEach((nextLine) => console.log(nextLine));
+  }, 1200);
 };
 
 export const navPerf = {
