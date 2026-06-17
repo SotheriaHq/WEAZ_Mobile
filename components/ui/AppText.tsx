@@ -135,7 +135,7 @@ const FONT_FAMILY_MAP: Record<TypographyTokenKey, string> = {
   brandName: tokens.fontFamily.bold,
   sectionTitle: tokens.fontFamily.semiBold,
   cardTitle: tokens.fontFamily.semiBold,
-  bodyReadable: tokens.fontFamily.medium,
+  bodyReadable: tokens.fontFamily.semiBold,
   actionLabel: tokens.fontFamily.semiBold,
   buttonLabel: tokens.fontFamily.semiBold,
   badgeLabel: tokens.fontFamily.bold,

@@ -616,14 +616,14 @@ function BrandDescription({ description }: { description?: string | null }) {
       </AppText>
       {canExpand && !expanded ? (
         <Pressable onPress={() => setExpanded(true)} accessibilityRole="button" accessibilityLabel="Show full brand description">
-          <AppText variant="bodyBold" tone="primary">
+          <AppText tone="primary" style={{ fontSize: 10, fontStyle: 'italic', fontWeight: 'bold' }}>
             See more
           </AppText>
         </Pressable>
       ) : null}
       {canExpand && expanded ? (
         <Pressable onPress={() => setExpanded(false)} accessibilityRole="button" accessibilityLabel="Collapse brand description">
-          <AppText variant="bodyBold" tone="primary">
+          <AppText tone="primary" style={{ fontSize: 10, fontStyle: 'italic', fontWeight: 'bold' }}>
             See less
           </AppText>
         </Pressable>
@@ -1243,6 +1243,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: tokens.spacing.md,
+    marginTop: tokens.spacing.md,
   },
   textTag: {
     flexShrink: 1,
@@ -1255,7 +1256,8 @@ const styles = StyleSheet.create({
   },
   descriptionWrap: {
     paddingHorizontal: tokens.spacing.lg,
-    marginTop: tokens.spacing.md,
+    marginTop: tokens.spacing.xl,
+    marginBottom: tokens.spacing.xl2, // Increased gap below the see less/more
     gap: tokens.spacing.sm,
   },
   descriptionMeasureText: {
@@ -1270,7 +1272,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
-    marginTop: tokens.spacing.lg,
+    marginTop: tokens.spacing['2xl'],
   },
   primaryActionSlot: {
     flex: 1,
@@ -1297,7 +1299,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   contactWrap: {
-    gap: tokens.spacing.xs,
+    gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
     marginTop: tokens.spacing.sm,
   },

@@ -160,40 +160,40 @@ export const tokens = {
   // Rule: NEVER go below 12px for readable content. 16px is body minimum.
   typography: {
     /** 32px / 700 — hero splash, big editorial headers */
-    display: { size: 32, weight: '700' as const, lineHeight: 38 },
+    display: { size: 32, weight: '700' as const, lineHeight: 36 },
     /** 24px / 700 — primary screen titles */
-    screenTitle: { size: 24, weight: '700' as const, lineHeight: 30 },
+    screenTitle: { size: 24, weight: '700' as const, lineHeight: 28 },
     /** 24px / 700 — primary mobile titles */
-    title: { size: 24, weight: '700' as const, lineHeight: 30 },
-    /** 22px / 700 — profile names (strong but not oversized, Facebook-dense) */
-    profileName: { size: 22, weight: '700' as const, lineHeight: 27 },
-    /** 22px / 700 — brand names (strong but not oversized, Facebook-dense) */
-    brandName: { size: 22, weight: '700' as const, lineHeight: 27 },
+    title: { size: 24, weight: '700' as const, lineHeight: 28 },
+    /** 22px / 700 — profile names (Instagram-dense) */
+    profileName: { size: 22, weight: '700' as const, lineHeight: 26 },
+    /** 22px / 700 — brand names (Instagram-dense) */
+    brandName: { size: 22, weight: '700' as const, lineHeight: 26 },
     /** 18px / 600 — section headers */
-    sectionTitle: { size: 18, weight: '600' as const, lineHeight: 24 },
+    sectionTitle: { size: 18, weight: '600' as const, lineHeight: 22 },
     /** 18px / 600 — section headers and strong subtitles */
-    subtitle: { size: 18, weight: '600' as const, lineHeight: 24 },
+    subtitle: { size: 18, weight: '600' as const, lineHeight: 22 },
     /** 16px / 600 — card titles */
-    cardTitle: { size: 16, weight: '600' as const, lineHeight: 22 },
+    cardTitle: { size: 16, weight: '600' as const, lineHeight: 20 },
     /** 16px / 500 — main body content */
-    body: { size: 16, weight: '500' as const, lineHeight: 24 },
-    /** 14px / 500 — highly readable, Facebook-dense body text (bio/about) */
-    bodyReadable: { size: 14, weight: '500' as const, lineHeight: 20 },
+    body: { size: 16, weight: '500' as const, lineHeight: 20 },
+    /** 14px / 500 — highly readable, Instagram-dense body text (bio/about) */
+    bodyReadable: { size: 13, weight: '500' as const, lineHeight: 20 },
     /** 16px / 700 — button labels */
-    buttonLabel: { size: 16, weight: '700' as const, lineHeight: 22 },
+    buttonLabel: { size: 16, weight: '700' as const, lineHeight: 20 },
     /** 16px / 700 — action labels */
-    actionLabel: { size: 16, weight: '700' as const, lineHeight: 22 },
+    actionLabel: { size: 16, weight: '700' as const, lineHeight: 20 },
     /** 12px / 500 — supporting meta text */
     caption: { size: 12, weight: '500' as const, lineHeight: 16 },
     /** 13px / 600 — meta */
-    meta: { size: 13, weight: '600' as const, lineHeight: 18 },
+    meta: { size: 13, weight: '600' as const, lineHeight: 16 },
     /** 12px / 700 — badge labels */
     badgeLabel: { size: 12, weight: '700' as const, lineHeight: 16 },
     /** 11px / 600 — nav labels */
     navLabel: { size: 11, weight: '600' as const, lineHeight: 14 },
-    /** 13px / 700 — stat numbers (compact, Facebook-dense) */
-    statValue: { size: 13, weight: '700' as const, lineHeight: 17 },
-    /** 11px / 600 — stat labels (compact, Facebook-dense) */
+    /** 13px / 700 — stat numbers (compact, Instagram-dense) */
+    statValue: { size: 13, weight: '700' as const, lineHeight: 16 },
+    /** 11px / 600 — stat labels (compact, Instagram-dense) */
     statLabel: { size: 11, weight: '600' as const, lineHeight: 14 },
 
     // Compatibility aliases for existing mobile code during migration.
