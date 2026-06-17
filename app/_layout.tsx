@@ -11,6 +11,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
 import 'react-native-reanimated';
 
 import { ThemeProvider, useTheme, type ThemeMode } from '@/src/theme/ThemeProvider';
@@ -60,6 +61,18 @@ void SplashScreen.preventAutoHideAsync();
 
 const THEME_MODE_KEY = 'threadly.theme.mode';
 const BOOT_BACKGROUND = '#0b0710';
+
+function StartupFallback() {
+  return (
+    <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND, alignItems: 'center', justifyContent: 'center' }]}>
+      <Image
+        source={require('../assets/images/weaz-splash-icon.png')}
+        style={{ width: '100%', height: '100%' }}
+        contentFit="contain"
+      />
+    </View>
+  );
+}
 
 void applyAndroidSystemBarsPolicy(getInitialAndroidSystemScheme(), 'module-load');
 
@@ -277,7 +290,7 @@ function RootBootstrap({
   }, [bootReady, fontsLoaded, status, themeReady]);
 
   if (!bootReady) {
-    return <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND }]} />;
+    return <StartupFallback />;
   }
 
   return (
@@ -347,7 +360,7 @@ export default function RootLayout() {
   }, []);
 
   if (!loaded || !themeBootstrapReady) {
-    return <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND }]} />;
+    return <StartupFallback />;
   }
 
   return <RootLayoutNav fontsLoaded={loaded} initialThemeMode={initialThemeMode} />;

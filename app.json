@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Threadly",
+    "name": "WEAZ",
     "slug": "threadly",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/weaz-icon.png",
-    "scheme": "threadlymobile",
+    "scheme": "weazmobile",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
