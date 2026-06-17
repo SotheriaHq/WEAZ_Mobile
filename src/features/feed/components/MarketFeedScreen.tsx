@@ -39,7 +39,6 @@ import { isUsableImageHttpUrl, prefetchResolvedImageAsset, useResolvedImageAsset
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
-import { requestNativeIslandCollapse } from '@/components/navigation/nativeIslandEvents';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
@@ -1861,7 +1860,6 @@ export function MarketFeedScreen() {
 
   const handleFeedScrollBeginDrag = useCallback(() => {
     hideMetaOverlay();
-    requestNativeIslandCollapse();
   }, [hideMetaOverlay]);
 
   const handleFeedMomentumEnd = useCallback(

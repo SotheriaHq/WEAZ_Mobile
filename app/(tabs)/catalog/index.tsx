@@ -250,7 +250,7 @@ export default function CatalogScreen() {
     productId?: string | string[];
   }>();
   const { theme, scheme } = useTheme();
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { standardScreenBottomPadding } = useScreenChrome();
   const { user } = useAuth();
   const { status, userId, userType, userEmailVerified, updateUser } = useAuthSession();
@@ -313,7 +313,12 @@ export default function CatalogScreen() {
   const [shareActionsOpen, setShareActionsOpen] = useState(false);
   const createAnchorRef = useRef<View | null>(null);
   const [brandQrOpen, setBrandQrOpen] = useState(false);
-  const [tabHeights, setTabHeights] = useState<Partial<Record<TabType, number>>>({});
+  // Keyed by a page identity string, not just TabType: the Collections page's
+  // height depends on the active visibility (Public vs Drafts vs …), so each
+  // visibility caches its own measured height. Sharing one Collections height
+  // across visibilities left a stale/taller value behind, which is what created
+  // the blank scroll space below the last card after switching to Drafts.
+  const [tabHeights, setTabHeights] = useState<Record<string, number>>({});
   const tabPagerRef = useRef<Animated.ScrollView>(null);
   const outerScrollRef = useRef<ScrollView>(null);
   const scrollYRef = useRef<number>(initialCatalogUiStateRef.current?.scrollY ?? 0);
@@ -334,7 +339,13 @@ export default function CatalogScreen() {
 
   const completedTaskRefreshKeyRef = useRef<string | null>(null);
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
-  const activeTabPagerHeight = tabHeights[activeTab];
+  const activeTabKey = activeTab === 'Collections' ? `Collections:${visibilityFilter}` : activeTab;
+  const activeTabPagerHeight = tabHeights[activeTabKey];
+  // Fallback so the horizontal pager never collapses to 0 height before its
+  // active page has been measured. An undefined height made the pager (and its
+  // cards) render as thin slivers on every re-route; the real measured height
+  // replaces this on the next layout pass.
+  const estimatedPagerHeight = Math.max(360, Math.round(windowHeight * 0.6));
 
   const [transitionReady, setTransitionReady] = useState(false);
 
@@ -768,12 +779,12 @@ export default function CatalogScreen() {
     [containerWidth],
   );
 
-  const handleTabPageLayout = useCallback((tab: TabType, event: LayoutChangeEvent) => {
+  const handleTabPageLayout = useCallback((key: string, event: LayoutChangeEvent) => {
     const height = Math.ceil(event.nativeEvent.layout.height);
     if (height <= 0) return;
 
     setTabHeights((current) => (
-      current[tab] === height ? current : { ...current, [tab]: height }
+      current[key] === height ? current : { ...current, [key]: height }
     ));
   }, []);
 
@@ -1569,11 +1580,11 @@ export default function CatalogScreen() {
           scrollEventThrottle={16}
           onScroll={handleTabPagerScroll}
           onMomentumScrollEnd={handleTabPagerMomentumEnd}
-          style={[styles.tabPager, activeTabPagerHeight ? { height: activeTabPagerHeight } : null]}
+          style={[styles.tabPager, { height: activeTabPagerHeight ?? estimatedPagerHeight }]}
           contentContainerStyle={styles.tabPagerContent}
         >
           <View
-            onLayout={(event) => handleTabPageLayout('Collections', event)}
+            onLayout={(event) => handleTabPageLayout(`Collections:${visibilityFilter}`, event)}
             style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
           >
               {isOwner ? (
