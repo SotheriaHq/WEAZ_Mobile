@@ -62,6 +62,8 @@ export type BrandProfileHeaderProps = {
   onViewAvatar?: () => void;
   onEditAvatar?: () => void;
   onEditBanner?: () => void;
+  onNotifications?: () => void;
+  unreadNotificationCount?: number;
 };
 
 function compactInitials(value: string) {
@@ -123,12 +125,14 @@ function HeaderIconButton({
   onPress,
   disabled = false,
   bare = false,
+  badgeCount,
 }: {
   label: string;
   value: string;
   onPress?: () => void;
   disabled?: boolean;
   bare?: boolean;
+  badgeCount?: number;
 }) {
   const { theme } = useTheme();
 
@@ -153,6 +157,13 @@ function HeaderIconButton({
       <AppText variant="subtitle" tone="default" style={styles.headerIconText}>
         {value}
       </AppText>
+      {typeof badgeCount === 'number' && badgeCount > 0 ? (
+        <View style={[styles.headerIconBadge, { backgroundColor: theme.colors.danger, borderColor: theme.colors.surface }]}>
+          <AppText variant="statLabel" style={[styles.headerIconBadgeText, { color: theme.colors.textInverse }]}>
+            {badgeCount > 99 ? '99+' : badgeCount}
+          </AppText>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -170,6 +181,8 @@ function BannerHeader({
   qrTargetUrl,
   onOpenQr,
   onEditBanner,
+  onNotifications,
+  unreadNotificationCount,
 }: Pick<
   BrandProfileHeaderProps,
   | 'brandName'
@@ -184,6 +197,8 @@ function BannerHeader({
   | 'qrTargetUrl'
   | 'onOpenQr'
   | 'onEditBanner'
+  | 'onNotifications'
+  | 'unreadNotificationCount'
 >) {
   const { scheme, theme } = useTheme();
   const { width: viewportWidth } = useWindowDimensions();
@@ -240,7 +255,9 @@ function BannerHeader({
         <View style={styles.bannerRightControls}>
           {!isOwner ? (
             <HeaderIconButton label="Search" value="🔍" onPress={onSearch} bare />
-          ) : null}
+          ) : (
+            <HeaderIconButton label="Notifications" value="🔔" onPress={onNotifications} badgeCount={unreadNotificationCount} bare />
+          )}
           <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} bare />
         </View>
       </View>
@@ -452,7 +469,7 @@ function BrandStatsRow({ stats }: { stats: BrandHeaderStat[] }) {
           {index > 0 ? <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} /> : null}
           <View style={styles.statItem}>
             <AppText
-              variant="smallBold"
+              variant="statValue"
               tone="secondary"
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -462,7 +479,7 @@ function BrandStatsRow({ stats }: { stats: BrandHeaderStat[] }) {
               {stat.value}
             </AppText>
             <AppText
-              variant="captionBold"
+              variant="statLabel"
               tone="muted"
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -578,15 +595,15 @@ function BrandDescription({ description }: { description?: string | null }) {
   return (
     <View style={styles.descriptionWrap}>
       <AppText
-        variant="bodyRegular"
-        tone="secondary"
+        variant="bodyReadable"
+        tone="default"
         numberOfLines={expanded ? undefined : BRAND_DESCRIPTION_PREVIEW_LINES}
       >
         {copy}
       </AppText>
       <AppText
-        variant="bodyRegular"
-        tone="secondary"
+        variant="bodyReadable"
+        tone="default"
         style={styles.descriptionMeasureText}
         onTextLayout={handleMeasuredTextLayout}
         accessible={false}
@@ -865,6 +882,8 @@ export function BrandProfileHeader({
   onViewAvatar,
   onEditAvatar,
   onEditBanner,
+  onNotifications,
+  unreadNotificationCount,
 }: BrandProfileHeaderProps) {
   const { theme } = useTheme();
   const effectiveName = brandName || username || 'WEAZ Brand';
@@ -890,6 +909,8 @@ export function BrandProfileHeader({
         qrTargetUrl={qrTargetUrl}
         onOpenQr={onOpenQr}
         onEditBanner={onEditBanner}
+        onNotifications={onNotifications}
+        unreadNotificationCount={unreadNotificationCount}
       />
 
       <View style={styles.identityRow}>
@@ -1020,6 +1041,22 @@ const styles = StyleSheet.create({
   },
   headerIconText: {
     textAlign: 'center',
+  },
+  headerIconBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+  },
+  headerIconBadgeText: {
+    fontSize: 10,
+    lineHeight: 12,
   },
   bannerNameChip: {
     position: 'absolute',

@@ -43,6 +43,7 @@ import { VisibilityFilter } from '@/components/catalog/VisibilityFilter';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/src/toast/ToastContext';
 import { useBrandPatchStatus } from '@/src/hooks/useBrandPatchStatus';
+import { useUnreadNotificationCount } from '@/src/realtime/notifications';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { resolveBannerImageSource, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { BrandShopTab } from '@/components/catalog/BrandShopTab';
@@ -256,6 +257,7 @@ export default function CatalogScreen() {
   const { status, userId, userType, userEmailVerified, updateUser } = useAuthSession();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const unreadNotificationCount = useUnreadNotificationCount();
   const isDark = scheme === 'dark';
   const activeBrandId = getActiveBrandId(user);
   const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
@@ -1553,6 +1555,8 @@ export default function CatalogScreen() {
             onOpenQr={() => setBrandQrOpen(true)}
             onBack={handleBackNavigation}
             onSearch={() => router.push('/search')}
+            onNotifications={() => router.push('/notifications')}
+            unreadNotificationCount={unreadNotificationCount}
           />
         ) : (
           <BrandProfileHeader

@@ -33,6 +33,8 @@ type OwnerCatalogMediaHeaderProps = {
   stats?: BrandHeaderStat[];
   contactItems?: BrandHeaderContactItem[];
   badges?: ProfileBadgeModel[];
+  onNotifications?: () => void;
+  unreadNotificationCount?: number;
 };
 
 type PendingMediaState = {
@@ -65,6 +67,8 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   stats = [],
   contactItems = [],
   badges = [],
+  onNotifications,
+  unreadNotificationCount,
 }: OwnerCatalogMediaHeaderProps) {
   const { user, updateUser } = useAuth();
   const queryClient = useQueryClient();
@@ -310,6 +314,8 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       onBack={onBack}
       onSearch={onSearch}
       onViewAvatar={onViewAvatar}
+      onNotifications={onNotifications}
+      unreadNotificationCount={unreadNotificationCount}
     />
   );
 });

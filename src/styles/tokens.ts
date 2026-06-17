@@ -166,9 +166,9 @@ export const tokens = {
     /** 24px / 700 — primary mobile titles */
     title: { size: 24, weight: '700' as const, lineHeight: 30 },
     /** 24px / 700 — profile names */
-    profileName: { size: 24, weight: '700' as const, lineHeight: 30 },
-    /** 22px / 700 — brand names */
-    brandName: { size: 22, weight: '700' as const, lineHeight: 28 },
+    profileName: { size: 24, weight: '700' as const, lineHeight: 28 },
+    /** 24px / 700 — brand names */
+    brandName: { size: 24, weight: '700' as const, lineHeight: 28 },
     /** 18px / 600 — section headers */
     sectionTitle: { size: 18, weight: '600' as const, lineHeight: 24 },
     /** 18px / 600 — section headers and strong subtitles */
@@ -177,20 +177,24 @@ export const tokens = {
     cardTitle: { size: 16, weight: '600' as const, lineHeight: 22 },
     /** 16px / 500 — main body content */
     body: { size: 16, weight: '500' as const, lineHeight: 24 },
-    /** 16px / 400 — highly readable body text */
-    bodyReadable: { size: 16, weight: '400' as const, lineHeight: 24 },
-    /** 16px / 600 — button labels */
-    buttonLabel: { size: 16, weight: '600' as const, lineHeight: 22 },
-    /** 16px / 600 — action labels */
-    actionLabel: { size: 16, weight: '600' as const, lineHeight: 22 },
+    /** 15px / 500 — highly readable body text */
+    bodyReadable: { size: 15, weight: '500' as const, lineHeight: 22 },
+    /** 16px / 700 — button labels */
+    buttonLabel: { size: 16, weight: '700' as const, lineHeight: 22 },
+    /** 16px / 700 — action labels */
+    actionLabel: { size: 16, weight: '700' as const, lineHeight: 22 },
     /** 12px / 500 — supporting meta text */
     caption: { size: 12, weight: '500' as const, lineHeight: 16 },
-    /** 12px / 500 — meta */
-    meta: { size: 12, weight: '500' as const, lineHeight: 16 },
+    /** 13px / 600 — meta */
+    meta: { size: 13, weight: '600' as const, lineHeight: 18 },
     /** 12px / 700 — badge labels */
     badgeLabel: { size: 12, weight: '700' as const, lineHeight: 16 },
     /** 11px / 600 — nav labels */
     navLabel: { size: 11, weight: '600' as const, lineHeight: 14 },
+    /** 14px / 700 — stat numbers */
+    statValue: { size: 14, weight: '700' as const, lineHeight: 20 },
+    /** 12px / 600 — stat labels */
+    statLabel: { size: 12, weight: '600' as const, lineHeight: 16 },
 
     // Compatibility aliases for existing mobile code during migration.
     h1: { size: 24, weight: '700' as const, lineHeight: 30 },

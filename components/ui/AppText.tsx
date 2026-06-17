@@ -37,7 +37,9 @@ type Variant =
   | 'buttonLabel'
   | 'badgeLabel'
   | 'navLabel'
-  | 'meta';
+  | 'meta'
+  | 'statValue'
+  | 'statLabel';
 
 type Tone = 'default' | 'secondary' | 'muted' | 'inverse' | 'primary' | 'danger' | 'success' | 'warning';
 type TypographyTokenKey =
@@ -62,7 +64,9 @@ type TypographyTokenKey =
   | 'buttonLabel'
   | 'badgeLabel'
   | 'navLabel'
-  | 'meta';
+  | 'meta'
+  | 'statValue'
+  | 'statLabel';
 
 type Props = Omit<TextProps, 'style'> & {
   variant?: Variant;
@@ -110,6 +114,8 @@ const VARIANT_MAP: Record<Variant, TypographyTokenKey> = {
   badgeLabel: 'badgeLabel',
   navLabel: 'navLabel',
   meta: 'meta',
+  statValue: 'statValue',
+  statLabel: 'statLabel',
 };
 
 const FONT_FAMILY_MAP: Record<TypographyTokenKey, string> = {
@@ -135,6 +141,8 @@ const FONT_FAMILY_MAP: Record<TypographyTokenKey, string> = {
   badgeLabel: tokens.fontFamily.bold,
   navLabel: tokens.fontFamily.semiBold,
   meta: tokens.fontFamily.medium,
+  statValue: tokens.fontFamily.bold,
+  statLabel: tokens.fontFamily.bold,
 };
 
 function getToneColor(tone: Tone, theme: ReturnType<typeof useTheme>['theme']) {
