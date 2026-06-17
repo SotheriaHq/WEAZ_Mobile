@@ -442,15 +442,15 @@ export default function CatalogScreen() {
   );
   const draftsQuery = useBrandDraftsQuery({
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'Drafts',
+    enabled: isOwner && Boolean(collectionOwnerId),
   });
   const needsAttentionQuery = useBrandNeedsAttentionQuery({
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'Needs Attention',
+    enabled: isOwner && Boolean(collectionOwnerId),
   });
   const inReviewQuery = useBrandInReviewQuery({
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'In Review',
+    enabled: isOwner && Boolean(collectionOwnerId),
   });
   const effectiveProfile = profileQuery.data !== undefined ? profileQuery.data : profile;
   let effectiveCollections = collectionsQuery.data ?? collections;

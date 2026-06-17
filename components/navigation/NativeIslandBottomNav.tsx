@@ -4,6 +4,7 @@ import { BlurView } from 'expo-blur';
 
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { navPerf } from '@/src/utils/navPerf';
 import {
   getNativeIslandContentClearance,
   getNativeIslandLayout,
@@ -24,6 +25,8 @@ export type NativeIslandNavItem = {
   active?: boolean;
   disabled?: boolean;
   badge?: number;
+  navFlow?: string;
+  targetRoute?: string | null;
 };
 
 type NativeIslandBottomNavProps = {
@@ -157,6 +160,28 @@ export function NativeIslandBottomNav({
   const { windowWidth, islandLayout } = useScreenChrome();
   const { bottomOffset, sideOffset, islandWidth } = islandLayout;
   const compact = items.length >= 6 || windowWidth < 380;
+  const [pressedItemKey, setPressedItemKey] = React.useState<string | null>(null);
+  const [pressedNavFlow, setPressedNavFlow] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!pressedItemKey || !pressedNavFlow) return;
+    navPerf.activeIndicatorVisible(pressedNavFlow);
+  }, [pressedItemKey, pressedNavFlow]);
+
+  const clearPressedItem = React.useCallback(() => {
+    setPressedItemKey(null);
+    setPressedNavFlow(null);
+  }, []);
+
+  const handleItemPressIn = React.useCallback(
+    (item: NativeIslandNavItem) => {
+      setPressedItemKey(item.key);
+      setPressedNavFlow(item.navFlow ?? item.key);
+      onPressIn?.(item);
+      onSelect(item);
+    },
+    [onPressIn, onSelect],
+  );
 
   if (items.length === 0) {
     return null;
@@ -192,18 +217,24 @@ export function NativeIslandBottomNav({
               <Pressable
                 key={item.key}
                 accessibilityRole="tab"
-                accessibilityState={{ selected: Boolean(item.active && !item.disabled), disabled: item.disabled }}
+                accessibilityState={{ selected: Boolean((item.active || pressedItemKey === item.key) && !item.disabled), disabled: item.disabled }}
                 accessibilityLabel={item.label}
                 disabled={item.disabled}
-                onPressIn={item.disabled ? undefined : () => { onPressIn?.(item); onSelect(item); }}
+                onPressIn={item.disabled ? undefined : () => handleItemPressIn(item)}
+                onPressOut={clearPressedItem}
                 onPress={undefined}
+                android_ripple={{
+                  color: scheme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(147,51,234,0.14)',
+                  borderless: false,
+                  foreground: true,
+                }}
                 style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
               >
                 <NativeIslandTabIcon
                   label={item.label}
                   emoji={item.emoji}
                   avatarUri={item.avatarUri}
-                  focused={Boolean(item.active && !item.disabled)}
+                  focused={Boolean((item.active || pressedItemKey === item.key) && !item.disabled)}
                   badge={item.badge}
                   compact={compact}
                 />

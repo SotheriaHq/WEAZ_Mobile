@@ -58,7 +58,7 @@ export const tokens = {
   themes: {
     light: {
       colors: {
-        bg: '#F0F2F5',
+        bg: '#FFFFFF',
         surface: '#ffffff',
         surfaceAlt: '#E9EEF5',
         surfaceOverlay: '#FFFFFF',

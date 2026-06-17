@@ -152,7 +152,7 @@ export default function TabLayout() {
 
   const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
     if (item.disabled) return;
-    const navFlow = getIslandNavFlow(item, isBrand, canOpenProfileMenu);
+    const navFlow = item.navFlow ?? getIslandNavFlow(item, isBrand, canOpenProfileMenu);
     navPerf.tap(navFlow);
     navPerf.pressedFeedbackVisible(navFlow);
     setOptimisticActiveKey(item.key as NativeIslandKey);
@@ -169,7 +169,11 @@ export default function TabLayout() {
         profileBadge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
         inboxBadge: canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
         bagBadge: bagCount.combinedCount,
-      }),
+      }).map((item) => ({
+        ...item,
+        navFlow: getIslandNavFlow(item, isBrand, canOpenProfileMenu),
+        targetRoute: getNativeIslandRoute(item.key, isBrand),
+      })),
     [
       bagCount.combinedCount,
       canOpenProfileMenu,
@@ -202,10 +206,6 @@ export default function TabLayout() {
     navPerf.pathChanged(pathname);
   }, [pathname]);
 
-  useEffect(() => {
-    navPerf.activeIndicatorVisible();
-  }, [displayedActiveKey]);
-
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
       if (item.key === 'profile') {
@@ -219,7 +219,7 @@ export default function TabLayout() {
         return;
       }
 
-      const nextRoute = getNativeIslandRoute(item.key, isBrand);
+      const nextRoute = item.targetRoute ?? getNativeIslandRoute(item.key, isBrand);
       if (nextRoute) {
         navPerf.navigationCalled();
         // navigate (not replace) so switching between island tabs reuses the
@@ -244,18 +244,12 @@ export default function TabLayout() {
 
   useEffect(() => {
     setNotificationCountReady(false);
-    const timer = setTimeout(() => {
-      void refreshUnreadNotificationCount();
-    }, 500);
-    return () => clearTimeout(timer);
+    void refreshUnreadNotificationCount();
   }, [refreshUnreadNotificationCount, user?.id]);
 
   useEffect(() => {
     setMessageCountReady(false);
-    const timer = setTimeout(() => {
-      void refreshUnreadMessageCount();
-    }, 500);
-    return () => clearTimeout(timer);
+    void refreshUnreadMessageCount();
   }, [refreshUnreadMessageCount, user?.id]);
 
   useEffect(() => {
