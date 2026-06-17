@@ -20,6 +20,7 @@ import { resolveIdentity } from '@/src/utils/identity';
 import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
+import { navPerf } from '@/src/utils/navPerf';
 
 type PublicProfileSnapshot = {
   profile: UserProfile;
@@ -104,6 +105,12 @@ export default function PublicProfileScreen() {
     writeWarmScreenState(warmProfileStateKey, { profile, patches });
   }, [patches, profile, warmProfileStateKey]);
 
+  useEffect(() => {
+    navPerf.screenMounted('profile_detail');
+    navPerf.shellVisible('profile_detail');
+    navPerf.firstVisibleUi('profile_detail');
+  }, []);
+
   const load = useCallback(async () => {
     if (!profileId) {
       setError('Profile not found.');
@@ -167,6 +174,13 @@ export default function PublicProfileScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!loading) {
+      navPerf.mark('cached_or_empty_state_visible', 'profile_detail');
+      navPerf.dataReady('profile_detail');
+    }
+  }, [loading]);
 
   const identity = useMemo(() => resolveIdentity(profile), [profile]);
   const avatarUri = useResolvedImageUri({

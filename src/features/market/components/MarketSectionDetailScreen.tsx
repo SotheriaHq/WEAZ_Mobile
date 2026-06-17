@@ -227,6 +227,7 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
   // data is ready once the initial section load settles.
   useEffect(() => {
     navPerf.screenMounted('market→section');
+    navPerf.shellVisible('market→section');
     navPerf.firstVisibleUi('market→section');
   }, []);
   useEffect(() => {

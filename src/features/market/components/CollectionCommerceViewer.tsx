@@ -32,6 +32,8 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
+import { navPerf } from '@/src/utils/navPerf';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
 
 type CollectionCommerceViewerProps = {
@@ -172,11 +174,13 @@ export function CollectionCommerceViewer({
         }
         return new Set(nextStatus.products.filter((product) => product.canBag).map((product) => product.productId));
       });
+      setLoading(false);
       if (authStatus === 'authenticated') {
-        const savedMap = await SavedItemsApi.checkBatch('COLLECTION', [normalizedCollectionId]).catch(
-          (): Record<string, boolean> => ({}),
-        );
-        setSaved(Boolean(savedMap[normalizedCollectionId]));
+        void SavedItemsApi.checkBatch('COLLECTION', [normalizedCollectionId])
+          .then((savedMap: Record<string, boolean>) => {
+            setSaved(Boolean(savedMap[normalizedCollectionId]));
+          })
+          .catch(() => undefined);
       } else {
         setSaved(false);
       }
@@ -189,8 +193,20 @@ export function CollectionCommerceViewer({
   }, [authStatus, normalizedCollectionId]);
 
   useEffect(() => {
+    navPerf.screenMounted('collection_viewer');
+    navPerf.shellVisible('collection_viewer');
+    navPerf.firstVisibleUi('collection_viewer');
+  }, []);
+
+  useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!loading && status) {
+      navPerf.dataReady('collection_viewer');
+    }
+  }, [loading, status]);
 
   const selectedProducts = useMemo(
     () => status?.products.filter((product) => selectedIds.has(product.productId)) ?? [],
@@ -214,11 +230,7 @@ export function CollectionCommerceViewer({
   }, [authStatus, routePath, toast]);
 
   const goBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace(fallbackHref as any);
+    backOrNavigate(fallbackHref as any);
   }, [fallbackHref]);
 
   const reloadAfterMutation = useCallback(async () => {

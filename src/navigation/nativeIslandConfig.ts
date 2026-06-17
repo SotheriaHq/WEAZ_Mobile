@@ -21,11 +21,43 @@ export const NATIVE_ISLAND_ICONS: Record<NativeIslandKey | 'signIn', string> = {
 };
 
 export function mapPathnameToIslandKey(pathname: string): NativeIslandKey {
-  if (pathname === '/discover' || pathname.startsWith('/products/') || pathname === '/search') return NATIVE_ISLAND_KEYS.market;
-  if (pathname === '/inbox' || pathname.startsWith('/messages/')) return NATIVE_ISLAND_KEYS.inbox;
-  if (pathname === '/me' || pathname === '/me-edit' || pathname === '/catalog' || pathname.startsWith('/catalog/')) {
+  const normalized = pathname.replace(/^\/\(tabs\)/, '') || '/';
+
+  if (
+    normalized === '/discover' ||
+    normalized === '/search' ||
+    normalized.startsWith('/products/') ||
+    normalized === '/market-section' ||
+    normalized === '/market-viewer' ||
+    normalized === '/collection-viewer' ||
+    normalized === '/collection-gallery'
+  ) {
+    return NATIVE_ISLAND_KEYS.market;
+  }
+
+  if (normalized === '/bag' || normalized === '/checkout' || normalized === '/payment') return NATIVE_ISLAND_KEYS.bag;
+
+  if (normalized === '/inbox' || normalized.startsWith('/messages/')) return NATIVE_ISLAND_KEYS.inbox;
+
+  if (
+    normalized === '/me' ||
+    normalized === '/me-edit' ||
+    normalized === '/catalog' ||
+    normalized.startsWith('/catalog/') ||
+    normalized.startsWith('/profile/') ||
+    normalized === '/orders' ||
+    normalized.startsWith('/orders/') ||
+    normalized === '/notifications' ||
+    normalized === '/reviews' ||
+    normalized.startsWith('/reviews/') ||
+    normalized === '/settings' ||
+    normalized.startsWith('/settings/') ||
+    normalized === '/studio' ||
+    normalized.startsWith('/studio/')
+  ) {
     return NATIVE_ISLAND_KEYS.profile;
   }
+
   return NATIVE_ISLAND_KEYS.designs;
 }
 

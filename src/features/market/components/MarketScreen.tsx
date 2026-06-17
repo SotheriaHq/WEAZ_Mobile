@@ -1365,6 +1365,7 @@ export function MarketScreen() {
   // or skeleton); data is ready once the initial market load settles.
   useEffect(() => {
     navPerf.screenMounted('tabs→market');
+    navPerf.shellVisible('tabs→market');
     navPerf.firstVisibleUi('tabs→market');
   }, []);
   useEffect(() => {

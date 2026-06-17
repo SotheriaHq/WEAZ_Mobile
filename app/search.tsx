@@ -276,7 +276,17 @@ export default function SearchScreen() {
 
   useEffect(() => {
     perfMeasure('runway-search-first-paint', 'runway-search-tap');
+    navPerf.screenMounted('tabs→search');
+    navPerf.shellVisible('tabs→search');
+    navPerf.firstVisibleUi('tabs→search');
   }, []);
+
+  useEffect(() => {
+    if (!suggestionsLoading && resultState.status !== 'loading') {
+      navPerf.mark('cached_or_empty_state_visible', 'tabs→search');
+      navPerf.dataReady('tabs→search');
+    }
+  }, [resultState.status, suggestionsLoading]);
 
   const loadSuggestions = useCallback(async (value: string, signal?: AbortSignal) => {
     const nextRequestId = requestIdRef.current + 1;

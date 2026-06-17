@@ -947,7 +947,7 @@ export function BrandShopTab({
   );
 
   return (
-    <View style={styles.shopRoot}>
+    <View style={[styles.shopRoot, !scrollEnabled && { flex: undefined }]}>
       {filteredProducts.length === 0 ? listHeader : null}
 
       {filteredProducts.length === 0 ? (

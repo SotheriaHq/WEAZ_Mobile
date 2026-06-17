@@ -17,9 +17,16 @@ import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostic
  */
 type NavStage =
   | 'tap'
+  | 'tap_start'
+  | 'pressed_feedback_visible'
+  | 'active_indicator_visible'
   | 'navigation_called'
+  | 'route_call'
+  | 'path_changed'
   | 'screen_mounted'
+  | 'shell_visible'
   | 'first_visible_ui'
+  | 'bag_sheet_opened'
   // usable_ui = the user can actually act (footer/actions reachable, form
   // interactive) — distinct from first_visible_ui (something merely appeared).
   | 'usable_ui'
@@ -47,13 +54,31 @@ export const navPerf = {
     if (!enabled()) return;
     activeFlow = flow;
     tapAt = Date.now();
-    emit('tap', flow);
+    emit('tap_start', flow);
+  },
+  /** Record when the native pressed state should be visible. */
+  pressedFeedbackVisible(flow?: string) {
+    if (!enabled()) return;
+    const f = flow ?? activeFlow;
+    if (f) emit('pressed_feedback_visible', f);
+  },
+  /** Record when the active island indicator has committed visually. */
+  activeIndicatorVisible(flow?: string) {
+    if (!enabled()) return;
+    const f = flow ?? activeFlow;
+    if (f) emit('active_indicator_visible', f);
   },
   /** Record the moment `router.push/replace` (or equivalent) is invoked. */
   navigationCalled(flow?: string) {
     if (!enabled()) return;
     const f = flow ?? activeFlow;
-    if (f) emit('navigation_called', f);
+    if (f) emit('route_call', f);
+  },
+  /** Record when Expo Router reports a new pathname. */
+  pathChanged(pathname: string, flow?: string) {
+    if (!enabled()) return;
+    const f = flow ?? activeFlow;
+    if (f) emit('path_changed', `${f} ${pathname}`);
   },
   /** Record when the destination screen component mounts. */
   screenMounted(flow?: string) {
@@ -61,11 +86,22 @@ export const navPerf = {
     const f = flow ?? activeFlow;
     if (f) emit('screen_mounted', f);
   },
+  /** Record when the destination shell is visible, before non-critical data. */
+  shellVisible(flow?: string) {
+    if (!enabled()) return;
+    const f = flow ?? activeFlow;
+    if (f) emit('shell_visible', f);
+  },
   /** Record when the destination paints its first visible shell/skeleton. */
   firstVisibleUi(flow?: string) {
     if (!enabled()) return;
     const f = flow ?? activeFlow;
     if (f) emit('first_visible_ui', f);
+  },
+  bagSheetOpened(flow?: string) {
+    if (!enabled()) return;
+    const f = flow ?? activeFlow;
+    if (f) emit('bag_sheet_opened', f);
   },
   /**
    * Generic marker for the usability-focused stages that aren't part of the

@@ -426,11 +426,12 @@ export function CollectionDetailViewer({
 
   useEffect(() => {
     navPerf.screenMounted('design_detail');
+    navPerf.shellVisible('design_detail');
+    navPerf.firstVisibleUi('design_detail');
   }, []);
 
   useEffect(() => {
     if (!loading && detail) {
-      navPerf.firstVisibleUi('design_detail');
       navPerf.dataReady('design_detail');
     }
   }, [loading, detail]);

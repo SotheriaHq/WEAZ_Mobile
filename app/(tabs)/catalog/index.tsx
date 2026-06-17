@@ -295,7 +295,7 @@ export default function CatalogScreen() {
     () => readDesignEditorBackgroundTasks(),
   );
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [containerWidth, setContainerWidth] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(windowWidth);
 
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
@@ -348,12 +348,41 @@ export default function CatalogScreen() {
   const estimatedPagerHeight = Math.max(360, Math.round(windowHeight * 0.6));
 
   const [transitionReady, setTransitionReady] = useState(false);
+  const [mountedTabs, setMountedTabs] = useState<Set<TabType>>(
+    () => new Set<TabType>(routeProductId ? ['Collections', 'Shop'] : [activeTab]),
+  );
 
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => {
       setTransitionReady(true);
     });
     return () => handle.cancel();
+  }, []);
+
+  useEffect(() => {
+    setMountedTabs((current) => {
+      if (current.has(activeTab)) return current;
+      const next = new Set(current);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (routeProductId) {
+      setMountedTabs((current) => {
+        if (current.has('Shop')) return current;
+        const next = new Set(current);
+        next.add('Shop');
+        return next;
+      });
+    }
+  }, [routeProductId]);
+
+  useEffect(() => {
+    navPerf.screenMounted('tabs→catalog');
+    navPerf.shellVisible('tabs→catalog');
+    navPerf.firstVisibleUi('tabs→catalog');
   }, []);
 
   useEffect(() => {
@@ -411,17 +440,15 @@ export default function CatalogScreen() {
   );
   const draftsQuery = useBrandDraftsQuery({
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId),
+    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'Drafts',
   });
   const needsAttentionQuery = useBrandNeedsAttentionQuery({
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId),
+    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'Needs Attention',
   });
-  // Always-on so In Review count/content preloads on catalogue entry rather than
-  // only after the In Review tab is tapped.
   const inReviewQuery = useBrandInReviewQuery({
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId),
+    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'In Review',
   });
   const effectiveProfile = profileQuery.data !== undefined ? profileQuery.data : profile;
   let effectiveCollections = collectionsQuery.data ?? collections;
@@ -1252,7 +1279,11 @@ export default function CatalogScreen() {
   const profileInitialLoading = profileQuery.isLoading && !effectiveProfile && !profileRef.current;
   const listInitialLoading = visibilityFilter === 'Drafts'
     ? draftsQuery.isLoading && effectiveDrafts.length === 0
-    : collectionsQuery.isLoading && effectiveCollections.length === 0;
+    : visibilityFilter === 'Needs Attention'
+      ? needsAttentionQuery.isLoading && effectiveCollections.length === 0
+      : visibilityFilter === 'In Review'
+        ? inReviewQuery.isLoading && effectiveCollections.length === 0
+        : collectionsQuery.isLoading && effectiveCollections.length === 0;
   // Warm return must never flash a skeleton. If cached/previous catalogue content
   // already exists, render it immediately — the transitionReady defer (which only
   // exists to avoid heavy synchronous work during the nav animation) must not blank
@@ -1269,6 +1300,17 @@ export default function CatalogScreen() {
         (profileInitialLoading || listInitialLoading),
       ));
   const overlayScrollPadding = standardScreenBottomPadding;
+  const shouldMountShopTab = mountedTabs.has('Shop') || Boolean(routeProductId);
+  const shouldMountReviewsTab = mountedTabs.has('Reviews');
+
+  useEffect(() => {
+    if (!showInitialSkeleton) {
+      navPerf.mark('cached_or_empty_state_visible', 'tabs→catalog');
+    }
+    if (!showInitialSkeleton && !profileInitialLoading && !listInitialLoading) {
+      navPerf.dataReady('tabs→catalog');
+    }
+  }, [listInitialLoading, profileInitialLoading, showInitialSkeleton]);
 
   // Tab configuration
   const tabs = [
@@ -1663,7 +1705,7 @@ export default function CatalogScreen() {
             onLayout={(event) => handleTabPageLayout('Shop', event)}
             style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
           >
-            {containerWidth > 0 && targetBrandId ? (
+            {shouldMountShopTab && containerWidth > 0 && targetBrandId ? (
               <BrandShopTab
                 brandId={targetBrandId}
                 isOwner={isOwner}
@@ -1678,10 +1720,8 @@ export default function CatalogScreen() {
             onLayout={(event) => handleTabPageLayout('Reviews', event)}
             style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
           >
-            {/* Keep the Reviews tab mounted (gated by `enabled`) so switching tabs
-                preserves its state instead of remounting/reloading the whole tab
-                body each time. ReviewsTab no-ops its fetch while disabled. */}
-            {targetBrandId ? (
+            {/* Reviews stays lazy until first activation to keep catalogue shell-first. */}
+            {shouldMountReviewsTab && targetBrandId ? (
               <BrandReviewsTab brandId={targetBrandId} enabled={activeTab === 'Reviews'} />
             ) : (
               <View style={styles.tabContent} />

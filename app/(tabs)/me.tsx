@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View, InteractionManager } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -414,14 +414,12 @@ export default function BuyerProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Saved');
-  const [transitionReady, setTransitionReady] = useState(() => Boolean(initialWarmProfileState));
   const [hasWarmProfileSnapshot, setHasWarmProfileSnapshot] = useState(() => Boolean(initialWarmProfileState));
 
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      setTransitionReady(true);
-    });
-    return () => handle.cancel();
+    navPerf.screenMounted('tabs→me');
+    navPerf.shellVisible('tabs→me');
+    navPerf.firstVisibleUi('tabs→me');
   }, []);
   const savedLooksOpenedTrackedRef = useRef(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -488,7 +486,6 @@ export default function BuyerProfileScreen() {
         setLoading(!cachedState);
         setRefreshing(false);
         setHasWarmProfileSnapshot(Boolean(cachedState));
-        setTransitionReady(Boolean(cachedState));
       }
       return;
     }
@@ -500,7 +497,6 @@ export default function BuyerProfileScreen() {
     setLoading(false);
     setRefreshing(false);
     setHasWarmProfileSnapshot(false);
-    setTransitionReady(false);
   }, [status, user?.id]);
 
   useEffect(() => {
@@ -581,7 +577,6 @@ export default function BuyerProfileScreen() {
         orders: nextOrders,
       });
       setHasWarmProfileSnapshot(true);
-      setTransitionReady(true);
 
       if (warmProfileStateKey) {
         writeWarmScreenState(warmProfileStateKey, {
@@ -605,7 +600,6 @@ export default function BuyerProfileScreen() {
         profile: fallbackProfile,
       }));
       setHasWarmProfileSnapshot(true);
-      setTransitionReady(true);
       setError(nextError instanceof Error ? nextError.message : 'Unable to load your profile.');
     } finally {
       if (requestId === loadRequestIdRef.current) {
@@ -620,6 +614,13 @@ export default function BuyerProfileScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (status === 'authenticated' && !loading) {
+      navPerf.mark('cached_or_empty_state_visible', 'tabs→me');
+      navPerf.dataReady('tabs→me');
+    }
+  }, [loading, status]);
 
   useEffect(() => {
     if (!editOpen || !profileRecord) return;
@@ -844,7 +845,7 @@ export default function BuyerProfileScreen() {
     ]);
   }, [signOut]);
 
-  if (status === 'loading' || (!hasWarmProfileSnapshot && (!transitionReady || (status === 'authenticated' && loading)))) {
+  if (status === 'loading') {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <BrandHeader />

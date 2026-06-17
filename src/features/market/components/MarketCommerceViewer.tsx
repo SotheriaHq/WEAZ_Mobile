@@ -46,6 +46,7 @@ import { useToast } from '@/src/toast/ToastContext';
 import type { SizeRecommendationResponse } from '@/src/api/ProfileApi';
 import { CONFIDENCE_LABELS, SIZING_REGION_LABELS } from '@/src/utils/sizeRecommendation';
 import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
 
 type CommerceSourceType = Extract<BagSourceType, 'PRODUCT' | 'DESIGN'>;
@@ -339,41 +340,45 @@ export function MarketCommerceViewer({
     setError(null);
     try {
       if (sourceType === 'PRODUCT') {
-        const [nextProduct, nextStatus] = await Promise.all([
-          queryClient.fetchQuery({
-            queryKey: productKey,
-            queryFn: () => MobileStoreApi.getProductById(normalizedSourceId),
-            staleTime: THREADLY_QUERY_STALE_TIME_MS,
-          }),
-          prepareBag(normalizedSourceId).catch(() => null),
-        ]);
+        const nextProduct = await queryClient.fetchQuery({
+          queryKey: productKey,
+          queryFn: () => MobileStoreApi.getProductById(normalizedSourceId),
+          staleTime: THREADLY_QUERY_STALE_TIME_MS,
+        });
         setProduct(nextProduct);
         setDesign(null);
         setSaved(Boolean(nextProduct.isWishlisted));
-        setBagStatus(nextStatus);
+        void prepareBag(normalizedSourceId)
+          .then((nextStatus) => {
+            if (nextStatus) setBagStatus(nextStatus);
+          })
+          .catch(() => undefined);
         return;
       }
 
-      const [nextDesign, nextStatus] = await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: designKey,
-          queryFn: () => brandApi.getCollectionDetail(normalizedSourceId, { scope: 'design' }),
-          staleTime: THREADLY_QUERY_STALE_TIME_MS,
-        }),
-        prepareSourceBag('DESIGN', normalizedSourceId).catch(() => null),
-      ]);
+      const nextDesign = await queryClient.fetchQuery({
+        queryKey: designKey,
+        queryFn: () => brandApi.getCollectionDetail(normalizedSourceId, { scope: 'design' }),
+        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+      });
       if (!nextDesign) {
         throw new Error('Design unavailable.');
       }
       setProduct(null);
       setDesign(nextDesign);
-      setBagStatus(nextStatus);
+      void prepareSourceBag('DESIGN', normalizedSourceId)
+        .then((nextStatus) => {
+          if (nextStatus) setBagStatus(nextStatus);
+        })
+        .catch(() => undefined);
 
       if (authStatus === 'authenticated') {
-        const savedResult: Record<string, boolean> = await SavedItemsApi
+        void SavedItemsApi
           .checkBatch('COLLECTION', [normalizedSourceId])
-          .catch(() => ({}));
-        setSaved(Boolean(savedResult[normalizedSourceId]));
+          .then((savedResult: Record<string, boolean>) => {
+            setSaved(Boolean(savedResult[normalizedSourceId]));
+          })
+          .catch(() => undefined);
       } else {
         setSaved(false);
       }
@@ -392,6 +397,7 @@ export function MarketCommerceViewer({
     // Shell (media pager + action cluster) renders immediately; the loader is an
     // overlay, so mount == first visible UI here.
     navPerf.screenMounted('product_detail');
+    navPerf.shellVisible('product_detail');
     navPerf.firstVisibleUi('product_detail');
   }, []);
 
@@ -507,11 +513,7 @@ export function MarketCommerceViewer({
       : 'Custom bagging unavailable';
 
   const handleBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace(fallbackHref as any);
+    backOrNavigate(fallbackHref as any);
   }, [fallbackHref]);
 
   const routePath = sourceType === 'PRODUCT'

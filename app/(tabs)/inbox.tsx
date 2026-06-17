@@ -523,26 +523,38 @@ export default function InboxScreen() {
     onMessageRead: handleRealtimeMessageEvent,
   });
 
+  useEffect(() => {
+    navPerf.screenMounted('tabs→inbox');
+    navPerf.shellVisible('tabs→inbox');
+    navPerf.firstVisibleUi('tabs→inbox');
+  }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      navPerf.mark('cached_or_empty_state_visible', 'tabs→inbox');
+      navPerf.dataReady('tabs→inbox');
+    }
+  }, [loading]);
+
   // Handle pending navigation after authentication
   useEffect(() => {
     if (status === 'authenticated' && pendingNavigation) {
       const { params } = pendingNavigation;
-      // Small delay to ensure conversations are loaded
-      setTimeout(() => {
-        if (params?.threadId || params?.conversationId) {
-          router.push({
-            pathname: '/messages/[threadId]',
-            params: {
-              threadId: params.threadId || params.conversationId,
-              conversationId: params.conversationId || params.threadId,
-              ...(params.messageId ? { messageId: params.messageId } : {}),
-              ...(params.orderId ? { orderId: params.orderId } : {}),
-              ...(params.customOrderId ? { customOrderId: params.customOrderId } : {}),
-            },
-          } as any);
-        }
-        setPendingNavigation(null);
-      }, 500);
+      if (params?.threadId || params?.conversationId) {
+        navPerf.tap('inbox→pending_thread');
+        navPerf.navigationCalled();
+        router.push({
+          pathname: '/messages/[threadId]',
+          params: {
+            threadId: params.threadId || params.conversationId,
+            conversationId: params.conversationId || params.threadId,
+            ...(params.messageId ? { messageId: params.messageId } : {}),
+            ...(params.orderId ? { orderId: params.orderId } : {}),
+            ...(params.customOrderId ? { customOrderId: params.customOrderId } : {}),
+          },
+        } as any);
+      }
+      setPendingNavigation(null);
     }
   }, [status, pendingNavigation]);
 

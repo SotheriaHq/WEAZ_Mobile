@@ -270,7 +270,7 @@ export default function SettingsScreen() {
           {
             icon: '🚪',
             title: 'Sign out',
-            subtitle: 'Leave this device',
+            subtitle: 'Sign out of this device',
             onPress: () => {
               void signOut().finally(() => router.replace('/(auth)/login' as never));
             },

@@ -722,6 +722,7 @@ export function MarketFeedScreen() {
   // renders at mount; data is ready once the initial feed load settles.
   useEffect(() => {
     navPerf.screenMounted('tabs→runway');
+    navPerf.shellVisible('tabs→runway');
     navPerf.firstVisibleUi('tabs→runway');
   }, []);
   useEffect(() => {
@@ -1609,6 +1610,19 @@ export function MarketFeedScreen() {
     router.push('/search' as any);
   }, []);
 
+  const handleOpenNotifications = useCallback(() => {
+    navPerf.tap('runway→notifications');
+    navPerf.navigationCalled();
+    if (status === 'authenticated') {
+      router.push('/notifications' as any);
+      return;
+    }
+    router.push({
+      pathname: '/(auth)/login',
+      params: { next: '/notifications' },
+    } as any);
+  }, [status]);
+
   const handleSaveLook = useCallback((item: MarketItem) => {
     const collectionId = item.collectionId?.trim();
     if (!collectionId) return;
@@ -2075,22 +2089,36 @@ export function MarketFeedScreen() {
                         variant="nav"
                         selected={chip.id === selectedFilterId}
                         onPress={() => setSelectedFilterId(chip.id)}
+                        style={styles.headerFilterChip}
                       />
                     ))}
                   </ScrollView>
                 </View>
 
                 <View style={styles.headerRightGroup}>
-                <Pressable
-                  onPress={handleOpenSearch}
-                  hitSlop={10}
-                  style={({ pressed }) => [
-                    styles.headerIconButton,
-                    pressed && { backgroundColor: theme.colors.surfaceOverlay, opacity: 0.8 },
-                  ]}
+                  <Pressable
+                    onPress={handleOpenNotifications}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.headerIconButton,
+                      pressed && { backgroundColor: theme.colors.surfaceOverlay, opacity: 0.8 },
+                    ]}
                     accessibilityRole="button"
-                    accessibilityLabel="Search">
-                    <AppText variant="subtitle" style={styles.headerEmoji}>🔍</AppText>
+                    accessibilityLabel="Notifications"
+                  >
+                    <AppText variant="bodyBold" style={styles.headerEmoji}>🔔</AppText>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleOpenSearch}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.headerIconButton,
+                      pressed && { backgroundColor: theme.colors.surfaceOverlay, opacity: 0.8 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Search"
+                  >
+                    <AppText variant="bodyBold" style={styles.headerEmoji}>🔍</AppText>
                   </Pressable>
                 </View>
             </View>
@@ -2217,15 +2245,19 @@ const styles = StyleSheet.create({
   headerLeftGroup: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
   },
   headerCenterGroup: {
     flex: 1,
+    minWidth: 0,
     overflow: 'hidden',
-    paddingHorizontal: 2,
+    paddingHorizontal: 0,
   },
   headerRightGroup: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
+    gap: tokens.spacing.xs,
   },
   headerChipsScroll: {
     flexGrow: 1,
@@ -2233,36 +2265,42 @@ const styles = StyleSheet.create({
   },
   headerChipsContent: {
     flexGrow: 1,
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.xs,
     alignItems: 'center',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 44,
-    gap: tokens.spacing.sm,
+    minHeight: 38,
+    gap: tokens.spacing.xs,
   },
   headerLogoButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
   },
   brandLogo: {
-    width: 30,
-    height: 30,
+    width: 26,
+    height: 26,
     resizeMode: 'contain',
   },
   headerIconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerFilterChip: {
+    minHeight: 34,
+    paddingHorizontal: tokens.spacing.xs,
+    paddingTop: 2,
+    paddingBottom: tokens.spacing.xs,
   },
   headerEmoji: {
     textShadowOffset: { width: 0, height: 1 },

@@ -318,6 +318,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
+      isMyBagOpen: myBagVisible,
       openSelector,
       openCustomFlow,
       openFittings,
@@ -327,7 +328,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
       openMyBag,
       closeActiveFlow,
     }),
-    [closeActiveFlow, openAuthPrompt, openCustomFlow, openExistingBag, openFittings, openMyBag, openSelector, openStaleFittings],
+    [closeActiveFlow, myBagVisible, openAuthPrompt, openCustomFlow, openExistingBag, openFittings, openMyBag, openSelector, openStaleFittings],
   );
 
   return (
