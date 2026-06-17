@@ -289,6 +289,50 @@ export default function CreateDesignComposerScreen() {
     () => getMissingRequiredMediaSlots(assets),
     [assets],
   );
+  // Per-field inline errors for the custom-order / rush inputs. These mirror the
+  // backend rules (custom-order-configurations service + DTO @Min(5)/@Max(13))
+  // so the creator sees the problem next to the field and is blocked before
+  // Preview — never as a submit-time 400. Returns null per field when valid.
+  const customOrderFieldErrors = useMemo(() => {
+    const empty = {
+      baseCharge: null as string | null,
+      fabricCost: null as string | null,
+      fallbackYards: null as string | null,
+      rushFee: null as string | null,
+      rushTime: null as string | null,
+    };
+    if (!form.customOrderEnabled) return empty;
+
+    const baseCharge = form.baseProductionCharge.trim() ? null : 'Enter a base charge.';
+    const fabricCost = form.fabricCostPerYard.trim() ? null : 'Enter a fabric cost per yard.';
+    const fallbackYards = form.fallbackOutputYards.trim() ? null : 'Enter fallback yards.';
+
+    let rushFee: string | null = null;
+    let rushTime: string | null = null;
+    if (form.rushEnabled) {
+      const fee = Number(form.rushFee);
+      if (!form.rushFee.trim() || !Number.isFinite(fee) || fee <= 0) {
+        rushFee = 'Rush fee must be greater than 0.';
+      }
+      const days = Number(form.rushProductionLeadDays);
+      const standardDays = form.productionLeadDays.trim() ? Number(form.productionLeadDays) : 7;
+      if (!form.rushProductionLeadDays.trim() || !Number.isInteger(days) || days < 5 || days > 13) {
+        rushTime = 'Rush time must be 5–13 days.';
+      } else if (Number.isFinite(standardDays) && days >= standardDays) {
+        rushTime = 'Rush time must be shorter than production time.';
+      }
+    }
+    return { baseCharge, fabricCost, fallbackYards, rushFee, rushTime };
+  }, [
+    form.baseProductionCharge,
+    form.customOrderEnabled,
+    form.fabricCostPerYard,
+    form.fallbackOutputYards,
+    form.productionLeadDays,
+    form.rushEnabled,
+    form.rushFee,
+    form.rushProductionLeadDays,
+  ]);
   const missingRequiredFields = useMemo(() => {
     const missing: string[] = [];
     if (assets.length === 0 || missingRequiredMediaSlots.length > 0) {
@@ -305,16 +349,20 @@ export default function CreateDesignComposerScreen() {
     if (selectedDiscoveryFilterCount === 0) missing.push('Style details');
     if (selectedTags.length === 0) missing.push('Tags');
     if (form.customOrderEnabled && customMeasurementKeys.length === 0) missing.push('Required custom-order fields');
-    if (form.customOrderEnabled && (!form.baseProductionCharge || !form.fabricCostPerYard)) missing.push('Custom order pricing (Base charge & Fabric cost)');
+    if (customOrderFieldErrors.baseCharge || customOrderFieldErrors.fabricCost || customOrderFieldErrors.fallbackYards) {
+      missing.push('Custom order pricing');
+    }
+    if (customOrderFieldErrors.rushFee || customOrderFieldErrors.rushTime) {
+      missing.push('Rush order settings');
+    }
     return missing;
   }, [
     assets.length,
     customMeasurementKeys.length,
+    customOrderFieldErrors,
     form.audience,
-    form.baseProductionCharge,
     form.categoryId,
     form.customOrderEnabled,
-    form.fabricCostPerYard,
     form.subCategoryId,
     form.title,
     selectedDiscoveryFilterCount,
@@ -322,6 +370,19 @@ export default function CreateDesignComposerScreen() {
     missingRequiredMediaSlots,
   ]);
   const canPreview = missingRequiredFields.length === 0;
+  // True when custom orders are on but something inside the (collapsed) Custom
+  // orders sheet is missing/invalid — used to flag the row on the main form so
+  // the creator knows to open it, since the inline field errors live in there.
+  const customOrderNeedsAttention =
+    form.customOrderEnabled &&
+    (customMeasurementKeys.length === 0 ||
+      Boolean(
+        customOrderFieldErrors.baseCharge ||
+          customOrderFieldErrors.fabricCost ||
+          customOrderFieldErrors.fallbackYards ||
+          customOrderFieldErrors.rushFee ||
+          customOrderFieldErrors.rushTime,
+      ));
 
   const handlePickMedia = useCallback(
     async (source: 'camera' | 'library') => {
@@ -785,10 +846,13 @@ export default function CreateDesignComposerScreen() {
               title="Custom orders"
               subtitle={
                 form.customOrderEnabled
-                  ? `${customMeasurementKeys.length} field${customMeasurementKeys.length === 1 ? '' : 's'}`
+                  ? customOrderNeedsAttention
+                    ? 'Fix custom order details to continue'
+                    : `${customMeasurementKeys.length} field${customMeasurementKeys.length === 1 ? '' : 's'}`
                   : 'Off'
               }
               value={form.customOrderEnabled ? 'Enabled' : 'Disabled'}
+              valueTone={customOrderNeedsAttention ? 'danger' : undefined}
               onPress={() => setCustomOrdersOpen(true)}
             />
             <OptionRow
@@ -1089,6 +1153,7 @@ export default function CreateDesignComposerScreen() {
                 keyboardType="decimal-pad"
                 placeholder="5000"
                 containerStyle={styles.priceInput}
+                error={customOrderFieldErrors.baseCharge ?? undefined}
               />
               <Input
                 label="Fabric cost / yard"
@@ -1097,6 +1162,7 @@ export default function CreateDesignComposerScreen() {
                 keyboardType="decimal-pad"
                 placeholder="2500"
                 containerStyle={styles.priceInput}
+                error={customOrderFieldErrors.fabricCost ?? undefined}
               />
             </View>
             <View style={[styles.switchRow, { marginTop: tokens.spacing.md }]}>
@@ -1120,15 +1186,17 @@ export default function CreateDesignComposerScreen() {
                   keyboardType="decimal-pad"
                   placeholder="2000"
                   containerStyle={styles.priceInput}
+                  error={customOrderFieldErrors.rushFee ?? undefined}
                 />
                 <Input
                   label="Rush time"
                   value={form.rushProductionLeadDays}
                   onChangeText={(value) => updateField('rushProductionLeadDays', value.replace(/[^0-9]/g, ''))}
                   keyboardType="numeric"
-                  placeholder="3"
+                  placeholder="5"
                   containerStyle={styles.priceInput}
-                  helperText="Days to produce."
+                  helperText="5–13 days, shorter than production time."
+                  error={customOrderFieldErrors.rushTime ?? undefined}
                 />
               </View>
             ) : null}
@@ -1164,6 +1232,7 @@ export default function CreateDesignComposerScreen() {
               onChangeText={(value) => updateField('fallbackOutputYards', value.replace(/[^0-9.]/g, ''))}
               keyboardType="decimal-pad"
               placeholder="4"
+              error={customOrderFieldErrors.fallbackYards ?? undefined}
             />
             <Input
               label="Delivery scope"

@@ -264,6 +264,39 @@ function hasMeaningfulDraftContent(form: FormState, tags: string[], filterSelect
   return Object.values(filterSelection).some((values) => values.length > 0);
 }
 
+// Mirrors the backend custom-order rush rules (custom-order-configurations
+// service guard + DTO @Min(5)/@Max(13)) so the creator gets clear inline
+// guidance instead of a raw 400 from POST /custom-order-configurations. Returns
+// null when custom orders or rush are disabled (rush fields are then ignored).
+function getCustomOrderRushValidationMessage(form: FormState): string | null {
+  if (!form.customOrderEnabled || !form.rushEnabled) return null;
+
+  const rushFee = Number(form.rushFee);
+  if (!form.rushFee.trim() || !Number.isFinite(rushFee) || rushFee <= 0) {
+    return 'Add a rush fee greater than 0, or turn off rush orders.';
+  }
+
+  const rushLeadDays = Number(form.rushProductionLeadDays);
+  if (
+    !form.rushProductionLeadDays.trim() ||
+    !Number.isInteger(rushLeadDays) ||
+    rushLeadDays < 5 ||
+    rushLeadDays > 13
+  ) {
+    return 'Set rush production lead time between 5 and 13 days.';
+  }
+
+  // productionLeadDays defaults to 7 on submit when left blank (see save()).
+  const standardLeadDays = form.productionLeadDays.trim()
+    ? Number(form.productionLeadDays)
+    : 7;
+  if (rushLeadDays >= standardLeadDays) {
+    return 'Rush production lead time must be shorter than the standard production lead time.';
+  }
+
+  return null;
+}
+
 function getPublishValidationMessage({
   assets,
   form,
@@ -298,6 +331,8 @@ function getPublishValidationMessage({
   ) {
     return 'Add custom-order pricing before previewing.';
   }
+  const rushMessage = getCustomOrderRushValidationMessage(form);
+  if (rushMessage) return rushMessage;
   return null;
 }
 
@@ -768,6 +803,14 @@ export function DesignEditorProvider({
       }
       if (!canSaveDraft) {
         toast.error('Add at least one change before saving.');
+        return;
+      }
+      // Rush config is sent for both draft and publish when custom orders are on,
+      // so guard both paths against the backend rush rules (publish is also gated
+      // earlier via publishValidationMessage, this catches draft saves too).
+      const rushValidationMessage = getCustomOrderRushValidationMessage(form);
+      if (rushValidationMessage) {
+        toast.error(rushValidationMessage);
         return;
       }
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { AppText } from '@/components/ui/AppText';
@@ -111,10 +111,21 @@ export function NativeIslandTabIcon({
   );
 }
 
-// Frosted-glass chrome (blur + milky fill). Extracted and memoized so it does
-// NOT re-render when the active tab changes on navigation — re-rendering the
-// (dimezis) BlurView on every route change is what made the bar visibly flicker
-// / "disturb" the links. Its props (scheme/theme) only change on theme switch.
+// Frosted-glass chrome. Extracted and memoized so it does NOT re-render when the
+// active tab changes on navigation.
+//
+// PERFORMANCE: the Android `experimentalBlurMethod="dimezisBlurView"` blur is a
+// LIVE blur — it re-samples whatever screen content sits behind the island every
+// frame. During a tab switch the content behind the island is changing, so the
+// GPU is busy re-compositing that blur at the exact moment the destination screen
+// is trying to paint. On slow/old Android devices that GPU contention is a major
+// cause of the "screen appears late after I tap" lag. iOS blur is GPU-accelerated
+// by the OS and cheap, so we keep the real frosted look there. On Android we drop
+// the live blur and use a slightly more opaque solid fill that reads as the same
+// frosted bar but costs the GPU nothing per frame. The floating island shape,
+// shadow and milky tint are unchanged on both platforms.
+const USE_LIVE_BLUR = Platform.OS === 'ios';
+
 const IslandGlass = React.memo(function IslandGlass({
   scheme,
   theme,
@@ -122,26 +133,33 @@ const IslandGlass = React.memo(function IslandGlass({
   scheme: ReturnType<typeof useTheme>['scheme'];
   theme: ReturnType<typeof useTheme>['theme'];
 }) {
+  // Android (no live blur): bump the fill opacity so the bar still reads as a
+  // solid frosted panel rather than a flat translucent sheet.
+  const fillColor = USE_LIVE_BLUR
+    ? scheme === 'dark'
+      ? 'rgba(10,12,20,0.58)'
+      : 'rgba(255,255,255,0.66)'
+    : scheme === 'dark'
+      ? 'rgba(14,16,24,0.92)'
+      : 'rgba(250,250,252,0.94)';
+
   return (
     <>
-      <BlurView
-        tint={scheme === 'dark' ? 'dark' : 'light'}
-        // Strong intensity so the island reads as bold frosted glass.
-        // `experimentalBlurMethod` is required for the blur to render at all on
-        // Android (otherwise only the tint fill shows, which looks flat).
-        intensity={scheme === 'dark' ? 90 : 80}
-        experimentalBlurMethod="dimezisBlurView"
-        style={[StyleSheet.absoluteFill, styles.navBlur]}
-      />
+      {USE_LIVE_BLUR ? (
+        <BlurView
+          tint={scheme === 'dark' ? 'dark' : 'light'}
+          // Strong intensity so the island reads as bold frosted glass (iOS only).
+          intensity={scheme === 'dark' ? 90 : 80}
+          style={[StyleSheet.absoluteFill, styles.navBlur]}
+        />
+      ) : null}
       <View
         pointerEvents="none"
         style={[
           StyleSheet.absoluteFill,
           styles.navGlassFill,
           {
-            // Bold milky frost layer over the blur. Heavier opacity gives the
-            // bar a stronger frosted presence while staying flat (no depth).
-            backgroundColor: scheme === 'dark' ? 'rgba(10,12,20,0.58)' : 'rgba(255,255,255,0.66)',
+            backgroundColor: fillColor,
             borderColor: theme.colors.glassBorder,
             borderRadius: NATIVE_ISLAND_NAV.radius,
           },

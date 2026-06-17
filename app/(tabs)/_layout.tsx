@@ -76,7 +76,6 @@ export default function TabLayout() {
   const lastNotificationRefreshAttemptAtRef = useRef(0);
   const lastMessageRefreshAttemptAtRef = useRef(0);
   const pendingRouteFrameRef = useRef<number | null>(null);
-  const pendingRouteTokenRef = useRef(0);
   const [optimisticActiveKey, setOptimisticActiveKey] = useState<NativeIslandKey | null>(null);
 
   const isBrand = hasActiveBrandMembership(user);
@@ -134,20 +133,22 @@ export default function TabLayout() {
   }, []);
 
   const scheduleRouteAfterFrame = useCallback((navFlow: string, run: () => void) => {
-    // SINGLE frame yield (was two nested rAFs). The island's active indicator is
-    // now driven by local state in NativeIslandBottomNav and paints on the same
-    // press, so it no longer needs the route call held back two frames to look
-    // instant. One frame is still enough to let the pressed/active feedback
-    // commit before router.navigate runs (which on a cold first-visit can block
-    // the JS thread), but it halves the dead time between the active indicator
-    // and the actual route call — which, combined with detachInactiveScreens,
-    // is what closes the "old screen still visible" gap.
-    const token = pendingRouteTokenRef.current + 1;
-    pendingRouteTokenRef.current = token;
+    // Decouple the route call from the active-indicator commit (do NOT make this
+    // synchronous). The island sets its active state locally on press, so it
+    // paints on the very next frame. We defer the actual router.navigate to the
+    // following frame so the active indicator ALWAYS paints first and never waits
+    // on the destination's render — even on a cold first visit where the mount is
+    // heavy. Batching the navigate into the same commit as the indicator (the
+    // synchronous version we tried) is what made the indicator feel slow again:
+    // it inherited the navigation render cost.
+    //
+    // The destination now paints fast because (1) detachInactiveScreens={false}
+    // keeps visited tabs warm and (2) the island's live Android blur no longer
+    // re-composites over the screen during the swap — so the one-frame gap
+    // between the instant indicator and the screen is imperceptible.
     cancelPendingRouteFrame();
     pendingRouteFrameRef.current = requestAnimationFrame(() => {
       pendingRouteFrameRef.current = null;
-      if (pendingRouteTokenRef.current !== token) return;
       navPerf.frameYieldBeforeRoute(navFlow);
       run();
     });

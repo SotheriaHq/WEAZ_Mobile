@@ -169,7 +169,7 @@ export default function CreateDesignPreviewScreen() {
         <View style={styles.headerCopy}>
           <AppText variant="title">Preview</AppText>
           <AppText variant="captionRegular" tone="muted">
-            Review before saving or going live.
+            Review before saving or creating.
           </AppText>
         </View>
       </View>
@@ -327,10 +327,10 @@ export default function CreateDesignPreviewScreen() {
           </AppText>
         ) : (
           <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-            Going live confirms these images belong to this design and match the selected views.
+            Creating confirms these images belong to this design and match the selected views.
           </AppText>
         )}
-        {/* Compact footer row: ← Edit | Save Draft | Go Live (Issue #12). */}
+        {/* Compact footer row: ← Edit | Save Draft | Create (Issue #12). */}
         <View style={styles.actionRow}>
           <View style={styles.actionButton}>
             <Button
@@ -353,7 +353,7 @@ export default function CreateDesignPreviewScreen() {
           </View>
           <View style={styles.actionButton}>
             <Button
-              title={saveState.action === 'publish' ? 'Going live…' : 'Go Live'}
+              title={saveState.action === 'publish' ? 'Creating…' : 'Create'}
               loading={saveState.action === 'publish'}
               disabled={!canPublish || isSaving}
               onPress={() => void save('publish')}

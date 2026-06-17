@@ -263,6 +263,24 @@ function NetworkTraceRouteSync() {
   return null;
 }
 
+// Reads the current route in an isolated leaf so a navigation re-renders ONLY
+// this null node, not RootBootstrap. RootBootstrap renders the entire app tree
+// (RootStack + every screen) below it; when it subscribed to usePathname()
+// directly, every tab switch re-rendered the whole tree — a major contributor to
+// the ~700–1700ms route_call→path_changed window measured on device. Keeping the
+// pathname subscription here confines that cost to a no-op component.
+function AndroidSystemBarsRouteSync({
+  scheme,
+  bootReady,
+}: {
+  scheme: ReturnType<typeof useTheme>['scheme'];
+  bootReady: boolean;
+}) {
+  const pathname = usePathname();
+  useAndroidSystemBars(scheme, bootReady ? `route:${pathname}` : 'bootstrap');
+  return null;
+}
+
 function RootBootstrap({
   fontsLoaded,
 }: {
@@ -270,10 +288,8 @@ function RootBootstrap({
 }) {
   const { ready: themeReady, scheme, theme } = useTheme();
   const { status } = useAuth();
-  const pathname = usePathname();
   const bootReady = fontsLoaded && themeReady && status !== 'loading';
   const hasLoggedReadyRef = useRef(false);
-  useAndroidSystemBars(scheme, bootReady ? `route:${pathname}` : 'bootstrap');
 
   useEffect(() => {
     rootBootstrapMountCount += 1;
@@ -291,7 +307,12 @@ function RootBootstrap({
   }, [bootReady, fontsLoaded, status, themeReady]);
 
   if (!bootReady) {
-    return <StartupFallback />;
+    return (
+      <>
+        <AndroidSystemBarsRouteSync scheme={scheme} bootReady={false} />
+        <StartupFallback />
+      </>
+    );
   }
 
   return (
@@ -301,6 +322,7 @@ function RootBootstrap({
         hideNativeSplashOnce('root-bootstrap-layout');
       }}
     >
+      <AndroidSystemBarsRouteSync scheme={scheme} bootReady />
       <NotificationSetup />
       <NetworkTraceRouteSync />
       <PushTokenRegistrationGate />

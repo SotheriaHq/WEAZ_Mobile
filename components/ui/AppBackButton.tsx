@@ -34,10 +34,9 @@ export function AppBackButton({
   }, []);
 
   const scheduleBackRouteAfterFrame = React.useCallback((run: () => void) => {
-    // Single frame yield (was two nested rAFs) — one frame lets the pressed
-    // feedback commit, then we navigate. With the destination tab now kept warm
-    // (detachInactiveScreens={false} on the tab navigator) the back target is
-    // already painted, so a second frame of hold-back is pure latency.
+    // Defer one frame so the pressed feedback paints before navigating — keeps the
+    // back tap feeling instant. Single rAF (decoupled, not synchronous, not two
+    // frames). The back target is kept warm by detachInactiveScreens={false}.
     cancelPendingRouteFrame();
     pendingRouteFrameRef.current = requestAnimationFrame(() => {
       pendingRouteFrameRef.current = null;
