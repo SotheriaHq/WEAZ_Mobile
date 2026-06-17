@@ -19,7 +19,9 @@ type NavStage =
   | 'tap'
   | 'tap_start'
   | 'pressed_feedback_visible'
+  | 'active_indicator_intent'
   | 'active_indicator_visible'
+  | 'frame_yield_before_route'
   | 'navigation_called'
   | 'route_call'
   | 'path_changed'
@@ -62,11 +64,23 @@ export const navPerf = {
     const f = flow ?? activeFlow;
     if (f) emit('pressed_feedback_visible', f);
   },
+  /** Record when the nav item has requested immediate local active feedback. */
+  activeIndicatorIntent(flow?: string) {
+    if (!enabled()) return;
+    const f = flow ?? activeFlow;
+    if (f) emit('active_indicator_intent', f);
+  },
   /** Record when the active island indicator has committed visually. */
   activeIndicatorVisible(flow?: string) {
     if (!enabled()) return;
     const f = flow ?? activeFlow;
     if (f) emit('active_indicator_visible', f);
+  },
+  /** Record that the route call yielded one frame for touch-down UI to paint. */
+  frameYieldBeforeRoute(flow?: string) {
+    if (!enabled()) return;
+    const f = flow ?? activeFlow;
+    if (f) emit('frame_yield_before_route', f);
   },
   /** Record the moment `router.push/replace` (or equivalent) is invoked. */
   navigationCalled(flow?: string) {

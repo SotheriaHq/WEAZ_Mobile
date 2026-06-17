@@ -161,22 +161,37 @@ export function NativeIslandBottomNav({
   const { bottomOffset, sideOffset, islandWidth } = islandLayout;
   const compact = items.length >= 6 || windowWidth < 380;
   const [pressedItemKey, setPressedItemKey] = React.useState<string | null>(null);
-  const [pressedNavFlow, setPressedNavFlow] = React.useState<string | null>(null);
+  const [immediateActiveKey, setImmediateActiveKey] = React.useState<string | null>(null);
+  const [immediateActiveNavFlow, setImmediateActiveNavFlow] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!pressedItemKey || !pressedNavFlow) return;
-    navPerf.activeIndicatorVisible(pressedNavFlow);
-  }, [pressedItemKey, pressedNavFlow]);
+    if (!immediateActiveKey || !immediateActiveNavFlow) return;
+    navPerf.activeIndicatorVisible(immediateActiveNavFlow);
+  }, [immediateActiveKey, immediateActiveNavFlow]);
+
+  React.useEffect(() => {
+    if (!immediateActiveKey) return;
+    const confirmed = items.some((item) => item.key === immediateActiveKey && item.active);
+    const stillExists = items.some((item) => item.key === immediateActiveKey);
+    if (confirmed || !stillExists) {
+      setImmediateActiveKey(null);
+      setImmediateActiveNavFlow(null);
+    }
+  }, [immediateActiveKey, items]);
 
   const clearPressedItem = React.useCallback(() => {
     setPressedItemKey(null);
-    setPressedNavFlow(null);
   }, []);
 
   const handleItemPressIn = React.useCallback(
     (item: NativeIslandNavItem) => {
+      const navFlow = item.navFlow ?? item.key;
+      navPerf.tap(navFlow);
+      navPerf.pressedFeedbackVisible(navFlow);
+      navPerf.activeIndicatorIntent(navFlow);
       setPressedItemKey(item.key);
-      setPressedNavFlow(item.navFlow ?? item.key);
+      setImmediateActiveKey(item.key);
+      setImmediateActiveNavFlow(navFlow);
       onPressIn?.(item);
       onSelect(item);
     },
@@ -217,7 +232,10 @@ export function NativeIslandBottomNav({
               <Pressable
                 key={item.key}
                 accessibilityRole="tab"
-                accessibilityState={{ selected: Boolean((item.active || pressedItemKey === item.key) && !item.disabled), disabled: item.disabled }}
+                accessibilityState={{
+                  selected: Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key) && !item.disabled),
+                  disabled: item.disabled,
+                }}
                 accessibilityLabel={item.label}
                 disabled={item.disabled}
                 onPressIn={item.disabled ? undefined : () => handleItemPressIn(item)}
@@ -230,14 +248,16 @@ export function NativeIslandBottomNav({
                 }}
                 style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
               >
-                <NativeIslandTabIcon
-                  label={item.label}
-                  emoji={item.emoji}
-                  avatarUri={item.avatarUri}
-                  focused={Boolean((item.active || pressedItemKey === item.key) && !item.disabled)}
-                  badge={item.badge}
-                  compact={compact}
-                />
+                {({ pressed }) => (
+                  <NativeIslandTabIcon
+                    label={item.label}
+                    emoji={item.emoji}
+                    avatarUri={item.avatarUri}
+                    focused={Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key || pressed) && !item.disabled)}
+                    badge={item.badge}
+                    compact={compact}
+                  />
+                )}
               </Pressable>
             ))}
           </View>

@@ -111,6 +111,13 @@ const REVIEW_VISIBILITY_STATUS: Partial<Record<VisibilityType, 'IN_REVIEW' | 'CH
   'Changes Requested': 'CHANGES_REQUESTED',
   Rejected: 'REJECTED',
 };
+const BRAND_COLLECTIONS_QUERY_ROOT = ['brand', 'collections'] as const;
+
+function removeCollectionFromList(items: CollectionDto[] | undefined, collectionId: string) {
+  if (!Array.isArray(items)) return items;
+  const next = items.filter((collection) => collection.id !== collectionId);
+  return next.length === items.length ? items : next;
+}
 
 function readMetricNumber(value: unknown): number | null {
   const parsed = Number(value);
@@ -901,27 +908,66 @@ export default function CatalogScreen() {
   );
 
   const handleDeleteCollection = useCallback((id: string) => {
-    const target = [...drafts, ...collections].find((collection) => collection.id === id);
+    const target = [...effectiveDrafts, ...effectiveCollections, ...drafts, ...collections]
+      .find((collection) => collection.id === id);
     setDraftDeleteTarget(target ?? ({ id, title: 'Untitled collection' } as CollectionDto));
     setDraftDeletePhrase('');
-  }, [collections, drafts]);
+  }, [collections, drafts, effectiveCollections, effectiveDrafts]);
 
   const confirmDraftDelete = useCallback(async () => {
     if (!draftDeleteTarget || draftDeletePhrase !== 'DELETE' || draftDeleteBusy) return;
 
+    const deletedId = draftDeleteTarget.id;
+    const previousCollections = collections;
+    const previousDrafts = drafts;
+    const querySnapshots = queryClient.getQueriesData<CollectionDto[]>({
+      queryKey: BRAND_COLLECTIONS_QUERY_ROOT,
+    });
+
     setDraftDeleteBusy(true);
+    void queryClient.cancelQueries({ queryKey: BRAND_COLLECTIONS_QUERY_ROOT }).catch(() => undefined);
+    setCollections((current) => removeCollectionFromList(current, deletedId) ?? current);
+    setDrafts((current) => removeCollectionFromList(current, deletedId) ?? current);
+    setSavedCatalogById((current) => {
+      if (!Object.prototype.hasOwnProperty.call(current, deletedId)) return current;
+      const next = { ...current };
+      delete next[deletedId];
+      return next;
+    });
+    queryClient.setQueriesData<CollectionDto[]>(
+      { queryKey: BRAND_COLLECTIONS_QUERY_ROOT },
+      (current) => removeCollectionFromList(current, deletedId),
+    );
+    setDraftDeleteTarget(null);
+    setDraftDeletePhrase('');
+
     try {
-      await brandApi.deleteCollection(draftDeleteTarget.id);
-      setDraftDeleteTarget(null);
-      setDraftDeletePhrase('');
-      await fetchCollections(undefined, { forceRefresh: true });
+      await brandApi.deleteCollection(deletedId);
+      void queryClient.invalidateQueries({
+        queryKey: BRAND_COLLECTIONS_QUERY_ROOT,
+        refetchType: 'inactive',
+      }).catch(() => undefined);
       toast.success(visibilityFilter === 'Drafts' ? 'Draft deleted.' : 'Collection deleted.');
     } catch {
+      setCollections(previousCollections);
+      setDrafts(previousDrafts);
+      querySnapshots.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
       toast.error('Could not delete this collection. Please try again.');
     } finally {
       setDraftDeleteBusy(false);
     }
-  }, [draftDeleteBusy, draftDeletePhrase, draftDeleteTarget, fetchCollections, toast, visibilityFilter]);
+  }, [
+    collections,
+    draftDeleteBusy,
+    draftDeletePhrase,
+    draftDeleteTarget,
+    drafts,
+    queryClient,
+    toast,
+    visibilityFilter,
+  ]);
 
   const ownerAvatar = useMemo(() => resolveProfileImageSource(effectiveProfile as any), [effectiveProfile]);
   const visitorAvatar = useMemo(() => resolveProfileImageSource(effectiveProfile as any), [effectiveProfile]);
@@ -1626,7 +1672,7 @@ export default function CatalogScreen() {
           scrollEventThrottle={16}
           onScroll={handleTabPagerScroll}
           onMomentumScrollEnd={handleTabPagerMomentumEnd}
-          style={[styles.tabPager, { height: activeTabPagerHeight ?? estimatedPagerHeight, backgroundColor: theme.colors.surface }]}
+          style={[styles.tabPager, { height: activeTabPagerHeight ?? estimatedPagerHeight }]}
           contentContainerStyle={styles.tabPagerContent}
         >
           <View
@@ -1696,6 +1742,9 @@ export default function CatalogScreen() {
                 onSave={handleToggleSaveCollection}
                 savedById={savedCatalogById}
                 saveBusyById={savingCatalogById}
+                initialRenderCount={6}
+                batchRenderCount={6}
+                renderKey={activeTabKey}
                 emptyComponent={
                   <EmptyCollections
                     isOwner={isOwner}
@@ -1883,12 +1932,13 @@ const styles = StyleSheet.create({
   // Tab content
   tabPager: {
     width: '100%',
+    overflow: 'visible',
   },
   tabPagerContent: {
     alignItems: 'flex-start',
   },
   tabPage: {
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   tabContent: {
     paddingVertical: tokens.spacing.lg,

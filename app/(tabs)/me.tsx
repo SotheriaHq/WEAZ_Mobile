@@ -19,6 +19,7 @@ import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
 import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
+import { useFrameBatchedItems } from '@/src/hooks/useFrameBatchedItems';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -52,6 +53,8 @@ type MeasurementKey = 'CHEST' | 'WAIST' | 'HIPS' | 'SHOULDER' | 'INSEAM' | 'HEIG
 const PROFILE_LOGIN_ROUTE = { pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as const;
 
 const PROFILE_TABS: ProfileTab[] = ['Saved', 'Patches', 'Orders'];
+const PROFILE_INITIAL_SECTION_ITEMS = 6;
+const PROFILE_SECTION_BATCH_ITEMS = 8;
 const MEASUREMENT_FIELDS: Array<{ key: MeasurementKey; label: string }> = [
   { key: 'CHEST', label: 'Chest' },
   { key: 'WAIST', label: 'Waist' },
@@ -465,6 +468,24 @@ export default function BuyerProfileScreen() {
     }),
     [state.orders.length, state.patches.length, state.saved.length],
   );
+  const visibleSavedItems = useFrameBatchedItems(state.saved, {
+    enabled: activeTab === 'Saved',
+    initialCount: PROFILE_INITIAL_SECTION_ITEMS,
+    batchCount: PROFILE_SECTION_BATCH_ITEMS,
+    resetKey: `Saved:${state.saved.length}:${state.saved[0]?.id ?? ''}:${state.saved[state.saved.length - 1]?.id ?? ''}`,
+  });
+  const visiblePatchItems = useFrameBatchedItems(state.patches, {
+    enabled: activeTab === 'Patches',
+    initialCount: PROFILE_INITIAL_SECTION_ITEMS,
+    batchCount: PROFILE_SECTION_BATCH_ITEMS,
+    resetKey: `Patches:${state.patches.length}:${state.patches[0]?.id ?? ''}:${state.patches[state.patches.length - 1]?.id ?? ''}`,
+  });
+  const visibleOrderItems = useFrameBatchedItems(state.orders, {
+    enabled: activeTab === 'Orders',
+    initialCount: PROFILE_INITIAL_SECTION_ITEMS,
+    batchCount: PROFILE_SECTION_BATCH_ITEMS,
+    resetKey: `Orders:${state.orders.length}:${state.orders[0]?.id ?? ''}:${state.orders[state.orders.length - 1]?.id ?? ''}`,
+  });
 
   useEffect(() => {
     if (status !== 'authenticated' || activeTab !== 'Saved' || savedLooksOpenedTrackedRef.current) return;
@@ -612,7 +633,10 @@ export default function BuyerProfileScreen() {
   }, [fallbackProfile, status, user?.id]);
 
   useEffect(() => {
-    void load();
+    const frame = requestAnimationFrame(() => {
+      void load();
+    });
+    return () => cancelAnimationFrame(frame);
   }, [load]);
 
   useEffect(() => {
@@ -1008,7 +1032,7 @@ export default function BuyerProfileScreen() {
             />
           ) : (
             <View style={styles.savedGrid}>
-              {state.saved.map((item) => (
+              {visibleSavedItems.map((item) => (
                 <SavedDesignCard key={item.id} item={item} />
               ))}
             </View>
@@ -1026,7 +1050,7 @@ export default function BuyerProfileScreen() {
             />
           ) : (
             <View style={styles.listStack}>
-              {state.patches.map((brand) => (
+              {visiblePatchItems.map((brand) => (
                 <PatchRow key={brand.id} brand={brand} />
               ))}
             </View>
@@ -1044,7 +1068,7 @@ export default function BuyerProfileScreen() {
             />
           ) : (
             <View style={styles.listStack}>
-              {state.orders.map((order) => (
+              {visibleOrderItems.map((order) => (
                 <OrderRow key={order.id} order={order} />
               ))}
             </View>

@@ -5,11 +5,9 @@
 
 import React, { useCallback, useMemo } from 'react';
 import {
-  FlatList,
   StyleSheet,
   View,
   useWindowDimensions,
-  RefreshControl,
 } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -17,6 +15,7 @@ import { CollectionCardSkeleton } from './CollectionCard';
 import { CatalogEntityCard } from './CatalogEntityCard';
 import type { CollectionDto } from '@/src/api/BrandApi';
 import { tokens } from '@/src/styles/tokens';
+import { useFrameBatchedItems } from '@/src/hooks/useFrameBatchedItems';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -41,6 +40,9 @@ interface CollectionsGridProps {
   showDrafts?: boolean;
   emptyComponent?: React.ReactNode;
   numColumns?: number;
+  initialRenderCount?: number;
+  batchRenderCount?: number;
+  renderKey?: string;
 }
 
 const GRID_LAYOUT = {
@@ -73,6 +75,9 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   showDrafts = false,
   emptyComponent,
   numColumns,
+  initialRenderCount = 6,
+  batchRenderCount = 6,
+  renderKey,
 }: CollectionsGridProps) {
   const { width: screenWidth } = useWindowDimensions();
   const { theme } = useTheme();
@@ -92,6 +97,11 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
     const availableWidth = screenWidth - screenPadding * 2 - totalColumnGap;
     return Math.floor(availableWidth / resolvedNumColumns);
   }, [columnGap, resolvedNumColumns, screenPadding, screenWidth]);
+  const visibleCollections = useFrameBatchedItems(collections, {
+    initialCount: initialRenderCount,
+    batchCount: batchRenderCount,
+    resetKey: renderKey ?? `${resolvedNumColumns}:${collections.length}`,
+  });
 
   const renderItem = useCallback(
     ({ item, index }: { item: CollectionDto; index: number }) => {
@@ -159,7 +169,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
         },
       ]}
     >
-      {collections.map((item, index) => (
+      {visibleCollections.map((item, index) => (
         <React.Fragment key={item.id}>
           {renderItem({ item, index })}
         </React.Fragment>

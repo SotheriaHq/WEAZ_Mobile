@@ -75,6 +75,8 @@ export default function TabLayout() {
   const lastBackPressAtRef = useRef(0);
   const lastNotificationRefreshAttemptAtRef = useRef(0);
   const lastMessageRefreshAttemptAtRef = useRef(0);
+  const pendingRouteFrameRef = useRef<number | null>(null);
+  const pendingRouteTokenRef = useRef(0);
   const [optimisticActiveKey, setOptimisticActiveKey] = useState<NativeIslandKey | null>(null);
 
   const isBrand = hasActiveBrandMembership(user);
@@ -125,25 +127,57 @@ export default function TabLayout() {
     setMessageCountReady(ready);
   }, [status]);
 
+  const cancelPendingRouteFrame = useCallback(() => {
+    if (pendingRouteFrameRef.current === null) return;
+    cancelAnimationFrame(pendingRouteFrameRef.current);
+    pendingRouteFrameRef.current = null;
+  }, []);
+
+  const scheduleRouteAfterFrame = useCallback((navFlow: string, run: () => void) => {
+    const token = pendingRouteTokenRef.current + 1;
+    pendingRouteTokenRef.current = token;
+    cancelPendingRouteFrame();
+    pendingRouteFrameRef.current = requestAnimationFrame(() => {
+      if (pendingRouteTokenRef.current !== token) {
+        pendingRouteFrameRef.current = null;
+        return;
+      }
+      pendingRouteFrameRef.current = requestAnimationFrame(() => {
+        pendingRouteFrameRef.current = null;
+        if (pendingRouteTokenRef.current !== token) return;
+        navPerf.frameYieldBeforeRoute(navFlow);
+        run();
+      });
+    });
+  }, [cancelPendingRouteFrame]);
+
+  useEffect(() => cancelPendingRouteFrame, [cancelPendingRouteFrame]);
+
   const navigateToProfile = useCallback(() => {
     setOptimisticActiveKey(NATIVE_ISLAND_KEYS.profile);
     // navigate (not push) so an already-mounted Catalogue/Me instance is reused
     // instead of mounting a fresh copy on every visit.
-    navPerf.navigationCalled();
-    router.navigate((isBrand ? '/catalog' : '/(tabs)/me') as any);
-  }, [isBrand]);
+    const navFlow = isBrand ? 'tabs→catalog' : 'tabs→me';
+    scheduleRouteAfterFrame(navFlow, () => {
+      navPerf.navigationCalled(navFlow);
+      router.navigate((isBrand ? '/catalog' : '/(tabs)/me') as any);
+    });
+  }, [isBrand, scheduleRouteAfterFrame]);
 
   const handleProfilePress = useCallback(
     () => {
       if (!canOpenProfileMenu) {
-        navPerf.navigationCalled();
-        router.replace({ pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as any);
+        const navFlow = 'tabs→login';
+        scheduleRouteAfterFrame(navFlow, () => {
+          navPerf.navigationCalled(navFlow);
+          router.replace({ pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as any);
+        });
         return;
       }
 
       navigateToProfile();
     },
-    [canOpenProfileMenu, navigateToProfile],
+    [canOpenProfileMenu, navigateToProfile, scheduleRouteAfterFrame],
   );
 
   const clearSelectionState = useCallback(() => {
@@ -152,11 +186,8 @@ export default function TabLayout() {
 
   const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
     if (item.disabled) return;
-    const navFlow = item.navFlow ?? getIslandNavFlow(item, isBrand, canOpenProfileMenu);
-    navPerf.tap(navFlow);
-    navPerf.pressedFeedbackVisible(navFlow);
     setOptimisticActiveKey(item.key as NativeIslandKey);
-  }, [canOpenProfileMenu, isBrand]);
+  }, []);
 
   const islandItems = useMemo<NativeIslandNavItem[]>(
     () =>
@@ -214,6 +245,7 @@ export default function TabLayout() {
       }
 
       if (item.key === 'bag') {
+        cancelPendingRouteFrame();
         bagFlow?.openMyBag();
         navPerf.bagSheetOpened();
         return;
@@ -221,13 +253,16 @@ export default function TabLayout() {
 
       const nextRoute = item.targetRoute ?? getNativeIslandRoute(item.key, isBrand);
       if (nextRoute) {
-        navPerf.navigationCalled();
-        // navigate (not replace) so switching between island tabs reuses the
-        // existing tab screens instead of remounting them and refetching.
-        router.navigate(nextRoute as any);
+        const navFlow = item.navFlow ?? getIslandNavFlow(item, isBrand, canOpenProfileMenu);
+        scheduleRouteAfterFrame(navFlow, () => {
+          navPerf.navigationCalled(navFlow);
+          // navigate (not replace) so switching between island tabs reuses the
+          // existing tab screens instead of remounting them and refetching.
+          router.navigate(nextRoute as any);
+        });
       }
     },
-    [bagFlow, handleProfilePress, isBrand],
+    [bagFlow, cancelPendingRouteFrame, canOpenProfileMenu, handleProfilePress, isBrand, scheduleRouteAfterFrame],
   );
 
   useEffect(() => {

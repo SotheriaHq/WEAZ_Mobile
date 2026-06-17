@@ -13,6 +13,7 @@ import { StableImage } from '@/components/ui/StableImage';
 import ProfileImageModal from '@/components/profile/ProfileImageModal';
 import { ProfileApi, type PatchedBrand, type UserProfile } from '@/src/api/ProfileApi';
 import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
+import { useFrameBatchedItems } from '@/src/hooks/useFrameBatchedItems';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -26,6 +27,9 @@ type PublicProfileSnapshot = {
   profile: UserProfile;
   patches: PatchedBrand[];
 };
+
+const PUBLIC_PROFILE_INITIAL_PATCHES = 6;
+const PUBLIC_PROFILE_PATCH_BATCH = 8;
 
 function formatJoinLabel(value?: string | null): string | null {
   if (!value) return null;
@@ -172,7 +176,10 @@ export default function PublicProfileScreen() {
   }, [profileId, warmProfileStateKey]);
 
   useEffect(() => {
-    void load();
+    const frame = requestAnimationFrame(() => {
+      void load();
+    });
+    return () => cancelAnimationFrame(frame);
   }, [load]);
 
   useEffect(() => {
@@ -192,6 +199,11 @@ export default function PublicProfileScreen() {
   const locationLabel = profile?.location || profile?.address || null;
   const displayName = `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || profile?.username || 'Profile';
   const profileTabsLabel = patches.length === 1 ? '1 patched brand' : `${patches.length} patched brands`;
+  const visiblePatches = useFrameBatchedItems(patches, {
+    initialCount: PUBLIC_PROFILE_INITIAL_PATCHES,
+    batchCount: PUBLIC_PROFILE_PATCH_BATCH,
+    resetKey: `${profileId ?? 'unknown'}:${patches.length}:${patches[0]?.id ?? ''}:${patches[patches.length - 1]?.id ?? ''}`,
+  });
 
   const handleShare = useCallback(async () => {
     if (!profile) return;
@@ -295,7 +307,7 @@ export default function PublicProfileScreen() {
 
         {patches.length > 0 ? (
           <View style={styles.patchList}>
-            {patches.map((brand) => (
+            {visiblePatches.map((brand) => (
               <PatchRow key={brand.id} brand={brand} />
             ))}
           </View>
