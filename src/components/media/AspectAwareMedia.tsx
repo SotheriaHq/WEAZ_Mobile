@@ -38,14 +38,15 @@ export type AspectAwareMediaProps = {
   testID?: string;
 };
 
+
 type MeasuredSize = {
   width: number;
   height: number;
 };
 
 const SOLID_DARK_SURFACE = tokens.themes.dark.colors.surface;
-const BACKDROP_WASH_STRONG = tokens.themes.dark.colors.backdrop;
-const BACKDROP_WASH_SOFT = tokens.themes.dark.colors.glassSurfaceSoft;
+const BACKDROP_WASH_STRONG = 'rgba(0, 0, 0, 0.25)';
+const BACKDROP_WASH_SOFT = 'rgba(0, 0, 0, 0.15)';
 
 const isPositiveFinite = (value: number | null | undefined): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
@@ -217,10 +218,10 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.08 }],
   },
   backdropStrong: {
-    opacity: 0.76,
+    opacity: 0.92,
   },
   backdropSoft: {
-    opacity: 0.62,
+    opacity: 0.85,
     transform: [{ scale: 1.04 }],
   },
   backdropWash: {

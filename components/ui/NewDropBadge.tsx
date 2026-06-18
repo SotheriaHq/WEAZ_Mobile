@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet, View, Animated, Easing, type StyleProp, type ViewStyle } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
@@ -13,8 +13,11 @@ type NewDropBadgeProps = {
   sourceScreen: string;
   feedPosition?: number;
   compact?: boolean;
+  isActive?: boolean;
   style?: StyleProp<ViewStyle>;
 };
+
+const dismissedSessionItems = new Set<string>();
 
 export function NewDropBadge({
   itemId,
@@ -22,11 +25,22 @@ export function NewDropBadge({
   sourceScreen,
   feedPosition,
   compact = false,
+  isActive = false,
   style,
 }: NewDropBadgeProps) {
   const { theme } = useTheme();
   const trackedKeyRef = useRef<string | null>(null);
   const info = getNewDropInfo(createdAt);
+  const [dismissed, setDismissed] = useState(() => dismissedSessionItems.has(itemId));
+  const wasActiveRef = useRef(isActive);
+
+  useEffect(() => {
+    if (wasActiveRef.current && !isActive) {
+      dismissedSessionItems.add(itemId);
+      setDismissed(true);
+    }
+    wasActiveRef.current = isActive;
+  }, [isActive, itemId]);
 
   useEffect(() => {
     if (!info.isNewDrop) return;
@@ -42,40 +56,69 @@ export function NewDropBadge({
     });
   }, [feedPosition, info.ageHours, info.isNewDrop, itemId, sourceScreen]);
 
-  if (!info.isNewDrop) return null;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!info.isNewDrop || dismissed) return;
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.08,
+          duration: 400,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 400,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+        Animated.delay(2000), // pulse every 2.8 seconds
+      ])
+    ).start();
+  }, [info.isNewDrop, pulseAnim, dismissed]);
+
+  if (!info.isNewDrop || dismissed) return null;
 
   return (
-    <View
+    <Animated.View
       pointerEvents="none"
       style={[
         styles.badge,
         compact && styles.compactBadge,
         {
-          backgroundColor: theme.colors.primarySoft,
-          borderColor: theme.colors.primary,
+          backgroundColor: theme.colors.primary,
+          transform: [{ scale: pulseAnim }],
         },
         style,
       ]}
     >
-      <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-        {compact ? 'New' : 'New Drop'}
+      <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+        {compact ? 'NEW' : 'NEW DROP'}
       </AppText>
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   badge: {
-    minHeight: 28,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.sm,
+    minHeight: 24,
+    borderRadius: 9999,
+    paddingHorizontal: tokens.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   compactBadge: {
-    minHeight: 22,
-    paddingHorizontal: tokens.spacing.xs,
+    minHeight: 20,
+    paddingHorizontal: tokens.spacing.sm,
   },
 });
 

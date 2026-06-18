@@ -474,12 +474,6 @@ const FeedActionRail = React.memo(function FeedActionRail({
         </AppText>
       </View>
 
-      <View style={styles.railItem}>
-        <IconButton size={44}>
-          <AppText variant="subtitle">{item.isLiked ? '❤️' : '🤍'}</AppText>
-        </IconButton>
-        <AppText variant="captionBold" tone="inverse">{likes}</AppText>
-      </View>
     </View>
   );
 });
@@ -1798,6 +1792,7 @@ export function MarketFeedScreen() {
               createdAt={item.createdAt ?? item.media?.createdAt}
               sourceScreen="runway_feed"
               feedPosition={entry.realIndex}
+              isActive={activePageIndex === entry.realIndex}
               style={styles.newDropBadge}
             />
           }
@@ -2182,6 +2177,7 @@ export function MarketFeedScreen() {
             ref={feedListRef}
             key={feedListKey}
             data={feedItems}
+            pagingEnabled={true}
             keyExtractor={(entry) => entry.listKey}
             snapToInterval={pageHeight}
             snapToAlignment="start"
