@@ -8,6 +8,7 @@ import {
 } from '@/components/navigation/NativeIslandBottomNav';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { useTheme } from '@/src/theme/ThemeProvider';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -93,6 +94,7 @@ function getIslandNavFlow(item: NativeIslandNavItem, isBrand: boolean, isAuthent
 }
 
 export default function TabLayout() {
+  const { theme } = useTheme();
   const { status, token, user } = useAuth();
   const toast = useToast();
   const bagFlow = useBagFlow();
@@ -475,6 +477,7 @@ export default function TabLayout() {
           tabBarStyle: {
             display: 'none',
           },
+          sceneStyle: { backgroundColor: theme.colors.surface },
         }}
       >
         <Tabs.Screen

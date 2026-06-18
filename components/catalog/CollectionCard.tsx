@@ -62,7 +62,7 @@ const compactCount = (value?: number | null): string => {
 };
 
 export const CollectionCardSkeleton = ({ width = 180 }: { width?: number }) => {
-  const imageHeight = Math.round(width * 1.14);
+  const imageHeight = Math.round(width * 1.58);
 
   return (
     <View style={[styles.card, { width }]}>
@@ -96,7 +96,7 @@ export const CollectionCard = React.memo(function CollectionCard({
   const scale = React.useRef(new Animated.Value(1)).current;
 
   const width = Math.round(cardWidth ?? (screenWidth - tokens.spacing.lg * 2 - tokens.spacing.md) / 2);
-  const imageHeight = Math.round(width * 1.32);
+  const imageHeight = Math.round(width * 1.58);
   const allowPrivateMediaFallback =
     isOwner ||
     isDraft ||
@@ -436,6 +436,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.22,
     shadowRadius: 10,
     elevation: tokens.elevation.lg.elevation,
+    borderRadius: tokens.radius.lg,
   },
   cardClip: {
     flex: 1,

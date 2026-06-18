@@ -627,7 +627,7 @@ function BrandContactItems({
       {visibleItems.map((item) => (
         <Pressable 
           key={`${item.label}-${item.value}`} 
-          style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs, alignSelf: 'flex-start' }}
           onPress={() => {
             const url = getContactUrl(item.label, item.value);
             if (url) {
@@ -1182,15 +1182,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: tokens.spacing.xs,
     paddingTop: tokens.spacing['4xl'] + tokens.spacing.sm,
-  },
-  brandNamePill: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.lg,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
   },
   brandNameRow: {
     flexDirection: 'row',
