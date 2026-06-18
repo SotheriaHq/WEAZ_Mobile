@@ -443,6 +443,21 @@ export function useMobileBagging() {
         return { action: 'DISABLED' as const, status };
       }
 
+      const fittingState = status?.custom?.fittingState;
+      if (fittingState && fittingState !== 'COMPLETE' && fittingState !== 'NOT_REQUIRED') {
+        if (fittingState === 'MISSING' || fittingState === 'PARTIAL') {
+          if (bagFlow) {
+            bagFlow.openFittings(product, status);
+          } else {
+            callbacks.onOpenFittings?.(status, product);
+          }
+          return { action: 'OPEN_FITTINGS' as const, status };
+        } else {
+          toast.error('Unable to verify your measurements at this time.');
+          return { action: 'DISABLED' as const, status };
+        }
+      }
+
       if (bagFlow) {
         bagFlow.openCustomFlow(product, status);
       } else {
@@ -541,6 +556,21 @@ export function useMobileBagging() {
       if (!status.custom.available) {
         toast.error(status.ui.disabledReason || 'This source is not configured for custom bagging yet.');
         return { action: 'DISABLED' as const, status };
+      }
+
+      const fittingState = status?.custom?.fittingState;
+      if (fittingState && fittingState !== 'COMPLETE' && fittingState !== 'NOT_REQUIRED') {
+        if (fittingState === 'MISSING' || fittingState === 'PARTIAL') {
+          if (bagFlow) {
+            bagFlow.openFittings(product, status);
+          } else {
+            callbacks.onOpenFittings?.(status, product);
+          }
+          return { action: 'OPEN_FITTINGS' as const, status };
+        } else {
+          toast.error('Unable to verify your measurements at this time.');
+          return { action: 'DISABLED' as const, status };
+        }
       }
 
       if (bagFlow) {

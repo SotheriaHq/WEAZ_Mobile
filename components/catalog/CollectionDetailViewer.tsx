@@ -863,10 +863,7 @@ export function CollectionDetailViewer({
           </Pressable>
         </View>
 
-        <View style={[styles.rightRail, { bottom: insets.bottom + 24 }]} pointerEvents="box-none">
-          <OwnerAvatar owner={detail.owner} onPress={openBrandProfile} />
-
-          <ThreadRailAction
+        <View style={[styles.rightRail, { bottom: insets.bottom + 24 }]} pointerEvents="box-none">          <ThreadRailAction
             threaded={isCurrentThreaded}
             count={String(currentThreadCount)}
             busy={isCurrentThreading}
@@ -918,14 +915,9 @@ export function CollectionDetailViewer({
             </View>
           </Pressable>
 
-          <AppText variant="h2" tone="inverse" numberOfLines={2}>
+          <AppText variant="title" tone="inverse" numberOfLines={2}>
             {detail.title}
           </AppText>
-          {detail.description ? (
-            <AppText variant="small" tone="inverse" style={styles.infoDescription} numberOfLines={3}>
-              {detail.description}
-            </AppText>
-          ) : null}
 
           <View style={styles.infoPillRow}>
             <View style={styles.infoPill}>
@@ -1067,8 +1059,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     minHeight: 44,
-    borderWidth: 1,
-    borderColor: '#273244',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1080,8 +1070,6 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#273244',
   },
   glassIconText: {},
   ownerAvatarWrap: {
@@ -1121,8 +1109,6 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 23,
     backgroundColor: '#121826',
-    borderWidth: 1,
-    borderColor: '#273244',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1151,17 +1137,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 82,
-    gap: 8,
+    gap: 4,
     zIndex: 8,
   },
   infoBrandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
   },
   infoAvatar: {
-    width: 44,
-    height: 44,
+    width: 28,
+    height: 28,
   },
   infoBrandTextWrap: {
     flex: 1,
