@@ -236,6 +236,7 @@ export const FeedImage = React.memo(function FeedImage({
             strategyOverride={strategyOverride}
             recyclingKey={`${id}:${staleUri}:stale`}
             accessibilityLabel={label ?? 'Feed image'}
+            diagnosticsLabel="RunwayFeedImage:stale"
           />
         ) : (
           <FeedImagePlaceholder backgroundColor={placeholderSurface} />
@@ -262,6 +263,7 @@ export const FeedImage = React.memo(function FeedImage({
         strategyOverride={strategyOverride}
         recyclingKey={`${id}:${visibleUri}`}
         accessibilityLabel={label ?? 'Feed image'}
+        diagnosticsLabel="RunwayFeedImage"
         onLoad={(event) => {
           const nextWidth = event.source?.width;
           const nextHeight = event.source?.height;

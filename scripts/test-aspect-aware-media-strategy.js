@@ -42,55 +42,59 @@ const imageAspects = {
   'ultra-wide': 2,
 };
 
+// Phase 10 contract: square media must never share landscape's treatment.
+//   • edge        → immersive cover (crop <= 0.28 of the image)
+//   • letter-solid → contained image on a clean dominant-color matte (square / non-fitting portrait)
+//   • letter-blur  → contained image on a subtle, image-reflective blur (landscape / ultra-wide)
 const matrix = {
   'ultra-portrait': {
     'ultra-tall': 'edge',
     tall: 'edge',
-    'standard-tall': 'contain-blur',
-    'near-square-portrait': 'contain-blur',
-    'square-ish': 'contain-blur',
-    'near-square-landscape': 'contain-blur',
-    wide: 'contain-blur',
-    'ultra-wide': 'contain-blur',
+    'standard-tall': 'edge',
+    'near-square-portrait': 'edge',
+    'square-ish': 'letter-solid',
+    'near-square-landscape': 'letter-solid',
+    wide: 'letter-solid',
+    'ultra-wide': 'letter-solid',
   },
   portrait: {
     'ultra-tall': 'edge',
     tall: 'edge',
     'standard-tall': 'edge',
-    'near-square-portrait': 'contain-blur',
-    'square-ish': 'contain-blur',
-    'near-square-landscape': 'contain-blur',
-    wide: 'contain-blur',
-    'ultra-wide': 'contain-blur',
+    'near-square-portrait': 'edge',
+    'square-ish': 'letter-solid',
+    'near-square-landscape': 'letter-solid',
+    wide: 'letter-solid',
+    'ultra-wide': 'letter-solid',
   },
   square: {
     'ultra-tall': 'letter-soft',
     tall: 'letter-soft',
-    'standard-tall': 'contain-blur',
+    'standard-tall': 'letter-soft',
     'near-square-portrait': 'edge',
     'square-ish': 'edge',
-    'near-square-landscape': 'contain-blur',
-    wide: 'contain-blur',
-    'ultra-wide': 'contain-blur',
+    'near-square-landscape': 'edge',
+    wide: 'letter-soft',
+    'ultra-wide': 'letter-soft',
   },
   landscape: {
-    'ultra-tall': 'letter-solid',
-    tall: 'letter-solid',
-    'standard-tall': 'letter-solid',
+    'ultra-tall': 'letter-blur',
+    tall: 'letter-blur',
+    'standard-tall': 'letter-blur',
     'near-square-portrait': 'letter-blur',
     'square-ish': 'letter-blur',
     'near-square-landscape': 'edge',
     wide: 'edge',
-    'ultra-wide': 'contain-blur',
+    'ultra-wide': 'letter-blur',
   },
   'ultra-wide': {
-    'ultra-tall': 'letter-solid',
-    tall: 'letter-solid',
-    'standard-tall': 'letter-solid',
-    'near-square-portrait': 'letter-solid',
+    'ultra-tall': 'letter-blur',
+    tall: 'letter-blur',
+    'standard-tall': 'letter-blur',
+    'near-square-portrait': 'letter-blur',
     'square-ish': 'letter-blur',
     'near-square-landscape': 'letter-blur',
-    wide: 'letter-blur',
+    wide: 'edge',
     'ultra-wide': 'edge',
   },
 };
@@ -127,18 +131,31 @@ for (const [imageClass, byBucket] of Object.entries(matrix)) {
 check(
   'unknown image aspect with known container',
   resolveMediaStrategy({ containerWidth: 400, containerHeight: 600 }),
-  'contain-blur',
+  'letter-solid',
 );
 check(
   'invalid image dimensions with known container',
   resolveMediaStrategy({ containerWidth: 400, containerHeight: 600, imageWidth: 0, imageHeight: 800 }),
-  'contain-blur',
+  'letter-solid',
 );
 check(
   'missing all dimensions',
   resolveMediaStrategy({ containerWidth: 0, containerHeight: 0 }),
+  'letter-solid',
+);
+check(
+  'known portrait image before container is measured stays immersive',
+  resolveMediaStrategy({ containerWidth: 0, containerHeight: 0, imageAspectRatio: 0.7 }),
   'edge',
 );
+// Square and landscape must resolve to DIFFERENT strategies (subtle vs stronger ambient).
+const squareRunway = resolveMediaStrategy({ containerWidth: 500, containerHeight: 1000, imageAspectRatio: 1 });
+const landscapeRunway = resolveMediaStrategy({ containerWidth: 500, containerHeight: 1000, imageAspectRatio: 1.4 });
+check('square media in a tall runway container uses the subtle ambient', squareRunway, 'letter-soft');
+check('landscape media in a tall runway container uses the stronger ambient', landscapeRunway, 'letter-blur');
+if (squareRunway === landscapeRunway) {
+  failures.push('square and landscape must not share the same strategy value');
+}
 check(
   'override strategy',
   resolveMediaStrategy({

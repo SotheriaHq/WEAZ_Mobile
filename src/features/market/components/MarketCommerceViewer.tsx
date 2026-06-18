@@ -263,6 +263,7 @@ function MediaSlide({
           imageStyle={styles.mediaImage}
           blurhash={item.blurhash}
           dominantColor={item.dominantColor}
+          diagnosticsLabel={`MarketCommerceViewer:${sourceType}`}
           onError={() => setFailed(true)}
         />
       ) : (

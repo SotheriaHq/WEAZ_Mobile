@@ -30,17 +30,33 @@ The image itself is classified by width divided by height:
 | ultra-wide | 1.85 and above |
 | unknown | missing, invalid, non-finite, or less than or equal to zero |
 
-## Strategies
+## Strategies (Phase 10)
 
-| Strategy | Rendering behavior |
-| --- | --- |
-| edge | Foreground image fills the container with `cover`. |
-| contain-blur | Blurred cover backdrop plus contained foreground. |
-| letter-blur | Same visual treatment as `contain-blur`, tracked separately for diagnostics. |
-| letter-soft | Softer blurred backdrop and lighter wash plus contained foreground. |
-| letter-solid | Solid dark background plus contained foreground. |
+The resolver no longer uses a 40-cell bucket matrix. It computes the `cover` crop
+fraction for the actual image/container aspects; if `cover` would crop no more than
+`0.28` of the image it fills edge-to-edge, otherwise it `contain`s the image (no
+detail cropping) and picks a backdrop by image shape.
 
-Unknown image dimensions default to `contain-blur` when the container is known, and `edge` when no dimensions are available yet. Once the image reports intrinsic dimensions, the strategy is resolved again without changing the container size.
+| Strategy | Rendering behavior | Used for |
+| --- | --- | --- |
+| edge | Foreground fills with `cover` (negligible crop). | Snug-fitting media (portrait in a portrait container). |
+| letter-solid | Contained foreground on a clean dominant-color matte, no backdrop. | Non-fitting portrait media; unknown dimensions. |
+| letter-soft | Contained foreground + **subtle** same-image ambient (blur 10, opacity 0.32, light wash). | **Square** media. |
+| letter-blur | Contained foreground + **stronger** same-image ambient (blur 16, opacity 0.55). | **Landscape / ultra-wide** media. |
+| contain-blur | Legacy alias rendered like `letter-blur`; not emitted by the resolver. | Back-compat / explicit overrides. |
+
+Square (`letter-soft`) and landscape (`letter-blur`) deliberately use different blur
+and opacity values so the two never read as the same treatment. Neither uses a dark
+wash. The foreground is always sharp and uncropped via `contentFit="contain"`.
+
+Unknown image dimensions resolve to `letter-solid` (clean matte — never a blurred
+flash, never cropping). Once the image reports intrinsic dimensions the strategy is
+resolved again inside the same fixed container, so the only change is a foreground
+rescale — no container-size layout shift.
+
+Small fixed-aspect grid cards (catalog / product / collection cards) do **not** use an
+ambient backdrop. They use a clean clipped `cover` media container with no top/bottom
+strip and no background leak.
 
 ## When To Use
 

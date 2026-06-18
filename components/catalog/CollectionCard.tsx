@@ -182,10 +182,14 @@ export const CollectionCard = React.memo(function CollectionCard({
       >
         <View style={[styles.coverFrame, { height: imageHeight, backgroundColor: theme.colors.surfaceAlt }]}>
           {showImage ? (
+            // Fixed-aspect catalog thumbnail: fill the frame edge-to-edge (cover) so
+            // it never letterboxes into top/bottom strips. This matches the Shop tab
+            // product cards, keeping Content and Shop shells visually aligned. Large
+            // aspect-aware (contain) treatment is reserved for immersive viewers, not
+            // small grid cards (see AspectAwareMedia README "When Not To Use").
             <StableImage
               uri={coverUri}
-              resizeMode="contain"
-              aspectAware
+              resizeMode="cover"
               containerStyle={[styles.coverImage, { width, height: imageHeight }]}
               imageStyle={[styles.coverImage, { width, height: imageHeight }]}
               onError={() => setImageFailed(true)}
