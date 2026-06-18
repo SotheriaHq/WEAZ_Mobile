@@ -24,6 +24,8 @@ type Props = {
   } | null;
   options: FloatingMenuOption[];
   onClose: () => void;
+  /** Optional menu width override. Defaults to the compact 188px app dropdown. */
+  width?: number;
 };
 
 function resolveMenuPosition({
@@ -50,16 +52,16 @@ function resolveMenuPosition({
   };
 }
 
-export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, onClose }: Props) {
+export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, onClose, width }: Props) {
   const { scheme, theme } = useTheme();
-  
+
   const [internalVisible, setInternalVisible] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
-  const menuWidth = 188;
+  const menuWidth = width ?? 188;
 
   const windowWidth = Dimensions.get('window').width;
   const windowHeight = Dimensions.get('window').height;

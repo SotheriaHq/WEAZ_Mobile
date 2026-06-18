@@ -211,7 +211,7 @@ const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => 
 // Main Component
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
-const CreateMenuWrapper = forwardRef<{ open: (e?: any) => void }, { options: FloatingMenuOption[], anchorRef: React.RefObject<any> }>((props, ref) => {
+const CreateMenuWrapper = forwardRef<{ open: (e?: any) => void }, { options: FloatingMenuOption[], anchorRef: React.RefObject<any>, width?: number }>((props, ref) => {
   const [open, setOpen] = useState(false);
   const [metrics, setMetrics] = useState<{ pageX: number; pageY: number; width: number; height: number } | null>(null);
 
@@ -245,6 +245,7 @@ const CreateMenuWrapper = forwardRef<{ open: (e?: any) => void }, { options: Flo
       anchorRef={props.anchorRef}
       anchorMetrics={metrics}
       options={props.options}
+      width={props.width}
       onClose={() => setOpen(false)}
     />
   );
@@ -1596,6 +1597,22 @@ export default function CatalogScreen() {
     [launchComposer],
   );
 
+  // 9C-1: owner three-dot menu. Exactly Settings + Store (plain text, no Share/QR).
+  // Store routes to the canonical Studio entry, which internally resolves setup vs
+  // dashboard (the studio web app emits PROFILE_SETUP_REQUIRED when setup is needed).
+  const profileMenuAnchorRef = useRef<View | null>(null);
+  const profileMenuRef = useRef<{ open: (e?: any) => void } | null>(null);
+  const handleOpenProfileMenu = useCallback((e?: any) => {
+    profileMenuRef.current?.open(e);
+  }, []);
+  const profileMenuOptions = useMemo<FloatingMenuOption[]>(
+    () => [
+      { key: 'settings', icon: '', title: 'Settings', onPress: () => router.push('/settings' as any) },
+      { key: 'store', icon: '', title: 'Store', onPress: () => router.push('/studio' as any) },
+    ],
+    [],
+  );
+
   if (showInitialSkeleton) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.surface }]} edges={['top']}>
@@ -1647,6 +1664,8 @@ export default function CatalogScreen() {
             createAnchorRef={createAnchorRef}
             onViewAvatar={handleViewOwnerAvatar}
             onShare={() => setShareActionsOpen(true)}
+            onOpenMenu={handleOpenProfileMenu}
+            menuAnchorRef={profileMenuAnchorRef}
             qrTargetUrl={profileQrTargetUrl}
             onOpenQr={() => setBrandQrOpen(true)}
             onBack={handleBackNavigation}
@@ -1849,6 +1868,8 @@ export default function CatalogScreen() {
       />
 
       <CreateMenuWrapper ref={createMenuRef} anchorRef={createAnchorRef} options={createDesignOptions} />
+
+      <CreateMenuWrapper ref={profileMenuRef} anchorRef={profileMenuAnchorRef} options={profileMenuOptions} width={240} />
 
       <AppQrSheet
         visible={brandQrOpen}

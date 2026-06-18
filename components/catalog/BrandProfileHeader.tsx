@@ -56,6 +56,10 @@ export type BrandProfileHeaderProps = {
   createAnchorRef?: React.RefObject<View | null>;
   onCreateAnchorLayout?: () => void;
   onShare?: () => void;
+  /** Owner-only compact three-dot menu (Settings / Store). When provided on an
+   *  owner header, the ⋯ control opens this menu instead of sharing. */
+  onOpenMenu?: (event?: any) => void;
+  menuAnchorRef?: React.RefObject<View | null>;
   qrTargetUrl?: string | null;
   onOpenQr?: () => void;
   onBack?: () => void;
@@ -181,6 +185,8 @@ function BannerHeader({
   onBack,
   onSearch,
   onShare,
+  onOpenMenu,
+  menuAnchorRef,
   qrTargetUrl,
   onOpenQr,
   onEditBanner,
@@ -197,6 +203,8 @@ function BannerHeader({
   | 'onBack'
   | 'onSearch'
   | 'onShare'
+  | 'onOpenMenu'
+  | 'menuAnchorRef'
   | 'qrTargetUrl'
   | 'onOpenQr'
   | 'onEditBanner'
@@ -261,7 +269,15 @@ function BannerHeader({
           ) : (
             <HeaderIconButton label="Notifications" value="🔔" onPress={onNotifications} badgeCount={unreadNotificationCount} bare />
           )}
-          <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} bare />
+          {isOwner && onOpenMenu ? (
+            // Owner three-dot opens a compact Settings/Store menu (9C-1). Sharing
+            // stays on the dedicated Share button below — never duplicated here.
+            <View ref={menuAnchorRef} collapsable={false}>
+              <HeaderIconButton label="More options" value="⋯" onPress={onOpenMenu} bare />
+            </View>
+          ) : (
+            <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} bare />
+          )}
         </View>
       </View>
 
@@ -884,6 +900,8 @@ export function BrandProfileHeader({
   createAnchorRef,
   onCreateAnchorLayout,
   onShare,
+  onOpenMenu,
+  menuAnchorRef,
   qrTargetUrl,
   onOpenQr,
   onBack,
@@ -915,6 +933,8 @@ export function BrandProfileHeader({
         onBack={onBack}
         onSearch={onSearch}
         onShare={onShare}
+        onOpenMenu={onOpenMenu}
+        menuAnchorRef={menuAnchorRef}
         qrTargetUrl={qrTargetUrl}
         onOpenQr={onOpenQr}
         onEditBanner={onEditBanner}
