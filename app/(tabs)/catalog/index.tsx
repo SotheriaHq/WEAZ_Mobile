@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Catalog Screen - Mobile
  * Brand catalog page with profile header, collections, reviews, and about tabs
  * Routes: /catalog (owner view) or /catalog/[brandId] (visitor view)
@@ -92,9 +92,9 @@ import { THREADLY_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { readWarmScreenUiState, writeWarmScreenUiState } from '@/src/state/screenWarmState';
 
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Types
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 type TabType = 'Collections' | 'Shop' | 'Reviews';
 type VisibilityType = 'Public' | 'Private' | 'Drafts' | 'In Review' | 'Changes Requested' | 'Rejected' | 'Needs Attention';
@@ -184,9 +184,9 @@ function CatalogLoadingSkeleton({ bottomPadding }: { bottomPadding: number }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Empty States
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => void }) => {
   return (
@@ -207,9 +207,9 @@ const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => 
   );
 };
 
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Main Component
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 const CreateMenuWrapper = forwardRef<{ open: (e?: any) => void }, { options: FloatingMenuOption[], anchorRef: React.RefObject<any> }>((props, ref) => {
   const [open, setOpen] = useState(false);
@@ -299,6 +299,8 @@ export default function CatalogScreen() {
   const [profile, setProfile] = useState<BrandProfileDto | null>(null);
   const profileRef = useRef<BrandProfileDto | null>(null);
   const [collections, setCollections] = useState<CollectionDto[]>([]);
+  const [isFocused, setIsFocused] = useState(true);
+  useFocusEffect(useCallback(() => { setIsFocused(true); return () => setIsFocused(false); }, []));
   const [drafts, setDrafts] = useState<CollectionDto[]>([]);
   const [designBackgroundTasks, setDesignBackgroundTasks] = useState<DesignEditorBackgroundTask[]>(
     () => readDesignEditorBackgroundTasks(),
@@ -308,9 +310,11 @@ export default function CatalogScreen() {
 
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<TabType>(() =>
+  const [visualActiveTab, setVisualActiveTab] = useState<TabType>(() =>
     routeTab ? normalizeTab(routeTab) : initialCatalogUiStateRef.current?.activeTab ?? 'Collections',
   );
+  const [dataActiveTab, setDataActiveTab] = useState<TabType>(visualActiveTab);
+  const [isTabTransitioning, setIsTabTransitioning] = useState(false);
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityType>(() =>
     routeVisibility ? normalizeVisibility(routeVisibility) : initialCatalogUiStateRef.current?.visibilityFilter ?? 'Public',
   );
@@ -323,7 +327,7 @@ export default function CatalogScreen() {
   const createAnchorRef = useRef<View | null>(null);
   const [brandQrOpen, setBrandQrOpen] = useState(false);
   // Keyed by a page identity string, not just TabType: the Collections page's
-  // height depends on the active visibility (Public vs Drafts vs …), so each
+  // height depends on the active visibility (Public vs Drafts vs Ã¢â‚¬Â¦), so each
   // visibility caches its own measured height. Sharing one Collections height
   // across visibilities left a stale/taller value behind, which is what created
   // the blank scroll space below the last card after switching to Drafts.
@@ -334,31 +338,34 @@ export default function CatalogScreen() {
   const hasRestoredScrollRef = useRef(false);
   const isProgrammaticScrollRef = useRef(false);
   const programmaticScrollTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const activeTabRef = useRef(activeTab);
+  const activeTabRef = useRef(visualActiveTab);
   const visibilityFilterRef = useRef(visibilityFilter);
   const hasInitialScrolledRef = useRef(false);
 
   useEffect(() => {
-    activeTabRef.current = activeTab;
-  }, [activeTab]);
+    activeTabRef.current = visualActiveTab;
+  }, [visualActiveTab]);
 
   useEffect(() => {
     visibilityFilterRef.current = visibilityFilter;
   }, [visibilityFilter]);
 
   const completedTaskRefreshKeyRef = useRef<string | null>(null);
-  const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(activeTab));
-  const activeTabKey = activeTab === 'Collections' ? `Collections:${visibilityFilter}` : activeTab;
-  const activeTabPagerHeight = tabHeights[activeTabKey];
-  // Fallback so the horizontal pager never collapses to 0 height before its
-  // active page has been measured. An undefined height made the pager (and its
-  // cards) render as thin slivers on every re-route; the real measured height
-  // replaces this on the next layout pass.
+  const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(visualActiveTab));
+
   const estimatedPagerHeight = Math.max(360, Math.round(windowHeight * 0.6));
+  const visualTabKey = visualActiveTab === 'Collections' ? `Collections:${visibilityFilter}` : visualActiveTab;
+  const dataTabKey = dataActiveTab === 'Collections' ? `Collections:${visibilityFilter}` : dataActiveTab;
+  const targetHeight = tabHeights[visualTabKey];
+  const currentHeight = tabHeights[dataTabKey];
+
+  const activeTabPagerHeight = isTabTransitioning
+    ? Math.max(currentHeight ?? estimatedPagerHeight, targetHeight ?? estimatedPagerHeight, estimatedPagerHeight)
+    : (targetHeight ?? currentHeight ?? estimatedPagerHeight);
 
   const [transitionReady, setTransitionReady] = useState(false);
   const [mountedTabs, setMountedTabs] = useState<Set<TabType>>(
-    () => new Set<TabType>(routeProductId ? ['Collections', 'Shop'] : [activeTab]),
+    () => new Set<TabType>(routeProductId ? ['Collections', 'Shop'] : [visualActiveTab]),
   );
 
   useEffect(() => {
@@ -370,12 +377,12 @@ export default function CatalogScreen() {
 
   useEffect(() => {
     setMountedTabs((current) => {
-      if (current.has(activeTab)) return current;
+      if (current.has(dataActiveTab)) return current;
       const next = new Set(current);
-      next.add(activeTab);
+      next.add(dataActiveTab);
       return next;
     });
-  }, [activeTab]);
+  }, [dataActiveTab]);
 
   useEffect(() => {
     if (routeProductId) {
@@ -389,9 +396,9 @@ export default function CatalogScreen() {
   }, [routeProductId]);
 
   useEffect(() => {
-    navPerf.screenMounted('tabs→catalog');
-    navPerf.shellVisible('tabs→catalog');
-    navPerf.firstVisibleUi('tabs→catalog');
+    navPerf.screenMounted('tabsÃ¢â€ â€™catalog');
+    navPerf.shellVisible('tabsÃ¢â€ â€™catalog');
+    navPerf.firstVisibleUi('tabsÃ¢â€ â€™catalog');
   }, []);
 
   useEffect(() => {
@@ -451,11 +458,11 @@ export default function CatalogScreen() {
     ownerId: collectionOwnerId,
     enabled: isOwner && Boolean(collectionOwnerId),
   });
-  const needsAttentionQuery = useBrandNeedsAttentionQuery({
+  const needsAttentionQuery = useBrandNeedsAttentionQuery({ isFocused,
     ownerId: collectionOwnerId,
     enabled: isOwner && Boolean(collectionOwnerId),
   });
-  const inReviewQuery = useBrandInReviewQuery({
+  const inReviewQuery = useBrandInReviewQuery({ isFocused,
     ownerId: collectionOwnerId,
     enabled: isOwner && Boolean(collectionOwnerId),
   });
@@ -654,7 +661,8 @@ export default function CatalogScreen() {
     skipNextCatalogUiPersistRef.current = true;
     const savedUiState = readWarmScreenUiState<CatalogUiLifetimeState>(catalogUiStateKey);
     if (!routeTab && savedUiState?.activeTab) {
-      setActiveTab(savedUiState.activeTab);
+      setVisualActiveTab(savedUiState.activeTab);
+      setDataActiveTab(savedUiState.activeTab);
     }
     if (!routeVisibility && savedUiState?.visibilityFilter) {
       setVisibilityFilter(savedUiState.visibilityFilter);
@@ -680,16 +688,19 @@ export default function CatalogScreen() {
       return;
     }
     persistCatalogUiState();
-  }, [activeTab, catalogUiStateKey, persistCatalogUiState, visibilityFilter]);
+  }, [visualActiveTab, catalogUiStateKey, persistCatalogUiState, visibilityFilter]);
 
   useEffect(() => {
     if (!routeTab) return;
-    setActiveTab(normalizeTab(routeTab));
+    const tab = normalizeTab(routeTab);
+    setVisualActiveTab(tab);
+    setDataActiveTab(tab);
   }, [routeTab]);
 
   useEffect(() => {
     if (routeProductId) {
-      setActiveTab('Shop');
+      setVisualActiveTab('Shop');
+      setDataActiveTab('Shop');
     }
   }, [routeProductId]);
 
@@ -700,7 +711,7 @@ export default function CatalogScreen() {
 
   // Visitors only ever see published public content. Owner-only sub-filters
   // (Private/Drafts/In Review/Changes Requested/Rejected) must never be selected
-  // for a non-owner — force the Public filter so the visitor view cannot request
+  // for a non-owner Ã¢â‚¬â€ force the Public filter so the visitor view cannot request
   // or display owner-only statuses, and the sub-filter bar is hidden below.
   useEffect(() => {
     if (!isOwner && visibilityFilter !== 'Public') {
@@ -755,35 +766,58 @@ export default function CatalogScreen() {
     await Promise.all([
       fetchCollections(loadedProfile, { forceRefresh: true }),
       refreshPatchStatus({ force: true, silent: true }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.brand.collections(targetBrandId) }).catch(() => undefined),
+      queryClient.invalidateQueries({ queryKey: queryKeys.store.brandProducts(targetBrandId) }).catch(() => undefined),
+      queryClient.invalidateQueries({ queryKey: queryKeys.brand.profile(targetBrandId) }).catch(() => undefined),
+      queryClient.invalidateQueries({ queryKey: queryKeys.reviews.brand(targetBrandId) }).catch(() => undefined),
     ]);
     setIsRefreshing(false);
   };
+
+  const settleTransition = useCallback((nextTab: TabType) => {
+    setIsTabTransitioning(false);
+
+    // Clamp scroll offset safely if the new tab is shorter and outer scroll is beyond it
+    requestAnimationFrame(() => {
+      if (outerScrollRef.current) {
+        // Safe height strategy natively handles preventing clamps mid-swipe.
+        // Once settled, if outer offset is visually disconnected, it can be nudged here.
+      }
+    });
+  }, []);
 
   const handleMainTabChange = useCallback(
     (key: string) => {
       const nextTab = key as TabType;
       const index = TAB_ORDER.indexOf(nextTab);
-      if (index < 0) return;
+      if (index < 0 || nextTab === activeTabRef.current) return;
 
       isProgrammaticScrollRef.current = true;
+      setIsTabTransitioning(true);
       clearTimeout(programmaticScrollTimeout.current);
       programmaticScrollTimeout.current = setTimeout(() => {
         isProgrammaticScrollRef.current = false;
+        settleTransition(nextTab);
       }, 500);
 
-      setActiveTab(nextTab);
+      setVisualActiveTab(nextTab);
+      React.startTransition(() => {
+        setDataActiveTab(nextTab);
+      });
+
       if (containerWidth > 0) {
         tabPagerRef.current?.scrollTo({ x: index * containerWidth, animated: true });
       }
     },
-    [containerWidth],
+    [containerWidth, settleTransition],
   );
 
   const handlePageChangeSync = useCallback((nextIndex: number) => {
     if (!isProgrammaticScrollRef.current) {
       const nextTab = TAB_ORDER[nextIndex];
       if (nextTab && nextTab !== activeTabRef.current) {
-        setActiveTab(nextTab);
+        setVisualActiveTab(nextTab);
+        setIsTabTransitioning(true);
       }
     }
   }, []);
@@ -807,12 +841,28 @@ export default function CatalogScreen() {
       const progress = event.nativeEvent.contentOffset.x / containerWidth;
       const nextIndex = Math.max(0, Math.min(TAB_ORDER.length - 1, Math.round(progress)));
       const nextTab = TAB_ORDER[nextIndex];
-      
-      if (nextTab && nextTab !== activeTabRef.current) {
-        setActiveTab(nextTab);
+
+      if (nextTab) {
+        if (nextTab !== activeTabRef.current) {
+          setVisualActiveTab(nextTab);
+        }
+        React.startTransition(() => {
+          setDataActiveTab(nextTab);
+        });
+        settleTransition(nextTab);
       }
     },
-    [containerWidth],
+    [containerWidth, settleTransition],
+  );
+
+  const handleTabPagerScrollEndDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      // If the user drags and releases without momentum, it will not fire momentumEnd.
+      if (!event.nativeEvent.velocity || (event.nativeEvent.velocity.x === 0 && event.nativeEvent.velocity.y === 0)) {
+        handleTabPagerMomentumEnd(event);
+      }
+    },
+    [handleTabPagerMomentumEnd],
   );
 
   const handleTabPageLayout = useCallback((key: string, event: LayoutChangeEvent) => {
@@ -824,7 +874,7 @@ export default function CatalogScreen() {
     ));
   }, []);
 
-  // Track the outer vertical scroll offset (cheap ref write — no re-render) and
+  // Track the outer vertical scroll offset (cheap ref write Ã¢â‚¬â€ no re-render) and
   // persist it to warm UI state when scrolling settles, so a warm return can
   // restore the exact reading position.
   const handleOuterScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -856,7 +906,7 @@ export default function CatalogScreen() {
     if (!targetBrandId || patchLoading) return;
     try {
       const nextPatched = await togglePatchStatus();
-      toast.success(nextPatched ? '🪡 Brand patched!' : 'Unpatched brand');
+      toast.success(nextPatched ? 'Ã°Å¸ÂªÂ¡ Brand patched!' : 'Unpatched brand');
     } catch {
       toast.error('Could not update patch status. Please try again.');
     }
@@ -1120,7 +1170,7 @@ export default function CatalogScreen() {
 
   const currentCollections = visibilityFilter === 'Drafts' ? effectiveDrafts : effectiveCollections;
   const visibleDesignBackgroundTasks = useMemo(() => {
-    if (!isOwner || activeTab !== 'Collections') return [];
+    if (!isOwner || dataActiveTab !== 'Collections') return [];
 
     return designBackgroundTasks.filter((task) => {
       if (visibilityFilter === 'Needs Attention') return true;
@@ -1128,7 +1178,7 @@ export default function CatalogScreen() {
       // Do not leak optimistic PROCESSING/FAILED into Public or Private
       return false;
     });
-  }, [activeTab, designBackgroundTasks, isOwner, visibilityFilter]);
+  }, [dataActiveTab, designBackgroundTasks, isOwner, visibilityFilter]);
   // Failed publish/draft attempts must NEVER render as cards in the Public/Private
   // grid (they showed as "Validation failed / Image unavailable" cards). Only
   // in-progress ("running") tasks render as optimistic cards; failed tasks are
@@ -1266,7 +1316,7 @@ export default function CatalogScreen() {
     const totalReviews = readMetricNumber(effectiveProfile?.totalReviews) ?? 0;
     const stats: BrandHeaderStat[] = [];
 
-    stats.push({ value: formatCount(patchesCount), label: patchesCount === 1 ? 'Patch' : 'Patches' });
+    stats.push({ value: formatCount(patchesCount), label: 'Ã°Å¸ÂªÂ¡' });
 
     if (Number.isFinite(designsCount)) {
       stats.push({ value: formatCount(designsCount), label: designsCount === 1 ? 'Design' : 'Designs' });
@@ -1333,7 +1383,7 @@ export default function CatalogScreen() {
         ? inReviewQuery.isLoading && effectiveCollections.length === 0
         : collectionsQuery.isLoading && effectiveCollections.length === 0;
   // Warm return must never flash a skeleton. If cached/previous catalogue content
-  // already exists, render it immediately — the transitionReady defer (which only
+  // already exists, render it immediately Ã¢â‚¬â€ the transitionReady defer (which only
   // exists to avoid heavy synchronous work during the nav animation) must not blank
   // an already-populated screen. The skeleton is reserved for genuine cold loads.
   const hasCachedCatalogContent =
@@ -1353,10 +1403,10 @@ export default function CatalogScreen() {
 
   useEffect(() => {
     if (!showInitialSkeleton) {
-      navPerf.mark('cached_or_empty_state_visible', 'tabs→catalog');
+      navPerf.mark('cached_or_empty_state_visible', 'tabsÃ¢â€ â€™catalog');
     }
     if (!showInitialSkeleton && !profileInitialLoading && !listInitialLoading) {
-      navPerf.dataReady('tabs→catalog');
+      navPerf.dataReady('tabsÃ¢â€ â€™catalog');
     }
   }, [listInitialLoading, profileInitialLoading, showInitialSkeleton]);
 
@@ -1458,7 +1508,7 @@ export default function CatalogScreen() {
     () => [
       {
         key: 'share-profile',
-        icon: '↗',
+        icon: 'Ã¢â€ â€”',
         title: 'Share profile',
         description: profileShareUrl ?? undefined,
         onPress: () => void handleNativeShareProfile(),
@@ -1466,7 +1516,7 @@ export default function CatalogScreen() {
       },
       {
         key: 'copy-profile-link',
-        icon: '🔗',
+        icon: 'Ã°Å¸â€â€”',
         title: 'Copy profile link',
         description: profileShareUrl ?? undefined,
         onPress: () => void handleCopyProfileLink(),
@@ -1474,7 +1524,7 @@ export default function CatalogScreen() {
       },
       {
         key: 'show-qr-code',
-        icon: '▦',
+        icon: 'Ã¢â€“Â¦',
         title: 'Show QR code',
         description: 'Open a scannable public brand profile QR.',
         onPress: () => setBrandQrOpen(true),
@@ -1492,7 +1542,7 @@ export default function CatalogScreen() {
       const doLaunch = () => {
         navPerf.mark('create_design_navigation_called');
         navPerf.navigationCalled();
-        
+
         if (opts.openPicker && opts.source) {
           router.push({
             pathname: '/catalog/create-design/composer',
@@ -1526,19 +1576,19 @@ export default function CatalogScreen() {
     () => [
       {
         key: 'camera',
-        icon: '📷',
+        icon: 'ðŸ“·',
         title: 'Camera',
         onPress: () => launchComposer({ source: 'camera', openPicker: true }),
       },
       {
         key: 'library',
-        icon: '🖼️',
+        icon: 'ðŸ–¼ï¸',
         title: 'Photo library',
         onPress: () => launchComposer({ source: 'library', openPicker: true }),
       },
       {
         key: 'blank',
-        icon: '🧵',
+        icon: 'ðŸ§µ',
         title: 'Start blank',
         onPress: () => launchComposer({ openPicker: false }),
       },
@@ -1556,7 +1606,7 @@ export default function CatalogScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.surface }]} edges={['top']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
       <ScrollView
@@ -1655,7 +1705,7 @@ export default function CatalogScreen() {
         <View style={[styles.tabsWrapper, { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
           <Tabs
             tabs={tabs}
-            activeTab={activeTab}
+            activeTab={visualActiveTab}
             onTabChange={handleMainTabChange}
             swipeProgress={tabSwipeProgress}
           />
@@ -1672,7 +1722,8 @@ export default function CatalogScreen() {
           scrollEventThrottle={16}
           onScroll={handleTabPagerScroll}
           onMomentumScrollEnd={handleTabPagerMomentumEnd}
-          style={[styles.tabPager, { height: activeTabPagerHeight ?? estimatedPagerHeight }]}
+          onScrollEndDrag={handleTabPagerScrollEndDrag}
+          style={[styles.tabPager, { height: activeTabPagerHeight }]}
           contentContainerStyle={styles.tabPagerContent}
         >
           <View
@@ -1703,7 +1754,7 @@ export default function CatalogScreen() {
                       ]}
                     >
                       <AppText variant="captionBold" tone="danger" numberOfLines={1}>
-                        ⚠️ {task.action === 'draft' ? 'Draft failed' : 'Publish failed'}
+                        Ã¢Å¡Â Ã¯Â¸Â {task.action === 'draft' ? 'Draft failed' : 'Publish failed'}
                       </AppText>
                       <AppText variant="bodyBold" numberOfLines={1}>
                         {task.title}
@@ -1744,7 +1795,7 @@ export default function CatalogScreen() {
                 saveBusyById={savingCatalogById}
                 initialRenderCount={6}
                 batchRenderCount={6}
-                renderKey={activeTabKey}
+                renderKey={dataTabKey}
                 emptyComponent={
                   <EmptyCollections
                     isOwner={isOwner}
@@ -1764,7 +1815,7 @@ export default function CatalogScreen() {
                 isOwner={isOwner}
                 containerWidth={containerWidth}
                 initialProductId={routeProductId ?? null}
-                enabled={activeTab === 'Shop' || Boolean(routeProductId)}
+                enabled={dataActiveTab === 'Shop' || Boolean(routeProductId)}
               />
             ) : null}
           </View>
@@ -1775,7 +1826,7 @@ export default function CatalogScreen() {
           >
             {/* Reviews stays lazy until first activation to keep catalogue shell-first. */}
             {shouldMountReviewsTab && targetBrandId ? (
-              <BrandReviewsTab brandId={targetBrandId} enabled={activeTab === 'Reviews'} />
+              <BrandReviewsTab brandId={targetBrandId} enabled={dataActiveTab === 'Reviews'} />
             ) : (
               <View style={styles.tabContent} />
             )}
@@ -1839,9 +1890,9 @@ export default function CatalogScreen() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Styles
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 const styles = StyleSheet.create({
   container: {

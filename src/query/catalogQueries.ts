@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient, type QueryClient, type UseQueryResult } from '@tanstack/react-query';
+﻿import { useQuery, useQueryClient, type QueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import {
   brandApi,
@@ -110,59 +110,61 @@ export function useBrandDraftsQuery(
   });
 }
 
-export function useBrandNeedsAttentionQuery(
-  options?: EnabledOption & { ownerId?: string | null },
-) {
-  const queryClient = useQueryClient();
-  // Needs Attention = FAILED / PROCESSING only. CHANGES_REQUESTED keeps its own
-  // "Changes Requested" tab and must NOT be bucketed here.
-  const statusFilter: any = ['FAILED', 'PROCESSING'];
-  const queryKey = queryKeys.brand.collections(options?.ownerId ?? 'me', {
-    scope: 'all',
-    status: statusFilter,
-  });
-  return useQuery({
-    queryKey,
-    queryFn: async () => {
-      const result = await brandApi.getCollections({
-        brandId: options?.ownerId ?? undefined,
-        scope: 'all',
-        status: statusFilter,
-        limit: 50,
-      });
-      return result.items;
-    },
-    enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
-    initialData: () => queryClient.getQueryData(queryKey),
-  });
-}
+  export function useBrandNeedsAttentionQuery(
+    options?: EnabledOption & { ownerId?: string | null; isFocused?: boolean },
+  ) {
+    const queryClient = useQueryClient();
+    // Needs Attention = FAILED / PROCESSING only. CHANGES_REQUESTED keeps its own
+    // "Changes Requested" tab and must NOT be bucketed here.
+    const statusFilter: any = ['FAILED', 'PROCESSING'];
+    const queryKey = queryKeys.brand.collections(options?.ownerId ?? 'me', {
+      scope: 'all',
+      status: statusFilter,
+    });
+    return useQuery({
+      queryKey,
+      queryFn: async () => {
+        const result = await brandApi.getCollections({
+          brandId: options?.ownerId ?? undefined,
+          scope: 'all',
+          status: statusFilter,
+          limit: 50,
+        });
+        return result.items;
+      },
+      enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
+      initialData: () => queryClient.getQueryData(queryKey),
+      refetchInterval: options?.isFocused ? 15000 : false,
+    });
+  }
 
-export function useBrandInReviewQuery(
-  options?: EnabledOption & { ownerId?: string | null },
-) {
-  const queryClient = useQueryClient();
-  // Dedicated always-on query so the In Review count/content preloads on
-  // catalogue entry instead of waiting until the In Review tab is tapped.
-  const statusFilter: any = 'IN_REVIEW';
-  const queryKey = queryKeys.brand.collections(options?.ownerId ?? 'me', {
-    scope: 'all',
-    status: statusFilter,
-  });
-  return useQuery({
-    queryKey,
-    queryFn: async () => {
-      const result = await brandApi.getCollections({
-        brandId: options?.ownerId ?? undefined,
-        scope: 'all',
-        status: statusFilter,
-        limit: 50,
-      });
-      return result.items;
-    },
-    enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
-    initialData: () => queryClient.getQueryData(queryKey),
-  });
-}
+  export function useBrandInReviewQuery(
+    options?: EnabledOption & { ownerId?: string | null; isFocused?: boolean },
+  ) {
+    const queryClient = useQueryClient();
+    // Dedicated always-on query so the In Review count/content preloads on
+    // catalogue entry instead of waiting until the In Review tab is tapped.
+    const statusFilter: any = 'IN_REVIEW';
+    const queryKey = queryKeys.brand.collections(options?.ownerId ?? 'me', {
+      scope: 'all',
+      status: statusFilter,
+    });
+    return useQuery({
+      queryKey,
+      queryFn: async () => {
+        const result = await brandApi.getCollections({
+          brandId: options?.ownerId ?? undefined,
+          scope: 'all',
+          status: statusFilter,
+          limit: 50,
+        });
+        return result.items;
+      },
+      enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
+      initialData: () => queryClient.getQueryData(queryKey),
+      refetchInterval: options?.isFocused ? 15000 : false,
+    });
+  }
 
 export async function refreshBrandDraftsQuery(
   queryClient: QueryClient,
