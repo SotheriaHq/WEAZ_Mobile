@@ -18,6 +18,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  useAnimatedKeyboard,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -63,22 +64,11 @@ export function AppBottomSheet({
   const translateY = useSharedValue(28);
   const opacity = useSharedValue(0);
   const [mounted, setMounted] = useState(visible);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboard = useAnimatedKeyboard({ isStatusBarTranslucentAndroid: true });
   const isDark = scheme === 'dark';
-  const sheetPaddingBottom = keyboardHeight > 0
-    ? tokens.spacing.lg
-    : Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm);
+  const sheetPaddingBottom = Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm);
 
   useAndroidOverlaySystemBars(visible, scheme, 'bottom-sheet');
-
-  useEffect(() => {
-    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
-    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardHeight(0));
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -113,18 +103,21 @@ export function AppBottomSheet({
     opacity: opacity.value,
   }));
 
+  const keyboardWrapStyle = useAnimatedStyle(() => ({
+    paddingBottom: keyboard.height.value,
+  }));
+
   const Body = scrollable ? ScrollView : View;
   const bodyProps = scrollable
     ? {
         showsVerticalScrollIndicator: false,
         keyboardShouldPersistTaps: 'handled' as const,
         keyboardDismissMode: 'interactive' as const,
-        // KeyboardAvoidingView already lifts the sheet; don't also inset the
-        // ScrollView content on iOS or the avoidance double-counts.
+        // keyboard avoidance is handled smoothly by our animated wrap; don't double count
         automaticallyAdjustKeyboardInsets: false,
         contentContainerStyle: styles.bodyContent,
       }
-    : { style: styles.bodyContent };
+    : { style: [styles.bodyContent, { flexShrink: 1 }] };
 
   if (!mounted) return null;
 
@@ -141,14 +134,7 @@ export function AppBottomSheet({
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close sheet">
           <Animated.View style={[StyleSheet.absoluteFill, backdropStyle, { backgroundColor: theme.colors.backdrop }]} />
         </Pressable>
-        <KeyboardAvoidingView
-          // React Native modal KeyboardAvoidingView bug on Android:
-          // A React Native <Modal> is hosted in its own Dialog window that does NOT inherit the
-          // activity's adjustResize. However, KeyboardAvoidingView padding calculations often leave
-          // ghost padding behind when closed. So we apply manual paddingBottom via state instead on Android.
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={[styles.keyboardWrap, Platform.OS === 'android' && { paddingBottom: keyboardHeight }]}
-        >
+        <Animated.View style={[styles.keyboardWrap, keyboardWrapStyle]}>
           <Animated.View
             style={[
               styles.sheet,
@@ -157,10 +143,6 @@ export function AppBottomSheet({
                 borderColor: theme.colors.border,
                 paddingBottom: sheetPaddingBottom,
               },
-              // While the keyboard is open, shrink the max height so the lifted
-              // sheet cannot run off the top of the screen and the body ScrollView
-              // can reach the focused input + Add button.
-              keyboardHeight > 0 ? styles.sheetKeyboardOpen : null,
               sheetStyle,
               style,
             ]}
@@ -198,7 +180,7 @@ export function AppBottomSheet({
 
             {footer ? <View style={styles.footer}>{footer}</View> : null}
           </Animated.View>
-        </KeyboardAvoidingView>
+        </Animated.View>
       </View>
     </Modal>
   );

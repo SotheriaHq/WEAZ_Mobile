@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View, ScrollView } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { FontAwesome5 } from '@expo/vector-icons';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
@@ -54,6 +56,67 @@ const normalizeCustomTagValue = (value: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+function AnimatedOptionCard({
+  option,
+  selected,
+  onPress,
+}: {
+  option: SelectSheetOption;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { theme } = useTheme();
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Pressable
+      disabled={option.disabled}
+      onPress={onPress}
+      onPressIn={() => {
+        scale.value = withSpring(0.97, { stiffness: 300, damping: 20 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { stiffness: 300, damping: 20 });
+      }}
+    >
+      <Animated.View
+        style={[
+          styles.optionCard,
+          animatedStyle,
+          {
+            backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surfaceAlt,
+            borderColor: selected ? theme.colors.primary : theme.colors.border,
+            shadowColor: theme.colors.primary,
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: selected ? 0.1 : 0.03,
+            shadowRadius: 4,
+            elevation: selected ? 2 : 1,
+          },
+          option.disabled && styles.optionDisabled,
+        ]}
+      >
+        <View style={{ flex: 1, gap: tokens.spacing.xs }}>
+          <AppText variant="bodyBold" tone={selected ? 'primary' : 'default'}>
+            {option.label}
+          </AppText>
+          {option.description ? (
+            <AppText variant="captionRegular" tone="muted">
+              {option.description}
+            </AppText>
+          ) : null}
+        </View>
+        {selected ? (
+          <FontAwesome5 name="check-circle" size={18} color={theme.colors.primary} />
+        ) : null}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 export function AppSelectSheet({
   visible,
   title,
@@ -71,53 +134,18 @@ export function AppSelectSheet({
   return (
     <AppBottomSheet visible={visible} title={title} subtitle={subtitle} onClose={onClose}>
       <SelectSheetState loading={loading} errorMessage={errorMessage} empty={options.length === 0} emptyMessage={emptyMessage} />
-      <View style={styles.optionWrap}>
+      <View style={styles.optionWrapSingle}>
         {options.map((option) => (
-          option.description ? (
-            <Pressable
-              key={option.value}
-              disabled={option.disabled}
-              onPress={() => {
-                if (option.disabled) return;
-                onChange(option.value);
-                onClose();
-              }}
-              style={({ pressed }) => [
-                styles.optionCard,
-                {
-                  backgroundColor:
-                    option.value === value || pressed
-                      ? theme.colors.primarySoft
-                      : theme.colors.surfaceAlt,
-                  borderColor:
-                    option.value === value || pressed
-                      ? theme.colors.primary
-                      : theme.colors.border,
-                },
-                option.disabled && styles.optionDisabled,
-                pressed && !option.disabled && styles.optionPressed,
-              ]}
-            >
-              <AppText variant="bodyBold" tone={option.value === value ? 'primary' : 'default'}>
-                {option.label}
-              </AppText>
-              <AppText variant="captionRegular" tone="muted">
-                {option.description}
-              </AppText>
-            </Pressable>
-          ) : (
-            <Chip
-              key={option.value}
-              label={option.label}
-              selected={option.value === value}
-              disabled={option.disabled}
-              onPress={() => {
-                if (option.disabled) return;
-                onChange(option.value);
-                onClose();
-              }}
-            />
-          )
+          <AnimatedOptionCard
+            key={option.value}
+            option={option}
+            selected={option.value === value}
+            onPress={() => {
+              if (option.disabled) return;
+              onChange(option.value);
+              onClose();
+            }}
+          />
         ))}
       </View>
     </AppBottomSheet>
@@ -369,6 +397,9 @@ function SelectSheetState({
 }
 
 const styles = StyleSheet.create({
+  optionWrapSingle: {
+    gap: tokens.spacing.sm,
+  },
   optionWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -380,18 +411,15 @@ const styles = StyleSheet.create({
   },
   optionCard: {
     width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'transparent',
     borderRadius: tokens.radius.md,
-    gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.md,
   },
   optionDisabled: {
     opacity: 0.5,
-  },
-  optionPressed: {
-    opacity: 0.78,
   },
   searchInput: {
     marginBottom: tokens.spacing.sm,

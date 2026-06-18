@@ -104,7 +104,6 @@ export function buildNativeIslandItems(args: {
       emoji: args.profileIcon,
       avatarUri: args.profileAvatarUri ?? null,
       active: args.activeKey === NATIVE_ISLAND_KEYS.profile,
-      badge: args.profileBadge,
     },
   ];
 
