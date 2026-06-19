@@ -13,14 +13,20 @@ type Props = {
   swatchColor?: string;
   disabled?: boolean;
   variant?: 'default' | 'nav' | 'profile';
+  /** Custom tag awaiting global admin approval — rendered with a distinct,
+   *  warning-tinted "pending" treatment so it never reads as an approved tag. */
+  pending?: boolean;
 };
 
-export function Chip({ label, selected, onPress, style, swatchColor, disabled, variant = 'default' }: Props) {
+export function Chip({ label, selected, onPress, style, swatchColor, disabled, variant = 'default', pending = false }: Props) {
   const { theme } = useTheme();
   const isSwatch = Boolean(swatchColor);
   const scale = React.useRef(new Animated.Value(1)).current;
   const isNav = variant === 'nav';
   const isProfile = variant === 'profile';
+  // Pending custom tags use a warning-tinted outline over a soft surface instead
+  // of the solid selected fill, so "added but not yet globally approved" is legible.
+  const usePendingTreatment = pending && !isNav && !isSwatch;
 
   const animatePress = React.useCallback(
     (toValue: number, duration: number) => {
@@ -53,16 +59,20 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
               ? selected ? theme.colors.primarySoft : 'transparent'
               : isNav
                 ? 'transparent'
-                : selected
-                  ? theme.colors.primary
-                  : pressed
-                    ? theme.colors.primarySoft
-                    : theme.colors.surfaceAlt,
+                : usePendingTreatment
+                  ? theme.colors.surfaceAlt
+                  : selected
+                    ? theme.colors.primary
+                    : pressed
+                      ? theme.colors.primarySoft
+                      : theme.colors.surfaceAlt,
             borderColor: isNav
               ? 'transparent'
-              : selected || pressed
-                ? theme.colors.primary
-                : theme.colors.border,
+              : usePendingTreatment
+                ? theme.colors.warning
+                : selected || pressed
+                  ? theme.colors.primary
+                  : theme.colors.border,
             borderBottomColor: isNav && selected ? theme.colors.primary : 'transparent',
             opacity: disabled ? 0.48 : 1,
           },
@@ -84,10 +94,18 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
           <View style={styles.labelWrap}>
             <AppText
               variant={isNav || isProfile ? 'captionBold' : 'smallBold'}
-              tone={isNav ? (selected ? 'primary' : 'default') : selected ? 'inverse' : 'secondary'}
+              tone={
+                isNav
+                  ? selected ? 'primary' : 'default'
+                  : usePendingTreatment
+                    ? 'warning'
+                    : selected
+                      ? 'inverse'
+                      : 'secondary'
+              }
               numberOfLines={1}
             >
-              {label}
+              {usePendingTreatment ? `${label} · review` : label}
             </AppText>
           </View>
         )}

@@ -61,14 +61,20 @@ export const unstable_settings = {
 void SplashScreen.preventAutoHideAsync();
 
 const THEME_MODE_KEY = 'threadly.theme.mode';
+// Must stay in lock-step with the native splash (expo-splash-screen plugin in
+// app.json): same asset, same backgroundColor, same logo size. This makes the JS
+// fallback a pixel-identical continuation of the native splash, so the native→JS
+// handoff is a single continuous surface with no tiny→large logo jump and no
+// blank flash between the native splash and the first app shell.
 const BOOT_BACKGROUND = '#0b0710';
+const SPLASH_LOGO_SIZE = 200; // matches app.json splash plugin `imageWidth: 200`
 
 function StartupFallback() {
   return (
     <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND, alignItems: 'center', justifyContent: 'center' }]}>
       <Image
         source={require('../assets/images/weaz-splash-icon.png')}
-        style={{ width: '100%', height: '100%' }}
+        style={{ width: SPLASH_LOGO_SIZE, height: SPLASH_LOGO_SIZE }}
         contentFit="contain"
       />
     </View>
@@ -81,6 +87,9 @@ let rootLayoutMountCount = 0;
 let rootBootstrapMountCount = 0;
 let splashHideCallCount = 0;
 let splashHidden = false;
+// Captured at module load (before React boots) so splash-visible time spans the
+// whole native-splash → first-shell window, not just the React lifetime.
+const bootStartedAt = Date.now();
 
 function devBootLog(event: string, details?: Record<string, unknown>) {
   if (!isThreadlyDebugEnabled('boot')) return;
@@ -94,6 +103,7 @@ function hideNativeSplashOnce(reason: string) {
   devBootLog('hide-native-splash', {
     reason,
     splashHideCallCount,
+    splashVisibleMs: Date.now() - bootStartedAt,
   });
   void SplashScreen.hideAsync().catch((error) => {
     if (__DEV__) {

@@ -148,17 +148,29 @@ export default function CreateDesignComposerScreen() {
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
+    // Sync the form's collapse/expand to the OS keyboard animation curve instead of
+    // a fixed easeInEaseOut preset. scheduleLayoutAnimation uses the keyboard event's
+    // own duration/easing, so the footer + scroll padding move WITH the keyboard
+    // rather than skipping/shaking. Falls back gracefully when the event carries no
+    // animation metadata (older Android emits didShow/didHide without a curve).
+    const animateForEvent = (event: { duration?: number } | undefined) => {
+      if (event && typeof event.duration === 'number' && event.duration > 0) {
+        Keyboard.scheduleLayoutAnimation(event as Parameters<typeof Keyboard.scheduleLayoutAnimation>[0]);
+      } else {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      }
+    };
     const showSubscription = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        animateForEvent(e);
         setKeyboardHeight(e.endCoordinates.height);
       }
     );
     const hideSubscription = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      (e) => {
+        animateForEvent(e);
         setKeyboardHeight(0);
       }
     );

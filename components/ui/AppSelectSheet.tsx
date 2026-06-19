@@ -177,6 +177,12 @@ export function AppMultiSelectSheet({
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<TagSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  // Tags the user just created via "Add" this session. They are usable on this
+  // post immediately and are sent to admin for global approval when the design is
+  // submitted (the backend creates them with status PENDING). Tracked only to show
+  // the distinct "pending review" chip treatment — not a separate API call.
+  const [pendingTags, setPendingTags] = useState<string[]>([]);
+  const pendingSet = useMemo(() => new Set(pendingTags), [pendingTags]);
   const selectedSet = useMemo(() => new Set(draft), [draft]);
   const optionLabelByValue = useMemo(() => {
     const labels = new Map<string, string>();
@@ -199,6 +205,7 @@ export function AppMultiSelectSheet({
       setSearchText('');
       setSearchResults([]);
       setIsSearching(false);
+      setPendingTags([]);
     }
   }, [values, visible]);
 
@@ -235,6 +242,8 @@ export function AppMultiSelectSheet({
       }
       return [...current, value];
     });
+    // Deselecting a pending custom tag clears its pending marker too.
+    setPendingTags((current) => (current.includes(value) ? current.filter((entry) => entry !== value) : current));
   };
 
   const displayedOptions = useMemo(() => {
@@ -280,6 +289,14 @@ export function AppMultiSelectSheet({
       return;
     }
     setDraft((current) => [...current, normalized]);
+    // A freshly-typed tag is only "pending" if it is not already a known global
+    // suggestion. Known suggestions are accepted immediately as approved tags.
+    const isKnownGlobalTag =
+      options.some((option) => option.value === normalized) ||
+      searchResults.some((result) => result.name === normalized);
+    if (!isKnownGlobalTag) {
+      setPendingTags((current) => (current.includes(normalized) ? current : [...current, normalized]));
+    }
     setCustomTag('');
   };
 
@@ -325,14 +342,26 @@ export function AppMultiSelectSheet({
                 key={option.value}
                 label={option.label}
                 selected
+                pending={pendingSet.has(option.value)}
                 onPress={() => toggle(option.value)}
               />
             ))}
           </View>
+          {pendingTags.length > 0 ? (
+            <AppText variant="captionRegular" tone="muted">
+              Tags marked “· review” are added to this post now and sent for global approval.
+            </AppText>
+          ) : null}
         </View>
       ) : null}
-      
-      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+      <ScrollView
+        style={styles.scrollArea}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+      >
         {!searchText.trim() && options.length > 0 ? (
           <AppText variant="bodyBold" style={styles.sectionTitle}>{popularLabel}</AppText>
         ) : null}
@@ -442,7 +471,14 @@ const styles = StyleSheet.create({
   },
   scrollArea: {
     flexShrink: 1,
+    // Bounded height so the tag list always scrolls when tags overflow instead of
+    // relying on flex propagation through the sheet (which left it unscrollable on
+    // Android). Caps the popular/suggested list; the parent sheet still owns layout.
+    maxHeight: 240,
     marginTop: tokens.spacing.sm,
+  },
+  scrollContent: {
+    paddingBottom: tokens.spacing.xs,
   },
 });
 
