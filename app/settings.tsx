@@ -1,4 +1,3 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,10 +12,8 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { navPerf } from '@/src/utils/navPerf';
 import { topLevelNavigate } from '@/src/utils/mobileNavigation';
 
-type SettingsIconName = keyof typeof FontAwesome.glyphMap;
-
 type SettingsRow = {
-  icon: SettingsIconName;
+  emoji: string;
   title: string;
   subtitle?: string;
   metadata?: string;
@@ -30,8 +27,6 @@ type SettingsSection = {
 };
 
 function SettingRow({ row }: { row: SettingsRow }) {
-  const { theme } = useTheme();
-
   return (
     <Pressable
       onPress={row.onPress}
@@ -43,17 +38,10 @@ function SettingRow({ row }: { row: SettingsRow }) {
         pressed ? styles.rowPressed : null,
       ]}
     >
-      <View
-        style={[
-          styles.iconWrap,
-          { backgroundColor: row.danger ? theme.colors.surfaceAlt : theme.colors.primarySoft },
-        ]}
-      >
-        <FontAwesome
-          name={row.icon}
-          size={17}
-          color={row.danger ? theme.colors.danger : theme.colors.primary}
-        />
+      <View style={styles.iconWrap}>
+        <AppText variant="body" accessibilityLabel={`${row.title} icon`}>
+          {row.emoji}
+        </AppText>
       </View>
       <View style={styles.rowCopy}>
         <AppText variant="bodyBold" tone={row.danger ? 'danger' : 'default'} numberOfLines={1}>
@@ -71,7 +59,9 @@ function SettingRow({ row }: { row: SettingsRow }) {
         </AppText>
       ) : null}
       {row.onPress ? (
-        <FontAwesome name="angle-right" size={18} color={theme.colors.textMuted} style={styles.chevron} />
+        <AppText variant="subtitle" tone="muted" style={styles.chevron}>
+          ›
+        </AppText>
       ) : null}
     </Pressable>
   );
@@ -112,26 +102,26 @@ export default function SettingsScreen() {
         title: 'Account',
         rows: [
           {
-            icon: 'user',
+            emoji: '👤',
             title: 'Profile information',
             subtitle: 'Name, username, photo',
             onPress: () => router.push('/(tabs)/me-edit' as never),
           },
           {
-            icon: 'map-marker',
+            emoji: '📍',
             title: 'Location',
             subtitle: 'Saved city, address, and device settings',
             onPress: () => router.push('/settings/location' as never),
           },
           {
-            icon: 'envelope',
+            emoji: '📧',
             title: 'Phone & email',
             subtitle: 'Login and contact details',
             metadata: user?.email ? 'Email set' : undefined,
             onPress: () => router.push('/settings/account-security' as never),
           },
           {
-            icon: 'lock',
+            emoji: '🔒',
             title: 'Password & security',
             subtitle: 'Password, sessions, passkeys',
             onPress: () => router.push('/settings/account-security' as never),
@@ -142,19 +132,19 @@ export default function SettingsScreen() {
         title: 'Privacy & Security',
         rows: [
           {
-            icon: 'shield',
+            emoji: '🛡️',
             title: 'Privacy controls',
             subtitle: 'Visibility, blocked users',
             onPress: () => router.push('/settings/privacy' as never),
           },
           {
-            icon: 'mobile',
+            emoji: '📱',
             title: 'Login sessions',
             subtitle: 'Manage active devices',
             onPress: () => router.push('/settings/account-security' as never),
           },
           {
-            icon: 'key',
+            emoji: '🔑',
             title: 'Two-factor authentication',
             subtitle: 'Extra account protection',
             onPress: () => router.push('/settings/account-security' as never),
@@ -165,19 +155,19 @@ export default function SettingsScreen() {
         title: 'Notifications',
         rows: [
           {
-            icon: 'bell',
+            emoji: '🔔',
             title: 'Push notifications',
             subtitle: 'Likes, comments, messages',
             onPress: () => router.push('/settings/notifications' as never),
           },
           {
-            icon: 'inbox',
+            emoji: '📧',
             title: 'Email notifications',
             subtitle: 'Orders and account updates',
             onPress: () => router.push('/settings/email-preferences' as never),
           },
           {
-            icon: 'comments',
+            emoji: '💬',
             title: 'Chat alerts',
             subtitle: 'Message and thread alerts',
             onPress: () => router.push('/settings/notifications' as never),
@@ -188,43 +178,43 @@ export default function SettingsScreen() {
         title: 'Shopping',
         rows: [
           {
-            icon: 'shopping-bag',
+            emoji: '📦',
             title: 'Orders',
             subtitle: 'Track purchases and custom requests',
             onPress: () => router.push('/orders' as never),
           },
           {
-            icon: 'bookmark',
+            emoji: '🔖',
             title: 'Saved runway',
             subtitle: 'Runway looks you want to revisit',
             onPress: () => topLevelNavigate({ pathname: '/(tabs)/me', params: { tab: 'saved' } } as never),
           },
           {
-            icon: 'sliders',
+            emoji: '📏',
             title: 'Measurements / My fits',
             subtitle: 'Saved fittings for custom orders',
             onPress: () => topLevelNavigate('/(tabs)/me' as never),
           },
           {
-            icon: 'arrows-alt',
+            emoji: '↔️',
             title: 'Sizing settings',
             subtitle: 'Region, fit preference, and auto-apply',
             onPress: () => router.push('/settings/sizing' as never),
           },
           {
-            icon: 'table',
+            emoji: '📐',
             title: 'Size Guide / Charts',
             subtitle: 'Sizing systems, measurements, and limitations',
             onPress: () => router.push('/size-guide' as never),
           },
           {
-            icon: 'filter',
+            emoji: '🧵',
             title: 'Market preferences',
             subtitle: 'Hidden content and market reset controls',
             onPress: () => router.push('/settings/market-preferences' as never),
           },
           {
-            icon: 'credit-card',
+            emoji: '💳',
             title: 'Payment settings',
             subtitle: 'Checkout, receipts, and payment policy',
             onPress: () => router.push('/settings/payment' as never),
@@ -232,22 +222,16 @@ export default function SettingsScreen() {
         ],
       },
       {
-        title: 'Data & Storage',
+        title: 'App preferences',
         rows: [
           {
-            icon: 'image',
-            title: 'Media cache',
-            subtitle: 'Refresh local image and feed cache',
-            onPress: () => router.push('/settings/storage' as never),
-          },
-          {
-            icon: 'upload',
+            emoji: '⬆️',
             title: 'Upload preferences',
             subtitle: 'Quality limits and data usage',
-            onPress: () => router.push('/settings/storage' as never),
+            onPress: () => router.push('/settings/upload-preferences' as never),
           },
           {
-            icon: 'paint-brush',
+            emoji: '🌗',
             title: 'Theme',
             subtitle: 'Light, Dark, or System default',
             onPress: () => router.push('/settings/theme' as never),
@@ -258,27 +242,27 @@ export default function SettingsScreen() {
         title: 'Support',
         rows: [
           {
-            icon: 'question-circle',
+            emoji: '❓',
             title: 'Help center',
             subtitle: 'Guides and common questions',
             onPress: () => router.push('/settings/support' as never),
           },
           {
-            icon: 'exclamation-triangle',
+            emoji: '⚠️',
             title: 'Report a problem',
             subtitle: 'Get to the right support path',
             onPress: () => router.push('/settings/support' as never),
           },
-          { icon: 'file-text-o', title: 'Terms & conditions', onPress: () => router.push('/legal/terms' as never) },
-          { icon: 'user-secret', title: 'Privacy policy', onPress: () => router.push('/legal/privacy' as never) },
-          { icon: 'gavel', title: 'Legal center', onPress: () => router.push('/legal' as never) },
+          { emoji: '📄', title: 'Terms & conditions', onPress: () => router.push('/legal/terms' as never) },
+          { emoji: '🛡️', title: 'Privacy policy', onPress: () => router.push('/legal/privacy' as never) },
+          { emoji: '⚖️', title: 'Legal center', onPress: () => router.push('/legal' as never) },
         ],
       },
       {
         title: 'Account actions',
         rows: [
           {
-            icon: 'sign-out',
+            emoji: '🚪',
             title: 'Sign out',
             subtitle: 'Sign out of this device',
             onPress: () => {
@@ -286,7 +270,7 @@ export default function SettingsScreen() {
             },
           },
           {
-            icon: 'trash',
+            emoji: '🗑️',
             title: 'Delete account',
             subtitle: 'Permanently remove your WEAZ account',
             danger: true,
@@ -303,10 +287,10 @@ export default function SettingsScreen() {
       {
         title: 'Studio / Brand',
         rows: [
-          { icon: 'tags', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => topLevelNavigate('/catalog' as never) },
-          { icon: 'th-large', title: 'Catalog settings', subtitle: 'Runway, products, collections', onPress: () => topLevelNavigate('/catalog' as never) },
-          { icon: 'check-circle', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => router.push('/studio' as never) },
-          { icon: 'bank', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => router.push('/studio' as never) },
+          { emoji: '🏪', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => topLevelNavigate('/catalog' as never) },
+          { emoji: '🗂️', title: 'Catalog settings', subtitle: 'Runway, products, collections', onPress: () => topLevelNavigate('/catalog' as never) },
+          { emoji: '✅', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => router.push('/studio' as never) },
+          { emoji: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => router.push('/studio' as never) },
         ],
       },
       ...base.slice(4),
@@ -385,7 +369,6 @@ const styles = StyleSheet.create({
   iconWrap: {
     width: 38,
     height: 38,
-    borderRadius: tokens.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,

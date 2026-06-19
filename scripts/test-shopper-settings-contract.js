@@ -13,6 +13,8 @@ const authContext = read('src/auth/AuthContext.tsx');
 const authApi = read('src/api/AuthApi.ts');
 const notificationsApi = read('src/api/NotificationsApi.ts');
 const profileApi = read('src/api/ProfileApi.ts');
+const bottomSheet = read('components/ui/AppBottomSheet.tsx');
+const selectSheet = read('components/ui/AppSelectSheet.tsx');
 
 assert.doesNotMatch(
   profile,
@@ -53,7 +55,7 @@ assert.doesNotMatch(
   'app/settings/privacy.tsx',
   'app/settings/sizing.tsx',
   'app/settings/payment.tsx',
-  'app/settings/storage.tsx',
+  'app/settings/upload-preferences.tsx',
   'app/settings/support.tsx',
   'app/settings/location.tsx',
   'app/settings/notifications.tsx',
@@ -70,12 +72,27 @@ assert.doesNotMatch(
   '/settings/privacy',
   '/settings/sizing',
   '/settings/payment',
-  '/settings/storage',
+  '/settings/upload-preferences',
   '/settings/support',
   '/settings/location',
 ].forEach((route) => {
   assert.match(settingsIndex, new RegExp(route.replace(/[/-]/g, (match) => `\\${match}`)), `${route} must be linked from Settings`);
 });
+
+assert.ok(!exists('app/settings/storage.tsx'), 'user-facing cache controls must be removed');
+assert.doesNotMatch(settingsIndex, /FontAwesome|Media cache|settings\/storage/, 'Settings must use emoji markers and expose no cache controls');
+assert.match(settingsIndex, /emoji:\s*'👤'/, 'Settings must use the shared colored emoji vocabulary');
+assert.doesNotMatch(
+  profileApi,
+  /isEmailVerified:\s*Boolean\(s\.isEmailVerified\)/,
+  'profile normalization must not manufacture an unverified state when the endpoint omits it',
+);
+assert.match(profile, /useUnreadNotificationCount\(\)/, 'shopper profile must render the shared unread notification count');
+assert.match(profile, /refreshUnreadNotificationCount/, 'shopper profile must refresh unread notifications from the backend');
+assert.match(bottomSheet, /onPressIn=\{\(\) => \{[\s\S]*Keyboard\.dismiss\(\);[\s\S]*onClose\(\);/, 'sheet backdrop touch must close even with the keyboard open');
+assert.match(bottomSheet, /onPanResponderMove/, 'selector sheets must support interactive swipe-down dismissal');
+assert.match(selectSheet, /onDismiss=\{\(\) => \{/, 'selector values must commit after the close animation');
+assert.doesNotMatch(selectSheet, /requestAnimationFrame\(\(\) => onChange/, 'selector values must not relayout the form during close');
 
 [
   'changePassword',

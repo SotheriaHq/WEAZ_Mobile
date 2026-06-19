@@ -226,7 +226,8 @@ function normalizeProfile(raw: unknown): UserProfile | null {
     profileVisibility: s.profileVisibility === 'LOCKED' ? 'LOCKED' : 'UNLOCKED',
     profilePhotoUpdatedAt: s.profilePhotoUpdatedAt ?? null,
     profilePhotoViewState: s.profilePhotoViewState ?? null,
-    isEmailVerified: Boolean(s.isEmailVerified),
+    isEmailVerified:
+      typeof s.isEmailVerified === 'boolean' ? s.isEmailVerified : undefined,
     createdAt: typeof s.createdAt === 'string' ? s.createdAt : null,
   };
 }

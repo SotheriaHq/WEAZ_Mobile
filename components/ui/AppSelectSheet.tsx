@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View, ScrollView } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import { FontAwesome5 } from '@expo/vector-icons';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
@@ -111,7 +110,7 @@ function AnimatedOptionCard({
           ) : null}
         </View>
         {selected ? (
-          <FontAwesome5 name="check-circle" size={18} color={theme.colors.primary} />
+          <AppText variant="body" accessibilityLabel="Selected">✅</AppText>
         ) : null}
       </Animated.View>
     </Pressable>
@@ -130,10 +129,25 @@ export function AppSelectSheet({
   errorMessage,
   emptyMessage = 'No options available.',
 }: SingleProps) {
-  const { theme } = useTheme();
+  const pendingValueRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (visible) pendingValueRef.current = null;
+  }, [visible]);
 
   return (
-    <AppBottomSheet visible={visible} title={title} subtitle={subtitle} onClose={onClose} keyboardBehavior="none">
+    <AppBottomSheet
+      visible={visible}
+      title={title}
+      subtitle={subtitle}
+      onClose={onClose}
+      onDismiss={() => {
+        const nextValue = pendingValueRef.current;
+        pendingValueRef.current = null;
+        if (nextValue !== null) onChange(nextValue);
+      }}
+      keyboardBehavior="none"
+    >
       <SelectSheetState loading={loading} errorMessage={errorMessage} empty={options.length === 0} emptyMessage={emptyMessage} />
       <View style={styles.optionWrapSingle}>
         {options.map((option) => (
@@ -143,8 +157,8 @@ export function AppSelectSheet({
             selected={option.value === value}
             onPress={() => {
               if (option.disabled) return;
+              pendingValueRef.current = option.value;
               onClose();
-              requestAnimationFrame(() => onChange(option.value));
             }}
           />
         ))}
@@ -184,6 +198,7 @@ export function AppMultiSelectSheet({
   // submitted (the backend creates them with status PENDING). Tracked only to show
   // the distinct "pending review" chip treatment — not a separate API call.
   const [pendingTags, setPendingTags] = useState<string[]>([]);
+  const pendingValuesRef = useRef<string[] | null>(null);
   const selectedSet = useMemo(() => new Set(draft), [draft]);
   const knownOptionValues = useMemo(() => new Set(options.map((option) => option.value)), [options]);
   const pendingSet = useMemo(
@@ -212,6 +227,7 @@ export function AppMultiSelectSheet({
       setSearchResults([]);
       setIsSearching(false);
       setPendingTags([]);
+      pendingValuesRef.current = null;
     }
   }, [values, visible]);
 
@@ -312,10 +328,14 @@ export function AppMultiSelectSheet({
       title={title}
       subtitle={subtitle}
       onClose={onClose}
+      onDismiss={() => {
+        const nextValues = pendingValuesRef.current;
+        pendingValuesRef.current = null;
+        if (nextValues) onChange(nextValues);
+      }}
       onDone={() => {
-        const nextDraft = [...draft];
+        pendingValuesRef.current = [...draft];
         onClose();
-        requestAnimationFrame(() => onChange(nextDraft));
       }}
       scrollable={false}
       doneLabel={doneLabel}

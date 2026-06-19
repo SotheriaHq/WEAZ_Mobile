@@ -21,16 +21,7 @@ assert.match(
   'verification resend must call the backend resend endpoint',
 );
 
-assert.match(
-  notice,
-  /const DISMISS_TTL_MS = 24 \* 60 \* 60 \* 1000;/,
-  'notice dismissal TTL must be 24 hours',
-);
-assert.match(
-  notice,
-  /AsyncStorage\.setItem\(storageKey, String\(Date\.now\(\)\)\)/,
-  'notice dismissal must store a local timestamp only',
-);
+assert.doesNotMatch(notice, /Dismiss|AsyncStorage|dismissed/i, 'verification notice must not be dismissible');
 assert.doesNotMatch(
   notice,
   /emailVerificationCode|verificationToken|token=/,
@@ -46,6 +37,11 @@ assert.match(
   profile,
   /<EmailVerificationNotice[\s\S]*context="profile"/,
   'profile tab must render the email verification notice',
+);
+assert.match(
+  profile,
+  /emailVerified=\{user\?\.isEmailVerified\}/,
+  'profile notice must use canonical auth verification state only',
 );
 
 console.log('email verification notice contract passed');

@@ -1,19 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import { ProfileApi, type UserProfile } from '@/src/api/ProfileApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { SettingsHeader, SettingsStateCard } from '@/components/settings/SettingsPrimitives';
 import { AppText } from '@/components/ui/AppText';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import {
-  SettingsHeader,
-  SettingsOptionRow,
-  SettingsSection,
-  SettingsStateCard,
-} from '@/components/settings/SettingsPrimitives';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -25,6 +18,45 @@ function extractErrorMessage(error: unknown, fallback: string) {
     if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
   }
   return fallback;
+}
+
+function VisibilityRow({
+  emoji,
+  label,
+  selected,
+  disabled,
+  onPress,
+}: {
+  emoji: string;
+  label: string;
+  selected: boolean;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const { theme } = useTheme();
+
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected, disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.row,
+        { borderBottomColor: theme.colors.border },
+        pressed ? styles.pressed : null,
+        disabled ? styles.disabled : null,
+      ]}
+    >
+      <AppText variant="body">{emoji}</AppText>
+      <AppText variant="bodyBold" tone={selected ? 'primary' : 'default'} style={styles.rowLabel}>
+        {label}
+      </AppText>
+      <View style={[styles.radio, { borderColor: selected ? theme.colors.primary : theme.colors.border }]}>
+        {selected ? <View style={[styles.radioDot, { backgroundColor: theme.colors.primary }]} /> : null}
+      </View>
+    </Pressable>
+  );
 }
 
 export default function PrivacySettingsScreen() {
@@ -63,7 +95,7 @@ export default function PrivacySettingsScreen() {
   const updateVisibility = useCallback(
     async (nextVisibility: UserProfile['profileVisibility']) => {
       if (!profile || profile.profileVisibility === nextVisibility || busy) return;
-      const previous = profile;
+      const previousVisibility = profile.profileVisibility;
       setBusy(true);
       setProfile({ ...profile, profileVisibility: nextVisibility });
       try {
@@ -73,7 +105,9 @@ export default function PrivacySettingsScreen() {
         );
         toast.success('Profile visibility updated.');
       } catch (error) {
-        setProfile(previous);
+        setProfile((current) =>
+          current ? { ...current, profileVisibility: previousVisibility } : current,
+        );
         toast.error(extractErrorMessage(error, 'Unable to update profile visibility.'));
       } finally {
         setBusy(false);
@@ -85,12 +119,9 @@ export default function PrivacySettingsScreen() {
   if (status === 'loading' || loading) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <SettingsHeader title="Privacy" subtitle="Visibility and hidden content" />
+        <SettingsHeader title="Privacy" />
         <View style={styles.stateWrap}>
           <ActivityIndicator color={theme.colors.primary} />
-          <AppText variant="body" tone="muted">
-            Loading privacy settings...
-          </AppText>
         </View>
       </SafeAreaView>
     );
@@ -99,11 +130,10 @@ export default function PrivacySettingsScreen() {
   if (!isAuthenticated) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <SettingsHeader title="Privacy" subtitle="Sign in required" />
+        <SettingsHeader title="Privacy" />
         <View style={styles.content}>
           <SettingsStateCard
             title="Sign in required"
-            body="Privacy settings are tied to your account."
             actionTitle="Sign in"
             onAction={() => router.push('/(auth)/login' as never)}
           />
@@ -115,11 +145,10 @@ export default function PrivacySettingsScreen() {
   if (loadError || !profile) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <SettingsHeader title="Privacy" subtitle="Visibility and hidden content" />
+        <SettingsHeader title="Privacy" />
         <View style={styles.content}>
           <SettingsStateCard
             title="Could not load privacy settings"
-            body={loadError ?? 'The backend did not return your profile settings.'}
             actionTitle="Retry"
             onAction={() => void loadProfile()}
           />
@@ -130,52 +159,56 @@ export default function PrivacySettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <SettingsHeader title="Privacy" subtitle="Visibility and hidden content" />
+      <SettingsHeader title="Privacy" />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: insets.bottom + tokens.spacing['2xl'] },
+        ]}
       >
-        <SettingsSection title="Profile visibility">
-          <Card padding="lg" style={styles.card}>
-            <SettingsOptionRow
-              title="Unlocked profile"
-              description="People can view your public profile and public activity normally."
-              selected={profile.profileVisibility === 'UNLOCKED'}
-              disabled={busy}
-              onPress={() => void updateVisibility('UNLOCKED')}
-            />
-            <SettingsOptionRow
-              title="Locked profile"
-              description="Public viewers see less profile detail. Account owners can still manage everything."
-              selected={profile.profileVisibility === 'LOCKED'}
-              disabled={busy}
-              onPress={() => void updateVisibility('LOCKED')}
-            />
-          </Card>
-        </SettingsSection>
+        <View style={[styles.section, { borderBottomColor: theme.colors.border }]}>
+          <AppText variant="captionBold" tone="muted">PROFILE VISIBILITY</AppText>
+          <VisibilityRow
+            emoji="🌐"
+            label="Public profile"
+            selected={profile.profileVisibility === 'UNLOCKED'}
+            disabled={busy}
+            onPress={() => void updateVisibility('UNLOCKED')}
+          />
+          <VisibilityRow
+            emoji="🔒"
+            label="Private profile"
+            selected={profile.profileVisibility === 'LOCKED'}
+            disabled={busy}
+            onPress={() => void updateVisibility('LOCKED')}
+          />
+        </View>
 
-        <SettingsSection title="Market controls">
-          <Card padding="lg" style={styles.card}>
-            <AppText variant="bodyBold">Hidden and Not Interested content</AppText>
-            <AppText variant="captionRegular" tone="muted">
-              Manage marketplace items and sections you hid or marked as not interested. This state is stored on the backend.
-            </AppText>
-            <Button
-              title="Open market preferences"
-              variant="secondary"
-              onPress={() => router.push('/settings/market-preferences' as never)}
-            />
-          </Card>
-        </SettingsSection>
+        <View style={[styles.section, { borderBottomColor: theme.colors.border }]}>
+          <AppText variant="captionBold" tone="muted">MARKET</AppText>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/settings/market-preferences' as never)}
+            style={({ pressed }) => [
+              styles.row,
+              { borderBottomColor: theme.colors.border },
+              pressed ? styles.pressed : null,
+            ]}
+          >
+            <AppText variant="body">🙈</AppText>
+            <AppText variant="bodyBold" style={styles.rowLabel}>Hidden content</AppText>
+            <AppText variant="subtitle" tone="muted">›</AppText>
+          </Pressable>
+        </View>
 
-        <SettingsSection title="Blocked users">
-          <Card padding="lg" style={styles.card}>
-            <AppText variant="bodyBold">No backend block-list settings yet</AppText>
-            <AppText variant="captionRegular" tone="muted">
-              This workspace does not expose a shopper block-list settings endpoint yet. Profile visibility and hidden market content remain available here.
-            </AppText>
-          </Card>
-        </SettingsSection>
+        <View style={[styles.section, styles.blockedSection, { borderBottomColor: theme.colors.border }]}>
+          <AppText variant="captionBold" tone="muted" style={styles.sectionLabel}>BLOCKED USERS</AppText>
+          <View style={styles.emptyState}>
+            <AppText variant="title">🚫</AppText>
+            <AppText variant="bodyBold">No blocked users</AppText>
+          </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -189,15 +222,54 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: tokens.spacing.sm,
-    paddingHorizontal: tokens.spacing.xl,
   },
   content: {
-    gap: tokens.spacing.lg,
     paddingHorizontal: tokens.spacing.lg,
     paddingTop: tokens.spacing.lg,
+    gap: tokens.spacing.lg,
   },
-  card: {
+  section: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: tokens.spacing.md,
+  },
+  sectionLabel: {
+    alignSelf: 'flex-start',
+  },
+  row: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: tokens.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  rowLabel: {
+    flex: 1,
+  },
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  blockedSection: {
+    alignItems: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    paddingVertical: tokens.spacing['2xl'],
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+  disabled: {
+    opacity: 0.6,
   },
 });

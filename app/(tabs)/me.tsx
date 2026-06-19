@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import EmailVerificationNotice from '@/components/auth/EmailVerificationNotice';
@@ -32,6 +32,10 @@ import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils
 import { navPerf } from '@/src/utils/navPerf';
 import { topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { compressPickedImage } from '@/src/utils/imageCompression';
+import {
+  refreshUnreadNotificationCount,
+  useUnreadNotificationCount,
+} from '@/src/realtime/notifications';
 import {
   MOBILE_UPLOAD_POLICIES,
   getMobileUploadValidationMessage,
@@ -405,7 +409,7 @@ export default function BuyerProfileScreen() {
   const { theme } = useTheme();
   const { standardScreenBottomPadding } = useScreenChrome();
   const contentBottomPadding = standardScreenBottomPadding;
-  const { status, user, updateUser, signOut } = useAuth();
+  const { status, user, updateUser, validateToken, signOut } = useAuth();
   const toast = useToast();
   const params = useLocalSearchParams<{ tab?: string | string[] }>();
   const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
@@ -418,6 +422,7 @@ export default function BuyerProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Saved');
   const [hasWarmProfileSnapshot, setHasWarmProfileSnapshot] = useState(() => Boolean(initialWarmProfileState));
+  const unreadNotificationCount = useUnreadNotificationCount();
 
   useEffect(() => {
     navPerf.screenMounted('tabs→me');
@@ -425,14 +430,9 @@ export default function BuyerProfileScreen() {
     navPerf.firstVisibleUi('tabs→me');
   }, []);
   const savedLooksOpenedTrackedRef = useRef(false);
-  const [editOpen, setEditOpen] = useState(false);
   const [fittingsOpen, setFittingsOpen] = useState(false);
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
-  const [savingProfile, setSavingProfile] = useState(false);
   const [savingFittings, setSavingFittings] = useState(false);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [address, setAddress] = useState('');
   const [fitUnit, setFitUnit] = useState<'CM' | 'IN'>('CM');
   const [fitValues, setFitValues] = useState<Record<MeasurementKey, string>>({
     CHEST: '',
@@ -459,7 +459,6 @@ export default function BuyerProfileScreen() {
   const fallbackProfile = useMemo(() => buildFallbackProfile(user), [user]);
   const profileRecord = state.profile ?? fallbackProfile;
   const profileIdentity = useMemo(() => resolveIdentity(profileRecord), [profileRecord]);
-  const hasProfile = Boolean(profileRecord);
   const profileCounts = useMemo(
     () => ({
       saved: state.saved.length,
@@ -581,13 +580,6 @@ export default function BuyerProfileScreen() {
         { section: 'orders', endpoint: '/store/orders', result: ordersResult },
       ].filter((entry) => entry.result.status === 'rejected');
 
-      if (
-        typeof nextProfile?.isEmailVerified === 'boolean' &&
-        nextProfile.isEmailVerified !== user.isEmailVerified
-      ) {
-        updateUser({ isEmailVerified: nextProfile.isEmailVerified });
-      }
-
       optionalFailures.forEach((entry) => {
         const reason = entry.result.status === 'rejected' ? entry.result.reason : null;
         profileDevWarn('section-load-failed', {
@@ -637,7 +629,7 @@ export default function BuyerProfileScreen() {
         setRefreshing(false);
       }
     }
-  }, [fallbackProfile, status, updateUser, user?.id, user?.isEmailVerified]);
+  }, [fallbackProfile, status, user?.id]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -646,19 +638,21 @@ export default function BuyerProfileScreen() {
     return () => cancelAnimationFrame(frame);
   }, [load]);
 
+  useFocusEffect(
+    useCallback(() => {
+      void refreshUnreadNotificationCount({
+        authenticated: status === 'authenticated',
+        forceRefresh: true,
+      });
+    }, [status]),
+  );
+
   useEffect(() => {
     if (status === 'authenticated' && !loading) {
       navPerf.mark('cached_or_empty_state_visible', 'tabs→me');
       navPerf.dataReady('tabs→me');
     }
   }, [loading, status]);
-
-  useEffect(() => {
-    if (!editOpen || !profileRecord) return;
-    setFirstName(profileRecord.firstName || '');
-    setLastName(profileRecord.lastName || '');
-    setAddress(profileRecord.address || profileRecord.location || '');
-  }, [editOpen, profileRecord]);
 
   useEffect(() => {
     if (!fittingsOpen) return;
@@ -723,8 +717,12 @@ export default function BuyerProfileScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load({ silent: true });
-  }, [load]);
+    await Promise.all([
+      validateToken({ forceRefresh: true }),
+      load({ silent: true }),
+      refreshUnreadNotificationCount({ authenticated: true, forceRefresh: true }),
+    ]);
+  }, [load, validateToken]);
 
   const handlePickAvatar = useCallback(async () => {
     if (!profileRecord) return;
@@ -812,32 +810,6 @@ export default function BuyerProfileScreen() {
     }
   }, [profileRecord, toast, updateUser]);
 
-  const handleSaveProfile = useCallback(async () => {
-    if (!profileRecord || savingProfile) return;
-    setSavingProfile(true);
-    try {
-      const updated = await ProfileApi.updateProfile({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        username: profileRecord.username,
-        address: address.trim(),
-      });
-      if (!updated) throw new Error('Profile update failed');
-      setState((current) => ({ ...current, profile: updated }));
-      updateUser({
-        firstName: updated.firstName,
-        lastName: updated.lastName,
-        username: updated.username,
-      });
-      setEditOpen(false);
-      toast.success('Profile updated.');
-    } catch (nextError) {
-      toast.error('Could not update profile. Please try again.');
-    } finally {
-      setSavingProfile(false);
-    }
-  }, [address, firstName, lastName, profileRecord, savingProfile, toast, updateUser]);
-
   const handleSaveFittings = useCallback(async () => {
     if (savingFittings) return;
     setSavingFittings(true);
@@ -913,9 +885,19 @@ export default function BuyerProfileScreen() {
             onPress={handleOpenNotifications}
             accessibilityRole="button"
             accessibilityLabel="Open notifications"
-            style={({ pressed }) => [styles.headerActionButton, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.headerActionButton, pressed && styles.pressed]}
           >
             <AppText variant="body">🔔</AppText>
+            {unreadNotificationCount > 0 ? (
+              <View style={[styles.notificationBadge, { backgroundColor: theme.colors.danger }]}>
+                <AppText
+                  variant="small"
+                  style={[styles.notificationBadgeText, { color: theme.colors.textInverse }]}
+                >
+                  {unreadNotificationCount > 99 ? '99+' : String(unreadNotificationCount)}
+                </AppText>
+              </View>
+            ) : null}
           </Pressable>
         </View>
 
@@ -952,9 +934,9 @@ export default function BuyerProfileScreen() {
             {profileIdentity.handle ? (
               <AppText variant="body" tone="muted" style={styles.centerText}>{profileIdentity.handle}</AppText>
             ) : null}
-            {profileIdentity.locationLabel || profileIdentity.joinedLabel ? (
+            {profileIdentity.locationLabel ? (
               <AppText variant="captionRegular" tone="muted" style={styles.centerText}>
-                {[profileIdentity.locationLabel, profileIdentity.joinedLabel].filter(Boolean).join(' · ')}
+                {profileIdentity.locationLabel}
               </AppText>
             ) : null}
           </View>
@@ -964,17 +946,11 @@ export default function BuyerProfileScreen() {
           context="profile"
           userId={user?.id}
           email={user?.email}
-          emailVerified={
-            user?.isEmailVerified === true || profileRecord?.isEmailVerified === true
-              ? true
-              : user?.isEmailVerified === false || profileRecord?.isEmailVerified === false
-                ? false
-                : null
-          }
+          emailVerified={user?.isEmailVerified}
         />
 
         <View style={styles.actionGrid}>
-          <ProfileAction emoji="✏️" label="Edit info" onPress={() => setEditOpen(true)} />
+          <ProfileAction emoji="✏️" label="Edit info" onPress={() => router.push('/(tabs)/me-edit' as any)} />
           <ProfileAction emoji="📏" label="My fits" onPress={() => setFittingsOpen(true)} />
           <ProfileAction emoji="📦" label="Orders" onPress={() => router.push('/orders' as any)} />
           <ProfileAction emoji="⭐" label="Reviews" onPress={() => router.push('/reviews' as any)} />
@@ -1092,30 +1068,6 @@ export default function BuyerProfileScreen() {
       />
 
       <AppBottomSheet
-        visible={editOpen}
-        title="Edit profile"
-        subtitle="Update your details"
-        onClose={() => setEditOpen(false)}
-        footer={(
-          <View style={styles.sheetFooterActions}>
-            <Button title="Cancel" size="md" variant="outline" onPress={() => setEditOpen(false)} style={styles.sheetFooterButton} />
-            <Button
-              title="Done"
-              size="md"
-              onPress={() => void handleSaveProfile()}
-              disabled={!hasProfile || firstName.trim().length < 2 || lastName.trim().length < 2}
-              loading={savingProfile}
-              style={styles.sheetFooterButton}
-            />
-          </View>
-        )}
-      >
-        <Input label="First name" value={firstName} onChangeText={setFirstName} placeholder="First name" />
-        <Input label="Last name" value={lastName} onChangeText={setLastName} placeholder="Last name" />
-        <Input label="Location" value={address} onChangeText={setAddress} placeholder="City, Country" />
-      </AppBottomSheet>
-
-      <AppBottomSheet
         visible={fittingsOpen}
         title="My fittings"
         subtitle="Update your measurements"
@@ -1181,10 +1133,24 @@ const styles = StyleSheet.create({
   headerActionButton: {
     width: 44,
     height: 44,
-    borderRadius: tokens.radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 1,
+    right: 0,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationBadgeText: {
+    fontSize: 10,
+    lineHeight: 12,
   },
   loadingState: {
     flex: 1,
@@ -1209,6 +1175,8 @@ const styles = StyleSheet.create({
     width: 92,
     height: 92,
     borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarBadge: {
     position: 'absolute',

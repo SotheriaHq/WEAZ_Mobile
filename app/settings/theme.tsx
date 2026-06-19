@@ -45,16 +45,9 @@ export default function ThemeSettingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
       >
-        <View style={styles.descriptionWrap}>
-          <AppText variant="captionRegular" tone="muted">
-            Choose how WEAZ looks on this device. This setting is saved to your account and syncs across devices.
-          </AppText>
-        </View>
-
-        <View style={[styles.section, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}>
-          {THEME_OPTIONS.map((option, index) => {
+        <View style={styles.section}>
+          {THEME_OPTIONS.map((option) => {
             const selected = themePreference === option.value;
-            const isLast = index === THEME_OPTIONS.length - 1;
             return (
               <Pressable
                 key={option.value}
@@ -64,11 +57,10 @@ export default function ThemeSettingsScreen() {
                 accessibilityLabel={option.label}
                 style={({ pressed }) => [
                   styles.row,
-                  !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
                   pressed && { backgroundColor: theme.colors.surfaceAlt },
                 ]}
               >
-                <View style={[styles.rowIconWrap, { backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surfaceAlt }]}>
+                <View style={styles.rowIconWrap}>
                   <AppText variant="body">{option.icon}</AppText>
                 </View>
                 <View style={styles.rowBody}>
@@ -106,16 +98,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   content: {
-    gap: tokens.spacing.md,
-  },
-  descriptionWrap: {
     paddingHorizontal: tokens.spacing.lg,
     paddingTop: tokens.spacing.lg,
-    paddingBottom: tokens.spacing.xs,
   },
   section: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: tokens.spacing.xs,
   },
   row: {
     flexDirection: 'row',
@@ -128,7 +115,6 @@ const styles = StyleSheet.create({
   rowIconWrap: {
     width: 36,
     height: 36,
-    borderRadius: tokens.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,

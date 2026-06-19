@@ -548,9 +548,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (statusCode === 403) {
         return false;
       }
-      // /auth/profile 401 (or network failure) during bootstrap means the stored
-      // token is already invalid — there is no live session to revoke. Clear
-      // local state without the spurious POST /auth/logout that itself 401s.
+      if (statusCode !== 401) {
+        // A transient profile refresh failure must preserve the last authenticated
+        // snapshot. Only an explicit 401 proves that the local session is invalid.
+        return false;
+      }
       await signOut({ notifyServer: false });
       return false;
     }
