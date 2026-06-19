@@ -26,7 +26,7 @@ import {
   type FilterDimensionOption,
   type MeasurementPointOption,
 } from '@/src/api/DesignApi';
-import { useAuthSession } from '@/src/auth/AuthContext';
+import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
 import {
   fetchDesignCategoriesQuery,
   fetchDesignFilterDimensionsQuery,
@@ -50,6 +50,7 @@ import {
   DESIGN_REQUIRED_MEDIA_COUNT,
   MEDIA_VIEW_SLOT_OPTIONS,
   getMediaViewSlotLabel,
+  getMissingRequiredImageMediaSlots,
   getMissingRequiredMediaSlots,
   normalizeDesignCreationSizingMode,
   normalizeMediaViewSlot,
@@ -177,6 +178,9 @@ const INITIAL_FORM: FormState = {
 };
 
 const DesignEditorContext = createContext<ContextValue | null>(null);
+const DEFAULT_PRODUCTION_LEAD_DAYS = 7;
+const MAX_PRODUCTION_LEAD_DAYS = 7;
+const MAX_RUSH_LEAD_DAYS = 3;
 
 function parseTags(input: string): string[] {
   const tags = input
@@ -264,8 +268,25 @@ function hasMeaningfulDraftContent(form: FormState, tags: string[], filterSelect
   return Object.values(filterSelection).some((values) => values.length > 0);
 }
 
-// Mirrors the backend custom-order rush rules (custom-order-configurations
-// service guard + DTO @Min(5)/@Max(13)) so the creator gets clear inline
+function getCustomOrderProductionValidationMessage(form: FormState): string | null {
+  if (!form.customOrderEnabled) return null;
+
+  const productionLeadDays = form.productionLeadDays.trim()
+    ? Number(form.productionLeadDays)
+    : DEFAULT_PRODUCTION_LEAD_DAYS;
+
+  if (
+    !Number.isInteger(productionLeadDays) ||
+    productionLeadDays < 1 ||
+    productionLeadDays > MAX_PRODUCTION_LEAD_DAYS
+  ) {
+    return 'Set standard production time between 1 and 7 days.';
+  }
+
+  return null;
+}
+
+// Mirrors the backend custom-order rush rules so the creator gets clear inline
 // guidance instead of a raw 400 from POST /custom-order-configurations. Returns
 // null when custom orders or rush are disabled (rush fields are then ignored).
 function getCustomOrderRushValidationMessage(form: FormState): string | null {
@@ -280,16 +301,15 @@ function getCustomOrderRushValidationMessage(form: FormState): string | null {
   if (
     !form.rushProductionLeadDays.trim() ||
     !Number.isInteger(rushLeadDays) ||
-    rushLeadDays < 5 ||
-    rushLeadDays > 13
+    rushLeadDays < 1 ||
+    rushLeadDays > MAX_RUSH_LEAD_DAYS
   ) {
-    return 'Set rush production lead time between 5 and 13 days.';
+    return 'Set rush production lead time between 1 and 3 days (72 hours max).';
   }
 
-  // productionLeadDays defaults to 7 on submit when left blank (see save()).
   const standardLeadDays = form.productionLeadDays.trim()
     ? Number(form.productionLeadDays)
-    : 7;
+    : DEFAULT_PRODUCTION_LEAD_DAYS;
   if (rushLeadDays >= standardLeadDays) {
     return 'Rush production lead time must be shorter than the standard production lead time.';
   }
@@ -311,9 +331,13 @@ function getPublishValidationMessage({
   customMeasurementKeys: string[];
 }) {
   const missingRequiredSlots = getMissingRequiredMediaSlots(assets);
+  const missingRequiredImageSlots = getMissingRequiredImageMediaSlots(assets);
   if (assets.length === 0) return 'Add Front, Back, Left Side, and Right Side media before previewing.';
   if (missingRequiredSlots.length > 0) {
     return `Add ${missingRequiredSlots.map(getMediaViewSlotLabel).join(', ')} media before previewing.`;
+  }
+  if (missingRequiredImageSlots.length > 0) {
+    return `${missingRequiredImageSlots.map(getMediaViewSlotLabel).join(', ')} must be image uploads before previewing. Replace videos or unsupported files in those views.`;
   }
   if (assets.length < DESIGN_REQUIRED_MEDIA_COUNT) return 'Add Front, Back, Left Side, and Right Side media before previewing.';
   if (assets.length > DESIGN_EDITOR_MAX_MEDIA) return 'Remove extra media before previewing.';
@@ -331,6 +355,8 @@ function getPublishValidationMessage({
   ) {
     return 'Add custom-order pricing before previewing.';
   }
+  const productionMessage = getCustomOrderProductionValidationMessage(form);
+  if (productionMessage) return productionMessage;
   const rushMessage = getCustomOrderRushValidationMessage(form);
   if (rushMessage) return rushMessage;
   return null;
@@ -403,6 +429,7 @@ export function DesignEditorProvider({
   children: React.ReactNode;
 }) {
   const toast = useToast();
+  const { user } = useAuth();
   const { hasActiveBrandMembership, userEmailVerified } = useAuthSession();
   const [booting, setBooting] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
@@ -456,6 +483,7 @@ export function DesignEditorProvider({
   const bootstrappedRef = useRef(false);
   const mountedRef = useRef(true);
   const isSavingRef = useRef(false);
+  const lastAutoBaseChargeRef = useRef('');
   // Tracks the last measurement-point gender we requested so the bootstrap call
   // and the audience-change effect never fire a duplicate request for the same
   // gender during creator bootstrapping.
@@ -673,14 +701,36 @@ export function DesignEditorProvider({
   }, [categories.length, form.subCategoryId, selectedCategory]);
 
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
-    if (key === 'customOrderEnabled' || key === 'rushEnabled' || key === 'sizingMode' || key === 'audience') {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    }
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next: FormState = { ...prev, [key]: value };
+
+      if (key === 'minPrice') {
+        const nextDefaultBaseCharge = String(value ?? '').trim();
+        const previousDefaultBaseCharge = lastAutoBaseChargeRef.current;
+        const shouldSyncBaseCharge =
+          prev.customOrderEnabled &&
+          nextDefaultBaseCharge.length > 0 &&
+          (prev.baseProductionCharge.trim().length === 0 ||
+            prev.baseProductionCharge.trim() === previousDefaultBaseCharge);
+
+        if (shouldSyncBaseCharge) {
+          next.baseProductionCharge = nextDefaultBaseCharge;
+          lastAutoBaseChargeRef.current = nextDefaultBaseCharge;
+        } else if (nextDefaultBaseCharge.length > 0 && previousDefaultBaseCharge.length === 0) {
+          lastAutoBaseChargeRef.current = nextDefaultBaseCharge;
+        }
+      }
+
+      if (key === 'customOrderEnabled' && Boolean(value) && !prev.baseProductionCharge.trim() && prev.minPrice.trim()) {
+        next.baseProductionCharge = prev.minPrice.trim();
+        lastAutoBaseChargeRef.current = prev.minPrice.trim();
+      }
+
+      return next;
+    });
   }, []);
 
   const toggleFilterValue = useCallback((dimensionId: string, valueId: string, isMulti: boolean) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setFilterSelection((prev) => {
       const current = prev[dimensionId] ?? [];
       let nextValues: string[];
@@ -703,7 +753,6 @@ export function DesignEditorProvider({
   }, []);
 
   const toggleMeasurementKey = useCallback((key: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setCustomMeasurementKeys((prev) =>
       prev.includes(key) ? prev.filter((entry) => entry !== key) : [...prev, key],
     );
@@ -808,6 +857,11 @@ export function DesignEditorProvider({
       // Rush config is sent for both draft and publish when custom orders are on,
       // so guard both paths against the backend rush rules (publish is also gated
       // earlier via publishValidationMessage, this catches draft saves too).
+      const productionValidationMessage = getCustomOrderProductionValidationMessage(form);
+      if (productionValidationMessage) {
+        toast.error(productionValidationMessage);
+        return;
+      }
       const rushValidationMessage = getCustomOrderRushValidationMessage(form);
       if (rushValidationMessage) {
         toast.error(rushValidationMessage);
@@ -840,7 +894,7 @@ export function DesignEditorProvider({
               rushFee: form.rushFee || undefined,
               rushProductionLeadDays: form.rushProductionLeadDays ? Number(form.rushProductionLeadDays) : undefined,
               notes: form.notes || undefined,
-              productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : 7,
+              productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : DEFAULT_PRODUCTION_LEAD_DAYS,
               deliveryMinDays: form.deliveryMinDays ? Number(form.deliveryMinDays) : 2,
               deliveryMaxDays: form.deliveryMaxDays ? Number(form.deliveryMaxDays) : 5,
               deliveryScope: form.deliveryScope.trim() || 'Nigeria',
@@ -898,6 +952,12 @@ export function DesignEditorProvider({
           designId: activeDesignId,
           message: action === 'publish' ? 'Going live...' : 'Saving draft...',
         });
+        if (action === 'publish') {
+          router.replace({
+            pathname: '/catalog',
+            params: { tab: 'Collections', visibility: 'In Review' },
+          } as any);
+        }
         const resolvePublishVisibility = (status?: string | null) => {
           // After Go Live, route by the design's resolved publication status so
           // the owner lands on the tab that actually contains the item. Newly
@@ -930,17 +990,27 @@ export function DesignEditorProvider({
               }
             },
             (id) => {
-              setActiveDesignId(id);
+              updateDesignEditorBackgroundTask(task.id, { designId: id });
+              if (mountedRef.current) {
+                setActiveDesignId(id);
+              }
             },
           );
+
+          const targetVisibility =
+            action === 'draft' ? 'Drafts' : resolvePublishVisibility(result.detail.status);
+          const publishCompleteMessage =
+            targetVisibility === 'Public' || targetVisibility === 'Private'
+              ? 'Design is live.'
+              : 'Submitted for review.';
 
           updateDesignEditorBackgroundTask(task.id, {
             status: 'complete',
             progress: 1,
             designId: result.id,
-            message: action === 'publish' ? 'Design is live.' : 'Draft saved.',
+            message: action === 'publish' ? publishCompleteMessage : 'Draft saved.',
           });
-          toast.success(action === 'publish' ? 'Design is live.' : 'Draft saved.');
+          toast.success(action === 'publish' ? publishCompleteMessage : 'Draft saved.');
 
           if (mountedRef.current) {
             hydrateFromDetail(result.detail);
@@ -953,9 +1023,6 @@ export function DesignEditorProvider({
           void queryClient.invalidateQueries({ queryKey: ['brand', 'collections'] });
           void queryClient.invalidateQueries({ queryKey: ['designs', 'user'] });
           void queryClient.invalidateQueries({ queryKey: ['design', 'detail', result.id] });
-
-          const targetVisibility =
-            action === 'draft' ? 'Drafts' : resolvePublishVisibility(result.detail.status);
 
           router.replace({
             pathname: '/catalog',
@@ -974,9 +1041,21 @@ export function DesignEditorProvider({
             message: action === 'publish' ? 'Publish failed.' : 'Draft save failed.',
             error: message,
           });
-          toast.error(
-            action === 'publish' ? mapCreatorMetadataError(message, publishFallback) : message,
-          );
+          if (action === 'publish') {
+            const username = user?.username || user?.firstName || user?.brandFullName || 'there';
+            toast.error(`Hello ${username}, your upload ${titleForTask || 'design'} was not successful. Tap to review.`, {
+              duration: 9000,
+              actionLabel: 'Review',
+              onPress: () => {
+                router.push({
+                  pathname: '/catalog',
+                  params: { tab: 'Collections', visibility: 'In Review' },
+                } as any);
+              },
+            });
+          } else {
+            toast.error(message);
+          }
         } finally {
           isSavingRef.current = false;
           if (mountedRef.current) {
@@ -994,7 +1073,9 @@ export function DesignEditorProvider({
           action === 'publish' ? mapCreatorMetadataError(message, publishFallback) : message,
         );
         isSavingRef.current = false;
-        setSaveAction(null);
+        if (mountedRef.current) {
+          setSaveAction(null);
+        }
       }
     },
     [
@@ -1016,6 +1097,7 @@ export function DesignEditorProvider({
       selectedFilterValueIds,
       tags,
       toast,
+      user,
       userEmailVerified,
       hasActiveBrandMembership,
     ],

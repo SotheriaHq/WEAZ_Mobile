@@ -34,6 +34,8 @@ interface CollectionsGridProps {
   onComment?: (id: string) => void;
   onShare?: (id: string) => void;
   onSave?: (collection: CollectionDto) => void;
+  onClientRetry?: (collection: CollectionDto) => void;
+  onClientDismiss?: (collection: CollectionDto) => void;
   savedById?: Record<string, boolean>;
   saveBusyById?: Record<string, boolean>;
   isOwner?: boolean;
@@ -69,6 +71,8 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   onComment,
   onShare,
   onSave,
+  onClientRetry,
+  onClientDismiss,
   savedById,
   saveBusyById,
   isOwner = false,
@@ -121,13 +125,15 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
             onComment={onComment}
             onShare={onShare}
             onSave={onSave}
+            onClientRetry={onClientRetry}
+            onClientDismiss={onClientDismiss}
             isSaved={Boolean(savedById?.[item.id])}
             saveBusy={Boolean(saveBusyById?.[item.id])}
           />
         </View>
       );
     },
-    [cardWidth, isOwner, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts],
+    [cardWidth, isOwner, onClientDismiss, onClientRetry, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts],
   );
 
   // Loading skeleton

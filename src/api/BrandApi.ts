@@ -119,6 +119,9 @@ export interface CollectionDto {
   // Client-side status for publishing state
   clientStatus?: 'publishing' | 'publish-failed';
   clientStatusMessage?: string;
+  clientProgress?: number;
+  clientTaskId?: string;
+  clientFailureReason?: string | null;
 }
 
 export type CollectionScope = 'design' | 'store' | 'all';

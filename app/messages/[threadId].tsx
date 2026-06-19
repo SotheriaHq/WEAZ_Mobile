@@ -66,6 +66,16 @@ function validId(value: string | null | undefined) {
   return value && UUID_PATTERN.test(value) ? value : null;
 }
 
+function normalizePathThreadId(value: string | null | undefined) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'resolve' || normalized === 'brand' || normalized === 'new') return null;
+  return value ?? null;
+}
+
+function getErrorStatus(error: unknown) {
+  return (error as { response?: { status?: number } })?.response?.status ?? null;
+}
+
 function hasResolverContext(context: MessageContextParams) {
   return Boolean(
     validId(context.messageId) ||
@@ -90,7 +100,7 @@ function getErrorMessage(error: unknown) {
 }
 
 function classifyError(error: unknown, context: MessageContextParams) {
-  const status = (error as { response?: { status?: number } })?.response?.status ?? null;
+  const status = getErrorStatus(error);
   const message = getErrorMessage(error);
   const lower = message.toLowerCase();
 
@@ -510,7 +520,7 @@ export default function ChatThreadScreen() {
   const toast = useToast();
   const { status, token, user } = useAuth();
   const params = useLocalSearchParams();
-  const paramThreadId = firstParam(params.threadId);
+  const paramThreadId = normalizePathThreadId(firstParam(params.threadId));
   const paramConversationId = firstParam(params.conversationId);
   const paramMessageId = firstParam(params.messageId);
   const paramOrderId = firstParam(params.orderId);
@@ -591,9 +601,15 @@ export default function ChatThreadScreen() {
     ...resolvedRoute?.context,
     threadId: activeContext?.threadId ?? directThreadId,
   });
-  const title = participantName ?? 'Conversation';
-  const subtitle = orderLabel ?? (participant ? undefined : 'Participant unavailable');
-  const canSend = phase === 'ready' && !sending && !['READ_ONLY', 'ARCHIVED', 'BLOCKED'].includes(thread?.status ?? '');
+  const title = participantName ?? (validId(activeContext?.brandId) && !activeThreadId ? 'Message brand' : 'Conversation');
+  const subtitle =
+    orderLabel ??
+    (participant ? undefined : validId(activeContext?.brandId) && !activeThreadId ? 'Start the conversation' : 'Participant unavailable');
+  const canSend =
+    phase === 'ready' &&
+    !sending &&
+    Boolean(activeThreadId || validId(activeContext?.brandId)) &&
+    !['READ_ONLY', 'ARCHIVED', 'BLOCKED'].includes(thread?.status ?? '');
   const sendDisabled = !canSend || composerText.trim().length === 0;
 
   const markRead = useCallback(async (target: MessageContextParams, latestMessageId?: string | null) => {
@@ -827,6 +843,25 @@ export default function ChatThreadScreen() {
       })
       .catch((error) => {
         if (requestId !== requestIdRef.current) return;
+        if (
+          getErrorStatus(error) === 404 &&
+          validId(routeContext.brandId) &&
+          !validId(routeContext.messageId) &&
+          !validId(routeContext.orderId) &&
+          !validId(routeContext.customOrderId) &&
+          !validId(routeContext.customerId)
+        ) {
+          setResolvedRoute(null);
+          setActiveContext({ brandId: routeContext.brandId });
+          setThread(null);
+          setMessages([]);
+          setOrders([]);
+          setHasNextPage(false);
+          setPhase('ready');
+          setStateTitle('New message');
+          setStateBody('Send the first message to start this brand conversation.');
+          return;
+        }
         const classified = classifyError(error, routeContext);
         setPhase(classified.phase);
         setStateTitle(classified.title);
@@ -899,27 +934,43 @@ export default function ChatThreadScreen() {
 
   const handleSend = useCallback(async () => {
     const targetThreadId = validId(activeContext?.threadId) ?? validId(activeContext?.conversationId);
+    const targetBrandId = validId(activeContext?.brandId);
     const bodyText = composerText.trim();
-    if (!targetThreadId || !bodyText || sending) return;
+    if ((!targetThreadId && !targetBrandId) || !bodyText || sending) return;
 
     setSending(true);
     setSendError(null);
 
     try {
-      const response = await MessagingApi.sendMessage(
-        { threadId: targetThreadId },
-        {
-          bodyText,
-          clientMessageId: createMessageClientId(),
-          ...(replyToMessage ? { replyToMessageId: replyToMessage.id } : {}),
-        },
-      );
+      const clientMessageId = createMessageClientId();
+      const response = targetThreadId
+        ? await MessagingApi.sendMessage(
+            { threadId: targetThreadId },
+            {
+              bodyText,
+              clientMessageId,
+              ...(replyToMessage ? { replyToMessageId: replyToMessage.id } : {}),
+            },
+          )
+        : await MessagingApi.startConversation({
+            brandId: targetBrandId,
+            bodyText,
+            clientMessageId,
+          });
 
       setComposerText('');
       setReplyToMessage(null);
+      const nextThreadId = validId(response.threadId) ?? targetThreadId ?? null;
       if (response.message) {
         setMessages((current) => mergeMessages([response.message as MessageItem], current));
-        setThread((current) => current ? { ...current, threadId: targetThreadId, conversationId: targetThreadId } : current);
+        if (nextThreadId) {
+          setThread((current) => current ? { ...current, threadId: nextThreadId, conversationId: nextThreadId } : current);
+        }
+      }
+      if (nextThreadId) {
+        const nextContext = { ...activeContext, threadId: nextThreadId, conversationId: nextThreadId };
+        setActiveContext(nextContext);
+        await loadThread(nextContext, 'refresh');
       } else {
         await loadThread({ ...activeContext, threadId: targetThreadId }, 'refresh');
       }
@@ -1032,7 +1083,9 @@ export default function ChatThreadScreen() {
                     No messages yet
                   </AppText>
                   <AppText variant="body" tone="muted" style={styles.centerText}>
-                    This thread is real, but it has no visible messages yet.
+                    {thread
+                      ? 'This thread is real, but it has no visible messages yet.'
+                      : 'Send the first message to start this brand conversation.'}
                   </AppText>
                 </View>
               }

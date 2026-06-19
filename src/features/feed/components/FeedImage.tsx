@@ -44,10 +44,22 @@ const classifyAspectRatio = (aspectRatio?: number | null): FeedImageAspectClass 
 const getAspectStrategyOverride = (
   contentFit: ImageContentFit,
   frostedBackdrop: boolean,
+  aspectClass: FeedImageAspectClass,
 ): AspectAwareMediaStrategy | null => {
+  // Never crop on the runway. The whole image is shown ("contain" → every pixel
+  // visible, no quality-destroying upscale-crop), and the screen still feels
+  // full by filling the surrounding space with an ambient, blurred copy of the
+  // same image rather than hard letterbox bars. Edge-to-edge cover is opt-in
+  // only, via an explicit contentFit="cover".
   if (contentFit === 'cover') return 'edge';
-  if (frostedBackdrop) return null;
-  return 'letter-solid';
+  if (!frostedBackdrop) return 'letter-solid';
+  // Aspect not known yet: a clean matte avoids a blurred flash before onLoad
+  // reports real dimensions; it then recomputes to the ambient fill below.
+  if (aspectClass === 'unknown') return 'letter-solid';
+  // Square media gets a subtler ambient fill; portrait/landscape get the
+  // stronger same-image blur. The foreground stays sharp and uncropped in both.
+  if (aspectClass === 'square') return 'letter-soft';
+  return 'letter-blur';
 };
 
 function FeedImagePlaceholder({ backgroundColor }: { backgroundColor: string }) {
@@ -143,7 +155,7 @@ export const FeedImage = React.memo(function FeedImage({
     (naturalWidth && naturalHeight ? naturalWidth / naturalHeight : null) ??
     (loadedNaturalSize ? loadedNaturalSize.width / loadedNaturalSize.height : null);
   const resolvedAspectClass = aspectClass ?? classifyAspectRatio(measuredAspectRatio);
-  const strategyOverride = getAspectStrategyOverride(contentFit, frostedBackdrop);
+  const strategyOverride = getAspectStrategyOverride(contentFit, frostedBackdrop, resolvedAspectClass);
   const resolvedImageWidth = naturalWidth ?? loadedNaturalSize?.width ?? null;
   const resolvedImageHeight = naturalHeight ?? loadedNaturalSize?.height ?? null;
 

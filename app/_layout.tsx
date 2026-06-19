@@ -66,8 +66,8 @@ const THEME_MODE_KEY = 'threadly.theme.mode';
 // fallback a pixel-identical continuation of the native splash, so the native→JS
 // handoff is a single continuous surface with no tiny→large logo jump and no
 // blank flash between the native splash and the first app shell.
-const BOOT_BACKGROUND = '#0b0710';
-const SPLASH_LOGO_SIZE = 200; // matches app.json splash plugin `imageWidth: 200`
+const BOOT_BACKGROUND = '#FFFFFF';
+const SPLASH_LOGO_SIZE = 116; // matches app.json splash plugin `imageWidth: 116`
 
 function StartupFallback() {
   return (

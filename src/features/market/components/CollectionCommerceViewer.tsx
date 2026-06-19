@@ -368,7 +368,7 @@ export function CollectionCommerceViewer({
       toast.info('Messaging is disabled for your own brand.');
       return;
     }
-    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'brand', brandId: status.collection.brandId } } as any);
+    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId: status.collection.brandId } } as any);
   }, [isOwnBrand, requireAuth, status?.collection.brandId, toast]);
 
   const renderProduct = ({ item }: { item: CollectionBagProductStatus }) => {

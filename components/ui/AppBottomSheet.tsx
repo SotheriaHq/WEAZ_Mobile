@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleProp,
@@ -42,6 +41,7 @@ type Props = {
   scrollable?: boolean;
   footer?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
+  keyboardBehavior?: 'auto' | 'none';
 };
 
 export function AppBottomSheet({
@@ -58,23 +58,61 @@ export function AppBottomSheet({
   scrollable = true,
   footer,
   style,
+  keyboardBehavior = 'auto',
 }: Props) {
   const { theme, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(28);
   const opacity = useSharedValue(0);
   const [mounted, setMounted] = useState(visible);
+  const [keyboardFallbackHeight, setKeyboardFallbackHeight] = useState(0);
   const keyboard = useAnimatedKeyboard({ isStatusBarTranslucentAndroid: true });
   const isDark = scheme === 'dark';
   const sheetPaddingBottom = Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm);
 
   useAndroidOverlaySystemBars(visible, scheme, 'bottom-sheet');
 
+  const dragCloseResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          gestureState.dy > 8 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+        onPanResponderRelease: (_, gestureState) => {
+          if (gestureState.dy > 48 || gestureState.vy > 0.8) {
+            onClose();
+          }
+        },
+      }),
+    [onClose],
+  );
+
   useEffect(() => {
     if (visible) {
       setMounted(true);
+      if (keyboardBehavior === 'none') {
+        Keyboard.dismiss();
+      }
     }
-  }, [visible]);
+  }, [keyboardBehavior, visible]);
+
+  useEffect(() => {
+    if (!visible || keyboardBehavior !== 'auto') {
+      setKeyboardFallbackHeight(0);
+      return;
+    }
+
+    const show = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardFallbackHeight(event.endCoordinates.height);
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardFallbackHeight(0);
+    });
+
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [keyboardBehavior, visible]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -104,7 +142,7 @@ export function AppBottomSheet({
   }));
 
   const keyboardWrapStyle = useAnimatedStyle(() => ({
-    paddingBottom: keyboard.height.value,
+    paddingBottom: keyboardBehavior === 'auto' ? Math.max(keyboard.height.value, keyboardFallbackHeight) : 0,
   }));
 
   const Body = scrollable ? ScrollView : View;
@@ -115,7 +153,10 @@ export function AppBottomSheet({
         keyboardDismissMode: 'interactive' as const,
         // keyboard avoidance is handled smoothly by our animated wrap; don't double count
         automaticallyAdjustKeyboardInsets: false,
-        contentContainerStyle: styles.bodyContent,
+        contentContainerStyle: [
+          styles.bodyContent,
+          keyboardBehavior === 'auto' ? styles.bodyContentKeyboard : null,
+        ],
       }
     : { style: [styles.bodyContent, { flexShrink: 1 }] };
 
@@ -147,7 +188,10 @@ export function AppBottomSheet({
               style,
             ]}
           >
-            <View style={[styles.handle, { backgroundColor: theme.colors.bottomSheetHandle }]} />
+            <View
+              {...dragCloseResponder.panHandlers}
+              style={[styles.handle, { backgroundColor: theme.colors.bottomSheetHandle }]}
+            />
 
             {(title || subtitle || onDone) ? (
               <View style={styles.header}>
@@ -169,7 +213,7 @@ export function AppBottomSheet({
                   ) : null}
                   {showCloseButton ? (
                     <Pressable onPress={onClose} style={({ pressed }) => [styles.closeButton, pressed ? styles.pressed : null]}>
-                      <AppText variant="subtitle" tone="muted">✕</AppText>
+                      <AppText variant="subtitle" tone="muted">X</AppText>
                     </Pressable>
                   ) : null}
                 </View>
@@ -244,6 +288,9 @@ const styles = StyleSheet.create({
   },
   bodyContent: {
     gap: tokens.spacing.md,
+  },
+  bodyContentKeyboard: {
+    paddingBottom: tokens.spacing.lg,
   },
   footer: {
     paddingTop: tokens.spacing.sm,

@@ -7,6 +7,10 @@ import { setApiAuthToken, setApiRefreshToken } from '@/src/api/httpClient';
 import { env } from '@/src/config/env';
 import { clearCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { MOBILE_PENDING_CHECKOUT_STORAGE_KEY } from '@/src/features/checkout/mobileCheckoutPending';
+import {
+  clearDesignEditorBackgroundTasks,
+  DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY,
+} from '@/src/features/design-editor/designEditorBackgroundTasks';
 import { PERSISTED_FEED_CACHE_PREFIX } from '@/src/features/feed/utils/feedKeys';
 import { clearResolvedImageUriCache } from '@/src/hooks/useResolvedImageUri';
 import { deactivateRegisteredPushTokenForLogout } from '@/src/notifications/pushTokenRegistration';
@@ -58,6 +62,7 @@ export async function clearMobilePrivateAsyncStorage() {
     const privateKeys = keys.filter(
       (key) =>
         key === THREADLY_QUERY_CACHE_STORAGE_KEY ||
+        key === DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY ||
         key.startsWith(PERSISTED_FEED_CACHE_PREFIX) ||
         key === env.userStorageKey,
     );
@@ -89,6 +94,7 @@ export async function clearMobilePrivateSessionState({
   clearBrandApiSessionCaches();
   clearWarmScreenStateCache();
   clearResolvedImageUriCache();
+  clearDesignEditorBackgroundTasks();
 
   await Promise.allSettled([
     removeAccessToken(),

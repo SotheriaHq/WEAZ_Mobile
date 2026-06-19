@@ -28,7 +28,7 @@ import { ProfileApi } from '@/src/api/ProfileApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
 import { DEFAULT_MARKET_FILTER_CHIPS, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
-import { fetchMarketFeedPage, readCachedMarketFeed, readMemoryCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
+import { consumeMarketFeedDirty, fetchMarketFeedPage, readCachedMarketFeed, readMemoryCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { buildFeedCacheIdentity } from '@/src/features/feed/utils/feedKeys';
 import { brandAvatarDevLog, feedDevLog, feedLoadDevLog, feedMediaDevLog, layoutDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import type { MarketItem } from '@/src/types/market';
@@ -2015,6 +2015,12 @@ export function MarketFeedScreen() {
   useFocusEffect(
     useCallback(() => {
       const now = Date.now();
+      // A realtime content event (e.g. a design approval/publish) flagged the
+      // feed as stale while we were away. Silently revalidate so the newly
+      // surfaced content shows on return without a manual pull-to-refresh.
+      if (consumeMarketFeedDirty()) {
+        void onRefresh();
+      }
       // Only refetch if data is stale (> 60s old) - prevents redundant calls on every tab visit
       if (now - lastPatchFetchRef.current > STALE_THRESHOLD_MS) {
         void loadPatchedBrands();
@@ -2033,7 +2039,7 @@ export function MarketFeedScreen() {
           });
         }
       }
-    }, [feedItems.length, loadPatchedBrands, pageHeight]),
+    }, [feedItems.length, loadPatchedBrands, onRefresh, pageHeight]),
   );
 
   return (

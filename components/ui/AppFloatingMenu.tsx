@@ -115,31 +115,31 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
     return () => backHandler.remove();
   }, [internalVisible]);
 
-  const handleClose = () => {
+  const handleClose = (afterClose?: () => void) => {
     if (isClosing) return;
     setIsClosing(true);
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 120,
+        duration: 140,
         useNativeDriver: true,
       }),
       Animated.timing(scaleAnim, {
         toValue: 0.95,
-        duration: 120,
+        duration: 140,
         useNativeDriver: true,
       })
     ]).start(() => {
       setInternalVisible(false);
       setIsClosing(false);
       onClose(); // notify parent
+      afterClose?.();
     });
   };
 
   const handleOptionPress = (optionOnPress: () => void) => {
     if (isClosing) return;
-    optionOnPress();
-    handleClose();
+    handleClose(() => InteractionManager.runAfterInteractions(optionOnPress));
   };
 
   if (!internalVisible) return null;
@@ -151,10 +151,10 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
       animationType="none"
       statusBarTranslucent
       navigationBarTranslucent
-      onRequestClose={handleClose}
+      onRequestClose={() => handleClose()}
     >
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <Pressable style={StyleSheet.absoluteFill} onPress={handleClose}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => handleClose()}>
         <Animated.View 
           style={[
             StyleSheet.absoluteFill, 
@@ -165,47 +165,48 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
             }
           ]} 
         />
-        <Animated.View
-          style={[
-            styles.menu,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              top: resolvedPosition.top,
-              left: resolvedPosition.left,
-              width: menuWidth,
-              opacity: fadeAnim,
-              transform: [{ scale: scaleAnim }],
-              ...tokens.elevation.md,
-            },
-          ]}
-        >
-          {options.map((option, index) => {
-            const isFirst = index === 0;
-            const isLast = index === options.length - 1;
-            
-            return (
-              <Pressable
-                key={option.key}
-                disabled={isClosing}
-                style={({ pressed }) => [
-                  styles.option,
-                  isFirst && { borderTopLeftRadius: tokens.radius.lg - 1, borderTopRightRadius: tokens.radius.lg - 1 },
-                  isLast && { borderBottomLeftRadius: tokens.radius.lg - 1, borderBottomRightRadius: tokens.radius.lg - 1 },
-                  pressed && {
-                    backgroundColor: theme.colors.primarySoft,
-                  },
-                  pressed && styles.optionPressed,
-                  !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
-                ]}
-                onPress={() => handleOptionPress(option.onPress)}
-              >
-                  <AppText variant="body">{option.title}</AppText>
-                </Pressable>
-              );
-            })}
-          </Animated.View>
-        </Pressable>
+      </Pressable>
+      <Animated.View
+        style={[
+          styles.menu,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            top: resolvedPosition.top,
+            left: resolvedPosition.left,
+            width: menuWidth,
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }],
+            ...tokens.elevation.md,
+          },
+        ]}
+      >
+        {options.map((option, index) => {
+          const isFirst = index === 0;
+          const isLast = index === options.length - 1;
+
+          return (
+            <Pressable
+              key={option.key}
+              disabled={isClosing}
+              style={({ pressed }) => [
+                styles.option,
+                isFirst && { borderTopLeftRadius: tokens.radius.lg - 1, borderTopRightRadius: tokens.radius.lg - 1 },
+                isLast && { borderBottomLeftRadius: tokens.radius.lg - 1, borderBottomRightRadius: tokens.radius.lg - 1 },
+                pressed && {
+                  backgroundColor: theme.colors.primarySoft,
+                },
+                pressed && styles.optionPressed,
+                !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+              ]}
+              onPress={() => handleOptionPress(option.onPress)}
+            >
+              <AppText variant="body" tone="muted">{option.icon}</AppText>
+              <AppText variant="body">{option.title}</AppText>
+            </Pressable>
+          );
+        })}
+      </Animated.View>
       </View>
     </Modal>
   );
@@ -216,11 +217,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     borderWidth: 1,
     borderRadius: tokens.radius.lg,
-    minWidth: 176,
+    minWidth: 132,
   },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 44,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
     gap: tokens.spacing.sm,

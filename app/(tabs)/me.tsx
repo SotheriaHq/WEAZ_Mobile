@@ -581,6 +581,13 @@ export default function BuyerProfileScreen() {
         { section: 'orders', endpoint: '/store/orders', result: ordersResult },
       ].filter((entry) => entry.result.status === 'rejected');
 
+      if (
+        typeof nextProfile?.isEmailVerified === 'boolean' &&
+        nextProfile.isEmailVerified !== user.isEmailVerified
+      ) {
+        updateUser({ isEmailVerified: nextProfile.isEmailVerified });
+      }
+
       optionalFailures.forEach((entry) => {
         const reason = entry.result.status === 'rejected' ? entry.result.reason : null;
         profileDevWarn('section-load-failed', {
@@ -630,7 +637,7 @@ export default function BuyerProfileScreen() {
         setRefreshing(false);
       }
     }
-  }, [fallbackProfile, status, user?.id]);
+  }, [fallbackProfile, status, updateUser, user?.id, user?.isEmailVerified]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -711,8 +718,8 @@ export default function BuyerProfileScreen() {
   }, []);
 
   const handleOpenSettings = useCallback(() => {
-    toast.info('More settings are coming soon.');
-  }, [toast]);
+    router.push('/settings' as any);
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -958,9 +965,11 @@ export default function BuyerProfileScreen() {
           userId={user?.id}
           email={user?.email}
           emailVerified={
-            typeof user?.isEmailVerified === 'boolean'
-              ? user.isEmailVerified
-              : profileRecord?.isEmailVerified
+            user?.isEmailVerified === true || profileRecord?.isEmailVerified === true
+              ? true
+              : user?.isEmailVerified === false || profileRecord?.isEmailVerified === false
+                ? false
+                : null
           }
         />
 

@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Animated, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome5 } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 
 import { AppText } from '@/components/ui/AppText';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
@@ -32,6 +33,8 @@ export interface CollectionCardProps {
   isDraft?: boolean;
   isOwner?: boolean;
   cardWidth?: number;
+  onClientRetry?: (collection: CollectionDto) => void;
+  onClientDismiss?: (collection: CollectionDto) => void;
 }
 
 const formatPrice = (price?: number | null): string | null => {
@@ -87,6 +90,8 @@ export const CollectionCard = React.memo(function CollectionCard({
   isDraft = false,
   isOwner = false,
   cardWidth,
+  onClientRetry,
+  onClientDismiss,
 }: CollectionCardProps) {
   const { width: screenWidth } = useWindowDimensions();
   const { theme } = useTheme();
@@ -135,7 +140,16 @@ export const CollectionCard = React.memo(function CollectionCard({
 
   const isMinimalCard = isDraft || Boolean(reviewStatusLabel);
 
-  const disabled = Boolean(collection.clientStatus);
+  const isClientPublishing = collection.clientStatus === 'publishing';
+  const disabled = isClientPublishing;
+  const clientProgress =
+    typeof collection.clientProgress === 'number' && Number.isFinite(collection.clientProgress)
+      ? Math.min(1, Math.max(0, collection.clientProgress))
+      : null;
+  const clientProgressPercent = clientProgress == null ? null : Math.round(clientProgress * 100);
+  const cookingDots = useLoadingDots(isClientPublishing);
+  const clientFailureReason =
+    collection.clientFailureReason || collection.clientStatusMessage || collection.description || 'Something went wrong. Please try again.';
 
   const animate = React.useCallback(
     (next: number) => {
@@ -172,7 +186,7 @@ export const CollectionCard = React.memo(function CollectionCard({
     >
       <View style={[styles.cardClip, { borderColor: theme.colors.border }]}>
       <Pressable
-        onPress={disabled ? undefined : onPress}
+        onPress={collection.clientStatus ? undefined : onPress}
         onPressIn={disabled ? undefined : () => animate(0.98)}
         onPressOut={disabled ? undefined : () => animate(1)}
         style={styles.pressable}
@@ -182,22 +196,34 @@ export const CollectionCard = React.memo(function CollectionCard({
       >
         <View style={[styles.coverFrame, { height: imageHeight, backgroundColor: theme.colors.surfaceAlt }]}>
           {showImage ? (
-            // Fixed-aspect catalog thumbnail: fill the frame edge-to-edge (cover) so
-            // it never letterboxes into top/bottom strips. This matches the Shop tab
-            // product cards, keeping Content and Shop shells visually aligned. Large
-            // aspect-aware (contain) treatment is reserved for immersive viewers, not
-            // small grid cards (see AspectAwareMedia README "When Not To Use").
-            <StableImage
-              uri={coverUri}
-              resizeMode="cover"
-              containerStyle={[styles.coverImage, { width, height: imageHeight }]}
-              imageStyle={[styles.coverImage, { width, height: imageHeight }]}
-              onError={() => setImageFailed(true)}
-              fallback={<ImageFallback title={displayTitle} />}
-            />
+            <>
+              {/* Fixed-aspect catalog thumbnail: fill the frame edge-to-edge (cover) so
+              it never letterboxes into top/bottom strips. This matches the Shop tab
+              product cards, keeping Content and Shop shells visually aligned. Large
+              aspect-aware (contain) treatment is reserved for immersive viewers, not
+              small grid cards (see AspectAwareMedia README "When Not To Use"). */}
+              <StableImage
+                uri={coverUri}
+                resizeMode="cover"
+                containerStyle={[styles.coverImage, { width, height: imageHeight }]}
+                imageStyle={[styles.coverImage, { width, height: imageHeight }]}
+                onError={() => setImageFailed(true)}
+                fallback={<ImageFallback title={displayTitle} />}
+              />
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(255,255,255,0.08)', 'transparent', 'rgba(0,0,0,0.22)'] as [string, string, string]}
+                locations={[0, 0.5, 1]}
+                style={styles.imageToneOverlay}
+              />
+            </>
           ) : (
             <ImageFallback title={displayTitle} />
           )}
+
+          {collection.clientStatus ? (
+            <View pointerEvents="none" style={[styles.clientStatusScrim, { backgroundColor: theme.colors.backdropStrong }]} />
+          ) : null}
 
           {!isMinimalCard ? (
             <View style={[styles.storeBadge, { backgroundColor: 'transparent' }]}>
@@ -280,10 +306,63 @@ export const CollectionCard = React.memo(function CollectionCard({
           >
             <View style={styles.metadataPanel}>
               {collection.clientStatus ? (
-                <View style={[styles.statusPill, { backgroundColor: 'transparent' }]}>
-                  <AppText variant="badgeLabel" tone={collection.clientStatus === 'publish-failed' ? 'danger' : 'primary'} numberOfLines={1}>
-                    {collection.clientStatusMessage?.toUpperCase() || (collection.clientStatus === 'publish-failed' ? 'PUBLISH FAILED' : 'PUBLISHING')}
-                  </AppText>
+                <View style={styles.clientStatusBlock}>
+                  {isClientPublishing ? (
+                    <View style={styles.clientCookingRow}>
+                      <CircularProgress
+                        progress={clientProgress ?? 0.01}
+                        size={42}
+                        color={theme.colors.primary}
+                        trackColor="rgba(255,255,255,0.28)"
+                      />
+                      <View style={styles.clientCookingCopy}>
+                        <AppText variant="badgeLabel" tone="primary" numberOfLines={1}>
+                          design cooking{cookingDots}
+                        </AppText>
+                        <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+                          {clientProgressPercent == null ? 'Starting upload' : `${clientProgressPercent}%`}
+                        </AppText>
+                        {collection.clientStatusMessage ? (
+                          <AppText variant="caption" tone="inverse" numberOfLines={1}>
+                            {collection.clientStatusMessage}
+                          </AppText>
+                        ) : null}
+                      </View>
+                    </View>
+                  ) : (
+                    <>
+                      <View style={[styles.statusPill, { backgroundColor: 'transparent' }]}>
+                        <AppText variant="badgeLabel" tone="danger" numberOfLines={1}>
+                          PUBLISH FAILED
+                        </AppText>
+                      </View>
+                      <AppText variant="caption" tone="inverse" numberOfLines={2}>
+                        {clientFailureReason}
+                      </AppText>
+                      <View style={styles.clientActionRow}>
+                        {onClientRetry ? (
+                          <Pressable
+                            onPress={() => onClientRetry(collection)}
+                            style={({ pressed }) => [styles.clientActionButton, pressed ? styles.clientActionPressed : null]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Retry or edit ${displayTitle}`}
+                          >
+                            <AppText variant="captionBold" tone="inverse">Retry / Edit</AppText>
+                          </Pressable>
+                        ) : null}
+                        {onClientDismiss ? (
+                          <Pressable
+                            onPress={() => onClientDismiss(collection)}
+                            style={({ pressed }) => [styles.clientActionButton, pressed ? styles.clientActionPressed : null]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Dismiss failed upload ${displayTitle}`}
+                          >
+                            <AppText variant="captionBold" tone="inverse">Dismiss</AppText>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </>
+                  )}
                 </View>
               ) : isDraft ? (
                 <View style={[styles.statusPill, { backgroundColor: 'transparent' }]}>
@@ -355,6 +434,67 @@ export const CollectionCard = React.memo(function CollectionCard({
     </>
   );
 });
+
+function useLoadingDots(active: boolean) {
+  const [count, setCount] = useState(1);
+
+  useEffect(() => {
+    if (!active) {
+      setCount(1);
+      return;
+    }
+    const timer = setInterval(() => {
+      setCount((current) => (current >= 3 ? 1 : current + 1));
+    }, 450);
+    return () => clearInterval(timer);
+  }, [active]);
+
+  return '.'.repeat(count);
+}
+
+function CircularProgress({
+  progress,
+  size,
+  color,
+  trackColor,
+}: {
+  progress: number;
+  size: number;
+  color: string;
+  trackColor: string;
+}) {
+  const strokeWidth = 4;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const safeProgress = Math.max(0.01, Math.min(1, progress));
+
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke={trackColor}
+        strokeWidth={strokeWidth}
+        fill="transparent"
+      />
+      <Circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        fill="transparent"
+        strokeDasharray={`${circumference} ${circumference}`}
+        strokeDashoffset={circumference * (1 - safeProgress)}
+        rotation="-90"
+        originX={size / 2}
+        originY={size / 2}
+      />
+    </Svg>
+  );
+}
 
 function ImageFallback({ title }: { title: string }) {
   const { theme } = useTheme();
@@ -460,11 +600,18 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
   },
+  imageToneOverlay: {
+    ...StyleSheet.absoluteFill,
+  },
   imageFallback: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.md,
+  },
+  clientStatusScrim: {
+    ...StyleSheet.absoluteFill,
+    opacity: 0.38,
   },
   storeBadge: {
     position: 'absolute',
@@ -577,6 +724,45 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.sm,
     alignSelf: 'flex-start',
+  },
+  clientStatusBlock: {
+    gap: tokens.spacing.xs,
+  },
+  clientCookingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  clientCookingCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  clientActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.xs,
+  },
+  clientActionButton: {
+    minHeight: 28,
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.45)',
+    paddingHorizontal: tokens.spacing.sm,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  clientActionPressed: {
+    opacity: 0.72,
+  },
+  clientProgressTrack: {
+    height: 4,
+    borderRadius: tokens.radius.full,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.28)',
+  },
+  clientProgressFill: {
+    height: '100%',
+    borderRadius: tokens.radius.full,
   },
 });
 

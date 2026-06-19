@@ -649,7 +649,7 @@ export function MarketCommerceViewer({
       return;
     }
 
-    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'brand', brandId } } as any);
+    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId } } as any);
   }, [brandId, canMessageBrand, isOwnBrand, requireAuth, toast]);
 
   const handleSharePress = useCallback(async () => {

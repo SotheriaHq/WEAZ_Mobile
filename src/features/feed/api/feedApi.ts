@@ -15,6 +15,24 @@ const PERSISTED_CACHE_VERSION = 2;
 
 const memoryCache = new Map<string, PersistedFeedSnapshot>();
 
+/**
+ * Cross-screen signal that the runway feed should revalidate on next focus.
+ * Set when a realtime event (e.g. a design review approval/publish) changes what
+ * the feed should contain, so returning to the runway shows fresh content without
+ * a manual pull-to-refresh.
+ */
+let marketFeedDirty = false;
+
+export const markMarketFeedDirty = () => {
+  marketFeedDirty = true;
+};
+
+export const consumeMarketFeedDirty = () => {
+  if (!marketFeedDirty) return false;
+  marketFeedDirty = false;
+  return true;
+};
+
 const getStorageErrorReason = (error: unknown) =>
   error instanceof Error ? error.message : typeof error === 'string' ? error : 'unknown-storage-error';
 
@@ -135,6 +153,7 @@ export const writeCachedMarketFeed = async (
 
 export const clearCachedMarketFeed = async () => {
   memoryCache.clear();
+  marketFeedDirty = false;
 
   try {
     const keys = await AsyncStorage.getAllKeys();

@@ -9,9 +9,12 @@ const repoRoot = path.resolve(__dirname, '..');
 const designApiPath = path.join(repoRoot, 'src', 'api', 'DesignApi.ts');
 const brandApiPath = path.join(repoRoot, 'src', 'api', 'BrandApi.ts');
 const providerPath = path.join(repoRoot, 'src', 'features', 'design-editor', 'DesignEditorProvider.tsx');
-const composerPath = path.join(repoRoot, 'app', 'catalog', 'create-design', 'composer.tsx');
+const composerPath = path.join(repoRoot, 'app', '(tabs)', 'catalog', 'create-design', 'composer.tsx');
+const catalogPath = path.join(repoRoot, 'app', '(tabs)', 'catalog', 'index.tsx');
 const productRoutePath = path.join(repoRoot, 'app', 'products', '[productId].tsx');
 const marketCommerceViewerPath = path.join(repoRoot, 'src', 'features', 'market', 'components', 'MarketCommerceViewer.tsx');
+const collectionCommerceViewerPath = path.join(repoRoot, 'src', 'features', 'market', 'components', 'CollectionCommerceViewer.tsx');
+const messageThreadPath = path.join(repoRoot, 'app', 'messages', '[threadId].tsx');
 
 function loadDesignApi() {
   const module = { exports: {} };
@@ -89,6 +92,14 @@ function main() {
   assert.equal(resolveDesignIdFromInitializeResponse({ collectionId: 'collection-1' }), 'collection-1');
 
   const providerSource = fs.readFileSync(providerPath, 'utf8');
+  const creationRulesSource = fs.readFileSync(
+    path.join(repoRoot, 'src', 'features', 'design-editor', 'designCreationRules.ts'),
+    'utf8',
+  );
+  const backgroundTasksSource = fs.readFileSync(
+    path.join(repoRoot, 'src', 'features', 'design-editor', 'designEditorBackgroundTasks.ts'),
+    'utf8',
+  );
   assert.doesNotMatch(
     providerSource,
     /subCategoryId:\s*selectedCategory\.subCategories\[0\]\?\.id/,
@@ -131,12 +142,40 @@ function main() {
     /invalidateQueries\(\{\s*queryKey:\s*\['brand',\s*'collections'\]/,
     'Go Live must invalidate the owner brand collections cache.',
   );
+  const optimisticInReviewRouteIndex = providerSource.indexOf("visibility: 'In Review'");
+  const backendSaveIndex = providerSource.indexOf('const result = await saveDesignEditor');
   assert.ok(
-    providerSource.indexOf('const result = await saveDesignEditor') <
-      providerSource.indexOf("pathname: '/catalog'"),
-    'Mobile design editor must wait for the backend save before routing back to catalog.',
+    optimisticInReviewRouteIndex >= 0 &&
+      backendSaveIndex >= 0 &&
+      optimisticInReviewRouteIndex < backendSaveIndex,
+    'Mobile design editor must route publish saves to Catalog In Review before upload completion.',
   );
   assert.match(providerSource, /getMissingRequiredMediaSlots/);
+  assert.match(
+    providerSource,
+    /getMissingRequiredImageMediaSlots/,
+    'Publish validation must require front/back/left/right slots to be image assets, not just present slots.',
+  );
+  assert.match(
+    creationRulesSource,
+    /String\(asset\.mediaKind \?\? ''\)\.toLowerCase\(\)/,
+    'Required image validation must inspect media kind.',
+  );
+  assert.match(
+    creationRulesSource,
+    /mimeType\.startsWith\('image\/'\)/,
+    'Required image validation must fall back to MIME type for local assets.',
+  );
+  assert.match(
+    backgroundTasksSource,
+    /DESIGN_EDITOR_FAILED_TASK_TTL_MS = 24 \* 60 \* 60 \* 1000/,
+    'Failed publish cards must keep a 24-hour cleanup clock.',
+  );
+  assert.match(
+    backgroundTasksSource,
+    /touchDesignEditorBackgroundTask/,
+    'Failed publish card interactions must reset the 24-hour cleanup clock.',
+  );
   assert.doesNotMatch(
     providerSource,
     /routeForDesignTarget\(result\.id/,
@@ -147,7 +186,8 @@ function main() {
   assert.doesNotMatch(composerSource, />Left<\/AppText>/);
   assert.doesNotMatch(composerSource, />Right<\/AppText>/);
   assert.match(composerSource, /draftCategoryId/);
-  assert.match(composerSource, /Use selection/);
+  assert.match(composerSource, /categoryStep === 'category' \? 'Next' : 'Done'/);
+  assert.match(composerSource, /doneLabel="Save tags"/);
   assert.match(composerSource, /loading=\{tagsLoading\}/);
   // Tags must render/select from a cached query and feed the multi-select sheet.
   assert.match(
@@ -204,10 +244,33 @@ function main() {
   );
 
   const brandApiSource = fs.readFileSync(brandApiPath, 'utf8');
+  const catalogSource = fs.readFileSync(catalogPath, 'utf8');
   assert.match(
     brandApiSource,
     /apiClient\.post\('\/store-collections\/initialize'/,
     'Mobile collection creation should use store collection initialization.',
+  );
+  assert.match(
+    brandApiSource,
+    /clientFailureReason\?: string \| null/,
+    'Catalog cards must receive an additive failure reason for client-side publish failures.',
+  );
+  assert.match(
+    catalogSource,
+    /task\.status === 'failed' \? 'publish-failed' : 'publishing'/,
+    'Failed publish tasks must render as failed cards instead of disappearing.',
+  );
+  assert.match(
+    catalogSource,
+    /visibilityFilter === 'In Review'[\s\S]*task\.status === 'failed'/,
+    'In Review must keep failed publish cards visible for retry/edit.',
+  );
+
+  const catalogQueriesSource = fs.readFileSync(path.join(repoRoot, 'src', 'query', 'catalogQueries.ts'), 'utf8');
+  assert.doesNotMatch(
+    catalogQueriesSource,
+    /refetchInterval:\s*options\?\.isFocused/,
+    'Catalog review tabs must not poll on focus because it causes visible card flicker.',
   );
   assert.match(
     brandApiSource,
@@ -232,6 +295,8 @@ function main() {
   assert.match(productRouteSource, /fallbackHref="\/\(tabs\)\/discover"/);
 
   const marketCommerceViewerSource = fs.readFileSync(marketCommerceViewerPath, 'utf8');
+  const collectionCommerceViewerSource = fs.readFileSync(collectionCommerceViewerPath, 'utf8');
+  const messageThreadSource = fs.readFileSync(messageThreadPath, 'utf8');
   assert.match(
     marketCommerceViewerSource,
     /productId:\s*sourceType === 'PRODUCT' \? sourceId : undefined/,
@@ -243,6 +308,26 @@ function main() {
     'Design media debug context should identify design ids only for design sources.',
   );
   assert.match(marketCommerceViewerSource, /mediaIndex:\s*index/);
+  assert.doesNotMatch(
+    `${catalogSource}\n${marketCommerceViewerSource}\n${collectionCommerceViewerSource}`,
+    /threadId:\s*'brand'/,
+    'Direct brand messaging routes must use resolver context, not a fake brand thread id.',
+  );
+  assert.match(
+    `${catalogSource}\n${marketCommerceViewerSource}\n${collectionCommerceViewerSource}`,
+    /threadId:\s*'resolve'/,
+    'Direct brand messaging routes must route through the thread resolver sentinel.',
+  );
+  assert.match(
+    messageThreadSource,
+    /normalizePathThreadId/,
+    'Message route must strip resolver sentinel path params before calling the backend.',
+  );
+  assert.match(
+    messageThreadSource,
+    /MessagingApi\.startConversation/,
+    'Brand entry messages must start a conversation on first send when no thread exists yet.',
+  );
   assert.doesNotMatch(
     marketCommerceViewerSource,
     /designId:\s*sourceType === 'PRODUCT'/,

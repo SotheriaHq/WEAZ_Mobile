@@ -109,7 +109,7 @@ type AuthContextValue = {
   user: AuthUser | null;
   updateUser: (patch: Partial<AuthUser>) => void;
   setActiveBrandId: (brandId: string | null) => Promise<void>;
-  validateToken: () => Promise<boolean>;
+  validateToken: (options?: { forceRefresh?: boolean }) => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
   signUp: (params: SignUpParams) => Promise<void>;
   signInWithGoogle: (params: GoogleAuthParams) => Promise<void>;
@@ -127,7 +127,7 @@ type AuthSessionContextValue = {
   hasActiveBrandMembership: boolean;
   setActiveBrandId: (brandId: string | null) => Promise<void>;
   updateUser: (patch: Partial<AuthUser>) => void;
-  validateToken: () => Promise<boolean>;
+  validateToken: (options?: { forceRefresh?: boolean }) => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
   signUp: (params: SignUpParams) => Promise<void>;
   signInWithGoogle: (params: GoogleAuthParams) => Promise<void>;
@@ -511,8 +511,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const validateToken = useCallback(async (): Promise<boolean> => {
+  const validateToken = useCallback(async (options?: { forceRefresh?: boolean }): Promise<boolean> => {
     const currentToken = token ?? (await getAccessToken());
+    const forceRefresh = options?.forceRefresh ?? false;
 
     if (!currentToken) {
       // No token at all → already logged out. Clear local state only; do NOT
@@ -529,7 +530,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const response = await apiClient.get('/auth/profile');
           return unwrapData<any>(response.data);
         },
-        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+        staleTime: forceRefresh ? 0 : THREADLY_QUERY_STALE_TIME_MS,
       });
 
       const mappedUser = normalizeAuthUser(profile);

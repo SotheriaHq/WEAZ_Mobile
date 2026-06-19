@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type FrameBatchedItemsOptions = {
   enabled?: boolean;
@@ -19,10 +19,22 @@ export function useFrameBatchedItems<T>(
   const batchCount = Math.max(1, Math.floor(options.batchCount ?? DEFAULT_BATCH_COUNT));
   const targetInitialCount = enabled ? Math.min(items.length, initialCount) : 0;
   const [visibleCount, setVisibleCount] = useState(targetInitialCount);
+  const resetKeyRef = useRef(options.resetKey ?? null);
 
   useEffect(() => {
-    setVisibleCount(targetInitialCount);
-  }, [options.resetKey, targetInitialCount]);
+    const resetKey = options.resetKey ?? null;
+    if (resetKeyRef.current !== resetKey) {
+      resetKeyRef.current = resetKey;
+      setVisibleCount(targetInitialCount);
+      return;
+    }
+
+    setVisibleCount((current) => {
+      if (!enabled) return 0;
+      const minimum = targetInitialCount;
+      return Math.min(items.length, Math.max(current, minimum));
+    });
+  }, [enabled, items.length, options.resetKey, targetInitialCount]);
 
   useEffect(() => {
     if (!enabled || visibleCount >= items.length) return;

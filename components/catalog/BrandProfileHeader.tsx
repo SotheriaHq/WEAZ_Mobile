@@ -643,7 +643,7 @@ function BrandContactItems({
       {visibleItems.map((item) => (
         <Pressable 
           key={`${item.label}-${item.value}`} 
-          style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs, alignSelf: 'flex-start' }}
+          style={styles.contactActionRow}
           onPress={() => {
             const url = getContactUrl(item.label, item.value);
             if (url) {
@@ -664,7 +664,7 @@ function BrandContactItems({
         </Pressable>
       ))}
       {hasQr ? (
-        <Pressable onPress={onOpenQr} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs }}>
+        <Pressable onPress={onOpenQr} hitSlop={8} style={styles.contactActionRow}>
           <FontAwesome5 name="qrcode" size={14} color={theme.colors.textSecondary} />
           <AppText variant="smallBold" tone="primary" numberOfLines={1} style={styles.contactLine}>
             QR code
@@ -1308,6 +1308,13 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
     marginTop: tokens.spacing.sm,
+  },
+  contactActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: tokens.spacing.xs,
+    maxWidth: '100%',
   },
   contactLine: {
     maxWidth: '100%',

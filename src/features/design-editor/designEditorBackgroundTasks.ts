@@ -1,5 +1,10 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 export type DesignEditorBackgroundTaskAction = 'draft' | 'publish';
 export type DesignEditorBackgroundTaskStatus = 'running' | 'complete' | 'failed';
+
+export const DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY = 'threadly.designEditor.backgroundTasks.v1';
+export const DESIGN_EDITOR_FAILED_TASK_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type DesignEditorBackgroundTask = {
   id: string;
@@ -12,6 +17,8 @@ export type DesignEditorBackgroundTask = {
   progress: number;
   message: string;
   error?: string | null;
+  expiresAt?: number | null;
+  lastInteractedAt?: number | null;
   startedAt: number;
   updatedAt: number;
 };
@@ -20,9 +27,38 @@ type Listener = () => void;
 
 let tasks: DesignEditorBackgroundTask[] = [];
 const listeners = new Set<Listener>();
+let hydrated = false;
 
 function emit() {
   listeners.forEach((listener) => listener());
+}
+
+function pruneExpiredFailedTasks(input: DesignEditorBackgroundTask[]) {
+  const now = Date.now();
+  return input.filter((task) => task.status !== 'failed' || !task.expiresAt || task.expiresAt > now);
+}
+
+function persistTasks() {
+  void AsyncStorage.setItem(
+    DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY,
+    JSON.stringify(pruneExpiredFailedTasks(tasks)),
+  ).catch(() => undefined);
+}
+
+async function hydrateTasks() {
+  if (hydrated) return;
+  hydrated = true;
+  try {
+    const raw = await AsyncStorage.getItem(DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return;
+    tasks = pruneExpiredFailedTasks(parsed).slice(0, 8);
+    emit();
+    persistTasks();
+  } catch {
+    // Background task persistence should never block catalog rendering.
+  }
 }
 
 function normalizeProgress(value: number) {
@@ -31,10 +67,17 @@ function normalizeProgress(value: number) {
 }
 
 export function readDesignEditorBackgroundTasks() {
+  void hydrateTasks();
+  const next = pruneExpiredFailedTasks(tasks);
+  if (next.length !== tasks.length) {
+    tasks = next;
+    persistTasks();
+  }
   return tasks;
 }
 
 export function subscribeDesignEditorBackgroundTasks(listener: Listener) {
+  void hydrateTasks();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -62,6 +105,7 @@ export function createDesignEditorBackgroundTask(
   };
   tasks = [task, ...tasks].slice(0, 8);
   emit();
+  persistTasks();
   return task;
 }
 
@@ -73,14 +117,47 @@ export function updateDesignEditorBackgroundTask(
   tasks = tasks.map((task) => {
     if (task.id !== id) return task;
     changed = true;
+    const now = Date.now();
+    const nextStatus = update.status ?? task.status;
+    const expiresAt =
+      nextStatus === 'failed'
+        ? update.expiresAt ?? task.expiresAt ?? now + DESIGN_EDITOR_FAILED_TASK_TTL_MS
+        : update.expiresAt ?? null;
     return {
       ...task,
       ...update,
       progress: update.progress === undefined ? task.progress : normalizeProgress(update.progress),
-      updatedAt: Date.now(),
+      expiresAt,
+      lastInteractedAt:
+        nextStatus === 'failed'
+          ? update.lastInteractedAt ?? task.lastInteractedAt ?? now
+          : update.lastInteractedAt ?? null,
+      updatedAt: now,
     };
   });
-  if (changed) emit();
+  if (changed) {
+    emit();
+    persistTasks();
+  }
+}
+
+export function touchDesignEditorBackgroundTask(id: string) {
+  const now = Date.now();
+  let changed = false;
+  tasks = tasks.map((task) => {
+    if (task.id !== id || task.status !== 'failed') return task;
+    changed = true;
+    return {
+      ...task,
+      lastInteractedAt: now,
+      expiresAt: now + DESIGN_EDITOR_FAILED_TASK_TTL_MS,
+      updatedAt: now,
+    };
+  });
+  if (changed) {
+    emit();
+    persistTasks();
+  }
 }
 
 export function removeDesignEditorBackgroundTask(id: string) {
@@ -88,4 +165,11 @@ export function removeDesignEditorBackgroundTask(id: string) {
   if (next.length === tasks.length) return;
   tasks = next;
   emit();
+  persistTasks();
+}
+
+export function clearDesignEditorBackgroundTasks() {
+  tasks = [];
+  emit();
+  void AsyncStorage.removeItem(DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY).catch(() => undefined);
 }

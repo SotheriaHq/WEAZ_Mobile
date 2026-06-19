@@ -134,7 +134,7 @@ export function useBrandDraftsQuery(
       },
       enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
       initialData: () => queryClient.getQueryData(queryKey),
-      refetchInterval: options?.isFocused ? 15000 : false,
+      staleTime: THREADLY_QUERY_STALE_TIME_MS,
     });
   }
 
@@ -162,7 +162,7 @@ export function useBrandDraftsQuery(
       },
       enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
       initialData: () => queryClient.getQueryData(queryKey),
-      refetchInterval: options?.isFocused ? 15000 : false,
+      staleTime: THREADLY_QUERY_STALE_TIME_MS,
     });
   }
 

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { InteractionManager, Keyboard, KeyboardAvoidingView, LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Switch, View, useWindowDimensions } from 'react-native';
+import Reanimated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -310,6 +311,7 @@ export default function CreateDesignComposerScreen() {
       baseCharge: null as string | null,
       fabricCost: null as string | null,
       fallbackYards: null as string | null,
+      productionTime: null as string | null,
       rushFee: null as string | null,
       rushTime: null as string | null,
     };
@@ -318,6 +320,11 @@ export default function CreateDesignComposerScreen() {
     const baseCharge = form.baseProductionCharge.trim() ? null : 'Enter a base charge.';
     const fabricCost = form.fabricCostPerYard.trim() ? null : 'Enter a fabric cost per yard.';
     const fallbackYards = form.fallbackOutputYards.trim() ? null : 'Enter fallback yards.';
+    const productionDays = Number(form.productionLeadDays);
+    const productionTime =
+      !form.productionLeadDays.trim() || !Number.isInteger(productionDays) || productionDays < 1 || productionDays > 7
+        ? 'Production time must be 1-7 days.'
+        : null;
 
     let rushFee: string | null = null;
     let rushTime: string | null = null;
@@ -328,13 +335,13 @@ export default function CreateDesignComposerScreen() {
       }
       const days = Number(form.rushProductionLeadDays);
       const standardDays = form.productionLeadDays.trim() ? Number(form.productionLeadDays) : 7;
-      if (!form.rushProductionLeadDays.trim() || !Number.isInteger(days) || days < 5 || days > 13) {
-        rushTime = 'Rush time must be 5–13 days.';
+      if (!form.rushProductionLeadDays.trim() || !Number.isInteger(days) || days < 1 || days > 3) {
+        rushTime = 'Rush time must be 1-3 days (72 hours max).';
       } else if (Number.isFinite(standardDays) && days >= standardDays) {
         rushTime = 'Rush time must be shorter than production time.';
       }
     }
-    return { baseCharge, fabricCost, fallbackYards, rushFee, rushTime };
+    return { baseCharge, fabricCost, fallbackYards, productionTime, rushFee, rushTime };
   }, [
     form.baseProductionCharge,
     form.customOrderEnabled,
@@ -361,7 +368,12 @@ export default function CreateDesignComposerScreen() {
     if (selectedDiscoveryFilterCount === 0) missing.push('Style details');
     if (selectedTags.length === 0) missing.push('Tags');
     if (form.customOrderEnabled && customMeasurementKeys.length === 0) missing.push('Required custom-order fields');
-    if (customOrderFieldErrors.baseCharge || customOrderFieldErrors.fabricCost || customOrderFieldErrors.fallbackYards) {
+    if (
+      customOrderFieldErrors.baseCharge ||
+      customOrderFieldErrors.fabricCost ||
+      customOrderFieldErrors.fallbackYards ||
+      customOrderFieldErrors.productionTime
+    ) {
       missing.push('Custom order pricing');
     }
     if (customOrderFieldErrors.rushFee || customOrderFieldErrors.rushTime) {
@@ -392,6 +404,7 @@ export default function CreateDesignComposerScreen() {
         customOrderFieldErrors.baseCharge ||
           customOrderFieldErrors.fabricCost ||
           customOrderFieldErrors.fallbackYards ||
+          customOrderFieldErrors.productionTime ||
           customOrderFieldErrors.rushFee ||
           customOrderFieldErrors.rushTime,
       ));
@@ -949,9 +962,10 @@ export default function CreateDesignComposerScreen() {
         subtitle={categoryStep === 'category' ? 'Choose the garment or item family.' : 'Choose the specific garment type.'}
         onClose={closeCategorySheet}
         onDone={handleCategoryDone}
-        doneLabel="Use selection"
+        doneLabel={categoryStep === 'category' ? 'Next' : 'Done'}
         doneDisabled={!draftSelectedCategory || (draftSubCategories.length > 0 && !draftSubCategoryId)}
         showCloseButton
+        keyboardBehavior="none"
       >
         {categoryStep === 'subcategory' && draftSelectedCategory ? (
           <Pressable onPress={() => setCategoryStep('category')} style={styles.sheetBackRow}>
@@ -1028,6 +1042,7 @@ export default function CreateDesignComposerScreen() {
         searchEmptyMessage="No suggestions found. Type a hashtag and tap Add."
         customInputLabel="Custom hashtag"
         customPlaceholder="Add custom hashtag"
+        doneLabel="Save tags"
       />
 
       <AppBottomSheet
@@ -1084,6 +1099,7 @@ export default function CreateDesignComposerScreen() {
         subtitle="Set sizing and fit expectations."
         onClose={() => setAvailabilityOpen(false)}
         showCloseButton
+        keyboardBehavior="none"
       >
         <View style={styles.sheetSection}>
           <AppText variant="bodyBold">Sizing mode</AppText>
@@ -1138,7 +1154,12 @@ export default function CreateDesignComposerScreen() {
         </View>
 
         {form.customOrderEnabled ? (
-          <View style={styles.sheetSection}>
+          <Reanimated.View
+            entering={FadeIn.duration(140)}
+            exiting={FadeOut.duration(120)}
+            layout={LinearTransition.duration(180)}
+            style={styles.sheetSection}
+          >
             <RequiredFieldLabel required>Required custom-order fields</RequiredFieldLabel>
             <AppText variant="captionRegular" tone="muted">
               Select the exact buyer measurement fields for this design.
@@ -1190,7 +1211,12 @@ export default function CreateDesignComposerScreen() {
               />
             </View>
             {form.rushEnabled ? (
-              <View style={styles.priceRow}>
+              <Reanimated.View
+                entering={FadeIn.duration(140)}
+                exiting={FadeOut.duration(120)}
+                layout={LinearTransition.duration(180)}
+                style={styles.priceRow}
+              >
                 <Input
                   label="Rush fee"
                   value={form.rushFee}
@@ -1205,12 +1231,12 @@ export default function CreateDesignComposerScreen() {
                   value={form.rushProductionLeadDays}
                   onChangeText={(value) => updateField('rushProductionLeadDays', value.replace(/[^0-9]/g, ''))}
                   keyboardType="numeric"
-                  placeholder="5"
+                  placeholder="3"
                   containerStyle={styles.priceInput}
-                  helperText="5–13 days, shorter than production time."
+                  helperText="1-3 days (72 hours max), shorter than production time."
                   error={customOrderFieldErrors.rushTime ?? undefined}
                 />
-              </View>
+              </Reanimated.View>
             ) : null}
             <View style={styles.priceRow}>
               <Input
@@ -1235,8 +1261,9 @@ export default function CreateDesignComposerScreen() {
               value={form.productionLeadDays}
               onChangeText={(value) => updateField('productionLeadDays', value.replace(/[^0-9]/g, ''))}
               keyboardType="numeric"
-              placeholder="14"
-              helperText="Days to produce the custom order."
+              placeholder="7"
+              helperText="1-7 days to produce the custom order."
+              error={customOrderFieldErrors.productionTime ?? undefined}
             />
             <Input
               label="Fallback yards"
@@ -1284,7 +1311,7 @@ export default function CreateDesignComposerScreen() {
               onChangeText={(value) => updateField('defectPolicy', value)}
               multiline
             />
-          </View>
+          </Reanimated.View>
         ) : null}
       </AppBottomSheet>
 
@@ -1314,6 +1341,7 @@ export default function CreateDesignComposerScreen() {
         subtitle={CREATOR_METADATA_HELP.style}
         onClose={() => setStyleDetailsOpen(false)}
         showCloseButton
+        keyboardBehavior="none"
       >
         {() => renderDiscoverySections(styleDetailDimensions, 'Style details could not load. You can still save a draft.')}
       </AppBottomSheet>
@@ -1324,6 +1352,7 @@ export default function CreateDesignComposerScreen() {
         subtitle={CREATOR_METADATA_HELP.heritage}
         onClose={() => setHeritageOpen(false)}
         showCloseButton
+        keyboardBehavior="none"
       >
         {() => renderDiscoverySections(heritageDimensions, 'Cultural vibe options could not load. You can still save a draft.')}
       </AppBottomSheet>
@@ -1334,6 +1363,7 @@ export default function CreateDesignComposerScreen() {
         subtitle={CREATOR_METADATA_HELP.occasion}
         onClose={() => setOccasionOpen(false)}
         showCloseButton
+        keyboardBehavior="none"
       >
         {() => renderDiscoverySections(occasionDimensions, 'Occasion options could not load. You can still save a draft.')}
       </AppBottomSheet>
@@ -1352,6 +1382,7 @@ export default function CreateDesignComposerScreen() {
         subtitle={permissionIssue?.message}
         onClose={clearPermissionIssue}
         showCloseButton
+        keyboardBehavior="none"
         footer={
           <View style={styles.permissionActions}>
             <Button

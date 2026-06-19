@@ -67,6 +67,7 @@ import {
   readDesignEditorBackgroundTasks,
   removeDesignEditorBackgroundTask,
   subscribeDesignEditorBackgroundTasks,
+  touchDesignEditorBackgroundTask,
   type DesignEditorBackgroundTask,
 } from '@/src/features/design-editor/designEditorBackgroundTasks';
 import { tokens } from '@/src/styles/tokens';
@@ -767,7 +768,11 @@ export default function CatalogScreen() {
     await Promise.all([
       fetchCollections(loadedProfile, { forceRefresh: true }),
       refreshPatchStatus({ force: true, silent: true }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.brand.collections(targetBrandId) }).catch(() => undefined),
+      // Broad prefix so EVERY collection tab refetches (Public/Private/Drafts/
+      // In Review/Changes Requested/Rejected/Needs Attention). Each per-tab query
+      // carries its own {scope,status} filter in the key, so a fully-qualified
+      // single key (the previous behaviour) silently missed In Review.
+      queryClient.invalidateQueries({ queryKey: ['brand', 'collections'] }).catch(() => undefined),
       queryClient.invalidateQueries({ queryKey: queryKeys.store.brandProducts(targetBrandId) }).catch(() => undefined),
       queryClient.invalidateQueries({ queryKey: queryKeys.brand.profile(targetBrandId) }).catch(() => undefined),
       queryClient.invalidateQueries({ queryKey: queryKeys.reviews.brand(targetBrandId) }).catch(() => undefined),
@@ -907,7 +912,7 @@ export default function CatalogScreen() {
     if (!targetBrandId || patchLoading) return;
     try {
       const nextPatched = await togglePatchStatus();
-      toast.success(nextPatched ? 'Ã°Å¸ÂªÂ¡ Brand patched!' : 'Unpatched brand');
+      toast.success(nextPatched ? 'Brand patched.' : 'Unpatched brand.');
     } catch {
       toast.error('Could not update patch status. Please try again.');
     }
@@ -940,11 +945,12 @@ export default function CatalogScreen() {
   }, []);
 
   // Retry a failed publish/draft: route to the editor pre-populated with the
-  // previous design when we have its id, otherwise open a fresh composer. The
-  // failed task is cleared so it no longer lingers.
+  // previous design when we have its id, otherwise open a fresh composer. Touching
+  // the task resets its 24-hour cleanup clock so the failure reason remains
+  // available while the creator acts on it.
   const handleRetryFailedTask = useCallback(
     (task: DesignEditorBackgroundTask) => {
-      removeDesignEditorBackgroundTask(task.id);
+      touchDesignEditorBackgroundTask(task.id);
       setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
       if (task.designId) {
         router.push({
@@ -956,6 +962,24 @@ export default function CatalogScreen() {
       router.push('/catalog/create-design/composer' as any);
     },
     [],
+  );
+
+  const handleRetryFailedCollection = useCallback(
+    (collection: CollectionDto) => {
+      const taskId = collection.clientTaskId ?? collection.id;
+      const task = designBackgroundTasks.find((entry) => entry.id === taskId);
+      if (task) {
+        handleRetryFailedTask(task);
+      }
+    },
+    [designBackgroundTasks, handleRetryFailedTask],
+  );
+
+  const handleDismissFailedCollection = useCallback(
+    (collection: CollectionDto) => {
+      handleDismissFailedTask(collection.clientTaskId ?? collection.id);
+    },
+    [handleDismissFailedTask],
   );
 
   const handleDeleteCollection = useCallback((id: string) => {
@@ -1174,33 +1198,43 @@ export default function CatalogScreen() {
     if (!isOwner || dataActiveTab !== 'Collections') return [];
 
     return designBackgroundTasks.filter((task) => {
-      if (visibilityFilter === 'Needs Attention') return true;
+      if (visibilityFilter === 'Needs Attention') return task.status === 'failed';
       if (visibilityFilter === 'Drafts' && task.action === 'draft') return true;
-      // Do not leak optimistic PROCESSING/FAILED into Public or Private
+      if (
+        visibilityFilter === 'In Review' &&
+        task.action === 'publish' &&
+        (task.status === 'running' || task.status === 'complete' || task.status === 'failed')
+      ) {
+        return true;
+      }
+      // Do not leak optimistic PROCESSING/FAILED into Public or Private.
       return false;
     });
   }, [dataActiveTab, designBackgroundTasks, isOwner, visibilityFilter]);
   // Failed publish/draft attempts must NEVER render as cards in the Public/Private
-  // grid (they showed as "Validation failed / Image unavailable" cards). Only
-  // in-progress ("running") tasks render as optimistic cards; failed tasks are
-  // surfaced separately in the Needs-attention banner with Retry/Dismiss.
+  // grid. In Review intentionally keeps failed publish cards visible with a reason
+  // and Retry/Edit controls so failed uploads do not disappear.
   const failedDesignTasks = useMemo(
-    () => visibleDesignBackgroundTasks.filter((task) => task.status === 'failed'),
-    [visibleDesignBackgroundTasks],
+    () =>
+      visibilityFilter === 'Needs Attention'
+        ? visibleDesignBackgroundTasks.filter((task) => task.status === 'failed')
+        : [],
+    [visibilityFilter, visibleDesignBackgroundTasks],
   );
-  const runningDesignBackgroundTasks = useMemo(
-    () => visibleDesignBackgroundTasks.filter((task) => task.status === 'running'),
+  const activeDesignBackgroundTasks = useMemo(
+    () => visibleDesignBackgroundTasks.filter((task) => task.status !== 'complete'),
     [visibleDesignBackgroundTasks],
   );
   const backgroundTaskCollections = useMemo<CollectionDto[]>(
     () =>
-      runningDesignBackgroundTasks.map((task) => ({
+      activeDesignBackgroundTasks.map((task) => ({
         id: task.id,
         entityType: 'DESIGN',
         title: task.title,
         description: task.error ?? task.message,
         visibility: task.visibility,
-        status: task.action === 'draft' ? 'DRAFT' : 'PUBLISHED',
+        status: task.status === 'failed' ? 'FAILED' : task.action === 'draft' ? 'DRAFT' : 'IN_REVIEW',
+        publicationStatus: task.status === 'failed' ? 'FAILED' : task.action === 'draft' ? 'DRAFT' : 'IN_REVIEW',
         coverImage: task.previewUri ?? null,
         coverFileId: null,
         likesCount: 0,
@@ -1221,16 +1255,19 @@ export default function CatalogScreen() {
         ownerId: userId ?? targetBrandId ?? '',
         createdAt: new Date(task.startedAt).toISOString(),
         updatedAt: new Date(task.updatedAt).toISOString(),
-        clientStatus: 'publishing',
+        clientStatus: task.status === 'failed' ? 'publish-failed' : 'publishing',
         clientStatusMessage: task.message,
+        clientProgress: task.progress,
+        clientTaskId: task.id,
+        clientFailureReason: task.error ?? null,
       })),
-    [effectiveProfile, ownerAvatarUri, targetBrandId, userId, runningDesignBackgroundTasks],
+    [activeDesignBackgroundTasks, effectiveProfile, ownerAvatarUri, targetBrandId, userId],
   );
   const currentCollectionsWithBackgroundTasks = useMemo(() => {
     if (backgroundTaskCollections.length === 0) return currentCollections;
 
     const taskDesignIds = new Set(
-      runningDesignBackgroundTasks
+      activeDesignBackgroundTasks
         .map((task) => task.designId)
         .filter((id): id is string => Boolean(id)),
     );
@@ -1239,7 +1276,7 @@ export default function CatalogScreen() {
       ...backgroundTaskCollections,
       ...currentCollections.filter((collection) => !taskDesignIds.has(collection.id)),
     ];
-  }, [backgroundTaskCollections, currentCollections, runningDesignBackgroundTasks]);
+  }, [activeDesignBackgroundTasks, backgroundTaskCollections, currentCollections]);
   const savedCatalogIds = useMemo(
     () =>
       Array.from(
@@ -1317,7 +1354,7 @@ export default function CatalogScreen() {
     const totalReviews = readMetricNumber(effectiveProfile?.totalReviews) ?? 0;
     const stats: BrandHeaderStat[] = [];
 
-    stats.push({ value: formatCount(patchesCount), label: 'Ã°Å¸ÂªÂ¡' });
+    stats.push({ value: formatCount(patchesCount), label: patchesCount === 1 ? 'Patch' : 'Patches' });
 
     if (Number.isFinite(designsCount)) {
       stats.push({ value: formatCount(designsCount), label: designsCount === 1 ? 'Design' : 'Designs' });
@@ -1429,7 +1466,7 @@ export default function CatalogScreen() {
       return;
     }
 
-    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'brand', brandId: targetBrandId } } as any);
+    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId: targetBrandId } } as any);
   }, [status, targetBrandId, toast]);
 
   const handleShareCollection = useCallback(
@@ -1509,7 +1546,7 @@ export default function CatalogScreen() {
     () => [
       {
         key: 'share-profile',
-        icon: 'Ã¢â€ â€”',
+        icon: '',
         title: 'Share profile',
         description: profileShareUrl ?? undefined,
         onPress: () => void handleNativeShareProfile(),
@@ -1517,7 +1554,7 @@ export default function CatalogScreen() {
       },
       {
         key: 'copy-profile-link',
-        icon: 'Ã°Å¸â€â€”',
+        icon: '',
         title: 'Copy profile link',
         description: profileShareUrl ?? undefined,
         onPress: () => void handleCopyProfileLink(),
@@ -1525,7 +1562,7 @@ export default function CatalogScreen() {
       },
       {
         key: 'show-qr-code',
-        icon: 'Ã¢â€“Â¦',
+        icon: '',
         title: 'Show QR code',
         description: 'Open a scannable public brand profile QR.',
         onPress: () => setBrandQrOpen(true),
@@ -1577,19 +1614,19 @@ export default function CatalogScreen() {
     () => [
       {
         key: 'camera',
-        icon: 'ðŸ“·',
+        icon: '',
         title: 'Camera',
         onPress: () => launchComposer({ source: 'camera', openPicker: true }),
       },
       {
         key: 'library',
-        icon: 'ðŸ–¼ï¸',
+        icon: '',
         title: 'Photo library',
         onPress: () => launchComposer({ source: 'library', openPicker: true }),
       },
       {
         key: 'blank',
-        icon: 'ðŸ§µ',
+        icon: '',
         title: 'Start blank',
         onPress: () => launchComposer({ openPicker: false }),
       },
@@ -1773,7 +1810,7 @@ export default function CatalogScreen() {
                       ]}
                     >
                       <AppText variant="captionBold" tone="danger" numberOfLines={1}>
-                        Ã¢Å¡Â Ã¯Â¸Â {task.action === 'draft' ? 'Draft failed' : 'Publish failed'}
+                        ! {task.action === 'draft' ? 'Draft failed' : 'Publish failed'}
                       </AppText>
                       <AppText variant="bodyBold" numberOfLines={1}>
                         {task.title}
@@ -1810,6 +1847,8 @@ export default function CatalogScreen() {
                 onDelete={handleDeleteCollection}
                 onShare={handleShareCollection}
                 onSave={handleToggleSaveCollection}
+                onClientRetry={handleRetryFailedCollection}
+                onClientDismiss={handleDismissFailedCollection}
                 savedById={savedCatalogById}
                 saveBusyById={savingCatalogById}
                 initialRenderCount={6}
@@ -1869,7 +1908,7 @@ export default function CatalogScreen() {
 
       <CreateMenuWrapper ref={createMenuRef} anchorRef={createAnchorRef} options={createDesignOptions} />
 
-      <CreateMenuWrapper ref={profileMenuRef} anchorRef={profileMenuAnchorRef} options={profileMenuOptions} width={240} />
+      <CreateMenuWrapper ref={profileMenuRef} anchorRef={profileMenuAnchorRef} options={profileMenuOptions} width={156} />
 
       <AppQrSheet
         visible={brandQrOpen}

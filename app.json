@@ -31,9 +31,9 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/weaz-splash-icon.png",
-          "imageWidth": 200,
+          "imageWidth": 116,
           "resizeMode": "contain",
-          "backgroundColor": "#0b0710"
+          "backgroundColor": "#FFFFFF"
         }
       ],
       "expo-status-bar",

@@ -378,6 +378,16 @@ export const ProfileApi = {
     return normalizeProfile(res.data);
   },
 
+  async updateProfileVisibility(profileVisibility: UserProfile['profileVisibility']): Promise<{
+    profileVisibility: UserProfile['profileVisibility'];
+  }> {
+    const res = await apiClient.patch('/users/me/profile-visibility', { profileVisibility });
+    const d = (res.data?.data ?? res.data) as any;
+    return {
+      profileVisibility: d?.profileVisibility === 'LOCKED' ? 'LOCKED' : 'UNLOCKED',
+    };
+  },
+
   async uploadProfileImage(formData: FormData): Promise<{ url: string; id: string } | null> {
     const res = await apiClient.post('/uploads/profile-image', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

@@ -5,6 +5,31 @@ import { apiClient } from '@/src/api/httpClient';
 import { NotificationsApi, type MobileNotification } from '@/src/api/NotificationsApi';
 import { queryClient, THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
+import { markMarketFeedDirty } from '@/src/features/feed/api/feedApi';
+
+/**
+ * Notification types that mean the recipient's own content moved between review
+ * states. When one arrives we eagerly refresh the catalogue tabs (In Review /
+ * Public / etc.) so an approved design leaves "In Review" without a manual
+ * refresh, and flag the runway feed for revalidation on next focus.
+ */
+const CONTENT_REVIEW_NOTIFICATION_TYPES = new Set([
+  'CONTENT_REVIEW_APPROVED',
+  'CONTENT_PUBLISHED',
+  'CONTENT_CHANGES_REQUESTED',
+  'CONTENT_REVIEW_REJECTED',
+  'CONTENT_REVIEW_FAILED',
+  'CONTENT_RESUBMITTED',
+]);
+
+function maybeHandleContentReviewNotification(payload: RealtimeNotification) {
+  if (!payload || !CONTENT_REVIEW_NOTIFICATION_TYPES.has(String(payload.type))) return;
+  // `['brand', 'collections']` is a prefix: every per-tab query carries its own
+  // {scope,status} filter, so the broad prefix is what refetches all of them.
+  void queryClient.invalidateQueries({ queryKey: ['brand', 'collections'] });
+  void queryClient.invalidateQueries({ queryKey: ['designs', 'user'] });
+  markMarketFeedDirty();
+}
 
 type RealtimeNotification = MobileNotification;
 type NotificationDeletedPayload = {
@@ -85,6 +110,7 @@ function ensureSocket(token: string, userId: string) {
     if (payload && payload.isRead === false) {
       setUnreadCount(unreadCount + 1);
     }
+    maybeHandleContentReviewNotification(payload);
     createdListeners.forEach((listener) => listener(payload));
   });
 

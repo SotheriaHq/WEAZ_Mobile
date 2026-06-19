@@ -46,6 +46,7 @@ type MultiProps = BaseProps & {
   searchEmptyMessage?: string;
   customInputLabel?: string;
   customPlaceholder?: string;
+  doneLabel?: string;
 };
 
 const normalizeCustomTagValue = (value: string) =>
@@ -132,7 +133,7 @@ export function AppSelectSheet({
   const { theme } = useTheme();
 
   return (
-    <AppBottomSheet visible={visible} title={title} subtitle={subtitle} onClose={onClose}>
+    <AppBottomSheet visible={visible} title={title} subtitle={subtitle} onClose={onClose} keyboardBehavior="none">
       <SelectSheetState loading={loading} errorMessage={errorMessage} empty={options.length === 0} emptyMessage={emptyMessage} />
       <View style={styles.optionWrapSingle}>
         {options.map((option) => (
@@ -142,8 +143,8 @@ export function AppSelectSheet({
             selected={option.value === value}
             onPress={() => {
               if (option.disabled) return;
-              onChange(option.value);
               onClose();
+              requestAnimationFrame(() => onChange(option.value));
             }}
           />
         ))}
@@ -171,6 +172,7 @@ export function AppMultiSelectSheet({
   searchEmptyMessage = 'No suggestions found. Type a tag and tap Add.',
   customInputLabel = 'Custom tag',
   customPlaceholder = 'Add custom tag',
+  doneLabel = 'Done',
 }: MultiProps) {
   const [draft, setDraft] = useState<string[]>(values);
   const [customTag, setCustomTag] = useState('');
@@ -182,8 +184,12 @@ export function AppMultiSelectSheet({
   // submitted (the backend creates them with status PENDING). Tracked only to show
   // the distinct "pending review" chip treatment — not a separate API call.
   const [pendingTags, setPendingTags] = useState<string[]>([]);
-  const pendingSet = useMemo(() => new Set(pendingTags), [pendingTags]);
   const selectedSet = useMemo(() => new Set(draft), [draft]);
+  const knownOptionValues = useMemo(() => new Set(options.map((option) => option.value)), [options]);
+  const pendingSet = useMemo(
+    () => new Set([...draft.filter((value) => !knownOptionValues.has(value)), ...pendingTags]),
+    [draft, knownOptionValues, pendingTags],
+  );
   const optionLabelByValue = useMemo(() => {
     const labels = new Map<string, string>();
     options.forEach((option) => labels.set(option.value, option.label));
@@ -307,11 +313,13 @@ export function AppMultiSelectSheet({
       subtitle={subtitle}
       onClose={onClose}
       onDone={() => {
-        onChange(draft);
+        const nextDraft = [...draft];
         onClose();
+        requestAnimationFrame(() => onChange(nextDraft));
       }}
       scrollable={false}
-      doneLabel="Done"
+      doneLabel={doneLabel}
+      keyboardBehavior="auto"
     >
       <SelectSheetState
         loading={(loading || isSearching) && displayedOptions.length === 0}
@@ -347,9 +355,9 @@ export function AppMultiSelectSheet({
               />
             ))}
           </View>
-          {pendingTags.length > 0 ? (
+          {selectedOptions.some((option) => pendingSet.has(option.value)) ? (
             <AppText variant="captionRegular" tone="muted">
-              Tags marked “· review” are added to this post now and sent for global approval.
+              Tags marked review are added to this post now and sent for global approval.
             </AppText>
           ) : null}
         </View>
@@ -474,7 +482,7 @@ const styles = StyleSheet.create({
     // Bounded height so the tag list always scrolls when tags overflow instead of
     // relying on flex propagation through the sheet (which left it unscrollable on
     // Android). Caps the popular/suggested list; the parent sheet still owns layout.
-    maxHeight: 240,
+    maxHeight: 280,
     marginTop: tokens.spacing.sm,
   },
   scrollContent: {
