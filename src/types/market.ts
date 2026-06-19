@@ -13,7 +13,7 @@ export type FeedMediaAsset = {
   dominantColor: string | null;
   width: number | null;
   height: number | null;
-  aspectRatio: number;
+  aspectRatio: number | null;
   status: 'READY';
   orderIndex: number;
 };

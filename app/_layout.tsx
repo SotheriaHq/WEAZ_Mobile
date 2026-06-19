@@ -292,29 +292,35 @@ function AndroidSystemBarsRouteSync({
 }
 
 function RootBootstrap({
-  fontsLoaded,
+  fontsReady,
 }: {
-  fontsLoaded: boolean;
+  fontsReady: boolean;
 }) {
   const { ready: themeReady, scheme, theme } = useTheme();
-  const { status } = useAuth();
-  const bootReady = fontsLoaded && themeReady && status !== 'loading';
+  const { localSessionReady, status } = useAuth();
+  const bootReady = fontsReady && themeReady && localSessionReady;
   const hasLoggedReadyRef = useRef(false);
 
   useEffect(() => {
     rootBootstrapMountCount += 1;
-    devBootLog('root-bootstrap-mounted', { rootBootstrapMountCount });
+    devBootLog('root-bootstrap-mounted', {
+      rootBootstrapMountCount,
+      developmentRuntime: __DEV__,
+      executionEnvironment: Constants.executionEnvironment,
+      appOwnership: Constants.appOwnership,
+    });
   }, []);
 
   useEffect(() => {
     if (!bootReady || hasLoggedReadyRef.current) return;
     hasLoggedReadyRef.current = true;
     devBootLog('root-bootstrap-ready', {
-      fontsLoaded,
+      fontsReady,
       themeReady,
+      localSessionReady,
       authStatus: status,
     });
-  }, [bootReady, fontsLoaded, status, themeReady]);
+  }, [bootReady, fontsReady, localSessionReady, status, themeReady]);
 
   if (!bootReady) {
     return (
@@ -329,6 +335,10 @@ function RootBootstrap({
     <View
       style={[styles.appRoot, { backgroundColor: theme.colors.bg }]}
       onLayout={() => {
+        devBootLog('first-shell-layout', {
+          authStatus: status,
+          fallbackVisibleMs: Date.now() - bootStartedAt,
+        });
         hideNativeSplashOnce('root-bootstrap-layout');
       }}
     >
@@ -374,13 +384,6 @@ export default function RootLayout() {
     void applyAndroidSystemBarsPolicy(getInitialAndroidSystemScheme(), 'root-layout-first-render');
   }, []);
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
-
-
-
   useEffect(() => {
     let isMounted = true;
     let resolvedMode: ThemeMode = 'system';
@@ -407,28 +410,34 @@ export default function RootLayout() {
   }, []);
 
   const fontsReady = loaded || fontsTimeout || !!error;
-  
+  const usingFontFallback = fontsReady && !loaded;
+  setFontFallbackMode(usingFontFallback);
+
   useEffect(() => {
-    if (fontsReady && !loaded) {
-      setFontFallbackMode(true);
-      if (__DEV__) {
-        console.warn('[boot] Font loading failed or timed out. Locked to system font fallback.');
-      }
+    if (!fontsReady) return;
+    devBootLog('font-ready', {
+      loaded,
+      fallback: usingFontFallback,
+      timeout: fontsTimeout,
+      error: error ? String(error) : null,
+    });
+    if (usingFontFallback && __DEV__) {
+      console.warn('[boot] Font loading failed or timed out. Locked to system font fallback.');
     }
-  }, [fontsReady, loaded]);
+  }, [error, fontsReady, fontsTimeout, loaded, usingFontFallback]);
 
   if (!fontsReady || !themeBootstrapReady) {
     return <StartupFallback />;
   }
 
-  return <RootLayoutNav fontsLoaded={loaded} initialThemeMode={initialThemeMode} />;
+  return <RootLayoutNav fontsReady={fontsReady} initialThemeMode={initialThemeMode} />;
 }
 
 function RootLayoutNav({
-  fontsLoaded,
+  fontsReady,
   initialThemeMode,
 }: {
-  fontsLoaded: boolean;
+  fontsReady: boolean;
   initialThemeMode: ThemeMode;
 }) {
   return (
@@ -440,7 +449,7 @@ function RootLayoutNav({
             <BagCountProvider>
               <BagFlowProvider>
                 <ScreenChromeProvider>
-                  <RootBootstrap fontsLoaded={fontsLoaded} />
+                  <RootBootstrap fontsReady={fontsReady} />
                 </ScreenChromeProvider>
               </BagFlowProvider>
             </BagCountProvider>

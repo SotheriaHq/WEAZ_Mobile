@@ -443,7 +443,13 @@ export function useResolvedImageUri({
       resolvedKeyRef.current = activeKey;
       lastSuccessfulRef.current = { key: activeKey, uri: cached };
       setResolvedUri(cached);
+      return;
     }
+
+    // Never carry a URI across source identities. Callers that want stale-while-
+    // revalidate rendering keep their own identity-bound preview layer.
+    resolvedKeyRef.current = null;
+    setResolvedUri(null);
   }, [activeKey, cacheKey, directSrc]);
 
   useEffect(() => {

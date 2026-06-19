@@ -124,14 +124,16 @@ const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
       }));
   }
 
-  const directUrl = item.media?.url ?? item.media?.previewUrl ?? '';
-  return directUrl
+  const detailUrl = item.media?.url ?? item.media?.previewUrl ?? '';
+  return detailUrl
     ? [
         {
           id: item.id,
           collectionId: item.collectionId,
           mediaIndex: 0,
-          url: directUrl,
+          url: detailUrl,
+          displayUrl: item.media?.url ?? null,
+          previewUrl: item.media?.previewUrl ?? null,
           fileId: item.media?.fileId ?? null,
           type: toFeedMediaType(item.media?.type ?? null),
           label: item.collectionTitle,
@@ -1020,7 +1022,11 @@ export function MarketFeedScreen() {
     const nextItem = items[activePageIndex + 1];
     const nextMedia = nextItem ? buildFallbackMediaItems(nextItem)[0] : null;
     if (!nextMedia) return;
-    const nextDirectUrl = normalizeStableUri(nextMedia.displayUrl) ?? normalizeStableUri(nextMedia.url);
+    const nextDirectUrl =
+      normalizeStableUri(nextMedia.previewUrl) ??
+      normalizeStableUri(nextMedia.thumbnailUrl) ??
+      normalizeStableUri(nextMedia.displayUrl) ??
+      normalizeStableUri(nextMedia.url);
     if (!nextDirectUrl || !isUsableImageHttpUrl(nextDirectUrl)) return;
     void prefetchResolvedImageAsset({
       src: nextDirectUrl,
@@ -1029,7 +1035,7 @@ export function MarketFeedScreen() {
       debugContext: {
         designId: nextMedia.id,
         mediaIndex: 0,
-        sourceField: 'feed.next.displayUrl',
+        sourceField: 'feed.next.preview',
       },
     });
   }, [activePageIndex, items]);
@@ -1158,16 +1164,20 @@ export function MarketFeedScreen() {
         title: item.collectionTitle,
         isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
       })));
-      await writeCachedMarketFeed(cacheIdentity, {
-        items: sortedItems,
-        nextCursor: res.nextCursor ?? null,
-        hasNextPage: res.hasNextPage,
-      });
       setItems(sortedItems);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
       hasLoadedFirstPageRef.current = true;
       setHasLoadedFirstPage(true);
+      void writeCachedMarketFeed(cacheIdentity, {
+        items: sortedItems,
+        nextCursor: res.nextCursor ?? null,
+        hasNextPage: res.hasNextPage,
+      }).catch((cacheError) => {
+        feedLoadDevLog('cache-write-failed', {
+          reason: cacheError instanceof Error ? cacheError.message : 'unknown',
+        });
+      });
       feedLoadDevLog('summary', {
         cacheHit: Boolean(cached),
         blockingSkeleton: wasColdLoad,
@@ -1784,6 +1794,7 @@ export function MarketFeedScreen() {
           pageHeight={pageHeight}
           mediaItems={mediaItems}
           activeMediaIndex={activeMediaIndex}
+          isActive={activePageIndex === entry.realIndex}
           onCarouselIndexChange={handleCarouselIndexChange}
           onContentPress={() => showMetaOverlay(item.collectionId)}
           badgeOverlay={
@@ -1839,6 +1850,7 @@ export function MarketFeedScreen() {
       );
     },
     [
+      activePageIndex,
       bottomClearance,
       canPatchBrands,
       collectionMediaMap,
@@ -1984,19 +1996,23 @@ export function MarketFeedScreen() {
     try {
       const res = await fetchMarketFeedPage({ cursor: null, tag: activeTag, counts: 'combined' });
       const sortedItems = sortFeedItemsForDisplay(res.items);
-      await writeCachedMarketFeed(buildFeedCacheIdentity({
+      setItems(sortedItems);
+      setNextCursor(res.nextCursor ?? null);
+      setHasNextPage(res.hasNextPage);
+      hasLoadedFirstPageRef.current = true;
+      setHasLoadedFirstPage(true);
+      void writeCachedMarketFeed(buildFeedCacheIdentity({
         tag: activeTag,
         userId: status === 'authenticated' ? user?.id ?? null : null,
       }), {
         items: sortedItems,
         nextCursor: res.nextCursor ?? null,
         hasNextPage: res.hasNextPage,
+      }).catch((cacheError) => {
+        feedLoadDevLog('cache-write-failed', {
+          reason: cacheError instanceof Error ? cacheError.message : 'unknown',
+        });
       });
-      setItems(sortedItems);
-      setNextCursor(res.nextCursor ?? null);
-      setHasNextPage(res.hasNextPage);
-      hasLoadedFirstPageRef.current = true;
-      setHasLoadedFirstPage(true);
     } catch (err) {
       if (!hasLoadedFirstPageRef.current) {
         const message = toErrorMessage(err);

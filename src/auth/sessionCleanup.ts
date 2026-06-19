@@ -3,8 +3,8 @@ import type { QueryClient, QueryKey } from '@tanstack/react-query';
 import * as SecureStore from 'expo-secure-store';
 
 import { clearBrandApiSessionCaches } from '@/src/api/BrandApi';
-import { setApiAuthToken, setApiRefreshToken } from '@/src/api/httpClient';
 import { env } from '@/src/config/env';
+import { setApiAuthToken, setApiRefreshToken } from '@/src/api/httpClient';
 import { clearCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { MOBILE_PENDING_CHECKOUT_STORAGE_KEY } from '@/src/features/checkout/mobileCheckoutPending';
 import {
@@ -24,7 +24,7 @@ import { clearMessagingRealtimeSession } from '@/src/realtime/messaging';
 import { clearNotificationRealtimeSession } from '@/src/realtime/notifications';
 import { clearMobileMarketSignalQueue } from '@/src/services/marketSignals';
 import { clearWarmScreenStateCache } from '@/src/state/screenWarmState';
-import { removeAccessToken, removeRefreshToken } from '@/src/storage/secureStorage';
+import { removeAccessToken, removeCachedAuthUser, removeRefreshToken } from '@/src/storage/secureStorage';
 
 export const ACTIVE_BRAND_STORAGE_KEY = 'threadly.activeBrandId';
 const PENDING_BAG_ACTION_STORAGE_KEY = 'threadly.pendingBagAction.v1';
@@ -102,7 +102,7 @@ export async function clearMobilePrivateSessionState({
     SecureStore.deleteItemAsync(ACTIVE_BRAND_STORAGE_KEY),
     SecureStore.deleteItemAsync(PENDING_BAG_ACTION_STORAGE_KEY),
     SecureStore.deleteItemAsync(MOBILE_PENDING_CHECKOUT_STORAGE_KEY),
-    SecureStore.deleteItemAsync(env.userStorageKey),
+    removeCachedAuthUser(),
     purgeMobilePersistedQueryCache(),
     clearCachedMarketFeed(),
     clearMobileMarketSignalQueue(),

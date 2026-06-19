@@ -64,6 +64,12 @@ Use `AspectAwareMedia` for large product, design, runway, collection, and future
 
 `FeedImage` now uses `AspectAwareMedia` for its final media layer while keeping its existing protected-file resolution, stale-image display, retry, loading, and fallback behavior.
 
+Runway applies a separate policy in `runwayMediaStrategy.ts`: its safe-cover crop
+tolerance is `0.12`, unsafe portrait/square media uses `letter-soft`, unsafe wide
+media uses `letter-blur`, and unknown dimensions stay `letter-solid`. This override
+prevents the generic `0.28` crop tolerance or generic portrait matte from hiding
+garment detail in the full-screen feed.
+
 `StableImage` supports an opt-in `aspectAware` mode for future call sites that need this behavior without replacing the default crossfade path used by existing UI.
 
 ## When Not To Use

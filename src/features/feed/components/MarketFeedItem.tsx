@@ -9,6 +9,7 @@ type MarketFeedItemProps = {
   pageHeight: number;
   mediaItems: FeedViewerMedia[];
   activeMediaIndex: number;
+  isActive: boolean;
   actionRail: React.ReactNode;
   metaOverlay: React.ReactNode;
   badgeOverlay?: React.ReactNode;
@@ -21,6 +22,7 @@ export const MarketFeedItem = React.memo(function MarketFeedItem({
   pageHeight,
   mediaItems,
   activeMediaIndex,
+  isActive,
   actionRail,
   metaOverlay,
   badgeOverlay,
@@ -40,6 +42,7 @@ export const MarketFeedItem = React.memo(function MarketFeedItem({
         collectionId={collectionId}
         mediaItems={mediaItems}
         pageHeight={pageHeight}
+        isActive={isActive}
         initialActiveIndex={activeMediaIndex}
         onActiveIndexChange={handleActiveIndexChange}
         onContentPress={onContentPress}

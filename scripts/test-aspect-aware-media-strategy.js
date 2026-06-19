@@ -2,26 +2,54 @@ const fs = require('fs');
 const path = require('path');
 const ts = require('typescript');
 
-const strategyPath = path.join(__dirname, '..', 'src', 'components', 'media', 'aspectAwareMediaStrategy.ts');
-const source = fs.readFileSync(strategyPath, 'utf8');
-const transpiled = ts.transpileModule(source, {
-  compilerOptions: {
-    module: ts.ModuleKind.CommonJS,
-    target: ts.ScriptTarget.ES2020,
-    strict: true,
-  },
-  fileName: strategyPath,
-});
+const projectRoot = path.join(__dirname, '..');
+const moduleCache = new Map();
 
-const moduleShim = { exports: {} };
-const evaluate = new Function('exports', 'require', 'module', '__filename', '__dirname', transpiled.outputText);
-evaluate(moduleShim.exports, require, moduleShim, strategyPath, path.dirname(strategyPath));
+function loadTsModule(filePath) {
+  const resolvedPath = path.resolve(filePath);
+  if (moduleCache.has(resolvedPath)) return moduleCache.get(resolvedPath).exports;
+
+  const source = fs.readFileSync(resolvedPath, 'utf8');
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      strict: true,
+    },
+    fileName: resolvedPath,
+  });
+  const moduleShim = { exports: {} };
+  moduleCache.set(resolvedPath, moduleShim);
+  const localRequire = (request) => {
+    if (request.startsWith('@/')) {
+      return loadTsModule(path.join(projectRoot, request.slice(2) + '.ts'));
+    }
+    if (request.startsWith('.')) {
+      return loadTsModule(path.join(path.dirname(resolvedPath), request + '.ts'));
+    }
+    return require(request);
+  };
+  const evaluate = new Function('exports', 'require', 'module', '__filename', '__dirname', transpiled.outputText);
+  evaluate(moduleShim.exports, localRequire, moduleShim, resolvedPath, path.dirname(resolvedPath));
+  return moduleShim.exports;
+}
+
+const strategyPath = path.join(projectRoot, 'src', 'components', 'media', 'aspectAwareMediaStrategy.ts');
+const moduleShim = { exports: loadTsModule(strategyPath) };
 
 const {
   getContainerAspectBucket,
   getImageAspectClass,
   resolveMediaStrategy,
 } = moduleShim.exports;
+const {
+  RUNWAY_SAFE_COVER_CROP_TOLERANCE,
+  resolveRunwayMediaStrategy,
+} = loadTsModule(path.join(projectRoot, 'src', 'features', 'feed', 'media', 'runwayMediaStrategy.ts'));
+const {
+  buildFeedImageCacheKey,
+  resolveFeedImageSourcePolicy,
+} = loadTsModule(path.join(projectRoot, 'src', 'features', 'feed', 'media', 'feedImageSourcePolicy.ts'));
 
 const bucketAspects = {
   'ultra-tall': 0.4,
@@ -165,6 +193,61 @@ check(
     override: 'letter-solid',
   }),
   'letter-solid',
+);
+
+const unknownRunway = resolveRunwayMediaStrategy({ viewportWidth: 400, viewportHeight: 800 });
+check('runway unknown stays unknown', unknownRunway.imageClass, 'unknown');
+check('runway unknown uses safe matte', unknownRunway.strategy, 'letter-solid');
+check('runway unknown has no fake aspect', unknownRunway.imageAspectRatio, null);
+
+const safePortraitRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 400,
+  viewportHeight: 800,
+  imageAspectRatio: 0.55,
+});
+check('runway portrait within crop tolerance uses edge', safePortraitRunway.strategy, 'edge');
+if (safePortraitRunway.coverCropFraction > RUNWAY_SAFE_COVER_CROP_TOLERANCE) {
+  failures.push('runway edge strategy exceeded the safe crop tolerance');
+}
+
+const portraitRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 400,
+  viewportHeight: 800,
+  imageAspectRatio: 0.7,
+});
+const squareSpecificRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 400,
+  viewportHeight: 800,
+  imageAspectRatio: 1,
+});
+const landscapeSpecificRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 400,
+  viewportHeight: 800,
+  imageAspectRatio: 1.4,
+});
+check('runway portrait avoids generic dark letterbox', portraitRunway.strategy, 'letter-soft');
+check('runway square uses restrained ambience', squareSpecificRunway.strategy, 'letter-soft');
+check('runway landscape uses image-reflective ambience', landscapeSpecificRunway.strategy, 'letter-blur');
+if (squareSpecificRunway.strategy === landscapeSpecificRunway.strategy) {
+  failures.push('runway square and landscape must use distinct ambience');
+}
+
+const progressiveSources = resolveFeedImageSourcePolicy({
+  displayUrl: 'https://cdn.threadly.test/look-detail.webp',
+  previewUrl: 'https://cdn.threadly.test/look-card.webp',
+  thumbnailUrl: 'https://cdn.threadly.test/look-thumb.webp',
+});
+check('progressive source starts with card', progressiveSources.initialUrl, 'https://cdn.threadly.test/look-card.webp');
+check('progressive source finishes with detail', progressiveSources.detailUrl, 'https://cdn.threadly.test/look-detail.webp');
+check('progressive source exposes thumbnail placeholder', progressiveSources.placeholderUrl, 'https://cdn.threadly.test/look-thumb.webp');
+check('progressive source has detail upgrade', progressiveSources.hasDetailUpgrade, true);
+check(
+  'signed URL query does not fragment cache key',
+  buildFeedImageCacheKey({
+    url: 'https://cdn.threadly.test/look-card.webp?X-Amz-Signature=one',
+    tier: 'preview',
+  }),
+  'runway:preview:https://cdn.threadly.test/look-card.webp',
 );
 
 if (failures.length > 0) {

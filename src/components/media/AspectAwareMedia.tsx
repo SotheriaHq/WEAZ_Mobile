@@ -16,7 +16,11 @@ import {
 } from './aspectAwareMediaStrategy';
 import { tokens } from '@/src/styles/tokens';
 
-type AspectAwareMediaSource = string | { uri?: string | null } | null | undefined;
+type AspectAwareMediaSource =
+  | string
+  | { uri?: string | null; cacheKey?: string | null }
+  | null
+  | undefined;
 
 export type AspectAwareMediaProps = {
   source: AspectAwareMediaSource;
@@ -24,12 +28,14 @@ export type AspectAwareMediaProps = {
   imageHeight?: number | null;
   imageAspectRatio?: number | null;
   blurhash?: string | null;
+  placeholderSource?: AspectAwareMediaSource;
   dominantColor?: string | null;
   style?: StyleProp<ViewStyle>;
   imageStyle?: StyleProp<ImageStyle>;
   strategyOverride?: AspectAwareMediaStrategy | null;
   priority?: 'low' | 'normal' | 'high';
   cachePolicy?: 'none' | 'disk' | 'memory' | 'memory-disk';
+  transition?: number;
   recyclingKey?: string;
   accessibilityLabel?: string;
   /** Dev-only label identifying the calling surface in media diagnostics. */
@@ -61,14 +67,15 @@ const BACKDROP_BLUR_SOFT = 10;
 const isPositiveFinite = (value: number | null | undefined): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
 
-const normalizeSource = (source: AspectAwareMediaSource): { uri: string } | null => {
+const normalizeSource = (source: AspectAwareMediaSource): { uri: string; cacheKey?: string } | null => {
   if (typeof source === 'string') {
     const uri = source.trim();
     return uri ? { uri } : null;
   }
 
   const uri = source?.uri?.trim();
-  return uri ? { uri } : null;
+  const cacheKey = source?.cacheKey?.trim();
+  return uri ? { uri, ...(cacheKey ? { cacheKey } : {}) } : null;
 };
 
 const getLoadedSize = (event: any): MeasuredSize | null => {
@@ -86,12 +93,14 @@ export function AspectAwareMedia({
   imageHeight,
   imageAspectRatio,
   blurhash,
+  placeholderSource,
   dominantColor,
   style,
   imageStyle,
   strategyOverride,
   priority = 'normal',
   cachePolicy = 'memory-disk',
+  transition = 160,
   recyclingKey,
   accessibilityLabel,
   diagnosticsLabel,
@@ -104,6 +113,10 @@ export function AspectAwareMedia({
   const [loadedSize, setLoadedSize] = useState<MeasuredSize | null>(null);
   const warnedInvalidDimensionsRef = useRef(false);
   const imageSource = useMemo(() => normalizeSource(source), [source]);
+  const normalizedPlaceholderSource = useMemo(
+    () => normalizeSource(placeholderSource),
+    [placeholderSource],
+  );
   const containerBackground = dominantColor || SOLID_DARK_SURFACE;
   const resolvedImageWidth = imageWidth ?? loadedSize?.width ?? null;
   const resolvedImageHeight = imageHeight ?? loadedSize?.height ?? null;
@@ -190,14 +203,16 @@ export function AspectAwareMedia({
     [onLoad],
   );
 
-  const placeholder = blurhash ? { blurhash } : undefined;
+  const placeholder = blurhash ? { blurhash } : normalizedPlaceholderSource ?? undefined;
   const foreground = imageSource ? (
     <ExpoImage
       source={imageSource}
       placeholder={placeholder}
       style={[styles.foregroundImage, imageStyle]}
       contentFit={strategy === 'edge' ? 'cover' : 'contain'}
+      placeholderContentFit={strategy === 'edge' ? 'cover' : 'contain'}
       cachePolicy={cachePolicy}
+      transition={transition}
       priority={priority}
       recyclingKey={recyclingKey}
       accessibilityLabel={accessibilityLabel}
@@ -214,7 +229,9 @@ export function AspectAwareMedia({
           placeholder={placeholder}
           style={[styles.backdropImage, strategy === 'letter-soft' ? styles.backdropSoft : styles.backdropStrong]}
           contentFit="cover"
+          placeholderContentFit="cover"
           cachePolicy={cachePolicy}
+          transition={transition}
           priority={priority}
           recyclingKey={recyclingKey ? `${recyclingKey}:backdrop` : undefined}
           blurRadius={strategy === 'letter-soft' ? BACKDROP_BLUR_SOFT : BACKDROP_BLUR_STRONG}

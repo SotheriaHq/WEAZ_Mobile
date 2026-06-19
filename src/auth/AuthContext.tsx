@@ -9,8 +9,10 @@ import {
 } from '@/src/api/httpClient';
 import {
   getAccessToken,
+  getCachedAuthUser,
   getRefreshToken,
   setAccessToken,
+  setCachedAuthUser,
   setRefreshToken,
 } from '@/src/storage/secureStorage';
 import { googleAuth, type GoogleAuthParams } from '@/src/api/AuthApi';
@@ -104,6 +106,7 @@ type SignUpParams = {
 
 type AuthContextValue = {
   status: AuthStatus;
+  localSessionReady: boolean;
   isAuthenticated: boolean;
   token: string | null;
   user: AuthUser | null;
@@ -118,6 +121,7 @@ type AuthContextValue = {
 
 type AuthSessionContextValue = {
   status: AuthStatus;
+  localSessionReady: boolean;
   isAuthenticated: boolean;
   token: string | null;
   userId: string | null;
@@ -432,6 +436,7 @@ function normalizeAuthErrorMessage(error: unknown, fallbackMessage: string): str
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
+  const [localSessionReady, setLocalSessionReady] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [refreshTokenState, setRefreshTokenState] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -439,6 +444,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const bootstrappedRef = useRef(false);
   const selectedActiveBrandIdRef = useRef<string | null>(null);
+
+  const cacheAuthenticatedUser = useCallback((accessToken: string | null, nextUser: AuthUser) => {
+    if (!accessToken) return;
+    void setCachedAuthUser(accessToken, nextUser).catch(() => undefined);
+  }, []);
 
   const applyActiveBrandSelection = useCallback((nextUser: AuthUser): AuthUser => {
     return {
@@ -487,10 +497,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const normalized = normalizeAuthUser(nextUser) ?? nextUser;
-      queryClient.setQueryData(queryKeys.auth.profile(), normalized);
-      return applyActiveBrandSelection(normalized);
+      const selectedUser = applyActiveBrandSelection(normalized);
+      queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
+      cacheAuthenticatedUser(token, selectedUser);
+      return selectedUser;
     });
-  }, [applyActiveBrandSelection]);
+  }, [applyActiveBrandSelection, cacheAuthenticatedUser, token]);
 
   const setActiveBrandId = useCallback(async (brandId: string | null) => {
     const normalizedBrandId = String(brandId ?? '').trim() || null;
@@ -507,18 +519,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const nextActiveBrandId = resolveSelectableActiveBrandId(current, normalizedBrandId);
       const nextUser = { ...current, activeBrandId: nextActiveBrandId };
       queryClient.setQueryData(queryKeys.auth.profile(), nextUser);
+      cacheAuthenticatedUser(token, nextUser);
       return nextUser;
     });
-  }, []);
+  }, [cacheAuthenticatedUser, token]);
 
   const validateToken = useCallback(async (options?: { forceRefresh?: boolean }): Promise<boolean> => {
     const currentToken = token ?? (await getAccessToken());
     const forceRefresh = options?.forceRefresh ?? false;
+    const startedAt = Date.now();
+
+    devAuthLog('validation-start', {
+      forceRefresh,
+      hasToken: Boolean(currentToken),
+    });
 
     if (!currentToken) {
       // No token at all → already logged out. Clear local state only; do NOT
       // POST /auth/logout (there is no session to revoke and it just 401s).
       await signOut({ notifyServer: false });
+      devAuthLog('validation-end', { outcome: 'missing-token', durationMs: Date.now() - startedAt });
       return false;
     }
 
@@ -542,21 +562,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(selectedUser);
       setToken(currentToken);
       setStatus('authenticated');
+      cacheAuthenticatedUser(currentToken, selectedUser);
+      devAuthLog('validation-end', { outcome: 'authenticated', durationMs: Date.now() - startedAt });
       return true;
     } catch (error) {
       const statusCode = Number((error as any)?.response?.status ?? 0);
       if (statusCode === 403) {
+        await signOut({ notifyServer: false });
+        devAuthLog('validation-end', { outcome: 'forbidden', durationMs: Date.now() - startedAt });
         return false;
       }
       if (statusCode !== 401) {
         // A transient profile refresh failure must preserve the last authenticated
-        // snapshot. Only an explicit 401 proves that the local session is invalid.
+        // snapshot. Only an explicit 401/403 proves that the local session is invalid.
+        devAuthLog('validation-end', { outcome: 'offline-or-transient', durationMs: Date.now() - startedAt });
         return false;
       }
       await signOut({ notifyServer: false });
+      devAuthLog('validation-end', { outcome: 'unauthorized', durationMs: Date.now() - startedAt });
       return false;
     }
-  }, [applyActiveBrandSelection, signOut, token]);
+  }, [applyActiveBrandSelection, cacheAuthenticatedUser, signOut, token]);
 
   const applyAuthResponse = useCallback(async (rawData: unknown) => {
     const data = unwrapData<any>(rawData);
@@ -570,7 +596,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await setAccessToken(accessToken);
     setApiAuthToken(accessToken);
     setToken(accessToken);
-    setStatus('authenticated');
 
     if (refreshToken) {
       await setRefreshToken(refreshToken);
@@ -584,10 +609,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const selectedUser = applyActiveBrandSelection(mappedUser);
       queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
       setUser(selectedUser);
+      setStatus('authenticated');
+      cacheAuthenticatedUser(accessToken, selectedUser);
     } else {
+      setStatus('loading');
       await validateToken();
     }
-  }, [applyActiveBrandSelection, validateToken]);
+  }, [applyActiveBrandSelection, cacheAuthenticatedUser, validateToken]);
 
   const signIn = useCallback(async ({ email, password }: SignInParams) => {
     try {
@@ -769,11 +797,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const run = async () => {
       try {
-        const storedActiveBrandId = await SecureStore.getItemAsync(ACTIVE_BRAND_STORAGE_KEY).catch(() => null);
+        const [storedActiveBrandId, stored, storedRefresh] = await Promise.all([
+          SecureStore.getItemAsync(ACTIVE_BRAND_STORAGE_KEY).catch(() => null),
+          getAccessToken(),
+          getRefreshToken(),
+        ]);
         selectedActiveBrandIdRef.current = storedActiveBrandId;
         setSelectedActiveBrandId(storedActiveBrandId);
-        const stored = await getAccessToken();
-        const storedRefresh = await getRefreshToken();
         if (!mounted) return;
 
         if (!stored && !storedRefresh) {
@@ -783,6 +813,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(null);
           setRefreshTokenState(null);
           setUser(null);
+          setLocalSessionReady(true);
+          devAuthLog('local-session-ready', { outcome: 'unauthenticated' });
           await clearMobilePrivateSessionState({
             client: queryClient,
             deactivatePushToken: false,
@@ -798,6 +830,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (stored) {
           setApiAuthToken(stored);
           setToken(stored);
+
+          const cachedUser = normalizeAuthUser(await getCachedAuthUser(stored));
+          if (cachedUser?.id) {
+            const selectedUser = applyActiveBrandSelection(cachedUser);
+            queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
+            setUser(selectedUser);
+            setStatus('authenticated');
+          }
+
+          setLocalSessionReady(true);
+          devAuthLog('local-session-ready', {
+            outcome: 'access-token-restored',
+            cachedUser: Boolean(cachedUser?.id),
+          });
+        } else {
+          setLocalSessionReady(true);
+          devAuthLog('local-session-ready', { outcome: 'refresh-token-only' });
         }
 
         // If access token is missing but refresh token exists, bootstrap a new access token.
@@ -832,6 +881,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await validateToken();
       } finally {
         if (mounted) {
+          setLocalSessionReady(true);
           // validateToken sets status; ensure loading doesn't persist.
           setStatus((prev) => (prev === 'loading' ? 'unauthenticated' : prev));
           authBootstrapCompletionCount += 1;
@@ -848,7 +898,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [signOut, validateToken]);
+  }, [applyActiveBrandSelection, signOut, validateToken]);
 
   useEffect(() => {
     // Global 401 handler: clear token on unauthorized.
@@ -864,6 +914,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
+      localSessionReady,
       isAuthenticated: status === 'authenticated',
       token,
       user,
@@ -875,12 +926,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithGoogle,
       signOut,
     }),
-    [status, token, user, updateUser, setActiveBrandId, validateToken, signIn, signUp, signInWithGoogle, signOut],
+    [status, localSessionReady, token, user, updateUser, setActiveBrandId, validateToken, signIn, signUp, signInWithGoogle, signOut],
   );
 
   const sessionValue = useMemo<AuthSessionContextValue>(
     () => ({
       status,
+      localSessionReady,
       isAuthenticated: status === 'authenticated',
       token,
       userId: user?.id ?? null,
@@ -900,7 +952,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithGoogle,
       signOut,
     }),
-    [status, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, selectedActiveBrandId, setActiveBrandId, updateUser, validateToken, signIn, signUp, signInWithGoogle, signOut],
+    [status, localSessionReady, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, selectedActiveBrandId, setActiveBrandId, updateUser, validateToken, signIn, signUp, signInWithGoogle, signOut],
   );
 
   return (

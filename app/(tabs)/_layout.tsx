@@ -115,8 +115,10 @@ export default function TabLayout() {
 
   const isBrand = hasActiveBrandMembership(user);
   const canOpenProfileMenu = status === 'authenticated';
-  const profileNavLabel = canOpenProfileMenu ? 'Me' : 'Sign In';
-  const profileNavEmoji = canOpenProfileMenu ? NATIVE_ISLAND_ICONS.profile : NATIVE_ISLAND_ICONS.signIn;
+  const profileNavLabel = status === 'loading' || canOpenProfileMenu ? 'Me' : 'Sign In';
+  const profileNavEmoji = status === 'loading' || canOpenProfileMenu
+    ? NATIVE_ISLAND_ICONS.profile
+    : NATIVE_ISLAND_ICONS.signIn;
   // Resolve the signed-in user's profile photo so the "Me" island item shows the
   // real avatar instead of the default 👤 emoji. Falls back to the emoji when no
   // image is available or while it resolves.
@@ -303,6 +305,9 @@ export default function TabLayout() {
         bagBadge: bagCount.combinedCount,
       }).map((item) => ({
         ...item,
+        disabled:
+          status === 'loading' &&
+          (item.key === NATIVE_ISLAND_KEYS.inbox || item.key === NATIVE_ISLAND_KEYS.profile),
         navFlow: getIslandNavFlow(item, isBrand, canOpenProfileMenu),
         targetRoute: getNativeIslandRoute(item.key, isBrand),
       })),
@@ -316,6 +321,7 @@ export default function TabLayout() {
       profileNavAvatarUri,
       profileNavEmoji,
       profileNavLabel,
+      status,
       unreadMessageCount,
       unreadNotificationCount,
     ],

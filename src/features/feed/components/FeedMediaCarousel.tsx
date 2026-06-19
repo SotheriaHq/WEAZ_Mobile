@@ -24,6 +24,7 @@ type FeedMediaCarouselProps = {
   collectionId: string;
   mediaItems: FeedViewerMedia[];
   pageHeight: number;
+  isActive: boolean;
   initialActiveIndex?: number;
   onActiveIndexChange: (nextIndex: number) => void;
   onContentPress?: () => void;
@@ -44,6 +45,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   collectionId,
   mediaItems,
   pageHeight,
+  isActive,
   initialActiveIndex = 0,
   onActiveIndexChange,
   onContentPress,
@@ -66,6 +68,8 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         ...item,
         url: normalizeStableUri(item.url) ?? item.url,
         displayUrl: normalizeStableUri(item.displayUrl) ?? normalizeStableUri(item.url) ?? item.url,
+        previewUrl: normalizeStableUri(item.previewUrl),
+        thumbnailUrl: normalizeStableUri(item.thumbnailUrl),
         fileId: normalizeStableUri(item.fileId),
       })),
     [mediaItems],
@@ -104,7 +108,11 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     const nextIndex = Math.min(stableMediaItems.length - 1, safeActiveIndex + 1);
     const next = stableMediaItems[nextIndex];
     if (!next) return;
-    const nextDirectUrl = normalizeStableUri(next.displayUrl) ?? normalizeStableUri(next.url);
+    const nextDirectUrl =
+      normalizeStableUri(next.previewUrl) ??
+      normalizeStableUri(next.thumbnailUrl) ??
+      normalizeStableUri(next.displayUrl) ??
+      normalizeStableUri(next.url);
     if (!nextDirectUrl || !isUsableImageHttpUrl(nextDirectUrl)) return;
     void prefetchResolvedImageAsset({
       src: nextDirectUrl,
@@ -113,7 +121,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       debugContext: {
         designId: next.id,
         mediaIndex: nextIndex,
-        sourceField: 'feed.media.displayUrl',
+        sourceField: 'feed.media.adjacent-preview',
       },
     });
   }, [safeActiveIndex, stableMediaItems]);
@@ -226,6 +234,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
           imageIndex={0}
           viewportWidth={width}
           viewportHeight={pageHeight}
+          allowDetailUpgrade={isActive}
           onPress={onContentPress}
         />
       </View>
@@ -255,6 +264,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
               imageIndex={index}
               viewportWidth={width}
               viewportHeight={pageHeight}
+              allowDetailUpgrade={isActive && index === safeActiveIndex}
               onPress={onContentPress}
             />
           </View>

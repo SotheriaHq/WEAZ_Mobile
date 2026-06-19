@@ -533,7 +533,6 @@ type DropReason =
   | 'missing primaryMedia'
   | 'missing displayUrl'
   | 'invalid media status'
-  | 'invalid aspectRatio'
   | 'unsupported media type'
   | 'missing collectionId'
   | 'invalid displayUrl';
@@ -649,8 +648,16 @@ const parseFeedMediaAsset = (value: unknown, item: RawMarketItem): { asset: Feed
   const type = asString(media.type);
   if (type !== 'IMAGE' && type !== 'VIDEO') return { asset: null, reason: 'unsupported media type' };
 
-  const aspectRatio = asNumber(media.aspectRatio);
-  if (!aspectRatio || aspectRatio <= 0) return { asset: null, reason: 'invalid aspectRatio' };
+  const parsedWidth = asNumber(media.width);
+  const parsedHeight = asNumber(media.height);
+  const width = parsedWidth && parsedWidth > 0 ? parsedWidth : null;
+  const height = parsedHeight && parsedHeight > 0 ? parsedHeight : null;
+  const parsedAspectRatio = asNumber(media.aspectRatio);
+  const aspectRatio = parsedAspectRatio && parsedAspectRatio > 0
+    ? parsedAspectRatio
+    : width && height
+      ? width / height
+      : null;
 
   return {
     asset: {
@@ -662,8 +669,8 @@ const parseFeedMediaAsset = (value: unknown, item: RawMarketItem): { asset: Feed
       previewUrl: asString(media.previewUrl),
       blurHash: asString(media.blurHash),
       dominantColor: asString(media.dominantColor),
-      width: asNumber(media.width),
-      height: asNumber(media.height),
+      width,
+      height,
       aspectRatio,
       status: 'READY',
       orderIndex: asNumber(media.orderIndex) ?? 0,
