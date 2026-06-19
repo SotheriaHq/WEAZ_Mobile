@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -158,6 +158,15 @@ export default function AccountSecuritySettingsScreen() {
   const [passwordBusy, setPasswordBusy] = useState(false);
 
   const passwordPolicy = useMemo(() => passwordChecks(nextPassword), [nextPassword]);
+  const passwordPolicyRows = useMemo<Array<[string, boolean]>>(
+    () => [
+      ['At least 12 characters', passwordPolicy.length],
+      ['One uppercase letter', passwordPolicy.uppercase],
+      ['One number', passwordPolicy.number],
+      ['One special character', passwordPolicy.special],
+    ],
+    [passwordPolicy.length, passwordPolicy.number, passwordPolicy.special, passwordPolicy.uppercase],
+  );
   const passwordReady =
     Object.values(passwordPolicy).every(Boolean) &&
     nextPassword === confirmPassword &&
@@ -392,12 +401,7 @@ export default function AccountSecuritySettingsScreen() {
               helperText="Use at least 12 characters with uppercase, number, and special character."
             />
             <View style={styles.policyList}>
-              {[
-                ['At least 12 characters', passwordPolicy.length],
-                ['One uppercase letter', passwordPolicy.uppercase],
-                ['One number', passwordPolicy.number],
-                ['One special character', passwordPolicy.special],
-              ].map(([label, passed]) => (
+              {passwordPolicyRows.map(([label, passed]) => (
                 <AppText
                   key={String(label)}
                   variant="captionRegular"

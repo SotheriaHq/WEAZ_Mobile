@@ -450,24 +450,26 @@ export default function EmailPreferencesSettingsScreen() {
               autoCapitalize="none"
             />
             <View style={styles.confirmActions}>
-              <Button
-                title="Cancel"
-                size="sm"
-                variant="outline"
-                style={styles.confirmButton}
-                onPress={() => {
-                  setPendingCriticalChange(null);
-                  setStepUpPassword('');
-                }}
-              />
-              <Button
-                title={pendingKey ? 'Saving...' : 'Confirm'}
-                size="sm"
-                style={styles.confirmButton}
-                loading={Boolean(pendingKey)}
-                disabled={Boolean(pendingKey)}
-                onPress={() => void confirmCriticalChange()}
-              />
+              <View style={styles.confirmButtonSlot}>
+                <Button
+                  title="Cancel"
+                  size="sm"
+                  variant="outline"
+                  onPress={() => {
+                    setPendingCriticalChange(null);
+                    setStepUpPassword('');
+                  }}
+                />
+              </View>
+              <View style={styles.confirmButtonSlot}>
+                <Button
+                  title={pendingKey ? 'Saving...' : 'Confirm'}
+                  size="sm"
+                  loading={Boolean(pendingKey)}
+                  disabled={Boolean(pendingKey)}
+                  onPress={() => void confirmCriticalChange()}
+                />
+              </View>
             </View>
           </Card>
         ) : null}
@@ -519,7 +521,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: tokens.spacing.sm,
   },
-  confirmButton: {
+  confirmButtonSlot: {
     flex: 1,
+    minWidth: 0,
   },
 });

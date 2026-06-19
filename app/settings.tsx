@@ -1,3 +1,4 @@
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,12 +10,13 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { useToast } from '@/src/toast/ToastContext';
 import { navPerf } from '@/src/utils/navPerf';
 import { topLevelNavigate } from '@/src/utils/mobileNavigation';
 
+type SettingsIconName = keyof typeof FontAwesome.glyphMap;
+
 type SettingsRow = {
-  icon: string;
+  icon: SettingsIconName;
   title: string;
   subtitle?: string;
   metadata?: string;
@@ -38,11 +40,20 @@ function SettingRow({ row }: { row: SettingsRow }) {
       accessibilityLabel={row.title}
       style={({ pressed }) => [
         styles.row,
-        pressed && styles.rowPressed,
+        pressed ? styles.rowPressed : null,
       ]}
     >
-      <View style={[styles.iconWrap, { backgroundColor: row.danger ? theme.colors.surfaceAlt : theme.colors.primarySoft }]}>
-        <AppText variant="body">{row.icon}</AppText>
+      <View
+        style={[
+          styles.iconWrap,
+          { backgroundColor: row.danger ? theme.colors.surfaceAlt : theme.colors.primarySoft },
+        ]}
+      >
+        <FontAwesome
+          name={row.icon}
+          size={17}
+          color={row.danger ? theme.colors.danger : theme.colors.primary}
+        />
       </View>
       <View style={styles.rowCopy}>
         <AppText variant="bodyBold" tone={row.danger ? 'danger' : 'default'} numberOfLines={1}>
@@ -60,9 +71,7 @@ function SettingRow({ row }: { row: SettingsRow }) {
         </AppText>
       ) : null}
       {row.onPress ? (
-        <AppText variant="body" tone="muted" style={styles.chevron}>
-          {'>'}
-        </AppText>
+        <FontAwesome name="angle-right" size={18} color={theme.colors.textMuted} style={styles.chevron} />
       ) : null}
     </Pressable>
   );
@@ -88,23 +97,14 @@ function SettingsSectionBlock({ section }: { section: SettingsSection }) {
 export default function SettingsScreen() {
   const { theme } = useTheme();
   const { user, signOut } = useAuth();
-  const toast = useToast();
   const insets = useSafeAreaInsets();
   const isBrand = hasActiveBrandMembership(user);
 
-  // Static screen — shell, first paint, and data are all ready at mount.
   React.useEffect(() => {
-    navPerf.screenMounted('profile→settings');
-    navPerf.firstVisibleUi('profile→settings');
-    navPerf.dataReady('profile→settings');
+    navPerf.screenMounted('profile-to-settings');
+    navPerf.firstVisibleUi('profile-to-settings');
+    navPerf.dataReady('profile-to-settings');
   }, []);
-
-  const comingSoon = React.useCallback(
-    (title: string) => {
-      toast.info(`${title} will open when that settings screen is ready.`);
-    },
-    [toast],
-  );
 
   const sections = React.useMemo<SettingsSection[]>(() => {
     const base: SettingsSection[] = [
@@ -112,29 +112,29 @@ export default function SettingsScreen() {
         title: 'Account',
         rows: [
           {
-            icon: '👤',
+            icon: 'user',
             title: 'Profile information',
             subtitle: 'Name, username, photo',
             onPress: () => router.push('/(tabs)/me-edit' as never),
           },
           {
-            icon: '📍',
+            icon: 'map-marker',
             title: 'Location',
-            subtitle: 'Share location access',
+            subtitle: 'Saved city, address, and device settings',
             onPress: () => router.push('/settings/location' as never),
           },
           {
-            icon: '✉️',
+            icon: 'envelope',
             title: 'Phone & email',
             subtitle: 'Login and contact details',
             metadata: user?.email ? 'Email set' : undefined,
-            onPress: () => comingSoon('Phone & email'),
+            onPress: () => router.push('/settings/account-security' as never),
           },
           {
-            icon: '🔐',
+            icon: 'lock',
             title: 'Password & security',
             subtitle: 'Password, sessions, passkeys',
-            onPress: () => comingSoon('Password & security'),
+            onPress: () => router.push('/settings/account-security' as never),
           },
         ],
       },
@@ -142,22 +142,22 @@ export default function SettingsScreen() {
         title: 'Privacy & Security',
         rows: [
           {
-            icon: '🛡️',
+            icon: 'shield',
             title: 'Privacy controls',
             subtitle: 'Visibility, blocked users',
-            onPress: () => comingSoon('Privacy controls'),
+            onPress: () => router.push('/settings/privacy' as never),
           },
           {
-            icon: '📱',
+            icon: 'mobile',
             title: 'Login sessions',
             subtitle: 'Manage active devices',
-            onPress: () => comingSoon('Login sessions'),
+            onPress: () => router.push('/settings/account-security' as never),
           },
           {
-            icon: '🔑',
+            icon: 'key',
             title: 'Two-factor authentication',
             subtitle: 'Extra account protection',
-            onPress: () => comingSoon('Two-factor authentication'),
+            onPress: () => router.push('/settings/account-security' as never),
           },
         ],
       },
@@ -165,22 +165,22 @@ export default function SettingsScreen() {
         title: 'Notifications',
         rows: [
           {
-            icon: '🔔',
+            icon: 'bell',
             title: 'Push notifications',
             subtitle: 'Likes, comments, messages',
             onPress: () => router.push('/settings/notifications' as never),
           },
           {
-            icon: '📨',
+            icon: 'inbox',
             title: 'Email notifications',
             subtitle: 'Orders and account updates',
-            onPress: () => comingSoon('Email notifications'),
+            onPress: () => router.push('/settings/email-preferences' as never),
           },
           {
-            icon: '💬',
+            icon: 'comments',
             title: 'Chat alerts',
             subtitle: 'Message and thread alerts',
-            onPress: () => comingSoon('Chat alerts'),
+            onPress: () => router.push('/settings/notifications' as never),
           },
         ],
       },
@@ -188,46 +188,46 @@ export default function SettingsScreen() {
         title: 'Shopping',
         rows: [
           {
-            icon: '📦',
+            icon: 'shopping-bag',
             title: 'Orders',
             subtitle: 'Track purchases and custom requests',
             onPress: () => router.push('/orders' as never),
           },
           {
-            icon: '🗂️',
+            icon: 'bookmark',
             title: 'Saved runway',
             subtitle: 'Runway looks you want to revisit',
             onPress: () => topLevelNavigate({ pathname: '/(tabs)/me', params: { tab: 'saved' } } as never),
           },
           {
-            icon: '📏',
+            icon: 'sliders',
             title: 'Measurements / My fits',
             subtitle: 'Saved fittings for custom orders',
             onPress: () => topLevelNavigate('/(tabs)/me' as never),
           },
           {
-            icon: 'FIT',
+            icon: 'arrows-alt',
             title: 'Sizing settings',
             subtitle: 'Region, fit preference, and auto-apply',
             onPress: () => router.push('/settings/sizing' as never),
           },
           {
-            icon: 'GUIDE',
+            icon: 'table',
             title: 'Size Guide / Charts',
             subtitle: 'Sizing systems, measurements, and limitations',
             onPress: () => router.push('/size-guide' as never),
           },
           {
-            icon: 'MKT',
+            icon: 'filter',
             title: 'Market preferences',
             subtitle: 'Hidden content and market reset controls',
             onPress: () => router.push('/settings/market-preferences' as never),
           },
           {
-            icon: '💳',
+            icon: 'credit-card',
             title: 'Payment settings',
-            subtitle: 'Cards, payouts, billing if available',
-            onPress: () => comingSoon('Payment settings'),
+            subtitle: 'Checkout, receipts, and payment policy',
+            onPress: () => router.push('/settings/payment' as never),
           },
         ],
       },
@@ -235,19 +235,19 @@ export default function SettingsScreen() {
         title: 'Data & Storage',
         rows: [
           {
-            icon: '🖼️',
+            icon: 'image',
             title: 'Media cache',
-            subtitle: 'Manage image and video cache',
-            onPress: () => comingSoon('Media cache'),
+            subtitle: 'Refresh local image and feed cache',
+            onPress: () => router.push('/settings/storage' as never),
           },
           {
-            icon: '⬆️',
+            icon: 'upload',
             title: 'Upload preferences',
-            subtitle: 'Image quality and data usage',
-            onPress: () => comingSoon('Upload preferences'),
+            subtitle: 'Quality limits and data usage',
+            onPress: () => router.push('/settings/storage' as never),
           },
           {
-            icon: '🎨',
+            icon: 'paint-brush',
             title: 'Theme',
             subtitle: 'Light, Dark, or System default',
             onPress: () => router.push('/settings/theme' as never),
@@ -257,18 +257,28 @@ export default function SettingsScreen() {
       {
         title: 'Support',
         rows: [
-          { icon: '❔', title: 'Help center', subtitle: 'Guides and common questions', onPress: () => comingSoon('Help center') },
-          { icon: '⚠️', title: 'Report a problem', subtitle: 'Tell us what went wrong', onPress: () => comingSoon('Report a problem') },
-          { icon: 'DOC', title: 'Terms & conditions', onPress: () => router.push('/legal/terms' as never) },
-          { icon: 'LOCK', title: 'Privacy policy', onPress: () => router.push('/legal/privacy' as never) },
-          { icon: 'LEGAL', title: 'Legal center', onPress: () => router.push('/legal' as never) },
+          {
+            icon: 'question-circle',
+            title: 'Help center',
+            subtitle: 'Guides and common questions',
+            onPress: () => router.push('/settings/support' as never),
+          },
+          {
+            icon: 'exclamation-triangle',
+            title: 'Report a problem',
+            subtitle: 'Get to the right support path',
+            onPress: () => router.push('/settings/support' as never),
+          },
+          { icon: 'file-text-o', title: 'Terms & conditions', onPress: () => router.push('/legal/terms' as never) },
+          { icon: 'user-secret', title: 'Privacy policy', onPress: () => router.push('/legal/privacy' as never) },
+          { icon: 'gavel', title: 'Legal center', onPress: () => router.push('/legal' as never) },
         ],
       },
       {
         title: 'Account actions',
         rows: [
           {
-            icon: '🚪',
+            icon: 'sign-out',
             title: 'Sign out',
             subtitle: 'Sign out of this device',
             onPress: () => {
@@ -276,7 +286,7 @@ export default function SettingsScreen() {
             },
           },
           {
-            icon: '🗑️',
+            icon: 'trash',
             title: 'Delete account',
             subtitle: 'Permanently remove your WEAZ account',
             danger: true,
@@ -293,15 +303,15 @@ export default function SettingsScreen() {
       {
         title: 'Studio / Brand',
         rows: [
-          { icon: '🏷️', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => topLevelNavigate('/catalog' as never) },
-          { icon: '🧵', title: 'Catalog settings', subtitle: 'Runway, products, collections', onPress: () => topLevelNavigate('/catalog' as never) },
-          { icon: '✅', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => router.push('/studio' as never) },
-          { icon: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => router.push('/studio' as never) },
+          { icon: 'tags', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => topLevelNavigate('/catalog' as never) },
+          { icon: 'th-large', title: 'Catalog settings', subtitle: 'Runway, products, collections', onPress: () => topLevelNavigate('/catalog' as never) },
+          { icon: 'check-circle', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => router.push('/studio' as never) },
+          { icon: 'bank', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => router.push('/studio' as never) },
         ],
       },
       ...base.slice(4),
     ];
-  }, [comingSoon, isBrand, signOut, user?.email]);
+  }, [isBrand, signOut, user?.email]);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
