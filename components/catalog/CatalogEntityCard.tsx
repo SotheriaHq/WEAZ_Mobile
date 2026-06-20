@@ -26,7 +26,7 @@ export const CatalogEntityCard = React.memo(function CatalogEntityCard({
     return (
       <CatalogCollectionCard
         {...props}
-        collection={{ ...collection, entityType: 'COLLECTION' }}
+        collection={collection}
       />
     );
   }
@@ -37,7 +37,7 @@ export const CatalogEntityCard = React.memo(function CatalogEntityCard({
     return (
       <CatalogCollectionCard
         {...props}
-        collection={{ ...collection, entityType: 'COLLECTION' }}
+        collection={collection}
       />
     );
   }
@@ -45,7 +45,7 @@ export const CatalogEntityCard = React.memo(function CatalogEntityCard({
   return (
     <DesignCard
       {...props}
-      collection={{ ...collection, entityType: 'DESIGN' }}
+      collection={collection}
     />
   );
 });

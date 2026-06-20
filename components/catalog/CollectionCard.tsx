@@ -20,7 +20,7 @@ import { ContentReviewDecisionSheet } from './ContentReviewDecisionSheet';
 export interface CollectionCardProps {
   collection: CollectionDto;
   cardKind?: 'design' | 'collection';
-  onPress?: () => void;
+  onPress?: (collection: CollectionDto) => void;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   onLike?: (id: string) => void;
@@ -184,9 +184,9 @@ export const CollectionCard = React.memo(function CollectionCard({
         },
       ]}
     >
-      <View style={[styles.cardClip, { borderColor: theme.colors.border }]}>
+      <View style={[styles.cardClip, { backgroundColor: theme.colors.surface }]}>
       <Pressable
-        onPress={collection.clientStatus ? undefined : onPress}
+        onPress={collection.clientStatus || !onPress ? undefined : () => onPress(collection)}
         onPressIn={disabled ? undefined : () => animate(0.98)}
         onPressOut={disabled ? undefined : () => animate(1)}
         style={styles.pressable}
@@ -209,12 +209,6 @@ export const CollectionCard = React.memo(function CollectionCard({
                 imageStyle={[styles.coverImage, { width, height: imageHeight }]}
                 onError={() => setImageFailed(true)}
                 fallback={<ImageFallback title={displayTitle} />}
-              />
-              <LinearGradient
-                pointerEvents="none"
-                colors={['rgba(255,255,255,0.08)', 'transparent', 'rgba(0,0,0,0.22)'] as [string, string, string]}
-                locations={[0, 0.5, 1]}
-                style={styles.imageToneOverlay}
               />
             </>
           ) : (
@@ -333,7 +327,7 @@ export const CollectionCard = React.memo(function CollectionCard({
                     <>
                       <View style={[styles.statusPill, { backgroundColor: 'transparent' }]}>
                         <AppText variant="badgeLabel" tone="danger" numberOfLines={1}>
-                          PUBLISH FAILED
+                          {isDraft ? 'DRAFT SAVE FAILED' : 'PUBLISH FAILED'}
                         </AppText>
                       </View>
                       <AppText variant="caption" tone="inverse" numberOfLines={2}>
@@ -429,7 +423,7 @@ export const CollectionCard = React.memo(function CollectionCard({
       submissionId={collection.submissionId}
       status={backendStatus}
       title={displayTitle}
-      onEdit={onEdit ? () => onEdit(collection.id) : onPress}
+      onEdit={onEdit ? () => onEdit(collection.id) : onPress ? () => onPress(collection) : undefined}
     />
     </>
   );
@@ -585,7 +579,6 @@ const styles = StyleSheet.create({
   cardClip: {
     flex: 1,
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   pressable: {
@@ -600,9 +593,6 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
   },
-  imageToneOverlay: {
-    ...StyleSheet.absoluteFill,
-  },
   imageFallback: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
@@ -611,7 +601,7 @@ const styles = StyleSheet.create({
   },
   clientStatusScrim: {
     ...StyleSheet.absoluteFill,
-    opacity: 0.38,
+    opacity: 0.58,
   },
   storeBadge: {
     position: 'absolute',

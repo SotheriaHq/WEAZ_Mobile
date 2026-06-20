@@ -57,8 +57,18 @@ assert.match(catalogCardBranchSource, /primaryActionKind:\s*'view-collection'/);
 assert.match(catalogEntityCardSource, /export const DesignCard/);
 assert.match(catalogEntityCardSource, /export const CatalogCollectionCard/);
 assert.match(catalogEntityCardSource, /resolveCatalogCardBranch/);
+assert.doesNotMatch(
+  catalogEntityCardSource,
+  /collection=\{\{\s*\.\.\.collection/,
+  'CatalogEntityCard must preserve collection object identity for memoized cards.',
+);
 assert.match(collectionCardSource, /testID=\{`catalog-card-\$\{cardBranch\}`\}/);
 assert.match(collectionCardSource, /accessibilityLabel=\{copy\.ownerActionsLabel\}/);
+assert.doesNotMatch(
+  collectionCardSource,
+  /imageToneOverlay/,
+  'Catalog thumbnails must not apply a full-image dark tone overlay.',
+);
 
 assert.match(mobileRoutingSource, /export function routeForDesignTarget/);
 assert.match(mobileRoutingSource, /pathname:\s*'\/designs\/\[designId\]'/);

@@ -647,10 +647,12 @@ function BrandContactItems({
           onPress={() => {
             const url = getContactUrl(item.label, item.value);
             if (url) {
-              Linking.openURL(url).catch(() => console.log('Failed to open URL:', url));
+              void Linking.openURL(url).catch(() => undefined);
             }
           }}
           hitSlop={8}
+          accessibilityRole="link"
+          accessibilityLabel={`Open ${item.label} ${item.value}`}
         >
           <ContactIcon label={item.label} />
           <AppText
@@ -664,7 +666,12 @@ function BrandContactItems({
         </Pressable>
       ))}
       {hasQr ? (
-        <Pressable onPress={onOpenQr} hitSlop={8} style={styles.contactActionRow}>
+        <Pressable
+          onPress={onOpenQr}
+          style={styles.contactActionRow}
+          accessibilityRole="button"
+          accessibilityLabel="Open brand profile QR code"
+        >
           <FontAwesome5 name="qrcode" size={14} color={theme.colors.textSecondary} />
           <AppText variant="smallBold" tone="primary" numberOfLines={1} style={styles.contactLine}>
             QR code

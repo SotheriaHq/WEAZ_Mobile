@@ -58,7 +58,10 @@ import {
 } from './designCreationRules';
 import {
   createDesignEditorBackgroundTask,
+  readDesignEditorRecoverySnapshot,
+  removeDesignEditorBackgroundTask,
   updateDesignEditorBackgroundTask,
+  type DesignEditorRecoverySnapshot,
 } from './designEditorBackgroundTasks';
 
 type Visibility = 'PUBLIC' | 'PRIVATE';
@@ -176,6 +179,17 @@ const INITIAL_FORM: FormState = {
   rushProductionLeadDays: '',
   notes: '',
 };
+
+function restoreRecoveryForm(value: Record<string, unknown>): FormState {
+  const restored = { ...INITIAL_FORM };
+  (Object.keys(INITIAL_FORM) as Array<keyof FormState>).forEach((key) => {
+    const candidate = value[key];
+    if (typeof candidate === typeof INITIAL_FORM[key]) {
+      (restored as Record<keyof FormState, unknown>)[key] = candidate;
+    }
+  });
+  return restored;
+}
 
 const DesignEditorContext = createContext<ContextValue | null>(null);
 const DEFAULT_PRODUCTION_LEAD_DAYS = 7;
@@ -461,10 +475,12 @@ function extractApiErrorMessage(error: any, fallback: string) {
 export function DesignEditorProvider({
   designId,
   assetHandoffToken,
+  recoveryTaskId,
   children,
 }: {
   designId?: string;
   assetHandoffToken?: string;
+  recoveryTaskId?: string;
   children: React.ReactNode;
 }) {
   const toast = useToast();
@@ -528,6 +544,7 @@ export function DesignEditorProvider({
   // gender during creator bootstrapping.
   const lastMeasurementGenderRef = useRef<string | null>(null);
   const normalizedAssetHandoffToken = assetHandoffToken?.trim() || undefined;
+  const normalizedRecoveryTaskId = recoveryTaskId?.trim() || undefined;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -546,6 +563,33 @@ export function DesignEditorProvider({
     setDraftVersion(detail.draftVersion);
     setActiveDesignId(detail.id);
     setActiveDesignStatus(detail.status);
+  }, []);
+
+  const hydrateFromRecoverySnapshot = useCallback((snapshot: DesignEditorRecoverySnapshot) => {
+    const recoveredForm = restoreRecoveryForm(snapshot.form);
+    const recoveredAssets = Array.isArray(snapshot.assets)
+      ? snapshot.assets.slice(0, DESIGN_EDITOR_MAX_MEDIA)
+      : [];
+    const recoveredAssetIds = new Set(recoveredAssets.map((asset) => asset.id));
+
+    setForm(recoveredForm);
+    setFilterSelection(snapshot.filterSelection ?? {});
+    setCustomMeasurementKeys(
+      Array.isArray(snapshot.customMeasurementKeys) ? snapshot.customMeasurementKeys : [],
+    );
+    setAssets(recoveredAssets);
+    setCoverAssetIdState(
+      snapshot.coverAssetId && recoveredAssetIds.has(snapshot.coverAssetId)
+        ? snapshot.coverAssetId
+        : recoveredAssets[0]?.id ?? null,
+    );
+    setOriginalMediaIds(
+      Array.isArray(snapshot.originalMediaIds) ? snapshot.originalMediaIds : [],
+    );
+    setSelectedCustomOrderConfigurationId(snapshot.selectedCustomOrderConfigurationId ?? '');
+    setDraftSessionToken(snapshot.draftSessionToken);
+    setDraftVersion(snapshot.draftVersion);
+    return recoveredForm;
   }, []);
 
   const loadMeasurementPoints = useCallback(async (audience: Audience) => {
@@ -617,6 +661,19 @@ export function DesignEditorProvider({
 
         // Staged assets are now consumed eagerly during state initialization (see initialStagedAssets above).
 
+        let recoveredForm: FormState | null = null;
+        if (!activeDesignId && normalizedRecoveryTaskId && user?.id) {
+          const snapshot = await readDesignEditorRecoverySnapshot(
+            normalizedRecoveryTaskId,
+            user.id,
+          );
+          if (snapshot) {
+            recoveredForm = hydrateFromRecoverySnapshot(snapshot);
+          } else {
+            toast.error('This failed upload no longer has recoverable local data. Start a new design instead.');
+          }
+        }
+
         if (activeDesignId) {
           const detail = await getDesignDetail(activeDesignId);
           hydrateFromDetail(detail);
@@ -669,7 +726,7 @@ export function DesignEditorProvider({
 
           await loadMeasurementPoints(detail.type);
         } else {
-          await loadMeasurementPoints(INITIAL_FORM.audience);
+          await loadMeasurementPoints(recoveredForm?.audience ?? INITIAL_FORM.audience);
         }
 
         bootstrappedRef.current = true;
@@ -685,7 +742,17 @@ export function DesignEditorProvider({
         setBooting(false);
       }
     },
-    [activeDesignId, draftSessionToken, hydrateFromDetail, loadMeasurementPoints, normalizedAssetHandoffToken],
+    [
+      activeDesignId,
+      draftSessionToken,
+      hydrateFromDetail,
+      hydrateFromRecoverySnapshot,
+      loadMeasurementPoints,
+      normalizedAssetHandoffToken,
+      normalizedRecoveryTaskId,
+      toast,
+      user?.id,
+    ],
   );
 
   useEffect(() => {
@@ -888,6 +955,10 @@ export function DesignEditorProvider({
         toast.error('Another device still owns this draft. Take over the draft before saving.');
         return;
       }
+      if (!user?.id) {
+        toast.error('Sign in with a brand account before saving designs.');
+        return;
+      }
       if (!activeDesignId && !hasActiveBrandMembership) {
         toast.error('Sign in with a brand account before creating designs.');
         return;
@@ -1008,19 +1079,39 @@ export function DesignEditorProvider({
           assets[0]?.uri ??
           null;
         const task = createDesignEditorBackgroundTask({
+          ownerUserId: user.id,
           action,
           title: titleForTask,
           visibility: form.visibility,
           previewUri: coverPreviewUri,
           designId: activeDesignId,
           message: action === 'publish' ? 'Going live...' : 'Saving draft...',
+          recoverySnapshot: {
+            ownerUserId: user.id,
+            form: { ...form },
+            assets: assets.map((asset) => ({ ...asset })),
+            coverAssetId,
+            filterSelection: Object.fromEntries(
+              Object.entries(filterSelection).map(([key, value]) => [key, [...value]]),
+            ),
+            customMeasurementKeys: [...customMeasurementKeys],
+            originalMediaIds: [...originalMediaIds],
+            selectedCustomOrderConfigurationId,
+            draftSessionToken,
+            draftVersion,
+            capturedAt: Date.now(),
+          },
         });
-        if (action === 'publish') {
-          router.replace({
-            pathname: '/catalog',
-            params: { tab: 'Collections', visibility: 'In Review' },
-          } as any);
+        if (normalizedRecoveryTaskId && normalizedRecoveryTaskId !== task.id) {
+          removeDesignEditorBackgroundTask(normalizedRecoveryTaskId);
         }
+        router.replace({
+          pathname: '/catalog',
+          params: {
+            tab: 'Collections',
+            visibility: action === 'publish' ? 'In Review' : 'Drafts',
+          },
+        } as any);
         const resolvePublishVisibility = (status?: string | null) => {
           // After Go Live, route by the design's resolved publication status so
           // the owner lands on the tab that actually contains the item. Newly
@@ -1072,6 +1163,7 @@ export function DesignEditorProvider({
             progress: 1,
             designId: result.id,
             message: action === 'publish' ? publishCompleteMessage : 'Draft saved.',
+            recoverySnapshot: null,
           });
           toast.success(action === 'publish' ? publishCompleteMessage : 'Draft saved.');
 
@@ -1154,6 +1246,7 @@ export function DesignEditorProvider({
       form,
       hydrateFromDetail,
       originalMediaIds,
+      normalizedRecoveryTaskId,
       publishValidationMessage,
       saveAction,
       selectedCustomOrderConfigurationId,

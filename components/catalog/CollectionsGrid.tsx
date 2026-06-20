@@ -118,7 +118,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
             cardWidth={cardWidth}
             isDraft={isDraft}
             isOwner={isOwner}
-            onPress={() => onCollectionPress?.(item)}
+            onPress={onCollectionPress}
             onEdit={onEdit}
             onDelete={onDelete}
             onLike={onLike}

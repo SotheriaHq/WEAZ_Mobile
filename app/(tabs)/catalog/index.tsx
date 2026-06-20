@@ -300,13 +300,13 @@ export default function CatalogScreen() {
   // State
   const [profile, setProfile] = useState<BrandProfileDto | null>(null);
   const profileRef = useRef<BrandProfileDto | null>(null);
-  const [collections, setCollections] = useState<CollectionDto[]>([]);
   const [isFocused, setIsFocused] = useState(true);
   useFocusEffect(useCallback(() => { setIsFocused(true); return () => setIsFocused(false); }, []));
-  const [drafts, setDrafts] = useState<CollectionDto[]>([]);
   const [designBackgroundTasks, setDesignBackgroundTasks] = useState<DesignEditorBackgroundTask[]>(
-    () => readDesignEditorBackgroundTasks(),
+    () => readDesignEditorBackgroundTasks(userId),
   );
+  const designBackgroundTasksRef = useRef(designBackgroundTasks);
+  designBackgroundTasksRef.current = designBackgroundTasks;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [containerWidth, setContainerWidth] = useState(windowWidth);
 
@@ -469,15 +469,17 @@ export default function CatalogScreen() {
     enabled: isOwner && Boolean(collectionOwnerId),
   });
   const effectiveProfile = profileQuery.data !== undefined ? profileQuery.data : profile;
-  let effectiveCollections = collectionsQuery.data ?? collections;
+  let effectiveCollections = collectionsQuery.data ?? [];
   if (visibilityFilter === 'Drafts') {
-    effectiveCollections = draftsQuery.data ?? drafts;
+    effectiveCollections = draftsQuery.data ?? [];
   } else if (visibilityFilter === 'Needs Attention') {
     effectiveCollections = needsAttentionQuery.data ?? [];
   } else if (visibilityFilter === 'In Review') {
     effectiveCollections = inReviewQuery.data ?? [];
   }
-  const effectiveDrafts = draftsQuery.data ?? drafts;
+  const effectiveDrafts = draftsQuery.data ?? [];
+  const catalogItemsRef = useRef<CollectionDto[]>([]);
+  catalogItemsRef.current = [...effectiveDrafts, ...effectiveCollections];
 
   const fetchProfile = useCallback(async (options?: { forceRefresh?: boolean }): Promise<BrandProfileDto | null> => {
     if (!targetBrandId) {
@@ -528,8 +530,6 @@ export default function CatalogScreen() {
     const profileOwnerId = profileOverride?.id ?? profileRef.current?.id ?? null;
 
     if (!collectionOwnerId) {
-      setCollections([]);
-      setDrafts([]);
       return;
     }
 
@@ -537,7 +537,7 @@ export default function CatalogScreen() {
       if (visibilityFilter === 'Drafts' && isOwner) {
         const data = options?.forceRefresh
           ? await refreshBrandDraftsQuery(queryClient, collectionOwnerId)
-          : draftsQuery.data ?? drafts;
+          : draftsQuery.data ?? [];
         catalogDevLog('load', {
           tab: visibilityFilter,
           routeBrandId: targetBrandId,
@@ -549,7 +549,6 @@ export default function CatalogScreen() {
           status: 'DRAFT',
           visibility: null,
         });
-        setDrafts(data);
       } else {
         const items = options?.forceRefresh
           ? await refreshBrandCollectionsQuery(queryClient, {
@@ -559,7 +558,7 @@ export default function CatalogScreen() {
             status: collectionStatusFilter,
             limit: 80,
           })
-          : collectionsQuery.data ?? collections;
+          : collectionsQuery.data ?? [];
         catalogDevLog('load', {
           tab: visibilityFilter,
           routeBrandId: targetBrandId,
@@ -571,7 +570,6 @@ export default function CatalogScreen() {
           status: collectionStatusFilter,
           visibility: collectionVisibility ?? null,
         });
-        setCollections(items);
       }
     } catch (error) {
       console.error('Error fetching collections:', error);
@@ -580,9 +578,7 @@ export default function CatalogScreen() {
   }, [
     collectionStatusFilter,
     collectionVisibility,
-    collections,
     collectionsQuery.data,
-    drafts,
     draftsQuery.data,
     getCollectionOwnerId,
     isOwner,
@@ -616,18 +612,6 @@ export default function CatalogScreen() {
   }, [isOwner, profileQuery.data, updateUser]);
 
   useEffect(() => {
-    if (collectionsQuery.data) {
-      setCollections(collectionsQuery.data);
-    }
-  }, [collectionsQuery.data]);
-
-  useEffect(() => {
-    if (draftsQuery.data) {
-      setDrafts(draftsQuery.data);
-    }
-  }, [draftsQuery.data]);
-
-  useEffect(() => {
     if (profileQuery.error) {
       console.error('Error fetching profile:', profileQuery.error);
     }
@@ -645,14 +629,17 @@ export default function CatalogScreen() {
     }
   }, [patchEnabled, refreshPatchStatus]);
 
-  useEffect(() => subscribeDesignEditorBackgroundTasks(() => {
-    setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
-  }), []);
+  useEffect(() => {
+    setDesignBackgroundTasks(readDesignEditorBackgroundTasks(userId));
+    return subscribeDesignEditorBackgroundTasks(() => {
+      setDesignBackgroundTasks(readDesignEditorBackgroundTasks(userId));
+    });
+  }, [userId]);
 
   useFocusEffect(
     useCallback(() => {
-      setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
-    }, []),
+      setDesignBackgroundTasks(readDesignEditorBackgroundTasks(userId));
+    }, [userId]),
   );
 
   useEffect(() => {
@@ -941,8 +928,8 @@ export default function CatalogScreen() {
   // Dismiss a failed publish/draft background task from the Needs-attention banner.
   const handleDismissFailedTask = useCallback((taskId: string) => {
     removeDesignEditorBackgroundTask(taskId);
-    setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
-  }, []);
+    setDesignBackgroundTasks(readDesignEditorBackgroundTasks(userId));
+  }, [userId]);
 
   // Retry a failed publish/draft: route to the editor pre-populated with the
   // previous design when we have its id, otherwise open a fresh composer. Touching
@@ -951,28 +938,31 @@ export default function CatalogScreen() {
   const handleRetryFailedTask = useCallback(
     (task: DesignEditorBackgroundTask) => {
       touchDesignEditorBackgroundTask(task.id);
-      setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
+      setDesignBackgroundTasks(readDesignEditorBackgroundTasks(userId));
       if (task.designId) {
         router.push({
           pathname: '/designs/[designId]/edit',
-          params: { designId: task.designId },
+          params: { designId: task.designId, recoveryTaskId: task.id },
         } as any);
         return;
       }
-      router.push('/catalog/create-design/composer' as any);
+      router.push({
+        pathname: '/catalog/create-design/composer',
+        params: { recoveryTaskId: task.id, blank: '1' },
+      } as any);
     },
-    [],
+    [userId],
   );
 
   const handleRetryFailedCollection = useCallback(
     (collection: CollectionDto) => {
       const taskId = collection.clientTaskId ?? collection.id;
-      const task = designBackgroundTasks.find((entry) => entry.id === taskId);
+      const task = designBackgroundTasksRef.current.find((entry) => entry.id === taskId);
       if (task) {
         handleRetryFailedTask(task);
       }
     },
-    [designBackgroundTasks, handleRetryFailedTask],
+    [handleRetryFailedTask],
   );
 
   const handleDismissFailedCollection = useCallback(
@@ -983,26 +973,21 @@ export default function CatalogScreen() {
   );
 
   const handleDeleteCollection = useCallback((id: string) => {
-    const target = [...effectiveDrafts, ...effectiveCollections, ...drafts, ...collections]
-      .find((collection) => collection.id === id);
+    const target = catalogItemsRef.current.find((collection) => collection.id === id);
     setDraftDeleteTarget(target ?? ({ id, title: 'Untitled collection' } as CollectionDto));
     setDraftDeletePhrase('');
-  }, [collections, drafts, effectiveCollections, effectiveDrafts]);
+  }, []);
 
   const confirmDraftDelete = useCallback(async () => {
     if (!draftDeleteTarget || draftDeletePhrase !== 'DELETE' || draftDeleteBusy) return;
 
     const deletedId = draftDeleteTarget.id;
-    const previousCollections = collections;
-    const previousDrafts = drafts;
     const querySnapshots = queryClient.getQueriesData<CollectionDto[]>({
       queryKey: BRAND_COLLECTIONS_QUERY_ROOT,
     });
 
     setDraftDeleteBusy(true);
     void queryClient.cancelQueries({ queryKey: BRAND_COLLECTIONS_QUERY_ROOT }).catch(() => undefined);
-    setCollections((current) => removeCollectionFromList(current, deletedId) ?? current);
-    setDrafts((current) => removeCollectionFromList(current, deletedId) ?? current);
     setSavedCatalogById((current) => {
       if (!Object.prototype.hasOwnProperty.call(current, deletedId)) return current;
       const next = { ...current };
@@ -1024,8 +1009,6 @@ export default function CatalogScreen() {
       }).catch(() => undefined);
       toast.success(visibilityFilter === 'Drafts' ? 'Draft deleted.' : 'Collection deleted.');
     } catch {
-      setCollections(previousCollections);
-      setDrafts(previousDrafts);
       querySnapshots.forEach(([queryKey, data]) => {
         queryClient.setQueryData(queryKey, data);
       });
@@ -1034,11 +1017,9 @@ export default function CatalogScreen() {
       setDraftDeleteBusy(false);
     }
   }, [
-    collections,
     draftDeleteBusy,
     draftDeletePhrase,
     draftDeleteTarget,
-    drafts,
     queryClient,
     toast,
     visibilityFilter,
@@ -1221,53 +1202,79 @@ export default function CatalogScreen() {
         : [],
     [visibilityFilter, visibleDesignBackgroundTasks],
   );
-  const activeDesignBackgroundTasks = useMemo(
-    () => visibleDesignBackgroundTasks.filter((task) => task.status !== 'complete'),
-    [visibleDesignBackgroundTasks],
-  );
+  const renderedDesignBackgroundTasks = visibleDesignBackgroundTasks;
+  const backgroundTaskCollectionCacheRef = useRef(new Map<string, {
+    task: DesignEditorBackgroundTask;
+    contextKey: string;
+    collection: CollectionDto;
+  }>());
   const backgroundTaskCollections = useMemo<CollectionDto[]>(
-    () =>
-      activeDesignBackgroundTasks.map((task) => ({
-        id: task.id,
-        entityType: 'DESIGN',
-        title: task.title,
-        description: task.error ?? task.message,
-        visibility: task.visibility,
-        status: task.status === 'failed' ? 'FAILED' : task.action === 'draft' ? 'DRAFT' : 'IN_REVIEW',
-        publicationStatus: task.status === 'failed' ? 'FAILED' : task.action === 'draft' ? 'DRAFT' : 'IN_REVIEW',
-        coverImage: task.previewUri ?? null,
-        coverFileId: null,
-        likesCount: 0,
-        commentsCount: 0,
-        itemCount: task.previewUri ? 1 : 0,
-        postsCount: task.previewUri ? 1 : 0,
-        minPrice: 0,
-        maxPrice: 0,
-        saleMinPrice: null,
-        saleMaxPrice: null,
-        saleStartAt: null,
-        saleEndAt: null,
-        brandName: effectiveProfile?.brandFullName ?? effectiveProfile?.username ?? null,
-        username: effectiveProfile?.username ?? null,
-        brandLogo: ownerAvatarUri ?? effectiveProfile?.profileImage ?? null,
-        brandLogoFileId: effectiveProfile?.profileImageId ?? effectiveProfile?.logoImageId ?? null,
-        isAvailableInStore: false,
-        ownerId: userId ?? targetBrandId ?? '',
-        createdAt: new Date(task.startedAt).toISOString(),
-        updatedAt: new Date(task.updatedAt).toISOString(),
-        clientStatus: task.status === 'failed' ? 'publish-failed' : 'publishing',
-        clientStatusMessage: task.message,
-        clientProgress: task.progress,
-        clientTaskId: task.id,
-        clientFailureReason: task.error ?? null,
-      })),
-    [activeDesignBackgroundTasks, effectiveProfile, ownerAvatarUri, targetBrandId, userId],
+    () => {
+      const contextKey = [
+        effectiveProfile?.brandFullName,
+        effectiveProfile?.username,
+        effectiveProfile?.profileImage,
+        effectiveProfile?.profileImageId,
+        effectiveProfile?.logoImageId,
+        ownerAvatarUri,
+        targetBrandId,
+        userId,
+      ].join('|');
+      const activeTaskIds = new Set(renderedDesignBackgroundTasks.map((task) => task.id));
+      backgroundTaskCollectionCacheRef.current.forEach((_value, taskId) => {
+        if (!activeTaskIds.has(taskId)) backgroundTaskCollectionCacheRef.current.delete(taskId);
+      });
+
+      return renderedDesignBackgroundTasks.map((task) => {
+        const cached = backgroundTaskCollectionCacheRef.current.get(task.id);
+        if (cached?.task === task && cached.contextKey === contextKey) {
+          return cached.collection;
+        }
+        const collection: CollectionDto = {
+          id: task.id,
+          entityType: 'DESIGN',
+          title: task.title,
+          description: task.error ?? task.message,
+          visibility: task.visibility,
+          status: task.status === 'failed' ? 'FAILED' : task.action === 'draft' ? 'DRAFT' : 'IN_REVIEW',
+          publicationStatus: task.status === 'failed' ? 'FAILED' : task.action === 'draft' ? 'DRAFT' : 'IN_REVIEW',
+          coverImage: task.previewUri ?? null,
+          coverFileId: null,
+          likesCount: 0,
+          commentsCount: 0,
+          itemCount: task.previewUri ? 1 : 0,
+          postsCount: task.previewUri ? 1 : 0,
+          minPrice: 0,
+          maxPrice: 0,
+          saleMinPrice: null,
+          saleMaxPrice: null,
+          saleStartAt: null,
+          saleEndAt: null,
+          brandName: effectiveProfile?.brandFullName ?? effectiveProfile?.username ?? null,
+          username: effectiveProfile?.username ?? null,
+          brandLogo: ownerAvatarUri ?? effectiveProfile?.profileImage ?? null,
+          brandLogoFileId: effectiveProfile?.profileImageId ?? effectiveProfile?.logoImageId ?? null,
+          isAvailableInStore: false,
+          ownerId: userId ?? targetBrandId ?? '',
+          createdAt: new Date(task.startedAt).toISOString(),
+          updatedAt: new Date(task.updatedAt).toISOString(),
+          clientStatus: task.status === 'failed' ? 'publish-failed' : 'publishing',
+          clientStatusMessage: task.message,
+          clientProgress: task.progress,
+          clientTaskId: task.id,
+          clientFailureReason: task.error ?? null,
+        };
+        backgroundTaskCollectionCacheRef.current.set(task.id, { task, contextKey, collection });
+        return collection;
+      });
+    },
+    [renderedDesignBackgroundTasks, effectiveProfile, ownerAvatarUri, targetBrandId, userId],
   );
   const currentCollectionsWithBackgroundTasks = useMemo(() => {
     if (backgroundTaskCollections.length === 0) return currentCollections;
 
     const taskDesignIds = new Set(
-      activeDesignBackgroundTasks
+      renderedDesignBackgroundTasks
         .map((task) => task.designId)
         .filter((id): id is string => Boolean(id)),
     );
@@ -1276,7 +1283,9 @@ export default function CatalogScreen() {
       ...backgroundTaskCollections,
       ...currentCollections.filter((collection) => !taskDesignIds.has(collection.id)),
     ];
-  }, [activeDesignBackgroundTasks, backgroundTaskCollections, currentCollections]);
+  }, [renderedDesignBackgroundTasks, backgroundTaskCollections, currentCollections]);
+  const currentCollectionsRef = useRef(currentCollectionsWithBackgroundTasks);
+  currentCollectionsRef.current = currentCollectionsWithBackgroundTasks;
   const savedCatalogIds = useMemo(
     () =>
       Array.from(
@@ -1289,6 +1298,38 @@ export default function CatalogScreen() {
     [currentCollectionsWithBackgroundTasks],
   );
   const savedCatalogIdsKey = savedCatalogIds.join('|');
+  const savedCatalogIdsRef = useRef(savedCatalogIds);
+  savedCatalogIdsRef.current = savedCatalogIds;
+  const savedCatalogByIdRef = useRef(savedCatalogById);
+  savedCatalogByIdRef.current = savedCatalogById;
+
+  const statusCounts = useMemo(() => {
+    const countWithTasks = (
+      serverItems: CollectionDto[],
+      taskPredicate: (task: DesignEditorBackgroundTask) => boolean,
+    ) => {
+      const ids = new Set(serverItems.map((item) => item.id));
+      let count = ids.size;
+      designBackgroundTasks.forEach((task) => {
+        if (!taskPredicate(task)) return;
+        if (task.designId && ids.has(task.designId)) return;
+        count += 1;
+      });
+      return count;
+    };
+
+    return {
+      drafts: countWithTasks(effectiveDrafts, (task) => task.action === 'draft'),
+      inReview: countWithTasks(
+        inReviewQuery.data ?? [],
+        (task) => task.action === 'publish',
+      ),
+      needsAttention: countWithTasks(
+        needsAttentionQuery.data ?? [],
+        (task) => task.status === 'failed',
+      ),
+    };
+  }, [designBackgroundTasks, effectiveDrafts, inReviewQuery.data, needsAttentionQuery.data]);
 
   useEffect(() => {
     if (isOwner || status !== 'authenticated') {
@@ -1326,13 +1367,13 @@ export default function CatalogScreen() {
     if (completedTaskRefreshKeyRef.current === refreshKey) return;
     completedTaskRefreshKeyRef.current = refreshKey;
 
-    completedVisibleTasks.forEach((task) => removeDesignEditorBackgroundTask(task.id));
-    setDesignBackgroundTasks(readDesignEditorBackgroundTasks());
-
     let cancelled = false;
     void (async () => {
       try {
         await fetchCollections(undefined, { forceRefresh: true });
+        if (cancelled) return;
+        completedVisibleTasks.forEach((task) => removeDesignEditorBackgroundTask(task.id));
+        setDesignBackgroundTasks(readDesignEditorBackgroundTasks(userId));
       } catch {
         if (!cancelled) {
           completedTaskRefreshKeyRef.current = null;
@@ -1342,8 +1383,11 @@ export default function CatalogScreen() {
 
     return () => {
       cancelled = true;
+      if (completedTaskRefreshKeyRef.current === refreshKey) {
+        completedTaskRefreshKeyRef.current = null;
+      }
     };
-  }, [fetchCollections, visibilityFilter, visibleDesignBackgroundTasks]);
+  }, [fetchCollections, userId, visibilityFilter, visibleDesignBackgroundTasks]);
 
   const headerStats = useMemo<BrandHeaderStat[]>(() => {
     const backendDesigns = readMetricNumber(effectiveProfile?.designsCount) ?? readMetricNumber(effectiveProfile?.collectionsCount);
@@ -1471,7 +1515,7 @@ export default function CatalogScreen() {
 
   const handleShareCollection = useCallback(
     async (collectionId: string) => {
-      const collection = currentCollectionsWithBackgroundTasks.find((item) => item.id === collectionId);
+      const collection = currentCollectionsRef.current.find((item) => item.id === collectionId);
       const title = collection?.title?.trim() || 'WEAZ catalog item';
       const profileUrl = profileShareUrl ?? '';
       const url = profileUrl ? `${profileUrl}${profileUrl.includes('?') ? '&' : '?'}collectionId=${encodeURIComponent(collectionId)}` : '';
@@ -1486,7 +1530,7 @@ export default function CatalogScreen() {
         toast.error('Could not share this catalog item.');
       }
     },
-    [currentCollectionsWithBackgroundTasks, profileShareUrl, toast],
+    [profileShareUrl, toast],
   );
 
   const handleToggleSaveCollection = useCallback(
@@ -1497,8 +1541,8 @@ export default function CatalogScreen() {
         return;
       }
 
-      const wasSaved = Boolean(savedCatalogById[collection.id]);
-      const savedBatchQueryKey = queryKeys.saved.batch('COLLECTION', savedCatalogIds);
+      const wasSaved = Boolean(savedCatalogByIdRef.current[collection.id]);
+      const savedBatchQueryKey = queryKeys.saved.batch('COLLECTION', savedCatalogIdsRef.current);
       setSavedCatalogById((current) => ({ ...current, [collection.id]: !wasSaved }));
       queryClient.setQueryData<Record<string, boolean>>(savedBatchQueryKey, (current) => ({
         ...(current ?? {}),
@@ -1539,7 +1583,7 @@ export default function CatalogScreen() {
         });
       }
     },
-    [isOwner, queryClient, savedCatalogById, savedCatalogIds, status, targetBrandId, toast],
+    [isOwner, queryClient, status, targetBrandId, toast],
   );
 
   const shareActionOptions = useMemo(
@@ -1784,7 +1828,7 @@ export default function CatalogScreen() {
         >
           <View
             onLayout={(event) => handleTabPageLayout(`Collections:${visibilityFilter}`, event)}
-            style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
+            style={[styles.tabPage, { width: Math.max(containerWidth, 1), minHeight: estimatedPagerHeight }]}
           >
               {isOwner ? (
                 <View style={styles.catalogControls}>
@@ -1792,9 +1836,9 @@ export default function CatalogScreen() {
                     selected={visibilityFilter}
                     onChange={setVisibilityFilter}
                     showDrafts={isOwner}
-                    draftsCount={effectiveDrafts.length}
-                    needsAttentionCount={needsAttentionQuery.data?.length ?? 0}
-                    inReviewCount={inReviewQuery.data?.length ?? 0}
+                    draftsCount={statusCounts.drafts}
+                    needsAttentionCount={statusCounts.needsAttention}
+                    inReviewCount={statusCounts.inReview}
                   />
                 </View>
               ) : null}
@@ -1865,7 +1909,7 @@ export default function CatalogScreen() {
 
           <View
             onLayout={(event) => handleTabPageLayout('Shop', event)}
-            style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
+            style={[styles.tabPage, { width: Math.max(containerWidth, 1), minHeight: estimatedPagerHeight }]}
           >
             {shouldMountShopTab && containerWidth > 0 && targetBrandId ? (
               <BrandShopTab
@@ -1880,7 +1924,7 @@ export default function CatalogScreen() {
 
           <View
             onLayout={(event) => handleTabPageLayout('Reviews', event)}
-            style={[styles.tabPage, { width: Math.max(containerWidth, 1) }]}
+            style={[styles.tabPage, { width: Math.max(containerWidth, 1), minHeight: estimatedPagerHeight }]}
           >
             {/* Reviews stays lazy until first activation to keep catalogue shell-first. */}
             {shouldMountReviewsTab && targetBrandId ? (

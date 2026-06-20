@@ -142,13 +142,28 @@ function main() {
     /invalidateQueries\(\{\s*queryKey:\s*\['brand',\s*'collections'\]/,
     'Go Live must invalidate the owner brand collections cache.',
   );
-  const optimisticInReviewRouteIndex = providerSource.indexOf("visibility: 'In Review'");
+  const optimisticInReviewRouteIndex = providerSource.indexOf("visibility: action === 'publish' ? 'In Review' : 'Drafts'");
   const backendSaveIndex = providerSource.indexOf('const result = await saveDesignEditor');
   assert.ok(
     optimisticInReviewRouteIndex >= 0 &&
       backendSaveIndex >= 0 &&
       optimisticInReviewRouteIndex < backendSaveIndex,
-    'Mobile design editor must route publish saves to Catalog In Review before upload completion.',
+    'Mobile design editor must route publish and draft saves to their catalog task cards before upload completion.',
+  );
+  assert.match(
+    providerSource,
+    /recoverySnapshot:\s*\{[\s\S]*ownerUserId:\s*user\.id[\s\S]*form:\s*\{ \.\.\.form \}[\s\S]*assets:\s*assets\.map/,
+    'Pre-ID tasks must persist a user-scoped form and media snapshot before upload.',
+  );
+  assert.match(
+    providerSource,
+    /readDesignEditorRecoverySnapshot\([\s\S]*normalizedRecoveryTaskId,[\s\S]*user\.id/,
+    'Failed pre-ID retries must rehydrate only the current user snapshot.',
+  );
+  assert.match(
+    providerSource,
+    /recoverySnapshot:\s*null/,
+    'Successful saves must clear persisted recovery payloads.',
   );
   assert.match(providerSource, /getMissingRequiredMediaSlots/);
   assert.match(
@@ -175,6 +190,16 @@ function main() {
     backgroundTasksSource,
     /touchDesignEditorBackgroundTask/,
     'Failed publish card interactions must reset the 24-hour cleanup clock.',
+  );
+  assert.match(
+    backgroundTasksSource,
+    /task\.ownerUserId === ownerUserId/,
+    'Background tasks and recovery payloads must be scoped to the authenticated user.',
+  );
+  assert.match(
+    backgroundTasksSource,
+    /schedulePersistTasks/,
+    'Frequent upload progress ticks must coalesce AsyncStorage persistence.',
   );
   assert.doesNotMatch(
     providerSource,
@@ -264,6 +289,16 @@ function main() {
     catalogSource,
     /visibilityFilter === 'In Review'[\s\S]*task\.status === 'failed'/,
     'In Review must keep failed publish cards visible for retry/edit.',
+  );
+  assert.match(
+    catalogSource,
+    /params:\s*\{ recoveryTaskId: task\.id, blank: '1' \}/,
+    'Pre-ID failed tasks must reopen the composer with the persisted task snapshot.',
+  );
+  assert.match(
+    catalogSource,
+    /backgroundTaskCollectionCacheRef/,
+    'Progress mapping must preserve object identity for unaffected task cards.',
   );
 
   const catalogQueriesSource = fs.readFileSync(path.join(repoRoot, 'src', 'query', 'catalogQueries.ts'), 'utf8');
