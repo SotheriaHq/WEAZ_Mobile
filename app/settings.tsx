@@ -178,12 +178,6 @@ export default function SettingsScreen() {
         title: 'Shopping',
         rows: [
           {
-            emoji: '📦',
-            title: 'Orders',
-            subtitle: 'Track purchases and custom requests',
-            onPress: () => router.push('/orders' as never),
-          },
-          {
             emoji: '🔖',
             title: 'Saved runway',
             subtitle: 'Runway looks you want to revisit',

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -302,6 +302,16 @@ export default function OrdersScreen() {
       cancelled: items.filter((item) => isCancelledOrder(item)).length,
     };
   }, [items]);
+  const statItems = useMemo(
+    () => [
+      { key: 'all' as const, label: 'Total', value: stats.total },
+      { key: 'pending' as const, label: 'Pending', value: stats.pending },
+      { key: 'active' as const, label: 'Active', value: stats.active },
+      { key: 'completed' as const, label: 'Completed', value: stats.completed },
+      { key: 'cancelled' as const, label: 'Cancelled', value: stats.cancelled },
+    ],
+    [stats],
+  );
 
   if (status !== 'authenticated') {
     return (
@@ -373,13 +383,35 @@ export default function OrdersScreen() {
               </View>
             ) : null}
 
-            <View style={styles.statsGrid}>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Total</AppText><AppText variant="subtitle">{stats.total}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Pending</AppText><AppText variant="subtitle">{stats.pending}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Active</AppText><AppText variant="subtitle">{stats.active}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Completed</AppText><AppText variant="subtitle">{stats.completed}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Cancelled</AppText><AppText variant="subtitle">{stats.cancelled}</AppText></Card>
-            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.statsRow}
+              accessibilityRole="tablist"
+            >
+              {statItems.map((stat) => {
+                const selected = statusFilter === stat.key;
+                return (
+                  <Pressable
+                    key={stat.key}
+                    onPress={() => setStatusFilter(stat.key)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    style={({ pressed }) => [
+                      styles.statPill,
+                      {
+                        backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
+                        borderColor: selected ? theme.colors.primary : theme.colors.border,
+                      },
+                      pressed ? styles.pressed : null,
+                    ]}
+                  >
+                    <AppText variant="captionRegular" tone={selected ? 'primary' : 'muted'}>{stat.label}</AppText>
+                    <AppText variant="subtitle" tone={selected ? 'primary' : 'default'}>{stat.value}</AppText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
 
             <View style={styles.filtersRow}>
               {STATUS_FILTERS.map((option) => {
@@ -469,15 +501,20 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     marginBottom: tokens.spacing.sm,
   },
-  statsGrid: {
+  statsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
+    paddingRight: tokens.spacing.md,
   },
-  statCard: {
-    flexBasis: '48%',
-    flexGrow: 1,
-    minWidth: 0,
+  statPill: {
+    minWidth: 88,
+    minHeight: 58,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    justifyContent: 'center',
+    gap: tokens.spacing.xs,
   },
   filtersRow: {
     flexDirection: 'row',

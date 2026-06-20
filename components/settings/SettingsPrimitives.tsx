@@ -95,7 +95,7 @@ export function SettingsToggleRow({
       onPress={() => onChange(!value)}
       style={({ pressed }) => [
         styles.settingRow,
-        { borderColor: theme.colors.border },
+        { borderBottomColor: theme.colors.border },
         pressed ? styles.pressed : null,
         isDisabled ? styles.disabled : null,
       ]}
@@ -160,9 +160,10 @@ export function SettingsOptionRow({
       style={({ pressed }) => [
         styles.settingRow,
         {
-          borderColor: selected ? theme.colors.primary : theme.colors.border,
+          borderBottomColor: selected ? theme.colors.primary : theme.colors.border,
           backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
         },
+        selected ? styles.selectedSettingRow : null,
         pressed ? styles.pressed : null,
         disabled ? styles.disabled : null,
       ]}
@@ -228,13 +229,15 @@ const styles = StyleSheet.create({
   },
   settingRow: {
     minHeight: 64,
-    borderWidth: 1,
-    borderRadius: tokens.radius.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    paddingHorizontal: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.sm,
     paddingVertical: tokens.spacing.sm,
+  },
+  selectedSettingRow: {
+    borderBottomWidth: 2,
   },
   rowCopy: {
     flex: 1,

@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { BackHandler, Dimensions, Modal, Pressable, StyleSheet, View, Animated, InteractionManager } from 'react-native';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { BackHandler, Modal, Pressable, StyleSheet, View, Animated, InteractionManager, useWindowDimensions } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
@@ -8,9 +8,10 @@ import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 
 export type FloatingMenuOption = {
   key: string;
-  icon: string;
+  icon?: string;
   title: string;
   onPress: () => void;
+  disabled?: boolean;
 };
 
 type Props = {
@@ -24,7 +25,7 @@ type Props = {
   } | null;
   options: FloatingMenuOption[];
   onClose: () => void;
-  /** Optional menu width override. Defaults to the compact 188px app dropdown. */
+  /** Optional menu width override. By default the dropdown fits its longest label. */
   width?: number;
 };
 
@@ -34,14 +35,15 @@ function resolveMenuPosition({
   width,
   height,
   menuWidth,
+  windowWidth,
 }: {
   pageX: number;
   pageY: number;
   width: number;
   height: number;
   menuWidth: number;
+  windowWidth: number;
 }) {
-  const windowWidth = Dimensions.get('window').width;
   const minLeft = tokens.spacing.md;
   const maxLeft = Math.max(minLeft, windowWidth - menuWidth - tokens.spacing.md);
   const preferredLeft = pageX + width - menuWidth + tokens.spacing.xs;
@@ -54,6 +56,7 @@ function resolveMenuPosition({
 
 export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, onClose, width }: Props) {
   const { scheme, theme } = useTheme();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const [internalVisible, setInternalVisible] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -61,13 +64,16 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
-  const menuWidth = width ?? 188;
-
-  const windowWidth = Dimensions.get('window').width;
-  const windowHeight = Dimensions.get('window').height;
+  const menuWidth = useMemo(() => {
+    if (width) return width;
+    const longestTitleLength = options.reduce((longest, option) => Math.max(longest, option.title.length), 0);
+    const hasIcons = options.some((option) => Boolean(option.icon));
+    const estimatedContentWidth = longestTitleLength * 8 + tokens.spacing.md * 2 + (hasIcons ? 32 : 0);
+    return Math.min(Math.max(estimatedContentWidth, 132), windowWidth - tokens.spacing.md * 2);
+  }, [options, width, windowWidth]);
 
   const resolvedPosition = anchorMetrics
-    ? resolveMenuPosition({ ...anchorMetrics, menuWidth })
+    ? resolveMenuPosition({ ...anchorMetrics, menuWidth, windowWidth })
     : { top: windowHeight / 2 - 100, left: windowWidth / 2 - menuWidth / 2 };
 
   useAndroidOverlaySystemBars(internalVisible, scheme, 'floating-menu');
@@ -188,7 +194,7 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
           return (
             <Pressable
               key={option.key}
-              disabled={isClosing}
+              disabled={isClosing || option.disabled}
               style={({ pressed }) => [
                 styles.option,
                 isFirst && { borderTopLeftRadius: tokens.radius.lg - 1, borderTopRightRadius: tokens.radius.lg - 1 },
@@ -197,12 +203,13 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
                   backgroundColor: theme.colors.primarySoft,
                 },
                 pressed && styles.optionPressed,
+                option.disabled && styles.optionDisabled,
                 !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
               ]}
               onPress={() => handleOptionPress(option.onPress)}
             >
-              <AppText variant="body" tone="muted">{option.icon}</AppText>
-              <AppText variant="body">{option.title}</AppText>
+              {option.icon ? <AppText variant="body" tone="muted">{option.icon}</AppText> : null}
+              <AppText variant="body" numberOfLines={2} style={styles.optionTitle}>{option.title}</AppText>
             </Pressable>
           );
         })}
@@ -229,6 +236,13 @@ const styles = StyleSheet.create({
   },
   optionPressed: {
     opacity: 0.7,
+  },
+  optionDisabled: {
+    opacity: 0.48,
+  },
+  optionTitle: {
+    flexShrink: 1,
+    minWidth: 0,
   },
 });
 

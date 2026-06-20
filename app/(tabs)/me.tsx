@@ -14,7 +14,8 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import ProfileImageModal from '@/components/profile/ProfileImageModal';
-import { ProfileApi, type Order, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
+import { ProfileApi, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
+import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
 import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
 import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
@@ -49,7 +50,7 @@ type ProfileState = {
   sizeFit: SizeFitProfile | null;
   saved: SavedItem[];
   patches: PatchedBrand[];
-  orders: Order[];
+  orders: BuyerOrderSummary[];
 };
 
 type MeasurementKey = 'CHEST' | 'WAIST' | 'HIPS' | 'SHOULDER' | 'INSEAM' | 'HEIGHT';
@@ -59,6 +60,7 @@ const PROFILE_LOGIN_ROUTE = { pathname: '/(auth)/login', params: { next: '/(tabs
 const PROFILE_TABS: ProfileTab[] = ['Saved', 'Patches', 'Orders'];
 const PROFILE_INITIAL_SECTION_ITEMS = 6;
 const PROFILE_SECTION_BATCH_ITEMS = 8;
+const PROFILE_ORDERS_PREVIEW_LIMIT = 6;
 const MEASUREMENT_FIELDS: Array<{ key: MeasurementKey; label: string }> = [
   { key: 'CHEST', label: 'Chest' },
   { key: 'WAIST', label: 'Waist' },
@@ -217,34 +219,42 @@ function SummaryStat({
   value: string;
   subtitle: string;
 }) {
-  const { theme } = useTheme();
   return (
-    <Card padding="md" style={[styles.summaryCard, { backgroundColor: theme.colors.surfaceAlt }]}>
+    <View style={styles.summaryStat}>
       <AppText variant="captionRegular" tone="muted">{title}</AppText>
       <AppText variant="subtitle">{value}</AppText>
       <AppText variant="captionRegular" tone="muted">{subtitle}</AppText>
-    </Card>
+    </View>
   );
 }
 
 function ProfileAction({
   emoji,
   label,
+  accent,
   onPress,
 }: {
   emoji: string;
   label: string;
+  accent: 'primary' | 'success' | 'warning' | 'textSecondary';
   onPress: () => void;
 }) {
   const { theme } = useTheme();
+  const accentColor = theme.colors[accent];
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.actionCard, { backgroundColor: theme.colors.surfaceAlt }, pressed ? styles.pressed : null]}
+      style={({ pressed }) => [
+        styles.actionCard,
+        { backgroundColor: theme.colors.surface, borderColor: accentColor },
+        pressed ? styles.pressed : null,
+      ]}
     >
-      <AppText variant="captionBold">{emoji}</AppText>
-      <AppText variant="bodyBold" numberOfLines={1}>{label}</AppText>
+      <View style={[styles.actionIcon, { backgroundColor: accentColor }]}>
+        <AppText variant="captionBold">{emoji}</AppText>
+      </View>
+      <AppText variant="captionBold" numberOfLines={2} style={styles.actionLabel}>{label}</AppText>
     </Pressable>
   );
 }
@@ -377,31 +387,39 @@ function PatchRow({ brand }: { brand: PatchedBrand }) {
   );
 }
 
-function OrderRow({ order }: { order: Order }) {
+function OrderRow({ order }: { order: BuyerOrderSummary }) {
   const { theme } = useTheme();
-  const firstItem = order.items?.[0];
   return (
-    <View style={[styles.listCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-      {firstItem?.thumbnail ? (
-        <StableImage uri={firstItem.thumbnail} containerStyle={styles.rowAvatar} imageStyle={styles.rowAvatar} />
+    <Pressable
+      onPress={() => router.push({ pathname: '/orders/[orderId]', params: { orderId: order.id } } as any)}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${order.title}`}
+      style={({ pressed }) => [
+        styles.listCard,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        pressed ? styles.pressed : null,
+      ]}
+    >
+      {order.thumbnail ? (
+        <StableImage uri={order.thumbnail} containerStyle={styles.rowAvatar} imageStyle={styles.rowAvatar} />
       ) : (
         <View style={[styles.rowAvatar, { backgroundColor: theme.colors.surfaceAlt }]}>
           <AppText variant="captionBold">📦</AppText>
         </View>
       )}
       <View style={styles.listCopy}>
-        <AppText variant="bodyBold" numberOfLines={1}>{firstItem?.productName || 'Order'}</AppText>
+        <AppText variant="bodyBold" numberOfLines={1}>{order.title}</AppText>
         <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-          {order.status} · {formatDate(order.createdAt)}
+          {order.brandName} · {order.status} · {formatDate(order.createdAt)}
         </AppText>
       </View>
       <View style={styles.orderMeta}>
-        <AppText variant="captionBold">{formatCurrency(order.totalAmount, order.currency)}</AppText>
+        <AppText variant="captionBold">{formatCurrency(order.amount, order.currency)}</AppText>
         <AppText variant="captionRegular" tone="muted">
-          {order.items?.length ?? 0} item{(order.items?.length ?? 0) === 1 ? '' : 's'}
+          {order.itemCount} item{order.itemCount === 1 ? '' : 's'}
         </AppText>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -413,11 +431,12 @@ export default function BuyerProfileScreen() {
   const toast = useToast();
   const params = useLocalSearchParams<{ tab?: string | string[] }>();
   const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
-  const warmProfileStateKey = user?.id ? `me:${user.id}` : null;
+  const warmProfileStateKey = user?.id ? `me:v2:${user.id}` : null;
   const initialWarmProfileState = warmProfileStateKey ? readWarmScreenState<ProfileState>(warmProfileStateKey) : null;
 
   const [state, setState] = useState<ProfileState>(() => initialWarmProfileState ?? createEmptyProfileState());
   const [loading, setLoading] = useState(() => !initialWarmProfileState);
+  const [ordersLoading, setOrdersLoading] = useState(() => !initialWarmProfileState);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Saved');
@@ -530,9 +549,7 @@ export default function BuyerProfileScreen() {
     const normalized = requestedTab.trim().toLowerCase();
     if (normalized === 'patches') setActiveTab('Patches');
     if (normalized === 'orders') {
-      // Query-param redirect (?tab=orders), not a user tap: replace so we don't
-      // leave an empty Me?tab=orders entry in history behind Orders.
-      router.replace('/orders' as any);
+      setActiveTab('Orders');
       return;
     }
     if (normalized === 'saved') setActiveTab('Saved');
@@ -542,6 +559,7 @@ export default function BuyerProfileScreen() {
     const silent = options?.silent ?? false;
     if (status !== 'authenticated' || !user?.id) {
       setLoading(false);
+      setOrdersLoading(false);
       setRefreshing(false);
       setState(createEmptyProfileState());
       return;
@@ -551,6 +569,7 @@ export default function BuyerProfileScreen() {
     if (!silent && !hasWarmProfileSnapshot) {
       setLoading(true);
     }
+    setOrdersLoading(true);
     setError(null);
     try {
       const [profileResult, sizeFitResult, savedResult, patchesResult, ordersResult] = await Promise.allSettled([
@@ -558,7 +577,7 @@ export default function BuyerProfileScreen() {
         ProfileApi.getSizeFit(),
         ProfileApi.getSaved(),
         ProfileApi.getPatches(user.id),
-        ProfileApi.getOrders({ limit: 20, page: 1 }),
+        BuyerOrdersApi.list({ limit: PROFILE_ORDERS_PREVIEW_LIMIT }),
       ]);
 
       if (requestId !== loadRequestIdRef.current) return;
@@ -577,7 +596,7 @@ export default function BuyerProfileScreen() {
         { section: 'size-fit', endpoint: '/users/me/size-fit', result: sizeFitResult },
         { section: 'saved', endpoint: '/saved/me', result: savedResult },
         { section: 'patches', endpoint: `/users/${user.id}/patches`, result: patchesResult },
-        { section: 'orders', endpoint: '/store/orders', result: ordersResult },
+        { section: 'orders', endpoint: '/store/orders + /custom-orders', result: ordersResult },
       ].filter((entry) => entry.result.status === 'rejected');
 
       optionalFailures.forEach((entry) => {
@@ -626,6 +645,7 @@ export default function BuyerProfileScreen() {
         if (!silent) {
           setLoading(false);
         }
+        setOrdersLoading(false);
         setRefreshing(false);
       }
     }
@@ -932,7 +952,7 @@ export default function BuyerProfileScreen() {
           <View style={styles.identityBlock}>
             <AppText variant="title" style={styles.centerText}>{profileIdentity.displayName}</AppText>
             {profileIdentity.handle ? (
-              <AppText variant="body" tone="muted" style={styles.centerText}>{profileIdentity.handle}</AppText>
+              <AppText variant="body" tone="primary" style={styles.profileHandle}>{profileIdentity.handle}</AppText>
             ) : null}
             {profileIdentity.locationLabel ? (
               <AppText variant="captionRegular" tone="muted" style={styles.centerText}>
@@ -950,17 +970,21 @@ export default function BuyerProfileScreen() {
         />
 
         <View style={styles.actionGrid}>
-          <ProfileAction emoji="✏️" label="Edit info" onPress={() => router.push('/(tabs)/me-edit' as any)} />
-          <ProfileAction emoji="📏" label="My fits" onPress={() => setFittingsOpen(true)} />
-          <ProfileAction emoji="📦" label="Orders" onPress={() => router.push('/orders' as any)} />
-          <ProfileAction emoji="⭐" label="Reviews" onPress={() => router.push('/reviews' as any)} />
-          <ProfileAction emoji="⚙️" label="Settings" onPress={handleOpenSettings} />
+          <View style={styles.actionRow}>
+            <ProfileAction emoji="✏️" label="Edit info" accent="primary" onPress={() => router.push('/(tabs)/me-edit' as any)} />
+            <ProfileAction emoji="📏" label="My fits" accent="success" onPress={() => setFittingsOpen(true)} />
+            <ProfileAction emoji="📦" label="Orders" accent="primary" onPress={() => setActiveTab('Orders')} />
+          </View>
+          <View style={styles.actionRow}>
+            <ProfileAction emoji="⭐" label="Reviews" accent="warning" onPress={() => router.push('/reviews' as any)} />
+            <ProfileAction emoji="⚙️" label="Settings" accent="textSecondary" onPress={handleOpenSettings} />
+          </View>
         </View>
 
         <View style={styles.summaryRow}>
           <SummaryStat title="Saved Looks" value={String(profileCounts.saved)} subtitle="inspiration" />
           <SummaryStat title="Patched" value={String(profileCounts.patches)} subtitle="brands" />
-          <SummaryStat title="History" value={String(profileCounts.orders)} subtitle="orders" />
+          <SummaryStat title="Recent" value={String(profileCounts.orders)} subtitle="orders" />
         </View>
 
         <MeasurementCard sizeFit={state.sizeFit} onPress={() => setFittingsOpen(true)} />
@@ -982,14 +1006,7 @@ export default function BuyerProfileScreen() {
             return (
               <Pressable
                 key={tab}
-                onPress={() => {
-                  if (tab === 'Orders') {
-                    setActiveTab(tab);
-                    router.push('/orders' as any);
-                    return;
-                  }
-                  setActiveTab(tab);
-                }}
+                onPress={() => setActiveTab(tab)}
                 style={({ pressed }) => [
                   styles.tabItem,
                   selected && [styles.tabItemActive, { borderBottomColor: theme.colors.primary }],
@@ -1043,20 +1060,28 @@ export default function BuyerProfileScreen() {
         ) : null}
 
         {activeTab === 'Orders' ? (
-          state.orders.length === 0 ? (
-            <EmptyState
-              emoji="📦"
-              title="No orders yet"
-              body="When you buy from the market, your order history and status updates will show up here."
-              cta="Open market"
-              onPress={() => topLevelNavigate('/(tabs)/discover' as any)}
-            />
-          ) : (
-            <View style={styles.listStack}>
-              {visibleOrderItems.map((order) => (
-                <OrderRow key={order.id} order={order} />
-              ))}
+          ordersLoading && state.orders.length === 0 ? (
+            <View style={[styles.ordersPreviewState, { backgroundColor: theme.colors.surfaceAlt }]}>
+              <ActivityIndicator color={theme.colors.primary} />
+              <AppText variant="captionRegular" tone="muted">Loading recent orders…</AppText>
             </View>
+          ) : state.orders.length === 0 ? (
+            <View style={[styles.ordersPreviewState, { backgroundColor: theme.colors.surfaceAlt }]}>
+              <AppText variant="bodyBold">No orders yet</AppText>
+              <AppText variant="captionRegular" tone="muted" style={styles.centerText}>
+                Standard and custom orders will appear here.
+              </AppText>
+              <Button title="Open market" size="sm" variant="secondary" onPress={() => topLevelNavigate('/(tabs)/discover' as any)} />
+            </View>
+          ) : (
+            <>
+              <View style={styles.listStack}>
+                {visibleOrderItems.map((order) => (
+                  <OrderRow key={order.id} order={order} />
+                ))}
+              </View>
+              <Button title="View all orders" variant="outline" onPress={() => router.push('/orders' as any)} />
+            </>
           )
         ) : null}
       </ScrollView>
@@ -1196,28 +1221,47 @@ const styles = StyleSheet.create({
   centerText: {
     textAlign: 'center',
   },
+  profileHandle: {
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
   actionGrid: {
+    gap: tokens.spacing.xs,
+  },
+  actionRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: tokens.spacing.xs,
   },
   actionCard: {
-    flexBasis: '48%',
-    flexGrow: 1,
+    flex: 1,
+    minWidth: 0,
     minHeight: 68,
     borderRadius: tokens.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
     gap: tokens.spacing.xs,
-    paddingHorizontal: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.xs,
     paddingVertical: tokens.spacing.sm,
+  },
+  actionIcon: {
+    minWidth: 30,
+    height: 30,
+    paddingHorizontal: tokens.spacing.xs,
+    borderRadius: tokens.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionLabel: {
+    textAlign: 'center',
   },
   summaryRow: {
     flexDirection: 'row',
-    gap: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.xs,
   },
-  summaryCard: {
+  summaryStat: {
     flex: 1,
+    alignItems: 'center',
     gap: tokens.spacing.xs,
   },
   fittingsCard: {
@@ -1294,6 +1338,14 @@ const styles = StyleSheet.create({
   orderMeta: {
     alignItems: 'flex-end',
     gap: tokens.spacing.xs,
+  },
+  ordersPreviewState: {
+    minHeight: 112,
+    borderRadius: tokens.radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.spacing.sm,
+    padding: tokens.spacing.md,
   },
   emptyCard: {
     alignItems: 'center',

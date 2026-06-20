@@ -86,7 +86,7 @@ export function NativeIslandTabIcon({
             </View>
             <View style={styles.tabLabelWrap}>
               <AppText
-                variant="navLabel"
+                variant="captionBold"
                 tone={focused ? 'primary' : 'secondary'}
                 numberOfLines={1}
                 style={focused ? styles.tabLabelActive : styles.tabLabelInactive}

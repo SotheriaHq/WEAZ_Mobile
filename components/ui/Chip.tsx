@@ -36,7 +36,7 @@ export function Chip({
   variant = 'default',
   pending = false,
 }: Props) {
-  const { theme } = useTheme();
+  const { scheme, theme } = useTheme();
   const isSwatch = Boolean(swatchColor);
   const scale = React.useRef(new Animated.Value(1)).current;
   const isNav = variant === 'nav';
@@ -77,7 +77,11 @@ export function Chip({
                 ? theme.colors.primarySoft
                 : 'transparent'
               : isNav
-                ? 'transparent'
+                ? scheme === 'dark'
+                  ? selected
+                    ? theme.colors.primarySoft
+                    : theme.colors.controlSurface
+                  : 'transparent'
                 : usePendingTreatment
                   ? theme.colors.surfaceAlt
                   : selected

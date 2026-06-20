@@ -4,6 +4,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -56,8 +57,8 @@ export type BrandProfileHeaderProps = {
   createAnchorRef?: React.RefObject<View | null>;
   onCreateAnchorLayout?: () => void;
   onShare?: () => void;
-  /** Owner-only compact three-dot menu (Settings / Store). When provided on an
-   *  owner header, the ⋯ control opens this menu instead of sharing. */
+  /** Role-aware compact three-dot menu. The caller supplies only actions allowed
+   *  for the current owner, shopper, or public viewer. */
   onOpenMenu?: (event?: any) => void;
   menuAnchorRef?: React.RefObject<View | null>;
   qrTargetUrl?: string | null;
@@ -212,6 +213,7 @@ function BannerHeader({
   | 'unreadNotificationCount'
 >) {
   const { scheme, theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const { width: viewportWidth } = useWindowDimensions();
   const resolvedBanner = useResolvedImageUri({
     src: bannerUrl,
@@ -261,17 +263,15 @@ function BannerHeader({
         </View>
       ) : null}
 
-      <View style={styles.bannerControls}>
+      <View style={[styles.bannerControls, { top: insets.top }]}>
         <HeaderIconButton label="Go back" value="👈" onPress={onBack} bare />
         <View style={styles.bannerRightControls}>
-          {!isOwner ? (
-            <HeaderIconButton label="Search" value="🔍" onPress={onSearch} bare />
-          ) : (
+          {onNotifications ? (
             <HeaderIconButton label="Notifications" value="🔔" onPress={onNotifications} badgeCount={unreadNotificationCount} bare />
+          ) : (
+            <HeaderIconButton label="Search" value="🔍" onPress={onSearch} bare />
           )}
-          {isOwner && onOpenMenu ? (
-            // Owner three-dot opens a compact Settings/Store menu (9C-1). Sharing
-            // stays on the dedicated Share button below — never duplicated here.
+          {onOpenMenu ? (
             <View ref={menuAnchorRef} collapsable={false}>
               <HeaderIconButton label="More options" value="⋯" onPress={onOpenMenu} bare />
             </View>

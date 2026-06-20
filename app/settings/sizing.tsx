@@ -157,7 +157,7 @@ export default function SizingSettingsScreen() {
     buildPatch: (value: T) => Parameters<typeof ProfileApi.updateSizeFitSettings>[0];
   }) => (
     <SettingsSection title={title}>
-      <Card padding="lg" style={styles.card}>
+      <View style={[styles.rowGroup, { backgroundColor: theme.colors.surface }]}>
         {options.map((option) => (
           <SettingsOptionRow
             key={String(option.value)}
@@ -168,7 +168,7 @@ export default function SizingSettingsScreen() {
             onPress={() => void updateSetting(`${settingKey}:${String(option.value)}`, buildPatch(option.value))}
           />
         ))}
-      </Card>
+      </View>
     </SettingsSection>
   );
 
@@ -269,7 +269,7 @@ export default function SizingSettingsScreen() {
         })}
 
         <SettingsSection title="Share alerts">
-          <Card padding="lg" style={styles.card}>
+          <View style={[styles.rowGroup, { backgroundColor: theme.colors.surface }]}>
             <SettingsToggleRow
               title="Notify me when my size fit is shared"
               description="Backend sends eligible size-fit share notifications when this is enabled."
@@ -278,7 +278,7 @@ export default function SizingSettingsScreen() {
               disabled={Boolean(busyKey)}
               onChange={(nextValue) => void updateSetting('notifyOnShare', { notifyOnShare: nextValue })}
             />
-          </Card>
+          </View>
         </SettingsSection>
 
         {renderOptions({
@@ -351,6 +351,9 @@ const styles = StyleSheet.create({
   },
   card: {
     gap: tokens.spacing.md,
+  },
+  rowGroup: {
+    overflow: 'hidden',
   },
   summaryRow: {
     flexDirection: 'row',

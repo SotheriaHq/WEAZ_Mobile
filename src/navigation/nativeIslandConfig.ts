@@ -12,8 +12,8 @@ export const NATIVE_ISLAND_KEYS = {
 export type NativeIslandKey = (typeof NATIVE_ISLAND_KEYS)[keyof typeof NATIVE_ISLAND_KEYS];
 
 export const NATIVE_ISLAND_ICONS: Record<NativeIslandKey | 'signIn', string> = {
-  designs: String.fromCodePoint(0x1f9f5),
-  market: String.fromCodePoint(0x1f6cd, 0xfe0f),
+  designs: String.fromCodePoint(0x1f457),
+  market: String.fromCodePoint(0x1f3ea),
   bag: MY_BAG_EMOJI,
   inbox: String.fromCodePoint(0x2709, 0xfe0f),
   profile: String.fromCodePoint(0x1f464),
@@ -80,7 +80,7 @@ export function buildNativeIslandItems(args: {
     },
     {
       key: NATIVE_ISLAND_KEYS.market,
-      label: 'Market',
+      label: 'Shop',
       emoji: NATIVE_ISLAND_ICONS.market,
       active: args.activeKey === NATIVE_ISLAND_KEYS.market,
     },
@@ -93,7 +93,7 @@ export function buildNativeIslandItems(args: {
     },
     {
       key: NATIVE_ISLAND_KEYS.inbox,
-      label: 'Msgs',
+      label: 'Inbox',
       emoji: NATIVE_ISLAND_ICONS.inbox,
       active: args.activeKey === NATIVE_ISLAND_KEYS.inbox,
       badge: args.inboxBadge,

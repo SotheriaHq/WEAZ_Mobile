@@ -1590,7 +1590,6 @@ export default function CatalogScreen() {
     () => [
       {
         key: 'share-profile',
-        icon: '',
         title: 'Share profile',
         description: profileShareUrl ?? undefined,
         onPress: () => void handleNativeShareProfile(),
@@ -1598,7 +1597,6 @@ export default function CatalogScreen() {
       },
       {
         key: 'copy-profile-link',
-        icon: '',
         title: 'Copy profile link',
         description: profileShareUrl ?? undefined,
         onPress: () => void handleCopyProfileLink(),
@@ -1606,7 +1604,6 @@ export default function CatalogScreen() {
       },
       {
         key: 'show-qr-code',
-        icon: '',
         title: 'Show QR code',
         description: 'Open a scannable public brand profile QR.',
         onPress: () => setBrandQrOpen(true),
@@ -1658,19 +1655,16 @@ export default function CatalogScreen() {
     () => [
       {
         key: 'camera',
-        icon: '',
         title: 'Camera',
         onPress: () => launchComposer({ source: 'camera', openPicker: true }),
       },
       {
         key: 'library',
-        icon: '',
         title: 'Photo library',
         onPress: () => launchComposer({ source: 'library', openPicker: true }),
       },
       {
         key: 'blank',
-        icon: '',
         title: 'Start blank',
         onPress: () => launchComposer({ openPicker: false }),
       },
@@ -1678,25 +1672,53 @@ export default function CatalogScreen() {
     [launchComposer],
   );
 
-  // 9C-1: owner three-dot menu. Exactly Settings + Store (plain text, no Share/QR).
-  // Store routes to the canonical Studio entry, which internally resolves setup vs
-  // dashboard (the studio web app emits PROFILE_SETUP_REQUIRED when setup is needed).
+  // The same anchored control exposes role-safe actions: owner workspace actions,
+  // signed-in shopper settings plus public sharing, or public sharing only.
   const profileMenuAnchorRef = useRef<View | null>(null);
   const profileMenuRef = useRef<{ open: (e?: any) => void } | null>(null);
   const handleOpenProfileMenu = useCallback((e?: any) => {
     profileMenuRef.current?.open(e);
   }, []);
   const profileMenuOptions = useMemo<FloatingMenuOption[]>(
-    () => [
-      { key: 'settings', icon: '', title: 'Settings', onPress: () => router.push('/settings' as any) },
-      { key: 'store', icon: '', title: 'Store', onPress: () => router.push('/studio' as any) },
-    ],
-    [],
+    () => {
+      if (isOwner) {
+        return [
+          { key: 'settings', title: 'Settings', onPress: () => router.push('/settings' as any) },
+          { key: 'store', title: 'Store', onPress: () => router.push('/studio' as any) },
+        ];
+      }
+
+      const publicActions: FloatingMenuOption[] = [
+        {
+          key: 'share-profile',
+          title: 'Share profile',
+          onPress: () => void handleNativeShareProfile(),
+          disabled: !profileShareUrl,
+        },
+        {
+          key: 'copy-profile-link',
+          title: 'Copy profile link',
+          onPress: () => void handleCopyProfileLink(),
+          disabled: !profileShareUrl,
+        },
+        {
+          key: 'show-qr-code',
+          title: 'Show QR code',
+          onPress: () => setBrandQrOpen(true),
+          disabled: !profileQrTargetUrl,
+        },
+      ];
+
+      return status === 'authenticated'
+        ? [{ key: 'settings', title: 'Settings', onPress: () => router.push('/settings' as any) }, ...publicActions]
+        : publicActions;
+    },
+    [handleCopyProfileLink, handleNativeShareProfile, isOwner, profileQrTargetUrl, profileShareUrl, status],
   );
 
   if (showInitialSkeleton) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.surface }]} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.surface }]} edges={[]}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
         <CatalogLoadingSkeleton bottomPadding={overlayScrollPadding} />
       </SafeAreaView>
@@ -1704,7 +1726,7 @@ export default function CatalogScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.surface }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.surface }]} edges={[]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
       <ScrollView
@@ -1781,6 +1803,10 @@ export default function CatalogScreen() {
             onMessage={handleMessageBrand}
             onBack={handleBackNavigation}
             onSearch={() => router.push('/search')}
+            onOpenMenu={handleOpenProfileMenu}
+            menuAnchorRef={profileMenuAnchorRef}
+            onNotifications={status === 'authenticated' ? () => router.push('/notifications') : undefined}
+            unreadNotificationCount={status === 'authenticated' ? unreadNotificationCount : undefined}
           />
         )}
 
@@ -1952,7 +1978,7 @@ export default function CatalogScreen() {
 
       <CreateMenuWrapper ref={createMenuRef} anchorRef={createAnchorRef} options={createDesignOptions} />
 
-      <CreateMenuWrapper ref={profileMenuRef} anchorRef={profileMenuAnchorRef} options={profileMenuOptions} width={156} />
+      <CreateMenuWrapper ref={profileMenuRef} anchorRef={profileMenuAnchorRef} options={profileMenuOptions} />
 
       <AppQrSheet
         visible={brandQrOpen}

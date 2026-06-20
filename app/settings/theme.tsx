@@ -19,7 +19,7 @@ type ThemeOption = {
 const THEME_OPTIONS: ThemeOption[] = [
   { value: 'system', label: 'System Default', description: 'Matches your device appearance settings', icon: '💻' },
   { value: 'light', label: 'Light', description: 'Always use the bright WEAZ theme', icon: '☀️' },
-  { value: 'dark', label: 'Dark', description: 'Always use the AMOLED-ready dark theme', icon: '🌙' },
+  { value: 'dark', label: 'Dark', description: 'Always use the lower-glare WEAZ theme', icon: '🌙' },
 ];
 
 export default function ThemeSettingsScreen() {
@@ -46,8 +46,9 @@ export default function ThemeSettingsScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
       >
         <View style={styles.section}>
-          {THEME_OPTIONS.map((option) => {
+          {THEME_OPTIONS.map((option, index) => {
             const selected = themePreference === option.value;
+            const isLast = index === THEME_OPTIONS.length - 1;
             return (
               <Pressable
                 key={option.value}
@@ -57,7 +58,12 @@ export default function ThemeSettingsScreen() {
                 accessibilityLabel={option.label}
                 style={({ pressed }) => [
                   styles.row,
-                  pressed && { backgroundColor: theme.colors.surfaceAlt },
+                  {
+                    backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
+                    borderBottomColor: theme.colors.border,
+                  },
+                  isLast ? styles.lastRow : null,
+                  pressed ? styles.pressed : null,
                 ]}
               >
                 <View style={styles.rowIconWrap}>
@@ -102,15 +108,22 @@ const styles = StyleSheet.create({
     paddingTop: tokens.spacing.lg,
   },
   section: {
-    gap: tokens.spacing.xs,
+    overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: tokens.spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.sm,
     paddingVertical: tokens.spacing.md,
     gap: tokens.spacing.md,
     minHeight: 64,
+  },
+  lastRow: {
+    borderBottomWidth: 0,
+  },
+  pressed: {
+    opacity: 0.78,
   },
   rowIconWrap: {
     width: 36,

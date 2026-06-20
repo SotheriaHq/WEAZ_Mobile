@@ -90,14 +90,15 @@ export function NewDropBadge({
         styles.badge,
         compact && styles.compactBadge,
         {
-          backgroundColor: theme.colors.primary,
+          backgroundColor: theme.colors.primarySoft,
+          borderColor: theme.colors.primary,
           transform: [{ scale: pulseAnim }],
         },
         style,
       ]}
     >
-      <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
-        {compact ? 'NEW' : 'NEW DROP'}
+      <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+        {compact ? 'New' : '✦ New drop'}
       </AppText>
     </Animated.View>
   );
@@ -106,15 +107,19 @@ export function NewDropBadge({
 const styles = StyleSheet.create({
   badge: {
     minHeight: 24,
-    borderRadius: 9999,
+    borderTopLeftRadius: tokens.radius.full,
+    borderTopRightRadius: tokens.radius.md,
+    borderBottomRightRadius: tokens.radius.full,
+    borderBottomLeftRadius: tokens.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: tokens.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2,
   },
   compactBadge: {
     minHeight: 20,
