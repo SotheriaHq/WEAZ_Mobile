@@ -322,15 +322,16 @@ export default function CreateDesignComposerScreen() {
     [assets],
   );
   // Per-field inline errors for the custom-order / rush inputs. These mirror the
-  // backend rules (custom-order-configurations service + DTO @Min(5)/@Max(13))
-  // so the creator sees the problem next to the field and is blocked before
-  // Preview — never as a submit-time 400. Returns null per field when valid.
+  // backend rules (custom-order-configurations service + DTO: production 1-7,
+  // delivery 1-7, rush 1-3) so the creator sees the problem next to the field and
+  // is blocked before Preview — never as a submit-time 400. Null per field = valid.
   const customOrderFieldErrors = useMemo(() => {
     const empty = {
       baseCharge: null as string | null,
       fabricCost: null as string | null,
       fallbackYards: null as string | null,
       productionTime: null as string | null,
+      delivery: null as string | null,
       rushFee: null as string | null,
       rushTime: null as string | null,
     };
@@ -353,6 +354,20 @@ export default function CreateDesignComposerScreen() {
       productionDays > 7
         ? 'Production time must be 1-7 days.'
         : null;
+
+    // Phase 2B: delivery range locked to 1-7 days, min <= max.
+    const deliveryMin = Number(form.deliveryMinDays);
+    const deliveryMax = Number(form.deliveryMaxDays);
+    const isDeliveryDay = (value: number) =>
+      Number.isInteger(value) && value >= 1 && value <= 7;
+    let delivery: string | null = null;
+    if (!form.deliveryMinDays.trim() || !isDeliveryDay(deliveryMin)) {
+      delivery = 'Delivery min must be 1-7 days.';
+    } else if (!form.deliveryMaxDays.trim() || !isDeliveryDay(deliveryMax)) {
+      delivery = 'Delivery max must be 1-7 days.';
+    } else if (deliveryMin > deliveryMax) {
+      delivery = 'Delivery min cannot exceed delivery max.';
+    }
 
     let rushFee: string | null = null;
     let rushTime: string | null = null;
@@ -381,12 +396,15 @@ export default function CreateDesignComposerScreen() {
       fabricCost,
       fallbackYards,
       productionTime,
+      delivery,
       rushFee,
       rushTime,
     };
   }, [
     form.baseProductionCharge,
     form.customOrderEnabled,
+    form.deliveryMaxDays,
+    form.deliveryMinDays,
     form.fabricCostPerYard,
     form.fallbackOutputYards,
     form.productionLeadDays,
@@ -415,7 +433,8 @@ export default function CreateDesignComposerScreen() {
       customOrderFieldErrors.baseCharge ||
       customOrderFieldErrors.fabricCost ||
       customOrderFieldErrors.fallbackYards ||
-      customOrderFieldErrors.productionTime
+      customOrderFieldErrors.productionTime ||
+      customOrderFieldErrors.delivery
     ) {
       missing.push('Custom order pricing');
     }
@@ -448,6 +467,7 @@ export default function CreateDesignComposerScreen() {
           customOrderFieldErrors.fabricCost ||
           customOrderFieldErrors.fallbackYards ||
           customOrderFieldErrors.productionTime ||
+          customOrderFieldErrors.delivery ||
           customOrderFieldErrors.rushFee ||
           customOrderFieldErrors.rushTime,
       ));
@@ -1415,6 +1435,11 @@ export default function CreateDesignComposerScreen() {
                 keyboardType="numeric"
                 placeholder="2"
                 containerStyle={styles.priceInput}
+                error={
+                  customOrderFieldErrors.delivery?.includes('min')
+                    ? customOrderFieldErrors.delivery
+                    : undefined
+                }
               />
               <Input
                 label="Delivery max days"
@@ -1423,8 +1448,19 @@ export default function CreateDesignComposerScreen() {
                 keyboardType="numeric"
                 placeholder="5"
                 containerStyle={styles.priceInput}
+                error={
+                  customOrderFieldErrors.delivery &&
+                  !customOrderFieldErrors.delivery.includes('min')
+                    ? customOrderFieldErrors.delivery
+                    : undefined
+                }
               />
             </View>
+            {customOrderFieldErrors.delivery ? (
+              <AppText variant="captionRegular" tone="muted">
+                Delivery and production must each be 1-7 days.
+              </AppText>
+            ) : null}
             <Input
               label="Production time"
               value={form.productionLeadDays}

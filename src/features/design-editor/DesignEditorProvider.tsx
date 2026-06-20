@@ -317,6 +317,41 @@ function getCustomOrderRushValidationMessage(form: FormState): string | null {
   return null;
 }
 
+// Phase 2B: delivery/production range is locked to 1-7 days (web/native/backend
+// must agree). Mirrors the backend custom-order-configurations guardrails.
+function getCustomOrderDeliveryValidationMessage(form: FormState): string | null {
+  if (!form.customOrderEnabled) return null;
+
+  const min = Number(form.deliveryMinDays);
+  const max = Number(form.deliveryMaxDays);
+  const isValidDay = (value: number) =>
+    Number.isInteger(value) && value >= 1 && value <= 7;
+
+  if (!form.deliveryMinDays.trim() || !isValidDay(min)) {
+    return 'Set the minimum delivery time between 1 and 7 days.';
+  }
+  if (!form.deliveryMaxDays.trim() || !isValidDay(max)) {
+    return 'Set the maximum delivery time between 1 and 7 days.';
+  }
+  if (min > max) {
+    return 'Minimum delivery days cannot exceed maximum delivery days.';
+  }
+  return null;
+}
+
+// Phase 2B: enforce minPrice <= maxPrice before Preview so the creator never
+// hits a backend PRICE_RANGE_INVALID at submit time.
+function getPriceRangeValidationMessage(form: FormState): string | null {
+  if (!form.minPrice.trim() || !form.maxPrice.trim()) return null;
+  const min = Number(form.minPrice);
+  const max = Number(form.maxPrice);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  if (min > max) {
+    return 'Maximum price must be greater than or equal to minimum price.';
+  }
+  return null;
+}
+
 function getPublishValidationMessage({
   assets,
   form,
@@ -348,6 +383,8 @@ function getPublishValidationMessage({
   if (!form.targetAgeGroup) return 'Choose an age group.';
   if (filterValueIds.length === 0) return 'Add at least one style detail.';
   if (tags.length === 0) return 'Add at least one hashtag.';
+  const priceRangeMessage = getPriceRangeValidationMessage(form);
+  if (priceRangeMessage) return priceRangeMessage;
   if (form.customOrderEnabled && customMeasurementKeys.length === 0) return 'Choose required custom-order fields.';
   if (
     form.customOrderEnabled &&
@@ -357,6 +394,8 @@ function getPublishValidationMessage({
   }
   const productionMessage = getCustomOrderProductionValidationMessage(form);
   if (productionMessage) return productionMessage;
+  const deliveryMessage = getCustomOrderDeliveryValidationMessage(form);
+  if (deliveryMessage) return deliveryMessage;
   const rushMessage = getCustomOrderRushValidationMessage(form);
   if (rushMessage) return rushMessage;
   return null;
@@ -716,6 +755,17 @@ export function DesignEditorProvider({
         if (shouldSyncBaseCharge) {
           next.baseProductionCharge = nextDefaultBaseCharge;
           lastAutoBaseChargeRef.current = nextDefaultBaseCharge;
+        } else if (
+          // Parity with web: clearing min price clears the base charge only when
+          // it was auto-populated (still equal to the last auto value) and the
+          // user never manually overrode it.
+          nextDefaultBaseCharge.length === 0 &&
+          previousDefaultBaseCharge.length > 0 &&
+          prev.customOrderEnabled &&
+          prev.baseProductionCharge.trim() === previousDefaultBaseCharge
+        ) {
+          next.baseProductionCharge = '';
+          lastAutoBaseChargeRef.current = '';
         } else if (nextDefaultBaseCharge.length > 0 && previousDefaultBaseCharge.length === 0) {
           lastAutoBaseChargeRef.current = nextDefaultBaseCharge;
         }
@@ -865,6 +915,19 @@ export function DesignEditorProvider({
       const rushValidationMessage = getCustomOrderRushValidationMessage(form);
       if (rushValidationMessage) {
         toast.error(rushValidationMessage);
+        return;
+      }
+      // Delivery + price-range are sent on both draft and publish, so guard both
+      // paths against the backend DELIVERY_RANGE_INVALID / PRICE_RANGE_INVALID
+      // contracts (publish is also gated earlier via publishValidationMessage).
+      const deliveryValidationMessage = getCustomOrderDeliveryValidationMessage(form);
+      if (deliveryValidationMessage) {
+        toast.error(deliveryValidationMessage);
+        return;
+      }
+      const priceRangeValidationMessage = getPriceRangeValidationMessage(form);
+      if (priceRangeValidationMessage) {
+        toast.error(priceRangeValidationMessage);
         return;
       }
 
@@ -1104,6 +1167,11 @@ export function DesignEditorProvider({
   );
 
   const deleteDraft = useCallback(async () => {
+    // Synchronous ref guard prevents a double-press from firing two deletes
+    // before the async saveAction state has a chance to disable the button.
+    if (saveAction || isSavingRef.current) {
+      return;
+    }
     if (!activeDesignId) {
       toast.error('No draft is open.');
       return;
@@ -1113,6 +1181,7 @@ export function DesignEditorProvider({
       return;
     }
 
+    isSavingRef.current = true;
     setSaveAction('draft');
     setSaveProgress(0);
     setSaveMessage('Deleting draft...');
@@ -1127,11 +1196,12 @@ export function DesignEditorProvider({
       const responseMessage = error?.response?.data?.message;
       toast.error(typeof responseMessage === 'string' ? responseMessage : 'Failed to delete draft.');
     } finally {
+      isSavingRef.current = false;
       setSaveAction(null);
       setSaveMessage('');
       setSaveProgress(0);
     }
-  }, [activeDesignId, activeDesignStatus, toast]);
+  }, [activeDesignId, activeDesignStatus, saveAction, toast]);
 
   const retryBootstrap = useCallback(async () => {
     bootstrappedRef.current = false;
