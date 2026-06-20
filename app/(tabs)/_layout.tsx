@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, BackHandler, Platform } from 'react-native';
+import { AppState, BackHandler, InteractionManager, Platform } from 'react-native';
 import { Tabs, router, usePathname } from 'expo-router';
 
 import {
@@ -26,6 +26,10 @@ import { resolveProfileImageSource } from '@/src/utils/profileImage';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { navPerf } from '@/src/utils/navPerf';
+import {
+  getRunwayFirstMediaVisible,
+  subscribeRunwayFirstMediaVisible,
+} from '@/src/features/feed/utils/runwayReadiness';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import {
@@ -202,12 +206,17 @@ export default function TabLayout() {
   const preloadIslandTab = useCallback(
     (tabName: string) => {
       if (preloadedTabNamesRef.current.has(tabName)) {
-        return;
+        navDevLog('tab-preload-skipped', { tabName, reason: 'already-preloaded' });
+        return false;
       }
 
       if (dispatchTabNavigationAction('PRELOAD', tabName)) {
         preloadedTabNamesRef.current.add(tabName);
+        navDevLog('tab-preload-start', { tabName, startedAt: Date.now() });
+        return true;
       }
+      navDevLog('tab-preload-skipped', { tabName, reason: 'tab-navigation-not-ready' });
+      return false;
     },
     [dispatchTabNavigationAction],
   );
@@ -237,7 +246,13 @@ export default function TabLayout() {
   useEffect(() => cancelPendingRouteFrame, [cancelPendingRouteFrame]);
 
   useEffect(() => {
-    if (status === 'loading') return;
+    if (status === 'loading') {
+      navDevLog('tab-preload-deferred', {
+        deferredAt: Date.now(),
+        reason: 'auth-loading',
+      });
+      return;
+    }
 
     const nextTabsToWarm = ['discover'];
     if (status === 'authenticated') {
@@ -245,14 +260,60 @@ export default function TabLayout() {
       nextTabsToWarm.push(isBrand ? 'catalog' : 'me');
     }
 
-    const timers = nextTabsToWarm.map((tabName, index) =>
-      setTimeout(() => {
-        preloadIslandTab(tabName);
-      }, 900 + index * 450),
-    );
+    let cancelled = false;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    let idleTask: { cancel: () => void } | null = null;
+    let preloadTimers: Array<ReturnType<typeof setTimeout>> = [];
+
+    const schedulePreloads = (reason: 'first-media-visible' | 'first-media-timeout', firstMediaAt?: number) => {
+      if (cancelled || idleTask || preloadTimers.length > 0) return;
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      navDevLog('tab-preload-scheduled', {
+        scheduledAt: Date.now(),
+        reason,
+        firstMediaAt: firstMediaAt ?? null,
+        tabNames: nextTabsToWarm,
+      });
+      idleTask = InteractionManager.runAfterInteractions(() => {
+        if (cancelled) return;
+        preloadTimers = nextTabsToWarm.map((tabName, index) =>
+          setTimeout(() => {
+            if (!cancelled) preloadIslandTab(tabName);
+          }, 600 + index * 500),
+        );
+      });
+    };
+
+    const firstMedia = getRunwayFirstMediaVisible();
+    const unsubscribe = firstMedia
+      ? (() => {
+          schedulePreloads('first-media-visible', firstMedia.timestamp);
+          return () => undefined;
+        })()
+      : subscribeRunwayFirstMediaVisible((event) => {
+          schedulePreloads('first-media-visible', event.timestamp);
+        });
+
+    if (!firstMedia) {
+      navDevLog('tab-preload-deferred', {
+        deferredAt: Date.now(),
+        reason: 'awaiting-first-runway-media',
+        tabNames: nextTabsToWarm,
+      });
+      fallbackTimer = setTimeout(() => {
+        schedulePreloads('first-media-timeout');
+      }, 8000);
+    }
 
     return () => {
-      timers.forEach((timer) => clearTimeout(timer));
+      cancelled = true;
+      unsubscribe();
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      idleTask?.cancel();
+      preloadTimers.forEach((timer) => clearTimeout(timer));
     };
   }, [isBrand, preloadIslandTab, status]);
 

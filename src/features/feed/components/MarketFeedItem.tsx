@@ -10,14 +10,15 @@ type MarketFeedItemProps = {
   mediaItems: FeedViewerMedia[];
   activeMediaIndex: number;
   isActive: boolean;
+  renderVersion: string;
   actionRail: React.ReactNode;
   metaOverlay: React.ReactNode;
   badgeOverlay?: React.ReactNode;
   onCarouselIndexChange: (collectionId: string, nextIndex: number) => void;
-  onContentPress: () => void;
+  onContentPress: (collectionId: string) => void;
 };
 
-export const MarketFeedItem = React.memo(function MarketFeedItem({
+function MarketFeedItemComponent({
   collectionId,
   pageHeight,
   mediaItems,
@@ -35,6 +36,9 @@ export const MarketFeedItem = React.memo(function MarketFeedItem({
     },
     [collectionId, onCarouselIndexChange],
   );
+  const handleContentPress = useCallback(() => {
+    onContentPress(collectionId);
+  }, [collectionId, onContentPress]);
 
   return (
     <View style={[styles.page, { height: pageHeight }]}>
@@ -45,14 +49,29 @@ export const MarketFeedItem = React.memo(function MarketFeedItem({
         isActive={isActive}
         initialActiveIndex={activeMediaIndex}
         onActiveIndexChange={handleActiveIndexChange}
-        onContentPress={onContentPress}
+        onContentPress={handleContentPress}
       />
       {badgeOverlay}
       {actionRail}
       {metaOverlay}
     </View>
   );
-});
+}
+
+export const MarketFeedItem = React.memo(
+  MarketFeedItemComponent,
+  // Overlay/action elements are composed by the parent. The primitive version
+  // captures their visible state so unrelated row updates can skip safely.
+  (previous, next) =>
+    previous.collectionId === next.collectionId &&
+    previous.pageHeight === next.pageHeight &&
+    previous.mediaItems === next.mediaItems &&
+    previous.activeMediaIndex === next.activeMediaIndex &&
+    previous.isActive === next.isActive &&
+    previous.renderVersion === next.renderVersion &&
+    previous.onCarouselIndexChange === next.onCarouselIndexChange &&
+    previous.onContentPress === next.onContentPress,
+);
 
 const styles = StyleSheet.create({
   page: {

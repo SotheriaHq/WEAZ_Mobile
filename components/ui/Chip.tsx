@@ -41,10 +41,10 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
   );
 
   return (
-    <Animated.View style={{ transform: [{ scale }] }}>
+    <Animated.View style={[styles.touchTarget, { transform: [{ scale }] }]}>
       <Pressable
         onPress={onPress}
-        onPressIn={() => animatePress(0.96, 90)}
+        onPressIn={() => animatePress(0.98, 70)}
         onPressOut={() => animatePress(1, 140)}
         disabled={disabled}
         style={({ pressed }) => [
@@ -63,23 +63,21 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
                   ? theme.colors.surfaceAlt
                   : selected
                     ? theme.colors.primary
-                    : pressed
-                      ? theme.colors.primarySoft
-                      : theme.colors.surfaceAlt,
+                    : theme.colors.surfaceAlt,
             borderColor: isNav
               ? 'transparent'
               : usePendingTreatment
                 ? theme.colors.warning
-                : selected || pressed
+                : selected
                   ? theme.colors.primary
                   : theme.colors.border,
             borderBottomColor: isNav && selected ? theme.colors.primary : 'transparent',
-            opacity: disabled ? 0.48 : 1,
+            opacity: disabled ? 0.48 : pressed ? 0.86 : 1,
           },
           style,
         ]}
         accessibilityRole="button"
-        accessibilityState={{ selected: Boolean(selected) }}
+        accessibilityState={{ selected: Boolean(selected), disabled: Boolean(disabled) }}
       >
         {isSwatch ? (
           <View
@@ -115,6 +113,11 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
 }
 
 const styles = StyleSheet.create({
+  touchTarget: {
+    minHeight: 44,
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
+  },
   base: {
     paddingHorizontal: tokens.spacing.md,
     minHeight: 38,

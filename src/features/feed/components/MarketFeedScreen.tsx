@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Animated, Easing, FlatList, InteractionManager, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
@@ -648,6 +648,7 @@ export function MarketFeedScreen() {
   const unreadNotificationCount = useUnreadNotificationCount();
   const {
     insets,
+    windowWidth,
     windowHeight,
     immersiveOverlayBottomClearance,
   } = useScreenChrome();
@@ -670,7 +671,6 @@ export function MarketFeedScreen() {
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>(DEFAULT_MARKET_FILTER_CHIPS);
   const [selectedFilterId, setSelectedFilterId] = useState(DEFAULT_MARKET_FILTER_CHIPS[0].id);
   const [activePageIndex, setActivePageIndex] = useState(0);
-  const [rootViewportHeight, setRootViewportHeight] = useState(0);
   const [measuredFeedViewportHeight, setFeedViewportHeight] = useState(0);
   const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
   const pendingCollectionIdsRef = useRef(new Set<string>());
@@ -681,6 +681,13 @@ export function MarketFeedScreen() {
   const lastLoggedPageHeightRef = useRef<number | null>(null);
   const hasLoggedInitialPageHeightRef = useRef(false);
   const previousActivePageIndexRef = useRef(0);
+  const pageHeightMeasurementRef = useRef<{ geometryKey: string; height: number } | null>(null);
+  const appliedPageHeightRef = useRef(0);
+  const correctionCountRef = useRef(0);
+  const scrollStartedAtRef = useRef(0);
+  const latestViewableIndexRef = useRef(0);
+  const settledFromIndexRef = useRef(0);
+  const settledWorkRef = useRef<{ cancel: () => void } | null>(null);
   const metaOverlayHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [visibleMetaCollectionId, setVisibleMetaCollectionId] = useState<string | null>(null);
 
@@ -768,7 +775,8 @@ export function MarketFeedScreen() {
   const measuredBasePageHeight = measuredFeedViewportHeight > 0 ? measuredFeedViewportHeight : fallbackPageHeight;
   const pageHeight = Math.max(1, Math.round(measuredBasePageHeight || fallbackPageHeight));
   const feedViewportHeight = pageHeight;
-  const feedViewportReady = pageHeight > 0;
+  const feedViewportReady = measuredFeedViewportHeight > 0;
+  const viewportGeometryKey = `${Math.round(windowWidth)}x${Math.round(windowHeight)}`;
 
   const activeFilter = useMemo(
     () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? DEFAULT_MARKET_FILTER_CHIPS[0],
@@ -777,10 +785,6 @@ export function MarketFeedScreen() {
   const visibleFilterChips = useMemo(() => filterChips, [filterChips]);
   const activeTag = activeFilter?.tag ?? null;
   const feedLoopEnabled = false;
-  const itemsRef = useRef(items);
-  const activeTagRef = useRef(activeTag);
-  const feedLoopEnabledRef = useRef(feedLoopEnabled);
-  const hydrateCollectionMediaRef = useRef<(item: MarketItem | null | undefined) => void | Promise<void>>(() => undefined);
   const fallbackMediaByCollection = useMemo(() => {
     const next: Record<string, FeedViewerMedia[]> = {};
     items.forEach((item) => {
@@ -903,6 +907,61 @@ export function MarketFeedScreen() {
     });
   }, [bottomClearance, feedViewportHeight, insets.bottom, insets.top, measuredFeedViewportHeight, pageHeight, windowHeight]);
 
+  const handleFeedViewportLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = Math.round(event.nativeEvent.layout.height);
+    if (nextHeight <= 0) return;
+
+    const previous = pageHeightMeasurementRef.current;
+    if (!previous) {
+      pageHeightMeasurementRef.current = { geometryKey: viewportGeometryKey, height: nextHeight };
+      setFeedViewportHeight(nextHeight);
+      return;
+    }
+
+    if (previous.geometryKey !== viewportGeometryKey) {
+      pageHeightMeasurementRef.current = { geometryKey: viewportGeometryKey, height: nextHeight };
+      setFeedViewportHeight(nextHeight);
+      layoutDevLog('feed-page-height-window-change', {
+        previousGeometry: previous.geometryKey,
+        nextGeometry: viewportGeometryKey,
+        previousHeight: previous.height,
+        nextHeight,
+      });
+      return;
+    }
+
+    if (Math.abs(previous.height - nextHeight) > 1) {
+      scrollDevLog('page-height-remeasure-ignored', {
+        geometry: viewportGeometryKey,
+        lockedHeight: previous.height,
+        measuredHeight: nextHeight,
+        reason: 'same-window-geometry',
+      });
+    }
+  }, [viewportGeometryKey]);
+
+  useEffect(() => {
+    if (!feedViewportReady) return;
+    const previousHeight = appliedPageHeightRef.current;
+    appliedPageHeightRef.current = pageHeight;
+    if (previousHeight <= 0 || previousHeight === pageHeight || feedActiveIndex <= 0) return;
+
+    correctionCountRef.current += 1;
+    const targetOffset = feedActiveIndex * pageHeight;
+    scrollDevLog('vertical-correction', {
+      reason: 'window-geometry-change',
+      correctionCount: correctionCountRef.current,
+      previousHeight,
+      pageHeight,
+      currentIndex: feedActiveIndex,
+      targetOffset,
+    });
+    requestAnimationFrame(() => {
+      feedScrollOffset = targetOffset;
+      feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
+    });
+  }, [feedViewportReady, pageHeight]);
+
   useEffect(() => {
     if (!feedLoopEnabled || feedViewportHeight <= 0 || pageHeight <= 1 || feedItems.length < 3) {
       return;
@@ -924,18 +983,6 @@ export function MarketFeedScreen() {
   useEffect(() => {
     collectionMediaMapRef.current = collectionMediaMap;
   }, [collectionMediaMap]);
-
-  useEffect(() => {
-    itemsRef.current = items;
-  }, [items]);
-
-  useEffect(() => {
-    activeTagRef.current = activeTag;
-  }, [activeTag]);
-
-  useEffect(() => {
-    feedLoopEnabledRef.current = feedLoopEnabled;
-  }, [feedLoopEnabled]);
 
   useEffect(() => {
     patchedBrandIdsRef.current = patchedBrandIds;
@@ -1200,15 +1247,12 @@ export function MarketFeedScreen() {
     const collectionId = item?.collectionId?.trim();
     if (!collectionId) return;
     if (!item) return;
-    const strictFeedMedia = buildFallbackMediaItems(item);
-    if (strictFeedMedia.length > 0) {
-      setCollectionMediaMap((prev) => {
-        if (prev[collectionId]?.length) return prev;
-        return {
-          ...prev,
-          [collectionId]: strictFeedMedia,
-        };
-      });
+    const hasStrictFeedMedia = Boolean(
+      (Array.isArray(item.mediaItems) && item.mediaItems.length > 0) || item.primaryMedia,
+    );
+    if (hasStrictFeedMedia) {
+      // The market DTO already contains every angle. Avoid copying identical
+      // arrays into parent state, which previously rerendered every visible row.
       hydratedCollectionIdsRef.current.add(collectionId);
       return;
     }
@@ -1311,70 +1355,75 @@ export function MarketFeedScreen() {
     minimumViewTime: 120,
   });
 
-  useEffect(() => {
-    hydrateCollectionMediaRef.current = hydrateCollectionMedia;
-  }, [hydrateCollectionMedia]);
-
   const stableOnViewableItemsChangedRef = useRef(
     ({ viewableItems }: { viewableItems: Array<{ item: FeedListEntry | null; index?: number | null }> }) => {
-      const currentItems = itemsRef.current;
-      const currentActiveTag = activeTagRef.current;
-      const currentFeedLoopEnabled = feedLoopEnabledRef.current;
-      const currentHydrateCollectionMedia = hydrateCollectionMediaRef.current;
-
-      const primaryEntry = viewableItems[0]?.item;
+      const primaryEntry = viewableItems.find(({ item }) => item && !item.isGhost)?.item;
       if (primaryEntry && !primaryEntry.isGhost) {
-        feedActiveIndex = primaryEntry.realIndex;
-        setActivePageIndex((current) => (current === primaryEntry.realIndex ? current : primaryEntry.realIndex));
-        const viewedKey = `${primaryEntry.item.collectionId}:${primaryEntry.realIndex}`;
-        if (!viewedFeedItemKeysRef.current.has(viewedKey)) {
-          viewedFeedItemKeysRef.current.add(viewedKey);
-          const mediaItems = collectionMediaMapRef.current[primaryEntry.item.collectionId] ?? buildFallbackMediaItems(primaryEntry.item);
-          const media = mediaItems[carouselIndexMap.get(primaryEntry.item.collectionId) ?? 0] ?? mediaItems[0] ?? null;
-          trackMobileEvent('feed_item_viewed', {
-            sourceScreen: 'runway_feed',
-            itemId: primaryEntry.item.collectionId,
-            itemType: primaryEntry.item.entityType,
-            feedPosition: primaryEntry.realIndex,
-            collectionId: primaryEntry.item.collectionId,
-            mediaId: media?.id ?? null,
-            brandId: primaryEntry.item.brandId,
-            categoryFilter: currentActiveTag,
-          });
-        }
+        latestViewableIndexRef.current = primaryEntry.realIndex;
       }
-      viewableItems.forEach(({ item: entry }) => {
-        const collectionId = entry?.item.collectionId?.trim();
-        if (!collectionId) return;
-        if (!currentItems.length) return;
-
-        const realIndex = entry?.realIndex ?? currentItems.findIndex((candidate) => candidate.collectionId === collectionId);
-        if (realIndex < 0) return;
-
-        for (let offset = -1; offset <= 2; offset += 1) {
-          const nextIndex = currentFeedLoopEnabled
-            ? (realIndex + offset + currentItems.length) % currentItems.length
-            : realIndex + offset;
-          if (nextIndex < 0 || nextIndex >= currentItems.length) continue;
-          void currentHydrateCollectionMedia(currentItems[nextIndex]);
-        }
-      });
     },
   );
 
+  const scheduleSettledFeedWork = useCallback((previousIndex: number, nextIndex: number) => {
+    settledWorkRef.current?.cancel();
+    const activeItem = items[nextIndex] ?? null;
+    const adjacentIndex = feedLoopEnabled && items.length > 0
+      ? (nextIndex + 1) % items.length
+      : nextIndex + 1;
+    const adjacentItem = items[adjacentIndex] ?? null;
+
+    settledWorkRef.current = InteractionManager.runAfterInteractions(() => {
+      settledWorkRef.current = null;
+      if (!activeItem) return;
+
+      const viewedKey = `${activeItem.collectionId}:${nextIndex}`;
+      if (!viewedFeedItemKeysRef.current.has(viewedKey)) {
+        viewedFeedItemKeysRef.current.add(viewedKey);
+        const mediaItems = collectionMediaMapRef.current[activeItem.collectionId] ?? buildFallbackMediaItems(activeItem);
+        const media = mediaItems[carouselIndexMap.get(activeItem.collectionId) ?? 0] ?? mediaItems[0] ?? null;
+        trackMobileEvent('feed_item_viewed', {
+          sourceScreen: 'runway_feed',
+          itemId: activeItem.collectionId,
+          itemType: activeItem.entityType,
+          feedPosition: nextIndex,
+          collectionId: activeItem.collectionId,
+          mediaId: media?.id ?? null,
+          brandId: activeItem.brandId,
+          categoryFilter: activeTag,
+        });
+      }
+
+      if (nextIndex !== previousIndex) {
+        trackMobileEvent('feed_item_swiped', {
+          sourceScreen: 'runway_feed',
+          fromItemId: items[previousIndex]?.collectionId ?? null,
+          toItemId: activeItem.collectionId,
+          direction: nextIndex > previousIndex ? 'down' : 'up',
+          fromPosition: previousIndex,
+          toPosition: nextIndex,
+          categoryFilter: activeTag,
+        });
+      }
+
+      // Strict feed DTO rows already contain all media. Legacy rows alone need
+      // detail hydration, bounded to the settled row and one forward neighbor.
+      void hydrateCollectionMedia(activeItem);
+      if (adjacentItem) void hydrateCollectionMedia(adjacentItem);
+      scrollDevLog('settled-work-complete', {
+        activeIndex: nextIndex,
+        hydratedCandidates: adjacentItem ? 2 : 1,
+        deferredUntilIdle: true,
+      });
+    });
+  }, [activeTag, feedLoopEnabled, hydrateCollectionMedia, items]);
+
   useEffect(() => {
     if (!items.length) return;
-
-    for (let offset = -1; offset <= 2; offset += 1) {
-      const nextIndex = feedLoopEnabled
-        ? (activePageIndex + offset + items.length) % items.length
-        : activePageIndex + offset;
-      if (nextIndex < 0 || nextIndex >= items.length) continue;
-
-      const item = items[nextIndex];
-      void hydrateCollectionMedia(item);
-    }
-  }, [activePageIndex, feedLoopEnabled, hydrateCollectionMedia, items]);
+    const previousIndex = settledFromIndexRef.current;
+    settledFromIndexRef.current = activePageIndex;
+    scheduleSettledFeedWork(previousIndex, activePageIndex);
+    return () => settledWorkRef.current?.cancel();
+  }, [activePageIndex, items.length, scheduleSettledFeedWork]);
 
   const openCommentsSheet = useCallback((item: MarketItem) => {
     if (!item.collectionId) return;
@@ -1787,6 +1836,31 @@ export function MarketFeedScreen() {
       const threads = formatMetricCountLabel(threadCountRaw, 'thread', 'threads');
       const isSavedLook = Boolean(savedLookByCollectionId[item.collectionId]);
       const isSavingLook = Boolean(savingLookByCollectionId[item.collectionId]);
+      const isActiveFeedItem = activePageIndex === entry.realIndex;
+      const isPatchedBrand = Boolean(item.brandId && patchedBrandIds.has(item.brandId));
+      const isPatchBusy = Boolean(item.brandId && patchingBrandIds[item.brandId]);
+      const isMetaVisible = visibleMetaCollectionId === item.collectionId;
+      const rowRenderVersion = [
+        item.updatedAt ?? item.id,
+        activeMediaIndex,
+        currentMediaId,
+        isActiveFeedItem,
+        isThreaded,
+        isThreading,
+        threadCountRaw,
+        isSavedLook,
+        isSavingLook,
+        isPatchedBrand,
+        isPatchBusy,
+        isMetaVisible,
+        likes,
+        comments,
+        canPatchBrands,
+        status,
+        user?.id ?? null,
+        scheme,
+        bottomClearance,
+      ].join('|');
 
       return (
         <MarketFeedItem
@@ -1794,16 +1868,17 @@ export function MarketFeedScreen() {
           pageHeight={pageHeight}
           mediaItems={mediaItems}
           activeMediaIndex={activeMediaIndex}
-          isActive={activePageIndex === entry.realIndex}
+          isActive={isActiveFeedItem}
+          renderVersion={rowRenderVersion}
           onCarouselIndexChange={handleCarouselIndexChange}
-          onContentPress={() => showMetaOverlay(item.collectionId)}
+          onContentPress={showMetaOverlay}
           badgeOverlay={
             <NewDropBadge
               itemId={item.collectionId}
               createdAt={item.createdAt ?? item.media?.createdAt}
               sourceScreen="runway_feed"
               feedPosition={entry.realIndex}
-              isActive={activePageIndex === entry.realIndex}
+              isActive={isActiveFeedItem}
               style={styles.newDropBadge}
             />
           }
@@ -1821,8 +1896,8 @@ export function MarketFeedScreen() {
               isSavedLook={isSavedLook}
               isSavingLook={isSavingLook}
               canPatchBrands={canPatchBrands}
-              isPatched={Boolean(item.brandId && patchedBrandIds.has(item.brandId))}
-              patchBusy={Boolean(item.brandId && patchingBrandIds[item.brandId])}
+              isPatched={isPatchedBrand}
+              patchBusy={isPatchBusy}
               bottomClearance={bottomClearance}
               onPatchBrand={handlePatchBrand}
               onOpenBrand={handleOpenBrand}
@@ -1842,7 +1917,7 @@ export function MarketFeedScreen() {
               scheme={scheme}
               overlaySurface={overlaySurface}
               bottomClearance={bottomClearance}
-              visible={visibleMetaCollectionId === item.collectionId}
+              visible={isMetaVisible}
               onBrandPress={() => handleOpenBrand(item.brandId)}
             />
           }
@@ -1869,21 +1944,16 @@ export function MarketFeedScreen() {
       savingLookByCollectionId,
       scheme,
       showMetaOverlay,
+      status,
       threadStateByMedia,
       threadingMediaById,
+      user?.id,
       visibleMetaCollectionId,
     ],
   );
 
-  const handleFeedScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      feedScrollOffset = event.nativeEvent.contentOffset.y;
-      feedActiveIndex = Math.max(0, Math.min(feedItems.length - 1, Math.round(feedScrollOffset / pageHeight)));
-    },
-    [feedItems.length, pageHeight],
-  );
-
   const handleFeedScrollBeginDrag = useCallback(() => {
+    scrollStartedAtRef.current = Date.now();
     hideMetaOverlay();
   }, [hideMetaOverlay]);
 
@@ -1896,36 +1966,40 @@ export function MarketFeedScreen() {
       const previousIndex = activePageIndex;
       const measuredRealIndex = feedItems[rawIndex]?.realIndex ?? rawIndex;
       const jumpDistance = Math.abs(measuredRealIndex - previousIndex);
-      const shouldCorrectJump = !feedLoopEnabled && jumpDistance > 1;
-      const correctedRealIndex = shouldCorrectJump
-        ? Math.max(0, Math.min(items.length - 1, previousIndex + Math.sign(measuredRealIndex - previousIndex)))
-        : measuredRealIndex;
+      const settleDurationMs = scrollStartedAtRef.current > 0
+        ? Date.now() - scrollStartedAtRef.current
+        : null;
+      const latestViewableIndex = latestViewableIndexRef.current;
+      feedScrollOffset = e.nativeEvent.contentOffset.y;
 
       scrollDevLog('vertical-momentum', {
         measuredIndex: measuredRealIndex,
+        targetIndex: measuredRealIndex,
         previousIndex,
-        jumpDistance,
-        corrected: shouldCorrectJump,
+        flingDistance: jumpDistance,
+        corrected: false,
+        correctionReason: null,
+        correctionCount: correctionCountRef.current,
         pageHeight,
+        snapInterval: pageHeight,
+        rowHeight: pageHeight,
         contentOffsetY: e.nativeEvent.contentOffset.y,
+        settleDurationMs,
+        latestViewableIndex,
       });
 
-      if (shouldCorrectJump) {
-        const correctedListIndex = feedItems.findIndex((entry) => entry.realIndex === correctedRealIndex && !entry.isGhost);
-        if (correctedListIndex >= 0) {
-          feedListRef.current?.scrollToIndex({ index: correctedListIndex, animated: false });
-        }
-      }
-
-      if (!feedLoopEnabled && correctedRealIndex !== previousIndex) {
-        trackMobileEvent('feed_item_swiped', {
-          sourceScreen: 'runway_feed',
-          fromItemId: items[previousIndex]?.collectionId ?? null,
-          toItemId: items[correctedRealIndex]?.collectionId ?? null,
-          direction: correctedRealIndex > previousIndex ? 'down' : correctedRealIndex < previousIndex ? 'up' : 'none',
-          fromPosition: previousIndex,
-          toPosition: correctedRealIndex,
-          categoryFilter: activeTag,
+      if (jumpDistance > 1 || latestViewableIndex !== measuredRealIndex || (settleDurationMs ?? 0) > 1200) {
+        scrollDevLog('vertical-settle-warning', {
+          previousIndex,
+          targetIndex: measuredRealIndex,
+          flingDistance: jumpDistance,
+          latestViewableIndex,
+          settleDurationMs,
+          reason: jumpDistance > 1
+            ? 'multi-page-fling'
+            : latestViewableIndex !== measuredRealIndex
+              ? 'viewability-late'
+              : 'settle-late',
         });
       }
 
@@ -1958,14 +2032,42 @@ export function MarketFeedScreen() {
         return;
       }
 
-      feedActiveIndex = correctedRealIndex;
-      setActivePageIndex(correctedRealIndex);
-      if (rawIndex >= items.length - 1 && hasNextPage) {
+      settledFromIndexRef.current = previousIndex;
+      feedActiveIndex = measuredRealIndex;
+      setActivePageIndex(measuredRealIndex);
+      if (measuredRealIndex >= items.length - 2 && hasNextPage) {
         void loadMore();
       }
     },
-    [activePageIndex, activeTag, feedItems, feedLoopEnabled, feedLoopHeadOffset, hasNextPage, items, pageHeight],
+    [activePageIndex, feedItems, feedLoopEnabled, feedLoopHeadOffset, hasNextPage, items.length, pageHeight],
   );
+
+  const getFeedItemLayout = useCallback(
+    (_: ArrayLike<FeedListEntry> | null | undefined, index: number) => ({
+      length: pageHeight,
+      offset: pageHeight * index,
+      index,
+    }),
+    [pageHeight],
+  );
+
+  const handleScrollToIndexFailed = useCallback(({ index }: { index: number }) => {
+    correctionCountRef.current += 1;
+    scrollDevLog('vertical-correction', {
+      reason: 'initial-index-recovery',
+      correctionCount: correctionCountRef.current,
+      currentIndex: feedActiveIndex,
+      targetIndex: index,
+      pageHeight,
+    });
+    requestAnimationFrame(() => {
+      feedScrollOffset = index * pageHeight;
+      feedListRef.current?.scrollToOffset({
+        offset: index * pageHeight,
+        animated: false,
+      });
+    });
+  }, [pageHeight]);
 
   const loadMore = useCallback(async () => {
     if (!hasNextPage || !nextCursor || loading || refreshing || loadingMoreInFlightRef.current) return;
@@ -2043,15 +2145,21 @@ export function MarketFeedScreen() {
       }
       // Clear any stale comments target on tab focus
       setCommentsTarget(null);
-      // Only restore scroll when the FlatList has drifted from the expected snap position.
-      // Skips the call when the list is already at the right page (prevents jarring teleport on tab refocus).
+      // Native interval snapping owns the resting position. Observe drift on
+      // refocus, but never teleport the visible list back into place.
       if (feedScrollOffset > 0 && pageHeight > 0) {
         const safeIndex = Math.max(0, Math.min(feedActiveIndex, feedItems.length - 1));
         const expectedOffset = safeIndex * pageHeight;
         const drift = Math.abs(feedScrollOffset - expectedOffset);
-        if (drift > pageHeight * 0.3) {
-          requestAnimationFrame(() => {
-            feedListRef.current?.scrollToIndex({ index: safeIndex, animated: false });
+        if (drift > pageHeight * 0.1) {
+          scrollDevLog('vertical-restore-drift', {
+            currentIndex: safeIndex,
+            expectedOffset,
+            observedOffset: feedScrollOffset,
+            drift,
+            correctionCount: correctionCountRef.current,
+            correctionSkipped: true,
+            reason: 'native-snap-owns-restoration',
           });
         }
       }
@@ -2062,12 +2170,6 @@ export function MarketFeedScreen() {
     <SafeAreaView
       edges={[]}
       style={[styles.root, { backgroundColor: theme.colors.bg }]}
-      onLayout={(event) => {
-        const nextHeight = Math.round(event.nativeEvent.layout.height);
-        if (nextHeight > 0 && nextHeight !== rootViewportHeight) {
-          setRootViewportHeight(nextHeight);
-        }
-      }}
     >
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
 
@@ -2180,68 +2282,43 @@ export function MarketFeedScreen() {
       ) : (
         <View
           style={styles.feedListContainer}
-          onLayout={(event) => {
-            const nextHeight = Math.round(event.nativeEvent.layout.height);
-            if (nextHeight > 0 && measuredFeedViewportHeight !== nextHeight) {
-              devLog('HomeFeed', 'Measured feed viewport', {
-                measuredPageHeight: nextHeight,
-                pageHeightModel: pageHeight,
-                previousPageHeight: measuredFeedViewportHeight || null,
-              });
-              setFeedViewportHeight(nextHeight);
-            }
-          }}
+          onLayout={handleFeedViewportLayout}
         >
           {!feedViewportReady ? (
             <FeedSkeleton theme={theme} pageHeight={fallbackPageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
           ) : (
+          /* One initial row prioritizes first media. A three-row window bounds
+             memory; clipping stays off because detached full-screen Android
+             image rows can flash blank when they are reattached. */
           <MarketFeedList
             ref={feedListRef}
             key={feedListKey}
             data={feedItems}
-            pagingEnabled={true}
             keyExtractor={(entry) => entry.listKey}
             snapToInterval={pageHeight}
             snapToAlignment="start"
             disableIntervalMomentum
-            getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
+            getItemLayout={getFeedItemLayout}
             decelerationRate="fast"
             directionalLockEnabled
             nestedScrollEnabled={false}
-            scrollEventThrottle={32}
             bounces={false}
             overScrollMode="never"
-            removeClippedSubviews={Platform.OS === 'android'}
-            initialNumToRender={3}
-            maxToRenderPerBatch={2}
-            updateCellsBatchingPeriod={100}
+            removeClippedSubviews={false}
+            initialNumToRender={1}
+            maxToRenderPerBatch={1}
+            updateCellsBatchingPeriod={50}
             windowSize={3}
             initialScrollIndex={feedActiveIndex > 0 ? Math.min(feedActiveIndex, feedItems.length - 1) : undefined}
             scrollEnabled={!commentsTarget}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            onScroll={handleFeedScroll}
             onScrollBeginDrag={handleFeedScrollBeginDrag}
-            style={{ backgroundColor: 'transparent' }}
+            style={styles.feedList}
             viewabilityConfig={viewabilityConfigRef.current}
             onViewableItemsChanged={stableOnViewableItemsChangedRef.current}
-            onScrollToIndexFailed={({ index }) => {
-              requestAnimationFrame(() => {
-                feedListRef.current?.scrollToOffset({
-                  offset: index * pageHeight,
-                  animated: false,
-                });
-              });
-            }}
-            onMomentumScrollEnd={(e) => {
-              handleFeedMomentumEnd(e);
-            }}
-            onEndReachedThreshold={0.6}
-            onEndReached={() => {
-              if (hasNextPage) {
-                void loadMore();
-              }
-            }}
+            onScrollToIndexFailed={handleScrollToIndexFailed}
+            onMomentumScrollEnd={handleFeedMomentumEnd}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
             renderItem={renderFeedItem}
           />
@@ -2404,6 +2481,9 @@ const styles = StyleSheet.create({
   feedListContainer: {
     flex: 1,
     overflow: 'hidden',
+  },
+  feedList: {
+    backgroundColor: 'transparent',
   },
   rail: {
     position: 'absolute',

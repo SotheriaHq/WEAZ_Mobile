@@ -10,6 +10,7 @@ import {
 } from '@/src/features/feed/media/feedImageSourcePolicy';
 import { resolveRunwayMediaStrategy } from '@/src/features/feed/media/runwayMediaStrategy';
 import { feedMediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
+import { markRunwayFirstMediaVisible } from '@/src/features/feed/utils/runwayReadiness';
 import { resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
@@ -363,6 +364,9 @@ export const FeedImage = React.memo(function FeedImage({
             }
             setSuccessfulSource({ identity: sourceIdentity, uri: currentUri, tier: activeTier });
             setLoadState('loaded');
+            if (allowDetailUpgrade) {
+              markRunwayFirstMediaVisible({ mediaId: id, sourceTier: activeTier });
+            }
             if (allowDetailUpgrade && sourcePolicy.hasDetailUpgrade && activeTier !== 'detail') {
               requestAnimationFrame(() => {
                 setSourceSelection({ identity: sourceIdentity, tier: 'detail' });

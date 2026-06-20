@@ -111,8 +111,8 @@ assertNotMatches('src/features/feed/utils/feedDiagnostics.ts', /EXPO_PUBLIC_DEBU
 assertIncludes('app/(tabs)/catalog/index.tsx', 'completedTaskRefreshKeyRef', 'completed design tasks must not force-refresh collections repeatedly on route remount');
 assertIncludes('app/(tabs)/catalog/index.tsx', 'THREADLY_SAVED_STATUS_STALE_TIME_MS', 'catalog saved checks must use query staleTime instead of repeating on rerender');
 assertIncludes('app/(tabs)/catalog/index.tsx', "queryKeys.saved.batch('COLLECTION', savedCatalogIds)", 'catalog saved checks must use a stable saved batch query key');
-assertIncludes('app/(tabs)/catalog/index.tsx', "activeTab === 'Shop'", 'brand products should not load while the Shop tab is inactive');
-assertIncludes('app/(tabs)/catalog/index.tsx', "activeTab === 'Reviews'", 'brand reviews should not load while the Reviews tab is inactive');
+assertIncludes('app/(tabs)/catalog/index.tsx', "enabled={dataActiveTab === 'Shop' || Boolean(routeProductId)}", 'brand products should not load while the Shop tab is inactive');
+assertIncludes('app/(tabs)/catalog/index.tsx', "enabled={dataActiveTab === 'Reviews'}", 'brand reviews should not load while the Reviews tab is inactive');
 assertIncludes('components/commerce/UnifiedProductCard.tsx', 'allowSignedFallback', 'product cards must expose signed fallback control');
 assertIncludes('components/catalog/BrandShopTab.tsx', 'allowSignedFallback={false}', 'public brand shop media must not request signed URLs first');
 assertIncludes('components/catalog/BrandShopTab.tsx', 'brandShopDevLog', 'brand shop diagnostics must be gated');
