@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
@@ -173,7 +172,7 @@ export default function StudioStaffScreen() {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.bg }]}>
         <View style={styles.header}>
-          <AppBackButton onPress={() => router.back()} />
+          <AppBackButton fallbackHref="/studio" />
           <AppText variant="subtitle">Staff</AppText>
         </View>
         <View style={styles.centerState}>
@@ -189,7 +188,7 @@ export default function StudioStaffScreen() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.bg }]}>
       <View style={styles.header}>
-        <AppBackButton onPress={() => router.back()} />
+        <AppBackButton fallbackHref="/studio" />
         <View style={styles.headerCopy}>
           <AppText variant="subtitle">Staff</AppText>
           <AppText variant="caption" tone="muted" numberOfLines={1}>

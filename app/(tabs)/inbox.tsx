@@ -97,6 +97,24 @@ function getConversationName(item: ConversationSummary) {
   return item.participant?.name ?? item.participant?.username ?? item.title ?? 'Conversation';
 }
 
+function getConversationInitials(item: ConversationSummary) {
+  const source =
+    item.participant?.name ??
+    item.participant?.username ??
+    item.title ??
+    '';
+  const initials = source
+    .replace(/^(conversation with|inquiry with)\s+/i, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  return initials || '💬';
+}
+
 function getConversationPreview(item: ConversationSummary) {
   return item.subtitle ?? 'No messages yet';
 }
@@ -157,6 +175,13 @@ function buildThreadParams(item: ConversationSummary) {
     ...(item.orderId ? { orderId: item.orderId } : null),
     ...(item.customOrderId ? { customOrderId: item.customOrderId } : null),
     ...(item.context.messageId ? { messageId: item.context.messageId } : null),
+    // Pass the known participant identity through to the chat screen so the
+    // header shows the real name/avatar immediately — before (and even when)
+    // message contents are unavailable (empty or own-only threads).
+    ...(item.participant?.name ? { participantName: item.participant.name } : null),
+    ...(item.participant?.username ? { participantUsername: item.participant.username } : null),
+    ...(item.participant?.avatarUrl ? { participantAvatarUrl: item.participant.avatarUrl } : null),
+    ...(item.participant?.id ? { participantId: item.participant.id } : null),
   };
 }
 
@@ -169,7 +194,7 @@ function ConversationAvatar({ item }: { item: ConversationSummary }) {
 
   const fallback = (
     <View style={[styles.avatarFallback, { backgroundColor: theme.colors.primarySoft }]}>
-      <AppText variant="captionBold" tone="primary">DM</AppText>
+      <AppText variant="captionBold" tone="primary">{getConversationInitials(item)}</AppText>
     </View>
   );
 
@@ -634,7 +659,7 @@ export default function InboxScreen() {
             containerStyle={[styles.searchControl, searchExpanded ? styles.searchControlExpanded : null]}
           />
         </View>
-        <Tabs tabs={FILTER_TABS} activeTab={activeFilter} onTabChange={handleFilterChange} scrollable />
+        <Tabs tabs={FILTER_TABS} activeTab={activeFilter} onTabChange={handleFilterChange} scrollable align="start" />
       </View>
 
       {status !== 'authenticated' ? (

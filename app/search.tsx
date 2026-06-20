@@ -228,6 +228,7 @@ export default function SearchScreen() {
   const initialQuery = Array.isArray(params.q) ? params.q[0] : params.q ?? '';
   const initialType = Array.isArray(params.type) ? params.type[0] : params.type;
   const autoSubmit = Array.isArray(params.autoSubmit) ? params.autoSubmit[0] : params.autoSubmit;
+  const initialAutoSubmit = autoSubmit === '1' || autoSubmit === 'true';
 
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -237,6 +238,11 @@ export default function SearchScreen() {
       ? initialType
       : 'all',
   );
+  // The full results page is shown only after an explicit submit (keyboard
+  // search, recent/popular tap, or autoSubmit). While the user is still typing,
+  // the live debounced search keeps results warm in the background, but the view
+  // stays on suggestions so they never flash away mid-keystroke.
+  const [submitted, setSubmitted] = useState(initialAutoSubmit);
   const [suggestions, setSuggestions] = useState<SearchSuggestionResponse | null>(null);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
@@ -463,9 +469,23 @@ export default function SearchScreen() {
     setHiddenRecent(await getHiddenSearches());
   }, []);
 
+  const onChangeQuery = useCallback((value: string) => {
+    setQuery(value);
+    // Editing the query returns the screen to suggestion mode so suggestions
+    // never flash away while the user is still typing.
+    setSubmitted(false);
+  }, []);
+
   const onSubmitSearch = useCallback(() => {
+    setSubmitted(true);
     void runSearch(query, filterType, { saveToRecent: true });
   }, [filterType, query, runSearch]);
+
+  const runSubmittedSearch = useCallback((value: string) => {
+    setQuery(value);
+    setSubmitted(true);
+    void runSearch(value);
+  }, [runSearch]);
 
   const onClearQuery = useCallback(() => {
     suggestAbortRef.current?.abort();
@@ -473,6 +493,7 @@ export default function SearchScreen() {
     requestIdRef.current += 1;
     searchRequestIdRef.current += 1;
     setQuery('');
+    setSubmitted(false);
     setSuggestions(null);
     setSuggestionsError(null);
     setSuggestionsLoading(false);
@@ -530,7 +551,7 @@ export default function SearchScreen() {
             label="Search"
             hideLabel
             value={query}
-            onChangeText={setQuery}
+            onChangeText={onChangeQuery}
             onSubmitEditing={onSubmitSearch}
             placeholder="Search WEAZ"
             returnKeyType="search"
@@ -551,9 +572,10 @@ export default function SearchScreen() {
         </View>
       </View>
 
-      {resultState.status === 'ready' ? (
+      {submitted && resultState.status === 'ready' ? (
         // Results render in a single virtualized list (not a FlatList nested in a
-        // non-scrolling ScrollView) so large result sets recycle rows.
+        // non-scrolling ScrollView) so large result sets recycle rows. Only shown
+        // after an explicit submit so live typing never swaps suggestions out.
         <FlatList
           data={resultState.items}
           keyExtractor={(item) => `${item.type}-${item.id}`}
@@ -587,7 +609,7 @@ export default function SearchScreen() {
       >
         {filtersRow}
 
-        {resultState.status === 'loading' ? (
+        {submitted && resultState.status === 'loading' ? (
           <Card>
             <View style={styles.stateBlock}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -596,7 +618,7 @@ export default function SearchScreen() {
           </Card>
         ) : null}
 
-        {resultState.status === 'error' ? (
+        {submitted && resultState.status === 'error' ? (
           <Card>
             <View style={styles.stateBlock}>
               <AppText variant="subtitle">⚠️</AppText>
@@ -607,7 +629,7 @@ export default function SearchScreen() {
           </Card>
         ) : null}
 
-        {resultState.status === 'empty' ? (
+        {submitted && resultState.status === 'empty' ? (
           <Card>
             <View style={styles.stateBlock}>
               <AppText variant="subtitle">🫥</AppText>
@@ -617,7 +639,7 @@ export default function SearchScreen() {
           </Card>
         ) : null}
 
-        {resultState.status === 'empty' && normalizeQuery(query) ? (
+        {submitted && resultState.status === 'empty' && normalizeQuery(query) ? (
           <MobileMarketSuggestionBlocks
             context="SEARCH_EMPTY"
             targetType="QUERY"
@@ -662,10 +684,7 @@ export default function SearchScreen() {
                     <QueryRow
                       key={entry.query}
                       label={entry.query}
-                      onPress={() => {
-                        setQuery(entry.query);
-                        void runSearch(entry.query);
-                      }}
+                      onPress={() => runSubmittedSearch(entry.query)}
                       onRemove={() => {
                         void removeRecent(entry.query);
                       }}
@@ -703,10 +722,7 @@ export default function SearchScreen() {
                   {suggestions?.trending.map((trend: SearchTrendingLink) => (
                     <Pressable
                       key={trend.query}
-                      onPress={() => {
-                        setQuery(trend.query);
-                        void runSearch(trend.query);
-                      }}
+                      onPress={() => runSubmittedSearch(trend.query)}
                       style={({ pressed }) => [styles.resultRow, pressed ? styles.pressed : null]}
                     >
                       <View style={styles.resultMeta}>

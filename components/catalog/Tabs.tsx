@@ -36,6 +36,13 @@ interface TabsProps {
   activeTab: string;
   onTabChange: (key: string) => void;
   scrollable?: boolean;
+  /**
+   * Horizontal alignment of tabs in scrollable mode. Defaults to 'center'
+   * (existing behavior). Use 'start' for left-aligned tabs (e.g. the Messages
+   * inbox, where All / Unread / Orders should begin at the far left).
+   * Ignored in non-scrollable (equal-width) mode.
+   */
+  align?: 'center' | 'start';
   swipeProgress?: SharedValue<number>;
 }
 
@@ -112,7 +119,7 @@ function TabItem({ tab, tabIndex, activeTab, swipeProgress, handlePress, handleT
 // Main Component
 // ─────────────────────────────────────────────────────────────
 
-export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, swipeProgress }: TabsProps) {
+export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align = 'center', swipeProgress }: TabsProps) {
   const { theme } = useTheme();
 
   // Mutable ref stores each tab's measured position/width.
@@ -204,7 +211,14 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, swipePr
 
   const TabContainer = scrollable ? ScrollView : View;
   const containerProps: any = scrollable
-    ? { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.scrollContent }
+    ? {
+        horizontal: true,
+        showsHorizontalScrollIndicator: false,
+        contentContainerStyle: [
+          styles.scrollContent,
+          align === 'start' ? styles.scrollContentStart : null,
+        ],
+      }
     : { style: styles.tabsContainer };
 
   return (
@@ -250,6 +264,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.xs,
+  },
+  // Left-aligned scrollable tabs (Messages inbox): start at the far left with no
+  // centering flex-grow, so the underline measures/aligns from the first tab.
+  scrollContentStart: {
+    flexGrow: 0,
+    justifyContent: 'flex-start',
+    paddingHorizontal: 0,
   },
   tab: {
     flexDirection: 'row',

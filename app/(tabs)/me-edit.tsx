@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { tokens } from '@/src/styles/tokens';
 import { readWarmScreenState } from '@/src/state/screenWarmState';
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -217,7 +218,10 @@ export default function MeEditScreen() {
       isNavigatingAwayRef.current = false;
       return;
     }
-    router.back();
+    // Edit Info lives inside the (tabs) group; a bare router.back() with no
+    // history (e.g. entered from Settings or a deep link) drops to the default
+    // tab (Runway). backOrNavigate falls back to the Me profile instead.
+    backOrNavigate('/(tabs)/me');
   }, [persistOnExit]);
 
   const handlePickAvatar = useCallback(async () => {

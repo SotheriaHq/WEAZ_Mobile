@@ -23,6 +23,7 @@ import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { tokens } from '@/src/styles/tokens';
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 import { BRAND_TAG_OPTIONS } from '@/src/data/brandTags';
 import { AppMultiSelectSheet, AppSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
 import { Chip } from '@/components/ui/Chip';
@@ -398,7 +399,9 @@ export default function BrandProfileEditScreen() {
       isNavigatingAwayRef.current = false;
       return;
     }
-    router.back();
+    // Owner edit-profile lives in the (tabs) group; fall back to the catalog
+    // when there is no history (e.g. entered from Settings) instead of Runway.
+    backOrNavigate('/catalog');
   }, [persistOnExit]);
 
   const handlePickAvatar = useCallback(async () => {
