@@ -3,12 +3,14 @@ import {
   Keyboard,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleProp,
   StyleSheet,
   View,
   ViewStyle,
+  useWindowDimensions,
 } from 'react-native';
 
 import Animated, {
@@ -17,7 +19,6 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  useAnimatedKeyboard,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -42,6 +43,8 @@ type Props = {
   footer?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   keyboardBehavior?: 'auto' | 'none';
+  keyboardActive?: boolean;
+  headerMeta?: string;
   onDismiss?: () => void;
 };
 
@@ -60,6 +63,8 @@ export function AppBottomSheet({
   footer,
   style,
   keyboardBehavior = 'auto',
+  keyboardActive,
+  headerMeta,
   onDismiss,
 }: Props) {
   const { theme, scheme } = useTheme();
@@ -70,10 +75,16 @@ export function AppBottomSheet({
     visible && (keyboardBehavior !== 'none' || !Keyboard.isVisible()),
   );
   const onDismissRef = useRef(onDismiss);
-  const keyboardFallbackHeight = useSharedValue(0);
-  const keyboard = useAnimatedKeyboard({ isStatusBarTranslucentAndroid: true });
+  const keyboardInset = useSharedValue(0);
+  const [keyboardEventHeight, setKeyboardEventHeight] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const { height: windowHeight } = useWindowDimensions();
+  const baseWindowHeightRef = useRef(windowHeight);
   const isDark = scheme === 'dark';
-  const sheetPaddingBottom = Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm);
+  const sheetPaddingBottom = Math.max(
+    tokens.spacing.lg,
+    insets.bottom + tokens.spacing.sm,
+  );
 
   useAndroidOverlaySystemBars(visible, scheme, 'bottom-sheet');
 
@@ -90,7 +101,8 @@ export function AppBottomSheet({
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) =>
-          gestureState.dy > 8 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+          gestureState.dy > 8 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
         onPanResponderMove: (_, gestureState) => {
           const nextY = Math.max(0, gestureState.dy);
           translateY.value = nextY;
@@ -102,12 +114,24 @@ export function AppBottomSheet({
             onClose();
             return;
           }
-          translateY.value = withTiming(0, { duration: 140, easing: Easing.out(Easing.cubic) });
-          opacity.value = withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) });
+          translateY.value = withTiming(0, {
+            duration: 140,
+            easing: Easing.out(Easing.cubic),
+          });
+          opacity.value = withTiming(1, {
+            duration: 120,
+            easing: Easing.out(Easing.cubic),
+          });
         },
         onPanResponderTerminate: () => {
-          translateY.value = withTiming(0, { duration: 140, easing: Easing.out(Easing.cubic) });
-          opacity.value = withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) });
+          translateY.value = withTiming(0, {
+            duration: 140,
+            easing: Easing.out(Easing.cubic),
+          });
+          opacity.value = withTiming(1, {
+            duration: 120,
+            easing: Easing.out(Easing.cubic),
+          });
         },
       }),
     [onClose, opacity, translateY],
@@ -122,7 +146,9 @@ export function AppBottomSheet({
     }
 
     Keyboard.dismiss();
-    const hiddenSubscription = Keyboard.addListener('keyboardDidHide', () => setMounted(true));
+    const hiddenSubscription = Keyboard.addListener('keyboardDidHide', () =>
+      setMounted(true),
+    );
     const fallbackTimer = setTimeout(() => setMounted(true), 320);
 
     return () => {
@@ -133,22 +159,63 @@ export function AppBottomSheet({
 
   useEffect(() => {
     if (!visible || keyboardBehavior !== 'auto') {
-      keyboardFallbackHeight.value = withTiming(0, { duration: 120 });
+      setKeyboardVisible(false);
+      setKeyboardEventHeight(0);
       return;
     }
 
-    const show = Keyboard.addListener('keyboardDidShow', (event) => {
-      keyboardFallbackHeight.value = withTiming(event.endCoordinates.height, { duration: 120 });
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardEventHeight(event.endCoordinates.height);
+      setKeyboardVisible(true);
     });
-    const hide = Keyboard.addListener('keyboardDidHide', () => {
-      keyboardFallbackHeight.value = withTiming(0, { duration: 120 });
+    const hide = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+      setKeyboardEventHeight(0);
     });
 
     return () => {
       show.remove();
       hide.remove();
     };
-  }, [keyboardBehavior, keyboardFallbackHeight, visible]);
+  }, [keyboardBehavior, visible]);
+
+  useEffect(() => {
+    if (!keyboardVisible && windowHeight > baseWindowHeightRef.current) {
+      baseWindowHeightRef.current = windowHeight;
+    }
+
+    const resizedBySystem =
+      Platform.OS === 'android' &&
+      keyboardVisible &&
+      keyboardEventHeight > 0 &&
+      baseWindowHeightRef.current - windowHeight > keyboardEventHeight * 0.5;
+    const shouldApplyInset =
+      visible &&
+      keyboardBehavior === 'auto' &&
+      keyboardVisible &&
+      (keyboardActive ?? true) &&
+      !resizedBySystem;
+
+    keyboardInset.value = withTiming(
+      shouldApplyInset ? keyboardEventHeight : 0,
+      {
+        duration: shouldApplyInset ? 180 : 140,
+        easing: Easing.out(Easing.cubic),
+      },
+    );
+  }, [
+    keyboardActive,
+    keyboardBehavior,
+    keyboardEventHeight,
+    keyboardInset,
+    keyboardVisible,
+    visible,
+    windowHeight,
+  ]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -178,10 +245,7 @@ export function AppBottomSheet({
   }));
 
   const keyboardWrapStyle = useAnimatedStyle(() => ({
-    paddingBottom:
-      keyboardBehavior === 'auto'
-        ? Math.max(keyboard.height.value, keyboardFallbackHeight.value)
-        : 0,
+    paddingBottom: keyboardBehavior === 'auto' ? keyboardInset.value : 0,
   }));
 
   const Body = scrollable ? ScrollView : View;
@@ -220,7 +284,13 @@ export function AppBottomSheet({
           accessibilityRole="button"
           accessibilityLabel="Close sheet"
         >
-          <Animated.View style={[StyleSheet.absoluteFill, backdropStyle, { backgroundColor: theme.colors.backdrop }]} />
+          <Animated.View
+            style={[
+              StyleSheet.absoluteFill,
+              backdropStyle,
+              { backgroundColor: theme.colors.backdrop },
+            ]}
+          />
         </Pressable>
         <Animated.View style={[styles.keyboardWrap, keyboardWrapStyle]}>
           <Animated.View
@@ -238,10 +308,27 @@ export function AppBottomSheet({
             <View {...dragCloseResponder.panHandlers} style={styles.dragArea}>
               <View style={[styles.handle, { backgroundColor: theme.colors.bottomSheetHandle }]} />
 
-              {(title || subtitle || onDone) ? (
+              {(title || subtitle || headerMeta || onDone) ? (
                 <View style={styles.header}>
                 <View style={styles.titleWrap}>
-                  {title ? <AppText variant="title">{title}</AppText> : null}
+                  {title || headerMeta ? (
+                    <View style={styles.titleRow}>
+                      {title ? <AppText variant="title" style={styles.title}>{title}</AppText> : null}
+                      {headerMeta ? (
+                        <View
+                          style={[
+                            styles.headerMeta,
+                            {
+                              backgroundColor: theme.colors.primarySoft,
+                              borderColor: theme.colors.focusRing,
+                            },
+                          ]}
+                        >
+                          <AppText variant="captionBold" tone="primary">{headerMeta}</AppText>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
                   {subtitle ? <AppText variant="body" tone="muted">{subtitle}</AppText> : null}
                 </View>
                 <View style={styles.headerActions}>
@@ -266,7 +353,9 @@ export function AppBottomSheet({
               ) : null}
             </View>
 
-            <Body {...bodyProps}>{typeof children === 'function' ? children() : children}</Body>
+            <Body {...bodyProps}>
+              {typeof children === 'function' ? children() : children}
+            </Body>
 
             {footer ? <View style={styles.footer}>{footer}</View> : null}
           </Animated.View>
@@ -318,6 +407,21 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: tokens.spacing.xs,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  title: {
+    flexShrink: 1,
+  },
+  headerMeta: {
+    minHeight: 28,
+    justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+  },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -325,10 +429,11 @@ const styles = StyleSheet.create({
   },
   doneButton: {
     minWidth: 78,
+    height: 44,
   },
   closeButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     borderRadius: tokens.radius.full,
     alignItems: 'center',
     justifyContent: 'center',

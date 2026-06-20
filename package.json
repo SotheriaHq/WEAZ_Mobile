@@ -17,6 +17,7 @@
     "test:product-collection-management-contract": "node scripts/test-product-collection-management-contract.js",
     "test:brand-profile-contract": "node scripts/test-brand-profile-contract.js",
     "test:design-editor-contract": "node scripts/test-design-editor-contract.js",
+    "test:phase2a-selector-tags-contract": "node scripts/test-phase2a-selector-tags-contract.js",
     "test:auth-link-routing-contract": "node scripts/test-auth-link-routing-contract.js",
     "test:api-contract": "node scripts/test-api-contract.js",
     "test:session-cleanup-contract": "node scripts/test-session-cleanup-contract.js",

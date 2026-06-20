@@ -1,6 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View, ScrollView } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+  ScrollView,
+} from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
@@ -10,12 +20,20 @@ import { Input } from '@/components/ui/Input';
 import TagsApi, { type TagSuggestion } from '@/src/api/TagsApi';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import {
+  isValidTagValue,
+  normalizeTagList,
+  normalizeTagValue,
+  TAG_MAX_LENGTH,
+  TAG_MIN_LENGTH,
+} from '@/src/utils/tagNormalization';
 
 export type SelectSheetOption = {
   value: string;
   label: string;
   disabled?: boolean;
   description?: string;
+  pending?: boolean;
 };
 
 type BaseProps = {
@@ -47,14 +65,6 @@ type MultiProps = BaseProps & {
   customPlaceholder?: string;
   doneLabel?: string;
 };
-
-const normalizeCustomTagValue = (value: string) =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/^#+/, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
 
 function AnimatedOptionCard({
   option,
@@ -88,19 +98,23 @@ function AnimatedOptionCard({
           styles.optionCard,
           animatedStyle,
           {
-            backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surfaceAlt,
-            borderColor: selected ? theme.colors.primary : theme.colors.border,
-            shadowColor: theme.colors.primary,
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: selected ? 0.1 : 0.03,
-            shadowRadius: 4,
-            elevation: selected ? 2 : 1,
+            backgroundColor: selected
+              ? theme.colors.primarySoft
+              : theme.colors.surfaceAlt,
+            borderColor: selected
+              ? theme.colors.primary
+              : option.pending
+                ? theme.colors.warning
+                : theme.colors.border,
           },
           option.disabled && styles.optionDisabled,
         ]}
       >
         <View style={{ flex: 1, gap: tokens.spacing.xs }}>
-          <AppText variant="bodyBold" tone={selected ? 'primary' : 'default'}>
+          <AppText
+            variant="bodyBold"
+            tone={selected ? 'primary' : option.pending ? 'warning' : 'default'}
+          >
             {option.label}
           </AppText>
           {option.description ? (
@@ -109,8 +123,14 @@ function AnimatedOptionCard({
             </AppText>
           ) : null}
         </View>
-        {selected ? (
-          <AppText variant="body" accessibilityLabel="Selected">✅</AppText>
+        {selected || option.pending ? (
+          <AppText
+            variant="captionBold"
+            tone={selected ? 'primary' : 'warning'}
+            accessibilityLabel={selected ? 'Selected' : 'Pending review'}
+          >
+            {selected ? 'Selected' : 'Pending'}
+          </AppText>
         ) : null}
       </Animated.View>
     </Pressable>
@@ -148,7 +168,12 @@ export function AppSelectSheet({
       }}
       keyboardBehavior="none"
     >
-      <SelectSheetState loading={loading} errorMessage={errorMessage} empty={options.length === 0} emptyMessage={emptyMessage} />
+      <SelectSheetState
+        loading={loading}
+        errorMessage={errorMessage}
+        empty={options.length === 0}
+        emptyMessage={emptyMessage}
+      />
       <View style={styles.optionWrapSingle}>
         {options.map((option) => (
           <AnimatedOptionCard
@@ -193,43 +218,85 @@ export function AppMultiSelectSheet({
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<TagSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [focusedInput, setFocusedInput] = useState<'search' | 'custom' | null>(
+    null,
+  );
   // Tags the user just created via "Add" this session. They are usable on this
   // post immediately and are sent to admin for global approval when the design is
   // submitted (the backend creates them with status PENDING). Tracked only to show
   // the distinct "pending review" chip treatment — not a separate API call.
   const [pendingTags, setPendingTags] = useState<string[]>([]);
   const pendingValuesRef = useRef<string[] | null>(null);
-  const selectedSet = useMemo(() => new Set(draft), [draft]);
-  const knownOptionValues = useMemo(() => new Set(options.map((option) => option.value)), [options]);
+  const selectedSet = useMemo(
+    () => new Set(draft.map(normalizeTagValue)),
+    [draft],
+  );
+  const knownOptionValues = useMemo(
+    () =>
+      new Set(
+        options
+          .map((option) => normalizeTagValue(option.value))
+          .filter(Boolean),
+      ),
+    [options],
+  );
+  const pendingOptionValues = useMemo(
+    () =>
+      new Set(
+        options
+          .filter((option) => option.pending)
+          .map((option) => normalizeTagValue(option.value)),
+      ),
+    [options],
+  );
   const pendingSet = useMemo(
-    () => new Set([...draft.filter((value) => !knownOptionValues.has(value)), ...pendingTags]),
-    [draft, knownOptionValues, pendingTags],
+    () =>
+      new Set([
+        ...draft
+          .map(normalizeTagValue)
+          .filter(
+            (value) =>
+              !knownOptionValues.has(value) || pendingOptionValues.has(value),
+          ),
+        ...pendingTags.map(normalizeTagValue),
+      ]),
+    [draft, knownOptionValues, pendingOptionValues, pendingTags],
   );
   const optionLabelByValue = useMemo(() => {
     const labels = new Map<string, string>();
-    options.forEach((option) => labels.set(option.value, option.label));
+    options.forEach((option) =>
+      labels.set(normalizeTagValue(option.value), option.label),
+    );
     return labels;
   }, [options]);
   const selectedOptions = useMemo(
     () =>
       draft.map((value) => ({
-        value,
-        label: optionLabelByValue.get(value) ?? `#${value}`,
+        value: normalizeTagValue(value),
+        label:
+          optionLabelByValue.get(normalizeTagValue(value)) ??
+          `#${normalizeTagValue(value)}`,
       })),
     [draft, optionLabelByValue],
   );
 
   useEffect(() => {
     if (visible) {
-      setDraft(values);
+      const normalizedValues = normalizeTagList(values, maxSelected ?? 10);
+      setDraft(normalizedValues);
       setCustomTag('');
       setSearchText('');
       setSearchResults([]);
       setIsSearching(false);
-      setPendingTags([]);
+      setFocusedInput(null);
+      setPendingTags((current) =>
+        current.filter((tag) =>
+          normalizedValues.includes(normalizeTagValue(tag)),
+        ),
+      );
       pendingValuesRef.current = null;
     }
-  }, [values, visible]);
+  }, [maxSelected, values, visible]);
 
   useEffect(() => {
     const trimmed = searchText.trim();
@@ -240,32 +307,42 @@ export function AppMultiSelectSheet({
     }
 
     setIsSearching(true);
+    let active = true;
     const timeout = setTimeout(async () => {
       try {
         const results = await TagsApi.searchTags(trimmed, 20);
-        setSearchResults(results);
+        if (active) setSearchResults(results);
       } catch {
-        setSearchResults([]);
+        if (active) setSearchResults([]);
       } finally {
-        setIsSearching(false);
+        if (active) setIsSearching(false);
       }
     }, 300);
 
-    return () => clearTimeout(timeout);
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+    };
   }, [searchText]);
 
   const toggle = (value: string) => {
+    const normalized = normalizeTagValue(value);
+    if (!normalized) return;
     setDraft((current) => {
-      if (current.includes(value)) {
-        return current.filter((entry) => entry !== value);
+      if (current.includes(normalized)) {
+        return current.filter((entry) => entry !== normalized);
       }
       if (typeof maxSelected === 'number' && current.length >= maxSelected) {
         return current;
       }
-      return [...current, value];
+      return [...current, normalized];
     });
     // Deselecting a pending custom tag clears its pending marker too.
-    setPendingTags((current) => (current.includes(value) ? current.filter((entry) => entry !== value) : current));
+    setPendingTags((current) =>
+      current.includes(normalized)
+        ? current.filter((entry) => entry !== normalized)
+        : current,
+    );
   };
 
   const displayedOptions = useMemo(() => {
@@ -274,53 +351,63 @@ export function AppMultiSelectSheet({
 
     if (!trimmed) {
       mappedOptions = options.map((opt) => ({
-        value: opt.value,
+        value: normalizeTagValue(opt.value),
         label: opt.label,
         usageCount: (opt as any).usageCount ?? 0,
         disabled: opt.disabled,
+        pending: opt.pending,
       }));
     } else {
       const localFiltered = options
         .filter((opt) => opt.label.toLowerCase().includes(trimmed) || opt.value.toLowerCase().includes(trimmed))
         .map((opt) => ({
-          value: opt.value,
+          value: normalizeTagValue(opt.value),
           label: opt.label,
           usageCount: (opt as any).usageCount ?? 0,
           disabled: opt.disabled,
+          pending: opt.pending,
         }));
         
-      const localValues = new Set(localFiltered.map((o) => o.value));
+      const localValues = new Set(localFiltered.map((o) => normalizeTagValue(o.value)));
       const networkMapped = searchResults
-        .filter((opt) => !localValues.has(opt.name))
+        .filter((opt) => !localValues.has(normalizeTagValue(opt.name)))
         .map((opt) => ({
-          value: opt.name,
-          label: `#${opt.name}`,
+          value: normalizeTagValue(opt.name),
+          label: `#${normalizeTagValue(opt.name)}`,
           usageCount: opt.usageCount,
           disabled: false,
+          pending: opt.status === 'PENDING',
         }));
         
       mappedOptions = [...localFiltered, ...networkMapped];
     }
 
-    return mappedOptions.filter((opt) => !selectedSet.has(opt.value));
+    return mappedOptions.filter((opt) => opt.value && !selectedSet.has(normalizeTagValue(opt.value)));
   }, [searchText, searchResults, options, selectedSet]);
 
   const addCustomTag = () => {
-    const normalized = normalizeCustomTagValue(customTag);
-    if (!normalized || draft.includes(normalized) || (typeof maxSelected === 'number' && draft.length >= maxSelected)) {
+    const normalized = normalizeTagValue(customTag);
+    if (!isValidTagValue(normalized) || draft.includes(normalized) || (typeof maxSelected === 'number' && draft.length >= maxSelected)) {
       return;
     }
     setDraft((current) => [...current, normalized]);
-    // A freshly-typed tag is only "pending" if it is not already a known global
-    // suggestion. Known suggestions are accepted immediately as approved tags.
-    const isKnownGlobalTag =
-      options.some((option) => option.value === normalized) ||
-      searchResults.some((result) => result.name === normalized);
-    if (!isKnownGlobalTag) {
+    const knownOption = options.find((option) => normalizeTagValue(option.value) === normalized);
+    const knownSearchResult = searchResults.find((result) => normalizeTagValue(result.name) === normalized);
+    const isKnownApprovedTag = Boolean(knownOption && !knownOption.pending) || knownSearchResult?.status === 'APPROVED';
+    if (!isKnownApprovedTag) {
       setPendingTags((current) => (current.includes(normalized) ? current : [...current, normalized]));
     }
     setCustomTag('');
   };
+
+  const normalizedCustomTag = normalizeTagValue(customTag);
+  const customTagIsDuplicate = draft.includes(normalizedCustomTag);
+  const customTagError =
+    customTag.trim() && !isValidTagValue(normalizedCustomTag)
+      ? `Use at least ${TAG_MIN_LENGTH} letters or numbers.`
+      : customTagIsDuplicate
+        ? 'This hashtag is already selected.'
+        : undefined;
 
   return (
     <AppBottomSheet
@@ -334,12 +421,18 @@ export function AppMultiSelectSheet({
         if (nextValues) onChange(nextValues);
       }}
       onDone={() => {
-        pendingValuesRef.current = [...draft];
+        pendingValuesRef.current = normalizeTagList(draft, maxSelected ?? 10);
         onClose();
       }}
       scrollable={false}
       doneLabel={doneLabel}
       keyboardBehavior="auto"
+      keyboardActive={focusedInput !== null}
+      headerMeta={
+        typeof maxSelected === 'number'
+          ? `${draft.length}/${maxSelected}`
+          : `${draft.length} selected`
+      }
     >
       <SelectSheetState
         loading={(loading || isSearching) && displayedOptions.length === 0}
@@ -355,15 +448,16 @@ export function AppMultiSelectSheet({
         onChangeText={setSearchText}
         placeholder={searchPlaceholder}
         containerStyle={styles.searchInput}
+        onFocus={() => setFocusedInput('search')}
+        onBlur={() =>
+          setFocusedInput((current) => (current === 'search' ? null : current))
+        }
       />
-      {typeof maxSelected === 'number' ? (
-        <AppText variant="captionRegular" tone="muted">
-          {draft.length}/{maxSelected} selected
-        </AppText>
-      ) : null}
       {selectedOptions.length > 0 ? (
         <View style={styles.selectedSection}>
-          <AppText variant="bodyBold" style={styles.sectionTitle}>Selected</AppText>
+          <AppText variant="bodyBold" style={styles.sectionTitle}>
+            Selected
+          </AppText>
           <View style={styles.optionWrap}>
             {selectedOptions.map((option) => (
               <Chip
@@ -377,7 +471,8 @@ export function AppMultiSelectSheet({
           </View>
           {selectedOptions.some((option) => pendingSet.has(option.value)) ? (
             <AppText variant="captionRegular" tone="muted">
-              Tags marked review are added to this post now and sent for global approval.
+              Pending tags are available on this design now while global review
+              continues.
             </AppText>
           ) : null}
         </View>
@@ -389,9 +484,12 @@ export function AppMultiSelectSheet({
         showsVerticalScrollIndicator
         nestedScrollEnabled
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       >
         {!searchText.trim() && options.length > 0 ? (
-          <AppText variant="bodyBold" style={styles.sectionTitle}>{popularLabel}</AppText>
+          <AppText variant="bodyBold" style={styles.sectionTitle}>
+            {popularLabel}
+          </AppText>
         ) : null}
         <View style={styles.optionWrap}>
           {displayedOptions.map((option) => (
@@ -399,6 +497,7 @@ export function AppMultiSelectSheet({
               key={option.value}
               label={option.label}
               selected={selectedSet.has(option.value)}
+              pending={option.pending}
               disabled={option.disabled}
               onPress={() => {
                 if (!option.disabled) toggle(option.value);
@@ -415,12 +514,25 @@ export function AppMultiSelectSheet({
           onChangeText={setCustomTag}
           placeholder={customPlaceholder}
           containerStyle={styles.customTagInput}
+          maxLength={TAG_MAX_LENGTH}
+          error={customTagError}
+          onFocus={() => setFocusedInput('custom')}
+          onBlur={() =>
+            setFocusedInput((current) =>
+              current === 'custom' ? null : current,
+            )
+          }
         />
         <Button
           title="Add"
           size="sm"
-          disabled={!normalizeCustomTagValue(customTag) || draft.includes(normalizeCustomTagValue(customTag))}
+          disabled={
+            !isValidTagValue(normalizedCustomTag) ||
+            customTagIsDuplicate ||
+            (typeof maxSelected === 'number' && draft.length >= maxSelected)
+          }
           onPress={addCustomTag}
+          style={styles.addButton}
         />
       </View>
     </AppBottomSheet>
@@ -440,16 +552,35 @@ function SelectSheetState({
   empty: boolean;
   emptyMessage: string;
 }) {
-  if (loading) return <AppText variant="body" tone="muted">Loading options...</AppText>;
+  if (loading)
+    return (
+      <AppText variant="body" tone="muted">
+        Loading options...
+      </AppText>
+    );
   if (errorMessage) {
     return (
       <View style={styles.stateBlock}>
-        <AppText variant="body" tone="danger">{errorMessage}</AppText>
-        {onRetry ? <Button title="Retry" size="sm" variant="secondary" onPress={onRetry} /> : null}
+        <AppText variant="body" tone="danger">
+          {errorMessage}
+        </AppText>
+        {onRetry ? (
+          <Button
+            title="Retry"
+            size="sm"
+            variant="secondary"
+            onPress={onRetry}
+          />
+        ) : null}
       </View>
     );
   }
-  if (empty) return <AppText variant="body" tone="muted">{emptyMessage}</AppText>;
+  if (empty)
+    return (
+      <AppText variant="body" tone="muted">
+        {emptyMessage}
+      </AppText>
+    );
   return null;
 }
 
@@ -496,6 +627,9 @@ const styles = StyleSheet.create({
   },
   customTagInput: {
     flex: 1,
+  },
+  addButton: {
+    height: 52,
   },
   scrollArea: {
     flexShrink: 1,

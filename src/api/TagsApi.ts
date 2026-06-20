@@ -3,6 +3,7 @@ import { apiClient } from '@/src/api/httpClient';
 export type TagSuggestion = {
   name: string;
   usageCount: number;
+  status?: 'PENDING' | 'APPROVED';
 };
 
 type RawTagSuggestion = {
@@ -10,6 +11,7 @@ type RawTagSuggestion = {
   tag?: unknown;
   usageCount?: unknown;
   count?: unknown;
+  status?: unknown;
 };
 
 function extractSuggestions(payload: unknown): TagSuggestion[] {
@@ -46,6 +48,10 @@ function extractSuggestions(payload: unknown): TagSuggestion[] {
       return {
         name,
         usageCount: Number.isFinite(usageCount) ? usageCount : 0,
+        status:
+          item?.status === 'PENDING'
+            ? ('PENDING' as const)
+            : ('APPROVED' as const),
       };
     })
     .filter((item: TagSuggestion) => item.name.length > 0);
@@ -58,7 +64,9 @@ export const TagsApi = {
   },
 
   async searchTags(query: string, limit = 20): Promise<TagSuggestion[]> {
-    const response = await apiClient.get('/tags/search', { params: { q: query, limit } });
+    const response = await apiClient.get('/tags/search', {
+      params: { q: query, limit },
+    });
     return extractSuggestions(response.data);
   },
 };

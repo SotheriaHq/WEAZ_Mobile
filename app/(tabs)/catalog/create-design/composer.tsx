@@ -1,15 +1,42 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { InteractionManager, Keyboard, KeyboardAvoidingView, LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Switch, View, useWindowDimensions } from 'react-native';
-import Reanimated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  InteractionManager,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import Reanimated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+} from 'react-native-reanimated';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
-import { AppFloatingMenu, type FloatingMenuOption } from '@/components/ui/AppFloatingMenu';
+import {
+  AppFloatingMenu,
+  type FloatingMenuOption,
+} from '@/components/ui/AppFloatingMenu';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
-import { AppMultiSelectSheet, AppSelectSheet } from '@/components/ui/AppSelectSheet';
+import {
+  AppMultiSelectSheet,
+  AppSelectSheet,
+} from '@/components/ui/AppSelectSheet';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -18,6 +45,7 @@ import { Input } from '@/components/ui/Input';
 import { OptionRow } from '@/components/ui/OptionRow';
 import { RequiredFieldLabel } from '@/components/ui/RequiredFieldLabel';
 import { StableImage } from '@/components/ui/StableImage';
+import { ThemedSwitch } from '@/components/ui/ThemedSwitch';
 import type { FilterDimensionOption } from '@/src/api/DesignApi';
 import TagsApi from '@/src/api/TagsApi';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
@@ -59,7 +87,12 @@ const TARGET_AGE_OPTIONS: Array<{ value: 'ADULT' | 'CHILD'; label: string }> = [
   { value: 'CHILD', label: DESIGN_TARGET_AGE_LABELS.CHILD },
 ];
 
-const STYLE_DETAIL_DIMENSION_SLUGS = new Set(['style', 'fabric', 'color-family', 'fit']);
+const STYLE_DETAIL_DIMENSION_SLUGS = new Set([
+  'style',
+  'fabric',
+  'color-family',
+  'fit',
+]);
 const STANDALONE_DISCOVERY_DIMENSION_SLUGS = new Set(['heritage', 'occasion']);
 
 function formatPriceSummary(minPrice: string, maxPrice: string) {
@@ -101,12 +134,20 @@ export default function CreateDesignComposerScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ blank?: string | string[]; autoOpenPickerSource?: string | string[] }>();
-  const blankParam = Array.isArray(params.blank) ? params.blank[0] : params.blank;
-  const autoOpenPickerSourceParam = Array.isArray(params.autoOpenPickerSource) ? params.autoOpenPickerSource[0] : params.autoOpenPickerSource;
+  const params = useLocalSearchParams<{
+    blank?: string | string[];
+    autoOpenPickerSource?: string | string[];
+  }>();
+  const blankParam = Array.isArray(params.blank)
+    ? params.blank[0]
+    : params.blank;
+  const autoOpenPickerSourceParam = Array.isArray(params.autoOpenPickerSource)
+    ? params.autoOpenPickerSource[0]
+    : params.autoOpenPickerSource;
   // The user explicitly chose "Start a design" (no media yet) — keep the empty
   // composer open instead of bouncing back to the catalogue.
-  const isBlankStart = blankParam === '1' || blankParam === 'true' || !!autoOpenPickerSourceParam;
+  const isBlankStart =
+    blankParam === '1' || blankParam === 'true' || !!autoOpenPickerSourceParam;
   const hasEverHadAssetsRef = useRef(false);
 
   const [privacyOpen, setPrivacyOpen] = useState(false);
@@ -124,11 +165,21 @@ export default function CreateDesignComposerScreen() {
   // Source chosen in the media option sheet, launched only AFTER the sheet has
   // fully dismissed so the app sheet/backdrop never lingers behind the system
   // picker (see the pending-picker effect below).
-  const [pendingPickerSource, setPendingPickerSource] = useState<'camera' | 'library' | null>(null);
-  const [categoryStep, setCategoryStep] = useState<'category' | 'subcategory'>('category');
+  const [pendingPickerSource, setPendingPickerSource] = useState<
+    'camera' | 'library' | null
+  >(null);
+  const [categoryStep, setCategoryStep] = useState<'category' | 'subcategory'>(
+    'category',
+  );
   const [draftCategoryId, setDraftCategoryId] = useState('');
   const [draftSubCategoryId, setDraftSubCategoryId] = useState('');
-  const [tagSuggestions, setTagSuggestions] = useState<{ name: string; usageCount: number }[]>([]);
+  const [tagSuggestions, setTagSuggestions] = useState<
+    {
+      name: string;
+      usageCount: number;
+      status?: 'PENDING' | 'APPROVED';
+    }[]
+  >([]);
   const [tagError, setTagError] = useState<string | null>(null);
   const [tagsLoading, setTagsLoading] = useState(false);
   const mediaAnchorRef = useRef<View | null>(null);
@@ -147,56 +198,6 @@ export default function CreateDesignComposerScreen() {
     return () => handle.cancel();
   }, []);
 
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  useEffect(() => {
-    // Sync the form's collapse/expand to the OS keyboard animation curve instead of
-    // a fixed easeInEaseOut preset. scheduleLayoutAnimation uses the keyboard event's
-    // own duration/easing, so the footer + scroll padding move WITH the keyboard
-    // rather than skipping/shaking. Falls back gracefully when the event carries no
-    // animation metadata (older Android emits didShow/didHide without a curve).
-    const animateForEvent = (event: { duration?: number } | undefined) => {
-      if (event && typeof event.duration === 'number' && event.duration > 0) {
-        Keyboard.scheduleLayoutAnimation(event as Parameters<typeof Keyboard.scheduleLayoutAnimation>[0]);
-      } else {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      }
-    };
-    const showSubscription = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => {
-        animateForEvent(e);
-        setKeyboardHeight(e.endCoordinates.height);
-      }
-    );
-    const hideSubscription = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      (e) => {
-        animateForEvent(e);
-        setKeyboardHeight(0);
-      }
-    );
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
-
-  // Android keyboard handling depends on whether the OS resized the window
-  // (edge-to-edge `adjustResize`). When it resizes, the RN root height shrinks
-  // and the sticky footer is lifted natively — adding our own offset would
-  // double-count and float the footer too high. When it does NOT resize, the
-  // footer stays behind the keyboard unless we lift it manually. We detect the
-  // resize by comparing the live window height to the no-keyboard baseline, so
-  // the footer ends up just above the keyboard on both configurations.
-  const { height: windowHeight } = useWindowDimensions();
-  const baseWindowHeightRef = useRef(windowHeight);
-  if (keyboardHeight === 0 && windowHeight > baseWindowHeightRef.current) {
-    baseWindowHeightRef.current = windowHeight;
-  }
-  const androidWindowResized =
-    Platform.OS === 'android' &&
-    keyboardHeight > 0 &&
-    baseWindowHeightRef.current - windowHeight > keyboardHeight * 0.5;
   const audienceLabel = getAudienceLabel(form.audience);
   const sizingLabel = DESIGN_SIZING_LABELS[form.sizingMode];
   const fitPreferenceLabel = DESIGN_FIT_PREFERENCE_LABELS[form.fitPreference];
@@ -210,12 +211,20 @@ export default function CreateDesignComposerScreen() {
       ? 'Custom order'
       : 'Standard';
   const selectedSubCategory =
-    selectedCategory?.subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
+    selectedCategory?.subCategories.find(
+      (entry) => entry.id === form.subCategoryId,
+    ) ?? null;
   const categoryValue = selectedCategory?.name ?? 'Select';
-  const garmentTypeValue = selectedSubCategory?.name ?? (selectedCategory ? 'Select' : 'Choose item first');
+  const garmentTypeValue =
+    selectedSubCategory?.name ??
+    (selectedCategory ? 'Select' : 'Choose item first');
 
   const categoryOptions = useMemo(
-    () => categories.map((category) => ({ value: category.id, label: category.name })),
+    () =>
+      categories.map((category) => ({
+        value: category.id,
+        label: category.name,
+      })),
     [categories],
   );
   const draftSelectedCategory = useMemo(
@@ -229,11 +238,14 @@ export default function CreateDesignComposerScreen() {
       [...filterDimensions]
         .filter(
           (dimension) =>
-            (dimension.appliesTo.includes('DESIGN') || dimension.appliesTo.includes('COLLECTION')) &&
+            (dimension.appliesTo.includes('DESIGN') ||
+              dimension.appliesTo.includes('COLLECTION')) &&
             !isLegacyDiscoveryDimensionSlug(dimension.slug),
         )
         .sort((a, b) => {
-          const orderDelta = getDiscoveryDimensionSortIndex(a.slug) - getDiscoveryDimensionSortIndex(b.slug);
+          const orderDelta =
+            getDiscoveryDimensionSortIndex(a.slug) -
+            getDiscoveryDimensionSortIndex(b.slug);
           return orderDelta || a.name.localeCompare(b.name);
         }),
     [filterDimensions],
@@ -248,11 +260,13 @@ export default function CreateDesignComposerScreen() {
     [discoveryDimensions],
   );
   const heritageDimensions = useMemo(
-    () => discoveryDimensions.filter((dimension) => dimension.slug === 'heritage'),
+    () =>
+      discoveryDimensions.filter((dimension) => dimension.slug === 'heritage'),
     [discoveryDimensions],
   );
   const occasionDimensions = useMemo(
-    () => discoveryDimensions.filter((dimension) => dimension.slug === 'occasion'),
+    () =>
+      discoveryDimensions.filter((dimension) => dimension.slug === 'occasion'),
     [discoveryDimensions],
   );
   const selectedDiscoveryFilterCount = discoveryDimensions.reduce(
@@ -286,17 +300,22 @@ export default function CreateDesignComposerScreen() {
   );
   const tagOptions = useMemo(
     () =>
-      tagSuggestions
-        .filter((tag) => !selectedTags.includes(tag.name))
-        .map((tag) => ({ value: tag.name, label: normalizeHashtagLabel(tag.name), usageCount: tag.usageCount })),
-    [selectedTags, tagSuggestions],
+      tagSuggestions.map((tag) => ({
+        value: tag.name,
+        label: normalizeHashtagLabel(tag.name),
+        usageCount: tag.usageCount,
+        pending: tag.status === 'PENDING',
+      })),
+    [tagSuggestions],
   );
   const priceError = useMemo(() => {
     if (!form.minPrice || !form.maxPrice) return null;
     const min = Number(form.minPrice);
     const max = Number(form.maxPrice);
     if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-    return max < min ? 'Maximum price must be greater than or equal to minimum price.' : null;
+    return max < min
+      ? 'Maximum price must be greater than or equal to minimum price.'
+      : null;
   }, [form.maxPrice, form.minPrice]);
   const missingRequiredMediaSlots = useMemo(
     () => getMissingRequiredMediaSlots(assets),
@@ -317,12 +336,21 @@ export default function CreateDesignComposerScreen() {
     };
     if (!form.customOrderEnabled) return empty;
 
-    const baseCharge = form.baseProductionCharge.trim() ? null : 'Enter a base charge.';
-    const fabricCost = form.fabricCostPerYard.trim() ? null : 'Enter a fabric cost per yard.';
-    const fallbackYards = form.fallbackOutputYards.trim() ? null : 'Enter fallback yards.';
+    const baseCharge = form.baseProductionCharge.trim()
+      ? null
+      : 'Enter a base charge.';
+    const fabricCost = form.fabricCostPerYard.trim()
+      ? null
+      : 'Enter a fabric cost per yard.';
+    const fallbackYards = form.fallbackOutputYards.trim()
+      ? null
+      : 'Enter fallback yards.';
     const productionDays = Number(form.productionLeadDays);
     const productionTime =
-      !form.productionLeadDays.trim() || !Number.isInteger(productionDays) || productionDays < 1 || productionDays > 7
+      !form.productionLeadDays.trim() ||
+      !Number.isInteger(productionDays) ||
+      productionDays < 1 ||
+      productionDays > 7
         ? 'Production time must be 1-7 days.'
         : null;
 
@@ -334,14 +362,28 @@ export default function CreateDesignComposerScreen() {
         rushFee = 'Rush fee must be greater than 0.';
       }
       const days = Number(form.rushProductionLeadDays);
-      const standardDays = form.productionLeadDays.trim() ? Number(form.productionLeadDays) : 7;
-      if (!form.rushProductionLeadDays.trim() || !Number.isInteger(days) || days < 1 || days > 3) {
+      const standardDays = form.productionLeadDays.trim()
+        ? Number(form.productionLeadDays)
+        : 7;
+      if (
+        !form.rushProductionLeadDays.trim() ||
+        !Number.isInteger(days) ||
+        days < 1 ||
+        days > 3
+      ) {
         rushTime = 'Rush time must be 1-3 days (72 hours max).';
       } else if (Number.isFinite(standardDays) && days >= standardDays) {
         rushTime = 'Rush time must be shorter than production time.';
       }
     }
-    return { baseCharge, fabricCost, fallbackYards, productionTime, rushFee, rushTime };
+    return {
+      baseCharge,
+      fabricCost,
+      fallbackYards,
+      productionTime,
+      rushFee,
+      rushTime,
+    };
   }, [
     form.baseProductionCharge,
     form.customOrderEnabled,
@@ -367,7 +409,8 @@ export default function CreateDesignComposerScreen() {
     if (!form.audience) missing.push('Who is it for?');
     if (selectedDiscoveryFilterCount === 0) missing.push('Style details');
     if (selectedTags.length === 0) missing.push('Tags');
-    if (form.customOrderEnabled && customMeasurementKeys.length === 0) missing.push('Required custom-order fields');
+    if (form.customOrderEnabled && customMeasurementKeys.length === 0)
+      missing.push('Required custom-order fields');
     if (
       customOrderFieldErrors.baseCharge ||
       customOrderFieldErrors.fabricCost ||
@@ -500,14 +543,21 @@ export default function CreateDesignComposerScreen() {
     }
   }, [booting]);
 
-
-
   const loadTags = useCallback(
-    async (isActive: () => boolean = () => true, options?: { forceRefresh?: boolean }) => {
+    async (
+      isActive: () => boolean = () => true,
+      options?: { forceRefresh?: boolean },
+    ) => {
       // Seed from the React Query cache so re-opening the hashtag sheet shows the
       // popular tags immediately instead of flashing a loader (Issue #2).
       const cacheKey = queryKeys.tags.popular(50);
-      const cached = queryClient.getQueryData<{ name: string; usageCount: number }[]>(cacheKey);
+      const cached = queryClient.getQueryData<
+        {
+          name: string;
+          usageCount: number;
+          status?: 'PENDING' | 'APPROVED';
+        }[]
+      >(cacheKey);
       if (cached && cached.length > 0 && !options?.forceRefresh) {
         if (isActive()) {
           setTagSuggestions(cached);
@@ -560,7 +610,9 @@ export default function CreateDesignComposerScreen() {
     (step: 'category' | 'subcategory') => {
       setDraftCategoryId(form.categoryId);
       setDraftSubCategoryId(form.subCategoryId);
-      setCategoryStep(step === 'subcategory' && form.categoryId ? 'subcategory' : 'category');
+      setCategoryStep(
+        step === 'subcategory' && form.categoryId ? 'subcategory' : 'category',
+      );
       setCategoryOpen(true);
     },
     [form.categoryId, form.subCategoryId],
@@ -613,7 +665,11 @@ export default function CreateDesignComposerScreen() {
   const renderDiscoverySections = useCallback(
     (dimensions: FilterDimensionOption[], emptyMessage: string) => {
       if (dimensions.length === 0) {
-        return <AppText variant="body" tone="muted">{emptyMessage}</AppText>;
+        return (
+          <AppText variant="body" tone="muted">
+            {emptyMessage}
+          </AppText>
+        );
       }
 
       return dimensions.map((dimension) => {
@@ -626,7 +682,9 @@ export default function CreateDesignComposerScreen() {
         return (
           <View key={dimension.id} style={styles.sheetSection}>
             <View style={styles.sheetSectionHeader}>
-              <AppText variant="bodyBold">{getDiscoveryDimensionLabel(dimension.slug, dimension.name)}</AppText>
+              <AppText variant="bodyBold">
+                {getDiscoveryDimensionLabel(dimension.slug, dimension.name)}
+              </AppText>
               {help ? (
                 <AppText variant="captionRegular" tone="muted">
                   {help}
@@ -639,8 +697,16 @@ export default function CreateDesignComposerScreen() {
                   <Chip
                     key={value.id}
                     label={value.name}
-                    selected={(filterSelection[dimension.id] ?? []).includes(value.id)}
-                    onPress={() => toggleFilterValue(dimension.id, value.id, dimension.isMulti)}
+                    selected={(filterSelection[dimension.id] ?? []).includes(
+                      value.id,
+                    )}
+                    onPress={() =>
+                      toggleFilterValue(
+                        dimension.id,
+                        value.id,
+                        dimension.isMulti,
+                      )
+                    }
                   />
                 ))}
               </View>
@@ -679,15 +745,10 @@ export default function CreateDesignComposerScreen() {
         <ScrollView
           style={styles.flex}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.content,
-            // Extra bottom room while the keyboard is up so the focused field can
-            // scroll clear of the keyboard instead of sitting behind it.
-            keyboardHeight > 0 ? { paddingBottom: tokens.spacing.md + keyboardHeight } : null,
-          ]}
+          contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
-          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          automaticallyAdjustKeyboardInsets={false}
         >
           <View style={styles.mediaSection}>
             <View style={styles.sectionTopRow}>
@@ -733,16 +794,36 @@ export default function CreateDesignComposerScreen() {
           </View>
 
           {missingRequiredFields.length > 0 && canSaveDraft ? (
-            <Card padding="md" style={[styles.formCard, { borderColor: theme.colors.danger, backgroundColor: theme.colors.surfaceAlt }]}>
-              <AppText variant="bodyBold" tone="danger">Missing required fields</AppText>
-              <AppText variant="captionRegular" tone="muted" style={{ marginTop: tokens.spacing.xs }}>
+            <Card
+              padding="md"
+              style={[
+                styles.formCard,
+                {
+                  borderColor: theme.colors.danger,
+                  backgroundColor: theme.colors.surfaceAlt,
+                },
+              ]}
+            >
+              <AppText variant="bodyBold" tone="danger">
+                Missing required fields
+              </AppText>
+              <AppText
+                variant="captionRegular"
+                tone="muted"
+                style={{ marginTop: tokens.spacing.xs }}
+              >
                 {missingRequiredFields.join(' • ')}
               </AppText>
             </Card>
           ) : null}
 
-          <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
-            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>Basic details</AppText>
+          <Card
+            padding="lg"
+            style={[styles.formCard, { borderColor: theme.colors.border }]}
+          >
+            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>
+              Basic details
+            </AppText>
             <View style={styles.copyBlock}>
               <RequiredFieldLabel required>Title</RequiredFieldLabel>
               <Input
@@ -754,7 +835,12 @@ export default function CreateDesignComposerScreen() {
                 placeholder="Title"
                 containerStyle={styles.copyField}
               />
-              <View style={[styles.copyDivider, { backgroundColor: theme.colors.border }]} />
+              <View
+                style={[
+                  styles.copyDivider,
+                  { backgroundColor: theme.colors.border },
+                ]}
+              />
               <RequiredFieldLabel>Description</RequiredFieldLabel>
               <Input
                 label="Description"
@@ -769,8 +855,13 @@ export default function CreateDesignComposerScreen() {
             </View>
           </Card>
 
-          <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
-            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>Categorization</AppText>
+          <Card
+            padding="lg"
+            style={[styles.formCard, { borderColor: theme.colors.border }]}
+          >
+            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>
+              Categorization
+            </AppText>
             <OptionRow
               leading="🏷️"
               title="What is it?"
@@ -778,6 +869,7 @@ export default function CreateDesignComposerScreen() {
               subtitle="Choose the garment or item family."
               value={categoryValue}
               valueTone={form.categoryId ? 'muted' : 'danger'}
+              valueState={form.categoryId ? 'selected' : 'error'}
               onPress={() => openCategorySheet('category')}
             />
             <OptionRow
@@ -787,6 +879,7 @@ export default function CreateDesignComposerScreen() {
               subtitle="Choose the specific garment type."
               value={garmentTypeValue}
               valueTone={form.subCategoryId ? 'muted' : 'danger'}
+              valueState={form.subCategoryId ? 'selected' : 'error'}
               onPress={() => openCategorySheet('subcategory')}
             />
             <OptionRow
@@ -794,8 +887,13 @@ export default function CreateDesignComposerScreen() {
               title="Hashtags"
               required
               subtitle="Add searchable social tags."
-              value={selectedTags.length > 0 ? `${selectedTags.length} selected` : 'Select'}
+              value={
+                selectedTags.length > 0
+                  ? `${selectedTags.length} selected`
+                  : 'Select'
+              }
               valueTone={selectedTags.length > 0 ? 'muted' : 'danger'}
+              valueState={selectedTags.length > 0 ? 'selected' : 'error'}
               divider={false}
               onPress={() => setTagsOpen(true)}
             />
@@ -807,7 +905,12 @@ export default function CreateDesignComposerScreen() {
                     label={normalizeHashtagLabel(tag)}
                     selected
                     onPress={() => {
-                      updateField('tagsInput', selectedTags.filter((entry) => entry !== tag).join(', '));
+                      updateField(
+                        'tagsInput',
+                        selectedTags
+                          .filter((entry) => entry !== tag)
+                          .join(', '),
+                      );
                     }}
                   />
                 ))}
@@ -815,48 +918,78 @@ export default function CreateDesignComposerScreen() {
             ) : null}
           </Card>
 
-          <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
-            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>Audience & Style</AppText>
+          <Card
+            padding="lg"
+            style={[styles.formCard, { borderColor: theme.colors.border }]}
+          >
+            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>
+              Audience & Style
+            </AppText>
             <OptionRow
               title="Who is it for?"
               subtitle="Helps buyers discover styles that fit them."
               value={audienceLabel}
+              valueState="selected"
               onPress={() => setAudienceOpen(true)}
             />
             <OptionRow
               title="Age group"
               subtitle="Choose whether this is designed for adults or kids."
               value={targetAgeLabel}
+              valueState="selected"
               onPress={() => setAgeGroupOpen(true)}
             />
             <OptionRow
               title="Style details"
               required
               subtitle="Style, fabric, color family, and fit."
-              value={styleDetailsCount > 0 ? `${styleDetailsCount} selected` : selectedDiscoveryFilterCount > 0 ? 'Optional' : 'Select'}
+              value={
+                styleDetailsCount > 0
+                  ? `${styleDetailsCount} selected`
+                  : selectedDiscoveryFilterCount > 0
+                    ? 'Optional'
+                    : 'Select'
+              }
               valueTone={selectedDiscoveryFilterCount > 0 ? 'muted' : 'danger'}
+              valueState={
+                selectedDiscoveryFilterCount > 0 ? 'selected' : 'error'
+              }
               onPress={() => setStyleDetailsOpen(true)}
             />
             <OptionRow
               title="Cultural vibe"
               subtitle="Heritage signals like Ankara, Aso Ebi, or Adire."
-              value={heritageCount > 0 ? `${heritageCount} selected` : 'Optional'}
+              value={
+                heritageCount > 0 ? `${heritageCount} selected` : 'Optional'
+              }
+              valueState={heritageCount > 0 ? 'selected' : 'placeholder'}
               onPress={() => setHeritageOpen(true)}
             />
             <OptionRow
               title="Where would you wear it?"
               subtitle="Wedding, office, party, church, or everyday wear."
-              value={occasionCount > 0 ? `${occasionCount} selected` : 'Optional'}
+              value={
+                occasionCount > 0 ? `${occasionCount} selected` : 'Optional'
+              }
+              valueState={occasionCount > 0 ? 'selected' : 'placeholder'}
               divider={false}
               onPress={() => setOccasionOpen(true)}
             />
           </Card>
 
-          <Card padding="lg" style={[styles.formCard, { borderColor: theme.colors.border }]}>
-            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>Availability & Pricing</AppText>
+          <Card
+            padding="lg"
+            style={[styles.formCard, { borderColor: theme.colors.border }]}
+          >
+            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>
+              Availability & Pricing
+            </AppText>
             <OptionRow
               title="Price"
               value={formatPriceSummary(form.minPrice, form.maxPrice)}
+              valueState={
+                form.minPrice || form.maxPrice ? 'selected' : 'placeholder'
+              }
               onPress={() => setPriceOpen(true)}
             />
             <OptionRow
@@ -864,6 +997,7 @@ export default function CreateDesignComposerScreen() {
               title="Availability"
               subtitle={`${sizingLabel} · ${fitPreferenceLabel}`}
               value={availabilityLabel}
+              valueState="selected"
               onPress={() => setAvailabilityOpen(true)}
             />
             <OptionRow
@@ -878,27 +1012,44 @@ export default function CreateDesignComposerScreen() {
               }
               value={form.customOrderEnabled ? 'Enabled' : 'Disabled'}
               valueTone={customOrderNeedsAttention ? 'danger' : undefined}
+              valueState={customOrderNeedsAttention ? 'error' : 'selected'}
               onPress={() => setCustomOrdersOpen(true)}
             />
             <OptionRow
               leading="🌍"
               title="Who can see this?"
-              value={PRIVACY_OPTIONS.find((entry) => entry.value === form.visibility)?.label ?? 'Everyone'}
+              value={
+                PRIVACY_OPTIONS.find((entry) => entry.value === form.visibility)
+                  ?.label ?? 'Everyone'
+              }
+              valueState="selected"
               divider={false}
               onPress={() => setPrivacyOpen(true)}
             />
           </Card>
 
           {loadingError ? (
-            <Card padding="md" style={[styles.requiredCard, { borderColor: theme.colors.border }]}>
-              <AppText variant="bodyBold">Metadata could not fully load</AppText>
+            <Card
+              padding="md"
+              style={[
+                styles.requiredCard,
+                { borderColor: theme.colors.border },
+              ]}
+            >
+              <AppText variant="bodyBold">
+                Metadata could not fully load
+              </AppText>
               <AppText variant="captionRegular" tone="muted">
                 {loadingError}
               </AppText>
-              <Button title="Retry metadata" size="sm" variant="secondary" onPress={() => void retryBootstrap()} />
+              <Button
+                title="Retry metadata"
+                size="sm"
+                variant="secondary"
+                onPress={() => void retryBootstrap()}
+              />
             </Card>
           ) : null}
-
         </ScrollView>
         <View
           style={[
@@ -906,26 +1057,42 @@ export default function CreateDesignComposerScreen() {
             {
               backgroundColor: theme.colors.bg,
               borderTopColor: theme.colors.border,
-              paddingBottom: keyboardHeight > 0 && Platform.OS === 'ios'
-                ? tokens.spacing.lg // keyboard covers the safe area
-                : Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
+              paddingBottom: Math.max(
+                insets.bottom + tokens.spacing.lg,
+                tokens.spacing['2xl'],
+              ),
               paddingHorizontal: tokens.spacing.lg,
             },
           ]}
         >
           {!canSaveDraft ? (
-            <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+            <AppText
+              variant="captionRegular"
+              tone="muted"
+              style={styles.draftHelper}
+            >
               Add at least one field or one media item to save a draft.
             </AppText>
           ) : !canPreview ? (
-            <AppText variant="captionRegular" tone="danger" style={styles.draftHelper}>
-              Required: {missingRequiredFields[0]} {missingRequiredFields.length > 1 ? `(+${missingRequiredFields.length - 1} more)` : ''}
+            <AppText
+              variant="captionRegular"
+              tone="danger"
+              style={styles.draftHelper}
+            >
+              Required: {missingRequiredFields[0]}{' '}
+              {missingRequiredFields.length > 1
+                ? `(+${missingRequiredFields.length - 1} more)`
+                : ''}
             </AppText>
           ) : null}
           <View style={styles.actionRow}>
             <View style={styles.actionButton}>
               <Button
-                title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
+                title={
+                  saveState.action === 'draft'
+                    ? 'Saving draft...'
+                    : 'Save draft'
+                }
                 variant="secondary"
                 loading={saveState.action === 'draft'}
                 disabled={!canSaveDraft || Boolean(saveState.action)}
@@ -937,7 +1104,9 @@ export default function CreateDesignComposerScreen() {
               <Button
                 title="Preview"
                 disabled={!canPreview}
-                onPress={() => router.push('/catalog/create-design/preview' as any)}
+                onPress={() =>
+                  router.push('/catalog/create-design/preview' as any)
+                }
                 fullWidth
               />
             </View>
@@ -1144,7 +1313,7 @@ export default function CreateDesignComposerScreen() {
               Buyers can request this design as a custom job.
             </AppText>
           </View>
-          <Switch
+          <ThemedSwitch
             value={form.customOrderEnabled}
             onValueChange={(value) => {
               updateField('customOrderEnabled', value);
@@ -1205,7 +1374,7 @@ export default function CreateDesignComposerScreen() {
                   Allow buyers to pay extra for faster production.
                 </AppText>
               </View>
-              <Switch
+              <ThemedSwitch
                 value={form.rushEnabled}
                 onValueChange={(value) => updateField('rushEnabled', value)}
               />
@@ -1592,5 +1761,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-
-
