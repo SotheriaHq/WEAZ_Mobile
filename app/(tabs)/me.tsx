@@ -31,7 +31,7 @@ import { profileDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
 import { navPerf } from '@/src/utils/navPerf';
-import { topLevelNavigate } from '@/src/utils/mobileNavigation';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { compressPickedImage } from '@/src/utils/imageCompression';
 import {
   refreshUnreadNotificationCount,
@@ -315,17 +315,14 @@ function SavedDesignCard({ item }: { item: SavedItem }) {
     navPerf.tap('wishlist→product');
     navPerf.navigationCalled();
     if (item.targetType === 'PRODUCT') {
-      // Phase 2 guard
-    const { drillDownPush } = require('@/src/utils/mobileNavigation');
-    drillDownPush({ pathname: '/products/[productId]', params: { productId: destinationId } } as any);
+      drillDownPush({ pathname: '/products/[productId]', params: { productId: destinationId } } as any);
       return;
     }
     if (item.targetType === 'COLLECTION') {
-      const { drillDownPush } = require('@/src/utils/mobileNavigation');
-    drillDownPush(routeForStoreCollectionTarget(destinationId) as any);
+      drillDownPush(routeForStoreCollectionTarget(destinationId) as any);
       return;
     }
-    router.push(
+    drillDownPush(
       routeForDesignTarget(destinationId, {
         legacyCollectionId: item.legacyCollectionId ?? item.collectionId ?? destinationId,
       }) as any,
@@ -366,7 +363,7 @@ function PatchRow({ brand }: { brand: PatchedBrand }) {
   return (
     <Pressable
       onPress={() =>
-        router.push({
+        drillDownPush({
           pathname: '/catalog/[brandId]',
           params: { brandId: brand.id },
         } as any)

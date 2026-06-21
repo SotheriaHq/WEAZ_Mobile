@@ -32,7 +32,7 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
-import { backOrNavigate } from '@/src/utils/mobileNavigation';
+import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { navPerf } from '@/src/utils/navPerf';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
 
@@ -376,7 +376,7 @@ export function CollectionCommerceViewer({
     const selection = selections[item.productId] ?? {};
     return (
       <Pressable
-        onPress={() => router.push({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
+        onPress={() => drillDownPush({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
         style={({ pressed }) => [
           styles.productCard,
           { backgroundColor: theme.colors.surface, borderColor: selected ? theme.colors.primary : theme.colors.border },
@@ -476,7 +476,7 @@ export function CollectionCommerceViewer({
               title="View"
               size="sm"
               variant="outline"
-              onPress={() => router.push({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
+              onPress={() => drillDownPush({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
             />
           </View>
         </View>
@@ -569,7 +569,7 @@ export function CollectionCommerceViewer({
             </View>
 
             <View style={styles.headerActions}>
-              <Button title="Open gallery" variant="outline" onPress={() => router.push({ pathname: '/collection-gallery', params: { collectionId: normalizedCollectionId } } as any)} />
+              <Button title="Open gallery" variant="outline" onPress={() => drillDownPush({ pathname: '/collection-gallery', params: { collectionId: normalizedCollectionId } } as any)} />
               <Button title="Message brand" variant="outline" onPress={handleMessage} disabled={!status.collection.brandId || isOwnBrand} />
             </View>
 

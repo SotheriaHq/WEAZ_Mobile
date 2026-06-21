@@ -76,7 +76,7 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { formatCount } from '@/src/utils/formatCount';
 import { env } from '@/src/config/env';
 import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
-import { backOrNavigate } from '@/src/utils/mobileNavigation';
+import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { perfMark } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
 import {
@@ -925,7 +925,7 @@ export default function CatalogScreen() {
       return;
     }
 
-    router.push(
+    drillDownPush(
       collection.isAvailableInStore
         ? routeForStoreCollectionTarget(collection.id)
         : routeForDesignTarget(collection.id, { legacyCollectionId: collection.id }) as any,

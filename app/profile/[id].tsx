@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
-import { backOrNavigate, topLevelNavigate } from '@/src/utils/mobileNavigation';
+import { useLocalSearchParams } from 'expo-router';
+import { backOrNavigate, drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
@@ -49,7 +49,7 @@ function PatchRow({ brand }: { brand: PatchedBrand }) {
 
   return (
     <Pressable
-      onPress={() => router.push({ pathname: '/catalog/[brandId]', params: { brandId: brand.id } } as any)}
+      onPress={() => drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: brand.id } } as any)}
       style={({ pressed }) => [
         styles.patchCard,
         { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },

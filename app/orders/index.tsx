@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -134,7 +136,7 @@ function OrderRow({ item }: { item: BuyerOrderSummary }) {
 
   return (
     <Pressable
-      onPress={() => router.push({ pathname: '/orders/[orderId]', params: { orderId: item.id } } as any)}
+      onPress={() => drillDownPush({ pathname: '/orders/[orderId]', params: { orderId: item.id } } as any)}
       style={({ pressed }) => [pressed ? styles.pressed : null]}
     >
       <Card padding="md" style={[styles.card, { borderColor: theme.colors.border }]}>

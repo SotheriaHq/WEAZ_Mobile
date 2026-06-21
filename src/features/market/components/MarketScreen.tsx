@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
-import { topLevelNavigate } from '@/src/utils/mobileNavigation';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 
@@ -1826,10 +1826,10 @@ export function MarketScreen() {
     void flushMarketSignals();
 
     if (item.kind === 'product') {
-      router.push({ pathname: '/products/[productId]', params: { productId: item.product.id } } as any);
+      drillDownPush({ pathname: '/products/[productId]', params: { productId: item.product.id } } as any);
       return;
     }
-    router.push({
+    drillDownPush({
       pathname: '/market-viewer',
       params: {
         sourceType: 'DESIGN',
@@ -1851,7 +1851,7 @@ export function MarketScreen() {
       sectionKey: 'latest-collections',
     });
     void flushMarketSignals();
-    router.push({
+    drillDownPush({
       pathname: '/collection-viewer',
       params: { collectionId: collection.id, returnTo: '/(tabs)/discover' },
     } as any);
@@ -1869,7 +1869,7 @@ export function MarketScreen() {
     void flushMarketSignals();
     navPerf.tap('market→section');
     navPerf.navigationCalled();
-    router.push({
+    drillDownPush({
       pathname: '/market-section',
       params: { sectionKey },
     } as any);
@@ -1889,11 +1889,11 @@ export function MarketScreen() {
     void flushMarketSignals();
 
     if (targetType === 'PRODUCT' && targetId) {
-      router.push({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
+      drillDownPush({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
       return;
     }
     if (targetType === 'DESIGN' && targetId) {
-      router.push({
+      drillDownPush({
         pathname: '/market-viewer',
         params: {
           sourceType: 'DESIGN',
@@ -1907,14 +1907,14 @@ export function MarketScreen() {
       return;
     }
     if (targetType === 'COLLECTION' && targetId) {
-      router.push({
+      drillDownPush({
         pathname: '/collection-viewer',
         params: { collectionId: targetId, returnTo: '/(tabs)/discover' },
       } as any);
       return;
     }
     if (targetType === 'BRAND' && targetId) {
-      router.push({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
+      drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
       return;
     }
     if (targetType === 'CATEGORY') {

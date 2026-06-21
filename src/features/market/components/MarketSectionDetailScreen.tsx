@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
-import { topLevelNavigate } from '@/src/utils/mobileNavigation';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
@@ -77,11 +77,11 @@ const openItem = (item: MarketSectionItem, sectionKey: string) => {
   void flushMarketSignals();
 
   if (targetType === 'PRODUCT') {
-    router.push({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
+    drillDownPush({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
     return;
   }
   if (targetType === 'DESIGN') {
-    router.push({
+    drillDownPush({
       pathname: '/market-viewer',
       params: {
         sourceType: 'DESIGN',
@@ -95,14 +95,14 @@ const openItem = (item: MarketSectionItem, sectionKey: string) => {
     return;
   }
   if (targetType === 'COLLECTION') {
-    router.push({
+    drillDownPush({
       pathname: '/collection-viewer',
       params: { collectionId: targetId, returnTo: `/market-section?sectionKey=${sectionKey}` },
     } as any);
     return;
   }
   if (targetType === 'BRAND') {
-    router.push({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
+    drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
     return;
   }
   // Top-level fallback when the section item has no drill-down target — navigate

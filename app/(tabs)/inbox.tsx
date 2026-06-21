@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { router } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -612,7 +614,7 @@ export default function InboxScreen() {
   const handlePressConversation = useCallback((item: ConversationSummary) => {
     navPerf.tap('inbox→thread');
     navPerf.navigationCalled();
-    router.push({
+    drillDownPush({
       pathname: '/messages/[threadId]',
       params: buildThreadParams(item),
     } as any);

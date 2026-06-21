@@ -45,6 +45,7 @@ import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { perfMark } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { fetchMarketFilterChipsQuery } from '@/src/query/bootstrapQueries';
 import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
 import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
@@ -1675,7 +1676,7 @@ export function MarketFeedScreen() {
       brandId: normalizedBrandId,
       feedPosition: activePageIndex,
     });
-    router.push({ pathname: '/catalog/[brandId]', params: { brandId: normalizedBrandId } } as any);
+    drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: normalizedBrandId } } as any);
   }, [activePageIndex]);
 
   const handleOpenSearch = useCallback(() => {
