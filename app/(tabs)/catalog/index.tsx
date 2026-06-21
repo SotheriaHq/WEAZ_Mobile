@@ -253,6 +253,20 @@ const CreateMenuWrapper = forwardRef<{ open: (e?: any) => void }, { options: Flo
 });
 
 export default function CatalogScreen() {
+  const flowKey = 'catalog';
+  // Phase 1 instrumentation
+  React.useEffect(() => {
+    navPerf.screenMounted(flowKey);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible(flowKey);
+  }, []);
+
+  React.useEffect(() => {
+    navPerf.firstVisibleUi(flowKey);
+  }, []);
+
   const { brandId: routeBrandId, tab: routeTabParam, visibility: routeVisibilityParam, productId: routeProductIdParam } = useLocalSearchParams<{
     brandId?: string;
     tab?: string | string[];

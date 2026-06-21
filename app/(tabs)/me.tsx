@@ -445,8 +445,11 @@ export default function BuyerProfileScreen() {
 
   useEffect(() => {
     navPerf.screenMounted('tabs→me');
-    navPerf.shellVisible('tabs→me');
     navPerf.firstVisibleUi('tabs→me');
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible('tabs→me');
   }, []);
   const savedLooksOpenedTrackedRef = useRef(false);
   const [fittingsOpen, setFittingsOpen] = useState(false);

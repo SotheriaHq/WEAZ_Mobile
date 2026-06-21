@@ -1305,6 +1305,20 @@ function EditorialCard({
 }
 
 export function MarketScreen() {
+  const flowKey = 'market';
+  // Phase 1 instrumentation (gated)
+  React.useEffect(() => {
+    navPerf.screenMounted(flowKey);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible(flowKey);
+  }, []);
+
+  React.useEffect(() => {
+    navPerf.firstVisibleUi(flowKey);
+  }, []);
+
   const { theme, scheme } = useTheme();
   const { status } = useAuth();
   const toast = useToast();

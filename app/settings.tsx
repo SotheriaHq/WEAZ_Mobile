@@ -93,7 +93,10 @@ export default function SettingsScreen() {
   React.useEffect(() => {
     navPerf.screenMounted('profile-to-settings');
     navPerf.firstVisibleUi('profile-to-settings');
-    navPerf.dataReady('profile-to-settings');
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible('profile-to-settings');
   }, []);
 
   const sections = React.useMemo<SettingsSection[]>(() => {

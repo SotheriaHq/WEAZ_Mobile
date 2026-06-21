@@ -204,10 +204,13 @@ export function NativeIslandBottomNav({
   const handleItemPressIn = React.useCallback(
     (item: NativeIslandNavItem) => {
       const navFlow = item.navFlow ?? item.key;
+      const targetRoute = item.targetRoute ?? undefined;
       setPressedItemKey(item.key);
       setImmediateActiveKey(item.key);
       setImmediateActiveNavFlow(navFlow);
-      navPerf.tap(navFlow);
+      navPerf.tapPressIn(navFlow, { target: targetRoute });
+      navPerf.optimisticActiveSet(navFlow, { target: targetRoute });
+      navPerf.tap(navFlow); // keep existing for compat
       navPerf.pressedFeedbackVisible(navFlow);
       navPerf.activeIndicatorIntent(navFlow);
       onPressIn?.(item);

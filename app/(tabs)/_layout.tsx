@@ -194,11 +194,14 @@ export default function TabLayout() {
 
   const jumpToIslandTab = useCallback(
     (tabName: string, fallbackRoute: string) => {
+      navPerf.routeCallStart(tabName, { target: fallbackRoute });
       if (dispatchTabNavigationAction('JUMP_TO', tabName)) {
+        navPerf.routeCallEnd(tabName, { target: fallbackRoute });
         return;
       }
 
       router.navigate(fallbackRoute as any);
+      navPerf.routeCallEnd(tabName, { target: fallbackRoute });
     },
     [dispatchTabNavigationAction],
   );
@@ -236,6 +239,7 @@ export default function TabLayout() {
     // one-frame gap lets the indicator paint without inheriting destination
     // render cost.
     cancelPendingRouteFrame();
+    navPerf.routeScheduled(navFlow);
     pendingRouteFrameRef.current = requestAnimationFrame(() => {
       pendingRouteFrameRef.current = null;
       navPerf.frameYieldBeforeRoute(navFlow);
@@ -324,7 +328,9 @@ export default function TabLayout() {
     const navFlow = isBrand ? 'tabs→catalog' : 'tabs→me';
     scheduleRouteAfterFrame(navFlow, () => {
       navPerf.navigationCalled(navFlow);
+      navPerf.routeCallStart(navFlow, { target: isBrand ? '/catalog' : '/(tabs)/me' });
       jumpToIslandTab(isBrand ? 'catalog' : 'me', isBrand ? '/catalog' : '/(tabs)/me');
+      navPerf.routeCallEnd(navFlow, { target: isBrand ? '/catalog' : '/(tabs)/me' });
     });
   }, [isBrand, jumpToIslandTab, scheduleRouteAfterFrame]);
 
@@ -334,7 +340,9 @@ export default function TabLayout() {
         const navFlow = 'tabs→login';
         scheduleRouteAfterFrame(navFlow, () => {
           navPerf.navigationCalled(navFlow);
+          navPerf.routeCallStart(navFlow, { target: '/(auth)/login' });
           router.replace({ pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as any);
+          navPerf.routeCallEnd(navFlow, { target: '/(auth)/login' });
         });
         return;
       }
@@ -402,6 +410,7 @@ export default function TabLayout() {
   }, [displayedActiveKey, islandItems, islandWidth, pathname, windowWidth]);
 
   useEffect(() => {
+    navPerf.setContext(null, null, pathname);
     navPerf.pathChanged(pathname);
   }, [pathname]);
 
@@ -425,12 +434,15 @@ export default function TabLayout() {
         const tabRouteName = getIslandTabRouteName(item.key, isBrand);
         scheduleRouteAfterFrame(navFlow, () => {
           navPerf.navigationCalled(navFlow);
+          navPerf.routeCallStart(navFlow, { target: nextRoute });
           if (tabRouteName) {
             jumpToIslandTab(tabRouteName, nextRoute);
+            navPerf.routeCallEnd(navFlow, { target: nextRoute });
             return;
           }
 
           router.navigate(nextRoute as any);
+          navPerf.routeCallEnd(navFlow, { target: nextRoute });
         });
       }
     },

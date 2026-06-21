@@ -224,6 +224,17 @@ function SearchResultRow({
 }
 
 export default function SearchScreen() {
+  const flowKey = 'search';
+  React.useEffect(() => {
+    navPerf.screenMounted(flowKey);
+  }, []);
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible(flowKey);
+  }, []);
+  React.useEffect(() => {
+    navPerf.firstVisibleUi(flowKey);
+  }, []);
+
   const params = useLocalSearchParams<{ q?: string | string[]; type?: string | string[]; autoSubmit?: string | string[] }>();
   const initialQuery = Array.isArray(params.q) ? params.q[0] : params.q ?? '';
   const initialType = Array.isArray(params.type) ? params.type[0] : params.type;

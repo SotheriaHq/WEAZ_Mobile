@@ -305,6 +305,20 @@ function MessagesSkeleton({ bottomPadding }: { bottomPadding: number }) {
 }
 
 export default function InboxScreen() {
+  const flowKey = 'inbox';
+  // Phase 1 nav perf markers (gated, no behavior change)
+  React.useEffect(() => {
+    navPerf.screenMounted(flowKey);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible(flowKey);
+  }, []);
+
+  React.useEffect(() => {
+    navPerf.firstVisibleUi(flowKey);
+  }, []);
+
   const { theme } = useTheme();
   const { standardScreenBottomPadding } = useScreenChrome();
   const { status, token, user } = useAuth();

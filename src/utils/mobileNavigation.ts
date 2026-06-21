@@ -1,4 +1,5 @@
 import { router, type Href } from 'expo-router';
+import { usePathname } from 'expo-router';
 
 import { navPerf } from '@/src/utils/navPerf';
 
@@ -34,14 +35,20 @@ import { navPerf } from '@/src/utils/navPerf';
 
 /** Switch to a persistent top-level destination, reusing any existing instance. */
 export function topLevelNavigate(href: Href) {
+  const target = typeof href === 'string' ? href : (href as any)?.pathname ?? String(href);
+  navPerf.routeCallStart(undefined, { target });
   navPerf.navigationCalled();
   router.navigate(href as never);
+  navPerf.routeCallEnd(undefined, { target });
 }
 
 /** Open a true drill-down detail screen on top of the current screen. */
 export function drillDownPush(href: Href) {
+  const target = typeof href === 'string' ? href : (href as any)?.pathname ?? String(href);
+  navPerf.routeCallStart(undefined, { target });
   navPerf.navigationCalled();
   router.push(href as never);
+  navPerf.routeCallEnd(undefined, { target });
 }
 
 /**
@@ -50,12 +57,17 @@ export function drillDownPush(href: Href) {
  * fallback's warm state on a subsequent return.
  */
 export function backOrNavigate(fallback: Href) {
+  const target = typeof fallback === 'string' ? fallback : (fallback as any)?.pathname ?? String(fallback);
+  navPerf.routeCallStart(undefined, { target: 'backOrNavigate' });
   navPerf.navigationCalled();
   if (router.canGoBack()) {
     router.back();
+    navPerf.routeCallEnd(undefined, { target: 'back' });
     return;
   }
+  navPerf.routeCallStart(undefined, { target });
   router.navigate(fallback as never);
+  navPerf.routeCallEnd(undefined, { target });
 }
 
 /**
@@ -64,11 +76,15 @@ export function backOrNavigate(fallback: Href) {
  * `dismissTo` is unavailable so the call can never crash.
  */
 export function dismissToSource(href: Href) {
+  const target = typeof href === 'string' ? href : (href as any)?.pathname ?? String(href);
+  navPerf.routeCallStart(undefined, { target });
   navPerf.navigationCalled();
   const dismissTo = (router as unknown as { dismissTo?: (href: never) => void }).dismissTo;
   if (typeof dismissTo === 'function') {
     dismissTo.call(router, href as never);
+    navPerf.routeCallEnd(undefined, { target });
     return;
   }
   router.navigate(href as never);
+  navPerf.routeCallEnd(undefined, { target });
 }

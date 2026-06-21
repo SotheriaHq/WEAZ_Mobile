@@ -639,6 +639,22 @@ const FeedSkeleton = ({
 };
 
 export function MarketFeedScreen() {
+  const flowKey = 'runway';
+  // Phase 1 instrumentation - safe, gated, no behavior change
+  React.useEffect(() => {
+    navPerf.screenMounted(flowKey);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible(flowKey);
+  }, []);
+
+  React.useEffect(() => {
+    // Approximate first visible UI on initial mount (shell + basic structure)
+    // More precise placement (e.g. after first media or list item layout) can be added later.
+    navPerf.firstVisibleUi(flowKey);
+  }, []);
+
   const { scheme, theme } = useTheme();
   const { status, user } = useAuth();
   const toast = useToast();
