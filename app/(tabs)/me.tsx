@@ -315,11 +315,14 @@ function SavedDesignCard({ item }: { item: SavedItem }) {
     navPerf.tap('wishlist→product');
     navPerf.navigationCalled();
     if (item.targetType === 'PRODUCT') {
-      router.push({ pathname: '/products/[productId]', params: { productId: destinationId } } as any);
+      // Phase 2 guard
+    const { drillDownPush } = require('@/src/utils/mobileNavigation');
+    drillDownPush({ pathname: '/products/[productId]', params: { productId: destinationId } } as any);
       return;
     }
     if (item.targetType === 'COLLECTION') {
-      router.push(routeForStoreCollectionTarget(destinationId) as any);
+      const { drillDownPush } = require('@/src/utils/mobileNavigation');
+    drillDownPush(routeForStoreCollectionTarget(destinationId) as any);
       return;
     }
     router.push(
@@ -391,7 +394,10 @@ function OrderRow({ order }: { order: BuyerOrderSummary }) {
   const { theme } = useTheme();
   return (
     <Pressable
-      onPress={() => router.push({ pathname: '/orders/[orderId]', params: { orderId: order.id } } as any)}
+      onPress={() => {
+        const { topLevelNavigate } = require('@/src/utils/mobileNavigation');
+        topLevelNavigate({ pathname: '/orders/[orderId]', params: { orderId: order.id } } as any);
+      }}
       accessibilityRole="button"
       accessibilityLabel={`Open ${order.title}`}
       style={({ pressed }) => [

@@ -71,7 +71,7 @@ function attachNavPerfHelpers() {
 
     // Always attach a raw sequence helper that works even if others are missing
     g.__NAV_PERF_LOGS.sequence = (n = 25) => {
-      return g.__NAV_PERF_LOGS.slice(-n).map(l => {
+      return g.__NAV_PERF_LOGS.slice(-n).map((l: string) => {
         const ev = (l.match(/event=([^ ]+)/) || [])[1] || '';
         const d = (l.match(/deltaMs=([^ ]+)/) || [])[1] || '';
         return ev + ' +' + d + 'ms';
@@ -104,7 +104,7 @@ function attachNavPerfHelpers() {
     // .seq() — prints a short sequence of just the event names + deltas for the last capture
     g.__NAV_PERF_LOGS.seq = (n = 25) => {
       const s = g.__NAV_PERF_LOGS.slice(-n);
-      const lines = s.map(l => {
+      const lines = s.map((l: string) => {
         const ev = (l.match(/event=([^ ]+)/) || [])[1] || '';
         const d = (l.match(/deltaMs=(\d+)/) || [])[1] || '';
         return `${ev} +${d}ms`;
@@ -116,7 +116,7 @@ function attachNavPerfHelpers() {
     // .fullTrace(n) — prints a clean event list with absolute-ish deltas for analysis
     g.__NAV_PERF_LOGS.fullTrace = (n = 30) => {
       const s = g.__NAV_PERF_LOGS.slice(-n);
-      const out = s.map(l => {
+      const out = s.map((l: string) => {
         const ev = (l.match(/event=([^ ]+)/) || [])[1] || '';
         const d = (l.match(/deltaMs=([^ ]+)/) || [])[1] || '';
         const r = (l.match(/route=([^ ]+)/) || [])[1] || '';
@@ -128,7 +128,7 @@ function attachNavPerfHelpers() {
 
     // .seqStr(n) — one-liner string you can copy
     g.__NAV_PERF_LOGS.seqStr = (n = 25) => {
-      return g.__NAV_PERF_LOGS.slice(-n).map(l => {
+      return g.__NAV_PERF_LOGS.slice(-n).map((l: string) => {
         const ev = (l.match(/event=([^ ]+)/) || [])[1] || '';
         const d = (l.match(/deltaMs=([^ ]+)/) || [])[1] || '';
         return ev + ' +' + d + 'ms';
@@ -138,8 +138,8 @@ function attachNavPerfHelpers() {
     // .summary(n) — shows key timing milestones for the last capture
     g.__NAV_PERF_LOGS.summary = (n = 30) => {
       const s = g.__NAV_PERF_LOGS.slice(-n);
-      const get = (needle) => {
-        const line = s.find(l => l.includes(needle));
+      const get = (needle: string) => {
+        const line = s.find((l: string) => l.includes(needle));
         return line ? line.match(/deltaMs=(\d+)/)?.[1] || 'n/a' : 'n/a';
       };
       console.log({
@@ -367,6 +367,16 @@ export const navPerf = {
   /** Update current navigation context (source/target/path) for richer logs */
   setContext(source?: string | null, target?: string | null, pathname?: string | null) {
     setNavContext(source, target, pathname);
+  },
+
+  /**
+   * Record that an in-flight navigation lock was released (path match or
+   * timeout). Phase 2 guard instrumentation: lets a trace show that a lock did
+   * not leak past its navigation.
+   */
+  navigation_lock_released(target?: string | null, _reason?: string) {
+    if (!enabled()) return;
+    emit('navigation_lock_released', activeFlow ?? 'nav', { target });
   },
 };
 

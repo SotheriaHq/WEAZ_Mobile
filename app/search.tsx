@@ -470,8 +470,9 @@ export default function SearchScreen() {
     navPerf.tap(`search→${item.type}`);
     // Recent-search persistence is fire-and-forget; navigation must not wait on it.
     void saveRecentSearch(getRecentQueryForSearchItem(item));
-    navPerf.navigationCalled();
-    router.push(routeForSearchItem(item));
+    // Phase 2: use guarded drill to avoid duplicate search result pushes
+    const { drillDownPush } = require('@/src/utils/mobileNavigation');
+    drillDownPush(routeForSearchItem(item));
   }, []);
 
   const removeRecent = useCallback(async (value: string) => {

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, BackHandler, InteractionManager, Platform } from 'react-native';
-import { Tabs, router, usePathname } from 'expo-router';
+import { Tabs, router, usePathname, type Href } from 'expo-router';
 
 import {
   NativeIslandBottomNav,
@@ -40,6 +40,7 @@ import {
   mapPathnameToIslandKey,
   type NativeIslandKey,
 } from '@/src/navigation/nativeIslandConfig';
+import { withNavigationLock, releaseNavigationLock } from '@/src/utils/mobileNavigation';
 
 // Keep Runway (`index`) as the tab shell's anchor route now that Catalogue is
 // also a (hidden) tab — without this, adding sibling screens can shift Expo
@@ -412,6 +413,10 @@ export default function TabLayout() {
   useEffect(() => {
     navPerf.setContext(null, null, pathname);
     navPerf.pathChanged(pathname);
+    // Sync for central guard same-target check
+    (global as any).__navCurrentPathname = pathname;
+    // Release lock if matches pending target
+    releaseNavigationLock('path_match');
   }, [pathname]);
 
   const handleSelect = useCallback(
@@ -430,20 +435,39 @@ export default function TabLayout() {
 
       const nextRoute = item.targetRoute ?? getNativeIslandRoute(item.key, isBrand);
       if (nextRoute) {
+        const normNext = String(nextRoute).replace('/(tabs)', '');
+        const normCurrent = String(pathname).replace('/(tabs)', '');
+        if (normNext === normCurrent && item.key !== 'bag') {
+          navPerf.mark?.('navigation_same_target_ignored', String(nextRoute));
+          return;
+        }
         const navFlow = item.navFlow ?? getIslandNavFlow(item, isBrand, canOpenProfileMenu);
         const tabRouteName = getIslandTabRouteName(item.key, isBrand);
-        scheduleRouteAfterFrame(navFlow, () => {
-          navPerf.navigationCalled(navFlow);
-          navPerf.routeCallStart(navFlow, { target: nextRoute });
-          if (tabRouteName) {
-            jumpToIslandTab(tabRouteName, nextRoute);
-            navPerf.routeCallEnd(navFlow, { target: nextRoute });
-            return;
-          }
+        // Always seed the nav-perf context so every event in this flow carries
+        // source/target/pathname (Phase 2: "ensure setContext is always passed").
+        navPerf.setContext(pathname, String(nextRoute), pathname);
+        // Phase 2: use the central lock to dedupe rapid island taps. The action
+        // returns a truthy sentinel so a successful dispatch is distinguishable
+        // from a deduped tap (which returns undefined) — without it the duplicate
+        // marker would fire on every successful navigation.
+        const locked = withNavigationLock(nextRoute as Href, () => {
+          scheduleRouteAfterFrame(navFlow, () => {
+            navPerf.navigationCalled(navFlow);
+            navPerf.routeCallStart(navFlow, { target: nextRoute });
+            if (tabRouteName) {
+              jumpToIslandTab(tabRouteName, nextRoute);
+              navPerf.routeCallEnd(navFlow, { target: nextRoute });
+              return;
+            }
 
-          router.navigate(nextRoute as any);
-          navPerf.routeCallEnd(navFlow, { target: nextRoute });
-        });
+            router.navigate(nextRoute as any);
+            navPerf.routeCallEnd(navFlow, { target: nextRoute });
+          });
+          return true;
+        }, { force: false });
+        if (!locked) {
+          navPerf.mark?.('navigation_ignored_duplicate', String(nextRoute));
+        }
       }
     },
     [

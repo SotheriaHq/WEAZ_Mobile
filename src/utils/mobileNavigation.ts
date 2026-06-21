@@ -1,5 +1,4 @@
 import { router, type Href } from 'expo-router';
-import { usePathname } from 'expo-router';
 
 import { navPerf } from '@/src/utils/navPerf';
 
@@ -34,21 +33,94 @@ import { navPerf } from '@/src/utils/navPerf';
  */
 
 /** Switch to a persistent top-level destination, reusing any existing instance. */
+let inFlightTarget: string | null = null;
+let lockTimeoutId: ReturnType<typeof setTimeout> | null = null;
+const LOCK_TIMEOUT_MS = 2000;
+
+function normalizeTarget(href: Href): string {
+  if (typeof href === 'string') return href.split('?')[0];
+  const p = href as any;
+  let base = (p.pathname || '').split('?')[0];
+  if (p.params && Object.keys(p.params).length) {
+    const sorted = Object.entries(p.params).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => `${k}=${v}`).join('&');
+    base += `?${sorted}`;
+  }
+  return base || '/';
+}
+
+function clearLock(reason: string) {
+  if (lockTimeoutId) {
+    clearTimeout(lockTimeoutId);
+    lockTimeoutId = null;
+  }
+  const prev = inFlightTarget;
+  inFlightTarget = null;
+  if (prev) {
+    navPerf.navigation_lock_released?.(prev, reason);
+  }
+}
+
+export function releaseNavigationLock(reason = 'manual') {
+  clearLock(reason);
+}
+
+export function withNavigationLock<T>(href: Href, action: () => T, opts: { force?: boolean } = {}): T | undefined {
+  const target = normalizeTarget(href);
+  const current = (global as any).__navCurrentPathname || null;
+
+  if (!opts.force && inFlightTarget === target) {
+    navPerf.mark?.('navigation_ignored_duplicate', target);
+    return undefined;
+  }
+
+  if (current && normalizeTarget(current) === target && !opts.force) {
+    navPerf.mark?.('navigation_same_target_ignored', target);
+    return undefined;
+  }
+
+  if (inFlightTarget && !opts.force) {
+    // replace pending with new different target
+    clearLock('replaced');
+  }
+
+  inFlightTarget = target;
+  navPerf.mark?.('navigation_locked', target);
+
+  if (lockTimeoutId) clearTimeout(lockTimeoutId);
+  lockTimeoutId = setTimeout(() => {
+    navPerf.navigation_lock_released?.(target, 'timeout');
+    inFlightTarget = null;
+    lockTimeoutId = null;
+  }, LOCK_TIMEOUT_MS);
+
+  try {
+    return action();
+  } finally {
+    // release happens via path match or timeout
+  }
+}
+
 export function topLevelNavigate(href: Href) {
-  const target = typeof href === 'string' ? href : (href as any)?.pathname ?? String(href);
-  navPerf.routeCallStart(undefined, { target });
-  navPerf.navigationCalled();
-  router.navigate(href as never);
-  navPerf.routeCallEnd(undefined, { target });
+  const target = normalizeTarget(href);
+  const result = withNavigationLock(href, () => {
+    navPerf.routeCallStart(undefined, { target });
+    navPerf.navigationCalled();
+    router.navigate(href as never);
+    navPerf.routeCallEnd(undefined, { target });
+  });
+  return result;
 }
 
 /** Open a true drill-down detail screen on top of the current screen. */
 export function drillDownPush(href: Href) {
-  const target = typeof href === 'string' ? href : (href as any)?.pathname ?? String(href);
-  navPerf.routeCallStart(undefined, { target });
-  navPerf.navigationCalled();
-  router.push(href as never);
-  navPerf.routeCallEnd(undefined, { target });
+  const target = normalizeTarget(href);
+  const result = withNavigationLock(href, () => {
+    navPerf.routeCallStart(undefined, { target });
+    navPerf.navigationCalled();
+    router.push(href as never);
+    navPerf.routeCallEnd(undefined, { target });
+  });
+  return result;
 }
 
 /**
@@ -57,17 +129,21 @@ export function drillDownPush(href: Href) {
  * fallback's warm state on a subsequent return.
  */
 export function backOrNavigate(fallback: Href) {
-  const target = typeof fallback === 'string' ? fallback : (fallback as any)?.pathname ?? String(fallback);
-  navPerf.routeCallStart(undefined, { target: 'backOrNavigate' });
-  navPerf.navigationCalled();
-  if (router.canGoBack()) {
-    router.back();
-    navPerf.routeCallEnd(undefined, { target: 'back' });
-    return;
-  }
-  navPerf.routeCallStart(undefined, { target });
-  router.navigate(fallback as never);
-  navPerf.routeCallEnd(undefined, { target });
+  const target = normalizeTarget(fallback);
+  const result = withNavigationLock(fallback, () => {
+    navPerf.routeCallStart(undefined, { target: 'backOrNavigate' });
+    navPerf.navigationCalled();
+    if (router.canGoBack()) {
+      router.back();
+      navPerf.routeCallEnd(undefined, { target: 'back' });
+      clearLock('back');
+      return;
+    }
+    navPerf.routeCallStart(undefined, { target });
+    router.navigate(fallback as never);
+    navPerf.routeCallEnd(undefined, { target });
+  });
+  return result;
 }
 
 /**
@@ -76,15 +152,19 @@ export function backOrNavigate(fallback: Href) {
  * `dismissTo` is unavailable so the call can never crash.
  */
 export function dismissToSource(href: Href) {
-  const target = typeof href === 'string' ? href : (href as any)?.pathname ?? String(href);
-  navPerf.routeCallStart(undefined, { target });
-  navPerf.navigationCalled();
-  const dismissTo = (router as unknown as { dismissTo?: (href: never) => void }).dismissTo;
-  if (typeof dismissTo === 'function') {
-    dismissTo.call(router, href as never);
+  const target = normalizeTarget(href);
+  const result = withNavigationLock(href, () => {
+    navPerf.routeCallStart(undefined, { target });
+    navPerf.navigationCalled();
+    const dismissTo = (router as unknown as { dismissTo?: (href: never) => void }).dismissTo;
+    if (typeof dismissTo === 'function') {
+      dismissTo.call(router, href as never);
+      navPerf.routeCallEnd(undefined, { target });
+      clearLock('dismiss');
+      return;
+    }
+    router.navigate(href as never);
     navPerf.routeCallEnd(undefined, { target });
-    return;
-  }
-  router.navigate(href as never);
-  navPerf.routeCallEnd(undefined, { target });
+  });
+  return result;
 }

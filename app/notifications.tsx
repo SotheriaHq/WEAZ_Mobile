@@ -202,7 +202,9 @@ export default function NotificationsScreen() {
     // this measures tap→navigation_called for the notification open.
     navPerf.tap('notifications→target');
     navPerf.navigationCalled();
-    router.push(routeForNotification(item));
+    // Phase 2: guarded to avoid dup from rapid taps
+    const { drillDownPush } = require('@/src/utils/mobileNavigation');
+    drillDownPush(routeForNotification(item));
   }, []);
 
   const handleMarkAllRead = useCallback(async () => {
