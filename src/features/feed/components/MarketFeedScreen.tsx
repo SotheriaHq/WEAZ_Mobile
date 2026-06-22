@@ -36,6 +36,7 @@ import type { ResolvedTheme } from '@/src/types/theme';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
 import { isUsableImageHttpUrl, prefetchResolvedImageAsset, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
@@ -669,6 +670,7 @@ export function MarketFeedScreen() {
     windowHeight,
     immersiveOverlayBottomClearance,
   } = useScreenChrome();
+  const deferredWorkReady = useDeferredScreenWork();
   
   // Invalidate market feed when app comes to foreground
   // Prevents stale data after backgrounding
@@ -748,6 +750,13 @@ export function MarketFeedScreen() {
     navPerf.screenMounted('tabs→runway');
     navPerf.shellVisible('tabs→runway');
     navPerf.firstVisibleUi('tabs→runway');
+    if (initialFeedSnapshot) {
+      navPerf.mark('cache_hit', 'tabs→runway');
+      navPerf.mark('stale_ui_rendered', 'tabs→runway');
+    } else {
+      navPerf.mark('cache_miss', 'tabs→runway');
+      navPerf.mark('cold_skeleton_rendered', 'tabs→runway');
+    }
   }, []);
   useEffect(() => {
     if (!loading) navPerf.dataReady('tabs→runway');
@@ -1022,7 +1031,7 @@ export function MarketFeedScreen() {
   }, [savingLookByCollectionId]);
 
   useEffect(() => {
-    if (status !== 'authenticated' || items.length === 0) {
+    if (!deferredWorkReady || status !== 'authenticated' || items.length === 0) {
       if (status !== 'authenticated') {
         savedLookByCollectionIdRef.current = {};
         lastSavedCheckKeyRef.current = null;
@@ -1059,11 +1068,12 @@ export function MarketFeedScreen() {
     return () => {
       cancelled = true;
     };
-  }, [items, status, user?.id]);
+  }, [deferredWorkReady, items, status, user?.id]);
 
   useEffect(() => {
+    if (!deferredWorkReady) return;
     void loadPatchedBrands();
-  }, [loadPatchedBrands]);
+  }, [deferredWorkReady, loadPatchedBrands]);
 
   useEffect(() => {
       const activeItem = items[activePageIndex];
@@ -1083,6 +1093,7 @@ export function MarketFeedScreen() {
   }, [activePageIndex, items, pageHeight]);
 
   useEffect(() => {
+    if (!deferredWorkReady) return;
     const nextItem = items[activePageIndex + 1];
     const nextMedia = nextItem ? buildFallbackMediaItems(nextItem)[0] : null;
     if (!nextMedia) return;
@@ -1102,9 +1113,10 @@ export function MarketFeedScreen() {
         sourceField: 'feed.next.preview',
       },
     });
-  }, [activePageIndex, items]);
+  }, [activePageIndex, deferredWorkReady, items]);
 
   useEffect(() => {
+    if (!deferredWorkReady) return undefined;
     let mounted = true;
 
     void fetchMarketFilterChipsQuery().then((chips) => {
@@ -1122,7 +1134,7 @@ export function MarketFeedScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [deferredWorkReady]);
 
   useEffect(() => {
     devLog('HomeFeed', 'Filter change', { activeTag, oldIndex: activePageIndex, reason: 'activeTag changed' });
@@ -1162,7 +1174,9 @@ export function MarketFeedScreen() {
     const cached = await readCachedMarketFeed(cacheIdentity);
     const startedAt = Date.now();
     const wasColdLoad = !cached && !hasLoadedFirstPageRef.current;
+    let didStartBackgroundRefresh = false;
     if (cached) {
+      navPerf.mark('cache_hit', 'tabs→runway');
       const sortedCachedItems = sortFeedItemsForDisplay(cached.snapshot.items);
       devLog('HomeFeed', 'Cache applied', sortedCachedItems.slice(0, 5).map((item, idx) => ({
         index: idx,
@@ -1195,9 +1209,14 @@ export function MarketFeedScreen() {
       }
       // Stale cache - show content immediately but revalidate silently
       setLoading(false);
+      navPerf.mark('stale_ui_rendered', 'tabs→runway');
+      navPerf.mark('background_refresh_started', 'tabs→runway');
+      didStartBackgroundRefresh = true;
     } else {
       // No cache - show skeleton on first load
       setLoading(true);
+      navPerf.mark('cache_miss', 'tabs→runway');
+      if (wasColdLoad) navPerf.mark('cold_skeleton_rendered', 'tabs→runway');
       feedLoadDevLog('summary', {
         cacheHit: false,
         blockingSkeleton: wasColdLoad,
@@ -1257,6 +1276,9 @@ export function MarketFeedScreen() {
       }
     } finally {
       setLoading(false);
+      if (didStartBackgroundRefresh) {
+        navPerf.mark('background_refresh_completed', 'tabs→runway');
+      }
     }
   }, [activeTag, status, user?.id]);
 

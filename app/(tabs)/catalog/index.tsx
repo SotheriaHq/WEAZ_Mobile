@@ -8,7 +8,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
   BackHandler,
-  InteractionManager,
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -92,6 +91,7 @@ import {
 import { THREADLY_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { readWarmScreenUiState, writeWarmScreenUiState } from '@/src/state/screenWarmState';
+import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Types
@@ -276,6 +276,7 @@ export default function CatalogScreen() {
   const { theme, scheme } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { standardScreenBottomPadding } = useScreenChrome();
+  const deferredWorkReady = useDeferredScreenWork();
   const { user } = useAuth();
   const { status, userId, userType, userEmailVerified, updateUser } = useAuthSession();
   const toast = useToast();
@@ -314,6 +315,8 @@ export default function CatalogScreen() {
   // State
   const [profile, setProfile] = useState<BrandProfileDto | null>(null);
   const profileRef = useRef<BrandProfileDto | null>(null);
+  const catalogInitialSurfaceMarkedRef = useRef(false);
+  const catalogBackgroundRefreshActiveRef = useRef(false);
   const [isFocused, setIsFocused] = useState(true);
   useFocusEffect(useCallback(() => { setIsFocused(true); return () => setIsFocused(false); }, []));
   const [designBackgroundTasks, setDesignBackgroundTasks] = useState<DesignEditorBackgroundTask[]>(
@@ -379,17 +382,9 @@ export default function CatalogScreen() {
     ? Math.max(currentHeight ?? estimatedPagerHeight, targetHeight ?? estimatedPagerHeight, estimatedPagerHeight)
     : (targetHeight ?? currentHeight ?? estimatedPagerHeight);
 
-  const [transitionReady, setTransitionReady] = useState(false);
   const [mountedTabs, setMountedTabs] = useState<Set<TabType>>(
     () => new Set<TabType>(routeProductId ? ['Collections', 'Shop'] : [visualActiveTab]),
   );
-
-  useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      setTransitionReady(true);
-    });
-    return () => handle.cancel();
-  }, []);
 
   useEffect(() => {
     setMountedTabs((current) => {
@@ -412,9 +407,9 @@ export default function CatalogScreen() {
   }, [routeProductId]);
 
   useEffect(() => {
-    navPerf.screenMounted('tabsÃ¢â€ â€™catalog');
-    navPerf.shellVisible('tabsÃ¢â€ â€™catalog');
-    navPerf.firstVisibleUi('tabsÃ¢â€ â€™catalog');
+    navPerf.screenMounted('tabs→catalog');
+    navPerf.shellVisible('tabs→catalog');
+    navPerf.firstVisibleUi('tabs→catalog');
   }, []);
 
   useEffect(() => {
@@ -427,7 +422,7 @@ export default function CatalogScreen() {
   // Only call it when the current viewer is an authenticated REGULAR user who is
   // not the owner of this brand.
   const patchEnabled = Boolean(
-    !isOwner && status === 'authenticated' && userType === 'REGULAR' && targetBrandId,
+    deferredWorkReady && !isOwner && status === 'authenticated' && userType === 'REGULAR' && targetBrandId,
   );
   const {
     isPatched,
@@ -472,15 +467,15 @@ export default function CatalogScreen() {
   );
   const draftsQuery = useBrandDraftsQuery({
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId),
+    enabled: isOwner && Boolean(collectionOwnerId) && (visibilityFilter === 'Drafts' || deferredWorkReady),
   });
   const needsAttentionQuery = useBrandNeedsAttentionQuery({ isFocused,
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId),
+    enabled: isOwner && Boolean(collectionOwnerId) && (visibilityFilter === 'Needs Attention' || deferredWorkReady),
   });
   const inReviewQuery = useBrandInReviewQuery({ isFocused,
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId),
+    enabled: isOwner && Boolean(collectionOwnerId) && (visibilityFilter === 'In Review' || deferredWorkReady),
   });
   const effectiveProfile = profileQuery.data !== undefined ? profileQuery.data : profile;
   let effectiveCollections = collectionsQuery.data ?? [];
@@ -644,11 +639,12 @@ export default function CatalogScreen() {
   }, [patchEnabled, refreshPatchStatus]);
 
   useEffect(() => {
+    if (!deferredWorkReady) return undefined;
     setDesignBackgroundTasks(readDesignEditorBackgroundTasks(userId));
     return subscribeDesignEditorBackgroundTasks(() => {
       setDesignBackgroundTasks(readDesignEditorBackgroundTasks(userId));
     });
-  }, [userId]);
+  }, [deferredWorkReady, userId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1478,33 +1474,60 @@ export default function CatalogScreen() {
       : visibilityFilter === 'In Review'
         ? inReviewQuery.isLoading && effectiveCollections.length === 0
         : collectionsQuery.isLoading && effectiveCollections.length === 0;
-  // Warm return must never flash a skeleton. If cached/previous catalogue content
-  // already exists, render it immediately Ã¢â‚¬â€ the transitionReady defer (which only
-  // exists to avoid heavy synchronous work during the nav animation) must not blank
-  // an already-populated screen. The skeleton is reserved for genuine cold loads.
+  const activeListFetching = visibilityFilter === 'Drafts'
+    ? draftsQuery.isFetching
+    : visibilityFilter === 'Needs Attention'
+      ? needsAttentionQuery.isFetching
+      : visibilityFilter === 'In Review'
+        ? inReviewQuery.isFetching
+        : collectionsQuery.isFetching;
+  // Warm return must never flash a skeleton. The skeleton is reserved for a
+  // genuine cold load where neither the profile nor the active grid has data.
   const hasCachedCatalogContent =
     Boolean(effectiveProfile) ||
     effectiveCollections.length > 0 ||
     effectiveDrafts.length > 0;
   const showInitialSkeleton =
     !hasCachedCatalogContent &&
-    (!transitionReady ||
-      Boolean(
-        targetBrandId &&
-        (profileInitialLoading || listInitialLoading),
-      ));
+    Boolean(
+      targetBrandId &&
+      (profileInitialLoading || listInitialLoading),
+    );
   const overlayScrollPadding = standardScreenBottomPadding;
   const shouldMountShopTab = mountedTabs.has('Shop') || Boolean(routeProductId);
   const shouldMountReviewsTab = mountedTabs.has('Reviews');
 
   useEffect(() => {
-    if (!showInitialSkeleton) {
-      navPerf.mark('cached_or_empty_state_visible', 'tabsÃ¢â€ â€™catalog');
+    if (!catalogInitialSurfaceMarkedRef.current) {
+      catalogInitialSurfaceMarkedRef.current = true;
+      if (showInitialSkeleton) {
+        navPerf.mark('cache_miss', 'tabs→catalog');
+        navPerf.mark('cold_skeleton_rendered', 'tabs→catalog');
+      } else if (hasCachedCatalogContent) {
+        navPerf.mark('cache_hit', 'tabs→catalog');
+        navPerf.mark('stale_ui_rendered', 'tabs→catalog');
+        navPerf.mark('cached_or_empty_state_visible', 'tabs→catalog');
+      } else {
+        navPerf.mark('cached_or_empty_state_visible', 'tabs→catalog');
+      }
     }
     if (!showInitialSkeleton && !profileInitialLoading && !listInitialLoading) {
-      navPerf.dataReady('tabsÃ¢â€ â€™catalog');
+      navPerf.dataReady('tabs→catalog');
     }
-  }, [listInitialLoading, profileInitialLoading, showInitialSkeleton]);
+  }, [hasCachedCatalogContent, listInitialLoading, profileInitialLoading, showInitialSkeleton]);
+
+  useEffect(() => {
+    const refreshingCachedUi = hasCachedCatalogContent && (profileQuery.isFetching || activeListFetching);
+    if (refreshingCachedUi && !catalogBackgroundRefreshActiveRef.current) {
+      catalogBackgroundRefreshActiveRef.current = true;
+      navPerf.mark('background_refresh_started', 'tabs→catalog');
+      return;
+    }
+    if (!refreshingCachedUi && catalogBackgroundRefreshActiveRef.current) {
+      catalogBackgroundRefreshActiveRef.current = false;
+      navPerf.mark('background_refresh_completed', 'tabs→catalog');
+    }
+  }, [activeListFetching, hasCachedCatalogContent, profileQuery.isFetching]);
 
   // Tab configuration
   const tabs = [

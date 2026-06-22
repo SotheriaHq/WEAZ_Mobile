@@ -29,6 +29,7 @@ import {
   useMessagingRealtimeChannel,
 } from '@/src/realtime/messaging';
 import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
+import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { navPerf } from '@/src/utils/navPerf';
@@ -324,13 +325,14 @@ export default function InboxScreen() {
   const { theme } = useTheme();
   const { standardScreenBottomPadding } = useScreenChrome();
   const { status, token, user } = useAuth();
+  const deferredWorkReady = useDeferredScreenWork();
   const inboxWarmStateKey = user?.id ? `inbox:${user.id}` : null;
   const initialWarmInboxSnapshot = inboxWarmStateKey ? readWarmScreenState<InboxWarmSnapshot>(inboxWarmStateKey) : null;
   const [conversations, setConversations] = useState<ConversationSummary[]>(() => initialWarmInboxSnapshot?.conversations ?? []);
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchExpanded, setSearchExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => status === 'authenticated' && !initialWarmInboxSnapshot);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasNextPage, setHasNextPage] = useState(false);
@@ -404,6 +406,7 @@ export default function InboxScreen() {
 
       const isReset = mode !== 'more';
       const cachedSnapshot = isReset && inboxWarmStateKey ? readWarmScreenState<InboxWarmSnapshot>(inboxWarmStateKey) : null;
+      const isBackgroundRefresh = mode === 'reset' && Boolean(cachedSnapshot);
       if (fetchInFlightRef.current) {
         if (isReset) {
           pendingReloadRef.current = true;
@@ -413,6 +416,9 @@ export default function InboxScreen() {
       if (!isReset && !hasNextPageRef.current) return;
 
       fetchInFlightRef.current = true;
+      if (isBackgroundRefresh) {
+        navPerf.mark('background_refresh_started', 'tabs→inbox');
+      }
       if (mode === 'reset') {
         setLoading(!cachedSnapshot);
         setError(null);
@@ -454,6 +460,9 @@ export default function InboxScreen() {
         setLoading(false);
         setRefreshing(false);
         setLoadingMore(false);
+        if (isBackgroundRefresh) {
+          navPerf.mark('background_refresh_completed', 'tabs→inbox');
+        }
 
         if (pendingReloadRef.current) {
           pendingReloadRef.current = false;
@@ -511,7 +520,6 @@ export default function InboxScreen() {
 
     if (status === 'authenticated') {
       void loadConversations('reset');
-      void refreshUnreadMessageCount({ authenticated: true });
       return;
     }
 
@@ -556,7 +564,7 @@ export default function InboxScreen() {
   }, [scheduleRealtimeRefresh]);
 
   useMessagingRealtimeChannel({
-    enabled: status === 'authenticated' && Boolean(user?.id),
+    enabled: deferredWorkReady && status === 'authenticated' && Boolean(user?.id),
     token: token ?? null,
     userId: user?.id ?? null,
     onMessageCreated: handleRealtimeMessageEvent,
@@ -568,7 +576,19 @@ export default function InboxScreen() {
     navPerf.screenMounted('tabs→inbox');
     navPerf.shellVisible('tabs→inbox');
     navPerf.firstVisibleUi('tabs→inbox');
+    if (initialWarmInboxSnapshot) {
+      navPerf.mark('cache_hit', 'tabs→inbox');
+      navPerf.mark('stale_ui_rendered', 'tabs→inbox');
+    } else {
+      navPerf.mark('cache_miss', 'tabs→inbox');
+      if (status === 'authenticated') navPerf.mark('cold_skeleton_rendered', 'tabs→inbox');
+    }
   }, []);
+
+  useEffect(() => {
+    if (!deferredWorkReady) return;
+    void refreshUnreadMessageCount({ authenticated: status === 'authenticated' });
+  }, [deferredWorkReady, status]);
 
   useEffect(() => {
     if (!loading) {

@@ -21,6 +21,7 @@ import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWar
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useFrameBatchedItems } from '@/src/hooks/useFrameBatchedItems';
+import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -179,7 +180,7 @@ function ProfileSkeleton({ bottomPadding }: { bottomPadding: number }) {
   return (
     <View style={[styles.skeletonWrap, { paddingBottom: bottomPadding }]}>
       <View style={styles.skeletonHeader}>
-        <Skeleton width={80} height={80} borderRadius={40} />
+        <Skeleton width={80} height={80} borderRadius={tokens.radius.xl} />
         <View style={styles.skeletonHeaderText}>
           <Skeleton width="60%" height={20} borderRadius={6} />
           <Skeleton width="40%" height={16} borderRadius={4} />
@@ -198,7 +199,7 @@ function ProfileSkeleton({ bottomPadding }: { bottomPadding: number }) {
       <View style={styles.skeletonList}>
         {Array.from({ length: 5 }).map((_, i) => (
           <View key={i} style={styles.skeletonItem}>
-            <Skeleton width={50} height={50} borderRadius={25} />
+            <Skeleton width={50} height={50} borderRadius={tokens.radius.lg} />
             <View style={styles.skeletonItemText}>
               <Skeleton width="70%" height={16} borderRadius={4} />
               <Skeleton width="50%" height={14} borderRadius={4} />
@@ -206,6 +207,22 @@ function ProfileSkeleton({ bottomPadding }: { bottomPadding: number }) {
           </View>
         ))}
       </View>
+    </View>
+  );
+}
+
+function ProfileSectionSkeleton() {
+  return (
+    <View style={styles.skeletonList} accessibilityLabel="Loading recent orders">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <View key={index} style={styles.skeletonItem}>
+          <Skeleton width={50} height={50} borderRadius={tokens.radius.lg} />
+          <View style={styles.skeletonItemText}>
+            <Skeleton width="70%" height={16} borderRadius={tokens.radius.sm} />
+            <Skeleton width="46%" height={14} borderRadius={tokens.radius.sm} />
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
@@ -429,6 +446,7 @@ function OrderRow({ order }: { order: BuyerOrderSummary }) {
 export default function BuyerProfileScreen() {
   const { theme } = useTheme();
   const { standardScreenBottomPadding } = useScreenChrome();
+  const deferredWorkReady = useDeferredScreenWork();
   const contentBottomPadding = standardScreenBottomPadding;
   const { status, user, updateUser, validateToken, signOut } = useAuth();
   const toast = useToast();
@@ -449,6 +467,13 @@ export default function BuyerProfileScreen() {
   useEffect(() => {
     navPerf.screenMounted('tabs→me');
     navPerf.firstVisibleUi('tabs→me');
+    if (initialWarmProfileState) {
+      navPerf.mark('cache_hit', 'tabs→me');
+      navPerf.mark('stale_ui_rendered', 'tabs→me');
+    } else {
+      navPerf.mark('cache_miss', 'tabs→me');
+      if (status === 'loading') navPerf.mark('cold_skeleton_rendered', 'tabs→me');
+    }
   }, []);
 
   React.useLayoutEffect(() => {
@@ -658,19 +683,22 @@ export default function BuyerProfileScreen() {
   }, [fallbackProfile, status, user?.id]);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      void load();
+    if (!deferredWorkReady) return;
+    navPerf.mark('background_refresh_started', 'tabs→me');
+    void load().finally(() => {
+      navPerf.mark('background_refresh_completed', 'tabs→me');
     });
-    return () => cancelAnimationFrame(frame);
-  }, [load]);
+  }, [deferredWorkReady, load]);
 
   useFocusEffect(
     useCallback(() => {
+      if (!deferredWorkReady) return undefined;
       void refreshUnreadNotificationCount({
         authenticated: status === 'authenticated',
         forceRefresh: true,
       });
-    }, [status]),
+      return undefined;
+    }, [deferredWorkReady, status]),
   );
 
   useEffect(() => {
@@ -916,10 +944,7 @@ export default function BuyerProfileScreen() {
             <AppText variant="body">🔔</AppText>
             {unreadNotificationCount > 0 ? (
               <View style={[styles.notificationBadge, { backgroundColor: theme.colors.danger }]}>
-                <AppText
-                  variant="small"
-                  style={[styles.notificationBadgeText, { color: theme.colors.textInverse }]}
-                >
+                <AppText variant="badgeLabel" tone="inverse">
                   {unreadNotificationCount > 99 ? '99+' : String(unreadNotificationCount)}
                 </AppText>
               </View>
@@ -1067,10 +1092,7 @@ export default function BuyerProfileScreen() {
 
         {activeTab === 'Orders' ? (
           ordersLoading && state.orders.length === 0 ? (
-            <View style={[styles.ordersPreviewState, { backgroundColor: theme.colors.surfaceAlt }]}>
-              <ActivityIndicator color={theme.colors.primary} />
-              <AppText variant="captionRegular" tone="muted">Loading recent orders…</AppText>
-            </View>
+            <ProfileSectionSkeleton />
           ) : state.orders.length === 0 ? (
             <View style={[styles.ordersPreviewState, { backgroundColor: theme.colors.surfaceAlt }]}>
               <AppText variant="bodyBold">No orders yet</AppText>
@@ -1178,10 +1200,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  notificationBadgeText: {
-    fontSize: 10,
-    lineHeight: 12,
   },
   loadingState: {
     flex: 1,

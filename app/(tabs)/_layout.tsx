@@ -287,7 +287,7 @@ export default function TabLayout() {
         preloadTimers = nextTabsToWarm.map((tabName, index) =>
           setTimeout(() => {
             if (!cancelled) preloadIslandTab(tabName);
-          }, 600 + index * 500),
+          }, 150 + index * 350),
         );
       });
     };
@@ -308,9 +308,12 @@ export default function TabLayout() {
         reason: 'awaiting-first-runway-media',
         tabNames: nextTabsToWarm,
       });
+      // Phase 3: do not let a slow/empty Runway keep every destination cold for
+      // eight seconds. The idle gate and stagger still prevent a mount burst,
+      // while this bounded fallback makes a normal first tab visit warm.
       fallbackTimer = setTimeout(() => {
         schedulePreloads('first-media-timeout');
-      }, 8000);
+      }, 1500);
     }
 
     return () => {

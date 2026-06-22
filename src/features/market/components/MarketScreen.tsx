@@ -58,6 +58,7 @@ import { useToast } from '@/src/toast/ToastContext';
 import type { MarketFeedResponse, MarketItem } from '@/src/types/market';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import {
   flushMarketSignals,
@@ -138,6 +139,7 @@ type MarketSettledResults = {
 
 const marketSnapshotCache = new Map<string, MarketSnapshot>();
 const marketRequestInFlight = new Map<string, Promise<MarketSettledResults>>();
+let marketSectionsCache: MarketSection[] | null = null;
 
 const toErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to load market right now.';
 
@@ -209,10 +211,11 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
   return debouncedValue;
 }
 
-function buildMarketQueryKey(filters: MarketFilters, searchValue: string) {
+function buildMarketQueryKey(filters: MarketFilters, searchValue: string, viewerKey: string) {
   const minPrice = parsePriceFilter(filters.minPrice);
   const maxPrice = parsePriceFilter(filters.maxPrice);
   return JSON.stringify({
+    viewerKey,
     category: filters.category ?? null,
     minPrice,
     maxPrice,
@@ -1320,13 +1323,15 @@ export function MarketScreen() {
   }, []);
 
   const { theme, scheme } = useTheme();
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const toast = useToast();
   const { insets, standardScreenBottomPadding } = useScreenChrome();
   const { width, height } = useWindowDimensions();
   const { bagProduct, bagSource } = useMobileBagging();
+  const deferredWorkReady = useDeferredScreenWork();
+  const marketViewerKey = status === 'authenticated' ? user?.id ?? 'authenticated' : 'guest';
   const initialMarketSnapshotRef = useRef<MarketSnapshot | null>(
-    readMarketSnapshot(buildMarketQueryKey(DEFAULT_MARKET_FILTERS, ''))?.snapshot ?? null,
+    readMarketSnapshot(buildMarketQueryKey(DEFAULT_MARKET_FILTERS, '', marketViewerKey))?.snapshot ?? null,
   );
   const [products, setProducts] = useState<StoreProduct[]>(() => initialMarketSnapshotRef.current?.products ?? []);
   const [designs, setDesigns] = useState<MarketItem[]>(() => initialMarketSnapshotRef.current?.designs ?? []);
@@ -1348,7 +1353,7 @@ export function MarketScreen() {
   const [collectionError, setCollectionError] = useState<string | null>(
     () => initialMarketSnapshotRef.current?.collectionError ?? null,
   );
-  const [apiSections, setApiSections] = useState<MarketSection[]>([]);
+  const [apiSections, setApiSections] = useState<MarketSection[]>(() => marketSectionsCache ?? []);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, MARKET_SEARCH_DEBOUNCE_MS);
   const [filters, setFilters] = useState<MarketFilters>(DEFAULT_MARKET_FILTERS);
@@ -1373,7 +1378,10 @@ export function MarketScreen() {
   const viewedSectionKeysRef = useRef<Set<string>>(new Set());
   const viewedItemKeysRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => startMarketSignalRuntime(), []);
+  useEffect(() => {
+    if (!deferredWorkReady) return undefined;
+    return startMarketSignalRuntime();
+  }, [deferredWorkReady]);
 
   // Dev-only nav timing for tabs→market. Shell renders at mount (cached snapshot
   // or skeleton); data is ready once the initial market load settles.
@@ -1381,6 +1389,13 @@ export function MarketScreen() {
     navPerf.screenMounted('tabs→market');
     navPerf.shellVisible('tabs→market');
     navPerf.firstVisibleUi('tabs→market');
+    if (initialMarketSnapshotRef.current || marketSectionsCache !== null) {
+      navPerf.mark('cache_hit', 'tabs→market');
+      navPerf.mark('stale_ui_rendered', 'tabs→market');
+    } else {
+      navPerf.mark('cache_miss', 'tabs→market');
+      navPerf.mark('cold_skeleton_rendered', 'tabs→market');
+    }
   }, []);
   useEffect(() => {
     if (!loading) navPerf.dataReady('tabs→market');
@@ -1421,8 +1436,8 @@ export function MarketScreen() {
   const bottomClearance = standardScreenBottomPadding;
   const allItems = useMemo(() => buildContentItems(products, designs), [designs, products]);
   const marketQueryKey = useMemo(
-    () => buildMarketQueryKey(filters, debouncedSearch),
-    [debouncedSearch, filters.category, filters.maxPrice, filters.minPrice, filters.sort],
+    () => buildMarketQueryKey(filters, debouncedSearch, marketViewerKey),
+    [debouncedSearch, filters.category, filters.maxPrice, filters.minPrice, filters.sort, marketViewerKey],
   );
 
   const applyMarketSnapshot = useCallback((snapshot: MarketSnapshot) => {
@@ -1439,7 +1454,9 @@ export function MarketScreen() {
   const loadApiSections = useCallback(async () => {
     try {
       const response = await getMarketSections({ limit: 8 });
-      setApiSections(response.sections ?? []);
+      const nextSections = response.sections ?? [];
+      marketSectionsCache = nextSections;
+      setApiSections(nextSections);
     } catch {
       // Keep the last visible sections on transient refresh failures.
     }
@@ -1581,9 +1598,11 @@ export function MarketScreen() {
 
   const loadMarket = useCallback(
     async (mode: 'reset' | 'more', options?: { forceRefresh?: boolean }) => {
+      let didStartBackgroundRefresh = false;
       if (mode === 'reset') {
         const cached = options?.forceRefresh ? null : readMarketSnapshot(marketQueryKey);
         if (cached) {
+          navPerf.mark('cache_hit', 'tabs→market');
           applyMarketSnapshot(cached.snapshot);
           setError(null);
           setLoading(false);
@@ -1592,6 +1611,9 @@ export function MarketScreen() {
             lastResetQueryKeyRef.current = marketQueryKey;
             return;
           }
+          navPerf.mark('stale_ui_rendered', 'tabs→market');
+          navPerf.mark('background_refresh_started', 'tabs→market');
+          didStartBackgroundRefresh = true;
         } else if (
           !options?.forceRefresh &&
           lastResetQueryKeyRef.current === marketQueryKey &&
@@ -1737,6 +1759,9 @@ export function MarketScreen() {
             resetInFlightKeyRef.current = null;
           }
           setLoading(false);
+          if (didStartBackgroundRefresh) {
+            navPerf.mark('background_refresh_completed', 'tabs→market');
+          }
         } else {
           moreInFlightKeyRef.current = null;
           setLoadingMore(false);
@@ -1766,8 +1791,9 @@ export function MarketScreen() {
   }, [marketQueryKey]);
 
   useEffect(() => {
+    if (!deferredWorkReady) return;
     void loadApiSections();
-  }, [loadApiSections]);
+  }, [deferredWorkReady, loadApiSections]);
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
@@ -1778,7 +1804,7 @@ export function MarketScreen() {
   }, [products]);
 
   useEffect(() => {
-    if (status !== 'authenticated' || designs.length === 0) return undefined;
+    if (!deferredWorkReady || status !== 'authenticated' || designs.length === 0) return undefined;
     const ids = designs.map((item) => item.collectionId).filter(Boolean);
     let cancelled = false;
     SavedItemsApi.checkBatch('COLLECTION', ids)
@@ -1796,7 +1822,7 @@ export function MarketScreen() {
     return () => {
       cancelled = true;
     };
-  }, [designs, status]);
+  }, [deferredWorkReady, designs, status]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -2370,7 +2396,7 @@ export function MarketScreen() {
     </View>
   );
 
-  if (loading && allItems.length === 0) {
+  if (loading && allItems.length === 0 && collections.length === 0 && apiSections.length === 0) {
     return (
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.surface, paddingTop: insets.top }]}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
