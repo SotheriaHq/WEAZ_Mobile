@@ -44,6 +44,7 @@ const PRIVATE_QUERY_ROOTS = new Set([
   'buyerOrders',
   'buyerOrder',
   'myReviews',
+  'brandStaff',
 ]);
 
 export function isMobilePrivateSessionQueryKey(queryKey: QueryKey) {

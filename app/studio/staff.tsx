@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -16,6 +16,7 @@ import { getActiveBrandId, isBrandOwner } from '@/src/auth/brandAccess';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { useCachedQuery, cachePolicies } from '@/src/cache';
 
 const STAFF_ROLES: BrandMemberRole[] = [
   'MANAGER',
@@ -26,6 +27,8 @@ const STAFF_ROLES: BrandMemberRole[] = [
 ];
 
 const roleLabel = (role: string) => role.replace(/_/g, ' ').toLowerCase();
+
+type StaffData = { members: BrandStaffMember[]; invites: BrandStaffInvite[] };
 
 const memberName = (member: BrandStaffMember) =>
   [member.firstName, member.lastName].filter(Boolean).join(' ').trim() ||
@@ -40,42 +43,43 @@ export default function StudioStaffScreen() {
   const { user, validateToken } = useAuth();
   const activeBrandId = getActiveBrandId(user);
   const owner = isBrandOwner(user, activeBrandId);
-  const [members, setMembers] = useState<BrandStaffMember[]>([]);
-  const [invites, setInvites] = useState<BrandStaffInvite[]>([]);
-  const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<BrandMemberRole>('VIEWER');
+
+  // Cache-first: staff list paints from cache on re-entry, then revalidates.
+  const staffQuery = useCachedQuery<StaffData>({
+    key: ['brandStaff', activeBrandId ?? 'none'],
+    fetcher: () => brandStaffApi.list(activeBrandId as string),
+    policy: cachePolicies.defaultQuery,
+    enabled: Boolean(activeBrandId) && owner,
+  });
+  const members = staffQuery.data?.members ?? [];
+  const invites = staffQuery.data?.invites ?? [];
+  const loading = staffQuery.isLoading;
+  const mutateStaff = staffQuery.mutate;
+  // Wrap mutate as drop-in setMembers/setInvites so the mutation handlers below
+  // stay unchanged while writing through to the cache.
+  const setMembers = useCallback(
+    (updater: (current: BrandStaffMember[]) => BrandStaffMember[]) =>
+      mutateStaff((current) => ({
+        members: updater(current?.members ?? []),
+        invites: current?.invites ?? [],
+      })),
+    [mutateStaff],
+  );
+  const setInvites = useCallback(
+    (updater: (current: BrandStaffInvite[]) => BrandStaffInvite[]) =>
+      mutateStaff((current) => ({
+        members: current?.members ?? [],
+        invites: updater(current?.invites ?? []),
+      })),
+    [mutateStaff],
+  );
   const activeInvites = useMemo(
     () => invites.filter((invite) => invite.status === 'PENDING'),
     [invites],
   );
-
-  const load = useCallback(async () => {
-    if (!activeBrandId || !owner) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const data = await brandStaffApi.list(activeBrandId);
-      setMembers(data.members);
-      setInvites(data.invites);
-    } catch (error: any) {
-      const status = Number(error?.response?.status ?? 0);
-      if (status === 403) {
-        toast.error('You do not have permission to manage staff.');
-      } else {
-        toast.error('Unable to load staff right now.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [activeBrandId, owner, toast]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const inviteStaff = async () => {
     if (!activeBrandId) return;
