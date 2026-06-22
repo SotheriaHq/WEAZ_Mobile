@@ -17,6 +17,7 @@ import ReviewPromptCard from '@/components/reviews/ReviewPromptCard';
 import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
 import reviewApi, { type ReviewPromptDto, type SubmitReviewPayload } from '@/src/api/ReviewApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { useCachedQuery, cachePolicies } from '@/src/cache';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -210,40 +211,32 @@ function OrdersLoadingState() {
 export default function OrdersScreen() {
   const { theme } = useTheme();
   const toast = useToast();
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const insets = useSafeAreaInsets();
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [items, setItems] = useState<BuyerOrderSummary[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [reviewPrompts, setReviewPrompts] = useState<ReviewPromptDto[]>([]);
   const [activeReviewPrompt, setActiveReviewPrompt] = useState<ReviewPromptDto | null>(null);
   const [skippingPromptId, setSkippingPromptId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const orders = await BuyerOrdersApi.list();
-      setItems(orders);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to load orders right now.');
-      setItems([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (status !== 'authenticated') {
-      setLoading(false);
-      return;
-    }
-    void load();
-  }, [load, status]);
+  // Cache-first: render the last known orders immediately, revalidate in the
+  // background. Skeleton only shows on a true cold load (no cached data).
+  const ordersQuery = useCachedQuery<BuyerOrderSummary[]>({
+    key: ['buyerOrders', user?.id ?? 'guest'],
+    fetcher: () => BuyerOrdersApi.list(),
+    policy: cachePolicies.defaultQuery,
+    enabled: status === 'authenticated',
+  });
+  const items = ordersQuery.data ?? [];
+  const loading = ordersQuery.isLoading;
+  const refreshing = ordersQuery.isRefreshing;
+  const error = ordersQuery.error
+    ? ordersQuery.error.message || 'Unable to load orders right now.'
+    : null;
+  const refetchOrders = ordersQuery.refetch;
+  const load = useCallback(() => {
+    void refetchOrders({ forceRefresh: true });
+  }, [refetchOrders]);
 
   const loadReviewPrompts = useCallback(async () => {
     if (status !== 'authenticated') {
@@ -358,7 +351,6 @@ export default function OrdersScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => {
-              setRefreshing(true);
               void load();
               void loadReviewPrompts();
             }}

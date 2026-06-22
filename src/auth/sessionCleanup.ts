@@ -39,6 +39,11 @@ const PRIVATE_QUERY_ROOTS = new Set([
   'notifications',
   'messaging',
   'reviews',
+  // Cache-first buyer surfaces (Phase 4 migration) — user-scoped, must not
+  // survive logout or they leak across accounts.
+  'buyerOrders',
+  'buyerOrder',
+  'myReviews',
 ]);
 
 export function isMobilePrivateSessionQueryKey(queryKey: QueryKey) {

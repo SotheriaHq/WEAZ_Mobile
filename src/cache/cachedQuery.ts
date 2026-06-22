@@ -304,11 +304,27 @@ export function useCachedQuery<T>({
     };
   }, [cancelOnUnmount, client, enabled, forceRefresh, policy, stableKey]);
 
+  // Optimistic local mutation that also writes through to the query cache so
+  // sibling readers and later revalidations start from the updated value.
+  const mutate = useCallback(
+    (updater: T | ((current: T | undefined) => T)) => {
+      const next =
+        typeof updater === 'function'
+          ? (updater as (current: T | undefined) => T)(client.getQueryData<T>(stableKey))
+          : updater;
+      client.setQueryData(stableKey, next);
+      setData(next);
+      return next;
+    },
+    [client, stableKey],
+  );
+
   return {
     data,
     error,
     isLoading,
     isRefreshing,
     refetch,
+    mutate,
   };
 }
