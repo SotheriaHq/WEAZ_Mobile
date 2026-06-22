@@ -66,6 +66,7 @@ import {
   trackMarketSignal,
 } from '@/src/services/marketSignals';
 import { navPerf } from '@/src/utils/navPerf';
+import { prefetchMedia } from '@/src/prefetch/navPrefetch';
 
 const SIDE_PADDING = tokens.spacing.lg;
 const SECTION_GAP = tokens.spacing.xl;
@@ -610,6 +611,7 @@ function MarketProductCard({
       actionLabel={unavailable ? 'Out' : BAG_IT_LABEL}
       actionBusy={bagBusy}
       actionDisabled={unavailable}
+      onPressIn={() => prefetchMedia({ src: media.mediaSrc, fileId: media.mediaFileId }, 'tap')}
       onPress={() => onOpen(item)}
       onActionPress={() => onBag(item)}
       onFavoritePress={() => onFavorite(item)}
@@ -649,6 +651,7 @@ function MarketDesignCard({
       actionLabel={canRequestCustomOrder ? BAG_IT_LABEL : undefined}
       actionBusy={bagBusy}
       actionDisabled={!canRequestCustomOrder}
+      onPressIn={() => prefetchMedia({ src: media.mediaSrc, fileId: media.mediaFileId }, 'tap')}
       onPress={() => onOpen(item)}
       onActionPress={canRequestCustomOrder ? () => onBag(item) : undefined}
       onFavoritePress={() => onFavorite(item)}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 
@@ -19,6 +19,7 @@ import reviewApi, { type ReviewPromptDto, type SubmitReviewPayload } from '@/src
 import { useAuth } from '@/src/auth/AuthContext';
 import { useCachedQuery, cachePolicies } from '@/src/cache';
 import { queryKeys } from '@/src/query/queryKeys';
+import { prefetchDetailOnPress, prefetchQuery } from '@/src/prefetch/navPrefetch';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -138,6 +139,12 @@ function OrderRow({ item }: { item: BuyerOrderSummary }) {
 
   return (
     <Pressable
+      onPressIn={() =>
+        prefetchDetailOnPress({
+          href: { pathname: '/orders/[orderId]', params: { orderId: item.id } },
+          hero: { src: item.thumbnail },
+        })
+      }
       onPress={() => drillDownPush({ pathname: '/orders/[orderId]', params: { orderId: item.id } } as any)}
       style={({ pressed }) => [pressed ? styles.pressed : null]}
     >
@@ -238,6 +245,22 @@ export default function OrdersScreen() {
   const load = useCallback(() => {
     void refetchOrders({ forceRefresh: true });
   }, [refetchOrders]);
+
+  // Phase 5 scroll-proximity: warm the detail query for on-screen orders so a
+  // tap opens instantly. Bounded by the prefetch budget (query lane) + dedupe.
+  const handleViewableOrders = useRef(
+    ({ viewableItems }: { viewableItems: Array<{ item: BuyerOrderSummary }> }) => {
+      viewableItems.forEach(({ item }) => {
+        prefetchQuery({
+          key: queryKeys.orders.detail(item.id),
+          fetcher: () => BuyerOrdersApi.getById(item.id),
+          policy: cachePolicies.defaultQuery,
+          priority: 'near',
+        });
+      });
+    },
+  ).current;
+  const orderViewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   const loadReviewPrompts = useCallback(async () => {
     if (status !== 'authenticated') {
@@ -346,6 +369,8 @@ export default function OrdersScreen() {
         data={filteredItems}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <OrderRow item={item} />}
+        onViewableItemsChanged={handleViewableOrders}
+        viewabilityConfig={orderViewabilityConfig}
         ItemSeparatorComponent={() => <View style={{ height: tokens.spacing.sm }} />}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         refreshControl={

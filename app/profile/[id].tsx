@@ -22,6 +22,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
 import { navPerf } from '@/src/utils/navPerf';
+import { prefetchDetailOnPress } from '@/src/prefetch/navPrefetch';
 
 type PublicProfileSnapshot = {
   profile: UserProfile;
@@ -49,6 +50,12 @@ function PatchRow({ brand }: { brand: PatchedBrand }) {
 
   return (
     <Pressable
+      onPressIn={() =>
+        prefetchDetailOnPress({
+          href: { pathname: '/catalog/[brandId]', params: { brandId: brand.id } },
+          hero: { src: identity.avatarSrc, fileId: identity.avatarFileId },
+        })
+      }
       onPress={() => drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: brand.id } } as any)}
       style={({ pressed }) => [
         styles.patchCard,

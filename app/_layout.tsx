@@ -14,6 +14,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import 'react-native-reanimated';
 
+import { installPrefetchAppStateBridge } from '@/src/prefetch/tabWarming';
 import { ThemeProvider, useTheme, type ThemeMode } from '@/src/theme/ThemeProvider';
 import { ThemeBackendSync } from '@/src/theme/ThemeBackendSync';
 import { normalizeThemePreference } from '@/src/types/theme';
@@ -395,6 +396,9 @@ export default function RootLayout() {
     devBootLog('root-layout-mounted', { rootLayoutMountCount });
     void applyAndroidSystemBarsPolicy(getInitialAndroidSystemScheme(), 'root-layout-first-render');
   }, []);
+
+  // Phase 5: pause predictive prefetching whenever the app is backgrounded.
+  useEffect(() => installPrefetchAppStateBridge(), []);
 
   useEffect(() => {
     let isMounted = true;
