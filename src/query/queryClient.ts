@@ -5,6 +5,7 @@ export const THREADLY_QUERY_GC_TIME_MS = 30 * 60 * 1000;
 export const THREADLY_COUNT_STALE_TIME_MS = 30 * 1000;
 export const THREADLY_SAVED_STATUS_STALE_TIME_MS = 60 * 1000;
 export const THREADLY_CATEGORY_FILTER_STALE_TIME_MS = 30 * 60 * 1000;
+export const THREADLY_QUERY_CACHE_MAX_ENTRIES = 200;
 
 export const queryClient = new QueryClient({
   defaultOptions: {
