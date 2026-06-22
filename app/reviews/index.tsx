@@ -14,6 +14,7 @@ import { targetLabel } from '@/components/reviews/reviewDisplay';
 import reviewApi, { type ReviewDto, type ReviewTargetType, type UpdateReviewPayload } from '@/src/api/ReviewApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useCachedQuery, cachePolicies } from '@/src/cache';
+import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -98,7 +99,7 @@ export default function MyReviewsScreen() {
 
   // Cache-first: the reviews list paints from cache on re-entry, then revalidates.
   const reviewsQuery = useCachedQuery<ReviewDto[]>({
-    key: ['myReviews', currentUserId ?? 'guest'],
+    key: queryKeys.reviews.mine(currentUserId),
     fetcher: () => reviewApi.getMyReviews({ limit: 50 }, currentUserId).then((response) => response.items),
     policy: cachePolicies.defaultQuery,
     enabled: status === 'authenticated',

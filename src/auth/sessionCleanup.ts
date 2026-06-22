@@ -19,7 +19,7 @@ import {
   purgeMobilePersistedQueryCache,
   THREADLY_QUERY_CACHE_STORAGE_KEY,
 } from '@/src/query/queryPersistor';
-import { queryKeys } from '@/src/query/queryKeys';
+import { queryKeys, PRIVATE_QUERY_ROOTS } from '@/src/query/queryKeys';
 import { clearMessagingRealtimeSession } from '@/src/realtime/messaging';
 import { clearNotificationRealtimeSession } from '@/src/realtime/notifications';
 import { clearMobileMarketSignalQueue } from '@/src/services/marketSignals';
@@ -28,24 +28,6 @@ import { removeAccessToken, removeCachedAuthUser, removeRefreshToken } from '@/s
 
 export const ACTIVE_BRAND_STORAGE_KEY = 'threadly.activeBrandId';
 const PENDING_BAG_ACTION_STORAGE_KEY = 'threadly.pendingBagAction.v1';
-
-const PRIVATE_QUERY_ROOTS = new Set([
-  'auth',
-  'brand',
-  'design',
-  'designs',
-  'store',
-  'saved',
-  'notifications',
-  'messaging',
-  'reviews',
-  // Cache-first buyer surfaces (Phase 4 migration) — user-scoped, must not
-  // survive logout or they leak across accounts.
-  'buyerOrders',
-  'buyerOrder',
-  'myReviews',
-  'brandStaff',
-]);
 
 export function isMobilePrivateSessionQueryKey(queryKey: QueryKey) {
   const [root, scope] = queryKey;

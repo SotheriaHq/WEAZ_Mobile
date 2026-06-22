@@ -153,8 +153,32 @@ export const queryKeys = {
       ['reviews', 'brand', normalizeId(brandId), normalizeRecord(params)] as const,
     product: (productId?: string | null, params?: Record<string, unknown> | null) =>
       ['reviews', 'product', normalizeId(productId), normalizeRecord(params)] as const,
+    mine: (userId?: string | null) => ['reviews', 'mine', normalizeId(userId)] as const,
+  },
+  orders: {
+    list: (userId?: string | null) => ['orders', 'list', normalizeId(userId)] as const,
+    detail: (orderId?: string | null) => ['orders', 'detail', normalizeId(orderId)] as const,
+  },
+  brandStaff: {
+    list: (brandId?: string | null) => ['brandStaff', 'list', normalizeId(brandId)] as const,
   },
 };
+
+// Single source of truth for which query roots hold user/brand-private data and
+// must be purged on logout. sessionCleanup imports this instead of re-listing.
+export const PRIVATE_QUERY_ROOTS = new Set<string>([
+  'auth',
+  'brand',
+  'design',
+  'designs',
+  'store',
+  'saved',
+  'notifications',
+  'messaging',
+  'reviews',
+  'orders',
+  'brandStaff',
+]);
 
 export const isPersistableThreadlyQueryKey = (queryKey: readonly unknown[]) => {
   const [root, scope] = queryKey;

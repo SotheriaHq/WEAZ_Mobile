@@ -18,6 +18,7 @@ import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi
 import reviewApi, { type ReviewPromptDto, type SubmitReviewPayload } from '@/src/api/ReviewApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useCachedQuery, cachePolicies } from '@/src/cache';
+import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -222,7 +223,7 @@ export default function OrdersScreen() {
   // Cache-first: render the last known orders immediately, revalidate in the
   // background. Skeleton only shows on a true cold load (no cached data).
   const ordersQuery = useCachedQuery<BuyerOrderSummary[]>({
-    key: ['buyerOrders', user?.id ?? 'guest'],
+    key: queryKeys.orders.list(user?.id),
     fetcher: () => BuyerOrdersApi.list(),
     policy: cachePolicies.defaultQuery,
     enabled: status === 'authenticated',

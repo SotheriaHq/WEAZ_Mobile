@@ -13,6 +13,7 @@ import { StableImage } from '@/components/ui/StableImage';
 import { BuyerOrdersApi, type BuyerOrderDetail, type BuyerOrderItem } from '@/src/api/BuyerOrdersApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useCachedQuery, cachePolicies } from '@/src/cache';
+import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -99,7 +100,7 @@ export default function BuyerOrderDetailScreen() {
 
   // Cache-first: a previously viewed order paints instantly, then revalidates.
   const orderQuery = useCachedQuery<BuyerOrderDetail>({
-    key: ['buyerOrder', orderId ?? 'none'],
+    key: queryKeys.orders.detail(orderId),
     fetcher: () => BuyerOrdersApi.getById(orderId as string),
     policy: cachePolicies.defaultQuery,
     enabled: status === 'authenticated' && Boolean(orderId),

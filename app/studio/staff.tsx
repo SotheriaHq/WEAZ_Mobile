@@ -17,6 +17,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { useCachedQuery, cachePolicies } from '@/src/cache';
+import { queryKeys } from '@/src/query/queryKeys';
 
 const STAFF_ROLES: BrandMemberRole[] = [
   'MANAGER',
@@ -49,7 +50,7 @@ export default function StudioStaffScreen() {
 
   // Cache-first: staff list paints from cache on re-entry, then revalidates.
   const staffQuery = useCachedQuery<StaffData>({
-    key: ['brandStaff', activeBrandId ?? 'none'],
+    key: queryKeys.brandStaff.list(activeBrandId),
     fetcher: () => brandStaffApi.list(activeBrandId as string),
     policy: cachePolicies.defaultQuery,
     enabled: Boolean(activeBrandId) && owner,
