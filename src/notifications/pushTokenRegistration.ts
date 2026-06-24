@@ -10,6 +10,7 @@ import {
   type RegisterPushTokenPayload,
 } from '@/src/api/NotificationsApi';
 import { getActiveApiBaseUrl } from '@/src/api/httpClient';
+import { ensureAndroidPushChannels } from '@/src/notifications/pushChannels';
 
 type ExpoNotificationsModule = typeof ExpoNotifications;
 
@@ -114,12 +115,7 @@ async function ensureNotificationPermission(NotificationsModule: ExpoNotificatio
 
 async function ensureAndroidNotificationChannel(NotificationsModule: ExpoNotificationsModule) {
   if (Platform.OS !== 'android') return;
-
-  await NotificationsModule.setNotificationChannelAsync('default', {
-    name: 'default',
-    importance: NotificationsModule.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-  });
+  await ensureAndroidPushChannels(NotificationsModule);
 }
 
 export function buildPushRegistrationKey(record: PushRegistrationRecord): string {

@@ -40,6 +40,13 @@
       "expo-web-browser",
       "expo-secure-store",
       [
+        "expo-notifications",
+        {
+          "color": "#0b0710",
+          "defaultChannel": "default"
+        }
+      ],
+      [
         "expo-navigation-bar",
         {
           "position": "absolute",

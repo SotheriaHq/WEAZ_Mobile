@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { router, usePathname } from 'expo-router';
+import { router } from 'expo-router';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import type * as ExpoNotifications from 'expo-notifications';
 import { resolveExpoProjectId } from '@/src/notifications/pushTokenRegistration';
+import { ensureAndroidPushChannels } from '@/src/notifications/pushChannels';
 import { shouldPresentMessageForegroundPushNotification } from '@/src/realtime/messaging';
 
 /**
@@ -45,12 +46,14 @@ async function getNotificationsModule(): Promise<ExpoNotificationsModule | null>
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
-import type { MessageContextParams } from '@/src/types/messaging';
+import { NotificationsApi, type MobileNotification } from '@/src/api/NotificationsApi';
 
 import {
-  buildMessageNotificationRoute,
+  buildNotificationFromPushData,
   getMessageNotificationTarget,
+  routeForNotification,
 } from './mobileRouting';
+import { drillDownPush } from './mobileNavigation';
 import { resolveMobileAuthRoute } from './authLinkRouting';
 
 function resolvePaymentReturnRoute(url: string | null) {
@@ -85,135 +88,139 @@ function resolvePaymentReturnRoute(url: string | null) {
 }
 
 /**
- * Notification routing handler for message notifications.
- * Processes incoming notifications and routes to appropriate screen.
+ * Notification routing handler for ALL notification types.
+ *
+ * A tapped push (foreground, background, or cold start) and an in-app deep link
+ * are both adapted into the canonical `MobileNotification` shape and routed
+ * through the SAME comprehensive `routeForNotification` map used by the in-app
+ * notification inbox. This guarantees every notification type — messages,
+ * orders, custom orders, comments, follows, patches, products, designs,
+ * collections, posts, reviews, verification, size/fit, wishlist, etc. — opens
+ * the exact content it references, not just messages.
  */
 export function useNotificationRouting() {
-  const { status, user } = useAuth();
+  const { status } = useAuth();
   const toast = useToast();
-  const pathname = usePathname();
 
-  // Track last handled notification to prevent duplicates
-  const lastHandledNotificationRef = useRef<string | null>(null);
-  const pendingNavigationRef = useRef<{
-    params: MessageContextParams;
-    type: 'thread' | 'inbox' | 'unsupported';
-  } | null>(null);
+  // Track the last handled notification to prevent duplicate navigation when the
+  // cold-start resolver and the response listener both observe the same tap.
+  const lastHandledKeyRef = useRef<string | null>(null);
+  // Preserve a tapped-while-logged-out intent and flush it once auth is ready.
+  const pendingNotificationRef = useRef<MobileNotification | null>(null);
 
-  /**
-   * Navigate to message thread or inbox based on context.
-   * Handles deduplication to prevent double navigation.
-   */
-  const navigateToMessage = useCallback((
-    context: MessageContextParams,
-    options: { type: 'thread' | 'inbox' | 'unsupported' },
-  ) => {
-    if (status !== 'authenticated') {
-      // Preserve the navigation intent to handle after login
-      pendingNavigationRef.current = { params: context, type: options.type };
-      return;
-    }
-
-    // Generate a navigation key to prevent duplicates
-    const navKey = JSON.stringify({
-      threadId: context.threadId,
-      conversationId: context.conversationId,
-      messageId: context.messageId,
-      orderId: context.orderId,
-      customOrderId: context.customOrderId,
-      brandId: context.brandId,
-      customerId: context.customerId,
-      type: options.type,
-    });
-
-    // Prevent duplicate navigation within a short window
-    if (lastHandledNotificationRef.current === navKey) {
-      return;
-    }
-    lastHandledNotificationRef.current = navKey;
-
-    try {
-      if (options.type === 'unsupported') {
-        // Navigate to inbox - unsupported contexts fall back to inbox
-        router.replace(buildMessageNotificationRoute({ type: options.type, params: context }) as any);
-        toast.info('Design/product-specific messages are not supported yet.');
+  const navigateToNotification = useCallback(
+    (notification: MobileNotification) => {
+      if (status !== 'authenticated') {
+        pendingNotificationRef.current = notification;
         return;
       }
 
-      if (options.type === 'inbox') {
-        // Navigate to inbox (Messages list)
-        if (pathname !== '/(tabs)/inbox') {
-          router.replace(buildMessageNotificationRoute({ type: options.type, params: context }) as any);
+      const navKey =
+        notification.id ||
+        JSON.stringify({
+          type: notification.type,
+          target: notification.target,
+          targetUrl: notification.targetUrl,
+        });
+      if (lastHandledKeyRef.current === navKey) {
+        return;
+      }
+      lastHandledKeyRef.current = navKey;
+
+      // Surface the "not supported yet" hint for design/product-scoped message
+      // threads (the resolver still falls back to the inbox for these).
+      const upperType = String(notification.type || '').toUpperCase();
+      if (upperType.includes('MESSAGE')) {
+        const messageTarget = getMessageNotificationTarget({
+          ...(notification.payload ?? {}),
+          ...(notification.targetUrl ? { targetUrl: notification.targetUrl } : null),
+        });
+        if (messageTarget?.type === 'unsupported') {
+          toast.info('Design/product-specific messages are not supported yet.');
         }
+      }
+
+      try {
+        const route = routeForNotification(notification);
+        // Navigation lock (drillDownPush) dedupes same-target taps and rapid
+        // double taps, and `push` keeps a coherent back stack from the launch tab.
+        drillDownPush(route);
+      } catch (error) {
+        console.error('Notification routing error:', error);
+        toast.error('Unable to open notification');
         return;
       }
 
-      router.replace(buildMessageNotificationRoute({ type: options.type, params: context }) as any);
-    } catch (error) {
-      console.error('Navigation error:', error);
-      toast.error('Unable to open message');
-    }
-  }, [pathname, status, toast]);
+      // Keep the unread badge + inbox consistent after a tap.
+      if (notification.id && !notification.isRead) {
+        void NotificationsApi.markAsRead(notification.id).catch(() => undefined);
+      }
+    },
+    [status, toast],
+  );
 
+  // Flush any intent captured while unauthenticated once auth is ready.
   useEffect(() => {
     if (status !== 'authenticated') return;
-    const pendingNavigation = pendingNavigationRef.current;
-    if (!pendingNavigation) return;
-
-    pendingNavigationRef.current = null;
-    navigateToMessage(pendingNavigation.params, { type: pendingNavigation.type });
-  }, [navigateToMessage, status]);
-
-  /**
-   * Handle a notification tap or deep link.
-   */
-  const handleNotification = useCallback((
-    notification: ExpoNotifications.Notification | null,
-  ) => {
-    if (!notification) return;
-
-    const payload = notification.request?.content?.data ?? {};
-    const target = getMessageNotificationTarget(payload as Record<string, unknown>);
-
-    if (target) {
-      navigateToMessage(target.params, target);
-    }
-  }, [navigateToMessage]);
+    const pending = pendingNotificationRef.current;
+    if (!pending) return;
+    pendingNotificationRef.current = null;
+    navigateToNotification(pending);
+  }, [navigateToNotification, status]);
 
   /**
-   * Handle URL deep linking.
+   * Handle a notification tap (foreground/background/cold start).
    */
-  const handleDeepLink = useCallback((url: string | null) => {
-    if (!url) return;
-
-    try {
-      const authRoute = resolveMobileAuthRoute(url);
-      if (authRoute) {
-        router.replace(authRoute as any);
-        return;
+  const handleNotification = useCallback(
+    (notification: ExpoNotifications.Notification | null) => {
+      if (!notification) return;
+      const data = notification.request?.content?.data ?? {};
+      const built = buildNotificationFromPushData(data as Record<string, unknown>);
+      if (built) {
+        navigateToNotification(built);
       }
+    },
+    [navigateToNotification],
+  );
 
-      const paymentRoute = resolvePaymentReturnRoute(url);
-      if (paymentRoute) {
-        router.replace(paymentRoute as any);
-        return;
-      }
+  /**
+   * Handle URL deep linking (auth + payment-return keep dedicated handling; all
+   * other links route through the unified notification router).
+   */
+  const handleDeepLink = useCallback(
+    (url: string | null) => {
+      if (!url) return;
 
-      const target = getMessageNotificationTarget({ targetUrl: url });
-      if (target) {
-        navigateToMessage(target.params, target);
+      try {
+        const authRoute = resolveMobileAuthRoute(url);
+        if (authRoute) {
+          router.replace(authRoute as any);
+          return;
+        }
+
+        const paymentRoute = resolvePaymentReturnRoute(url);
+        if (paymentRoute) {
+          router.replace(paymentRoute as any);
+          return;
+        }
+
+        const built = buildNotificationFromPushData({ targetUrl: url });
+        if (built) {
+          navigateToNotification(built);
+        }
+      } catch (error) {
+        console.error('Deep link parsing error:', error);
       }
-    } catch (error) {
-      console.error('Deep link parsing error:', error);
-    }
-  }, [navigateToMessage]);
+    },
+    [navigateToNotification],
+  );
 
   return {
     handleNotification,
     handleDeepLink,
-    pendingNavigation: pendingNavigationRef.current,
+    pendingNavigation: pendingNotificationRef.current,
     clearPendingNavigation: () => {
-      pendingNavigationRef.current = null;
+      pendingNotificationRef.current = null;
     },
   };
 }
@@ -279,11 +286,7 @@ async function configurePushNotificationsOnce(): Promise<{
     // Get push token - skip in Expo Go on Android SDK 53+
     let token: string | undefined;
     if (Platform.OS === 'android') {
-      await NotificationsModule.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: NotificationsModule.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-      });
+      await ensureAndroidPushChannels(NotificationsModule);
     }
 
     const projectId = resolveExpoProjectId();
