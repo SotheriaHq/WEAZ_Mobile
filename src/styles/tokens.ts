@@ -58,14 +58,14 @@ export const tokens = {
   themes: {
     light: {
       colors: {
-        bg: '#F4F6FA',
+        bg: '#FFFFFF',
         surface: '#ffffff',
         surfaceAlt: '#E9EEF5',
         surfaceOverlay: '#FFFFFF',
         overlay: 'rgba(255,255,255,0.75)',
         text: '#0B1220',
         textSecondary: '#334155',
-        textMuted: '#64748B',
+        textMuted: '#475569',
         textInverse: '#ffffff',
         border: '#D4DCE8',
         primary: '#9333EA',
@@ -97,16 +97,16 @@ export const tokens = {
     } satisfies Theme,
     dark: {
       colors: {
-        bg: '#000000',
-        surface: '#0B0F17',
-        surfaceAlt: '#121826',
-        surfaceOverlay: '#121826',
-        overlay: 'rgba(0,0,0,0.55)',
+        bg: '#080A0F',
+        surface: '#111620',
+        surfaceAlt: '#1A2230',
+        surfaceOverlay: '#202938',
+        overlay: 'rgba(8,10,15,0.58)',
         text: '#F8FAFC',
         textSecondary: '#CBD5E1',
         textMuted: '#94A3B8',
         textInverse: '#ffffff',
-        border: '#273244',
+        border: '#303B4D',
         primary: '#9333EA',
         primaryActive: '#7E22CE',
         primaryDark: '#7E22CE',
@@ -122,11 +122,11 @@ export const tokens = {
         skeletonHighlight: 'rgba(255,255,255,0.04)',
         backdrop: 'rgba(0,0,0,0.58)',
         backdropStrong: 'rgba(0,0,0,0.8)',
-        bottomSheetSurface: '#0B0F17',
+        bottomSheetSurface: '#111620',
         bottomSheetHandle: 'rgba(255,255,255,0.08)',
-        mutedSurface: 'rgba(255,255,255,0.05)',
-        controlSurface: 'rgba(255,255,255,0.05)',
-        controlSurfaceActive: 'rgba(255,255,255,0.10)',
+        mutedSurface: 'rgba(255,255,255,0.07)',
+        controlSurface: 'rgba(255,255,255,0.08)',
+        controlSurfaceActive: 'rgba(255,255,255,0.14)',
         glassSurfaceSoft: 'rgba(3,7,18,0.52)',
         glassSurface: 'rgba(0,0,0,0.58)',
         glassSurfaceStrong: 'rgba(3,7,18,0.74)',
@@ -160,23 +160,49 @@ export const tokens = {
   // Rule: NEVER go below 12px for readable content. 16px is body minimum.
   typography: {
     /** 32px / 700 — hero splash, big editorial headers */
-    display: { size: 32, weight: '700' as const, lineHeight: 38 },
+    display: { size: 32, weight: '700' as const, lineHeight: 36 },
+    /** 24px / 700 — primary screen titles */
+    screenTitle: { size: 24, weight: '700' as const, lineHeight: 28 },
     /** 24px / 700 — primary mobile titles */
-    title: { size: 24, weight: '700' as const, lineHeight: 30 },
+    title: { size: 24, weight: '700' as const, lineHeight: 28 },
+    /** 22px / 700 — profile names (Instagram-dense) */
+    profileName: { size: 22, weight: '700' as const, lineHeight: 26 },
+    /** 22px / 700 — brand names (Instagram-dense) */
+    brandName: { size: 22, weight: '700' as const, lineHeight: 26 },
+    /** 18px / 600 — section headers */
+    sectionTitle: { size: 18, weight: '600' as const, lineHeight: 22 },
     /** 18px / 600 — section headers and strong subtitles */
-    subtitle: { size: 18, weight: '600' as const, lineHeight: 24 },
+    subtitle: { size: 18, weight: '600' as const, lineHeight: 22 },
+    /** 16px / 600 — card titles */
+    cardTitle: { size: 16, weight: '600' as const, lineHeight: 20 },
     /** 16px / 500 — main body content */
-    body: { size: 16, weight: '500' as const, lineHeight: 22 },
+    body: { size: 16, weight: '500' as const, lineHeight: 20 },
+    /** 14px / 500 — highly readable, Instagram-dense body text (bio/about) */
+    bodyReadable: { size: 13, weight: '500' as const, lineHeight: 20 },
+    /** 16px / 700 — button labels */
+    buttonLabel: { size: 16, weight: '700' as const, lineHeight: 20 },
+    /** 16px / 700 — action labels */
+    actionLabel: { size: 16, weight: '700' as const, lineHeight: 20 },
     /** 12px / 500 — supporting meta text */
-    caption: { size: 12, weight: '500' as const, lineHeight: 15 },
+    caption: { size: 12, weight: '500' as const, lineHeight: 16 },
+    /** 13px / 600 — meta */
+    meta: { size: 13, weight: '600' as const, lineHeight: 16 },
+    /** 12px / 700 — badge labels */
+    badgeLabel: { size: 12, weight: '700' as const, lineHeight: 16 },
+    /** 11px / 600 — nav labels */
+    navLabel: { size: 11, weight: '600' as const, lineHeight: 14 },
+    /** 13px / 700 — stat numbers (compact, Instagram-dense) */
+    statValue: { size: 13, weight: '700' as const, lineHeight: 16 },
+    /** 11px / 600 — stat labels (compact, Instagram-dense) */
+    statLabel: { size: 11, weight: '600' as const, lineHeight: 14 },
 
     // Compatibility aliases for existing mobile code during migration.
     h1: { size: 24, weight: '700' as const, lineHeight: 30 },
     h2: { size: 18, weight: '600' as const, lineHeight: 24 },
     h3: { size: 18, weight: '600' as const, lineHeight: 24 },
-    bodyBold: { size: 16, weight: '600' as const, lineHeight: 22 },
-    small: { size: 12, weight: '500' as const, lineHeight: 15 },
-    smallBold: { size: 12, weight: '600' as const, lineHeight: 15 },
+    bodyBold: { size: 16, weight: '600' as const, lineHeight: 24 },
+    small: { size: 12, weight: '500' as const, lineHeight: 16 },
+    smallBold: { size: 12, weight: '600' as const, lineHeight: 16 },
 
     // ── Legacy flat values kept for backward-compat with existing screens ──
     // New code should use the tier objects above instead.

@@ -11,6 +11,7 @@ type FeedMediaSlideProps = {
   imageIndex: number;
   viewportWidth?: number | null;
   viewportHeight?: number | null;
+  allowDetailUpgrade?: boolean;
   onPress?: () => void;
 };
 
@@ -44,6 +45,7 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
   imageIndex,
   viewportWidth,
   viewportHeight,
+  allowDetailUpgrade = true,
   onPress,
 }: FeedMediaSlideProps) {
   const { scheme, theme } = useTheme();
@@ -95,7 +97,6 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
         style={styles.pageImage}
         sourceType={media.fileId ? 'feed-media-file' : 'feed-media-url'}
         imageIndex={imageIndex}
-        contentFit="contain"
         viewportWidth={viewportWidth}
         viewportHeight={viewportHeight}
         naturalWidth={media.width}
@@ -103,6 +104,7 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
         aspectRatio={aspectRatio}
         aspectClass={aspectClass}
         frostedBackdrop
+        allowDetailUpgrade={allowDetailUpgrade}
       />
     </Pressable>
   );

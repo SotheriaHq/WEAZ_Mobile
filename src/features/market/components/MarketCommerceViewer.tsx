@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/AppText';
 import ReviewsTab from '@/components/reviews/ReviewsTab';
 import { StableImage } from '@/components/ui/StableImage';
+import { AspectAwareMedia } from '@/src/components/media/AspectAwareMedia';
 import {
   MobileStoreApi,
   type BagSourceType,
@@ -46,6 +47,7 @@ import { useToast } from '@/src/toast/ToastContext';
 import type { SizeRecommendationResponse } from '@/src/api/ProfileApi';
 import { CONFIDENCE_LABELS, SIZING_REGION_LABELS } from '@/src/utils/sizeRecommendation';
 import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
 
 type CommerceSourceType = Extract<BagSourceType, 'PRODUCT' | 'DESIGN'>;
@@ -55,6 +57,11 @@ type ViewerMediaEntry = {
   url: string | null;
   fileId: string | null;
   label: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageAspectRatio?: number;
+  blurhash?: string | null;
+  dominantColor?: string | null;
 };
 
 type MarketCommerceViewerProps = {
@@ -180,6 +187,9 @@ const buildDesignMedia = (detail: CollectionDetailDto): ViewerMediaEntry[] => {
       url: getCollectionMediaDirectUrl(media),
       fileId: getCollectionMediaFileId(media),
       label: media.caption ?? `${detail.title} ${index + 1}`,
+      // Properties like imageWidth, imageHeight, blurhash etc. are omitted
+      // because they are not currently exposed in CollectionDetailMediaDto.
+      // AspectAwareMedia will fall back to determining dimensions post-load safely.
     })),
   ];
 
@@ -244,13 +254,17 @@ function MediaSlide({
           <AppText variant="captionBold" tone="muted">Loading image</AppText>
         </View>
       ) : uri && !failed ? (
-        <StableImage
-          uri={uri}
-          containerStyle={styles.mediaImage}
+        <AspectAwareMedia
+          source={{ uri }}
+          imageWidth={item.imageWidth}
+          imageHeight={item.imageHeight}
+          imageAspectRatio={item.imageAspectRatio}
+          style={[styles.mediaImage, { width, height }]}
           imageStyle={styles.mediaImage}
-          resizeMode="cover"
+          blurhash={item.blurhash}
+          dominantColor={item.dominantColor}
+          diagnosticsLabel={`MarketCommerceViewer:${sourceType}`}
           onError={() => setFailed(true)}
-          fallback={fallback}
         />
       ) : (
         fallback
@@ -300,10 +314,11 @@ export function MarketCommerceViewer({
   const [design, setDesign] = useState<CollectionDetailDto | null>(cachedDesign);
   const [bagStatus, setBagStatus] = useState<ProductBagStatus | null>(null);
   const [saved, setSaved] = useState(false);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
   const [loading, setLoading] = useState(!(cachedProduct || cachedDesign));
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [sheetExpanded, setSheetExpanded] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [sizeRecommendation, setSizeRecommendation] = useState<SizeRecommendationResponse | null>(null);
   const [sizeRecommendationLoading, setSizeRecommendationLoading] = useState(false);
@@ -339,41 +354,45 @@ export function MarketCommerceViewer({
     setError(null);
     try {
       if (sourceType === 'PRODUCT') {
-        const [nextProduct, nextStatus] = await Promise.all([
-          queryClient.fetchQuery({
-            queryKey: productKey,
-            queryFn: () => MobileStoreApi.getProductById(normalizedSourceId),
-            staleTime: THREADLY_QUERY_STALE_TIME_MS,
-          }),
-          prepareBag(normalizedSourceId).catch(() => null),
-        ]);
+        const nextProduct = await queryClient.fetchQuery({
+          queryKey: productKey,
+          queryFn: () => MobileStoreApi.getProductById(normalizedSourceId),
+          staleTime: THREADLY_QUERY_STALE_TIME_MS,
+        });
         setProduct(nextProduct);
         setDesign(null);
         setSaved(Boolean(nextProduct.isWishlisted));
-        setBagStatus(nextStatus);
+        void prepareBag(normalizedSourceId)
+          .then((nextStatus) => {
+            if (nextStatus) setBagStatus(nextStatus);
+          })
+          .catch(() => undefined);
         return;
       }
 
-      const [nextDesign, nextStatus] = await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: designKey,
-          queryFn: () => brandApi.getCollectionDetail(normalizedSourceId, { scope: 'design' }),
-          staleTime: THREADLY_QUERY_STALE_TIME_MS,
-        }),
-        prepareSourceBag('DESIGN', normalizedSourceId).catch(() => null),
-      ]);
+      const nextDesign = await queryClient.fetchQuery({
+        queryKey: designKey,
+        queryFn: () => brandApi.getCollectionDetail(normalizedSourceId, { scope: 'design' }),
+        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+      });
       if (!nextDesign) {
         throw new Error('Design unavailable.');
       }
       setProduct(null);
       setDesign(nextDesign);
-      setBagStatus(nextStatus);
+      void prepareSourceBag('DESIGN', normalizedSourceId)
+        .then((nextStatus) => {
+          if (nextStatus) setBagStatus(nextStatus);
+        })
+        .catch(() => undefined);
 
       if (authStatus === 'authenticated') {
-        const savedResult: Record<string, boolean> = await SavedItemsApi
+        void SavedItemsApi
           .checkBatch('COLLECTION', [normalizedSourceId])
-          .catch(() => ({}));
-        setSaved(Boolean(savedResult[normalizedSourceId]));
+          .then((savedResult: Record<string, boolean>) => {
+            setSaved(Boolean(savedResult[normalizedSourceId]));
+          })
+          .catch(() => undefined);
       } else {
         setSaved(false);
       }
@@ -392,6 +411,7 @@ export function MarketCommerceViewer({
     // Shell (media pager + action cluster) renders immediately; the loader is an
     // overlay, so mount == first visible UI here.
     navPerf.screenMounted('product_detail');
+    navPerf.shellVisible('product_detail');
     navPerf.firstVisibleUi('product_detail');
   }, []);
 
@@ -507,11 +527,7 @@ export function MarketCommerceViewer({
       : 'Custom bagging unavailable';
 
   const handleBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace(fallbackHref as any);
+    backOrNavigate(fallbackHref as any);
   }, [fallbackHref]);
 
   const routePath = sourceType === 'PRODUCT'
@@ -633,7 +649,7 @@ export function MarketCommerceViewer({
       return;
     }
 
-    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'brand', brandId } } as any);
+    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId } } as any);
   }, [brandId, canMessageBrand, isOwnBrand, requireAuth, toast]);
 
   const handleSharePress = useCallback(async () => {
@@ -821,14 +837,27 @@ export function MarketCommerceViewer({
           ) : null}
 
           {sourceType === 'PRODUCT' ? (
-            <MobileMarketSuggestionBlocks
-              context="PRODUCT_DETAIL"
-              targetType="PRODUCT"
-              targetId={normalizedSourceId}
-              surface="PRODUCT_DETAIL"
-              screenContext="PRODUCT_DETAIL"
-              style={styles.suggestionBlocks}
-            />
+            <View style={styles.detailBlock}>
+              <Pressable
+                onPress={() => setSuggestionsExpanded(!suggestionsExpanded)}
+                style={({ pressed }) => [styles.suggestionsToggle, pressed && { opacity: 0.7 }]}
+                accessibilityRole="button"
+                accessibilityLabel={suggestionsExpanded ? "Hide similar pieces" : "Show similar pieces"}
+              >
+                <AppText variant="bodyBold">Similar pieces</AppText>
+                <AppText variant="bodyBold" tone="muted">{suggestionsExpanded ? '−' : '+'}</AppText>
+              </Pressable>
+              {suggestionsExpanded ? (
+                <MobileMarketSuggestionBlocks
+                  context="PRODUCT_DETAIL"
+                  targetType="PRODUCT"
+                  targetId={normalizedSourceId}
+                  surface="PRODUCT_DETAIL"
+                  screenContext="PRODUCT_DETAIL"
+                  style={styles.suggestionBlocks}
+                />
+              ) : null}
+            </View>
           ) : null}
         </ScrollView>
       ) : null}
@@ -864,7 +893,7 @@ export function MarketCommerceViewer({
           onPress={handleBack}
           style={({ pressed }) => [
             styles.iconButton,
-            { backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder },
+            { backgroundColor: theme.colors.glassSurfaceStrong },
             pressed && styles.pressed,
           ]}
           accessibilityRole="button"
@@ -878,7 +907,7 @@ export function MarketCommerceViewer({
           disabled={busyAction === ACTION_KIND_SHARE}
           style={({ pressed }) => [
             styles.iconButton,
-            { backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder },
+            { backgroundColor: theme.colors.glassSurfaceStrong },
             pressed && styles.pressed,
           ]}
           accessibilityRole="button"
@@ -932,7 +961,7 @@ export function MarketCommerceViewer({
             disabled={busyAction === ACTION_KIND_SAVE}
             style={({ pressed }) => [
               styles.sideAction,
-              { backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder },
+              { backgroundColor: theme.colors.glassSurfaceStrong },
               pressed && styles.pressed,
             ]}
             accessibilityRole="button"
@@ -1024,7 +1053,6 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1161,6 +1189,12 @@ const styles = StyleSheet.create({
   },
   detailBlock: {
     gap: tokens.spacing.xs,
+  },
+  suggestionsToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: tokens.spacing.sm,
   },
   reviewSummaryWrap: {
     gap: tokens.spacing.sm,

@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -11,6 +12,8 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { BuyerOrdersApi, type BuyerOrderDetail, type BuyerOrderItem } from '@/src/api/BuyerOrdersApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { useCachedQuery, cachePolicies } from '@/src/cache';
+import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -93,39 +96,27 @@ export default function BuyerOrderDetailScreen() {
   const params = useLocalSearchParams<{ orderId?: string | string[] }>();
   const orderId = Array.isArray(params.orderId) ? params.orderId[0] : params.orderId;
 
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [order, setOrder] = useState<BuyerOrderDetail | null>(null);
 
-  const load = useCallback(async () => {
-    if (!orderId) {
-      setError('Order not found.');
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const detail = await BuyerOrdersApi.getById(orderId);
-      setOrder(detail);
-    } catch (nextError) {
-      setOrder(null);
-      setError(nextError instanceof Error ? nextError.message : 'Unable to load this order right now.');
-    } finally {
-      setLoading(false);
-    }
-  }, [orderId]);
-
-  useEffect(() => {
-    if (status !== 'authenticated') {
-      setLoading(false);
-      return;
-    }
-    void load();
-  }, [load, status]);
+  // Cache-first: a previously viewed order paints instantly, then revalidates.
+  const orderQuery = useCachedQuery<BuyerOrderDetail>({
+    key: queryKeys.orders.detail(orderId),
+    fetcher: () => BuyerOrdersApi.getById(orderId as string),
+    policy: cachePolicies.defaultQuery,
+    enabled: status === 'authenticated' && Boolean(orderId),
+  });
+  const order = orderQuery.data ?? null;
+  const loading = orderQuery.isLoading;
+  const error = !orderId
+    ? 'Order not found.'
+    : orderQuery.error
+      ? orderQuery.error.message || 'Unable to load this order right now.'
+      : null;
+  const refetchOrder = orderQuery.refetch;
+  const mutateOrder = orderQuery.mutate;
+  const load = useCallback(() => {
+    void refetchOrder({ forceRefresh: true });
+  }, [refetchOrder]);
 
   const confirmable = useMemo(() => Boolean(order && canConfirmDelivery(order)), [order]);
   const heroThumbnail = order?.kind === 'STANDARD'
@@ -138,14 +129,14 @@ export default function BuyerOrderDetailScreen() {
     setSaving(true);
     try {
       const updated = await BuyerOrdersApi.confirmDelivery(order);
-      setOrder(updated);
+      mutateOrder(() => updated);
       toast.success('Delivery confirmation submitted.');
     } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Could not confirm delivery.');
+      toast.error('Could not confirm delivery. Please try again.');
     } finally {
       setSaving(false);
     }
-  }, [order, saving, toast]);
+  }, [order, saving, toast, mutateOrder]);
 
   if (status !== 'authenticated') {
     return (
@@ -240,7 +231,7 @@ export default function BuyerOrderDetailScreen() {
             <AppText variant="subtitle">Could not load order</AppText>
             <AppText variant="body" tone="muted" style={styles.centerText}>{error || 'This order is unavailable.'}</AppText>
             <Button title="Retry" onPress={() => void load()} />
-            <Button title="Back to orders" variant="secondary" onPress={() => router.replace('/orders' as any)} />
+            <Button title="Back to orders" variant="secondary" onPress={() => backOrNavigate('/orders' as any)} />
           </Card>
         </View>
       </SafeAreaView>

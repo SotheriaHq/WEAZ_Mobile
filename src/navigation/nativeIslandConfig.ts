@@ -12,8 +12,8 @@ export const NATIVE_ISLAND_KEYS = {
 export type NativeIslandKey = (typeof NATIVE_ISLAND_KEYS)[keyof typeof NATIVE_ISLAND_KEYS];
 
 export const NATIVE_ISLAND_ICONS: Record<NativeIslandKey | 'signIn', string> = {
-  designs: String.fromCodePoint(0x1f9f5),
-  market: String.fromCodePoint(0x1f6cd, 0xfe0f),
+  designs: String.fromCodePoint(0x1f457),
+  market: String.fromCodePoint(0x1f3ea),
   bag: MY_BAG_EMOJI,
   inbox: String.fromCodePoint(0x2709, 0xfe0f),
   profile: String.fromCodePoint(0x1f464),
@@ -21,11 +21,43 @@ export const NATIVE_ISLAND_ICONS: Record<NativeIslandKey | 'signIn', string> = {
 };
 
 export function mapPathnameToIslandKey(pathname: string): NativeIslandKey {
-  if (pathname === '/discover' || pathname.startsWith('/products/') || pathname === '/search') return NATIVE_ISLAND_KEYS.market;
-  if (pathname === '/inbox' || pathname.startsWith('/messages/')) return NATIVE_ISLAND_KEYS.inbox;
-  if (pathname === '/me' || pathname === '/me-edit' || pathname === '/catalog' || pathname.startsWith('/catalog/')) {
+  const normalized = pathname.replace(/^\/\(tabs\)/, '') || '/';
+
+  if (
+    normalized === '/discover' ||
+    normalized === '/search' ||
+    normalized.startsWith('/products/') ||
+    normalized === '/market-section' ||
+    normalized === '/market-viewer' ||
+    normalized === '/collection-viewer' ||
+    normalized === '/collection-gallery'
+  ) {
+    return NATIVE_ISLAND_KEYS.market;
+  }
+
+  if (normalized === '/bag' || normalized === '/checkout' || normalized === '/payment') return NATIVE_ISLAND_KEYS.bag;
+
+  if (normalized === '/inbox' || normalized.startsWith('/messages/')) return NATIVE_ISLAND_KEYS.inbox;
+
+  if (
+    normalized === '/me' ||
+    normalized === '/me-edit' ||
+    normalized === '/catalog' ||
+    normalized.startsWith('/catalog/') ||
+    normalized.startsWith('/profile/') ||
+    normalized === '/orders' ||
+    normalized.startsWith('/orders/') ||
+    normalized === '/notifications' ||
+    normalized === '/reviews' ||
+    normalized.startsWith('/reviews/') ||
+    normalized === '/settings' ||
+    normalized.startsWith('/settings/') ||
+    normalized === '/studio' ||
+    normalized.startsWith('/studio/')
+  ) {
     return NATIVE_ISLAND_KEYS.profile;
   }
+
   return NATIVE_ISLAND_KEYS.designs;
 }
 
@@ -34,6 +66,7 @@ export function buildNativeIslandItems(args: {
   isBrand: boolean;
   profileLabel: string;
   profileIcon: string;
+  profileAvatarUri?: string | null;
   profileBadge?: number;
   inboxBadge?: number;
   bagBadge?: number;
@@ -47,7 +80,7 @@ export function buildNativeIslandItems(args: {
     },
     {
       key: NATIVE_ISLAND_KEYS.market,
-      label: 'Market',
+      label: 'Shop',
       emoji: NATIVE_ISLAND_ICONS.market,
       active: args.activeKey === NATIVE_ISLAND_KEYS.market,
     },
@@ -60,7 +93,7 @@ export function buildNativeIslandItems(args: {
     },
     {
       key: NATIVE_ISLAND_KEYS.inbox,
-      label: 'Msgs',
+      label: 'Inbox',
       emoji: NATIVE_ISLAND_ICONS.inbox,
       active: args.activeKey === NATIVE_ISLAND_KEYS.inbox,
       badge: args.inboxBadge,
@@ -69,8 +102,8 @@ export function buildNativeIslandItems(args: {
       key: NATIVE_ISLAND_KEYS.profile,
       label: args.profileLabel,
       emoji: args.profileIcon,
+      avatarUri: args.profileAvatarUri ?? null,
       active: args.activeKey === NATIVE_ISLAND_KEYS.profile,
-      badge: args.profileBadge,
     },
   ];
 

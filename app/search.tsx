@@ -36,6 +36,7 @@ import {
 import { perfMeasure } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
 import MobileMarketSuggestionBlocks from '@/src/features/market/components/MobileMarketSuggestionBlocks';
+import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
 
 type FilterType = 'all' | SearchEntityType;
 
@@ -223,10 +224,22 @@ function SearchResultRow({
 }
 
 export default function SearchScreen() {
+  const flowKey = 'search';
+  React.useEffect(() => {
+    navPerf.screenMounted(flowKey);
+  }, []);
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible(flowKey);
+  }, []);
+  React.useEffect(() => {
+    navPerf.firstVisibleUi(flowKey);
+  }, []);
+
   const params = useLocalSearchParams<{ q?: string | string[]; type?: string | string[]; autoSubmit?: string | string[] }>();
   const initialQuery = Array.isArray(params.q) ? params.q[0] : params.q ?? '';
   const initialType = Array.isArray(params.type) ? params.type[0] : params.type;
   const autoSubmit = Array.isArray(params.autoSubmit) ? params.autoSubmit[0] : params.autoSubmit;
+  const initialAutoSubmit = autoSubmit === '1' || autoSubmit === 'true';
 
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -236,12 +249,16 @@ export default function SearchScreen() {
       ? initialType
       : 'all',
   );
+  // The full results page is shown only after an explicit submit (keyboard
+  // search, recent/popular tap, or autoSubmit). While the user is still typing,
+  // the live debounced search keeps results warm in the background, but the view
+  // stays on suggestions so they never flash away mid-keystroke.
+  const [submitted, setSubmitted] = useState(initialAutoSubmit);
   const [suggestions, setSuggestions] = useState<SearchSuggestionResponse | null>(null);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
   const [localRecent, setLocalRecent] = useState<string[]>([]);
   const [hiddenRecent, setHiddenRecent] = useState<string[]>([]);
-  const [resultState, setResultState] = useState<ResultState>({ status: 'idle' });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
   const searchRequestIdRef = useRef(0);
@@ -250,6 +267,9 @@ export default function SearchScreen() {
   const searchAbortRef = useRef<AbortController | null>(null);
 
   const normalizedQuery = normalizeQuery(query);
+  const searchResultCacheKey = normalizedQuery ? `${normalizedQuery}::${filterType}` : null;
+  const initialWarmResultState = searchResultCacheKey ? readWarmScreenState<ResultState>(searchResultCacheKey) : null;
+  const [resultState, setResultState] = useState<ResultState>(() => initialWarmResultState ?? { status: 'idle' });
   const recentQueries = useMemo(
     () => combineRecentQueries(localRecent, suggestions?.recent ?? [], hiddenRecent),
     [hiddenRecent, localRecent, suggestions?.recent],
@@ -273,7 +293,17 @@ export default function SearchScreen() {
 
   useEffect(() => {
     perfMeasure('runway-search-first-paint', 'runway-search-tap');
+    navPerf.screenMounted('tabs→search');
+    navPerf.shellVisible('tabs→search');
+    navPerf.firstVisibleUi('tabs→search');
   }, []);
+
+  useEffect(() => {
+    if (!suggestionsLoading && resultState.status !== 'loading') {
+      navPerf.mark('cached_or_empty_state_visible', 'tabs→search');
+      navPerf.dataReady('tabs→search');
+    }
+  }, [resultState.status, suggestionsLoading]);
 
   const loadSuggestions = useCallback(async (value: string, signal?: AbortSignal) => {
     const nextRequestId = requestIdRef.current + 1;
@@ -311,6 +341,9 @@ export default function SearchScreen() {
       const requestKey = `${normalized}::${nextType}`;
       if (activeSearchRequestKeyRef.current === requestKey) return;
 
+      const cachedResult = readWarmScreenState<ResultState>(requestKey);
+      const reusableCachedResult = cachedResult?.status === 'error' ? null : cachedResult;
+
       searchAbortRef.current?.abort();
       const controller = new AbortController();
       const nextSearchRequestId = searchRequestIdRef.current + 1;
@@ -318,7 +351,11 @@ export default function SearchScreen() {
       searchAbortRef.current = controller;
       activeSearchRequestKeyRef.current = requestKey;
 
-      setResultState({ status: 'loading' });
+      if (reusableCachedResult) {
+        setResultState(reusableCachedResult);
+      } else {
+        setResultState({ status: 'loading' });
+      }
       try {
         const payload = await SearchApi.search({
           q: normalized,
@@ -327,15 +364,15 @@ export default function SearchScreen() {
           limit: 24,
         }, controller.signal);
         if (searchRequestIdRef.current !== nextSearchRequestId || controller.signal.aborted) return;
-        if (payload.items.length === 0) {
-          setResultState({ status: 'empty' });
-        } else {
-          setResultState({
-            status: 'ready',
-            items: payload.items,
-            hasNextPage: payload.meta.hasNextPage,
-          });
-        }
+        const nextResult: ResultState = payload.items.length === 0
+          ? { status: 'empty' }
+          : {
+              status: 'ready',
+              items: payload.items,
+              hasNextPage: payload.meta.hasNextPage,
+            };
+        setResultState(nextResult);
+        writeWarmScreenState(requestKey, nextResult);
         if (options.saveToRecent !== false) {
           await saveRecentSearch(normalized);
           setLocalRecent(await getLocalRecentSearches());
@@ -343,7 +380,11 @@ export default function SearchScreen() {
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') return;
         if (searchRequestIdRef.current !== nextSearchRequestId) return;
-        setResultState({ status: 'error', message: getErrorMessage(error) });
+        if (reusableCachedResult) {
+          return;
+        }
+        const nextErrorState: ResultState = { status: 'error', message: getErrorMessage(error) };
+        setResultState(nextErrorState);
       } finally {
         if (activeSearchRequestKeyRef.current === requestKey) {
           activeSearchRequestKeyRef.current = null;
@@ -429,8 +470,9 @@ export default function SearchScreen() {
     navPerf.tap(`search→${item.type}`);
     // Recent-search persistence is fire-and-forget; navigation must not wait on it.
     void saveRecentSearch(getRecentQueryForSearchItem(item));
-    navPerf.navigationCalled();
-    router.push(routeForSearchItem(item));
+    // Phase 2: use guarded drill to avoid duplicate search result pushes
+    const { drillDownPush } = require('@/src/utils/mobileNavigation');
+    drillDownPush(routeForSearchItem(item));
   }, []);
 
   const removeRecent = useCallback(async (value: string) => {
@@ -439,9 +481,23 @@ export default function SearchScreen() {
     setHiddenRecent(await getHiddenSearches());
   }, []);
 
+  const onChangeQuery = useCallback((value: string) => {
+    setQuery(value);
+    // Editing the query returns the screen to suggestion mode so suggestions
+    // never flash away while the user is still typing.
+    setSubmitted(false);
+  }, []);
+
   const onSubmitSearch = useCallback(() => {
+    setSubmitted(true);
     void runSearch(query, filterType, { saveToRecent: true });
   }, [filterType, query, runSearch]);
+
+  const runSubmittedSearch = useCallback((value: string) => {
+    setQuery(value);
+    setSubmitted(true);
+    void runSearch(value);
+  }, [runSearch]);
 
   const onClearQuery = useCallback(() => {
     suggestAbortRef.current?.abort();
@@ -449,6 +505,7 @@ export default function SearchScreen() {
     requestIdRef.current += 1;
     searchRequestIdRef.current += 1;
     setQuery('');
+    setSubmitted(false);
     setSuggestions(null);
     setSuggestionsError(null);
     setSuggestionsLoading(false);
@@ -506,7 +563,7 @@ export default function SearchScreen() {
             label="Search"
             hideLabel
             value={query}
-            onChangeText={setQuery}
+            onChangeText={onChangeQuery}
             onSubmitEditing={onSubmitSearch}
             placeholder="Search WEAZ"
             returnKeyType="search"
@@ -527,9 +584,10 @@ export default function SearchScreen() {
         </View>
       </View>
 
-      {resultState.status === 'ready' ? (
+      {submitted && resultState.status === 'ready' ? (
         // Results render in a single virtualized list (not a FlatList nested in a
-        // non-scrolling ScrollView) so large result sets recycle rows.
+        // non-scrolling ScrollView) so large result sets recycle rows. Only shown
+        // after an explicit submit so live typing never swaps suggestions out.
         <FlatList
           data={resultState.items}
           keyExtractor={(item) => `${item.type}-${item.id}`}
@@ -563,7 +621,7 @@ export default function SearchScreen() {
       >
         {filtersRow}
 
-        {resultState.status === 'loading' ? (
+        {submitted && resultState.status === 'loading' ? (
           <Card>
             <View style={styles.stateBlock}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -572,7 +630,7 @@ export default function SearchScreen() {
           </Card>
         ) : null}
 
-        {resultState.status === 'error' ? (
+        {submitted && resultState.status === 'error' ? (
           <Card>
             <View style={styles.stateBlock}>
               <AppText variant="subtitle">⚠️</AppText>
@@ -583,7 +641,7 @@ export default function SearchScreen() {
           </Card>
         ) : null}
 
-        {resultState.status === 'empty' ? (
+        {submitted && resultState.status === 'empty' ? (
           <Card>
             <View style={styles.stateBlock}>
               <AppText variant="subtitle">🫥</AppText>
@@ -593,7 +651,7 @@ export default function SearchScreen() {
           </Card>
         ) : null}
 
-        {resultState.status === 'empty' && normalizeQuery(query) ? (
+        {submitted && resultState.status === 'empty' && normalizeQuery(query) ? (
           <MobileMarketSuggestionBlocks
             context="SEARCH_EMPTY"
             targetType="QUERY"
@@ -638,10 +696,7 @@ export default function SearchScreen() {
                     <QueryRow
                       key={entry.query}
                       label={entry.query}
-                      onPress={() => {
-                        setQuery(entry.query);
-                        void runSearch(entry.query);
-                      }}
+                      onPress={() => runSubmittedSearch(entry.query)}
                       onRemove={() => {
                         void removeRecent(entry.query);
                       }}
@@ -679,10 +734,7 @@ export default function SearchScreen() {
                   {suggestions?.trending.map((trend: SearchTrendingLink) => (
                     <Pressable
                       key={trend.query}
-                      onPress={() => {
-                        setQuery(trend.query);
-                        void runSearch(trend.query);
-                      }}
+                      onPress={() => runSubmittedSearch(trend.query)}
                       style={({ pressed }) => [styles.resultRow, pressed ? styles.pressed : null]}
                     >
                       <View style={styles.resultMeta}>

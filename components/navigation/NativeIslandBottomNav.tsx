@@ -1,9 +1,10 @@
 import React from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { navPerf } from '@/src/utils/navPerf';
 import {
   getNativeIslandContentClearance,
   getNativeIslandLayout,
@@ -17,108 +18,52 @@ export type NativeIslandNavItem = {
   key: string;
   label: string;
   emoji: string;
+  // When set (e.g. the signed-in user's resolved profile photo for the "Me"
+  // item), the island renders this image as a rounded-square glyph instead of
+  // the emoji. Falls back to the emoji when null/undefined.
+  avatarUri?: string | null;
   active?: boolean;
   disabled?: boolean;
   badge?: number;
+  navFlow?: string;
+  targetRoute?: string | null;
 };
 
 type NativeIslandBottomNavProps = {
   items: NativeIslandNavItem[];
   onSelect: (item: NativeIslandNavItem) => void;
   onPressIn?: (item: NativeIslandNavItem) => void;
-  collapsed?: boolean;
-  onCollapsedPress?: () => void;
 };
-
-const COLLAPSED_MAX_WIDTH = 216;
-const COLLAPSED_ACTIVE_CHIP_WIDTH = 96;
-const COLLAPSED_ACTIVE_CHIP_COMPACT_WIDTH = 88;
-const COLLAPSED_PREVIEW_WIDTH = 24;
-const COLLAPSED_PREVIEW_COMPACT_WIDTH = 22;
-const COLLAPSED_ITEM_GAP = 4;
-const COLLAPSED_HORIZONTAL_PADDING = 10;
-const COLLAPSED_MAX_PREVIEW_ITEMS = 3;
-const COLLAPSED_MAX_PREVIEW_ITEMS_COMPACT = 2;
-
-function getCollapsedPreviewItems({
-  items,
-  activeIndex,
-  previewLimit,
-}: {
-  items: NativeIslandNavItem[];
-  activeIndex: number;
-  previewLimit: number;
-}) {
-  const before = items.slice(0, activeIndex).filter((item) => !item.disabled);
-  const after = items.slice(activeIndex + 1).filter((item) => !item.disabled);
-  const targetCount = Math.min(previewLimit, before.length + after.length);
-
-  if (targetCount <= 0) {
-    return { leftItems: [], rightItems: [] };
-  }
-
-  if (before.length === 0) {
-    return { leftItems: [], rightItems: after.slice(0, targetCount) };
-  }
-
-  if (after.length === 0) {
-    return { leftItems: before.slice(-targetCount), rightItems: [] };
-  }
-
-  let leftCount = Math.min(before.length, Math.floor(targetCount / 2));
-  let rightCount = Math.min(after.length, targetCount - leftCount);
-
-  const remaining = targetCount - leftCount - rightCount;
-  if (remaining > 0) {
-    const extraLeft = Math.min(before.length - leftCount, remaining);
-    leftCount += extraLeft;
-    rightCount += Math.min(after.length - rightCount, remaining - extraLeft);
-  }
-
-  return {
-    leftItems: before.slice(-leftCount),
-    rightItems: after.slice(0, rightCount),
-  };
-}
-
-function getCenteredLeft(windowWidth: number, width: number) {
-  const minLeft = NATIVE_ISLAND_NAV.minSideOffset;
-  const maxLeft = Math.max(minLeft, windowWidth - minLeft - width);
-  const centeredLeft = Math.round((windowWidth - width) / 2);
-  return Math.min(Math.max(minLeft, centeredLeft), maxLeft);
-}
 
 export function NativeIslandTabIcon({
   label,
   emoji,
+  avatarUri,
   focused,
   badge,
   compact,
 }: {
   label: string;
   emoji: string;
+  avatarUri?: string | null;
   focused: boolean;
   badge?: number;
   compact?: boolean;
 }) {
   const { theme } = useTheme();
+  // The chip must stay structurally IDENTICAL whether focused or not — only
+  // colors change. On Android, toggling `borderWidth`, `shadow*` props, or
+  // `fontSize` on the chip whose `focused` flips true->false re-clips the view
+  // (it has overflow:hidden) and momentarily blanks its glyph — that is the
+  // "link disappears when navigating" bug. So: border width is always present
+  // (transparent when inactive), no dynamic shadow, and a constant emoji size.
   const chipStyle = [
     styles.tabChip,
     compact && styles.tabChipCompact,
-    focused
-        ? {
-          backgroundColor: theme.colors.primarySoft,
-          borderColor: theme.colors.primarySoft,
-          borderWidth: StyleSheet.hairlineWidth,
-          shadowColor: theme.colors.primary,
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.3,
-          shadowRadius: 18,
-          // No elevation: on Android, elevation raises z-order and its shadow layer
-          // covers adjacent chips, making their emojis invisible on tab switch.
-          // The primarySoft background is sufficient as the active indicator.
-        }
-      : styles.tabChipInactive,
+    {
+      backgroundColor: focused ? theme.colors.primarySoft : 'transparent',
+      borderColor: focused ? theme.colors.primarySoft : 'transparent',
+    },
   ];
 
   return (
@@ -127,9 +72,17 @@ export function NativeIslandTabIcon({
         <View style={chipStyle}>
           <View style={styles.tabGlyphStack}>
             <View style={styles.tabEmojiWrap}>
-              <Text style={[styles.tabEmoji, { fontSize: focused ? 20 : 19, opacity: focused ? 1 : 0.76 }]}>
-                {emoji}
-              </Text>
+              {avatarUri ? (
+                <Image
+                  source={{ uri: avatarUri }}
+                  style={[styles.tabAvatar, { opacity: focused ? 1 : 0.82 }]}
+                  resizeMode="cover"
+                />
+              ) : (
+                <AppText variant="title" style={[styles.tabEmoji, { opacity: focused ? 1 : 0.76 }]}>
+                  {emoji}
+                </AppText>
+              )}
             </View>
             <View style={styles.tabLabelWrap}>
               <AppText
@@ -137,6 +90,7 @@ export function NativeIslandTabIcon({
                 tone={focused ? 'primary' : 'secondary'}
                 numberOfLines={1}
                 style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
+                maxFontSizeMultiplier={1.2}
               >
                 {label}
               </AppText>
@@ -146,7 +100,7 @@ export function NativeIslandTabIcon({
         {typeof badge === 'number' && badge > 0 ? (
           <View style={styles.badgeWrap} pointerEvents="none">
             <View style={[styles.badge, { backgroundColor: theme.colors.badgeRed }]}>
-              <AppText variant="captionBold" tone="inverse">
+              <AppText variant="badgeLabel" tone="inverse">
                 {badge > 99 ? '99+' : badge}
               </AppText>
             </View>
@@ -157,145 +111,131 @@ export function NativeIslandTabIcon({
   );
 }
 
+// Frosted-glass chrome. Extracted and memoized so it does NOT re-render when the
+// active tab changes on navigation.
+//
+// PERFORMANCE: the Android `experimentalBlurMethod="dimezisBlurView"` blur is a
+// LIVE blur — it re-samples whatever screen content sits behind the island every
+// frame. During a tab switch the content behind the island is changing, so the
+// GPU is busy re-compositing that blur at the exact moment the destination screen
+// is trying to paint. On slow/old Android devices that GPU contention is a major
+// cause of the "screen appears late after I tap" lag. iOS blur is GPU-accelerated
+// by the OS and cheap, so we keep the real frosted look there. On Android we drop
+// the live blur and use a slightly more opaque solid fill that reads as the same
+// frosted bar but costs the GPU nothing per frame. The floating island shape,
+// shadow and milky tint are unchanged on both platforms.
+const USE_LIVE_BLUR = Platform.OS === 'ios';
+
+const IslandGlass = React.memo(function IslandGlass({
+  scheme,
+  theme,
+}: {
+  scheme: ReturnType<typeof useTheme>['scheme'];
+  theme: ReturnType<typeof useTheme>['theme'];
+}) {
+  // Android (no live blur): bump the fill opacity so the bar still reads as a
+  // solid frosted panel rather than a flat translucent sheet.
+  const fillColor = USE_LIVE_BLUR
+    ? scheme === 'dark'
+      ? 'rgba(10,12,20,0.58)'
+      : 'rgba(255,255,255,0.66)'
+    : scheme === 'dark'
+      ? 'rgba(14,16,24,0.92)'
+      : 'rgba(250,250,252,0.94)';
+
+  return (
+    <>
+      {USE_LIVE_BLUR ? (
+        <BlurView
+          tint={scheme === 'dark' ? 'dark' : 'light'}
+          // Strong intensity so the island reads as bold frosted glass (iOS only).
+          intensity={scheme === 'dark' ? 90 : 80}
+          style={[StyleSheet.absoluteFill, styles.navBlur]}
+        />
+      ) : null}
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          styles.navGlassFill,
+          {
+            backgroundColor: fillColor,
+            borderColor: theme.colors.glassBorder,
+            borderRadius: NATIVE_ISLAND_NAV.radius,
+          },
+        ]}
+      />
+    </>
+  );
+});
+
 export function NativeIslandBottomNav({
   items,
   onSelect,
   onPressIn,
-  collapsed = false,
-  onCollapsedPress,
 }: NativeIslandBottomNavProps) {
   const { scheme, theme } = useTheme();
   const { windowWidth, islandLayout } = useScreenChrome();
   const { bottomOffset, sideOffset, islandWidth } = islandLayout;
   const compact = items.length >= 6 || windowWidth < 380;
-  const orderedItems = items;
-  const activeIndex = Math.max(0, orderedItems.findIndex((item) => item.active && !item.disabled));
-  const activeItem = orderedItems[activeIndex] ?? orderedItems[0];
-  const collapsedActiveChipWidth = compact ? COLLAPSED_ACTIVE_CHIP_COMPACT_WIDTH : COLLAPSED_ACTIVE_CHIP_WIDTH;
-  const collapsedPreviewWidth = compact ? COLLAPSED_PREVIEW_COMPACT_WIDTH : COLLAPSED_PREVIEW_WIDTH;
-  const collapsedMaxWidth = Math.min(
-    islandWidth,
-    COLLAPSED_MAX_WIDTH,
-    Math.max(
-      collapsedActiveChipWidth + COLLAPSED_HORIZONTAL_PADDING * 2,
-      Math.round(windowWidth * 0.58),
-    ),
-  );
-  const collapsedPreviewCapacity = Math.max(
-    0,
-    Math.floor(
-      (collapsedMaxWidth -
-        collapsedActiveChipWidth -
-        COLLAPSED_HORIZONTAL_PADDING * 2 +
-        COLLAPSED_ITEM_GAP) /
-        (collapsedPreviewWidth + COLLAPSED_ITEM_GAP),
-    ),
-  );
-  const desiredCollapsedPreviewLimit = compact
-    ? COLLAPSED_MAX_PREVIEW_ITEMS_COMPACT
-    : COLLAPSED_MAX_PREVIEW_ITEMS;
-  const collapsedPreviewLimit = Math.min(desiredCollapsedPreviewLimit, collapsedPreviewCapacity);
-  const { leftItems: collapsedLeftItems, rightItems: collapsedRightItems } = React.useMemo(
-    () => getCollapsedPreviewItems({ items: orderedItems, activeIndex, previewLimit: collapsedPreviewLimit }),
-    [activeIndex, collapsedPreviewLimit, orderedItems],
-  );
-  const collapsedPreviewCount = collapsedLeftItems.length + collapsedRightItems.length;
-  const collapsedContentWidth =
-    collapsedActiveChipWidth +
-    collapsedPreviewCount * collapsedPreviewWidth +
-    collapsedPreviewCount * COLLAPSED_ITEM_GAP +
-    COLLAPSED_HORIZONTAL_PADDING * 2;
-  const collapsedWidth = Math.min(collapsedMaxWidth, collapsedContentWidth);
-  const collapsedLeft = getCenteredLeft(windowWidth, collapsedWidth);
-  const navLeft = collapsed ? collapsedLeft : sideOffset;
-  const navWidth = collapsed ? collapsedWidth : islandWidth;
-  const navLeftAnim = React.useRef(new Animated.Value(navLeft)).current;
-  const navWidthAnim = React.useRef(new Animated.Value(navWidth)).current;
-  const collapsedOpacityAnim = React.useRef(new Animated.Value(collapsed ? 1 : 0)).current;
-  const expandedOpacityAnim = React.useRef(new Animated.Value(collapsed ? 0 : 1)).current;
-  const collapsedScaleAnim = React.useRef(new Animated.Value(collapsed ? 1 : 0.96)).current;
-  const expandedScaleAnim = React.useRef(new Animated.Value(collapsed ? 0.98 : 1)).current;
+  const [pressedItemKey, setPressedItemKey] = React.useState<string | null>(null);
+  const [immediateActiveKey, setImmediateActiveKey] = React.useState<string | null>(null);
+  const [immediateActiveNavFlow, setImmediateActiveNavFlow] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const containerEasing = Easing.out(Easing.cubic);
-    const fadeEasing = Easing.out(Easing.quad);
-    navLeftAnim.stopAnimation();
-    navWidthAnim.stopAnimation();
-    collapsedOpacityAnim.stopAnimation();
-    expandedOpacityAnim.stopAnimation();
-    collapsedScaleAnim.stopAnimation();
-    expandedScaleAnim.stopAnimation();
+    if (!immediateActiveKey || !immediateActiveNavFlow) return;
+    navPerf.activeIndicatorVisible(immediateActiveNavFlow);
+  }, [immediateActiveKey, immediateActiveNavFlow]);
 
-    // All animations use useNativeDriver: false so they run on the same JS thread
-    // as the layout (width/left) animations. Mixing drivers causes desync that
-    // produces the "shaking" effect where items clip before they finish fading.
-    Animated.parallel([
-      Animated.timing(navLeftAnim, {
-        toValue: navLeft,
-        duration: 160,
-        easing: containerEasing,
-        useNativeDriver: false,
-      }),
-      Animated.timing(navWidthAnim, {
-        toValue: navWidth,
-        duration: 160,
-        easing: containerEasing,
-        useNativeDriver: false,
-      }),
-      // Collapse: show collapsed chip quickly (140ms). Expand: hide it fast (80ms).
-      Animated.timing(collapsedOpacityAnim, {
-        toValue: collapsed ? 1 : 0,
-        duration: collapsed ? 140 : 80,
-        easing: fadeEasing,
-        useNativeDriver: false,
-      }),
-      // Collapse: fade items out fast (80ms) BEFORE container finishes shrinking (160ms)
-      // so items never get visibly clipped. Expand: delay 20ms then fade in over 140ms
-      // so items reach full opacity as the container reaches full width.
-      Animated.timing(expandedOpacityAnim, {
-        toValue: collapsed ? 0 : 1,
-        duration: collapsed ? 80 : 140,
-        delay: collapsed ? 0 : 20,
-        easing: fadeEasing,
-        useNativeDriver: false,
-      }),
-      Animated.timing(collapsedScaleAnim, {
-        toValue: collapsed ? 1 : 0.96,
-        duration: 160,
-        easing: containerEasing,
-        useNativeDriver: false,
-      }),
-      Animated.timing(expandedScaleAnim, {
-        toValue: collapsed ? 0.98 : 1,
-        duration: 160,
-        easing: containerEasing,
-        useNativeDriver: false,
-      }),
-    ]).start();
-  }, [
-    collapsed,
-    collapsedOpacityAnim,
-    collapsedScaleAnim,
-    expandedOpacityAnim,
-    expandedScaleAnim,
-    navLeft,
-    navLeftAnim,
-    navWidth,
-    navWidthAnim,
-  ]);
+  React.useEffect(() => {
+    if (!immediateActiveKey) return;
+    const confirmed = items.some((item) => item.key === immediateActiveKey && item.active);
+    const stillExists = items.some((item) => item.key === immediateActiveKey);
+    if (confirmed || !stillExists) {
+      setImmediateActiveKey(null);
+      setImmediateActiveNavFlow(null);
+    }
+  }, [immediateActiveKey, items]);
+
+  const clearPressedItem = React.useCallback(() => {
+    setPressedItemKey(null);
+  }, []);
+
+  const handleItemPressIn = React.useCallback(
+    (item: NativeIslandNavItem) => {
+      const navFlow = item.navFlow ?? item.key;
+      const targetRoute = item.targetRoute ?? undefined;
+      setPressedItemKey(item.key);
+      setImmediateActiveKey(item.key);
+      setImmediateActiveNavFlow(navFlow);
+      navPerf.tapPressIn(navFlow, { target: targetRoute });
+      navPerf.optimisticActiveSet(navFlow, { target: targetRoute });
+      navPerf.tap(navFlow); // keep existing for compat
+      navPerf.pressedFeedbackVisible(navFlow);
+      navPerf.activeIndicatorIntent(navFlow);
+      onPressIn?.(item);
+      onSelect(item);
+    },
+    [onPressIn, onSelect],
+  );
 
   if (items.length === 0) {
     return null;
   }
 
+  // The island is permanently fixed and fully expanded — there is no collapse
+  // state. A previous design collapsed the bar to a pill (and reset that pill on
+  // every route change), which made the nav links visually disappear when
+  // navigating between screens. Keeping it static also removes the JS-thread
+  // width/opacity animations that competed with the navigation transition.
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-      <Animated.View
+      <View
         style={[
           styles.navWrap,
           {
-            left: navLeftAnim,
-            width: navWidthAnim,
+            left: sideOffset,
+            width: islandWidth,
             bottom: bottomOffset,
             height: NATIVE_ISLAND_NAV.height,
             borderRadius: NATIVE_ISLAND_NAV.radius,
@@ -306,122 +246,44 @@ export function NativeIslandBottomNav({
           },
         ]}
       >
-        <BlurView
-          tint={scheme === 'dark' ? 'dark' : 'light'}
-          intensity={theme.colors.glassBlur as number}
-          style={[StyleSheet.absoluteFill, styles.navBlur]}
-        />
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            styles.navGlassFill,
-            {
-              backgroundColor: scheme === 'dark' ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.18)',
-              borderColor: theme.colors.glassBorder,
-              borderRadius: NATIVE_ISLAND_NAV.radius,
-            },
-          ]}
-        />
+        <IslandGlass scheme={scheme} theme={theme} />
         <View style={styles.navItems}>
-          <Animated.View
-            pointerEvents={collapsed ? 'auto' : 'none'}
-            accessibilityElementsHidden={!collapsed}
-            importantForAccessibility={collapsed ? 'auto' : 'no-hide-descendants'}
-            style={[
-              styles.navModeLayer,
-              {
-                opacity: collapsedOpacityAnim,
-                transform: [{ scale: collapsedScaleAnim }],
-              },
-            ]}
-          >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Expand navigation. Current tab: ${activeItem?.label ?? 'WEAZ'}`}
-              onPressIn={() => onCollapsedPress?.()}
-              style={({ pressed }) => [styles.collapsedButton, pressed && styles.navItemPressed]}
-            >
-              <View style={styles.collapsedContentRow} pointerEvents="none">
-                {collapsedLeftItems.map((item) => (
-                  <View key={item.key} style={[styles.collapsedDeckItem, { width: collapsedPreviewWidth }]}>
-                    <Text style={styles.collapsedDeckEmoji}>
-                      {item.emoji}
-                    </Text>
-                    {typeof item.badge === 'number' && item.badge > 0 ? (
-                      <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
-                    ) : null}
-                  </View>
-                ))}
-                <View
-                  style={[
-                    styles.collapsedActiveChip,
-                    {
-                      backgroundColor: theme.colors.primarySoft,
-                      width: collapsedActiveChipWidth,
-                    },
-                  ]}
-                >
-                  <Text style={styles.collapsedActiveEmoji}>{activeItem?.emoji ?? String.fromCodePoint(0x2022)}</Text>
-                  <AppText
-                    variant="captionBold"
-                    tone="primary"
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                    style={styles.collapsedActiveLabel}
-                  >
-                    {activeItem?.label ?? 'Menu'}
-                  </AppText>
-                </View>
-                {collapsedRightItems.map((item) => (
-                  <View key={item.key} style={[styles.collapsedDeckItem, { width: collapsedPreviewWidth }]}>
-                    <Text style={styles.collapsedDeckEmoji}>
-                      {item.emoji}
-                    </Text>
-                    {typeof item.badge === 'number' && item.badge > 0 ? (
-                      <View style={[styles.collapsedBadge, { backgroundColor: theme.colors.badgeRed }]} />
-                    ) : null}
-                  </View>
-                ))}
-              </View>
-            </Pressable>
-          </Animated.View>
-          <Animated.View
-            pointerEvents={collapsed ? 'none' : 'auto'}
-            accessibilityElementsHidden={collapsed}
-            importantForAccessibility={collapsed ? 'no-hide-descendants' : 'auto'}
-            style={[
-              styles.navModeLayer,
-              styles.expandedItemsLayer,
-              {
-                opacity: expandedOpacityAnim,
-                transform: [{ scale: expandedScaleAnim }],
-              },
-            ]}
-          >
+          <View style={[styles.navModeLayer, styles.expandedItemsLayer]}>
             {items.map((item) => (
               <Pressable
                 key={item.key}
                 accessibilityRole="tab"
-                accessibilityState={{ selected: Boolean(item.active && !item.disabled), disabled: item.disabled }}
+                accessibilityState={{
+                  selected: Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key) && !item.disabled),
+                  disabled: item.disabled,
+                }}
                 accessibilityLabel={item.label}
                 disabled={item.disabled}
-                onPressIn={item.disabled ? undefined : () => { onPressIn?.(item); onSelect(item); }}
+                onPressIn={item.disabled ? undefined : () => handleItemPressIn(item)}
+                onPressOut={clearPressedItem}
                 onPress={undefined}
+                android_ripple={{
+                  color: scheme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(147,51,234,0.14)',
+                  borderless: false,
+                  foreground: true,
+                }}
                 style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
               >
-                <NativeIslandTabIcon
-                  label={item.label}
-                  emoji={item.emoji}
-                  focused={Boolean(item.active && !item.disabled)}
-                  badge={item.badge}
-                  compact={compact}
-                />
+                {({ pressed }) => (
+                  <NativeIslandTabIcon
+                    label={item.label}
+                    emoji={item.emoji}
+                    avatarUri={item.avatarUri}
+                    focused={Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key || pressed) && !item.disabled)}
+                    badge={item.badge}
+                    compact={compact}
+                  />
+                )}
               </Pressable>
             ))}
-          </Animated.View>
+          </View>
         </View>
-      </Animated.View>
+      </View>
     </View>
   );
 }
@@ -457,62 +319,6 @@ const styles = StyleSheet.create({
   expandedItemsLayer: {
     paddingHorizontal: NATIVE_ISLAND_NAV.horizontalPadding,
   },
-  collapsedButton: {
-    flex: 1,
-    height: '100%',
-    minWidth: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: COLLAPSED_HORIZONTAL_PADDING,
-    position: 'relative',
-  },
-  collapsedContentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: COLLAPSED_ITEM_GAP,
-    maxWidth: '100%',
-  },
-  collapsedActiveChip: {
-    height: 42,
-    borderRadius: 21,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 1,
-    paddingHorizontal: 6,
-    zIndex: 2,
-    overflow: 'hidden',
-  },
-  collapsedActiveEmoji: {
-    fontSize: 18,
-    lineHeight: 20,
-  },
-  collapsedActiveLabel: {
-    maxWidth: '100%',
-    minWidth: 0,
-    textAlign: 'center',
-  },
-  collapsedDeckItem: {
-    width: COLLAPSED_PREVIEW_WIDTH,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  collapsedDeckEmoji: {
-    fontSize: 12,
-    lineHeight: 14,
-    opacity: 0.62,
-  },
-  collapsedBadge: {
-    position: 'absolute',
-    right: 1,
-    top: 2,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
   navItem: {
     flex: 1,
     height: '100%',
@@ -540,6 +346,10 @@ const styles = StyleSheet.create({
     minWidth: 50,
     height: 38,
     borderRadius: 9999,
+    // Border is always present (transparent when inactive) so the chip's box
+    // model never changes on focus — prevents Android re-clipping the glyph.
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'transparent',
     paddingHorizontal: 5,
     paddingVertical: 1,
     alignItems: 'center',
@@ -556,8 +366,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   tabEmoji: {
-    lineHeight: 20,
     textAlign: 'center',
+  },
+  // Rule 6: avatars are rounded-square, never circles.
+  tabAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
   },
   tabGlyphWrap: {
     position: 'relative',

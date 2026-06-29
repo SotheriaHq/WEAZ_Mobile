@@ -32,6 +32,8 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
+import { navPerf } from '@/src/utils/navPerf';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
 
 type CollectionCommerceViewerProps = {
@@ -172,11 +174,13 @@ export function CollectionCommerceViewer({
         }
         return new Set(nextStatus.products.filter((product) => product.canBag).map((product) => product.productId));
       });
+      setLoading(false);
       if (authStatus === 'authenticated') {
-        const savedMap = await SavedItemsApi.checkBatch('COLLECTION', [normalizedCollectionId]).catch(
-          (): Record<string, boolean> => ({}),
-        );
-        setSaved(Boolean(savedMap[normalizedCollectionId]));
+        void SavedItemsApi.checkBatch('COLLECTION', [normalizedCollectionId])
+          .then((savedMap: Record<string, boolean>) => {
+            setSaved(Boolean(savedMap[normalizedCollectionId]));
+          })
+          .catch(() => undefined);
       } else {
         setSaved(false);
       }
@@ -189,8 +193,20 @@ export function CollectionCommerceViewer({
   }, [authStatus, normalizedCollectionId]);
 
   useEffect(() => {
+    navPerf.screenMounted('collection_viewer');
+    navPerf.shellVisible('collection_viewer');
+    navPerf.firstVisibleUi('collection_viewer');
+  }, []);
+
+  useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!loading && status) {
+      navPerf.dataReady('collection_viewer');
+    }
+  }, [loading, status]);
 
   const selectedProducts = useMemo(
     () => status?.products.filter((product) => selectedIds.has(product.productId)) ?? [],
@@ -214,11 +230,7 @@ export function CollectionCommerceViewer({
   }, [authStatus, routePath, toast]);
 
   const goBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace(fallbackHref as any);
+    backOrNavigate(fallbackHref as any);
   }, [fallbackHref]);
 
   const reloadAfterMutation = useCallback(async () => {
@@ -356,7 +368,7 @@ export function CollectionCommerceViewer({
       toast.info('Messaging is disabled for your own brand.');
       return;
     }
-    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'brand', brandId: status.collection.brandId } } as any);
+    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId: status.collection.brandId } } as any);
   }, [isOwnBrand, requireAuth, status?.collection.brandId, toast]);
 
   const renderProduct = ({ item }: { item: CollectionBagProductStatus }) => {
@@ -364,7 +376,7 @@ export function CollectionCommerceViewer({
     const selection = selections[item.productId] ?? {};
     return (
       <Pressable
-        onPress={() => router.push({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
+        onPress={() => drillDownPush({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
         style={({ pressed }) => [
           styles.productCard,
           { backgroundColor: theme.colors.surface, borderColor: selected ? theme.colors.primary : theme.colors.border },
@@ -464,7 +476,7 @@ export function CollectionCommerceViewer({
               title="View"
               size="sm"
               variant="outline"
-              onPress={() => router.push({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
+              onPress={() => drillDownPush({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
             />
           </View>
         </View>
@@ -557,7 +569,7 @@ export function CollectionCommerceViewer({
             </View>
 
             <View style={styles.headerActions}>
-              <Button title="Open gallery" variant="outline" onPress={() => router.push({ pathname: '/collection-gallery', params: { collectionId: normalizedCollectionId } } as any)} />
+              <Button title="Open gallery" variant="outline" onPress={() => drillDownPush({ pathname: '/collection-gallery', params: { collectionId: normalizedCollectionId } } as any)} />
               <Button title="Message brand" variant="outline" onPress={handleMessage} disabled={!status.collection.brandId || isOwnBrand} />
             </View>
 

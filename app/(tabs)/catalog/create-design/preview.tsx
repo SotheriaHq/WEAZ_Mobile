@@ -169,7 +169,7 @@ export default function CreateDesignPreviewScreen() {
         <View style={styles.headerCopy}>
           <AppText variant="title">Preview</AppText>
           <AppText variant="captionRegular" tone="muted">
-            Review before saving or going live.
+            Review before saving or creating.
           </AppText>
         </View>
       </View>
@@ -179,16 +179,23 @@ export default function CreateDesignPreviewScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
       >
-        {selectedPreviewAsset ? (
+        {assets.length > 0 ? (
           <View style={styles.heroWrap}>
-            <StableImage
-              uri={selectedPreviewAsset.remoteUrl ?? selectedPreviewAsset.uri}
-              containerStyle={styles.heroImage}
-              imageStyle={styles.heroImage}
-            />
-            <View style={[styles.heroBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
+            {assets.map((asset, index) => (
+              <View 
+                key={asset.id} 
+                style={[StyleSheet.absoluteFill, { opacity: index === selectedPreviewIndex ? 1 : 0, zIndex: index === selectedPreviewIndex ? 1 : 0 }]}
+              >
+                <StableImage
+                  uri={asset.remoteUrl ?? asset.uri}
+                  containerStyle={styles.heroImage}
+                  imageStyle={styles.heroImage}
+                />
+              </View>
+            ))}
+            <View style={[styles.heroBadge, { backgroundColor: theme.colors.surfaceOverlay, zIndex: 10 }]}>
               <AppText variant="captionBold">
-                {selectedPreviewAsset.id === coverAssetId
+                {selectedPreviewAsset?.id === coverAssetId
                   ? `Cover - ${selectedPreviewSlotLabel}`
                   : selectedPreviewSlotLabel}
               </AppText>
@@ -288,7 +295,7 @@ export default function CreateDesignPreviewScreen() {
             backgroundColor: theme.colors.bg,
             borderTopColor: theme.colors.border,
             paddingHorizontal: tokens.spacing.lg,
-            paddingBottom: Math.max(insets.bottom, tokens.spacing.md),
+            paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
           },
         ]}
       >
@@ -318,27 +325,41 @@ export default function CreateDesignPreviewScreen() {
           <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
             Add at least one field or one media item to save a draft.
           </AppText>
-        ) : null}
-        <Button title="Back to edit" variant="outline" onPress={() => router.replace('/catalog/create-design/composer' as any)} fullWidth />
-        <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-          Going live confirms these images belong to this design and match the selected views.
-        </AppText>
+        ) : (
+          <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
+            Creating confirms these images belong to this design and match the selected views.
+          </AppText>
+        )}
+        {/* Compact footer row: ← Edit | Save Draft | Create (Issue #12). */}
         <View style={styles.actionRow}>
-          <Button
-            title={saveState.action === 'draft' ? 'Saving draft...' : 'Save draft'}
-            variant="secondary"
-            loading={saveState.action === 'draft'}
-            disabled={!canSaveDraft || isSaving}
-            onPress={() => void save('draft')}
-            style={styles.actionButton}
-          />
-          <Button
-            title={saveState.action === 'publish' ? 'Going live...' : 'Go live'}
-            loading={saveState.action === 'publish'}
-            disabled={!canPublish || isSaving}
-            onPress={() => void save('publish')}
-            style={styles.actionButton}
-          />
+          <View style={styles.actionButton}>
+            <Button
+              title="← Edit"
+              variant="outline"
+              disabled={isSaving}
+              onPress={() => router.replace('/catalog/create-design/composer' as any)}
+              fullWidth
+            />
+          </View>
+          <View style={styles.actionButton}>
+            <Button
+              title={saveState.action === 'draft' ? 'Saving…' : 'Save Draft'}
+              variant="secondary"
+              loading={saveState.action === 'draft'}
+              disabled={!canSaveDraft || isSaving}
+              onPress={() => void save('draft')}
+              fullWidth
+            />
+          </View>
+          <View style={styles.actionButton}>
+            <Button
+              title={saveState.action === 'publish' ? 'Creating…' : 'Create'}
+              loading={saveState.action === 'publish'}
+              disabled={!canPublish || isSaving}
+              onPress={() => void save('publish')}
+              fullWidth
+            />
+          </View>
         </View>
         {activeDesignId && isDraft ? (
           <Button title="Delete draft" variant="danger" onPress={() => setDeleteOpen(true)} fullWidth />

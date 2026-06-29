@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import type * as ExpoNotifications from 'expo-notifications';
 
 import {
   NotificationsApi,
@@ -9,8 +10,9 @@ import {
   type RegisterPushTokenPayload,
 } from '@/src/api/NotificationsApi';
 import { getActiveApiBaseUrl } from '@/src/api/httpClient';
+import { ensureAndroidPushChannels } from '@/src/notifications/pushChannels';
 
-type ExpoNotificationsModule = typeof import('expo-notifications');
+type ExpoNotificationsModule = typeof ExpoNotifications;
 
 export type PushRegistrationRecord = {
   userId: string;
@@ -26,7 +28,6 @@ type PushRegistrationResult =
 
 const PUSH_REGISTRATION_STORAGE_KEY = 'threadly.pushTokenRegistration.v1';
 
-let notificationsModulePromise: Promise<ExpoNotificationsModule | null> | null = null;
 let inFlightRegistrationKey: string | null = null;
 let inFlightRegistrationPromise: Promise<PushRegistrationResult> | null = null;
 let lastSuccessfulRegistrationKey: string | null = null;
@@ -78,15 +79,12 @@ function isExpoGoAndroid() {
 
 async function getNotificationsModule() {
   if (Platform.OS === 'web' || isExpoGoAndroid()) return null;
-
-  notificationsModulePromise ??= import('expo-notifications').catch((error) => {
-    if (__DEV__) {
-      console.warn('Unable to load expo-notifications for push token registration:', error);
-    }
+  try {
+    return await Promise.resolve().then(() => require('expo-notifications') as ExpoNotificationsModule);
+  } catch (error) {
+    console.warn('[Notifications] Native module expo-notifications is unavailable.', error);
     return null;
-  });
-
-  return notificationsModulePromise;
+  }
 }
 
 async function ensureNotificationPermission(NotificationsModule: ExpoNotificationsModule) {
@@ -117,12 +115,7 @@ async function ensureNotificationPermission(NotificationsModule: ExpoNotificatio
 
 async function ensureAndroidNotificationChannel(NotificationsModule: ExpoNotificationsModule) {
   if (Platform.OS !== 'android') return;
-
-  await NotificationsModule.setNotificationChannelAsync('default', {
-    name: 'default',
-    importance: NotificationsModule.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-  });
+  await ensureAndroidPushChannels(NotificationsModule);
 }
 
 export function buildPushRegistrationKey(record: PushRegistrationRecord): string {

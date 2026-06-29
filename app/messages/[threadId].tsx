@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -25,6 +27,8 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { MessagingApi, createMessageClientId } from '@/src/api/MessagingApi';
+import { compressPickedImage } from '@/src/utils/imageCompression';
+import { getMobileUploadValidationMessage } from '@/src/utils/uploadValidation';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import {
@@ -35,6 +39,7 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { navPerf } from '@/src/utils/navPerf';
 import type {
   ConversationParticipant,
   ConversationThread,
@@ -54,6 +59,23 @@ const PAGE_SIZE = 50;
 const REALTIME_REFRESH_DEBOUNCE_MS = 300;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const MAX_PENDING_ATTACHMENTS = 4;
+// Lightweight curated emoji set inserted into the composer — no extra dependency
+// and no heavy picker. Opens an inline row the user can tap to append an emoji.
+const COMPOSER_EMOJIS = ['😀', '😂', '😍', '👍', '🙏', '🔥', '🎉', '✨', '😎', '😅', '❤️', '👀', '🙌', '💯', '🥳', '😢'];
+
+// A locally-picked attachment in the composer. `fileId` is set once the upload
+// to the existing /uploads/message-image contract succeeds; only uploaded
+// attachments (real ids) are ever sent — never fabricated.
+type PendingAttachment = {
+  localId: string;
+  uri: string;
+  name: string;
+  mimeType: string;
+  status: 'uploading' | 'ready' | 'error';
+  fileId: string | null;
+};
+
 function firstParam(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
   const trimmed = typeof raw === 'string' ? raw.trim() : '';
@@ -62,6 +84,16 @@ function firstParam(value: string | string[] | undefined) {
 
 function validId(value: string | null | undefined) {
   return value && UUID_PATTERN.test(value) ? value : null;
+}
+
+function normalizePathThreadId(value: string | null | undefined) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'resolve' || normalized === 'brand' || normalized === 'new') return null;
+  return value ?? null;
+}
+
+function getErrorStatus(error: unknown) {
+  return (error as { response?: { status?: number } })?.response?.status ?? null;
 }
 
 function hasResolverContext(context: MessageContextParams) {
@@ -88,7 +120,7 @@ function getErrorMessage(error: unknown) {
 }
 
 function classifyError(error: unknown, context: MessageContextParams) {
-  const status = (error as { response?: { status?: number } })?.response?.status ?? null;
+  const status = getErrorStatus(error);
   const message = getErrorMessage(error);
   const lower = message.toLowerCase();
 
@@ -433,12 +465,15 @@ function ThreadAvatar({ participant }: { participant: ConversationParticipant | 
   const label = getParticipantName(participant);
   const initials = label
     ? label
+        .replace(/^(conversation with|inquiry with)\s+/i, '')
+        .trim()
         .split(/\s+/)
+        .filter(Boolean)
         .map((part) => part[0])
         .join('')
         .slice(0, 2)
-        .toUpperCase()
-    : 'DM';
+        .toUpperCase() || '💬'
+    : '💬';
 
   const fallback = (
     <View style={[styles.headerAvatarFallback, { backgroundColor: theme.colors.primarySoft }]}>
@@ -508,7 +543,7 @@ export default function ChatThreadScreen() {
   const toast = useToast();
   const { status, token, user } = useAuth();
   const params = useLocalSearchParams();
-  const paramThreadId = firstParam(params.threadId);
+  const paramThreadId = normalizePathThreadId(firstParam(params.threadId));
   const paramConversationId = firstParam(params.conversationId);
   const paramMessageId = firstParam(params.messageId);
   const paramOrderId = firstParam(params.orderId);
@@ -517,6 +552,27 @@ export default function ChatThreadScreen() {
   const paramCustomerId = firstParam(params.customerId);
   const paramDesignId = firstParam(params.designId);
   const paramProductId = firstParam(params.productId);
+  const paramParticipantName = firstParam(params.participantName);
+  const paramParticipantUsername = firstParam(params.participantUsername);
+  const paramParticipantAvatarUrl = firstParam(params.participantAvatarUrl);
+  const paramParticipantId = firstParam(params.participantId);
+
+  // Participant identity handed down from the inbox row (when navigated from the
+  // list). Used as an immediate, reliable header source so the chat never shows
+  // "Conversation / Participant unavailable" when the identity is already known.
+  const routeParticipant = useMemo<ConversationParticipant | null>(() => {
+    if (!paramParticipantName && !paramParticipantUsername && !paramParticipantAvatarUrl) {
+      return null;
+    }
+    return {
+      id: paramParticipantId,
+      username: paramParticipantUsername,
+      firstName: null,
+      lastName: null,
+      name: paramParticipantName ?? paramParticipantUsername,
+      avatarUrl: paramParticipantAvatarUrl,
+    };
+  }, [paramParticipantAvatarUrl, paramParticipantId, paramParticipantName, paramParticipantUsername]);
 
   const routeContext = useMemo<MessageContextParams>(() => ({
     threadId: paramThreadId,
@@ -556,6 +612,18 @@ export default function ChatThreadScreen() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [readWarning, setReadWarning] = useState<string | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<QuotedMessage | null>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+
+  // Dev-only nav timing for inbox→thread. Shell (header + skeleton) renders at
+  // mount; primary data is ready when the load phase settles to 'ready'.
+  useEffect(() => {
+    navPerf.screenMounted('inbox→thread');
+    navPerf.firstVisibleUi('inbox→thread');
+  }, []);
+  useEffect(() => {
+    if (phase === 'ready') navPerf.dataReady('inbox→thread');
+  }, [phase]);
 
   const cursorRef = useRef<ConversationThread['endCursor']>(null);
   const requestIdRef = useRef(0);
@@ -568,10 +636,14 @@ export default function ChatThreadScreen() {
 
   const directThreadId = validId(routeContext.threadId) ?? validId(routeContext.conversationId);
   const activeThreadId = validId(activeContext?.threadId) ?? validId(activeContext?.conversationId) ?? directThreadId;
-  const participant = useMemo(
+  const messageParticipant = useMemo(
     () => resolveParticipantFromMessages(messages, user?.id ?? null),
     [messages, user?.id],
   );
+  // Header identity priority: the actual message sender (most authoritative,
+  // carries the real avatar) → the participant passed from the inbox row →
+  // null. This keeps empty/own-only threads from falling back to "Conversation".
+  const participant = messageParticipant ?? routeParticipant;
   const participantName = getParticipantName(participant);
   const firstOrder = orders[0] ?? null;
   const orderLabel = formatOrderLabel(firstOrder, {
@@ -579,10 +651,23 @@ export default function ChatThreadScreen() {
     ...resolvedRoute?.context,
     threadId: activeContext?.threadId ?? directThreadId,
   });
-  const title = participantName ?? 'Conversation';
-  const subtitle = orderLabel ?? (participant ? undefined : 'Participant unavailable');
-  const canSend = phase === 'ready' && !sending && !['READ_ONLY', 'ARCHIVED', 'BLOCKED'].includes(thread?.status ?? '');
-  const sendDisabled = !canSend || composerText.trim().length === 0;
+  const title = participantName ?? (validId(activeContext?.brandId) && !activeThreadId ? 'Message brand' : 'Conversation');
+  const subtitle =
+    orderLabel ??
+    (participant ? undefined : validId(activeContext?.brandId) && !activeThreadId ? 'Start the conversation' : 'Participant unavailable');
+  const canSend =
+    phase === 'ready' &&
+    !sending &&
+    Boolean(activeThreadId || validId(activeContext?.brandId)) &&
+    !['READ_ONLY', 'ARCHIVED', 'BLOCKED'].includes(thread?.status ?? '');
+  const attachmentsUploading = pendingAttachments.some((entry) => entry.status === 'uploading');
+  const readyAttachmentIds = pendingAttachments
+    .filter((entry) => entry.status === 'ready' && entry.fileId)
+    .map((entry) => entry.fileId as string);
+  const sendDisabled =
+    !canSend ||
+    attachmentsUploading ||
+    (composerText.trim().length === 0 && readyAttachmentIds.length === 0);
 
   const markRead = useCallback(async (target: MessageContextParams, latestMessageId?: string | null) => {
     const threadId = validId(target.threadId) ?? validId(target.conversationId);
@@ -764,6 +849,8 @@ export default function ChatThreadScreen() {
     setSendError(null);
     setComposerText('');
     setReplyToMessage(null);
+    setPendingAttachments([]);
+    setEmojiOpen(false);
 
     if (status === 'loading') {
       setPhase('loading');
@@ -815,6 +902,25 @@ export default function ChatThreadScreen() {
       })
       .catch((error) => {
         if (requestId !== requestIdRef.current) return;
+        if (
+          getErrorStatus(error) === 404 &&
+          validId(routeContext.brandId) &&
+          !validId(routeContext.messageId) &&
+          !validId(routeContext.orderId) &&
+          !validId(routeContext.customOrderId) &&
+          !validId(routeContext.customerId)
+        ) {
+          setResolvedRoute(null);
+          setActiveContext({ brandId: routeContext.brandId });
+          setThread(null);
+          setMessages([]);
+          setOrders([]);
+          setHasNextPage(false);
+          setPhase('ready');
+          setStateTitle('New message');
+          setStateBody('Send the first message to start this brand conversation.');
+          return;
+        }
         const classified = classifyError(error, routeContext);
         setPhase(classified.phase);
         setStateTitle(classified.title);
@@ -887,27 +993,59 @@ export default function ChatThreadScreen() {
 
   const handleSend = useCallback(async () => {
     const targetThreadId = validId(activeContext?.threadId) ?? validId(activeContext?.conversationId);
+    const targetBrandId = validId(activeContext?.brandId);
     const bodyText = composerText.trim();
-    if (!targetThreadId || !bodyText || sending) return;
+    const attachmentFileIds = pendingAttachments
+      .filter((entry) => entry.status === 'ready' && entry.fileId)
+      .map((entry) => entry.fileId as string);
+    // Block while any attachment is still uploading; require either text or at
+    // least one successfully-uploaded attachment.
+    if (
+      (!targetThreadId && !targetBrandId) ||
+      sending ||
+      pendingAttachments.some((entry) => entry.status === 'uploading') ||
+      (!bodyText && attachmentFileIds.length === 0)
+    ) {
+      return;
+    }
 
     setSending(true);
     setSendError(null);
 
     try {
-      const response = await MessagingApi.sendMessage(
-        { threadId: targetThreadId },
-        {
-          bodyText,
-          clientMessageId: createMessageClientId(),
-          ...(replyToMessage ? { replyToMessageId: replyToMessage.id } : {}),
-        },
-      );
+      const clientMessageId = createMessageClientId();
+      const response = targetThreadId
+        ? await MessagingApi.sendMessage(
+            { threadId: targetThreadId },
+            {
+              ...(bodyText ? { bodyText } : {}),
+              clientMessageId,
+              ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),
+              ...(replyToMessage ? { replyToMessageId: replyToMessage.id } : {}),
+            },
+          )
+        : await MessagingApi.startConversation({
+            brandId: targetBrandId,
+            ...(bodyText ? { bodyText } : {}),
+            clientMessageId,
+            ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),
+          });
 
       setComposerText('');
       setReplyToMessage(null);
+      setPendingAttachments([]);
+      setEmojiOpen(false);
+      const nextThreadId = validId(response.threadId) ?? targetThreadId ?? null;
       if (response.message) {
         setMessages((current) => mergeMessages([response.message as MessageItem], current));
-        setThread((current) => current ? { ...current, threadId: targetThreadId, conversationId: targetThreadId } : current);
+        if (nextThreadId) {
+          setThread((current) => current ? { ...current, threadId: nextThreadId, conversationId: nextThreadId } : current);
+        }
+      }
+      if (nextThreadId) {
+        const nextContext = { ...activeContext, threadId: nextThreadId, conversationId: nextThreadId };
+        setActiveContext(nextContext);
+        await loadThread(nextContext, 'refresh');
       } else {
         await loadThread({ ...activeContext, threadId: targetThreadId }, 'refresh');
       }
@@ -918,7 +1056,70 @@ export default function ChatThreadScreen() {
     } finally {
       setSending(false);
     }
-  }, [activeContext, composerText, loadThread, replyToMessage, sending, toast]);
+  }, [activeContext, composerText, loadThread, pendingAttachments, replyToMessage, sending, toast]);
+
+  const handleInsertEmoji = useCallback((emoji: string) => {
+    setComposerText((current) => `${current}${emoji}`);
+  }, []);
+
+  const handleRemoveAttachment = useCallback((localId: string) => {
+    setPendingAttachments((current) => current.filter((entry) => entry.localId !== localId));
+  }, []);
+
+  const handlePickAttachment = useCallback(async () => {
+    if (pendingAttachments.length >= MAX_PENDING_ATTACHMENTS) {
+      toast.info(`You can attach up to ${MAX_PENDING_ATTACHMENTS} images per message.`);
+      return;
+    }
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      toast.error('Allow photo access to attach an image.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: false,
+      quality: 0.9,
+      base64: false,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const raw = result.assets[0];
+    let asset = { uri: raw.uri, fileName: raw.fileName ?? `attachment-${Date.now()}.jpg`, mimeType: raw.mimeType ?? 'image/jpeg' };
+    try {
+      const compressed = await compressPickedImage(raw.uri, raw.width ?? 0, raw.height ?? 0, raw.fileName, 'messageImage');
+      asset = { uri: compressed.uri, fileName: compressed.fileName, mimeType: compressed.mimeType };
+    } catch {
+      // Compression is best-effort; upload validation still guards the original.
+    }
+
+    const localId = createMessageClientId();
+    setPendingAttachments((current) => [
+      ...current,
+      { localId, uri: asset.uri, name: asset.fileName, mimeType: asset.mimeType, status: 'uploading', fileId: null },
+    ]);
+    setEmojiOpen(false);
+
+    try {
+      const uploaded = await MessagingApi.uploadMessageAttachment({
+        uri: asset.uri,
+        name: asset.fileName,
+        type: asset.mimeType,
+      });
+      setPendingAttachments((current) =>
+        current.map((entry) =>
+          entry.localId === localId ? { ...entry, status: 'ready', fileId: uploaded.id } : entry,
+        ),
+      );
+    } catch (error) {
+      setPendingAttachments((current) => current.map((entry) =>
+        entry.localId === localId ? { ...entry, status: 'error' } : entry,
+      ));
+      toast.error(getMobileUploadValidationMessage(error));
+    }
+  }, [pendingAttachments.length, toast]);
 
   const renderMessage = useCallback(
     ({ item }: ListRenderItemInfo<MessageItem>) => (
@@ -986,7 +1187,7 @@ export default function ChatThreadScreen() {
             actionTitle={phase === 'error' && activeContext ? 'Retry' : 'Back to Messages'}
             onAction={phase === 'error' && activeContext
               ? () => void loadThread(activeContext, 'reset')
-              : () => router.replace('/(tabs)/inbox' as any)}
+              : () => backOrNavigate('/(tabs)/inbox' as any)}
           />
         ) : (
           <>
@@ -1020,7 +1221,9 @@ export default function ChatThreadScreen() {
                     No messages yet
                   </AppText>
                   <AppText variant="body" tone="muted" style={styles.centerText}>
-                    This thread is real, but it has no visible messages yet.
+                    {thread
+                      ? 'This thread is real, but it has no visible messages yet.'
+                      : 'Send the first message to start this brand conversation.'}
                   </AppText>
                 </View>
               }
@@ -1063,7 +1266,82 @@ export default function ChatThreadScreen() {
                   </TouchableOpacity>
                 </View>
               ) : null}
+              {/* Pending attachment previews — only uploaded ids are ever sent */}
+              {pendingAttachments.length > 0 ? (
+                <View style={styles.attachmentPreviewRow}>
+                  {pendingAttachments.map((attachment) => (
+                    <View key={attachment.localId} style={[styles.attachmentPreview, { borderColor: theme.colors.border }]}>
+                      <StableImage
+                        uri={attachment.uri}
+                        containerStyle={styles.attachmentPreviewImage}
+                        imageStyle={styles.attachmentPreviewImage}
+                        resizeMode="cover"
+                        fallback={<View style={[styles.attachmentPreviewImage, { backgroundColor: theme.colors.surfaceAlt }]} />}
+                      />
+                      {attachment.status !== 'ready' ? (
+                        <View style={[styles.attachmentPreviewOverlay, { backgroundColor: theme.colors.overlay }]} pointerEvents="none">
+                          {attachment.status === 'uploading' ? (
+                            <ActivityIndicator size="small" color={theme.colors.primary} />
+                          ) : (
+                            <AppText variant="captionBold" tone="danger">!</AppText>
+                          )}
+                        </View>
+                      ) : null}
+                      <TouchableOpacity
+                        onPress={() => handleRemoveAttachment(attachment.localId)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={[styles.attachmentRemoveButton, { backgroundColor: theme.colors.backdropStrong }]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Remove attachment"
+                      >
+                        <AppText variant="captionBold" style={{ color: theme.colors.textInverse }}>✕</AppText>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {/* Lightweight emoji row (no extra dependency) */}
+              {emojiOpen ? (
+                <View style={[styles.emojiRow, { borderColor: theme.colors.border }]}>
+                  {COMPOSER_EMOJIS.map((emoji) => (
+                    <TouchableOpacity
+                      key={emoji}
+                      onPress={() => handleInsertEmoji(emoji)}
+                      style={styles.emojiButton}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Insert ${emoji}`}
+                    >
+                      <AppText style={styles.emojiGlyph}>{emoji}</AppText>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
+
               <View style={styles.composerRow}>
+                <TouchableOpacity
+                  onPress={handlePickAttachment}
+                  disabled={!canSend}
+                  style={[styles.composerIconButton, !canSend ? styles.composerIconButtonDisabled : null]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add image attachment"
+                >
+                  <AppText variant="subtitle">📎</AppText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setEmojiOpen((current) => !current)}
+                  disabled={!canSend}
+                  style={[
+                    styles.composerIconButton,
+                    emojiOpen ? { backgroundColor: theme.colors.primarySoft } : null,
+                    !canSend ? styles.composerIconButtonDisabled : null,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: emojiOpen }}
+                  accessibilityLabel="Insert emoji"
+                >
+                  <AppText variant="subtitle">😊</AppText>
+                </TouchableOpacity>
                 <Input
                   label="Message"
                   hideLabel
@@ -1307,7 +1585,65 @@ const styles = StyleSheet.create({
   composerInput: {
     flex: 1,
   },
+  composerIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: tokens.radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  composerIconButtonDisabled: {
+    opacity: 0.4,
+  },
   sendButton: {
     minWidth: 76,
+  },
+  attachmentPreviewRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  attachmentPreview: {
+    width: 64,
+    height: 64,
+    borderRadius: tokens.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  attachmentPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  attachmentPreviewOverlay: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentRemoveButton: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.xs,
+  },
+  emojiButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiGlyph: {
+    fontSize: 22,
   },
 });

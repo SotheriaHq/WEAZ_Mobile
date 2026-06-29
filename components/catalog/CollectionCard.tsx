@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Animated, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { FontAwesome5 } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 
 import { AppText } from '@/components/ui/AppText';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
@@ -18,7 +20,7 @@ import { ContentReviewDecisionSheet } from './ContentReviewDecisionSheet';
 export interface CollectionCardProps {
   collection: CollectionDto;
   cardKind?: 'design' | 'collection';
-  onPress?: () => void;
+  onPress?: (collection: CollectionDto) => void;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   onLike?: (id: string) => void;
@@ -31,6 +33,8 @@ export interface CollectionCardProps {
   isDraft?: boolean;
   isOwner?: boolean;
   cardWidth?: number;
+  onClientRetry?: (collection: CollectionDto) => void;
+  onClientDismiss?: (collection: CollectionDto) => void;
 }
 
 const formatPrice = (price?: number | null): string | null => {
@@ -61,7 +65,7 @@ const compactCount = (value?: number | null): string => {
 };
 
 export const CollectionCardSkeleton = ({ width = 180 }: { width?: number }) => {
-  const imageHeight = Math.round(width * 1.14);
+  const imageHeight = Math.round(width * 1.58);
 
   return (
     <View style={[styles.card, { width }]}>
@@ -86,6 +90,8 @@ export const CollectionCard = React.memo(function CollectionCard({
   isDraft = false,
   isOwner = false,
   cardWidth,
+  onClientRetry,
+  onClientDismiss,
 }: CollectionCardProps) {
   const { width: screenWidth } = useWindowDimensions();
   const { theme } = useTheme();
@@ -95,7 +101,7 @@ export const CollectionCard = React.memo(function CollectionCard({
   const scale = React.useRef(new Animated.Value(1)).current;
 
   const width = Math.round(cardWidth ?? (screenWidth - tokens.spacing.lg * 2 - tokens.spacing.md) / 2);
-  const imageHeight = Math.round(width * 1.32);
+  const imageHeight = Math.round(width * 1.58);
   const allowPrivateMediaFallback =
     isOwner ||
     isDraft ||
@@ -132,7 +138,18 @@ export const CollectionCard = React.memo(function CollectionCard({
   const needsReviewDecision =
     backendStatus === 'CHANGES_REQUESTED' || backendStatus === 'REJECTED';
 
-  const disabled = Boolean(collection.clientStatus);
+  const isMinimalCard = isDraft || Boolean(reviewStatusLabel);
+
+  const isClientPublishing = collection.clientStatus === 'publishing';
+  const disabled = isClientPublishing;
+  const clientProgress =
+    typeof collection.clientProgress === 'number' && Number.isFinite(collection.clientProgress)
+      ? Math.min(1, Math.max(0, collection.clientProgress))
+      : null;
+  const clientProgressPercent = clientProgress == null ? null : Math.round(clientProgress * 100);
+  const cookingDots = useLoadingDots(isClientPublishing);
+  const clientFailureReason =
+    collection.clientFailureReason || collection.clientStatusMessage || collection.description || 'Something went wrong. Please try again.';
 
   const animate = React.useCallback(
     (next: number) => {
@@ -155,15 +172,21 @@ export const CollectionCard = React.memo(function CollectionCard({
         styles.card,
         {
           width,
+          // Explicit height guarantees the card can never collapse into a thin
+          // line. Elevation lives here (NOT combined with overflow:hidden) — on
+          // Android, elevation + overflow:hidden on the same view drops child
+          // layers, which is what made draft cards render as gray slivers. The
+          // rounded clipping is delegated to the inner cardClip view below.
+          height: imageHeight,
           backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.border,
           opacity: disabled ? 0.82 : 1,
           transform: [{ scale }],
         },
       ]}
     >
+      <View style={[styles.cardClip, { backgroundColor: theme.colors.surface }]}>
       <Pressable
-        onPress={disabled ? undefined : onPress}
+        onPress={collection.clientStatus || !onPress ? undefined : () => onPress(collection)}
         onPressIn={disabled ? undefined : () => animate(0.98)}
         onPressOut={disabled ? undefined : () => animate(1)}
         style={styles.pressable}
@@ -173,34 +196,48 @@ export const CollectionCard = React.memo(function CollectionCard({
       >
         <View style={[styles.coverFrame, { height: imageHeight, backgroundColor: theme.colors.surfaceAlt }]}>
           {showImage ? (
-            <StableImage
-              uri={coverUri}
-              resizeMode="contain"
-              aspectAware
-              containerStyle={[styles.coverImage, { width, height: imageHeight }]}
-              imageStyle={[styles.coverImage, { width, height: imageHeight }]}
-              onError={() => setImageFailed(true)}
-              fallback={<ImageFallback title={displayTitle} />}
-            />
+            <>
+              {/* Fixed-aspect catalog thumbnail: fill the frame edge-to-edge (cover) so
+              it never letterboxes into top/bottom strips. This matches the Shop tab
+              product cards, keeping Content and Shop shells visually aligned. Large
+              aspect-aware (contain) treatment is reserved for immersive viewers, not
+              small grid cards (see AspectAwareMedia README "When Not To Use"). */}
+              <StableImage
+                uri={coverUri}
+                resizeMode="cover"
+                containerStyle={[styles.coverImage, { width, height: imageHeight }]}
+                imageStyle={[styles.coverImage, { width, height: imageHeight }]}
+                onError={() => setImageFailed(true)}
+                fallback={<ImageFallback title={displayTitle} />}
+              />
+            </>
           ) : (
             <ImageFallback title={displayTitle} />
           )}
 
-          <View style={[styles.storeBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
-            <AppText variant="captionBold" tone="primary">
-              {copy.badgeLabel}
-            </AppText>
-          </View>
+          {collection.clientStatus ? (
+            <View pointerEvents="none" style={[styles.clientStatusScrim, { backgroundColor: theme.colors.backdropStrong }]} />
+          ) : null}
 
-          <NewDropBadge
-            itemId={collection.id}
-            createdAt={collection.createdAt}
-            sourceScreen="profile-catalog"
-            compact
-            style={styles.newDropBadge}
-          />
+          {!isMinimalCard ? (
+            <View style={[styles.storeBadge, { backgroundColor: 'transparent' }]}>
+              <AppText variant="captionBold" tone="primary">
+                {copy.badgeLabel}
+              </AppText>
+            </View>
+          ) : null}
 
-          {showActions && !isDraft ? (
+          {!isMinimalCard ? (
+            <NewDropBadge
+              itemId={collection.id}
+              createdAt={collection.createdAt}
+              sourceScreen="profile-catalog"
+              compact
+              style={styles.newDropBadge}
+            />
+          ) : null}
+
+          {showActions && !isMinimalCard ? (
             <View style={styles.actionRail}>
               {!isOwner && onSave ? (
                 <RailButton
@@ -217,12 +254,12 @@ export const CollectionCard = React.memo(function CollectionCard({
           {isOwner && !collection.clientStatus ? (
             <Pressable
               onPress={() => setMenuVisible((current) => !current)}
-              style={[styles.menuButton, { backgroundColor: theme.colors.surfaceOverlay }]}
+              style={[styles.menuButton, { backgroundColor: 'transparent' }]}
               hitSlop={tokens.spacing.sm}
               accessibilityRole="button"
               accessibilityLabel={copy.ownerActionsLabel}
             >
-              <AppText variant="captionBold">⋯</AppText>
+              <FontAwesome5 name="ellipsis-h" size={20} color={theme.colors.textInverse} style={{ textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }} />
             </Pressable>
           ) : null}
 
@@ -263,30 +300,83 @@ export const CollectionCard = React.memo(function CollectionCard({
           >
             <View style={styles.metadataPanel}>
               {collection.clientStatus ? (
-                <View style={[styles.statusPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
-                  <AppText variant="captionBold" tone={collection.clientStatus === 'publish-failed' ? 'danger' : 'primary'} numberOfLines={1}>
-                    {collection.clientStatusMessage || (collection.clientStatus === 'publish-failed' ? 'Publish failed' : 'Publishing')}
-                  </AppText>
+                <View style={styles.clientStatusBlock}>
+                  {isClientPublishing ? (
+                    <View style={styles.clientCookingRow}>
+                      <CircularProgress
+                        progress={clientProgress ?? 0.01}
+                        size={42}
+                        color={theme.colors.primary}
+                        trackColor="rgba(255,255,255,0.28)"
+                      />
+                      <View style={styles.clientCookingCopy}>
+                        <AppText variant="badgeLabel" tone="primary" numberOfLines={1}>
+                          design cooking{cookingDots}
+                        </AppText>
+                        <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+                          {clientProgressPercent == null ? 'Starting upload' : `${clientProgressPercent}%`}
+                        </AppText>
+                        {collection.clientStatusMessage ? (
+                          <AppText variant="caption" tone="inverse" numberOfLines={1}>
+                            {collection.clientStatusMessage}
+                          </AppText>
+                        ) : null}
+                      </View>
+                    </View>
+                  ) : (
+                    <>
+                      <View style={[styles.statusPill, { backgroundColor: 'transparent' }]}>
+                        <AppText variant="badgeLabel" tone="danger" numberOfLines={1}>
+                          {isDraft ? 'DRAFT SAVE FAILED' : 'PUBLISH FAILED'}
+                        </AppText>
+                      </View>
+                      <AppText variant="caption" tone="inverse" numberOfLines={2}>
+                        {clientFailureReason}
+                      </AppText>
+                      <View style={styles.clientActionRow}>
+                        {onClientRetry ? (
+                          <Pressable
+                            onPress={() => onClientRetry(collection)}
+                            style={({ pressed }) => [styles.clientActionButton, pressed ? styles.clientActionPressed : null]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Retry or edit ${displayTitle}`}
+                          >
+                            <AppText variant="captionBold" tone="inverse">Retry / Edit</AppText>
+                          </Pressable>
+                        ) : null}
+                        {onClientDismiss ? (
+                          <Pressable
+                            onPress={() => onClientDismiss(collection)}
+                            style={({ pressed }) => [styles.clientActionButton, pressed ? styles.clientActionPressed : null]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Dismiss failed upload ${displayTitle}`}
+                          >
+                            <AppText variant="captionBold" tone="inverse">Dismiss</AppText>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </>
+                  )}
                 </View>
               ) : isDraft ? (
-                <View style={[styles.statusPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
-                  <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-                    Draft
+                <View style={[styles.statusPill, { backgroundColor: 'transparent' }]}>
+                  <AppText variant="badgeLabel" tone="primary" numberOfLines={1}>
+                    DRAFT
                   </AppText>
                 </View>
               ) : isOwner && reviewStatusLabel ? (
                 <Pressable
                   onPress={needsReviewDecision ? () => setReviewDecisionOpen(true) : undefined}
-                  style={[styles.statusPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}
+                  style={[styles.statusPill, { backgroundColor: 'transparent' }]}
                   accessibilityRole={needsReviewDecision ? 'button' : undefined}
                   accessibilityLabel={needsReviewDecision ? `View ${reviewStatusLabel} feedback` : reviewStatusLabel}
                 >
                   <AppText
-                    variant="captionBold"
-                    tone={backendStatus === 'CHANGES_REQUESTED' ? 'primary' : backendStatus === 'REJECTED' ? 'danger' : 'muted'}
+                    variant="badgeLabel"
+                    tone={backendStatus === 'CHANGES_REQUESTED' ? 'primary' : backendStatus === 'REJECTED' ? 'danger' : 'primary'}
                     numberOfLines={1}
                   >
-                    {reviewStatusLabel}
+                    {reviewStatusLabel.toUpperCase()}
                   </AppText>
                 </Pressable>
               ) : null}
@@ -294,31 +384,38 @@ export const CollectionCard = React.memo(function CollectionCard({
               <AppText variant="smallBold" tone="inverse" numberOfLines={2}>
                 {displayTitle}
               </AppText>
-              <AppText variant="caption" tone="inverse" numberOfLines={1}>
-                {brandName}
-              </AppText>
-              <View style={styles.cardMetaRow}>
-                <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
-                  {pieceCount} {countLabel}
+              {!isMinimalCard ? (
+                <AppText variant="caption" tone="inverse" numberOfLines={1}>
+                  {brandName}
                 </AppText>
-                <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.priceText}>
-                  {priceLabel}
-                </AppText>
-              </View>
-              <View style={styles.socialStatsRow}>
-                <SocialMetric emoji={'\u2665'} value={likeCountLabel} label="likes" onPress={onLike ? () => onLike(collection.id) : undefined} />
-                <SocialMetric
-                  emoji={'\uD83D\uDCAC'}
-                  value={commentCountLabel}
-                  label="comments"
-                  onPress={onComment ? () => onComment(collection.id) : undefined}
-                />
-                <SocialMetric emoji={'\uD83E\uDDF5'} value={threadCountLabel} label="threads" />
-              </View>
+              ) : null}
+              {!isMinimalCard ? (
+                <View style={styles.cardMetaRow}>
+                  <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+                    {pieceCount} {countLabel}
+                  </AppText>
+                  <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.priceText}>
+                    {priceLabel}
+                  </AppText>
+                </View>
+              ) : null}
+              {!isMinimalCard ? (
+                <View style={styles.socialStatsRow}>
+                  <SocialMetric emoji={'\u2665'} value={likeCountLabel} label="likes" onPress={onLike ? () => onLike(collection.id) : undefined} />
+                  <SocialMetric
+                    emoji={'\uD83D\uDCAC'}
+                    value={commentCountLabel}
+                    label="comments"
+                    onPress={onComment ? () => onComment(collection.id) : undefined}
+                  />
+                  <SocialMetric emoji={'\uD83E\uDDF5'} value={threadCountLabel} label="threads" />
+                </View>
+              ) : null}
             </View>
           </LinearGradient>
         </View>
       </Pressable>
+      </View>
     </Animated.View>
     <ContentReviewDecisionSheet
       open={reviewDecisionOpen}
@@ -326,11 +423,72 @@ export const CollectionCard = React.memo(function CollectionCard({
       submissionId={collection.submissionId}
       status={backendStatus}
       title={displayTitle}
-      onEdit={onEdit ? () => onEdit(collection.id) : onPress}
+      onEdit={onEdit ? () => onEdit(collection.id) : onPress ? () => onPress(collection) : undefined}
     />
     </>
   );
 });
+
+function useLoadingDots(active: boolean) {
+  const [count, setCount] = useState(1);
+
+  useEffect(() => {
+    if (!active) {
+      setCount(1);
+      return;
+    }
+    const timer = setInterval(() => {
+      setCount((current) => (current >= 3 ? 1 : current + 1));
+    }, 450);
+    return () => clearInterval(timer);
+  }, [active]);
+
+  return '.'.repeat(count);
+}
+
+function CircularProgress({
+  progress,
+  size,
+  color,
+  trackColor,
+}: {
+  progress: number;
+  size: number;
+  color: string;
+  trackColor: string;
+}) {
+  const strokeWidth = 4;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const safeProgress = Math.max(0.01, Math.min(1, progress));
+
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke={trackColor}
+        strokeWidth={strokeWidth}
+        fill="transparent"
+      />
+      <Circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        fill="transparent"
+        strokeDasharray={`${circumference} ${circumference}`}
+        strokeDashoffset={circumference * (1 - safeProgress)}
+        rotation="-90"
+        originX={size / 2}
+        originY={size / 2}
+      />
+    </Svg>
+  );
+}
 
 function ImageFallback({ title }: { title: string }) {
   const { theme } = useTheme();
@@ -410,14 +568,18 @@ function SocialMetric({ emoji, value, label, onPress }: { emoji: string; value: 
 
 const styles = StyleSheet.create({
   card: {
+    overflow: 'visible',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: tokens.elevation.lg.elevation,
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+  },
+  cardClip: {
+    flex: 1,
+    borderRadius: tokens.radius.lg,
     overflow: 'hidden',
-    shadowColor: tokens.colors.dark,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    elevation: 5,
   },
   pressable: {
     flex: 1,
@@ -436,6 +598,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.md,
+  },
+  clientStatusScrim: {
+    ...StyleSheet.absoluteFill,
+    opacity: 0.58,
   },
   storeBadge: {
     position: 'absolute',
@@ -548,6 +714,45 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.sm,
     alignSelf: 'flex-start',
+  },
+  clientStatusBlock: {
+    gap: tokens.spacing.xs,
+  },
+  clientCookingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  clientCookingCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  clientActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.xs,
+  },
+  clientActionButton: {
+    minHeight: 28,
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.45)',
+    paddingHorizontal: tokens.spacing.sm,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  clientActionPressed: {
+    opacity: 0.72,
+  },
+  clientProgressTrack: {
+    height: 4,
+    borderRadius: tokens.radius.full,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.28)',
+  },
+  clientProgressFill: {
+    height: '100%',
+    borderRadius: tokens.radius.full,
   },
 });
 

@@ -25,6 +25,7 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { navPerf } from '@/src/utils/navPerf';
 import {
   getRequiredLegalAcceptances,
   LEGAL_PAYMENT_DOCUMENT_KEYS,
@@ -121,6 +122,13 @@ export function MobileCheckoutScreen() {
     [],
   );
 
+  // Dev-only nav timing for bag→checkout. The checkout shell + form render at
+  // mount; data is ready once the required legal acceptances load settles.
+  useEffect(() => {
+    navPerf.screenMounted('bag→checkout');
+    navPerf.firstVisibleUi('bag→checkout');
+  }, []);
+
   useEffect(() => {
     let active = true;
     void getRequiredLegalAcceptances(LEGAL_PAYMENT_DOCUMENT_KEYS)
@@ -129,6 +137,9 @@ export function MobileCheckoutScreen() {
       })
       .catch(() => {
         if (active) setPaymentLegalAcceptances([]);
+      })
+      .finally(() => {
+        if (active) navPerf.dataReady('bag→checkout');
       });
     return () => {
       active = false;

@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { BackHandler, Dimensions, Modal, Pressable, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { BackHandler, Modal, Pressable, StyleSheet, View, Animated, InteractionManager, useWindowDimensions } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
@@ -8,9 +8,10 @@ import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 
 export type FloatingMenuOption = {
   key: string;
-  icon: string;
+  icon?: string;
   title: string;
   onPress: () => void;
+  disabled?: boolean;
 };
 
 type Props = {
@@ -24,6 +25,8 @@ type Props = {
   } | null;
   options: FloatingMenuOption[];
   onClose: () => void;
+  /** Optional menu width override. By default the dropdown fits its longest label. */
+  width?: number;
 };
 
 function resolveMenuPosition({
@@ -32,120 +35,186 @@ function resolveMenuPosition({
   width,
   height,
   menuWidth,
+  windowWidth,
 }: {
   pageX: number;
   pageY: number;
   width: number;
   height: number;
   menuWidth: number;
+  windowWidth: number;
 }) {
-  const windowWidth = Dimensions.get('window').width;
   const minLeft = tokens.spacing.md;
   const maxLeft = Math.max(minLeft, windowWidth - menuWidth - tokens.spacing.md);
   const preferredLeft = pageX + width - menuWidth + tokens.spacing.xs;
 
   return {
-    top: pageY + height + 2,
+    top: pageY + height + 12,
     left: Math.min(Math.max(preferredLeft, minLeft), maxLeft),
   };
 }
 
-export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, onClose }: Props) {
+export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, onClose, width }: Props) {
   const { scheme, theme } = useTheme();
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const menuWidth = 188;
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
-  useAndroidOverlaySystemBars(visible, scheme, 'floating-menu');
+  const [internalVisible, setInternalVisible] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
 
-  const updateMenuPosition = useCallback(
-    (metrics: { pageX: number; pageY: number; width: number; height: number }) => {
-      setMenuPosition(resolveMenuPosition({ ...metrics, menuWidth }));
-    },
-    [menuWidth],
-  );
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
-  useEffect(() => {
-    if (!visible) return;
+  const menuWidth = useMemo(() => {
+    if (width) return width;
+    const longestTitleLength = options.reduce((longest, option) => Math.max(longest, option.title.length), 0);
+    const hasIcons = options.some((option) => Boolean(option.icon));
+    const estimatedContentWidth = longestTitleLength * 8 + tokens.spacing.md * 2 + (hasIcons ? 32 : 0);
+    return Math.min(Math.max(estimatedContentWidth, 132), windowWidth - tokens.spacing.md * 2);
+  }, [options, width, windowWidth]);
 
-    if (anchorMetrics) {
-      updateMenuPosition(anchorMetrics);
-      return;
-    }
+  const resolvedPosition = anchorMetrics
+    ? resolveMenuPosition({ ...anchorMetrics, menuWidth, windowWidth })
+    : { top: windowHeight / 2 - 100, left: windowWidth / 2 - menuWidth / 2 };
 
-    if (anchorRef.current?.measureInWindow) {
-      anchorRef.current.measureInWindow((pageX: number, pageY: number, width: number, height: number) => {
-        if (width <= 0 || height <= 0) return;
-        updateMenuPosition({
-          pageX,
-          pageY,
-          width,
-          height,
-        });
-      });
-    }
-  }, [anchorMetrics, anchorRef, updateMenuPosition, visible]);
+  useAndroidOverlaySystemBars(internalVisible, scheme, 'floating-menu');
 
   useEffect(() => {
-    if (!visible) return;
+    if (visible) {
+      if (!internalVisible) {
+        setInternalVisible(true);
+        setIsClosing(false);
+        
+        fadeAnim.setValue(0);
+        scaleAnim.setValue(0.95);
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scaleAnim, {
+            toValue: 1,
+            speed: 20,
+            bounciness: 2,
+            useNativeDriver: true,
+          })
+        ]).start();
+      }
+    } else {
+      if (internalVisible && !isClosing) {
+        handleClose();
+      }
+    }
+    // Only react to the parent's `visible` prop changing.
+    // internalVisible and isClosing are managed internally and should not trigger re-evaluations that reset state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  useEffect(() => {
+    if (!internalVisible) return;
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
+      handleClose();
       return true;
     });
 
     return () => backHandler.remove();
-  }, [visible, onClose]);
+  }, [internalVisible]);
 
-  if (!visible || !menuPosition) return null;
+  const handleClose = (afterClose?: () => void) => {
+    if (isClosing) return;
+    setIsClosing(true);
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 140,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.95,
+        duration: 140,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      setInternalVisible(false);
+      setIsClosing(false);
+      onClose(); // notify parent
+      afterClose?.();
+    });
+  };
+
+  const handleOptionPress = (optionOnPress: () => void) => {
+    if (isClosing) return;
+    handleClose(() => InteractionManager.runAfterInteractions(optionOnPress));
+  };
+
+  if (!internalVisible) return null;
 
   return (
     <Modal
       transparent
-      visible={visible}
-      animationType="fade"
+      visible={internalVisible}
+      animationType="none"
       statusBarTranslucent
       navigationBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={() => handleClose()}
     >
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-        <View
+      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => handleClose()}>
+        <Animated.View 
           style={[
-            styles.menu,
-            {
-              backgroundColor: theme.colors.surfaceAlt,
-              borderColor: theme.colors.border,
-              top: menuPosition.top,
-              left: menuPosition.left,
-              width: menuWidth,
-              ...tokens.elevation.sm,
-            },
-          ]}
-        >
-          {options.map((option, index) => (
+            StyleSheet.absoluteFill, 
+            { 
+              backgroundColor: 'transparent',
+              // Opacity isn't strictly necessary for transparent, but keeping it to match the view structure
+              opacity: fadeAnim 
+            }
+          ]} 
+        />
+      </Pressable>
+      <Animated.View
+        style={[
+          styles.menu,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            top: resolvedPosition.top,
+            left: resolvedPosition.left,
+            width: menuWidth,
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }],
+            ...tokens.elevation.md,
+          },
+        ]}
+      >
+        {options.map((option, index) => {
+          const isFirst = index === 0;
+          const isLast = index === options.length - 1;
+
+          return (
             <Pressable
               key={option.key}
+              disabled={isClosing || option.disabled}
               style={({ pressed }) => [
                 styles.option,
+                isFirst && { borderTopLeftRadius: tokens.radius.lg - 1, borderTopRightRadius: tokens.radius.lg - 1 },
+                isLast && { borderBottomLeftRadius: tokens.radius.lg - 1, borderBottomRightRadius: tokens.radius.lg - 1 },
                 pressed && {
                   backgroundColor: theme.colors.primarySoft,
-                  borderColor: theme.colors.primary,
                 },
                 pressed && styles.optionPressed,
-                index < options.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+                option.disabled && styles.optionDisabled,
+                !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
               ]}
-              onPress={() => {
-                onClose();
-                requestAnimationFrame(option.onPress);
-              }}
+              onPress={() => handleOptionPress(option.onPress)}
             >
-              <AppText variant="body">
-                {option.icon}
-              </AppText>
-              <AppText variant="body">{option.title}</AppText>
+              {option.icon ? <AppText variant="body" tone="muted">{option.icon}</AppText> : null}
+              <AppText variant="body" numberOfLines={2} style={styles.optionTitle}>{option.title}</AppText>
             </Pressable>
-          ))}
-        </View>
-      </Pressable>
+          );
+        })}
+      </Animated.View>
+      </View>
     </Modal>
   );
 }
@@ -155,17 +224,25 @@ const styles = StyleSheet.create({
     position: 'absolute',
     borderWidth: 1,
     borderRadius: tokens.radius.lg,
-    minWidth: 176,
+    minWidth: 132,
   },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 44,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
     gap: tokens.spacing.sm,
   },
   optionPressed: {
     opacity: 0.7,
+  },
+  optionDisabled: {
+    opacity: 0.48,
+  },
+  optionTitle: {
+    flexShrink: 1,
+    minWidth: 0,
   },
 });
 

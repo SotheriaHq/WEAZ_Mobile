@@ -45,7 +45,7 @@ export default function VerifyEmailScreen() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ token?: string | string[] }>();
-  const { isAuthenticated, validateToken } = useAuth();
+  const { isAuthenticated, updateUser, validateToken } = useAuth();
   const verificationStartedRef = useRef(false);
 
   const token = useMemo(() => firstParamValue(params.token).trim(), [params.token]);
@@ -87,7 +87,8 @@ export default function VerifyEmailScreen() {
       try {
         const response = await verifyEmail(token);
         if (isAuthenticated) {
-          await validateToken().catch(() => false);
+          updateUser({ isEmailVerified: true });
+          await validateToken({ forceRefresh: true }).catch(() => false);
         }
         setState('success');
         setMessage(response.message || 'Your email has been verified.');

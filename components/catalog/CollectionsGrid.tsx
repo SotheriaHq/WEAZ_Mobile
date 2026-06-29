@@ -5,11 +5,9 @@
 
 import React, { useCallback, useMemo } from 'react';
 import {
-  FlatList,
   StyleSheet,
   View,
   useWindowDimensions,
-  RefreshControl,
 } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -17,6 +15,7 @@ import { CollectionCardSkeleton } from './CollectionCard';
 import { CatalogEntityCard } from './CatalogEntityCard';
 import type { CollectionDto } from '@/src/api/BrandApi';
 import { tokens } from '@/src/styles/tokens';
+import { useFrameBatchedItems } from '@/src/hooks/useFrameBatchedItems';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -35,12 +34,17 @@ interface CollectionsGridProps {
   onComment?: (id: string) => void;
   onShare?: (id: string) => void;
   onSave?: (collection: CollectionDto) => void;
+  onClientRetry?: (collection: CollectionDto) => void;
+  onClientDismiss?: (collection: CollectionDto) => void;
   savedById?: Record<string, boolean>;
   saveBusyById?: Record<string, boolean>;
   isOwner?: boolean;
   showDrafts?: boolean;
   emptyComponent?: React.ReactNode;
   numColumns?: number;
+  initialRenderCount?: number;
+  batchRenderCount?: number;
+  renderKey?: string;
 }
 
 const GRID_LAYOUT = {
@@ -67,12 +71,17 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   onComment,
   onShare,
   onSave,
+  onClientRetry,
+  onClientDismiss,
   savedById,
   saveBusyById,
   isOwner = false,
   showDrafts = false,
   emptyComponent,
   numColumns,
+  initialRenderCount = 6,
+  batchRenderCount = 6,
+  renderKey,
 }: CollectionsGridProps) {
   const { width: screenWidth } = useWindowDimensions();
   const { theme } = useTheme();
@@ -92,6 +101,11 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
     const availableWidth = screenWidth - screenPadding * 2 - totalColumnGap;
     return Math.floor(availableWidth / resolvedNumColumns);
   }, [columnGap, resolvedNumColumns, screenPadding, screenWidth]);
+  const visibleCollections = useFrameBatchedItems(collections, {
+    initialCount: initialRenderCount,
+    batchCount: batchRenderCount,
+    resetKey: renderKey ?? `${resolvedNumColumns}:${collections.length}`,
+  });
 
   const renderItem = useCallback(
     ({ item, index }: { item: CollectionDto; index: number }) => {
@@ -104,23 +118,23 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
             cardWidth={cardWidth}
             isDraft={isDraft}
             isOwner={isOwner}
-            onPress={() => onCollectionPress?.(item)}
+            onPress={onCollectionPress}
             onEdit={onEdit}
             onDelete={onDelete}
             onLike={onLike}
             onComment={onComment}
             onShare={onShare}
             onSave={onSave}
+            onClientRetry={onClientRetry}
+            onClientDismiss={onClientDismiss}
             isSaved={Boolean(savedById?.[item.id])}
             saveBusy={Boolean(saveBusyById?.[item.id])}
           />
         </View>
       );
     },
-    [cardWidth, isOwner, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts],
+    [cardWidth, isOwner, onClientDismiss, onClientRetry, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts],
   );
-
-  const keyExtractor = useCallback((item: CollectionDto) => item.id, []);
 
   // Loading skeleton
   if (isLoading && collections.length === 0) {
@@ -148,34 +162,25 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   }
 
   return (
-    <FlatList
-      data={collections}
-      renderItem={renderItem}
-      keyExtractor={keyExtractor}
-      key={`catalog-grid-${resolvedNumColumns}`}
-      numColumns={resolvedNumColumns}
-      scrollEnabled={false}
-      contentContainerStyle={[
+    <View
+      style={[
         styles.grid,
         {
           paddingHorizontal: screenPadding,
           paddingVertical: GRID_LAYOUT.verticalPadding,
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: columnGap,
+          rowGap: rowGap,
         },
       ]}
-      columnWrapperStyle={resolvedNumColumns > 1 ? [styles.row, { gap: columnGap, marginBottom: rowGap }] : undefined}
-      showsVerticalScrollIndicator={false}
-      onEndReached={onEndReached}
-      onEndReachedThreshold={0.5}
-      refreshControl={
-        onRefresh ? (
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={theme.colors.primary}
-          />
-        ) : undefined
-      }
-    />
+    >
+      {visibleCollections.map((item, index) => (
+        <React.Fragment key={item.id}>
+          {renderItem({ item, index })}
+        </React.Fragment>
+      ))}
+    </View>
   );
 });
 

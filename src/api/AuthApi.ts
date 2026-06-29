@@ -64,6 +64,21 @@ export type VerifyEmailResponse = {
   message?: string;
 };
 
+export type MessageResponse = {
+  message?: string;
+};
+
+export type SecuritySession = {
+  id: string;
+  userAgent: string | null;
+  ipAddressMasked: string | null;
+  location: string | null;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  isCurrentSession: boolean;
+};
+
 export type DeleteAccountParams = {
   confirmationWord: string;
   currentPassword: string;
@@ -134,6 +149,44 @@ export async function verifyEmail(token: string) {
 export async function resendVerificationEmail() {
   const response = await apiClient.post<VerifyEmailResponse>('/auth/verify-email/resend');
   return unwrapData<VerifyEmailResponse>(response.data);
+}
+
+export async function changePassword(params: {
+  currentPassword: string;
+  newPassword: string;
+}) {
+  const response = await apiClient.post<MessageResponse>('/auth/change-password', params);
+  return unwrapData<MessageResponse>(response.data);
+}
+
+export async function requestEmailChange(params: {
+  newEmail: string;
+  currentPassword: string;
+}) {
+  const response = await apiClient.post<MessageResponse & { pendingEmail?: string }>(
+    '/auth/change-email/request',
+    params,
+  );
+  return unwrapData<MessageResponse & { pendingEmail?: string }>(response.data);
+}
+
+export async function listSecuritySessions() {
+  const response = await apiClient.get<SecuritySession[]>('/auth/security/sessions');
+  return unwrapData<SecuritySession[]>(response.data);
+}
+
+export async function revokeSecuritySession(sessionId: string) {
+  const response = await apiClient.patch<{ success: boolean }>(
+    `/auth/security/sessions/${encodeURIComponent(sessionId)}/revoke`,
+  );
+  return unwrapData<{ success: boolean }>(response.data);
+}
+
+export async function logoutOtherSecuritySessions() {
+  const response = await apiClient.post<{ revokedCount: number; currentSessionId?: string | null }>(
+    '/auth/security/sessions/logout-others',
+  );
+  return unwrapData<{ revokedCount: number; currentSessionId?: string | null }>(response.data);
 }
 
 export async function deleteAccount(params: DeleteAccountParams) {

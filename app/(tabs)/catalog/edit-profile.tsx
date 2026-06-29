@@ -23,6 +23,7 @@ import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { tokens } from '@/src/styles/tokens';
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 import { BRAND_TAG_OPTIONS } from '@/src/data/brandTags';
 import { AppMultiSelectSheet, AppSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
 import { Chip } from '@/components/ui/Chip';
@@ -104,13 +105,13 @@ function toPayload(form: BrandFormState): UpdateBrandProfilePayload {
   };
 }
 
-function statusLabel(state: SaveState, savedAt: Date | null): string {
+function statusLabel(state: SaveState, savedAt: Date | null): string | null {
   if (state === 'saving') return 'Saving changes...';
   if (state === 'error') return 'Could not save changes. Fix the issue before leaving.';
   if (state === 'saved' && savedAt) {
     return `Saved ${savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   }
-  return 'Changes save when you leave';
+  return null;
 }
 
 function withCurrentOption(options: SelectSheetOption[], currentValue: string): SelectSheetOption[] {
@@ -398,7 +399,9 @@ export default function BrandProfileEditScreen() {
       isNavigatingAwayRef.current = false;
       return;
     }
-    router.back();
+    // Owner edit-profile lives in the (tabs) group; fall back to the catalog
+    // when there is no history (e.g. entered from Settings) instead of Runway.
+    backOrNavigate('/catalog');
   }, [persistOnExit]);
 
   const handlePickAvatar = useCallback(async () => {
@@ -483,6 +486,7 @@ export default function BrandProfileEditScreen() {
   );
   const statusTone =
     saveState === 'error' ? 'danger' : saveState === 'saving' ? 'warning' : 'muted';
+  const currentStatusLabel = statusLabel(saveState, lastSavedAt);
   const tagOptions: SelectSheetOption[] = useMemo(() => {
     const byValue = new Map<string, SelectSheetOption>();
     BRAND_TAG_OPTIONS.forEach((option) => byValue.set(option.value, option));
@@ -520,9 +524,11 @@ export default function BrandProfileEditScreen() {
         <AppBackButton onPress={handleBack} style={styles.backButton} />
         <View style={styles.headerTextWrap}>
           <AppText variant="bodyBold">Edit Brand Profile</AppText>
-          <AppText variant="caption" tone={statusTone} style={styles.status}>
-            {statusLabel(saveState, lastSavedAt)}
-          </AppText>
+          {currentStatusLabel ? (
+            <AppText variant="caption" tone={statusTone} style={styles.status}>
+              {currentStatusLabel}
+            </AppText>
+          ) : null}
         </View>
       </View>
 
@@ -556,9 +562,6 @@ export default function BrandProfileEditScreen() {
                 <AppText variant="captionBold">✏️</AppText>
               </View>
             </Pressable>
-            <AppText variant="body" tone="muted" style={styles.avatarHelp}>
-              Brand details save when you leave. Email and password are managed elsewhere.
-            </AppText>
           </View>
 
           <View style={styles.group}>
@@ -691,10 +694,6 @@ export default function BrandProfileEditScreen() {
             />
           </View>
 
-          <View style={styles.helperStack}>
-            <AppText variant="caption" tone="muted">Changes save automatically when you leave this screen.</AppText>
-            <AppText variant="caption" tone="muted">Signed in as {user?.email ?? 'your account'}.</AppText>
-          </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -839,10 +838,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarHelp: {
-    textAlign: 'center',
-    maxWidth: 280,
-  },
   row: {
     flexDirection: 'row',
     gap: tokens.spacing.sm,
@@ -889,9 +884,5 @@ const styles = StyleSheet.create({
   },
   textArea: {
     minHeight: 110,
-  },
-  helperStack: {
-    gap: tokens.spacing.xs,
-    paddingTop: tokens.spacing.xs,
   },
 });

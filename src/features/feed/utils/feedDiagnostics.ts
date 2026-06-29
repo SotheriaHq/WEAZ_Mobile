@@ -64,7 +64,12 @@ const isScopeDebugFlagEnabled = (scope: DebugScope) => {
 };
 
 export const isThreadlyDebugEnabled = (scope: DebugScope) => {
-  if (!__DEV__) return false;
+  // Debug scopes are opt-in via EXPO_PUBLIC_DEBUG_<SCOPE> flags. We honor the
+  // flag even outside __DEV__ so performance can be measured against a
+  // production-mode JS bundle (`expo start --no-dev --minify`) — release-speed JS
+  // without needing a native release build / Android SDK. A shipped store build
+  // must NOT define these EXPO_PUBLIC_DEBUG_* flags; when undefined they default
+  // to disabled, so production stays silent.
   return isScopeDebugFlagEnabled(scope);
 };
 

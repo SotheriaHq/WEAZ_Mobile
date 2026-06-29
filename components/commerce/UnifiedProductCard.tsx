@@ -35,6 +35,8 @@ type UnifiedProductCardProps = {
   allowSignedFallback?: boolean;
   style?: StyleProp<ViewStyle>;
   onPress: () => void;
+  /** Phase 5: fired on press-in to warm the destination before navigation. */
+  onPressIn?: () => void;
   onFavoritePress?: () => void;
   onActionPress?: () => void;
 };
@@ -65,6 +67,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   allowSignedFallback = true,
   style,
   onPress,
+  onPressIn,
   onFavoritePress,
   onActionPress,
 }: UnifiedProductCardProps) {
@@ -82,6 +85,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={onPressIn}
       style={({ pressed }) => [
         styles.card,
         {

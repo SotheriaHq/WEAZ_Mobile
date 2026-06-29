@@ -15,6 +15,24 @@ const PERSISTED_CACHE_VERSION = 2;
 
 const memoryCache = new Map<string, PersistedFeedSnapshot>();
 
+/**
+ * Cross-screen signal that the runway feed should revalidate on next focus.
+ * Set when a realtime event (e.g. a design review approval/publish) changes what
+ * the feed should contain, so returning to the runway shows fresh content without
+ * a manual pull-to-refresh.
+ */
+let marketFeedDirty = false;
+
+export const markMarketFeedDirty = () => {
+  marketFeedDirty = true;
+};
+
+export const consumeMarketFeedDirty = () => {
+  if (!marketFeedDirty) return false;
+  marketFeedDirty = false;
+  return true;
+};
+
 const getStorageErrorReason = (error: unknown) =>
   error instanceof Error ? error.message : typeof error === 'string' ? error : 'unknown-storage-error';
 
@@ -23,26 +41,35 @@ const isMatchingSnapshot = (
   identity: FeedCacheIdentity,
 ) =>
   snapshot?.version === PERSISTED_CACHE_VERSION &&
-  snapshot.identity.feedType === identity.feedType &&
-  snapshot.identity.apiEnvironmentKey === identity.apiEnvironmentKey &&
-  snapshot.identity.userId === identity.userId &&
-  snapshot.identity.tag === identity.tag &&
-  snapshot.items.length > 0;
+  snapshot.identity?.feedType === identity.feedType &&
+  snapshot.identity?.apiEnvironmentKey === identity.apiEnvironmentKey &&
+  snapshot.identity?.userId === identity.userId &&
+  snapshot.identity?.tag === identity.tag &&
+  Array.isArray(snapshot.items) &&
+  typeof snapshot.cachedAt === 'number';
+
+export const readMemoryCachedMarketFeed = (identity: FeedCacheIdentity) => {
+  const memoryKey = getFeedCacheMemoryKey(identity);
+  const memory = memoryCache.get(memoryKey);
+  if (!isMatchingSnapshot(memory ?? null, identity)) return null;
+
+  return {
+    snapshot: memory!,
+    isFresh: Date.now() - memory!.cachedAt < FEED_CACHE_TTL_MS,
+    source: 'memory' as const,
+  };
+};
 
 export const readCachedMarketFeed = async (identity: FeedCacheIdentity) => {
   const memoryKey = getFeedCacheMemoryKey(identity);
-  const memory = memoryCache.get(memoryKey);
-  if (isMatchingSnapshot(memory ?? null, identity)) {
+  const memory = readMemoryCachedMarketFeed(identity);
+  if (memory) {
     feedDevLog('stale-cache-used', {
       source: 'memory',
-      itemCount: memory!.items.length,
-      isFresh: Date.now() - memory!.cachedAt < FEED_CACHE_TTL_MS,
+      itemCount: memory.snapshot.items.length,
+      isFresh: memory.isFresh,
     });
-    return {
-      snapshot: memory!,
-      isFresh: Date.now() - memory!.cachedAt < FEED_CACHE_TTL_MS,
-      source: 'memory' as const,
-    };
+    return memory;
   }
 
   try {
@@ -58,8 +85,7 @@ export const readCachedMarketFeed = async (identity: FeedCacheIdentity) => {
       });
       return null;
     }
-    const sanitizedItems = sanitizeFeedItems(parsed.items);
-    if (!sanitizedItems.length) return null;
+    const sanitizedItems = sanitizeFeedItems(Array.isArray(parsed.items) ? parsed.items : []);
     const snapshot = { ...parsed, items: sanitizedItems };
     memoryCache.set(memoryKey, snapshot);
     feedDevLog('stale-cache-used', {
@@ -90,9 +116,8 @@ export const writeCachedMarketFeed = async (
   page: FeedPageResult,
 ) => {
   const items = sanitizeFeedItems(page.items);
-  if (!items.length) {
-    feedDevWarn('cache-write-skipped', { reason: 'empty-or-invalid-response' });
-    return null;
+  if (!items.length && page.items.length > 0) {
+    feedDevWarn('cache-write-empty-after-sanitize', { rawItemCount: page.items.length });
   }
 
   const snapshot: PersistedFeedSnapshot = {
@@ -128,6 +153,7 @@ export const writeCachedMarketFeed = async (
 
 export const clearCachedMarketFeed = async () => {
   memoryCache.clear();
+  marketFeedDirty = false;
 
   try {
     const keys = await AsyncStorage.getAllKeys();

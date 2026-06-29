@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
@@ -26,6 +27,7 @@ import {
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { navPerf } from '@/src/utils/navPerf';
 import { MobileMarketSuggestionBlocks } from '@/src/features/market/components/MobileMarketSuggestionBlocks';
 
 type Props = {
@@ -75,11 +77,11 @@ const openItem = (item: MarketSectionItem, sectionKey: string) => {
   void flushMarketSignals();
 
   if (targetType === 'PRODUCT') {
-    router.push({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
+    drillDownPush({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
     return;
   }
   if (targetType === 'DESIGN') {
-    router.push({
+    drillDownPush({
       pathname: '/market-viewer',
       params: {
         sourceType: 'DESIGN',
@@ -93,17 +95,19 @@ const openItem = (item: MarketSectionItem, sectionKey: string) => {
     return;
   }
   if (targetType === 'COLLECTION') {
-    router.push({
+    drillDownPush({
       pathname: '/collection-viewer',
       params: { collectionId: targetId, returnTo: `/market-section?sectionKey=${sectionKey}` },
     } as any);
     return;
   }
   if (targetType === 'BRAND') {
-    router.push({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
+    drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
     return;
   }
-  router.push('/(tabs)/discover' as any);
+  // Top-level fallback when the section item has no drill-down target — navigate
+  // (not push) so we reuse the existing Market tab instead of stacking a copy.
+  topLevelNavigate('/(tabs)/discover' as any);
 };
 
 function SectionItemCard({
@@ -218,6 +222,17 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
     },
     [cursor, hasNextPage, loadingMore, section, sectionKey],
   );
+
+  // Dev-only nav timing for market→section. Shell/skeleton renders at mount;
+  // data is ready once the initial section load settles.
+  useEffect(() => {
+    navPerf.screenMounted('market→section');
+    navPerf.shellVisible('market→section');
+    navPerf.firstVisibleUi('market→section');
+  }, []);
+  useEffect(() => {
+    if (!loading) navPerf.dataReady('market→section');
+  }, [loading]);
 
   useEffect(() => {
     void loadSection('reset');

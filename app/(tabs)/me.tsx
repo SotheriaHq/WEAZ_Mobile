@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import EmailVerificationNotice from '@/components/auth/EmailVerificationNotice';
@@ -14,10 +14,14 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import ProfileImageModal from '@/components/profile/ProfileImageModal';
-import { ProfileApi, type Order, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
+import { ProfileApi, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
+import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
 import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
+import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
+import { useFrameBatchedItems } from '@/src/hooks/useFrameBatchedItems';
+import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -27,7 +31,13 @@ import { resolveIdentity } from '@/src/utils/identity';
 import { profileDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
+import { navPerf } from '@/src/utils/navPerf';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { compressPickedImage } from '@/src/utils/imageCompression';
+import {
+  refreshUnreadNotificationCount,
+  useUnreadNotificationCount,
+} from '@/src/realtime/notifications';
 import {
   MOBILE_UPLOAD_POLICIES,
   getMobileUploadValidationMessage,
@@ -41,7 +51,7 @@ type ProfileState = {
   sizeFit: SizeFitProfile | null;
   saved: SavedItem[];
   patches: PatchedBrand[];
-  orders: Order[];
+  orders: BuyerOrderSummary[];
 };
 
 type MeasurementKey = 'CHEST' | 'WAIST' | 'HIPS' | 'SHOULDER' | 'INSEAM' | 'HEIGHT';
@@ -49,6 +59,9 @@ type MeasurementKey = 'CHEST' | 'WAIST' | 'HIPS' | 'SHOULDER' | 'INSEAM' | 'HEIG
 const PROFILE_LOGIN_ROUTE = { pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as const;
 
 const PROFILE_TABS: ProfileTab[] = ['Saved', 'Patches', 'Orders'];
+const PROFILE_INITIAL_SECTION_ITEMS = 6;
+const PROFILE_SECTION_BATCH_ITEMS = 8;
+const PROFILE_ORDERS_PREVIEW_LIMIT = 6;
 const MEASUREMENT_FIELDS: Array<{ key: MeasurementKey; label: string }> = [
   { key: 'CHEST', label: 'Chest' },
   { key: 'WAIST', label: 'Waist' },
@@ -167,7 +180,7 @@ function ProfileSkeleton({ bottomPadding }: { bottomPadding: number }) {
   return (
     <View style={[styles.skeletonWrap, { paddingBottom: bottomPadding }]}>
       <View style={styles.skeletonHeader}>
-        <Skeleton width={80} height={80} borderRadius={40} />
+        <Skeleton width={80} height={80} borderRadius={tokens.radius.xl} />
         <View style={styles.skeletonHeaderText}>
           <Skeleton width="60%" height={20} borderRadius={6} />
           <Skeleton width="40%" height={16} borderRadius={4} />
@@ -186,7 +199,7 @@ function ProfileSkeleton({ bottomPadding }: { bottomPadding: number }) {
       <View style={styles.skeletonList}>
         {Array.from({ length: 5 }).map((_, i) => (
           <View key={i} style={styles.skeletonItem}>
-            <Skeleton width={50} height={50} borderRadius={25} />
+            <Skeleton width={50} height={50} borderRadius={tokens.radius.lg} />
             <View style={styles.skeletonItemText}>
               <Skeleton width="70%" height={16} borderRadius={4} />
               <Skeleton width="50%" height={14} borderRadius={4} />
@@ -194,6 +207,22 @@ function ProfileSkeleton({ bottomPadding }: { bottomPadding: number }) {
           </View>
         ))}
       </View>
+    </View>
+  );
+}
+
+function ProfileSectionSkeleton() {
+  return (
+    <View style={styles.skeletonList} accessibilityLabel="Loading recent orders">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <View key={index} style={styles.skeletonItem}>
+          <Skeleton width={50} height={50} borderRadius={tokens.radius.lg} />
+          <View style={styles.skeletonItemText}>
+            <Skeleton width="70%" height={16} borderRadius={tokens.radius.sm} />
+            <Skeleton width="46%" height={14} borderRadius={tokens.radius.sm} />
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
@@ -207,34 +236,42 @@ function SummaryStat({
   value: string;
   subtitle: string;
 }) {
-  const { theme } = useTheme();
   return (
-    <Card padding="md" style={[styles.summaryCard, { backgroundColor: theme.colors.surfaceAlt }]}>
+    <View style={styles.summaryStat}>
       <AppText variant="captionRegular" tone="muted">{title}</AppText>
       <AppText variant="subtitle">{value}</AppText>
       <AppText variant="captionRegular" tone="muted">{subtitle}</AppText>
-    </Card>
+    </View>
   );
 }
 
 function ProfileAction({
   emoji,
   label,
+  accent,
   onPress,
 }: {
   emoji: string;
   label: string;
+  accent: 'primary' | 'success' | 'warning' | 'textSecondary';
   onPress: () => void;
 }) {
   const { theme } = useTheme();
+  const accentColor = theme.colors[accent];
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.actionCard, { backgroundColor: theme.colors.surfaceAlt }, pressed ? styles.pressed : null]}
+      style={({ pressed }) => [
+        styles.actionCard,
+        { backgroundColor: theme.colors.surface, borderColor: accentColor },
+        pressed ? styles.pressed : null,
+      ]}
     >
-      <AppText variant="captionBold">{emoji}</AppText>
-      <AppText variant="bodyBold" numberOfLines={1}>{label}</AppText>
+      <View style={[styles.actionIcon, { backgroundColor: accentColor }]}>
+        <AppText variant="captionBold">{emoji}</AppText>
+      </View>
+      <AppText variant="captionBold" numberOfLines={2} style={styles.actionLabel}>{label}</AppText>
     </Pressable>
   );
 }
@@ -290,15 +327,19 @@ function SavedDesignCard({ item }: { item: SavedItem }) {
           ? item.collectionId ?? item.targetId
           : item.collectionId ?? item.targetId;
   const onPress = () => {
+    // Dev-only nav timing. Destination (product/design/collection) emits its own
+    // screen_mounted/data_ready; this measures tap→navigation_called.
+    navPerf.tap('wishlist→product');
+    navPerf.navigationCalled();
     if (item.targetType === 'PRODUCT') {
-      router.push({ pathname: '/products/[productId]', params: { productId: destinationId } } as any);
+      drillDownPush({ pathname: '/products/[productId]', params: { productId: destinationId } } as any);
       return;
     }
     if (item.targetType === 'COLLECTION') {
-      router.push(routeForStoreCollectionTarget(destinationId) as any);
+      drillDownPush(routeForStoreCollectionTarget(destinationId) as any);
       return;
     }
-    router.push(
+    drillDownPush(
       routeForDesignTarget(destinationId, {
         legacyCollectionId: item.legacyCollectionId ?? item.collectionId ?? destinationId,
       }) as any,
@@ -339,7 +380,7 @@ function PatchRow({ brand }: { brand: PatchedBrand }) {
   return (
     <Pressable
       onPress={() =>
-        router.push({
+        drillDownPush({
           pathname: '/catalog/[brandId]',
           params: { brandId: brand.id },
         } as any)
@@ -363,57 +404,85 @@ function PatchRow({ brand }: { brand: PatchedBrand }) {
   );
 }
 
-function OrderRow({ order }: { order: Order }) {
+function OrderRow({ order }: { order: BuyerOrderSummary }) {
   const { theme } = useTheme();
-  const firstItem = order.items?.[0];
   return (
-    <View style={[styles.listCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-      {firstItem?.thumbnail ? (
-        <StableImage uri={firstItem.thumbnail} containerStyle={styles.rowAvatar} imageStyle={styles.rowAvatar} />
+    <Pressable
+      onPress={() => {
+        const { topLevelNavigate } = require('@/src/utils/mobileNavigation');
+        topLevelNavigate({ pathname: '/orders/[orderId]', params: { orderId: order.id } } as any);
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${order.title}`}
+      style={({ pressed }) => [
+        styles.listCard,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        pressed ? styles.pressed : null,
+      ]}
+    >
+      {order.thumbnail ? (
+        <StableImage uri={order.thumbnail} containerStyle={styles.rowAvatar} imageStyle={styles.rowAvatar} />
       ) : (
         <View style={[styles.rowAvatar, { backgroundColor: theme.colors.surfaceAlt }]}>
           <AppText variant="captionBold">📦</AppText>
         </View>
       )}
       <View style={styles.listCopy}>
-        <AppText variant="bodyBold" numberOfLines={1}>{firstItem?.productName || 'Order'}</AppText>
+        <AppText variant="bodyBold" numberOfLines={1}>{order.title}</AppText>
         <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-          {order.status} · {formatDate(order.createdAt)}
+          {order.brandName} · {order.status} · {formatDate(order.createdAt)}
         </AppText>
       </View>
       <View style={styles.orderMeta}>
-        <AppText variant="captionBold">{formatCurrency(order.totalAmount, order.currency)}</AppText>
+        <AppText variant="captionBold">{formatCurrency(order.amount, order.currency)}</AppText>
         <AppText variant="captionRegular" tone="muted">
-          {order.items?.length ?? 0} item{(order.items?.length ?? 0) === 1 ? '' : 's'}
+          {order.itemCount} item{order.itemCount === 1 ? '' : 's'}
         </AppText>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
 export default function BuyerProfileScreen() {
   const { theme } = useTheme();
   const { standardScreenBottomPadding } = useScreenChrome();
+  const deferredWorkReady = useDeferredScreenWork();
   const contentBottomPadding = standardScreenBottomPadding;
-  const { status, user, updateUser, signOut } = useAuth();
+  const { status, user, updateUser, validateToken, signOut } = useAuth();
   const toast = useToast();
   const params = useLocalSearchParams<{ tab?: string | string[] }>();
   const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  const warmProfileStateKey = user?.id ? `me:v2:${user.id}` : null;
+  const initialWarmProfileState = warmProfileStateKey ? readWarmScreenState<ProfileState>(warmProfileStateKey) : null;
 
-  const [state, setState] = useState<ProfileState>(() => createEmptyProfileState());
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<ProfileState>(() => initialWarmProfileState ?? createEmptyProfileState());
+  const [loading, setLoading] = useState(() => !initialWarmProfileState);
+  const [ordersLoading, setOrdersLoading] = useState(() => !initialWarmProfileState);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Saved');
+  const [hasWarmProfileSnapshot, setHasWarmProfileSnapshot] = useState(() => Boolean(initialWarmProfileState));
+  const unreadNotificationCount = useUnreadNotificationCount();
+
+  useEffect(() => {
+    navPerf.screenMounted('tabs→me');
+    navPerf.firstVisibleUi('tabs→me');
+    if (initialWarmProfileState) {
+      navPerf.mark('cache_hit', 'tabs→me');
+      navPerf.mark('stale_ui_rendered', 'tabs→me');
+    } else {
+      navPerf.mark('cache_miss', 'tabs→me');
+      if (status === 'loading') navPerf.mark('cold_skeleton_rendered', 'tabs→me');
+    }
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible('tabs→me');
+  }, []);
   const savedLooksOpenedTrackedRef = useRef(false);
-  const [editOpen, setEditOpen] = useState(false);
   const [fittingsOpen, setFittingsOpen] = useState(false);
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
-  const [savingProfile, setSavingProfile] = useState(false);
   const [savingFittings, setSavingFittings] = useState(false);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [address, setAddress] = useState('');
   const [fitUnit, setFitUnit] = useState<'CM' | 'IN'>('CM');
   const [fitValues, setFitValues] = useState<Record<MeasurementKey, string>>({
     CHEST: '',
@@ -426,11 +495,20 @@ export default function BuyerProfileScreen() {
   const loadRequestIdRef = useRef(0);
   const lastUserIdRef = useRef<string | null>(null);
   const redirectToAuthRef = useRef(false);
+  const stateRef = useRef(state);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    if (!warmProfileStateKey || !state.profile) return;
+    writeWarmScreenState(warmProfileStateKey, state);
+  }, [state, warmProfileStateKey]);
 
   const fallbackProfile = useMemo(() => buildFallbackProfile(user), [user]);
   const profileRecord = state.profile ?? fallbackProfile;
   const profileIdentity = useMemo(() => resolveIdentity(profileRecord), [profileRecord]);
-  const hasProfile = Boolean(profileRecord);
   const profileCounts = useMemo(
     () => ({
       saved: state.saved.length,
@@ -439,6 +517,24 @@ export default function BuyerProfileScreen() {
     }),
     [state.orders.length, state.patches.length, state.saved.length],
   );
+  const visibleSavedItems = useFrameBatchedItems(state.saved, {
+    enabled: activeTab === 'Saved',
+    initialCount: PROFILE_INITIAL_SECTION_ITEMS,
+    batchCount: PROFILE_SECTION_BATCH_ITEMS,
+    resetKey: `Saved:${state.saved.length}:${state.saved[0]?.id ?? ''}:${state.saved[state.saved.length - 1]?.id ?? ''}`,
+  });
+  const visiblePatchItems = useFrameBatchedItems(state.patches, {
+    enabled: activeTab === 'Patches',
+    initialCount: PROFILE_INITIAL_SECTION_ITEMS,
+    batchCount: PROFILE_SECTION_BATCH_ITEMS,
+    resetKey: `Patches:${state.patches.length}:${state.patches[0]?.id ?? ''}:${state.patches[state.patches.length - 1]?.id ?? ''}`,
+  });
+  const visibleOrderItems = useFrameBatchedItems(state.orders, {
+    enabled: activeTab === 'Orders',
+    initialCount: PROFILE_INITIAL_SECTION_ITEMS,
+    batchCount: PROFILE_SECTION_BATCH_ITEMS,
+    resetKey: `Orders:${state.orders.length}:${state.orders[0]?.id ?? ''}:${state.orders[state.orders.length - 1]?.id ?? ''}`,
+  });
 
   useEffect(() => {
     if (status !== 'authenticated' || activeTab !== 'Saved' || savedLooksOpenedTrackedRef.current) return;
@@ -454,10 +550,12 @@ export default function BuyerProfileScreen() {
       redirectToAuthRef.current = false;
       if (lastUserIdRef.current !== user.id) {
         lastUserIdRef.current = user.id;
-        setState(createEmptyProfileState());
+        const cachedState = warmProfileStateKey ? readWarmScreenState<ProfileState>(warmProfileStateKey) : null;
+        setState(cachedState ?? createEmptyProfileState());
         setError(null);
-        setLoading(true);
+        setLoading(!cachedState);
         setRefreshing(false);
+        setHasWarmProfileSnapshot(Boolean(cachedState));
       }
       return;
     }
@@ -468,6 +566,7 @@ export default function BuyerProfileScreen() {
     setError(null);
     setLoading(false);
     setRefreshing(false);
+    setHasWarmProfileSnapshot(false);
   }, [status, user?.id]);
 
   useEffect(() => {
@@ -481,7 +580,7 @@ export default function BuyerProfileScreen() {
     const normalized = requestedTab.trim().toLowerCase();
     if (normalized === 'patches') setActiveTab('Patches');
     if (normalized === 'orders') {
-      router.replace('/orders' as any);
+      setActiveTab('Orders');
       return;
     }
     if (normalized === 'saved') setActiveTab('Saved');
@@ -491,15 +590,17 @@ export default function BuyerProfileScreen() {
     const silent = options?.silent ?? false;
     if (status !== 'authenticated' || !user?.id) {
       setLoading(false);
+      setOrdersLoading(false);
       setRefreshing(false);
       setState(createEmptyProfileState());
       return;
     }
 
     const requestId = ++loadRequestIdRef.current;
-    if (!silent) {
+    if (!silent && !hasWarmProfileSnapshot) {
       setLoading(true);
     }
+    setOrdersLoading(true);
     setError(null);
     try {
       const [profileResult, sizeFitResult, savedResult, patchesResult, ordersResult] = await Promise.allSettled([
@@ -507,25 +608,26 @@ export default function BuyerProfileScreen() {
         ProfileApi.getSizeFit(),
         ProfileApi.getSaved(),
         ProfileApi.getPatches(user.id),
-        ProfileApi.getOrders({ limit: 20, page: 1 }),
+        BuyerOrdersApi.list({ limit: PROFILE_ORDERS_PREVIEW_LIMIT }),
       ]);
 
       if (requestId !== loadRequestIdRef.current) return;
 
+      const previousState = stateRef.current;
       const nextProfile =
         profileResult.status === 'fulfilled' && profileResult.value
           ? profileResult.value
-          : fallbackProfile;
-      const nextSizeFit = sizeFitResult.status === 'fulfilled' ? sizeFitResult.value : null;
-      const nextSaved = savedResult.status === 'fulfilled' ? savedResult.value : [];
-      const nextPatches = patchesResult.status === 'fulfilled' ? patchesResult.value : [];
-      const nextOrders = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
+          : previousState.profile ?? fallbackProfile;
+      const nextSizeFit = sizeFitResult.status === 'fulfilled' ? sizeFitResult.value : previousState.sizeFit;
+      const nextSaved = savedResult.status === 'fulfilled' ? savedResult.value : previousState.saved;
+      const nextPatches = patchesResult.status === 'fulfilled' ? patchesResult.value : previousState.patches;
+      const nextOrders = ordersResult.status === 'fulfilled' ? ordersResult.value : previousState.orders;
       const profileFailed = profileResult.status === 'rejected' && !isNotFoundError(profileResult.reason);
       const optionalFailures = [
         { section: 'size-fit', endpoint: '/users/me/size-fit', result: sizeFitResult },
         { section: 'saved', endpoint: '/saved/me', result: savedResult },
         { section: 'patches', endpoint: `/users/${user.id}/patches`, result: patchesResult },
-        { section: 'orders', endpoint: '/store/orders', result: ordersResult },
+        { section: 'orders', endpoint: '/store/orders + /custom-orders', result: ordersResult },
       ].filter((entry) => entry.result.status === 'rejected');
 
       optionalFailures.forEach((entry) => {
@@ -544,6 +646,17 @@ export default function BuyerProfileScreen() {
         patches: nextPatches,
         orders: nextOrders,
       });
+      setHasWarmProfileSnapshot(true);
+
+      if (warmProfileStateKey) {
+        writeWarmScreenState(warmProfileStateKey, {
+          profile: nextProfile,
+          sizeFit: nextSizeFit,
+          saved: nextSaved,
+          patches: nextPatches,
+          orders: nextOrders,
+        });
+      }
 
       if (profileFailed) {
         setError('Profile could not refresh right now.');
@@ -556,27 +669,44 @@ export default function BuyerProfileScreen() {
         ...current,
         profile: fallbackProfile,
       }));
+      setHasWarmProfileSnapshot(true);
       setError(nextError instanceof Error ? nextError.message : 'Unable to load your profile.');
     } finally {
       if (requestId === loadRequestIdRef.current) {
         if (!silent) {
           setLoading(false);
         }
+        setOrdersLoading(false);
         setRefreshing(false);
       }
     }
   }, [fallbackProfile, status, user?.id]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!deferredWorkReady) return;
+    navPerf.mark('background_refresh_started', 'tabs→me');
+    void load().finally(() => {
+      navPerf.mark('background_refresh_completed', 'tabs→me');
+    });
+  }, [deferredWorkReady, load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!deferredWorkReady) return undefined;
+      void refreshUnreadNotificationCount({
+        authenticated: status === 'authenticated',
+        forceRefresh: true,
+      });
+      return undefined;
+    }, [deferredWorkReady, status]),
+  );
 
   useEffect(() => {
-    if (!editOpen || !profileRecord) return;
-    setFirstName(profileRecord.firstName || '');
-    setLastName(profileRecord.lastName || '');
-    setAddress(profileRecord.address || profileRecord.location || '');
-  }, [editOpen, profileRecord]);
+    if (status === 'authenticated' && !loading) {
+      navPerf.mark('cached_or_empty_state_visible', 'tabs→me');
+      navPerf.dataReady('tabs→me');
+    }
+  }, [loading, status]);
 
   useEffect(() => {
     if (!fittingsOpen) return;
@@ -636,13 +766,17 @@ export default function BuyerProfileScreen() {
   }, []);
 
   const handleOpenSettings = useCallback(() => {
-    toast.info('More settings are coming soon.');
-  }, [toast]);
+    router.push('/settings' as any);
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load({ silent: true });
-  }, [load]);
+    await Promise.all([
+      validateToken({ forceRefresh: true }),
+      load({ silent: true }),
+      refreshUnreadNotificationCount({ authenticated: true, forceRefresh: true }),
+    ]);
+  }, [load, validateToken]);
 
   const handlePickAvatar = useCallback(async () => {
     if (!profileRecord) return;
@@ -730,32 +864,6 @@ export default function BuyerProfileScreen() {
     }
   }, [profileRecord, toast, updateUser]);
 
-  const handleSaveProfile = useCallback(async () => {
-    if (!profileRecord || savingProfile) return;
-    setSavingProfile(true);
-    try {
-      const updated = await ProfileApi.updateProfile({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        username: profileRecord.username,
-        address: address.trim(),
-      });
-      if (!updated) throw new Error('Profile update failed');
-      setState((current) => ({ ...current, profile: updated }));
-      updateUser({
-        firstName: updated.firstName,
-        lastName: updated.lastName,
-        username: updated.username,
-      });
-      setEditOpen(false);
-      toast.success('Profile updated.');
-    } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Could not update profile.');
-    } finally {
-      setSavingProfile(false);
-    }
-  }, [address, firstName, lastName, profileRecord, savingProfile, toast, updateUser]);
-
   const handleSaveFittings = useCallback(async () => {
     if (savingFittings) return;
     setSavingFittings(true);
@@ -773,7 +881,7 @@ export default function BuyerProfileScreen() {
       setFittingsOpen(false);
       toast.success('Fittings updated.');
     } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Could not update fittings.');
+      toast.error('Could not update fittings. Please try again.');
     } finally {
       setSavingFittings(false);
     }
@@ -794,7 +902,7 @@ export default function BuyerProfileScreen() {
     ]);
   }, [signOut]);
 
-  if (status === 'loading' || (status === 'authenticated' && loading)) {
+  if (status === 'loading') {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <BrandHeader />
@@ -831,9 +939,16 @@ export default function BuyerProfileScreen() {
             onPress={handleOpenNotifications}
             accessibilityRole="button"
             accessibilityLabel="Open notifications"
-            style={({ pressed }) => [styles.headerActionButton, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.headerActionButton, pressed && styles.pressed]}
           >
             <AppText variant="body">🔔</AppText>
+            {unreadNotificationCount > 0 ? (
+              <View style={[styles.notificationBadge, { backgroundColor: theme.colors.danger }]}>
+                <AppText variant="badgeLabel" tone="inverse">
+                  {unreadNotificationCount > 99 ? '99+' : String(unreadNotificationCount)}
+                </AppText>
+              </View>
+            ) : null}
           </Pressable>
         </View>
 
@@ -868,11 +983,11 @@ export default function BuyerProfileScreen() {
           <View style={styles.identityBlock}>
             <AppText variant="title" style={styles.centerText}>{profileIdentity.displayName}</AppText>
             {profileIdentity.handle ? (
-              <AppText variant="body" tone="muted" style={styles.centerText}>{profileIdentity.handle}</AppText>
+              <AppText variant="body" tone="primary" style={styles.profileHandle}>{profileIdentity.handle}</AppText>
             ) : null}
-            {profileIdentity.locationLabel || profileIdentity.joinedLabel ? (
+            {profileIdentity.locationLabel ? (
               <AppText variant="captionRegular" tone="muted" style={styles.centerText}>
-                {[profileIdentity.locationLabel, profileIdentity.joinedLabel].filter(Boolean).join(' · ')}
+                {profileIdentity.locationLabel}
               </AppText>
             ) : null}
           </View>
@@ -882,25 +997,25 @@ export default function BuyerProfileScreen() {
           context="profile"
           userId={user?.id}
           email={user?.email}
-          emailVerified={
-            typeof user?.isEmailVerified === 'boolean'
-              ? user.isEmailVerified
-              : profileRecord?.isEmailVerified
-          }
+          emailVerified={user?.isEmailVerified}
         />
 
         <View style={styles.actionGrid}>
-          <ProfileAction emoji="✏️" label="Edit info" onPress={() => setEditOpen(true)} />
-          <ProfileAction emoji="📏" label="My fits" onPress={() => setFittingsOpen(true)} />
-          <ProfileAction emoji="📦" label="Orders" onPress={() => router.push('/orders' as any)} />
-          <ProfileAction emoji="⭐" label="Reviews" onPress={() => router.push('/reviews' as any)} />
-          <ProfileAction emoji="⚙️" label="Settings" onPress={handleOpenSettings} />
+          <View style={styles.actionRow}>
+            <ProfileAction emoji="✏️" label="Edit info" accent="primary" onPress={() => router.push('/(tabs)/me-edit' as any)} />
+            <ProfileAction emoji="📏" label="My fits" accent="success" onPress={() => setFittingsOpen(true)} />
+            <ProfileAction emoji="📦" label="Orders" accent="primary" onPress={() => setActiveTab('Orders')} />
+          </View>
+          <View style={styles.actionRow}>
+            <ProfileAction emoji="⭐" label="Reviews" accent="warning" onPress={() => router.push('/reviews' as any)} />
+            <ProfileAction emoji="⚙️" label="Settings" accent="textSecondary" onPress={handleOpenSettings} />
+          </View>
         </View>
 
         <View style={styles.summaryRow}>
           <SummaryStat title="Saved Looks" value={String(profileCounts.saved)} subtitle="inspiration" />
           <SummaryStat title="Patched" value={String(profileCounts.patches)} subtitle="brands" />
-          <SummaryStat title="History" value={String(profileCounts.orders)} subtitle="orders" />
+          <SummaryStat title="Recent" value={String(profileCounts.orders)} subtitle="orders" />
         </View>
 
         <MeasurementCard sizeFit={state.sizeFit} onPress={() => setFittingsOpen(true)} />
@@ -922,14 +1037,7 @@ export default function BuyerProfileScreen() {
             return (
               <Pressable
                 key={tab}
-                onPress={() => {
-                  if (tab === 'Orders') {
-                    setActiveTab(tab);
-                    router.push('/orders' as any);
-                    return;
-                  }
-                  setActiveTab(tab);
-                }}
+                onPress={() => setActiveTab(tab)}
                 style={({ pressed }) => [
                   styles.tabItem,
                   selected && [styles.tabItemActive, { borderBottomColor: theme.colors.primary }],
@@ -953,11 +1061,11 @@ export default function BuyerProfileScreen() {
               title="No saved looks yet"
               body="Save looks you love for inspiration so you can revisit them quickly from here."
               cta="Browse Runway"
-              onPress={() => router.push('/(tabs)' as any)}
+              onPress={() => topLevelNavigate('/(tabs)' as any)}
             />
           ) : (
             <View style={styles.savedGrid}>
-              {state.saved.map((item) => (
+              {visibleSavedItems.map((item) => (
                 <SavedDesignCard key={item.id} item={item} />
               ))}
             </View>
@@ -971,11 +1079,11 @@ export default function BuyerProfileScreen() {
               title="No patched brands yet"
               body="Patch the brands you want to keep close and their latest drops will stay within reach."
               cta="Discover brands"
-              onPress={() => router.push('/(tabs)/discover' as any)}
+              onPress={() => topLevelNavigate('/(tabs)/discover' as any)}
             />
           ) : (
             <View style={styles.listStack}>
-              {state.patches.map((brand) => (
+              {visiblePatchItems.map((brand) => (
                 <PatchRow key={brand.id} brand={brand} />
               ))}
             </View>
@@ -983,20 +1091,25 @@ export default function BuyerProfileScreen() {
         ) : null}
 
         {activeTab === 'Orders' ? (
-          state.orders.length === 0 ? (
-            <EmptyState
-              emoji="📦"
-              title="No orders yet"
-              body="When you buy from the market, your order history and status updates will show up here."
-              cta="Open market"
-              onPress={() => router.push('/(tabs)/discover' as any)}
-            />
-          ) : (
-            <View style={styles.listStack}>
-              {state.orders.map((order) => (
-                <OrderRow key={order.id} order={order} />
-              ))}
+          ordersLoading && state.orders.length === 0 ? (
+            <ProfileSectionSkeleton />
+          ) : state.orders.length === 0 ? (
+            <View style={[styles.ordersPreviewState, { backgroundColor: theme.colors.surfaceAlt }]}>
+              <AppText variant="bodyBold">No orders yet</AppText>
+              <AppText variant="captionRegular" tone="muted" style={styles.centerText}>
+                Standard and custom orders will appear here.
+              </AppText>
+              <Button title="Open market" size="sm" variant="secondary" onPress={() => topLevelNavigate('/(tabs)/discover' as any)} />
             </View>
+          ) : (
+            <>
+              <View style={styles.listStack}>
+                {visibleOrderItems.map((order) => (
+                  <OrderRow key={order.id} order={order} />
+                ))}
+              </View>
+              <Button title="View all orders" variant="outline" onPress={() => router.push('/orders' as any)} />
+            </>
           )
         ) : null}
       </ScrollView>
@@ -1006,30 +1119,6 @@ export default function BuyerProfileScreen() {
         imageUrl={avatarUri ?? profileIdentity.avatarSrc ?? null}
         onClose={() => setIsAvatarModalOpen(false)}
       />
-
-      <AppBottomSheet
-        visible={editOpen}
-        title="Edit profile"
-        subtitle="Update your details"
-        onClose={() => setEditOpen(false)}
-        footer={(
-          <View style={styles.sheetFooterActions}>
-            <Button title="Cancel" size="md" variant="outline" onPress={() => setEditOpen(false)} style={styles.sheetFooterButton} />
-            <Button
-              title="Done"
-              size="md"
-              onPress={() => void handleSaveProfile()}
-              disabled={!hasProfile || firstName.trim().length < 2 || lastName.trim().length < 2}
-              loading={savingProfile}
-              style={styles.sheetFooterButton}
-            />
-          </View>
-        )}
-      >
-        <Input label="First name" value={firstName} onChangeText={setFirstName} placeholder="First name" />
-        <Input label="Last name" value={lastName} onChangeText={setLastName} placeholder="Last name" />
-        <Input label="Location" value={address} onChangeText={setAddress} placeholder="City, Country" />
-      </AppBottomSheet>
 
       <AppBottomSheet
         visible={fittingsOpen}
@@ -1097,10 +1186,20 @@ const styles = StyleSheet.create({
   headerActionButton: {
     width: 44,
     height: 44,
-    borderRadius: tokens.radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 1,
+    right: 0,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   loadingState: {
     flex: 1,
@@ -1125,6 +1224,8 @@ const styles = StyleSheet.create({
     width: 92,
     height: 92,
     borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarBadge: {
     position: 'absolute',
@@ -1144,28 +1245,47 @@ const styles = StyleSheet.create({
   centerText: {
     textAlign: 'center',
   },
+  profileHandle: {
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
   actionGrid: {
+    gap: tokens.spacing.xs,
+  },
+  actionRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: tokens.spacing.xs,
   },
   actionCard: {
-    flexBasis: '48%',
-    flexGrow: 1,
+    flex: 1,
+    minWidth: 0,
     minHeight: 68,
     borderRadius: tokens.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
     gap: tokens.spacing.xs,
-    paddingHorizontal: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.xs,
     paddingVertical: tokens.spacing.sm,
+  },
+  actionIcon: {
+    minWidth: 30,
+    height: 30,
+    paddingHorizontal: tokens.spacing.xs,
+    borderRadius: tokens.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionLabel: {
+    textAlign: 'center',
   },
   summaryRow: {
     flexDirection: 'row',
-    gap: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.xs,
   },
-  summaryCard: {
+  summaryStat: {
     flex: 1,
+    alignItems: 'center',
     gap: tokens.spacing.xs,
   },
   fittingsCard: {
@@ -1242,6 +1362,14 @@ const styles = StyleSheet.create({
   orderMeta: {
     alignItems: 'flex-end',
     gap: tokens.spacing.xs,
+  },
+  ordersPreviewState: {
+    minHeight: 112,
+    borderRadius: tokens.radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.spacing.sm,
+    padding: tokens.spacing.md,
   },
   emptyCard: {
     alignItems: 'center',

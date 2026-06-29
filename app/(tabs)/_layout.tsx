@@ -1,19 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, BackHandler, Platform } from 'react-native';
-import { Tabs, router, usePathname } from 'expo-router';
+import { AppState, BackHandler, InteractionManager, Platform } from 'react-native';
+import { Tabs, router, usePathname, type Href } from 'expo-router';
 
 import {
   NativeIslandBottomNav,
-  NATIVE_ISLAND_NAV,
   type NativeIslandNavItem,
 } from '@/components/navigation/NativeIslandBottomNav';
-import { ProfileMenuDropup } from '@/components/navigation/ProfileMenuDropup';
-import { subscribeToNativeIslandCollapse } from '@/components/navigation/nativeIslandEvents';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { useTheme } from '@/src/theme/ThemeProvider';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
-import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import {
   refreshUnreadNotificationCount as refreshSharedUnreadNotificationCount,
@@ -25,9 +22,16 @@ import {
   useMessagingRealtimeChannel,
   useUnreadMessageCount,
 } from '@/src/realtime/messaging';
+import { resolveProfileImageSource } from '@/src/utils/profileImage';
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
-import { applyAndroidSystemBarsPolicy } from '@/src/system/AndroidSystemBars';
+import { navPerf } from '@/src/utils/navPerf';
+import {
+  getRunwayFirstMediaVisible,
+  subscribeRunwayFirstMediaVisible,
+} from '@/src/features/feed/utils/runwayReadiness';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import {
   NATIVE_ISLAND_ICONS,
   NATIVE_ISLAND_KEYS,
@@ -36,33 +40,103 @@ import {
   mapPathnameToIslandKey,
   type NativeIslandKey,
 } from '@/src/navigation/nativeIslandConfig';
+import { withNavigationLock, releaseNavigationLock } from '@/src/utils/mobileNavigation';
 
-const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
+// Keep Runway (`index`) as the tab shell's anchor route now that Catalogue is
+// also a (hidden) tab — without this, adding sibling screens can shift Expo
+// Router's default/initial tab.
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
+// Focused catalogue sub-flows are full-screen editors/viewers that must not be
+// covered by the floating island (matches the pre-migration behaviour when
+// catalogue rendered its own island and hid it for these routes). `/catalog`
+// and the visitor `/catalog/[brandId]` keep the island.
+const FOCUSED_CATALOG_FLOW = /^\/catalog\/(view|create-design|create-collection|edit-profile)(\/|$)/;
+
+type ExpoTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
+type HiddenTabNavigation = ExpoTabBarProps['navigation'];
+type TabNavigationActionType = 'JUMP_TO' | 'PRELOAD';
+
+function createTabNavigationAction(type: TabNavigationActionType, name: string) {
+  return {
+    type,
+    payload: { name },
+  };
+}
+
+function getFocusedTabName(navigation: HiddenTabNavigation | null) {
+  const state = navigation?.getState();
+  if (!state) return null;
+  return state.routes[state.index]?.name ?? null;
+}
+
+function hasTabRoute(navigation: HiddenTabNavigation | null, name: string) {
+  const state = navigation?.getState();
+  if (!state) return false;
+  return state.routeNames.includes(name) || state.routes.some((route) => route.name === name);
+}
+
+function getIslandTabRouteName(key: string, isBrand: boolean) {
+  if (key === NATIVE_ISLAND_KEYS.designs) return 'index';
+  if (key === NATIVE_ISLAND_KEYS.market) return 'discover';
+  if (key === NATIVE_ISLAND_KEYS.inbox) return 'inbox';
+  if (key === NATIVE_ISLAND_KEYS.profile) return isBrand ? 'catalog' : 'me';
+  return null;
+}
+
+function getIslandNavFlow(item: NativeIslandNavItem, isBrand: boolean, isAuthenticated: boolean) {
+  if (item.key === NATIVE_ISLAND_KEYS.designs) return 'tabs→runway';
+  if (item.key === NATIVE_ISLAND_KEYS.market) return 'tabs→market';
+  if (item.key === NATIVE_ISLAND_KEYS.inbox) return 'tabs→inbox';
+  if (item.key === NATIVE_ISLAND_KEYS.bag) return 'tabs→bag';
+  if (item.key === NATIVE_ISLAND_KEYS.profile) {
+    if (!isAuthenticated) return 'tabs→login';
+    return isBrand ? 'tabs→catalog' : 'tabs→me';
+  }
+  return `tabs→${item.key}`;
+}
 
 export default function TabLayout() {
-  const { scheme, theme } = useTheme();
+  const { theme } = useTheme();
   const { status, token, user } = useAuth();
   const toast = useToast();
   const bagFlow = useBagFlow();
-  const { count: bagCount, refreshGlobalBagCount } = useBagCount();
+  const { count: bagCount } = useBagCount();
   const pathname = usePathname();
   const { windowWidth, islandLayout } = useScreenChrome();
-  const [profileMenuVisible, setProfileMenuVisible] = useState(false);
-  const [isIslandExpanded, setIsIslandExpanded] = useState(false);
   const unreadNotificationCount = useUnreadNotificationCount();
   const unreadMessageCount = useUnreadMessageCount();
   const [notificationCountReady, setNotificationCountReady] = useState(false);
   const [messageCountReady, setMessageCountReady] = useState(false);
   const lastBackPressAtRef = useRef(0);
-  const lastProfileTabPressAtRef = useRef(0);
-  const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastNotificationRefreshAttemptAtRef = useRef(0);
+  const lastMessageRefreshAttemptAtRef = useRef(0);
+  const pendingRouteFrameRef = useRef<number | null>(null);
+  const tabNavigationRef = useRef<HiddenTabNavigation | null>(null);
+  const preloadedTabNamesRef = useRef<Set<string>>(new Set());
   const [optimisticActiveKey, setOptimisticActiveKey] = useState<NativeIslandKey | null>(null);
 
   const isBrand = hasActiveBrandMembership(user);
   const canOpenProfileMenu = status === 'authenticated';
-  const profileNavLabel = canOpenProfileMenu ? 'Me' : 'Sign In';
-  const profileNavEmoji = canOpenProfileMenu ? NATIVE_ISLAND_ICONS.profile : NATIVE_ISLAND_ICONS.signIn;
-  const { bottomOffset: islandBottomOffset, islandWidth } = islandLayout;
+  const profileNavLabel = status === 'loading' || canOpenProfileMenu ? 'Me' : 'Sign In';
+  const profileNavEmoji = status === 'loading' || canOpenProfileMenu
+    ? NATIVE_ISLAND_ICONS.profile
+    : NATIVE_ISLAND_ICONS.signIn;
+  // Resolve the signed-in user's profile photo so the "Me" island item shows the
+  // real avatar instead of the default 👤 emoji. Falls back to the emoji when no
+  // image is available or while it resolves.
+  const profileAvatarSource = resolveProfileImageSource(user);
+  const { uri: profileAvatarResolvedUri } = useResolvedImageAsset({
+    src: profileAvatarSource.src,
+    fileId: profileAvatarSource.fileId,
+    enabled: canOpenProfileMenu && Boolean(profileAvatarSource.src || profileAvatarSource.fileId),
+  });
+  const profileNavAvatarUri = canOpenProfileMenu
+    ? profileAvatarResolvedUri ?? profileAvatarSource.src ?? null
+    : null;
+  const { islandWidth } = islandLayout;
   const isRootTabPath =
     pathname === '/' ||
     pathname === '/discover' ||
@@ -73,9 +147,13 @@ export default function TabLayout() {
   const activeIslandKey = useMemo(() => {
     return mapPathnameToIslandKey(pathname);
   }, [pathname]);
-  const displayedActiveKey = optimisticActiveKey ?? activeIslandKey;
+  const displayedActiveKey = bagFlow?.isMyBagOpen
+    ? NATIVE_ISLAND_KEYS.bag
+    : optimisticActiveKey ?? activeIslandKey;
+  const hideIslandForFocusedFlow = FOCUSED_CATALOG_FLOW.test(pathname);
 
   const refreshUnreadNotificationCount = useCallback(async () => {
+    lastNotificationRefreshAttemptAtRef.current = Date.now();
     const ready = await refreshSharedUnreadNotificationCount({
       authenticated: status === 'authenticated',
     });
@@ -83,53 +161,199 @@ export default function TabLayout() {
   }, [status]);
 
   const refreshUnreadMessageCount = useCallback(async () => {
+    lastMessageRefreshAttemptAtRef.current = Date.now();
     const ready = await refreshSharedUnreadMessageCount({
       authenticated: status === 'authenticated',
     });
     setMessageCountReady(ready);
   }, [status]);
 
-  const clearProfileTabTimer = useCallback(() => {
-    if (profileTabTimerRef.current) {
-      clearTimeout(profileTabTimerRef.current);
-      profileTabTimerRef.current = null;
-    }
+  const cancelPendingRouteFrame = useCallback(() => {
+    if (pendingRouteFrameRef.current === null) return;
+    cancelAnimationFrame(pendingRouteFrameRef.current);
+    pendingRouteFrameRef.current = null;
   }, []);
 
+  const renderHiddenTabBar = useCallback((props: ExpoTabBarProps) => {
+    tabNavigationRef.current = props.navigation;
+    return null;
+  }, []);
+
+  const dispatchTabNavigationAction = useCallback((type: TabNavigationActionType, name: string) => {
+    const navigation = tabNavigationRef.current;
+    if (!hasTabRoute(navigation, name)) {
+      return false;
+    }
+
+    if (type === 'PRELOAD' && getFocusedTabName(navigation) === name) {
+      return true;
+    }
+
+    navigation?.dispatch(createTabNavigationAction(type, name));
+    return true;
+  }, []);
+
+  const jumpToIslandTab = useCallback(
+    (tabName: string, fallbackRoute: string) => {
+      navPerf.routeCallStart(tabName, { target: fallbackRoute });
+      if (dispatchTabNavigationAction('JUMP_TO', tabName)) {
+        navPerf.routeCallEnd(tabName, { target: fallbackRoute });
+        return;
+      }
+
+      router.navigate(fallbackRoute as any);
+      navPerf.routeCallEnd(tabName, { target: fallbackRoute });
+    },
+    [dispatchTabNavigationAction],
+  );
+
+  const preloadIslandTab = useCallback(
+    (tabName: string) => {
+      if (preloadedTabNamesRef.current.has(tabName)) {
+        navDevLog('tab-preload-skipped', { tabName, reason: 'already-preloaded' });
+        return false;
+      }
+
+      if (dispatchTabNavigationAction('PRELOAD', tabName)) {
+        preloadedTabNamesRef.current.add(tabName);
+        navDevLog('tab-preload-start', { tabName, startedAt: Date.now() });
+        return true;
+      }
+      navDevLog('tab-preload-skipped', { tabName, reason: 'tab-navigation-not-ready' });
+      return false;
+    },
+    [dispatchTabNavigationAction],
+  );
+
+  const scheduleRouteAfterFrame = useCallback((navFlow: string, run: () => void) => {
+    // Decouple the route call from the active-indicator commit (do NOT make this
+    // synchronous). The island sets its active state locally on press, so it
+    // paints on the very next frame. We defer the actual router.navigate to the
+    // following frame so the active indicator ALWAYS paints first and never waits
+    // on the destination's render — even on a cold first visit where the mount is
+    // heavy. Batching the navigate into the same commit as the indicator (the
+    // synchronous version we tried) is what made the indicator feel slow again:
+    // it inherited the navigation render cost.
+    //
+    // Top-level island routes use the tab navigator's direct JUMP_TO path where
+    // possible, and likely cold tabs are preloaded after first paint. The
+    // one-frame gap lets the indicator paint without inheriting destination
+    // render cost.
+    cancelPendingRouteFrame();
+    navPerf.routeScheduled(navFlow);
+    pendingRouteFrameRef.current = requestAnimationFrame(() => {
+      pendingRouteFrameRef.current = null;
+      navPerf.frameYieldBeforeRoute(navFlow);
+      run();
+    });
+  }, [cancelPendingRouteFrame]);
+
+  useEffect(() => cancelPendingRouteFrame, [cancelPendingRouteFrame]);
+
+  useEffect(() => {
+    if (status === 'loading') {
+      navDevLog('tab-preload-deferred', {
+        deferredAt: Date.now(),
+        reason: 'auth-loading',
+      });
+      return;
+    }
+
+    const nextTabsToWarm = ['discover'];
+    if (status === 'authenticated') {
+      nextTabsToWarm.push('inbox');
+      nextTabsToWarm.push(isBrand ? 'catalog' : 'me');
+    }
+
+    let cancelled = false;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    let idleTask: { cancel: () => void } | null = null;
+    let preloadTimers: Array<ReturnType<typeof setTimeout>> = [];
+
+    const schedulePreloads = (reason: 'first-media-visible' | 'first-media-timeout', firstMediaAt?: number) => {
+      if (cancelled || idleTask || preloadTimers.length > 0) return;
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      navDevLog('tab-preload-scheduled', {
+        scheduledAt: Date.now(),
+        reason,
+        firstMediaAt: firstMediaAt ?? null,
+        tabNames: nextTabsToWarm,
+      });
+      idleTask = InteractionManager.runAfterInteractions(() => {
+        if (cancelled) return;
+        preloadTimers = nextTabsToWarm.map((tabName, index) =>
+          setTimeout(() => {
+            if (!cancelled) preloadIslandTab(tabName);
+          }, 150 + index * 350),
+        );
+      });
+    };
+
+    const firstMedia = getRunwayFirstMediaVisible();
+    const unsubscribe = firstMedia
+      ? (() => {
+          schedulePreloads('first-media-visible', firstMedia.timestamp);
+          return () => undefined;
+        })()
+      : subscribeRunwayFirstMediaVisible((event) => {
+          schedulePreloads('first-media-visible', event.timestamp);
+        });
+
+    if (!firstMedia) {
+      navDevLog('tab-preload-deferred', {
+        deferredAt: Date.now(),
+        reason: 'awaiting-first-runway-media',
+        tabNames: nextTabsToWarm,
+      });
+      // Phase 3: do not let a slow/empty Runway keep every destination cold for
+      // eight seconds. The idle gate and stagger still prevent a mount burst,
+      // while this bounded fallback makes a normal first tab visit warm.
+      fallbackTimer = setTimeout(() => {
+        schedulePreloads('first-media-timeout');
+      }, 1500);
+    }
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      idleTask?.cancel();
+      preloadTimers.forEach((timer) => clearTimeout(timer));
+    };
+  }, [isBrand, preloadIslandTab, status]);
+
   const navigateToProfile = useCallback(() => {
-    clearProfileTabTimer();
-    lastProfileTabPressAtRef.current = 0;
-    setProfileMenuVisible(false);
     setOptimisticActiveKey(NATIVE_ISLAND_KEYS.profile);
-    router.push((isBrand ? '/catalog' : '/(tabs)/me') as any);
-  }, [clearProfileTabTimer, isBrand]);
+    // navigate (not push) so an already-mounted Catalogue/Me instance is reused
+    // instead of mounting a fresh copy on every visit.
+    const navFlow = isBrand ? 'tabs→catalog' : 'tabs→me';
+    scheduleRouteAfterFrame(navFlow, () => {
+      navPerf.navigationCalled(navFlow);
+      navPerf.routeCallStart(navFlow, { target: isBrand ? '/catalog' : '/(tabs)/me' });
+      jumpToIslandTab(isBrand ? 'catalog' : 'me', isBrand ? '/catalog' : '/(tabs)/me');
+      navPerf.routeCallEnd(navFlow, { target: isBrand ? '/catalog' : '/(tabs)/me' });
+    });
+  }, [isBrand, jumpToIslandTab, scheduleRouteAfterFrame]);
 
   const handleProfilePress = useCallback(
     () => {
       if (!canOpenProfileMenu) {
-        clearProfileTabTimer();
-        lastProfileTabPressAtRef.current = 0;
-        router.replace({ pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as any);
+        const navFlow = 'tabs→login';
+        scheduleRouteAfterFrame(navFlow, () => {
+          navPerf.navigationCalled(navFlow);
+          navPerf.routeCallStart(navFlow, { target: '/(auth)/login' });
+          router.replace({ pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as any);
+          navPerf.routeCallEnd(navFlow, { target: '/(auth)/login' });
+        });
         return;
       }
 
-      const now = Date.now();
-      const isDoubleTap = now - lastProfileTabPressAtRef.current <= PROFILE_TAB_DOUBLE_TAP_WINDOW_MS;
-      clearProfileTabTimer();
-
-      if (isDoubleTap) {
-        navigateToProfile();
-        return;
-      }
-
-      lastProfileTabPressAtRef.current = now;
-      profileTabTimerRef.current = setTimeout(() => {
-        profileTabTimerRef.current = null;
-        lastProfileTabPressAtRef.current = 0;
-        setProfileMenuVisible(true);
-      }, PROFILE_TAB_DOUBLE_TAP_WINDOW_MS);
+      navigateToProfile();
     },
-    [canOpenProfileMenu, clearProfileTabTimer, navigateToProfile],
+    [canOpenProfileMenu, navigateToProfile, scheduleRouteAfterFrame],
   );
 
   const clearSelectionState = useCallback(() => {
@@ -137,9 +361,8 @@ export default function TabLayout() {
   }, []);
 
   const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
-    if (!item.disabled && item.key !== NATIVE_ISLAND_KEYS.bag && item.key !== NATIVE_ISLAND_KEYS.profile) {
-      setOptimisticActiveKey(item.key as NativeIslandKey);
-    }
+    if (item.disabled) return;
+    setOptimisticActiveKey(item.key as NativeIslandKey);
   }, []);
 
   const islandItems = useMemo<NativeIslandNavItem[]>(
@@ -149,10 +372,18 @@ export default function TabLayout() {
         isBrand,
         profileLabel: profileNavLabel,
         profileIcon: profileNavEmoji,
+        profileAvatarUri: profileNavAvatarUri,
         profileBadge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
         inboxBadge: canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
         bagBadge: bagCount.combinedCount,
-      }),
+      }).map((item) => ({
+        ...item,
+        disabled:
+          status === 'loading' &&
+          (item.key === NATIVE_ISLAND_KEYS.inbox || item.key === NATIVE_ISLAND_KEYS.profile),
+        navFlow: getIslandNavFlow(item, isBrand, canOpenProfileMenu),
+        targetRoute: getNativeIslandRoute(item.key, isBrand),
+      })),
     [
       bagCount.combinedCount,
       canOpenProfileMenu,
@@ -160,23 +391,14 @@ export default function TabLayout() {
       isBrand,
       messageCountReady,
       notificationCountReady,
+      profileNavAvatarUri,
       profileNavEmoji,
       profileNavLabel,
+      status,
       unreadMessageCount,
       unreadNotificationCount,
     ],
   );
-
-  useEffect(() => {
-    const unsubscribe = subscribeToNativeIslandCollapse(() => {
-      setIsIslandExpanded(false);
-    });
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    return () => clearProfileTabTimer();
-  }, [clearProfileTabTimer]);
 
   useEffect(() => {
     navDevLog('island-layout', {
@@ -186,17 +408,19 @@ export default function TabLayout() {
       labels: islandItems.map((item) => item.label),
       activeKey: displayedActiveKey,
       compact: islandItems.length >= 6 || windowWidth < 380,
-      collapsed: !isIslandExpanded,
       windowWidth,
       islandWidth,
     });
-  }, [displayedActiveKey, isIslandExpanded, islandItems, islandWidth, pathname, windowWidth]);
+  }, [displayedActiveKey, islandItems, islandWidth, pathname, windowWidth]);
 
   useEffect(() => {
-    clearProfileTabTimer();
-    lastProfileTabPressAtRef.current = 0;
-    setIsIslandExpanded(false);
-  }, [clearProfileTabTimer, pathname]);
+    navPerf.setContext(null, null, pathname);
+    navPerf.pathChanged(pathname);
+    // Sync for central guard same-target check
+    (global as any).__navCurrentPathname = pathname;
+    // Release lock if matches pending target
+    releaseNavigationLock('path_match');
+  }, [pathname]);
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
@@ -205,29 +429,59 @@ export default function TabLayout() {
         return;
       }
 
-      if (item.key !== NATIVE_ISLAND_KEYS.bag) {
-        setOptimisticActiveKey(item.key as NativeIslandKey);
-      }
-
       if (item.key === 'bag') {
-        clearProfileTabTimer();
-        lastProfileTabPressAtRef.current = 0;
-        setProfileMenuVisible(false);
+        cancelPendingRouteFrame();
         bagFlow?.openMyBag();
-        void refreshGlobalBagCount();
+        navPerf.bagSheetOpened();
         return;
       }
 
-      clearProfileTabTimer();
-      lastProfileTabPressAtRef.current = 0;
-      setProfileMenuVisible(false);
-
-      const nextRoute = getNativeIslandRoute(item.key, isBrand);
+      const nextRoute = item.targetRoute ?? getNativeIslandRoute(item.key, isBrand);
       if (nextRoute) {
-        router.replace(nextRoute as any);
+        const normNext = String(nextRoute).replace('/(tabs)', '');
+        const normCurrent = String(pathname).replace('/(tabs)', '');
+        if (normNext === normCurrent && item.key !== 'bag') {
+          navPerf.mark?.('navigation_same_target_ignored', String(nextRoute));
+          return;
+        }
+        const navFlow = item.navFlow ?? getIslandNavFlow(item, isBrand, canOpenProfileMenu);
+        const tabRouteName = getIslandTabRouteName(item.key, isBrand);
+        // Always seed the nav-perf context so every event in this flow carries
+        // source/target/pathname (Phase 2: "ensure setContext is always passed").
+        navPerf.setContext(pathname, String(nextRoute), pathname);
+        // Phase 2: use the central lock to dedupe rapid island taps. The action
+        // returns a truthy sentinel so a successful dispatch is distinguishable
+        // from a deduped tap (which returns undefined) — without it the duplicate
+        // marker would fire on every successful navigation.
+        const locked = withNavigationLock(nextRoute as Href, () => {
+          scheduleRouteAfterFrame(navFlow, () => {
+            navPerf.navigationCalled(navFlow);
+            navPerf.routeCallStart(navFlow, { target: nextRoute });
+            if (tabRouteName) {
+              jumpToIslandTab(tabRouteName, nextRoute);
+              navPerf.routeCallEnd(navFlow, { target: nextRoute });
+              return;
+            }
+
+            router.navigate(nextRoute as any);
+            navPerf.routeCallEnd(navFlow, { target: nextRoute });
+          });
+          return true;
+        }, { force: false });
+        if (!locked) {
+          navPerf.mark?.('navigation_ignored_duplicate', String(nextRoute));
+        }
       }
     },
-    [bagFlow, clearProfileTabTimer, handleProfilePress, isBrand, refreshGlobalBagCount],
+    [
+      bagFlow,
+      cancelPendingRouteFrame,
+      canOpenProfileMenu,
+      handleProfilePress,
+      isBrand,
+      jumpToIslandTab,
+      scheduleRouteAfterFrame,
+    ],
   );
 
   useEffect(() => {
@@ -237,12 +491,10 @@ export default function TabLayout() {
   }, [clearSelectionState, optimisticActiveKey, pathname]);
 
   useEffect(() => {
-    if (!canOpenProfileMenu) {
-      clearProfileTabTimer();
-      lastProfileTabPressAtRef.current = 0;
-      setProfileMenuVisible(false);
+    if (optimisticActiveKey === NATIVE_ISLAND_KEYS.bag && bagFlow?.isMyBagOpen === false) {
+      clearSelectionState();
     }
-  }, [canOpenProfileMenu, clearProfileTabTimer]);
+  }, [bagFlow?.isMyBagOpen, clearSelectionState, optimisticActiveKey]);
 
   useEffect(() => {
     setNotificationCountReady(false);
@@ -259,6 +511,9 @@ export default function TabLayout() {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
+        if (Date.now() - lastNotificationRefreshAttemptAtRef.current < THREADLY_COUNT_STALE_TIME_MS) {
+          return;
+        }
         void refreshUnreadNotificationCount();
       }
     });
@@ -271,19 +526,15 @@ export default function TabLayout() {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
+        if (Date.now() - lastMessageRefreshAttemptAtRef.current < THREADLY_COUNT_STALE_TIME_MS) {
+          return;
+        }
         void refreshUnreadMessageCount();
       }
     });
 
     return () => subscription.remove();
   }, [refreshUnreadMessageCount, status]);
-
-  useEffect(() => {
-    if (profileMenuVisible) {
-      void refreshUnreadNotificationCount();
-    }
-    void applyAndroidSystemBarsPolicy(scheme, profileMenuVisible ? 'profile-dropup-open' : 'profile-dropup-closed');
-  }, [profileMenuVisible, refreshUnreadNotificationCount, scheme]);
 
   useNotificationRealtimeChannel({
     enabled: status === 'authenticated' && Boolean(user?.id),
@@ -301,11 +552,6 @@ export default function TabLayout() {
     if (Platform.OS !== 'android') return;
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (profileMenuVisible) {
-        setProfileMenuVisible(false);
-        return true;
-      }
-
       if (!isRootTabPath) {
         return false;
       }
@@ -322,16 +568,22 @@ export default function TabLayout() {
     });
 
     return () => subscription.remove();
-  }, [isRootTabPath, profileMenuVisible, toast]);
+  }, [isRootTabPath, toast]);
 
   return (
     <>
       <Tabs
+        // Render no default tab bar; the floating island owns the visible UI and
+        // uses this hidden tabbar's navigation object for direct JUMP_TO/PRELOAD
+        // actions.
+        tabBar={renderHiddenTabBar}
         screenOptions={{
           headerShown: false,
+          lazy: true,
           tabBarStyle: {
             display: 'none',
           },
+          sceneStyle: { backgroundColor: theme.colors.surface },
         }}
       >
         <Tabs.Screen
@@ -383,51 +635,27 @@ export default function TabLayout() {
             href: null,
           }}
         />
+
+        {/* Catalogue is a first-class, persistent top-level destination but is
+            navigated to programmatically via the island (brand "Profile"), so it
+            is hidden from the tab bar with href: null. Living inside (tabs) gives
+            it tab-level lifetime while keeping the public /catalog URL (the
+            (tabs) route group is omitted from the path). */}
+        <Tabs.Screen
+          name="catalog"
+          options={{
+            href: null,
+          }}
+        />
       </Tabs>
 
-      <NativeIslandBottomNav
-        items={islandItems}
-        onSelect={handleSelect}
-        onPressIn={markOptimisticActive}
-        collapsed={!isIslandExpanded}
-        onCollapsedPress={() => setIsIslandExpanded(true)}
-      />
-
-      <ProfileMenuDropup
-        visible={profileMenuVisible}
-        onClose={() => {
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
-          setProfileMenuVisible(false);
-          clearSelectionState();
-        }}
-        onOpenProfile={navigateToProfile}
-        onOpenNotifications={() => {
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
-          setProfileMenuVisible(false);
-          clearSelectionState();
-          router.push('/notifications' as any);
-        }}
-        onOpenStudio={() => {
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
-          setProfileMenuVisible(false);
-          clearSelectionState();
-          router.push('/studio' as any);
-        }}
-        onOpenSettings={() => {
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
-          setProfileMenuVisible(false);
-          clearSelectionState();
-          router.push('/settings' as any);
-        }}
-        scheme={scheme}
-        theme={theme}
-        bottomOffset={NATIVE_ISLAND_NAV.height + islandBottomOffset + 4}
-        user={user}
-      />
+      {hideIslandForFocusedFlow ? null : (
+        <NativeIslandBottomNav
+          items={islandItems}
+          onSelect={handleSelect}
+          onPressIn={markOptimisticActive}
+        />
+      )}
     </>
   );
 }

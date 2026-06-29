@@ -226,7 +226,8 @@ function normalizeProfile(raw: unknown): UserProfile | null {
     profileVisibility: s.profileVisibility === 'LOCKED' ? 'LOCKED' : 'UNLOCKED',
     profilePhotoUpdatedAt: s.profilePhotoUpdatedAt ?? null,
     profilePhotoViewState: s.profilePhotoViewState ?? null,
-    isEmailVerified: Boolean(s.isEmailVerified),
+    isEmailVerified:
+      typeof s.isEmailVerified === 'boolean' ? s.isEmailVerified : undefined,
     createdAt: typeof s.createdAt === 'string' ? s.createdAt : null,
   };
 }
@@ -376,6 +377,16 @@ export const ProfileApi = {
   }): Promise<UserProfile | null> {
     const res = await apiClient.patch('/users/me/profile', payload);
     return normalizeProfile(res.data);
+  },
+
+  async updateProfileVisibility(profileVisibility: UserProfile['profileVisibility']): Promise<{
+    profileVisibility: UserProfile['profileVisibility'];
+  }> {
+    const res = await apiClient.patch('/users/me/profile-visibility', { profileVisibility });
+    const d = (res.data?.data ?? res.data) as any;
+    return {
+      profileVisibility: d?.profileVisibility === 'LOCKED' ? 'LOCKED' : 'UNLOCKED',
+    };
   },
 
   async uploadProfileImage(formData: FormData): Promise<{ url: string; id: string } | null> {

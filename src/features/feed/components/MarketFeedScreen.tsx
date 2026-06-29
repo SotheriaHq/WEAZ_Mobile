@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Animated, Easing, FlatList, InteractionManager, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
@@ -28,7 +28,7 @@ import { ProfileApi } from '@/src/api/ProfileApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
 import { DEFAULT_MARKET_FILTER_CHIPS, type MarketFilterChip, toggleCollectionMediaThread } from '@/src/api/MarketApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
-import { fetchMarketFeedPage, readCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
+import { consumeMarketFeedDirty, fetchMarketFeedPage, readCachedMarketFeed, readMemoryCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { buildFeedCacheIdentity } from '@/src/features/feed/utils/feedKeys';
 import { brandAvatarDevLog, feedDevLog, feedLoadDevLog, feedMediaDevLog, layoutDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import type { MarketItem } from '@/src/types/market';
@@ -36,14 +36,17 @@ import type { ResolvedTheme } from '@/src/types/theme';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
 import { isUsableImageHttpUrl, prefetchResolvedImageAsset, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
-import { requestNativeIslandCollapse } from '@/components/navigation/nativeIslandEvents';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { useUnreadNotificationCount } from '@/src/realtime/notifications';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { perfMark } from '@/src/utils/perf';
+import { navPerf } from '@/src/utils/navPerf';
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { fetchMarketFilterChipsQuery } from '@/src/query/bootstrapQueries';
 import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
 import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
@@ -123,14 +126,16 @@ const buildFallbackMediaItems = (item: MarketItem): FeedViewerMedia[] => {
       }));
   }
 
-  const directUrl = item.media?.url ?? item.media?.previewUrl ?? '';
-  return directUrl
+  const detailUrl = item.media?.url ?? item.media?.previewUrl ?? '';
+  return detailUrl
     ? [
         {
           id: item.id,
           collectionId: item.collectionId,
           mediaIndex: 0,
-          url: directUrl,
+          url: detailUrl,
+          displayUrl: item.media?.url ?? null,
+          previewUrl: item.media?.previewUrl ?? null,
           fileId: item.media?.fileId ?? null,
           type: toFeedMediaType(item.media?.type ?? null),
           label: item.collectionTitle,
@@ -149,6 +154,15 @@ const isValidMediaItem = (item: MarketItem): boolean => {
   const hasUri = normalizeStableUri(media.url) || normalizeStableUri(media.fileId);
   return Boolean(hasUri);
 };
+
+const sortFeedItemsForDisplay = (feedItems: MarketItem[]) =>
+  [...feedItems].sort((a, b) => {
+    const aValid = isValidMediaItem(a);
+    const bValid = isValidMediaItem(b);
+    if (aValid && !bValid) return -1;
+    if (!aValid && bValid) return 1;
+    return 0;
+  });
 
 const normalizeStableUri = (value?: string | null) => {
   const normalized = typeof value === 'string' ? value.trim() : '';
@@ -464,12 +478,6 @@ const FeedActionRail = React.memo(function FeedActionRail({
         </AppText>
       </View>
 
-      <View style={styles.railItem}>
-        <IconButton size={44}>
-          <AppText variant="subtitle">{item.isLiked ? '❤️' : '🤍'}</AppText>
-        </IconButton>
-        <AppText variant="captionBold" tone="inverse">{likes}</AppText>
-      </View>
     </View>
   );
 });
@@ -633,26 +641,55 @@ const FeedSkeleton = ({
 };
 
 export function MarketFeedScreen() {
+  const flowKey = 'runway';
+  // Phase 1 instrumentation - safe, gated, no behavior change
+  React.useEffect(() => {
+    navPerf.screenMounted(flowKey);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible(flowKey);
+  }, []);
+
+  React.useEffect(() => {
+    // Approximate first visible UI on initial mount (shell + basic structure)
+    // More precise placement (e.g. after first media or list item layout) can be added later.
+    navPerf.firstVisibleUi(flowKey);
+  }, []);
+
   const { scheme, theme } = useTheme();
   const { status, user } = useAuth();
   const toast = useToast();
   const requireAuth = useAuthAction();
+  // Single shared notification source — same store the catalog/profile bell and
+  // the island "Me" badge read from, so every 🔔 count stays in sync with web.
+  const unreadNotificationCount = useUnreadNotificationCount();
   const {
     insets,
+    windowWidth,
     windowHeight,
     immersiveOverlayBottomClearance,
   } = useScreenChrome();
+  const deferredWorkReady = useDeferredScreenWork();
   
   // Invalidate market feed when app comes to foreground
   // Prevents stale data after backgrounding
   useAppStateListener([['market', 'feed'], ['market', 'sections']], 5 * 60 * 1000);
+
+  const initialFeedCacheRef = useRef<ReturnType<typeof readMemoryCachedMarketFeed> | null | undefined>(undefined);
+  if (initialFeedCacheRef.current === undefined) {
+    initialFeedCacheRef.current = readMemoryCachedMarketFeed(buildFeedCacheIdentity({
+      tag: DEFAULT_MARKET_FILTER_CHIPS[0]?.tag ?? null,
+      userId: status === 'authenticated' ? user?.id ?? null : null,
+    }));
+  }
+  const initialFeedSnapshot = initialFeedCacheRef.current?.snapshot ?? null;
   
   const feedListRef = useRef<FlatList<FeedListEntry> | null>(null);
   const initializedLoopKeyRef = useRef<string | null>(null);
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>(DEFAULT_MARKET_FILTER_CHIPS);
   const [selectedFilterId, setSelectedFilterId] = useState(DEFAULT_MARKET_FILTER_CHIPS[0].id);
   const [activePageIndex, setActivePageIndex] = useState(0);
-  const [rootViewportHeight, setRootViewportHeight] = useState(0);
   const [measuredFeedViewportHeight, setFeedViewportHeight] = useState(0);
   const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
   const pendingCollectionIdsRef = useRef(new Set<string>());
@@ -663,10 +700,19 @@ export function MarketFeedScreen() {
   const lastLoggedPageHeightRef = useRef<number | null>(null);
   const hasLoggedInitialPageHeightRef = useRef(false);
   const previousActivePageIndexRef = useRef(0);
+  const pageHeightMeasurementRef = useRef<{ geometryKey: string; height: number } | null>(null);
+  const appliedPageHeightRef = useRef(0);
+  const correctionCountRef = useRef(0);
+  const scrollStartedAtRef = useRef(0);
+  const latestViewableIndexRef = useRef(0);
+  const settledFromIndexRef = useRef(0);
+  const settledWorkRef = useRef<{ cancel: () => void } | null>(null);
   const metaOverlayHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [visibleMetaCollectionId, setVisibleMetaCollectionId] = useState<string | null>(null);
 
-  const [items, setItems] = useState<MarketItem[]>([]);
+  const [items, setItems] = useState<MarketItem[]>(() =>
+    initialFeedSnapshot ? sortFeedItemsForDisplay(initialFeedSnapshot.items) : [],
+  );
   const [collectionMediaMap, setCollectionMediaMap] = useState<Record<string, FeedViewerMedia[]>>({});
   const collectionMediaMapRef = useRef<Record<string, FeedViewerMedia[]>>({});
   // Carousel index is tracked in module-level carouselIndexMap (persists across remounts).
@@ -683,18 +729,38 @@ export function MarketFeedScreen() {
   const viewedFeedItemKeysRef = useRef<Set<string>>(new Set());
   const [patchedBrandIds, setPatchedBrandIds] = useState<Set<string>>(new Set());
   const [patchingBrandIds, setPatchingBrandIds] = useState<Record<string, boolean>>({});
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [nextCursor, setNextCursor] = useState<string | null>(() => initialFeedSnapshot?.nextCursor ?? null);
+  const [hasNextPage, setHasNextPage] = useState(() => initialFeedSnapshot?.hasNextPage ?? false);
+  const [loading, setLoading] = useState(() => !initialFeedSnapshot);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isNetworkError, setIsNetworkError] = useState(false);
+  const [hasLoadedFirstPage, setHasLoadedFirstPage] = useState(() => Boolean(initialFeedSnapshot));
+  const hasLoadedFirstPageRef = useRef(Boolean(initialFeedSnapshot));
 
   // Staleness guards - prevent refetch on every tab focus
   const lastPatchFetchRef = useRef<number>(0);
   const STALE_THRESHOLD_MS = 60_000; // 60 seconds
 
-  const showBlockingLoader = loading && items.length === 0;
+  const showBlockingLoader = loading && !hasLoadedFirstPage;
+
+  // Dev-only nav timing for tabs→runway. Shell (skeleton or cached items)
+  // renders at mount; data is ready once the initial feed load settles.
+  useEffect(() => {
+    navPerf.screenMounted('tabs→runway');
+    navPerf.shellVisible('tabs→runway');
+    navPerf.firstVisibleUi('tabs→runway');
+    if (initialFeedSnapshot) {
+      navPerf.mark('cache_hit', 'tabs→runway');
+      navPerf.mark('stale_ui_rendered', 'tabs→runway');
+    } else {
+      navPerf.mark('cache_miss', 'tabs→runway');
+      navPerf.mark('cold_skeleton_rendered', 'tabs→runway');
+    }
+  }, []);
+  useEffect(() => {
+    if (!loading) navPerf.dataReady('tabs→runway');
+  }, [loading]);
 
   const skeletonOpacity = useRef(new Animated.Value(1)).current;
   const [isSkeletonFadingOut, setIsSkeletonFadingOut] = useState(false);
@@ -735,7 +801,8 @@ export function MarketFeedScreen() {
   const measuredBasePageHeight = measuredFeedViewportHeight > 0 ? measuredFeedViewportHeight : fallbackPageHeight;
   const pageHeight = Math.max(1, Math.round(measuredBasePageHeight || fallbackPageHeight));
   const feedViewportHeight = pageHeight;
-  const feedViewportReady = pageHeight > 0;
+  const feedViewportReady = measuredFeedViewportHeight > 0;
+  const viewportGeometryKey = `${Math.round(windowWidth)}x${Math.round(windowHeight)}`;
 
   const activeFilter = useMemo(
     () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? DEFAULT_MARKET_FILTER_CHIPS[0],
@@ -744,10 +811,6 @@ export function MarketFeedScreen() {
   const visibleFilterChips = useMemo(() => filterChips, [filterChips]);
   const activeTag = activeFilter?.tag ?? null;
   const feedLoopEnabled = false;
-  const itemsRef = useRef(items);
-  const activeTagRef = useRef(activeTag);
-  const feedLoopEnabledRef = useRef(feedLoopEnabled);
-  const hydrateCollectionMediaRef = useRef<(item: MarketItem | null | undefined) => void | Promise<void>>(() => undefined);
   const fallbackMediaByCollection = useMemo(() => {
     const next: Record<string, FeedViewerMedia[]> = {};
     items.forEach((item) => {
@@ -870,6 +933,61 @@ export function MarketFeedScreen() {
     });
   }, [bottomClearance, feedViewportHeight, insets.bottom, insets.top, measuredFeedViewportHeight, pageHeight, windowHeight]);
 
+  const handleFeedViewportLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = Math.round(event.nativeEvent.layout.height);
+    if (nextHeight <= 0) return;
+
+    const previous = pageHeightMeasurementRef.current;
+    if (!previous) {
+      pageHeightMeasurementRef.current = { geometryKey: viewportGeometryKey, height: nextHeight };
+      setFeedViewportHeight(nextHeight);
+      return;
+    }
+
+    if (previous.geometryKey !== viewportGeometryKey) {
+      pageHeightMeasurementRef.current = { geometryKey: viewportGeometryKey, height: nextHeight };
+      setFeedViewportHeight(nextHeight);
+      layoutDevLog('feed-page-height-window-change', {
+        previousGeometry: previous.geometryKey,
+        nextGeometry: viewportGeometryKey,
+        previousHeight: previous.height,
+        nextHeight,
+      });
+      return;
+    }
+
+    if (Math.abs(previous.height - nextHeight) > 1) {
+      scrollDevLog('page-height-remeasure-ignored', {
+        geometry: viewportGeometryKey,
+        lockedHeight: previous.height,
+        measuredHeight: nextHeight,
+        reason: 'same-window-geometry',
+      });
+    }
+  }, [viewportGeometryKey]);
+
+  useEffect(() => {
+    if (!feedViewportReady) return;
+    const previousHeight = appliedPageHeightRef.current;
+    appliedPageHeightRef.current = pageHeight;
+    if (previousHeight <= 0 || previousHeight === pageHeight || feedActiveIndex <= 0) return;
+
+    correctionCountRef.current += 1;
+    const targetOffset = feedActiveIndex * pageHeight;
+    scrollDevLog('vertical-correction', {
+      reason: 'window-geometry-change',
+      correctionCount: correctionCountRef.current,
+      previousHeight,
+      pageHeight,
+      currentIndex: feedActiveIndex,
+      targetOffset,
+    });
+    requestAnimationFrame(() => {
+      feedScrollOffset = targetOffset;
+      feedListRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
+    });
+  }, [feedViewportReady, pageHeight]);
+
   useEffect(() => {
     if (!feedLoopEnabled || feedViewportHeight <= 0 || pageHeight <= 1 || feedItems.length < 3) {
       return;
@@ -893,18 +1011,6 @@ export function MarketFeedScreen() {
   }, [collectionMediaMap]);
 
   useEffect(() => {
-    itemsRef.current = items;
-  }, [items]);
-
-  useEffect(() => {
-    activeTagRef.current = activeTag;
-  }, [activeTag]);
-
-  useEffect(() => {
-    feedLoopEnabledRef.current = feedLoopEnabled;
-  }, [feedLoopEnabled]);
-
-  useEffect(() => {
     patchedBrandIdsRef.current = patchedBrandIds;
   }, [patchedBrandIds]);
 
@@ -925,7 +1031,7 @@ export function MarketFeedScreen() {
   }, [savingLookByCollectionId]);
 
   useEffect(() => {
-    if (status !== 'authenticated' || items.length === 0) {
+    if (!deferredWorkReady || status !== 'authenticated' || items.length === 0) {
       if (status !== 'authenticated') {
         savedLookByCollectionIdRef.current = {};
         lastSavedCheckKeyRef.current = null;
@@ -962,11 +1068,12 @@ export function MarketFeedScreen() {
     return () => {
       cancelled = true;
     };
-  }, [items, status, user?.id]);
+  }, [deferredWorkReady, items, status, user?.id]);
 
   useEffect(() => {
+    if (!deferredWorkReady) return;
     void loadPatchedBrands();
-  }, [loadPatchedBrands]);
+  }, [deferredWorkReady, loadPatchedBrands]);
 
   useEffect(() => {
       const activeItem = items[activePageIndex];
@@ -986,10 +1093,15 @@ export function MarketFeedScreen() {
   }, [activePageIndex, items, pageHeight]);
 
   useEffect(() => {
+    if (!deferredWorkReady) return;
     const nextItem = items[activePageIndex + 1];
     const nextMedia = nextItem ? buildFallbackMediaItems(nextItem)[0] : null;
     if (!nextMedia) return;
-    const nextDirectUrl = normalizeStableUri(nextMedia.displayUrl) ?? normalizeStableUri(nextMedia.url);
+    const nextDirectUrl =
+      normalizeStableUri(nextMedia.previewUrl) ??
+      normalizeStableUri(nextMedia.thumbnailUrl) ??
+      normalizeStableUri(nextMedia.displayUrl) ??
+      normalizeStableUri(nextMedia.url);
     if (!nextDirectUrl || !isUsableImageHttpUrl(nextDirectUrl)) return;
     void prefetchResolvedImageAsset({
       src: nextDirectUrl,
@@ -998,12 +1110,13 @@ export function MarketFeedScreen() {
       debugContext: {
         designId: nextMedia.id,
         mediaIndex: 0,
-        sourceField: 'feed.next.displayUrl',
+        sourceField: 'feed.next.preview',
       },
     });
-  }, [activePageIndex, items]);
+  }, [activePageIndex, deferredWorkReady, items]);
 
   useEffect(() => {
+    if (!deferredWorkReady) return undefined;
     let mounted = true;
 
     void fetchMarketFilterChipsQuery().then((chips) => {
@@ -1021,7 +1134,7 @@ export function MarketFeedScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [deferredWorkReady]);
 
   useEffect(() => {
     devLog('HomeFeed', 'Filter change', { activeTag, oldIndex: activePageIndex, reason: 'activeTag changed' });
@@ -1060,15 +1173,11 @@ export function MarketFeedScreen() {
     });
     const cached = await readCachedMarketFeed(cacheIdentity);
     const startedAt = Date.now();
+    const wasColdLoad = !cached && !hasLoadedFirstPageRef.current;
+    let didStartBackgroundRefresh = false;
     if (cached) {
-      // Sort cached items to prioritize valid media
-      const sortedCachedItems = [...cached.snapshot.items].sort((a, b) => {
-        const aValid = isValidMediaItem(a);
-        const bValid = isValidMediaItem(b);
-        if (aValid && !bValid) return -1;
-        if (!aValid && bValid) return 1;
-        return 0;
-      });
+      navPerf.mark('cache_hit', 'tabs→runway');
+      const sortedCachedItems = sortFeedItemsForDisplay(cached.snapshot.items);
       devLog('HomeFeed', 'Cache applied', sortedCachedItems.slice(0, 5).map((item, idx) => ({
         index: idx,
         id: item.id,
@@ -1085,6 +1194,8 @@ export function MarketFeedScreen() {
       setItems(sortedCachedItems);
       setNextCursor(cached.snapshot.nextCursor);
       setHasNextPage(cached.snapshot.hasNextPage);
+      hasLoadedFirstPageRef.current = true;
+      setHasLoadedFirstPage(true);
       feedLoadDevLog('summary', {
         cacheHit: true,
         blockingSkeleton: false,
@@ -1098,12 +1209,17 @@ export function MarketFeedScreen() {
       }
       // Stale cache - show content immediately but revalidate silently
       setLoading(false);
+      navPerf.mark('stale_ui_rendered', 'tabs→runway');
+      navPerf.mark('background_refresh_started', 'tabs→runway');
+      didStartBackgroundRefresh = true;
     } else {
       // No cache - show skeleton on first load
       setLoading(true);
+      navPerf.mark('cache_miss', 'tabs→runway');
+      if (wasColdLoad) navPerf.mark('cold_skeleton_rendered', 'tabs→runway');
       feedLoadDevLog('summary', {
         cacheHit: false,
-        blockingSkeleton: true,
+        blockingSkeleton: wasColdLoad,
         fetchMs: 0,
         itemCount: 0,
       });
@@ -1124,31 +1240,30 @@ export function MarketFeedScreen() {
         validity: isValidMediaItem(item) ? 'valid' : 'invalid',
         isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
       })));
-      // Sort items to prioritize valid media (invalid items moved to end)
-      const sortedItems = [...res.items].sort((a, b) => {
-        const aValid = isValidMediaItem(a);
-        const bValid = isValidMediaItem(b);
-        if (aValid && !bValid) return -1;
-        if (!aValid && bValid) return 1;
-        return 0;
-      });
+      const sortedItems = sortFeedItemsForDisplay(res.items);
       devLog('HomeFeed', 'After sort', sortedItems.slice(0, 5).map((item, idx) => ({
         index: idx,
         id: item.id,
         title: item.collectionTitle,
         isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
       })));
-      await writeCachedMarketFeed(cacheIdentity, {
-        items: sortedItems,
-        nextCursor: res.nextCursor ?? null,
-        hasNextPage: res.hasNextPage,
-      });
       setItems(sortedItems);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
+      hasLoadedFirstPageRef.current = true;
+      setHasLoadedFirstPage(true);
+      void writeCachedMarketFeed(cacheIdentity, {
+        items: sortedItems,
+        nextCursor: res.nextCursor ?? null,
+        hasNextPage: res.hasNextPage,
+      }).catch((cacheError) => {
+        feedLoadDevLog('cache-write-failed', {
+          reason: cacheError instanceof Error ? cacheError.message : 'unknown',
+        });
+      });
       feedLoadDevLog('summary', {
         cacheHit: Boolean(cached),
-        blockingSkeleton: !cached && sortedItems.length === 0,
+        blockingSkeleton: wasColdLoad,
         fetchMs: Date.now() - startedAt,
         itemCount: sortedItems.length,
       });
@@ -1161,6 +1276,9 @@ export function MarketFeedScreen() {
       }
     } finally {
       setLoading(false);
+      if (didStartBackgroundRefresh) {
+        navPerf.mark('background_refresh_completed', 'tabs→runway');
+      }
     }
   }, [activeTag, status, user?.id]);
 
@@ -1168,15 +1286,12 @@ export function MarketFeedScreen() {
     const collectionId = item?.collectionId?.trim();
     if (!collectionId) return;
     if (!item) return;
-    const strictFeedMedia = buildFallbackMediaItems(item);
-    if (strictFeedMedia.length > 0) {
-      setCollectionMediaMap((prev) => {
-        if (prev[collectionId]?.length) return prev;
-        return {
-          ...prev,
-          [collectionId]: strictFeedMedia,
-        };
-      });
+    const hasStrictFeedMedia = Boolean(
+      (Array.isArray(item.mediaItems) && item.mediaItems.length > 0) || item.primaryMedia,
+    );
+    if (hasStrictFeedMedia) {
+      // The market DTO already contains every angle. Avoid copying identical
+      // arrays into parent state, which previously rerendered every visible row.
       hydratedCollectionIdsRef.current.add(collectionId);
       return;
     }
@@ -1279,70 +1394,75 @@ export function MarketFeedScreen() {
     minimumViewTime: 120,
   });
 
-  useEffect(() => {
-    hydrateCollectionMediaRef.current = hydrateCollectionMedia;
-  }, [hydrateCollectionMedia]);
-
   const stableOnViewableItemsChangedRef = useRef(
     ({ viewableItems }: { viewableItems: Array<{ item: FeedListEntry | null; index?: number | null }> }) => {
-      const currentItems = itemsRef.current;
-      const currentActiveTag = activeTagRef.current;
-      const currentFeedLoopEnabled = feedLoopEnabledRef.current;
-      const currentHydrateCollectionMedia = hydrateCollectionMediaRef.current;
-
-      const primaryEntry = viewableItems[0]?.item;
+      const primaryEntry = viewableItems.find(({ item }) => item && !item.isGhost)?.item;
       if (primaryEntry && !primaryEntry.isGhost) {
-        feedActiveIndex = primaryEntry.realIndex;
-        setActivePageIndex((current) => (current === primaryEntry.realIndex ? current : primaryEntry.realIndex));
-        const viewedKey = `${primaryEntry.item.collectionId}:${primaryEntry.realIndex}`;
-        if (!viewedFeedItemKeysRef.current.has(viewedKey)) {
-          viewedFeedItemKeysRef.current.add(viewedKey);
-          const mediaItems = collectionMediaMapRef.current[primaryEntry.item.collectionId] ?? buildFallbackMediaItems(primaryEntry.item);
-          const media = mediaItems[carouselIndexMap.get(primaryEntry.item.collectionId) ?? 0] ?? mediaItems[0] ?? null;
-          trackMobileEvent('feed_item_viewed', {
-            sourceScreen: 'runway_feed',
-            itemId: primaryEntry.item.collectionId,
-            itemType: primaryEntry.item.entityType,
-            feedPosition: primaryEntry.realIndex,
-            collectionId: primaryEntry.item.collectionId,
-            mediaId: media?.id ?? null,
-            brandId: primaryEntry.item.brandId,
-            categoryFilter: currentActiveTag,
-          });
-        }
+        latestViewableIndexRef.current = primaryEntry.realIndex;
       }
-      viewableItems.forEach(({ item: entry }) => {
-        const collectionId = entry?.item.collectionId?.trim();
-        if (!collectionId) return;
-        if (!currentItems.length) return;
-
-        const realIndex = entry?.realIndex ?? currentItems.findIndex((candidate) => candidate.collectionId === collectionId);
-        if (realIndex < 0) return;
-
-        for (let offset = -1; offset <= 2; offset += 1) {
-          const nextIndex = currentFeedLoopEnabled
-            ? (realIndex + offset + currentItems.length) % currentItems.length
-            : realIndex + offset;
-          if (nextIndex < 0 || nextIndex >= currentItems.length) continue;
-          void currentHydrateCollectionMedia(currentItems[nextIndex]);
-        }
-      });
     },
   );
 
+  const scheduleSettledFeedWork = useCallback((previousIndex: number, nextIndex: number) => {
+    settledWorkRef.current?.cancel();
+    const activeItem = items[nextIndex] ?? null;
+    const adjacentIndex = feedLoopEnabled && items.length > 0
+      ? (nextIndex + 1) % items.length
+      : nextIndex + 1;
+    const adjacentItem = items[adjacentIndex] ?? null;
+
+    settledWorkRef.current = InteractionManager.runAfterInteractions(() => {
+      settledWorkRef.current = null;
+      if (!activeItem) return;
+
+      const viewedKey = `${activeItem.collectionId}:${nextIndex}`;
+      if (!viewedFeedItemKeysRef.current.has(viewedKey)) {
+        viewedFeedItemKeysRef.current.add(viewedKey);
+        const mediaItems = collectionMediaMapRef.current[activeItem.collectionId] ?? buildFallbackMediaItems(activeItem);
+        const media = mediaItems[carouselIndexMap.get(activeItem.collectionId) ?? 0] ?? mediaItems[0] ?? null;
+        trackMobileEvent('feed_item_viewed', {
+          sourceScreen: 'runway_feed',
+          itemId: activeItem.collectionId,
+          itemType: activeItem.entityType,
+          feedPosition: nextIndex,
+          collectionId: activeItem.collectionId,
+          mediaId: media?.id ?? null,
+          brandId: activeItem.brandId,
+          categoryFilter: activeTag,
+        });
+      }
+
+      if (nextIndex !== previousIndex) {
+        trackMobileEvent('feed_item_swiped', {
+          sourceScreen: 'runway_feed',
+          fromItemId: items[previousIndex]?.collectionId ?? null,
+          toItemId: activeItem.collectionId,
+          direction: nextIndex > previousIndex ? 'down' : 'up',
+          fromPosition: previousIndex,
+          toPosition: nextIndex,
+          categoryFilter: activeTag,
+        });
+      }
+
+      // Strict feed DTO rows already contain all media. Legacy rows alone need
+      // detail hydration, bounded to the settled row and one forward neighbor.
+      void hydrateCollectionMedia(activeItem);
+      if (adjacentItem) void hydrateCollectionMedia(adjacentItem);
+      scrollDevLog('settled-work-complete', {
+        activeIndex: nextIndex,
+        hydratedCandidates: adjacentItem ? 2 : 1,
+        deferredUntilIdle: true,
+      });
+    });
+  }, [activeTag, feedLoopEnabled, hydrateCollectionMedia, items]);
+
   useEffect(() => {
     if (!items.length) return;
-
-    for (let offset = -1; offset <= 2; offset += 1) {
-      const nextIndex = feedLoopEnabled
-        ? (activePageIndex + offset + items.length) % items.length
-        : activePageIndex + offset;
-      if (nextIndex < 0 || nextIndex >= items.length) continue;
-
-      const item = items[nextIndex];
-      void hydrateCollectionMedia(item);
-    }
-  }, [activePageIndex, feedLoopEnabled, hydrateCollectionMedia, items]);
+    const previousIndex = settledFromIndexRef.current;
+    settledFromIndexRef.current = activePageIndex;
+    scheduleSettledFeedWork(previousIndex, activePageIndex);
+    return () => settledWorkRef.current?.cancel();
+  }, [activePageIndex, items.length, scheduleSettledFeedWork]);
 
   const openCommentsSheet = useCallback((item: MarketItem) => {
     if (!item.collectionId) return;
@@ -1578,13 +1698,26 @@ export function MarketFeedScreen() {
       brandId: normalizedBrandId,
       feedPosition: activePageIndex,
     });
-    router.push({ pathname: '/catalog/[brandId]', params: { brandId: normalizedBrandId } } as any);
+    drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: normalizedBrandId } } as any);
   }, [activePageIndex]);
 
   const handleOpenSearch = useCallback(() => {
     perfMark('runway-search-tap');
     router.push('/search' as any);
   }, []);
+
+  const handleOpenNotifications = useCallback(() => {
+    navPerf.tap('runway→notifications');
+    navPerf.navigationCalled();
+    if (status === 'authenticated') {
+      router.push('/notifications' as any);
+      return;
+    }
+    router.push({
+      pathname: '/(auth)/login',
+      params: { next: '/notifications' },
+    } as any);
+  }, [status]);
 
   const handleSaveLook = useCallback((item: MarketItem) => {
     const collectionId = item.collectionId?.trim();
@@ -1742,6 +1875,31 @@ export function MarketFeedScreen() {
       const threads = formatMetricCountLabel(threadCountRaw, 'thread', 'threads');
       const isSavedLook = Boolean(savedLookByCollectionId[item.collectionId]);
       const isSavingLook = Boolean(savingLookByCollectionId[item.collectionId]);
+      const isActiveFeedItem = activePageIndex === entry.realIndex;
+      const isPatchedBrand = Boolean(item.brandId && patchedBrandIds.has(item.brandId));
+      const isPatchBusy = Boolean(item.brandId && patchingBrandIds[item.brandId]);
+      const isMetaVisible = visibleMetaCollectionId === item.collectionId;
+      const rowRenderVersion = [
+        item.updatedAt ?? item.id,
+        activeMediaIndex,
+        currentMediaId,
+        isActiveFeedItem,
+        isThreaded,
+        isThreading,
+        threadCountRaw,
+        isSavedLook,
+        isSavingLook,
+        isPatchedBrand,
+        isPatchBusy,
+        isMetaVisible,
+        likes,
+        comments,
+        canPatchBrands,
+        status,
+        user?.id ?? null,
+        scheme,
+        bottomClearance,
+      ].join('|');
 
       return (
         <MarketFeedItem
@@ -1749,14 +1907,17 @@ export function MarketFeedScreen() {
           pageHeight={pageHeight}
           mediaItems={mediaItems}
           activeMediaIndex={activeMediaIndex}
+          isActive={isActiveFeedItem}
+          renderVersion={rowRenderVersion}
           onCarouselIndexChange={handleCarouselIndexChange}
-          onContentPress={() => showMetaOverlay(item.collectionId)}
+          onContentPress={showMetaOverlay}
           badgeOverlay={
             <NewDropBadge
               itemId={item.collectionId}
               createdAt={item.createdAt ?? item.media?.createdAt}
               sourceScreen="runway_feed"
               feedPosition={entry.realIndex}
+              isActive={isActiveFeedItem}
               style={styles.newDropBadge}
             />
           }
@@ -1774,8 +1935,8 @@ export function MarketFeedScreen() {
               isSavedLook={isSavedLook}
               isSavingLook={isSavingLook}
               canPatchBrands={canPatchBrands}
-              isPatched={Boolean(item.brandId && patchedBrandIds.has(item.brandId))}
-              patchBusy={Boolean(item.brandId && patchingBrandIds[item.brandId])}
+              isPatched={isPatchedBrand}
+              patchBusy={isPatchBusy}
               bottomClearance={bottomClearance}
               onPatchBrand={handlePatchBrand}
               onOpenBrand={handleOpenBrand}
@@ -1795,7 +1956,7 @@ export function MarketFeedScreen() {
               scheme={scheme}
               overlaySurface={overlaySurface}
               bottomClearance={bottomClearance}
-              visible={visibleMetaCollectionId === item.collectionId}
+              visible={isMetaVisible}
               onBrandPress={() => handleOpenBrand(item.brandId)}
             />
           }
@@ -1803,6 +1964,7 @@ export function MarketFeedScreen() {
       );
     },
     [
+      activePageIndex,
       bottomClearance,
       canPatchBrands,
       collectionMediaMap,
@@ -1821,23 +1983,17 @@ export function MarketFeedScreen() {
       savingLookByCollectionId,
       scheme,
       showMetaOverlay,
+      status,
       threadStateByMedia,
       threadingMediaById,
+      user?.id,
       visibleMetaCollectionId,
     ],
   );
 
-  const handleFeedScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      feedScrollOffset = event.nativeEvent.contentOffset.y;
-      feedActiveIndex = Math.max(0, Math.min(feedItems.length - 1, Math.round(feedScrollOffset / pageHeight)));
-    },
-    [feedItems.length, pageHeight],
-  );
-
   const handleFeedScrollBeginDrag = useCallback(() => {
+    scrollStartedAtRef.current = Date.now();
     hideMetaOverlay();
-    requestNativeIslandCollapse();
   }, [hideMetaOverlay]);
 
   const handleFeedMomentumEnd = useCallback(
@@ -1849,36 +2005,40 @@ export function MarketFeedScreen() {
       const previousIndex = activePageIndex;
       const measuredRealIndex = feedItems[rawIndex]?.realIndex ?? rawIndex;
       const jumpDistance = Math.abs(measuredRealIndex - previousIndex);
-      const shouldCorrectJump = !feedLoopEnabled && jumpDistance > 1;
-      const correctedRealIndex = shouldCorrectJump
-        ? Math.max(0, Math.min(items.length - 1, previousIndex + Math.sign(measuredRealIndex - previousIndex)))
-        : measuredRealIndex;
+      const settleDurationMs = scrollStartedAtRef.current > 0
+        ? Date.now() - scrollStartedAtRef.current
+        : null;
+      const latestViewableIndex = latestViewableIndexRef.current;
+      feedScrollOffset = e.nativeEvent.contentOffset.y;
 
       scrollDevLog('vertical-momentum', {
         measuredIndex: measuredRealIndex,
+        targetIndex: measuredRealIndex,
         previousIndex,
-        jumpDistance,
-        corrected: shouldCorrectJump,
+        flingDistance: jumpDistance,
+        corrected: false,
+        correctionReason: null,
+        correctionCount: correctionCountRef.current,
         pageHeight,
+        snapInterval: pageHeight,
+        rowHeight: pageHeight,
         contentOffsetY: e.nativeEvent.contentOffset.y,
+        settleDurationMs,
+        latestViewableIndex,
       });
 
-      if (shouldCorrectJump) {
-        const correctedListIndex = feedItems.findIndex((entry) => entry.realIndex === correctedRealIndex && !entry.isGhost);
-        if (correctedListIndex >= 0) {
-          feedListRef.current?.scrollToIndex({ index: correctedListIndex, animated: false });
-        }
-      }
-
-      if (!feedLoopEnabled && correctedRealIndex !== previousIndex) {
-        trackMobileEvent('feed_item_swiped', {
-          sourceScreen: 'runway_feed',
-          fromItemId: items[previousIndex]?.collectionId ?? null,
-          toItemId: items[correctedRealIndex]?.collectionId ?? null,
-          direction: correctedRealIndex > previousIndex ? 'down' : correctedRealIndex < previousIndex ? 'up' : 'none',
-          fromPosition: previousIndex,
-          toPosition: correctedRealIndex,
-          categoryFilter: activeTag,
+      if (jumpDistance > 1 || latestViewableIndex !== measuredRealIndex || (settleDurationMs ?? 0) > 1200) {
+        scrollDevLog('vertical-settle-warning', {
+          previousIndex,
+          targetIndex: measuredRealIndex,
+          flingDistance: jumpDistance,
+          latestViewableIndex,
+          settleDurationMs,
+          reason: jumpDistance > 1
+            ? 'multi-page-fling'
+            : latestViewableIndex !== measuredRealIndex
+              ? 'viewability-late'
+              : 'settle-late',
         });
       }
 
@@ -1911,14 +2071,42 @@ export function MarketFeedScreen() {
         return;
       }
 
-      feedActiveIndex = correctedRealIndex;
-      setActivePageIndex(correctedRealIndex);
-      if (rawIndex >= items.length - 1 && hasNextPage) {
+      settledFromIndexRef.current = previousIndex;
+      feedActiveIndex = measuredRealIndex;
+      setActivePageIndex(measuredRealIndex);
+      if (measuredRealIndex >= items.length - 2 && hasNextPage) {
         void loadMore();
       }
     },
-    [activePageIndex, activeTag, feedItems, feedLoopEnabled, feedLoopHeadOffset, hasNextPage, items, pageHeight],
+    [activePageIndex, feedItems, feedLoopEnabled, feedLoopHeadOffset, hasNextPage, items.length, pageHeight],
   );
+
+  const getFeedItemLayout = useCallback(
+    (_: ArrayLike<FeedListEntry> | null | undefined, index: number) => ({
+      length: pageHeight,
+      offset: pageHeight * index,
+      index,
+    }),
+    [pageHeight],
+  );
+
+  const handleScrollToIndexFailed = useCallback(({ index }: { index: number }) => {
+    correctionCountRef.current += 1;
+    scrollDevLog('vertical-correction', {
+      reason: 'initial-index-recovery',
+      correctionCount: correctionCountRef.current,
+      currentIndex: feedActiveIndex,
+      targetIndex: index,
+      pageHeight,
+    });
+    requestAnimationFrame(() => {
+      feedScrollOffset = index * pageHeight;
+      feedListRef.current?.scrollToOffset({
+        offset: index * pageHeight,
+        animated: false,
+      });
+    });
+  }, [pageHeight]);
 
   const loadMore = useCallback(async () => {
     if (!hasNextPage || !nextCursor || loading || refreshing || loadingMoreInFlightRef.current) return;
@@ -1948,27 +2136,26 @@ export function MarketFeedScreen() {
 
     try {
       const res = await fetchMarketFeedPage({ cursor: null, tag: activeTag, counts: 'combined' });
-      // Sort items to prioritize valid media (invalid items moved to end)
-      const sortedItems = [...res.items].sort((a, b) => {
-        const aValid = isValidMediaItem(a);
-        const bValid = isValidMediaItem(b);
-        if (aValid && !bValid) return -1;
-        if (!aValid && bValid) return 1;
-        return 0;
-      });
-      await writeCachedMarketFeed(buildFeedCacheIdentity({
+      const sortedItems = sortFeedItemsForDisplay(res.items);
+      setItems(sortedItems);
+      setNextCursor(res.nextCursor ?? null);
+      setHasNextPage(res.hasNextPage);
+      hasLoadedFirstPageRef.current = true;
+      setHasLoadedFirstPage(true);
+      void writeCachedMarketFeed(buildFeedCacheIdentity({
         tag: activeTag,
         userId: status === 'authenticated' ? user?.id ?? null : null,
       }), {
         items: sortedItems,
         nextCursor: res.nextCursor ?? null,
         hasNextPage: res.hasNextPage,
+      }).catch((cacheError) => {
+        feedLoadDevLog('cache-write-failed', {
+          reason: cacheError instanceof Error ? cacheError.message : 'unknown',
+        });
       });
-      setItems(sortedItems);
-      setNextCursor(res.nextCursor ?? null);
-      setHasNextPage(res.hasNextPage);
     } catch (err) {
-      if (items.length === 0) {
+      if (!hasLoadedFirstPageRef.current) {
         const message = toErrorMessage(err);
         setError(message);
         setIsNetworkError(isLikelyNetworkError(message));
@@ -1985,37 +2172,43 @@ export function MarketFeedScreen() {
   useFocusEffect(
     useCallback(() => {
       const now = Date.now();
+      // A realtime content event (e.g. a design approval/publish) flagged the
+      // feed as stale while we were away. Silently revalidate so the newly
+      // surfaced content shows on return without a manual pull-to-refresh.
+      if (consumeMarketFeedDirty()) {
+        void onRefresh();
+      }
       // Only refetch if data is stale (> 60s old) - prevents redundant calls on every tab visit
       if (now - lastPatchFetchRef.current > STALE_THRESHOLD_MS) {
         void loadPatchedBrands();
       }
       // Clear any stale comments target on tab focus
       setCommentsTarget(null);
-      // Only restore scroll when the FlatList has drifted from the expected snap position.
-      // Skips the call when the list is already at the right page (prevents jarring teleport on tab refocus).
+      // Native interval snapping owns the resting position. Observe drift on
+      // refocus, but never teleport the visible list back into place.
       if (feedScrollOffset > 0 && pageHeight > 0) {
         const safeIndex = Math.max(0, Math.min(feedActiveIndex, feedItems.length - 1));
         const expectedOffset = safeIndex * pageHeight;
         const drift = Math.abs(feedScrollOffset - expectedOffset);
-        if (drift > pageHeight * 0.3) {
-          requestAnimationFrame(() => {
-            feedListRef.current?.scrollToIndex({ index: safeIndex, animated: false });
+        if (drift > pageHeight * 0.1) {
+          scrollDevLog('vertical-restore-drift', {
+            currentIndex: safeIndex,
+            expectedOffset,
+            observedOffset: feedScrollOffset,
+            drift,
+            correctionCount: correctionCountRef.current,
+            correctionSkipped: true,
+            reason: 'native-snap-owns-restoration',
           });
         }
       }
-    }, [feedItems.length, loadPatchedBrands, pageHeight]),
+    }, [feedItems.length, loadPatchedBrands, onRefresh, pageHeight]),
   );
 
   return (
     <SafeAreaView
       edges={[]}
       style={[styles.root, { backgroundColor: theme.colors.bg }]}
-      onLayout={(event) => {
-        const nextHeight = Math.round(event.nativeEvent.layout.height);
-        if (nextHeight > 0 && nextHeight !== rootViewportHeight) {
-          setRootViewportHeight(nextHeight);
-        }
-      }}
     >
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
 
@@ -2058,22 +2251,43 @@ export function MarketFeedScreen() {
                         variant="nav"
                         selected={chip.id === selectedFilterId}
                         onPress={() => setSelectedFilterId(chip.id)}
+                        style={styles.headerFilterChip}
                       />
                     ))}
                   </ScrollView>
                 </View>
 
                 <View style={styles.headerRightGroup}>
-                <Pressable
-                  onPress={handleOpenSearch}
-                  hitSlop={10}
-                  style={({ pressed }) => [
-                    styles.headerIconButton,
-                    pressed && { backgroundColor: theme.colors.surfaceOverlay, opacity: 0.8 },
-                  ]}
+                  <Pressable
+                    onPress={handleOpenNotifications}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.headerIconButton,
+                      pressed && { backgroundColor: theme.colors.surfaceOverlay, opacity: 0.8 },
+                    ]}
                     accessibilityRole="button"
-                    accessibilityLabel="Search">
-                    <AppText variant="subtitle" style={styles.headerEmoji}>🔍</AppText>
+                    accessibilityLabel="Notifications"
+                  >
+                    <AppText variant="bodyBold" style={styles.headerEmoji}>🔔</AppText>
+                    {unreadNotificationCount > 0 ? (
+                      <View style={styles.headerBadge} pointerEvents="none">
+                        <AppText variant="badgeLabel" tone="primary" style={styles.headerBadgeText}>
+                          {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                        </AppText>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                  <Pressable
+                    onPress={handleOpenSearch}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.headerIconButton,
+                      pressed && { backgroundColor: theme.colors.surfaceOverlay, opacity: 0.8 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Search"
+                  >
+                    <AppText variant="bodyBold" style={styles.headerEmoji}>🔍</AppText>
                   </Pressable>
                 </View>
             </View>
@@ -2107,21 +2321,14 @@ export function MarketFeedScreen() {
       ) : (
         <View
           style={styles.feedListContainer}
-          onLayout={(event) => {
-            const nextHeight = Math.round(event.nativeEvent.layout.height);
-            if (nextHeight > 0 && measuredFeedViewportHeight !== nextHeight) {
-              devLog('HomeFeed', 'Measured feed viewport', {
-                measuredPageHeight: nextHeight,
-                pageHeightModel: pageHeight,
-                previousPageHeight: measuredFeedViewportHeight || null,
-              });
-              setFeedViewportHeight(nextHeight);
-            }
-          }}
+          onLayout={handleFeedViewportLayout}
         >
           {!feedViewportReady ? (
             <FeedSkeleton theme={theme} pageHeight={fallbackPageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
           ) : (
+          /* One initial row prioritizes first media. A three-row window bounds
+             memory; clipping stays off because detached full-screen Android
+             image rows can flash blank when they are reattached. */
           <MarketFeedList
             ref={feedListRef}
             key={feedListKey}
@@ -2130,44 +2337,27 @@ export function MarketFeedScreen() {
             snapToInterval={pageHeight}
             snapToAlignment="start"
             disableIntervalMomentum
-            getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
+            getItemLayout={getFeedItemLayout}
             decelerationRate="fast"
             directionalLockEnabled
             nestedScrollEnabled={false}
-            scrollEventThrottle={32}
             bounces={false}
             overScrollMode="never"
-            removeClippedSubviews={Platform.OS === 'android'}
-            initialNumToRender={3}
-            maxToRenderPerBatch={2}
-            updateCellsBatchingPeriod={100}
+            removeClippedSubviews={false}
+            initialNumToRender={1}
+            maxToRenderPerBatch={1}
+            updateCellsBatchingPeriod={50}
             windowSize={3}
             initialScrollIndex={feedActiveIndex > 0 ? Math.min(feedActiveIndex, feedItems.length - 1) : undefined}
             scrollEnabled={!commentsTarget}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            onScroll={handleFeedScroll}
             onScrollBeginDrag={handleFeedScrollBeginDrag}
-            style={{ backgroundColor: 'transparent' }}
+            style={styles.feedList}
             viewabilityConfig={viewabilityConfigRef.current}
             onViewableItemsChanged={stableOnViewableItemsChangedRef.current}
-            onScrollToIndexFailed={({ index }) => {
-              requestAnimationFrame(() => {
-                feedListRef.current?.scrollToOffset({
-                  offset: index * pageHeight,
-                  animated: false,
-                });
-              });
-            }}
-            onMomentumScrollEnd={(e) => {
-              handleFeedMomentumEnd(e);
-            }}
-            onEndReachedThreshold={0.6}
-            onEndReached={() => {
-              if (hasNextPage) {
-                void loadMore();
-              }
-            }}
+            onScrollToIndexFailed={handleScrollToIndexFailed}
+            onMomentumScrollEnd={handleFeedMomentumEnd}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
             renderItem={renderFeedItem}
           />
@@ -2200,15 +2390,19 @@ const styles = StyleSheet.create({
   headerLeftGroup: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
   },
   headerCenterGroup: {
     flex: 1,
+    minWidth: 0,
     overflow: 'hidden',
-    paddingHorizontal: 2,
+    paddingHorizontal: 0,
   },
   headerRightGroup: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
+    gap: 2,
   },
   headerChipsScroll: {
     flexGrow: 1,
@@ -2216,40 +2410,61 @@ const styles = StyleSheet.create({
   },
   headerChipsContent: {
     flexGrow: 1,
-    gap: tokens.spacing.sm,
+    gap: 12,
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.sm,
+    paddingHorizontal: 12,
     alignItems: 'center',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 44,
-    gap: tokens.spacing.sm,
+    minHeight: 34,
+    gap: 2,
   },
   headerLogoButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
   brandLogo: {
-    width: 30,
-    height: 30,
+    width: 24,
+    height: 24,
     resizeMode: 'contain',
   },
   headerIconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerFilterChip: {
+    minHeight: 30,
+    paddingHorizontal: 8,
+    paddingTop: 1,
+    paddingBottom: 3,
+  },
   headerEmoji: {
+    fontSize: 16,
+    lineHeight: 18,
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+    textShadowRadius: 5,
+  },
+  // No-bg count: the number renders in the system/brand color, bold, matching
+  // the catalog/profile bell + island convention (single source of truth).
+  headerBadge: {
+    position: 'absolute',
+    top: -tokens.spacing.xs,
+    right: -tokens.spacing.xs,
+    minWidth: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerBadgeText: {
+    textAlign: 'center',
   },
   headerActions: {
     flexDirection: 'row',
@@ -2305,6 +2520,9 @@ const styles = StyleSheet.create({
   feedListContainer: {
     flex: 1,
     overflow: 'hidden',
+  },
+  feedList: {
+    backgroundColor: 'transparent',
   },
   rail: {
     position: 'absolute',
@@ -2405,22 +2623,11 @@ const styles = StyleSheet.create({
   profileMenuAvatarImage: {
     ...StyleSheet.absoluteFill,
   },
-  profileMenuAvatarText: {
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  profileMenuChevron: {
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  profileMenuTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
+  profileMenuAvatarText: {},
+  profileMenuChevron: {},
+  profileMenuTitle: {},
   profileMenuSubtitle: {
     marginTop: 2,
-    fontSize: 12,
-    fontWeight: '600',
   },
   profileMenuItem: {
     flexDirection: 'row',
@@ -2434,7 +2641,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   profileMenuEmoji: {
-    fontSize: 18,
     width: 24,
     textAlign: 'center',
   },
@@ -2442,15 +2648,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  profileMenuItemTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  profileMenuItemTitle: {},
   profileMenuItemSubtitle: {
     marginTop: 2,
-    fontSize: 12,
-    fontWeight: '500',
-    lineHeight: 15,
   },
   railItem: {
     width: 88,
@@ -2464,9 +2664,6 @@ const styles = StyleSheet.create({
   railCountLabel: {
     width: 88,
     textAlign: 'center',
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '900',
     textShadowColor: 'rgba(0, 0, 0, 0.55)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,

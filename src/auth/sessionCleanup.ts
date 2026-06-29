@@ -3,10 +3,14 @@ import type { QueryClient, QueryKey } from '@tanstack/react-query';
 import * as SecureStore from 'expo-secure-store';
 
 import { clearBrandApiSessionCaches } from '@/src/api/BrandApi';
-import { setApiAuthToken, setApiRefreshToken } from '@/src/api/httpClient';
 import { env } from '@/src/config/env';
+import { setApiAuthToken, setApiRefreshToken } from '@/src/api/httpClient';
 import { clearCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { MOBILE_PENDING_CHECKOUT_STORAGE_KEY } from '@/src/features/checkout/mobileCheckoutPending';
+import {
+  clearDesignEditorBackgroundTasks,
+  DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY,
+} from '@/src/features/design-editor/designEditorBackgroundTasks';
 import { PERSISTED_FEED_CACHE_PREFIX } from '@/src/features/feed/utils/feedKeys';
 import { clearResolvedImageUriCache } from '@/src/hooks/useResolvedImageUri';
 import { deactivateRegisteredPushTokenForLogout } from '@/src/notifications/pushTokenRegistration';
@@ -15,26 +19,15 @@ import {
   purgeMobilePersistedQueryCache,
   THREADLY_QUERY_CACHE_STORAGE_KEY,
 } from '@/src/query/queryPersistor';
-import { queryKeys } from '@/src/query/queryKeys';
+import { queryKeys, PRIVATE_QUERY_ROOTS } from '@/src/query/queryKeys';
 import { clearMessagingRealtimeSession } from '@/src/realtime/messaging';
 import { clearNotificationRealtimeSession } from '@/src/realtime/notifications';
 import { clearMobileMarketSignalQueue } from '@/src/services/marketSignals';
-import { removeAccessToken, removeRefreshToken } from '@/src/storage/secureStorage';
+import { clearWarmScreenStateCache } from '@/src/state/screenWarmState';
+import { removeAccessToken, removeCachedAuthUser, removeRefreshToken } from '@/src/storage/secureStorage';
 
 export const ACTIVE_BRAND_STORAGE_KEY = 'threadly.activeBrandId';
 const PENDING_BAG_ACTION_STORAGE_KEY = 'threadly.pendingBagAction.v1';
-
-const PRIVATE_QUERY_ROOTS = new Set([
-  'auth',
-  'brand',
-  'design',
-  'designs',
-  'store',
-  'saved',
-  'notifications',
-  'messaging',
-  'reviews',
-]);
 
 export function isMobilePrivateSessionQueryKey(queryKey: QueryKey) {
   const [root, scope] = queryKey;
@@ -57,6 +50,7 @@ export async function clearMobilePrivateAsyncStorage() {
     const privateKeys = keys.filter(
       (key) =>
         key === THREADLY_QUERY_CACHE_STORAGE_KEY ||
+        key === DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY ||
         key.startsWith(PERSISTED_FEED_CACHE_PREFIX) ||
         key === env.userStorageKey,
     );
@@ -86,7 +80,9 @@ export async function clearMobilePrivateSessionState({
   clearNotificationRealtimeSession();
   clearMessagingRealtimeSession();
   clearBrandApiSessionCaches();
+  clearWarmScreenStateCache();
   clearResolvedImageUriCache();
+  clearDesignEditorBackgroundTasks();
 
   await Promise.allSettled([
     removeAccessToken(),
@@ -94,7 +90,7 @@ export async function clearMobilePrivateSessionState({
     SecureStore.deleteItemAsync(ACTIVE_BRAND_STORAGE_KEY),
     SecureStore.deleteItemAsync(PENDING_BAG_ACTION_STORAGE_KEY),
     SecureStore.deleteItemAsync(MOBILE_PENDING_CHECKOUT_STORAGE_KEY),
-    SecureStore.deleteItemAsync(env.userStorageKey),
+    removeCachedAuthUser(),
     purgeMobilePersistedQueryCache(),
     clearCachedMarketFeed(),
     clearMobileMarketSignalQueue(),

@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -15,6 +17,9 @@ import ReviewPromptCard from '@/components/reviews/ReviewPromptCard';
 import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
 import reviewApi, { type ReviewPromptDto, type SubmitReviewPayload } from '@/src/api/ReviewApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { useCachedQuery, cachePolicies } from '@/src/cache';
+import { queryKeys } from '@/src/query/queryKeys';
+import { prefetchDetailOnPress, prefetchQuery } from '@/src/prefetch/navPrefetch';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -134,7 +139,13 @@ function OrderRow({ item }: { item: BuyerOrderSummary }) {
 
   return (
     <Pressable
-      onPress={() => router.push({ pathname: '/orders/[orderId]', params: { orderId: item.id } } as any)}
+      onPressIn={() =>
+        prefetchDetailOnPress({
+          href: { pathname: '/orders/[orderId]', params: { orderId: item.id } },
+          hero: { src: item.thumbnail },
+        })
+      }
+      onPress={() => drillDownPush({ pathname: '/orders/[orderId]', params: { orderId: item.id } } as any)}
       style={({ pressed }) => [pressed ? styles.pressed : null]}
     >
       <Card padding="md" style={[styles.card, { borderColor: theme.colors.border }]}>
@@ -208,40 +219,48 @@ function OrdersLoadingState() {
 export default function OrdersScreen() {
   const { theme } = useTheme();
   const toast = useToast();
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const insets = useSafeAreaInsets();
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [items, setItems] = useState<BuyerOrderSummary[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [reviewPrompts, setReviewPrompts] = useState<ReviewPromptDto[]>([]);
   const [activeReviewPrompt, setActiveReviewPrompt] = useState<ReviewPromptDto | null>(null);
   const [skippingPromptId, setSkippingPromptId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const orders = await BuyerOrdersApi.list();
-      setItems(orders);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to load orders right now.');
-      setItems([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  // Cache-first: render the last known orders immediately, revalidate in the
+  // background. Skeleton only shows on a true cold load (no cached data).
+  const ordersQuery = useCachedQuery<BuyerOrderSummary[]>({
+    key: queryKeys.orders.list(user?.id),
+    fetcher: () => BuyerOrdersApi.list(),
+    policy: cachePolicies.defaultQuery,
+    enabled: status === 'authenticated',
+  });
+  const items = ordersQuery.data ?? [];
+  const loading = ordersQuery.isLoading;
+  const refreshing = ordersQuery.isRefreshing;
+  const error = ordersQuery.error
+    ? ordersQuery.error.message || 'Unable to load orders right now.'
+    : null;
+  const refetchOrders = ordersQuery.refetch;
+  const load = useCallback(() => {
+    void refetchOrders({ forceRefresh: true });
+  }, [refetchOrders]);
 
-  useEffect(() => {
-    if (status !== 'authenticated') {
-      setLoading(false);
-      return;
-    }
-    void load();
-  }, [load, status]);
+  // Phase 5 scroll-proximity: warm the detail query for on-screen orders so a
+  // tap opens instantly. Bounded by the prefetch budget (query lane) + dedupe.
+  const handleViewableOrders = useRef(
+    ({ viewableItems }: { viewableItems: Array<{ item: BuyerOrderSummary }> }) => {
+      viewableItems.forEach(({ item }) => {
+        prefetchQuery({
+          key: queryKeys.orders.detail(item.id),
+          fetcher: () => BuyerOrdersApi.getById(item.id),
+          policy: cachePolicies.defaultQuery,
+          priority: 'near',
+        });
+      });
+    },
+  ).current;
+  const orderViewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   const loadReviewPrompts = useCallback(async () => {
     if (status !== 'authenticated') {
@@ -254,7 +273,7 @@ export default function OrdersScreen() {
     } catch (nextError) {
       const responseStatus = (nextError as { status?: number })?.status;
       if (responseStatus !== 401 && responseStatus !== 403) {
-        toast.error(nextError instanceof Error ? nextError.message : 'Could not load review prompts.');
+        toast.error('Could not load review prompts.');
       }
     }
   }, [status, toast]);
@@ -277,7 +296,7 @@ export default function OrdersScreen() {
       setReviewPrompts((current) => current.filter((item) => item.id !== prompt.id));
       toast.success('Review prompt skipped.');
     } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Could not skip review prompt.');
+      toast.error('Could not skip review prompt. Please try again.');
     } finally {
       setSkippingPromptId(null);
     }
@@ -302,6 +321,16 @@ export default function OrdersScreen() {
       cancelled: items.filter((item) => isCancelledOrder(item)).length,
     };
   }, [items]);
+  const statItems = useMemo(
+    () => [
+      { key: 'all' as const, label: 'Total', value: stats.total },
+      { key: 'pending' as const, label: 'Pending', value: stats.pending },
+      { key: 'active' as const, label: 'Active', value: stats.active },
+      { key: 'completed' as const, label: 'Completed', value: stats.completed },
+      { key: 'cancelled' as const, label: 'Cancelled', value: stats.cancelled },
+    ],
+    [stats],
+  );
 
   if (status !== 'authenticated') {
     return (
@@ -340,13 +369,14 @@ export default function OrdersScreen() {
         data={filteredItems}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <OrderRow item={item} />}
+        onViewableItemsChanged={handleViewableOrders}
+        viewabilityConfig={orderViewabilityConfig}
         ItemSeparatorComponent={() => <View style={{ height: tokens.spacing.sm }} />}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => {
-              setRefreshing(true);
               void load();
               void loadReviewPrompts();
             }}
@@ -373,13 +403,35 @@ export default function OrdersScreen() {
               </View>
             ) : null}
 
-            <View style={styles.statsGrid}>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Total</AppText><AppText variant="subtitle">{stats.total}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Pending</AppText><AppText variant="subtitle">{stats.pending}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Active</AppText><AppText variant="subtitle">{stats.active}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Completed</AppText><AppText variant="subtitle">{stats.completed}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Cancelled</AppText><AppText variant="subtitle">{stats.cancelled}</AppText></Card>
-            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.statsRow}
+              accessibilityRole="tablist"
+            >
+              {statItems.map((stat) => {
+                const selected = statusFilter === stat.key;
+                return (
+                  <Pressable
+                    key={stat.key}
+                    onPress={() => setStatusFilter(stat.key)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    style={({ pressed }) => [
+                      styles.statPill,
+                      {
+                        backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
+                        borderColor: selected ? theme.colors.primary : theme.colors.border,
+                      },
+                      pressed ? styles.pressed : null,
+                    ]}
+                  >
+                    <AppText variant="captionRegular" tone={selected ? 'primary' : 'muted'}>{stat.label}</AppText>
+                    <AppText variant="subtitle" tone={selected ? 'primary' : 'default'}>{stat.value}</AppText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
 
             <View style={styles.filtersRow}>
               {STATUS_FILTERS.map((option) => {
@@ -469,15 +521,20 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     marginBottom: tokens.spacing.sm,
   },
-  statsGrid: {
+  statsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
+    paddingRight: tokens.spacing.md,
   },
-  statCard: {
-    flexBasis: '48%',
-    flexGrow: 1,
-    minWidth: 0,
+  statPill: {
+    minWidth: 88,
+    minHeight: 58,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    justifyContent: 'center',
+    gap: tokens.spacing.xs,
   },
   filtersRow: {
     flexDirection: 'row',

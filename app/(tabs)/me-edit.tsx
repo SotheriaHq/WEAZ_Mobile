@@ -6,7 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from 'expo-router';
 
 import { ProfileApi, type UserProfile } from '@/src/api/ProfileApi';
-import { useAuth } from '@/src/auth/AuthContext';
+import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -17,12 +17,13 @@ import {
   getMobileUploadValidationMessage,
   assertValidPickedUploadAsset,
 } from '@/src/utils/uploadValidation';
-import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { AppText } from '@/components/ui/AppText';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { tokens } from '@/src/styles/tokens';
+import { readWarmScreenState } from '@/src/state/screenWarmState';
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -32,11 +33,15 @@ type ProfileFormState = {
   address: string;
 };
 
-function toForm(profile: UserProfile): ProfileFormState {
+type WarmProfileState = {
+  profile: UserProfile | null;
+};
+
+function toForm(profile: UserProfile | null, user: AuthUser | null): ProfileFormState {
   return {
-    firstName: profile.firstName ?? '',
-    lastName: profile.lastName ?? '',
-    address: profile.location ?? profile.address ?? '',
+    firstName: profile?.firstName ?? user?.firstName ?? '',
+    lastName: profile?.lastName ?? user?.lastName ?? '',
+    address: profile?.location ?? profile?.address ?? '',
   };
 }
 
@@ -52,13 +57,13 @@ function formsEqual(a: ProfileFormState, b: ProfileFormState): boolean {
   );
 }
 
-function statusLabel(state: SaveState, savedAt: Date | null): string {
+function statusLabel(state: SaveState, savedAt: Date | null): string | null {
   if (state === 'saving') return 'Saving changes...';
   if (state === 'error') return 'Could not save changes. Fix the issue before leaving.';
   if (state === 'saved' && savedAt) {
     return `Saved ${savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   }
-  return 'Changes save when you leave';
+  return null;
 }
 
 export default function MeEditScreen() {
@@ -67,19 +72,26 @@ export default function MeEditScreen() {
   const toast = useToast();
   const navigation = useNavigation();
 
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [form, setForm] = useState<ProfileFormState | null>(null);
-  const [baseline, setBaseline] = useState<ProfileFormState | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialProfile = useMemo(
+    () =>
+      user?.id
+        ? readWarmScreenState<WarmProfileState>(`me:${user.id}`)?.profile ?? null
+        : null,
+    [user?.id],
+  );
+  const initialForm = useMemo(() => toForm(initialProfile, user), [initialProfile, user]);
+  const [profile, setProfile] = useState<UserProfile | null>(initialProfile);
+  const [form, setForm] = useState<ProfileFormState>(initialForm);
+  const [baseline, setBaseline] = useState<ProfileFormState>(initialForm);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   const latestFormRef = useRef<ProfileFormState | null>(null);
   const pendingChangesRef = useRef(false);
+  const hasUserEditedRef = useRef(false);
   const isNavigatingAwayRef = useRef(false);
 
   const hasPendingChanges = useMemo(() => {
-    if (!form || !baseline) return false;
     return !formsEqual(form, baseline);
   }, [baseline, form]);
 
@@ -92,33 +104,20 @@ export default function MeEditScreen() {
   }, [hasPendingChanges]);
 
   const loadProfile = useCallback(async () => {
-    setLoading(true);
-    const retryDelays = [1000, 3000];
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) {
-        await new Promise<void>((resolve) => setTimeout(resolve, retryDelays[attempt - 1]));
-      }
-      try {
-        const data = await ProfileApi.getMe();
-        if (!data) {
-          console.warn('[background.profile.load.failed] No profile data returned');
-          if (attempt === 2) toast.error('Could not load your profile.');
-          continue;
-        }
-        const nextForm = toForm(data);
-        setProfile(data);
+    try {
+      const data = await ProfileApi.getMe();
+      if (!data) return;
+      const nextForm = toForm(data, user);
+      setProfile(data);
+      if (!hasUserEditedRef.current) {
         setForm(nextForm);
         setBaseline(nextForm);
         setSaveState('idle');
-        setLoading(false);
-        return;
-      } catch (error) {
-        console.warn('[background.profile.load.failed]', error);
-        if (attempt === 2) toast.error('Failed to load your profile.');
       }
+    } catch {
+      // Auth/warm data keeps the editor usable while the profile request degrades.
     }
-    setLoading(false);
-  }, [toast]);
+  }, [user]);
 
   useEffect(() => {
     void loadProfile();
@@ -126,15 +125,15 @@ export default function MeEditScreen() {
 
   const persistDraft = useCallback(
     async (draft: ProfileFormState) => {
-      if (!profile) return true;
-      if (!baseline || formsEqual(draft, baseline)) return true;
+      if (formsEqual(draft, baseline)) return true;
 
-      const resolvedFirstName = draft.firstName.trim() || baseline.firstName.trim() || profile.firstName.trim();
-      const resolvedLastName = draft.lastName.trim() || baseline.lastName.trim() || profile.lastName.trim();
+      const resolvedFirstName = draft.firstName.trim() || baseline.firstName.trim() || profile?.firstName.trim() || user?.firstName?.trim();
+      const resolvedLastName = draft.lastName.trim() || baseline.lastName.trim() || profile?.lastName.trim() || user?.lastName?.trim();
+      const username = profile?.username.trim() || user?.username?.trim();
 
-      if (!resolvedFirstName || !resolvedLastName) {
+      if (!resolvedFirstName || !resolvedLastName || !username) {
         setSaveState('error');
-        toast.error('First and last name are required.');
+        toast.error('First name, last name, and username are required.');
         return false;
       }
 
@@ -149,7 +148,7 @@ export default function MeEditScreen() {
         const updated = await ProfileApi.updateProfile({
           firstName: resolvedFirstName,
           lastName: resolvedLastName,
-          username: profile.username,
+          username,
           address: draft.address.trim() || undefined,
         });
         if (updated) {
@@ -173,7 +172,7 @@ export default function MeEditScreen() {
         return false;
       }
     },
-    [baseline, profile, toast, updateUser],
+    [baseline, profile, toast, updateUser, user?.firstName, user?.lastName, user?.username],
   );
 
   const persistOnExit = useCallback(async () => {
@@ -219,7 +218,10 @@ export default function MeEditScreen() {
       isNavigatingAwayRef.current = false;
       return;
     }
-    router.back();
+    // Edit Info lives inside the (tabs) group; a bare router.back() with no
+    // history (e.g. entered from Settings or a deep link) drops to the default
+    // tab (Runway). backOrNavigate falls back to the Me profile instead.
+    backOrNavigate('/(tabs)/me');
   }, [persistOnExit]);
 
   const handlePickAvatar = useCallback(async () => {
@@ -308,10 +310,12 @@ export default function MeEditScreen() {
   );
   const statusTone =
     saveState === 'error' ? 'danger' : saveState === 'saving' ? 'warning' : 'muted';
+  const currentStatusLabel = statusLabel(saveState, lastSavedAt);
 
-  if (loading || !form) {
-    return <AppLoaderScreen message="Loading editor" />;
-  }
+  const updateField = useCallback((patch: Partial<ProfileFormState>) => {
+    hasUserEditedRef.current = true;
+    setForm((current) => ({ ...current, ...patch }));
+  }, []);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
@@ -319,9 +323,11 @@ export default function MeEditScreen() {
         <AppBackButton onPress={handleBack} style={styles.backButton} />
         <View style={styles.headerTextWrap}>
           <AppText variant="bodyBold">Edit Profile</AppText>
-          <AppText variant="caption" tone={statusTone} style={styles.status}>
-            {statusLabel(saveState, lastSavedAt)}
-          </AppText>
+          {currentStatusLabel ? (
+            <AppText variant="caption" tone={statusTone} style={styles.status}>
+              {currentStatusLabel}
+            </AppText>
+          ) : null}
         </View>
       </View>
 
@@ -355,44 +361,41 @@ export default function MeEditScreen() {
                 <AppText variant="captionBold">✏️</AppText>
               </View>
             </Pressable>
-            <AppText variant="body" tone="muted" style={styles.avatarHelp}>
-              Email and password stay in account settings. This screen only edits profile details.
-            </AppText>
           </View>
 
-          <View style={styles.group}>
+          <View style={[styles.formPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.fieldRow, { borderBottomColor: theme.colors.border }]}>
             <Input
               label="First Name"
               value={form.firstName}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, firstName: value } : prev))}
+              onChangeText={(value) => updateField({ firstName: value })}
               placeholder="First name"
               containerStyle={styles.group}
+              variant="bare"
             />
-          </View>
+            </View>
 
-          <View style={styles.group}>
+            <View style={[styles.fieldRow, { borderBottomColor: theme.colors.border }]}>
             <Input
               label="Last Name"
               value={form.lastName}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, lastName: value } : prev))}
+              onChangeText={(value) => updateField({ lastName: value })}
               placeholder="Last name"
               containerStyle={styles.group}
+              variant="bare"
             />
-          </View>
+            </View>
 
-          <View style={styles.group}>
+            <View style={styles.fieldRow}>
             <Input
               label="Location"
               value={form.address}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, address: value } : prev))}
+              onChangeText={(value) => updateField({ address: value })}
               placeholder="City, State"
               containerStyle={styles.group}
+              variant="bare"
             />
-          </View>
-
-          <View style={styles.helperStack}>
-            <AppText variant="caption" tone="muted">Changes save automatically when you leave this screen.</AppText>
-            <AppText variant="caption" tone="muted">Signed in as {user?.email ?? 'your account'}.</AppText>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -403,18 +406,6 @@ export default function MeEditScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 24,
-  },
-  loadingText: {
-    fontSize: tokens.typography.caption.size,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -472,15 +463,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarHelp: {
-    textAlign: 'center',
-    maxWidth: 280,
+  formPanel: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.lg,
+    overflow: 'hidden',
+  },
+  fieldRow: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   group: {
+    width: '100%',
     gap: tokens.spacing.sm,
-  },
-  helperStack: {
-    gap: tokens.spacing.xs,
-    paddingTop: tokens.spacing.xs,
   },
 });

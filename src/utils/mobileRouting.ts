@@ -525,6 +525,74 @@ export function normalizeNotificationContext(
 }
 
 /**
+ * Adapt an Expo push notification `data` payload into the canonical
+ * `MobileNotification` shape consumed by `routeForNotification`.
+ *
+ * The backend (`push-notifications.service.ts buildPushMessage`) ships routing
+ * metadata in the push `data` object: `notificationId`, `type`, `target`
+ * (`{ type, id, preview }`), `targetUrl`, `subTargetId`, plus per-type routing
+ * fields (e.g. `collectionId`, `productId`, `designId`, `orderId`,
+ * `customOrderId`, `brandId`, `postId`, `commentId`, `actorId`, and the message
+ * routing fields). Mapping it back to a `MobileNotification` lets a tapped push
+ * reuse the SAME comprehensive router as the in-app notification inbox, so every
+ * notification type routes to exactly the content it references — not just
+ * messages.
+ *
+ * Returns `null` when the payload carries no routable signal at all.
+ */
+export function buildNotificationFromPushData(
+  data: Record<string, unknown> | null | undefined,
+): MobileNotification | null {
+  if (!data || typeof data !== 'object') return null;
+
+  const type = readString(data.type) ?? readString(data.notificationType);
+  const targetUrl = readString(data.targetUrl);
+
+  let target: MobileNotification['target'] = null;
+  const rawTarget = data.target;
+  if (rawTarget && typeof rawTarget === 'object') {
+    const candidate = rawTarget as Record<string, unknown>;
+    const targetType = readString(candidate.type);
+    const targetId = readString(candidate.id);
+    if (targetType && targetId) {
+      target = {
+        type: targetType as NonNullable<MobileNotification['target']>['type'],
+        id: targetId,
+        preview: readString(candidate.preview) ?? undefined,
+      };
+    }
+  }
+
+  // Nothing to route on: not a notification payload (e.g. an unrelated data push).
+  if (!type && !target && !targetUrl) {
+    return null;
+  }
+
+  const actorId =
+    readString(data.actorUserId) ??
+    readString(data.actorId) ??
+    (data.actor && typeof data.actor === 'object'
+      ? readString((data.actor as Record<string, unknown>).id)
+      : null);
+
+  return {
+    id: readString(data.notificationId) ?? readString(data.id) ?? '',
+    type: type ?? 'SYSTEM',
+    message: readString(data.message) ?? '',
+    createdAt: new Date().toISOString(),
+    isRead: false,
+    actor: actorId ? { id: actorId } : null,
+    target,
+    subTargetId: readString(data.subTargetId) ?? readString(data.commentId) ?? null,
+    targetUrl,
+    // Pass the full data object through as the payload so `routeForNotification`
+    // can read per-type fields (collectionId / productId / designId / orderId /
+    // customOrderId / brandId / postId / legacyCollectionId / message fields).
+    payload: data,
+  };
+}
+
+/**
  * Determine the target route for a message notification payload.
  * Prioritizes threadId/conversationId for direct navigation, then falls back
  * to resolver-capable params (messageId, orderId, customOrderId, brandId, etc.)

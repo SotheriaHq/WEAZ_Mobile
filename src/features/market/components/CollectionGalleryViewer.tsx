@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -282,7 +284,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
             <Button
               title="View product"
               variant="outline"
-              onPress={() => router.push({ pathname: '/products/[productId]', params: { productId: activeMedia.productId, returnTo: `/collection-gallery?collectionId=${normalizedCollectionId}` } } as any)}
+              onPress={() => drillDownPush({ pathname: '/products/[productId]', params: { productId: activeMedia.productId, returnTo: `/collection-gallery?collectionId=${normalizedCollectionId}` } } as any)}
             />
           ) : null}
         </View>

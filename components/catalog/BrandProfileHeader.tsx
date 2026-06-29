@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, Linking, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
+import { FontAwesome5 } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -51,10 +53,14 @@ export type BrandProfileHeaderProps = {
   onPatch?: () => void;
   onMessage?: () => void;
   onEditProfile?: () => void;
-  onCreate?: () => void;
+  onCreate?: (e?: any) => void;
   createAnchorRef?: React.RefObject<View | null>;
   onCreateAnchorLayout?: () => void;
   onShare?: () => void;
+  /** Role-aware compact three-dot menu. The caller supplies only actions allowed
+   *  for the current owner, shopper, or public viewer. */
+  onOpenMenu?: (event?: any) => void;
+  menuAnchorRef?: React.RefObject<View | null>;
   qrTargetUrl?: string | null;
   onOpenQr?: () => void;
   onBack?: () => void;
@@ -62,6 +68,8 @@ export type BrandProfileHeaderProps = {
   onViewAvatar?: () => void;
   onEditAvatar?: () => void;
   onEditBanner?: () => void;
+  onNotifications?: () => void;
+  unreadNotificationCount?: number;
 };
 
 function compactInitials(value: string) {
@@ -123,12 +131,14 @@ function HeaderIconButton({
   onPress,
   disabled = false,
   bare = false,
+  badgeCount,
 }: {
   label: string;
   value: string;
   onPress?: () => void;
   disabled?: boolean;
   bare?: boolean;
+  badgeCount?: number;
 }) {
   const { theme } = useTheme();
 
@@ -153,6 +163,15 @@ function HeaderIconButton({
       <AppText variant="subtitle" tone="default" style={styles.headerIconText}>
         {value}
       </AppText>
+      {typeof badgeCount === 'number' && badgeCount > 0 ? (
+        // Notification count: no background pill — the number renders in the
+        // system/brand color and bold, matching the runway + island convention.
+        <View style={styles.headerIconBadge} pointerEvents="none">
+          <AppText variant="badgeLabel" tone="primary" style={styles.headerIconBadgeText}>
+            {badgeCount > 99 ? '99+' : badgeCount}
+          </AppText>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -167,9 +186,13 @@ function BannerHeader({
   onBack,
   onSearch,
   onShare,
+  onOpenMenu,
+  menuAnchorRef,
   qrTargetUrl,
   onOpenQr,
   onEditBanner,
+  onNotifications,
+  unreadNotificationCount,
 }: Pick<
   BrandProfileHeaderProps,
   | 'brandName'
@@ -181,11 +204,16 @@ function BannerHeader({
   | 'onBack'
   | 'onSearch'
   | 'onShare'
+  | 'onOpenMenu'
+  | 'menuAnchorRef'
   | 'qrTargetUrl'
   | 'onOpenQr'
   | 'onEditBanner'
+  | 'onNotifications'
+  | 'unreadNotificationCount'
 >) {
   const { scheme, theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const { width: viewportWidth } = useWindowDimensions();
   const resolvedBanner = useResolvedImageUri({
     src: bannerUrl,
@@ -235,73 +263,25 @@ function BannerHeader({
         </View>
       ) : null}
 
-      <View style={styles.bannerControls}>
-        <HeaderIconButton label="Go back" value="‹" onPress={onBack} bare />
+      <View style={[styles.bannerControls, { top: insets.top }]}>
+        <HeaderIconButton label="Go back" value="👈" onPress={onBack} bare />
         <View style={styles.bannerRightControls}>
-          {!isOwner ? (
+          {onNotifications ? (
+            <HeaderIconButton label="Notifications" value="🔔" onPress={onNotifications} badgeCount={unreadNotificationCount} bare />
+          ) : (
             <HeaderIconButton label="Search" value="🔍" onPress={onSearch} bare />
-          ) : null}
-          <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} bare />
+          )}
+          {onOpenMenu ? (
+            <View ref={menuAnchorRef} collapsable={false}>
+              <HeaderIconButton label="More options" value="⋯" onPress={onOpenMenu} bare />
+            </View>
+          ) : (
+            <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} bare />
+          )}
         </View>
       </View>
 
-      {qrTargetUrl || onOpenQr ? (
-        <View
-          pointerEvents="box-none"
-          style={[
-            styles.bannerQrSlot,
-            {
-              width: qrPanelSize,
-              height: qrPanelSize,
-              right: tokens.spacing.lg,
-              top: isTablet ? 68 : 72,
-            },
-          ]}
-        >
-          <Pressable
-            onPress={onOpenQr}
-            disabled={!onOpenQr}
-            style={({ pressed }) => [
-              styles.qrButton,
-              {
-                width: qrPanelSize,
-                height: qrPanelSize,
-                backgroundColor: qrTargetUrl ? tokens.themes.light.colors.surface : theme.colors.glassSurfaceStrong,
-                borderColor: theme.colors.glassBorder,
-                opacity: pressed ? 0.82 : 1,
-              },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Show brand QR code"
-          >
-            {qrTargetUrl ? (
-              <QRCode
-                value={qrTargetUrl}
-                size={qrCodeSize}
-                color={tokens.themes.light.colors.text}
-                backgroundColor={tokens.themes.light.colors.surface}
-                quietZone={2}
-              />
-            ) : (
-              <View
-                style={[
-                  styles.qrPlaceholder,
-                  {
-                    width: qrCodeSize,
-                    height: qrCodeSize,
-                    backgroundColor: theme.colors.glassSurface,
-                    borderColor: theme.colors.glassBorder,
-                  },
-                ]}
-              >
-                <AppText variant="captionBold" tone="muted">
-                  QR
-                </AppText>
-              </View>
-            )}
-          </Pressable>
-        </View>
-      ) : null}
+
 
       <View style={[styles.bannerNameChip, { backgroundColor: 'transparent', borderColor: theme.colors.glassBorder }]}>
         <BlurView
@@ -452,7 +432,7 @@ function BrandStatsRow({ stats }: { stats: BrandHeaderStat[] }) {
           {index > 0 ? <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} /> : null}
           <View style={styles.statItem}>
             <AppText
-              variant="smallBold"
+              variant="statValue"
               tone="secondary"
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -462,7 +442,7 @@ function BrandStatsRow({ stats }: { stats: BrandHeaderStat[] }) {
               {stat.value}
             </AppText>
             <AppText
-              variant="captionBold"
+              variant="statLabel"
               tone="muted"
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -578,15 +558,15 @@ function BrandDescription({ description }: { description?: string | null }) {
   return (
     <View style={styles.descriptionWrap}>
       <AppText
-        variant="bodyRegular"
-        tone="secondary"
+        variant="bodyReadable"
+        tone="default"
         numberOfLines={expanded ? undefined : BRAND_DESCRIPTION_PREVIEW_LINES}
       >
         {copy}
       </AppText>
       <AppText
-        variant="bodyRegular"
-        tone="secondary"
+        variant="bodyReadable"
+        tone="default"
         style={styles.descriptionMeasureText}
         onTextLayout={handleMeasuredTextLayout}
         accessible={false}
@@ -597,14 +577,14 @@ function BrandDescription({ description }: { description?: string | null }) {
       </AppText>
       {canExpand && !expanded ? (
         <Pressable onPress={() => setExpanded(true)} accessibilityRole="button" accessibilityLabel="Show full brand description">
-          <AppText variant="bodyBold" tone="primary">
+          <AppText tone="primary" style={{ fontSize: 10, fontStyle: 'italic', fontWeight: 'bold' }}>
             See more
           </AppText>
         </Pressable>
       ) : null}
       {canExpand && expanded ? (
         <Pressable onPress={() => setExpanded(false)} accessibilityRole="button" accessibilityLabel="Collapse brand description">
-          <AppText variant="bodyBold" tone="primary">
+          <AppText tone="primary" style={{ fontSize: 10, fontStyle: 'italic', fontWeight: 'bold' }}>
             See less
           </AppText>
         </Pressable>
@@ -613,27 +593,91 @@ function BrandDescription({ description }: { description?: string | null }) {
   );
 }
 
-function BrandContactItems({ items = [] }: { items?: BrandHeaderContactItem[] }) {
+function ContactIcon({ label }: { label: string }) {
+  const normalized = label.trim().toLowerCase();
   const { theme } = useTheme();
-  const visibleItems = items.filter((item) => item.value.trim().length > 0);
+  switch (normalized) {
+    case 'instagram': return <FontAwesome5 name="instagram" size={14} color="#E1306C" />;
+    case 'facebook': return <FontAwesome5 name="facebook" size={14} color="#1877F2" />;
+    case 'x':
+    case 'twitter': return <FontAwesome5 name="twitter" size={14} color="#1DA1F2" />;
+    case 'email': return <FontAwesome5 name="envelope" size={14} color={theme.colors.textSecondary} />;
+    case 'phone': return <FontAwesome5 name="phone" size={14} color={theme.colors.textSecondary} />;
+    case 'website': return <FontAwesome5 name="globe" size={14} color={theme.colors.textSecondary} />;
+    default: return <FontAwesome5 name="link" size={14} color={theme.colors.textSecondary} />;
+  }
+}
 
-  if (visibleItems.length === 0) return null;
+function getContactUrl(label: string, value: string): string | null {
+  const normalized = label.trim().toLowerCase();
+  const cleanValue = value.trim();
+  switch (normalized) {
+    case 'instagram': return `https://instagram.com/${cleanValue.replace('@', '')}`;
+    case 'facebook': return `https://facebook.com/${cleanValue}`;
+    case 'x':
+    case 'twitter': return `https://twitter.com/${cleanValue.replace('@', '')}`;
+    case 'email': return `mailto:${cleanValue}`;
+    case 'phone': return `tel:${cleanValue.replace(/[^0-9+]/g, '')}`;
+    case 'website': return cleanValue.startsWith('http') ? cleanValue : `https://${cleanValue}`;
+    default: return null;
+  }
+}
+
+function BrandContactItems({
+  items = [],
+  qrTargetUrl,
+  onOpenQr,
+}: {
+  items?: BrandHeaderContactItem[];
+  qrTargetUrl?: string | null;
+  onOpenQr?: () => void;
+}) {
+  const visibleItems = items.filter((item) => item.value.trim().length > 0);
+  const hasQr = Boolean(qrTargetUrl || onOpenQr);
+  const { theme } = useTheme();
+
+  if (visibleItems.length === 0 && !hasQr) return null;
 
   return (
     <View style={styles.contactWrap}>
       {visibleItems.map((item) => (
-        <View
-          key={`${item.label}-${item.value}`}
-          style={[styles.contactChip, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
+        <Pressable 
+          key={`${item.label}-${item.value}`} 
+          style={styles.contactActionRow}
+          onPress={() => {
+            const url = getContactUrl(item.label, item.value);
+            if (url) {
+              void Linking.openURL(url).catch(() => undefined);
+            }
+          }}
+          hitSlop={8}
+          accessibilityRole="link"
+          accessibilityLabel={`Open ${item.label} ${item.value}`}
         >
-          <AppText variant="captionBold" tone="muted" numberOfLines={1}>
-            {item.label}
-          </AppText>
-          <AppText variant="captionRegular" tone="secondary" numberOfLines={1} style={styles.contactValue}>
+          <ContactIcon label={item.label} />
+          <AppText
+            variant="smallBold"
+            tone="primary"
+            numberOfLines={1}
+            style={styles.contactLine}
+          >
             {item.value}
           </AppText>
-        </View>
+        </Pressable>
       ))}
+      {hasQr ? (
+        <Pressable
+          onPress={onOpenQr}
+          style={styles.contactActionRow}
+          accessibilityRole="button"
+          accessibilityLabel="Open brand profile QR code"
+        >
+          <FontAwesome5 name="qrcode" size={14} color={theme.colors.textSecondary} />
+          <AppText variant="smallBold" tone="primary" numberOfLines={1} style={styles.contactLine}>
+            QR code
+          </AppText>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -641,19 +685,24 @@ function BrandContactItems({ items = [] }: { items?: BrandHeaderContactItem[] })
 function BrandProfileDetails({
   description,
   contactItems,
+  qrTargetUrl,
+  onOpenQr,
 }: {
   description?: string | null;
   contactItems?: BrandHeaderContactItem[];
+  qrTargetUrl?: string | null;
+  onOpenQr?: () => void;
 }) {
   const hasDescription = Boolean(description?.trim());
   const hasContact = Boolean(contactItems?.some((item) => item.value.trim().length > 0));
+  const hasQr = Boolean(qrTargetUrl || onOpenQr);
 
-  if (!hasDescription && !hasContact) return null;
+  if (!hasDescription && !hasContact && !hasQr) return null;
 
   return (
     <View>
       <BrandDescription description={description} />
-      <BrandContactItems items={contactItems} />
+      <BrandContactItems items={contactItems} qrTargetUrl={qrTargetUrl} onOpenQr={onOpenQr} />
     </View>
   );
 }
@@ -756,7 +805,7 @@ function BrandProfileActions({
         {onCreate ? (
           <View ref={createAnchorRef} onLayout={onCreateAnchorLayout} collapsable={false}>
             <Pressable
-              onPress={onCreate}
+              onPress={(e) => onCreate?.(e)}
               style={({ pressed }) => [
                 styles.squareAction,
                 {
@@ -858,6 +907,8 @@ export function BrandProfileHeader({
   createAnchorRef,
   onCreateAnchorLayout,
   onShare,
+  onOpenMenu,
+  menuAnchorRef,
   qrTargetUrl,
   onOpenQr,
   onBack,
@@ -865,6 +916,8 @@ export function BrandProfileHeader({
   onViewAvatar,
   onEditAvatar,
   onEditBanner,
+  onNotifications,
+  unreadNotificationCount,
 }: BrandProfileHeaderProps) {
   const { theme } = useTheme();
   const effectiveName = brandName || username || 'WEAZ Brand';
@@ -887,9 +940,13 @@ export function BrandProfileHeader({
         onBack={onBack}
         onSearch={onSearch}
         onShare={onShare}
+        onOpenMenu={onOpenMenu}
+        menuAnchorRef={menuAnchorRef}
         qrTargetUrl={qrTargetUrl}
         onOpenQr={onOpenQr}
         onEditBanner={onEditBanner}
+        onNotifications={onNotifications}
+        unreadNotificationCount={unreadNotificationCount}
       />
 
       <View style={styles.identityRow}>
@@ -917,7 +974,7 @@ export function BrandProfileHeader({
         </View>
       ) : null}
 
-      <BrandProfileDetails description={description} contactItems={contactItems} />
+      <BrandProfileDetails description={description} contactItems={contactItems} qrTargetUrl={qrTargetUrl} onOpenQr={onOpenQr} />
 
       <BrandProfileActions
         isOwner={isOwner}
@@ -971,7 +1028,7 @@ const styles = StyleSheet.create({
   },
   bannerControls: {
     position: 'absolute',
-    top: tokens.spacing.lg,
+    top: 0,
     left: tokens.spacing.lg,
     right: tokens.spacing.lg,
     flexDirection: 'row',
@@ -1019,6 +1076,17 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   headerIconText: {
+    textAlign: 'center',
+  },
+  headerIconBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 8,
+    minWidth: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIconBadgeText: {
     textAlign: 'center',
   },
   bannerNameChip: {
@@ -1142,15 +1210,6 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
     paddingTop: tokens.spacing['4xl'] + tokens.spacing.sm,
   },
-  brandNamePill: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.lg,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
-  },
   brandNameRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1197,6 +1256,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: tokens.spacing.md,
+    marginTop: tokens.spacing.md,
   },
   textTag: {
     flexShrink: 1,
@@ -1209,7 +1269,8 @@ const styles = StyleSheet.create({
   },
   descriptionWrap: {
     paddingHorizontal: tokens.spacing.lg,
-    marginTop: tokens.spacing.md,
+    marginTop: tokens.spacing.xl,
+    marginBottom: tokens.spacing.xl2, // Increased gap below the see less/more
     gap: tokens.spacing.sm,
   },
   descriptionMeasureText: {
@@ -1224,7 +1285,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
-    marginTop: tokens.spacing.lg,
+    marginTop: tokens.spacing['2xl'],
   },
   primaryActionSlot: {
     flex: 1,
@@ -1251,25 +1312,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   contactWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
     marginTop: tokens.spacing.sm,
   },
-  contactChip: {
-    maxWidth: '100%',
+  contactActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     gap: tokens.spacing.xs,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.full,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
+    maxWidth: '100%',
   },
-  contactValue: {
-    minWidth: 0,
-    flexShrink: 1,
+  contactLine: {
+    maxWidth: '100%',
   },
   squareAction: {
     width: 52,

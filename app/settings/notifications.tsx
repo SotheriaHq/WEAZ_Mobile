@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import type * as ExpoNotificationsType from 'expo-notifications';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -258,10 +259,10 @@ async function readDevicePermissionStatus(): Promise<DevicePermissionStatus> {
   if (Platform.OS === 'web') return 'unavailable';
 
   try {
-    const Notifications = await import('expo-notifications');
-    const permissions = await Notifications.getPermissionsAsync();
-    if (permissions.status === Notifications.PermissionStatus.GRANTED) return 'granted';
-    if (permissions.status === Notifications.PermissionStatus.DENIED) return 'denied';
+    const ExpoNotifications = await Promise.resolve().then(() => require('expo-notifications') as typeof ExpoNotificationsType);
+    const permissions = await ExpoNotifications.getPermissionsAsync();
+    if (permissions.status === ExpoNotifications.PermissionStatus.GRANTED) return 'granted';
+    if (permissions.status === ExpoNotifications.PermissionStatus.DENIED) return 'denied';
     return 'undetermined';
   } catch {
     return 'unavailable';

@@ -11,7 +11,7 @@
  * - Gold gradient CTA for Brand, Purple for Shopper
  * - Staggered entrance with same timing curve as Login
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, LayoutAnimation, Platform, Pressable, StyleSheet, UIManager, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -28,7 +28,6 @@ import { GoogleMark } from '@/components/auth/GoogleMark';
 import { AccountTypeSelector } from '@/components/auth/AccountTypeSelector';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
-import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { Button } from '@/components/ui/Button';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
 import {
@@ -61,7 +60,7 @@ function clearError(
 export default function SignupScreen() {
   const { theme, scheme } = useTheme();
   const isDark = scheme === 'dark';
-  const { signUp, signInWithGoogle, status, user } = useAuth();
+  const { signUp, signInWithGoogle, status } = useAuth();
   const toast = useToast();
   const params = useLocalSearchParams<{ next?: string }>();
   const insets = useSafeAreaInsets();
@@ -153,18 +152,14 @@ export default function SignupScreen() {
     return next || '/(tabs)/me';
   }, [params.next]);
 
-  const [pendingNavigation, setPendingNavigation] = useState(false);
-
-  useEffect(() => {
-    if (pendingNavigation && status === 'authenticated' && user) {
-      if (hasActiveBrandMembership(user)) {
-        router.replace('/catalog' as any);
-      } else {
-        router.replace(nextPath as any);
-      }
-      setPendingNavigation(false);
-    }
-  }, [pendingNavigation, status, user, nextPath]);
+  // Route the instant the session is established (signUp/Google resolve only
+  // after the auth context has set the token + user), so the destination paints
+  // its own skeleton immediately and the welcome toast lands over it — instead
+  // of leaving the user on the signup form waiting for a status-driven effect.
+  const navigateAfterAuth = useCallback(() => {
+    const target = userType === 'BRAND' ? '/catalog' : nextPath;
+    router.replace(target as any);
+  }, [userType, nextPath]);
 
   const onSubmit = async () => {
     const newErrors: Record<string, string> = {};
@@ -219,8 +214,8 @@ export default function SignupScreen() {
         ...(userType === 'BRAND' ? { brandFullName: trimmedBrandName } : {}),
         legalAcceptances,
       });
+      navigateAfterAuth();
       toast.success('Welcome to WEAZ! 🎉');
-      setPendingNavigation(true);
     } catch (e: any) {
       const message =
         typeof e?.message === 'string' ? e.message : 'Signup failed. Please try again.';
@@ -267,8 +262,8 @@ export default function SignupScreen() {
         ...(userType === 'BRAND' ? { brandFullName: trimmedBrandName } : {}),
         legalAcceptances,
       });
+      navigateAfterAuth();
       toast.success('Welcome to WEAZ!');
-      setPendingNavigation(true);
     } catch (e: any) {
       const message =
         typeof e?.message === 'string' ? e.message : 'Google signup could not be completed.';

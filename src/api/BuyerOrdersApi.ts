@@ -379,10 +379,11 @@ async function listStandardOrders(page = 1, limit = 50): Promise<BuyerOrderSumma
 }
 
 export const BuyerOrdersApi = {
-  async list(): Promise<BuyerOrderSummary[]> {
+  async list(options?: { limit?: number }): Promise<BuyerOrderSummary[]> {
+    const limit = Math.max(1, Math.min(options?.limit ?? 50, 50));
     const [standardOrders, customOrders] = await Promise.all([
-      listStandardOrders(1, 50),
-      listCustomOrders(1, 50),
+      listStandardOrders(1, limit),
+      listCustomOrders(1, limit),
     ]);
 
     const merged: BuyerOrderSummary[] = [
@@ -391,7 +392,7 @@ export const BuyerOrdersApi = {
     ];
 
     merged.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
-    return merged;
+    return merged.slice(0, limit);
   },
 
   async getById(orderId: string): Promise<BuyerOrderDetail> {

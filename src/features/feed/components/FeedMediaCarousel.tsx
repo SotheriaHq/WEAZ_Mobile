@@ -20,10 +20,14 @@ const getAspectClass = (aspectRatio?: number | null) => {
   return 'square';
 };
 
+const shouldMountSlide = (index: number, activeIndex: number) =>
+  Math.abs(index - activeIndex) <= 1;
+
 type FeedMediaCarouselProps = {
   collectionId: string;
   mediaItems: FeedViewerMedia[];
   pageHeight: number;
+  isActive: boolean;
   initialActiveIndex?: number;
   onActiveIndexChange: (nextIndex: number) => void;
   onContentPress?: () => void;
@@ -39,11 +43,15 @@ type FeedMediaCarouselProps = {
  * The onScroll handler is intentionally omitted: dot-indicator position updates
  * only on momentum end, keeping the JS thread free during the drag so the
  * native scroll layer can respond instantly to touch on budget CPUs.
+ * Every angle keeps a fixed-width frame for exact paging, but only the current
+ * and adjacent frames mount media. This preserves direct ScrollView gestures
+ * without paying the image/component cost for every angle.
  */
 export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   collectionId,
   mediaItems,
   pageHeight,
+  isActive,
   initialActiveIndex = 0,
   onActiveIndexChange,
   onContentPress,
@@ -59,6 +67,10 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   const hasMultipleItems = mediaItems.length > 1;
   const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
   const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
+  const slideFrameStyle = useMemo(
+    () => [styles.slide, { width, backgroundColor: theme.colors.surfaceAlt }],
+    [theme.colors.surfaceAlt, width],
+  );
 
   const stableMediaItems = useMemo(
     () =>
@@ -66,6 +78,8 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         ...item,
         url: normalizeStableUri(item.url) ?? item.url,
         displayUrl: normalizeStableUri(item.displayUrl) ?? normalizeStableUri(item.url) ?? item.url,
+        previewUrl: normalizeStableUri(item.previewUrl),
+        thumbnailUrl: normalizeStableUri(item.thumbnailUrl),
         fileId: normalizeStableUri(item.fileId),
       })),
     [mediaItems],
@@ -95,6 +109,9 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       uniqueDisplayUrls: uniqueDisplayUrls.length,
       activeIndex: safeActiveIndex,
       nextIndex: stableMediaItems.length > 1 ? Math.min(stableMediaItems.length - 1, safeActiveIndex + 1) : null,
+      mountedIndices: stableMediaItems
+        .map((_, index) => index)
+        .filter((index) => shouldMountSlide(index, safeActiveIndex)),
     });
   }, [collectionId, safeActiveIndex, stableMediaItems.length, uniqueDisplayUrls, uniqueMediaIds]);
 
@@ -104,7 +121,11 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     const nextIndex = Math.min(stableMediaItems.length - 1, safeActiveIndex + 1);
     const next = stableMediaItems[nextIndex];
     if (!next) return;
-    const nextDirectUrl = normalizeStableUri(next.displayUrl) ?? normalizeStableUri(next.url);
+    const nextDirectUrl =
+      normalizeStableUri(next.previewUrl) ??
+      normalizeStableUri(next.thumbnailUrl) ??
+      normalizeStableUri(next.displayUrl) ??
+      normalizeStableUri(next.url);
     if (!nextDirectUrl || !isUsableImageHttpUrl(nextDirectUrl)) return;
     void prefetchResolvedImageAsset({
       src: nextDirectUrl,
@@ -113,7 +134,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       debugContext: {
         designId: next.id,
         mediaIndex: nextIndex,
-        sourceField: 'feed.media.displayUrl',
+        sourceField: 'feed.media.adjacent-preview',
       },
     });
   }, [safeActiveIndex, stableMediaItems]);
@@ -172,16 +193,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       );
       const previousIndex = previousIndexRef.current;
       const jumpDistance = Math.abs(measuredIndex - previousIndex);
-
-      // Limit to one page per gesture even if the device let momentum carry farther.
-      const nextIndex =
-        jumpDistance > 1
-          ? Math.max(0, Math.min(stableMediaItems.length - 1, previousIndex + Math.sign(measuredIndex - previousIndex)))
-          : measuredIndex;
-
-      if (nextIndex !== measuredIndex) {
-        carouselRef.current?.scrollTo({ x: nextIndex * width, y: 0, animated: false });
-      }
+      const nextIndex = measuredIndex;
 
       previousIndexRef.current = nextIndex;
       scrollDevLog('horizontal-carousel-index', {
@@ -190,7 +202,10 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         previousIndex,
         nextIndex,
         jumpDistance,
-        corrected: nextIndex !== measuredIndex,
+        corrected: false,
+        mountedIndices: stableMediaItems
+          .map((_, index) => index)
+          .filter((index) => shouldMountSlide(index, nextIndex)),
       });
       if (nextIndex !== previousIndex) {
         const nextMedia = stableMediaItems[nextIndex] ?? null;
@@ -226,6 +241,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
           imageIndex={0}
           viewportWidth={width}
           viewportHeight={pageHeight}
+          allowDetailUpgrade={isActive}
           onPress={onContentPress}
         />
       </View>
@@ -249,14 +265,17 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         onMomentumScrollEnd={handleMomentumEnd}
       >
         {stableMediaItems.map((item, index) => (
-          <View key={item.id} style={[styles.slide, { width }]}>
-            <FeedMediaSlide
-              media={item}
-              imageIndex={index}
-              viewportWidth={width}
-              viewportHeight={pageHeight}
-              onPress={onContentPress}
-            />
+          <View key={item.id} style={slideFrameStyle}>
+            {shouldMountSlide(index, safeActiveIndex) ? (
+              <FeedMediaSlide
+                media={item}
+                imageIndex={index}
+                viewportWidth={width}
+                viewportHeight={pageHeight}
+                allowDetailUpgrade={isActive && index === safeActiveIndex}
+                onPress={onContentPress}
+              />
+            ) : null}
           </View>
         ))}
       </ScrollView>

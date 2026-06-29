@@ -13,6 +13,7 @@ import { apiClient } from '@/src/api/httpClient';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { backOrNavigate } from '@/src/utils/mobileNavigation';
 
 type PostComment = {
   id: string;
@@ -144,7 +145,7 @@ export default function PostDetailRoute() {
           <AppText variant="subtitle">📄</AppText>
           <AppText variant="bodyBold">Could not load post</AppText>
           <AppText variant="body" tone="muted">{error}</AppText>
-          <Button title="Back" onPress={() => router.back()} />
+          <Button title="Back" onPress={() => backOrNavigate('/(tabs)')} />
         </View>
       </SafeAreaView>
     );

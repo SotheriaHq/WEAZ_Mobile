@@ -9,10 +9,11 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { useToast } from '@/src/toast/ToastContext';
+import { navPerf } from '@/src/utils/navPerf';
+import { topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 type SettingsRow = {
-  icon: string;
+  emoji: string;
   title: string;
   subtitle?: string;
   metadata?: string;
@@ -26,8 +27,6 @@ type SettingsSection = {
 };
 
 function SettingRow({ row }: { row: SettingsRow }) {
-  const { theme } = useTheme();
-
   return (
     <Pressable
       onPress={row.onPress}
@@ -36,11 +35,13 @@ function SettingRow({ row }: { row: SettingsRow }) {
       accessibilityLabel={row.title}
       style={({ pressed }) => [
         styles.row,
-        pressed && styles.rowPressed,
+        pressed ? styles.rowPressed : null,
       ]}
     >
-      <View style={[styles.iconWrap, { backgroundColor: row.danger ? theme.colors.surfaceAlt : theme.colors.primarySoft }]}>
-        <AppText variant="body">{row.icon}</AppText>
+      <View style={styles.iconWrap}>
+        <AppText variant="body" accessibilityLabel={`${row.title} icon`}>
+          {row.emoji}
+        </AppText>
       </View>
       <View style={styles.rowCopy}>
         <AppText variant="bodyBold" tone={row.danger ? 'danger' : 'default'} numberOfLines={1}>
@@ -58,8 +59,8 @@ function SettingRow({ row }: { row: SettingsRow }) {
         </AppText>
       ) : null}
       {row.onPress ? (
-        <AppText variant="body" tone="muted" style={styles.chevron}>
-          {'>'}
+        <AppText variant="subtitle" tone="muted" style={styles.chevron}>
+          ›
         </AppText>
       ) : null}
     </Pressable>
@@ -86,16 +87,17 @@ function SettingsSectionBlock({ section }: { section: SettingsSection }) {
 export default function SettingsScreen() {
   const { theme } = useTheme();
   const { user, signOut } = useAuth();
-  const toast = useToast();
   const insets = useSafeAreaInsets();
   const isBrand = hasActiveBrandMembership(user);
 
-  const comingSoon = React.useCallback(
-    (title: string) => {
-      toast.info(`${title} will open when that settings screen is ready.`);
-    },
-    [toast],
-  );
+  React.useEffect(() => {
+    navPerf.screenMounted('profile-to-settings');
+    navPerf.firstVisibleUi('profile-to-settings');
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible('profile-to-settings');
+  }, []);
 
   const sections = React.useMemo<SettingsSection[]>(() => {
     const base: SettingsSection[] = [
@@ -103,29 +105,29 @@ export default function SettingsScreen() {
         title: 'Account',
         rows: [
           {
-            icon: '👤',
+            emoji: '👤',
             title: 'Profile information',
             subtitle: 'Name, username, photo',
             onPress: () => router.push('/(tabs)/me-edit' as never),
           },
           {
-            icon: '📍',
+            emoji: '📍',
             title: 'Location',
-            subtitle: 'Share location access',
+            subtitle: 'Saved city, address, and device settings',
             onPress: () => router.push('/settings/location' as never),
           },
           {
-            icon: '✉️',
+            emoji: '📧',
             title: 'Phone & email',
             subtitle: 'Login and contact details',
             metadata: user?.email ? 'Email set' : undefined,
-            onPress: () => comingSoon('Phone & email'),
+            onPress: () => router.push('/settings/account-security' as never),
           },
           {
-            icon: '🔐',
+            emoji: '🔒',
             title: 'Password & security',
             subtitle: 'Password, sessions, passkeys',
-            onPress: () => comingSoon('Password & security'),
+            onPress: () => router.push('/settings/account-security' as never),
           },
         ],
       },
@@ -133,22 +135,22 @@ export default function SettingsScreen() {
         title: 'Privacy & Security',
         rows: [
           {
-            icon: '🛡️',
+            emoji: '🛡️',
             title: 'Privacy controls',
             subtitle: 'Visibility, blocked users',
-            onPress: () => comingSoon('Privacy controls'),
+            onPress: () => router.push('/settings/privacy' as never),
           },
           {
-            icon: '📱',
+            emoji: '📱',
             title: 'Login sessions',
             subtitle: 'Manage active devices',
-            onPress: () => comingSoon('Login sessions'),
+            onPress: () => router.push('/settings/account-security' as never),
           },
           {
-            icon: '🔑',
+            emoji: '🔑',
             title: 'Two-factor authentication',
             subtitle: 'Extra account protection',
-            onPress: () => comingSoon('Two-factor authentication'),
+            onPress: () => router.push('/settings/account-security' as never),
           },
         ],
       },
@@ -156,22 +158,22 @@ export default function SettingsScreen() {
         title: 'Notifications',
         rows: [
           {
-            icon: '🔔',
+            emoji: '🔔',
             title: 'Push notifications',
             subtitle: 'Likes, comments, messages',
             onPress: () => router.push('/settings/notifications' as never),
           },
           {
-            icon: '📨',
+            emoji: '📧',
             title: 'Email notifications',
             subtitle: 'Orders and account updates',
-            onPress: () => comingSoon('Email notifications'),
+            onPress: () => router.push('/settings/email-preferences' as never),
           },
           {
-            icon: '💬',
+            emoji: '💬',
             title: 'Chat alerts',
             subtitle: 'Message and thread alerts',
-            onPress: () => comingSoon('Chat alerts'),
+            onPress: () => router.push('/settings/notifications' as never),
           },
         ],
       },
@@ -179,66 +181,54 @@ export default function SettingsScreen() {
         title: 'Shopping',
         rows: [
           {
-            icon: '📦',
-            title: 'Orders',
-            subtitle: 'Track purchases and custom requests',
-            onPress: () => router.push('/orders' as never),
-          },
-          {
-            icon: '🗂️',
+            emoji: '🔖',
             title: 'Saved runway',
             subtitle: 'Runway looks you want to revisit',
-            onPress: () => router.push({ pathname: '/(tabs)/me', params: { tab: 'saved' } } as never),
+            onPress: () => topLevelNavigate({ pathname: '/(tabs)/me', params: { tab: 'saved' } } as never),
           },
           {
-            icon: '📏',
+            emoji: '📏',
             title: 'Measurements / My fits',
             subtitle: 'Saved fittings for custom orders',
-            onPress: () => router.push('/(tabs)/me' as never),
+            onPress: () => topLevelNavigate('/(tabs)/me' as never),
           },
           {
-            icon: 'FIT',
+            emoji: '↔️',
             title: 'Sizing settings',
             subtitle: 'Region, fit preference, and auto-apply',
             onPress: () => router.push('/settings/sizing' as never),
           },
           {
-            icon: 'GUIDE',
+            emoji: '📐',
             title: 'Size Guide / Charts',
             subtitle: 'Sizing systems, measurements, and limitations',
             onPress: () => router.push('/size-guide' as never),
           },
           {
-            icon: 'MKT',
+            emoji: '🧵',
             title: 'Market preferences',
             subtitle: 'Hidden content and market reset controls',
             onPress: () => router.push('/settings/market-preferences' as never),
           },
           {
-            icon: '💳',
+            emoji: '💳',
             title: 'Payment settings',
-            subtitle: 'Cards, payouts, billing if available',
-            onPress: () => comingSoon('Payment settings'),
+            subtitle: 'Checkout, receipts, and payment policy',
+            onPress: () => router.push('/settings/payment' as never),
           },
         ],
       },
       {
-        title: 'Data & Storage',
+        title: 'App preferences',
         rows: [
           {
-            icon: '🖼️',
-            title: 'Media cache',
-            subtitle: 'Manage image and video cache',
-            onPress: () => comingSoon('Media cache'),
-          },
-          {
-            icon: '⬆️',
+            emoji: '⬆️',
             title: 'Upload preferences',
-            subtitle: 'Image quality and data usage',
-            onPress: () => comingSoon('Upload preferences'),
+            subtitle: 'Quality limits and data usage',
+            onPress: () => router.push('/settings/upload-preferences' as never),
           },
           {
-            icon: '🎨',
+            emoji: '🌗',
             title: 'Theme',
             subtitle: 'Light, Dark, or System default',
             onPress: () => router.push('/settings/theme' as never),
@@ -248,26 +238,36 @@ export default function SettingsScreen() {
       {
         title: 'Support',
         rows: [
-          { icon: '❔', title: 'Help center', subtitle: 'Guides and common questions', onPress: () => comingSoon('Help center') },
-          { icon: '⚠️', title: 'Report a problem', subtitle: 'Tell us what went wrong', onPress: () => comingSoon('Report a problem') },
-          { icon: 'DOC', title: 'Terms & conditions', onPress: () => router.push('/legal/terms' as never) },
-          { icon: 'LOCK', title: 'Privacy policy', onPress: () => router.push('/legal/privacy' as never) },
-          { icon: 'LEGAL', title: 'Legal center', onPress: () => router.push('/legal' as never) },
+          {
+            emoji: '❓',
+            title: 'Help center',
+            subtitle: 'Guides and common questions',
+            onPress: () => router.push('/settings/support' as never),
+          },
+          {
+            emoji: '⚠️',
+            title: 'Report a problem',
+            subtitle: 'Get to the right support path',
+            onPress: () => router.push('/settings/support' as never),
+          },
+          { emoji: '📄', title: 'Terms & conditions', onPress: () => router.push('/legal/terms' as never) },
+          { emoji: '🛡️', title: 'Privacy policy', onPress: () => router.push('/legal/privacy' as never) },
+          { emoji: '⚖️', title: 'Legal center', onPress: () => router.push('/legal' as never) },
         ],
       },
       {
         title: 'Account actions',
         rows: [
           {
-            icon: '🚪',
+            emoji: '🚪',
             title: 'Sign out',
-            subtitle: 'Leave this device',
+            subtitle: 'Sign out of this device',
             onPress: () => {
               void signOut().finally(() => router.replace('/(auth)/login' as never));
             },
           },
           {
-            icon: '🗑️',
+            emoji: '🗑️',
             title: 'Delete account',
             subtitle: 'Permanently remove your WEAZ account',
             danger: true,
@@ -284,15 +284,15 @@ export default function SettingsScreen() {
       {
         title: 'Studio / Brand',
         rows: [
-          { icon: '🏷️', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => router.push('/catalog' as never) },
-          { icon: '🧵', title: 'Catalog settings', subtitle: 'Runway, products, collections', onPress: () => router.push('/catalog' as never) },
-          { icon: '✅', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => router.push('/studio' as never) },
-          { icon: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => router.push('/studio' as never) },
+          { emoji: '🏪', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => topLevelNavigate('/catalog' as never) },
+          { emoji: '🗂️', title: 'Catalog settings', subtitle: 'Runway, products, collections', onPress: () => topLevelNavigate('/catalog' as never) },
+          { emoji: '✅', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => router.push('/studio' as never) },
+          { emoji: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => router.push('/studio' as never) },
         ],
       },
       ...base.slice(4),
     ];
-  }, [comingSoon, isBrand, signOut, user?.email]);
+  }, [isBrand, signOut, user?.email]);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
@@ -366,7 +366,6 @@ const styles = StyleSheet.create({
   iconWrap: {
     width: 38,
     height: 38,
-    borderRadius: tokens.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,

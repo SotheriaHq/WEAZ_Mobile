@@ -20,6 +20,8 @@ import { Chip } from '@/components/ui/Chip';
 import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
 import { AppSelectSheet } from '@/components/ui/AppSelectSheet';
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
+import { Button } from '@/components/ui/Button';
 import { BagPulseIcon, type BagPulseStatus } from '@/components/ui/BagPulseIcon';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
@@ -218,6 +220,49 @@ function RailChip({
   );
 }
 
+function SelectorTrigger({
+  icon,
+  label,
+  value,
+  active,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const { theme } = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${value}`}
+      style={({ pressed }) => [
+        styles.selectorTrigger,
+        {
+          borderColor: active ? theme.colors.primary : theme.colors.border,
+          backgroundColor: active ? theme.colors.primarySoft : theme.colors.surfaceAlt,
+        },
+        pressed && { opacity: 0.78 },
+      ]}
+    >
+      <AppText variant="captionRegular" tone="muted">{icon}</AppText>
+      <AppText
+        variant="captionBold"
+        tone={active ? 'primary' : 'secondary'}
+        numberOfLines={1}
+        style={styles.selectorTriggerLabel}
+      >
+        {label}: {value}
+      </AppText>
+      <AppText variant="captionRegular" tone="muted">▾</AppText>
+    </Pressable>
+  );
+}
+
 interface BrandShopTabProps {
   brandId?: string;
   isOwner?: boolean;
@@ -256,6 +301,13 @@ export function BrandShopTab({
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedFilter, setSelectedFilter] = useState<FilterKey>('all');
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [priceMin, setPriceMin] = useState('');
+  const [priceMax, setPriceMax] = useState('');
+  const [onSaleOnly, setOnSaleOnly] = useState(false);
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
 
   const [wishlistByProductId, setWishlistByProductId] = useState<Record<string, true>>({});
   const [cartByProductId, setCartByProductId] = useState<Record<string, string>>({});
@@ -434,6 +486,32 @@ export function BrandShopTab({
     return ['all', ...categories];
   }, [displayProducts]);
 
+  const sizeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          displayProducts
+            .flatMap((product) => product.sizes ?? [])
+            .map((size) => size.trim())
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    [displayProducts],
+  );
+
+  const colorOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          displayProducts
+            .flatMap((product) => product.colors ?? [])
+            .map((color) => color.trim())
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [displayProducts],
+  );
+
   const filteredProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
@@ -463,6 +541,27 @@ export function BrandShopTab({
       if (selectedFilter === 'bagged' && !standardBagged && !customBagged) return false;
       if (selectedFilter === 'saved' && !saved) return false;
 
+      const min = parseFloat(priceMin);
+      const max = parseFloat(priceMax);
+      if (!Number.isNaN(min) && product.price < min) return false;
+      if (!Number.isNaN(max) && product.price > max) return false;
+
+      if (onSaleOnly) {
+        const onSale =
+          typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
+        if (!onSale) return false;
+      }
+
+      if (selectedSizes.length > 0) {
+        const productSizes = product.sizes ?? [];
+        if (!productSizes.some((size) => selectedSizes.includes(size))) return false;
+      }
+
+      if (selectedColors.length > 0) {
+        const productColors = product.colors ?? [];
+        if (!productColors.some((color) => selectedColors.includes(color))) return false;
+      }
+
       return true;
     });
 
@@ -484,9 +583,14 @@ export function BrandShopTab({
     cartByProductId,
     customBagByProductId,
     displayProducts,
+    onSaleOnly,
+    priceMax,
+    priceMin,
     query,
     selectedCategory,
+    selectedColors,
     selectedFilter,
+    selectedSizes,
     selectedSort,
     wishlistByProductId,
   ]);
@@ -706,10 +810,18 @@ export function BrandShopTab({
     setRefreshing(false);
   }, [enabled, fetchProducts, refreshCommerceState]);
 
+  const activeFilterCount =
+    (selectedFilter !== 'all' ? 1 : 0) +
+    (priceMin.trim() ? 1 : 0) +
+    (priceMax.trim() ? 1 : 0) +
+    (onSaleOnly ? 1 : 0) +
+    selectedSizes.length +
+    selectedColors.length;
+
   const hasActiveProductFilters = Boolean(
     query.trim() ||
       selectedCategory !== 'all' ||
-      selectedFilter !== 'all',
+      activeFilterCount > 0,
   );
 
   const clearProductFilters = useCallback(() => {
@@ -717,6 +829,11 @@ export function BrandShopTab({
     setSelectedCategory('all');
     setSelectedFilter('all');
     setSelectedSort('newest');
+    setPriceMin('');
+    setPriceMax('');
+    setOnSaleOnly(false);
+    setSelectedSizes([]);
+    setSelectedColors([]);
   }, []);
 
   const renderEmptyState = (args: {
@@ -774,6 +891,8 @@ export function BrandShopTab({
     });
   }
 
+  const activeSortLabel = SORT_OPTIONS.find((option) => option.key === selectedSort)?.label ?? 'Newest';
+
   const listHeader = (
     <>
       {headerComponent}
@@ -807,39 +926,28 @@ export function BrandShopTab({
           })}
         </ScrollView>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {SORT_OPTIONS.map((option) => {
-            const selected = selectedSort === option.key;
-            return (
-              <RailChip
-                key={option.key}
-                label={option.label}
-                selected={selected}
-                onPress={() => setSelectedSort(option.key)}
-              />
-            );
-          })}
-        </ScrollView>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {FILTER_OPTIONS.map((option) => {
-            const selected = selectedFilter === option.key;
-            return (
-              <RailChip
-                key={option.key}
-                label={option.label}
-                selected={selected}
-                onPress={() => setSelectedFilter(option.key)}
-              />
-            );
-          })}
-        </ScrollView>
+        <View style={styles.selectorRow}>
+          <SelectorTrigger
+            icon="↕"
+            label="Sort"
+            value={activeSortLabel}
+            active={selectedSort !== 'newest'}
+            onPress={() => setSortSheetOpen(true)}
+          />
+          <SelectorTrigger
+            icon="⚙"
+            label="Filter"
+            value={activeFilterCount > 0 ? `${activeFilterCount} active` : 'All'}
+            active={activeFilterCount > 0}
+            onPress={() => setFilterSheetOpen(true)}
+          />
+        </View>
       </View>
     </>
   );
 
   return (
-    <View style={styles.shopRoot}>
+    <View style={[styles.shopRoot, !scrollEnabled && { flex: undefined }]}>
       {filteredProducts.length === 0 ? listHeader : null}
 
       {filteredProducts.length === 0 ? (
@@ -860,12 +968,12 @@ export function BrandShopTab({
                   : 'This brand has not published any store products yet.',
               },
         )
-      ) : (
+      ) : scrollEnabled ? (
         <FlatList
           data={filteredProducts}
           keyExtractor={(item) => item.id}
           numColumns={2}
-          scrollEnabled={scrollEnabled}
+          scrollEnabled={true}
           ListHeaderComponent={listHeader}
           columnWrapperStyle={{ gap: CARD_GAP }}
           contentContainerStyle={[
@@ -891,6 +999,38 @@ export function BrandShopTab({
           )}
           ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
         />
+      ) : (
+        // Embedded mode (scrollEnabled=false): the parent catalogue ScrollView is
+        // the single scroll owner. A nested non-scroll ScrollView here collapsed /
+        // measured unreliably, which clipped the lower product rows and made the
+        // Shop tab feel scroll-locked. A plain View reports its true content height
+        // to the pager's onLayout so every row scrolls fully above the bottom island.
+        <View>
+          {listHeader}
+          <View
+            style={[
+              styles.gridContainer,
+              { paddingHorizontal: SIDE_PADDING, paddingBottom: gridBottomPadding },
+              { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP, rowGap: CARD_GAP }
+            ]}
+          >
+            {filteredProducts.map((item) => (
+              <ProductCard
+                key={item.id}
+                product={item}
+                width={cardWidth}
+                wishlisted={Boolean(wishlistByProductId[item.id])}
+                standardBagged={Boolean(cartByProductId[item.id])}
+                customBagged={Boolean(customBagByProductId[item.id])}
+                busy={Boolean(busyByProductId[item.id] || loadingByProductId[item.id])}
+                pulseStatus={getPulseStatus(item.id, getTotalStock(item) <= 0 && !item.customOrderEnabled)}
+                onPress={() => {
+                  void openProductDetail(item);
+                }}
+              />
+            ))}
+          </View>
+        </View>
       )}
 
       <Modal
@@ -1087,6 +1227,120 @@ export function BrandShopTab({
         onChange={setSelectedCategory}
         onClose={() => setCategorySheetOpen(false)}
       />
+
+      <AppSelectSheet
+        visible={sortSheetOpen}
+        title="Sort"
+        subtitle="Choose how products are ordered."
+        options={SORT_OPTIONS.map((option) => ({ value: option.key, label: option.label }))}
+        value={selectedSort}
+        onChange={(value) => setSelectedSort(value as SortKey)}
+        onClose={() => setSortSheetOpen(false)}
+      />
+
+      <AppBottomSheet
+        visible={filterSheetOpen}
+        title="Filter"
+        subtitle="Refine by availability, price, size and colour."
+        onClose={() => setFilterSheetOpen(false)}
+        onDone={() => setFilterSheetOpen(false)}
+        doneLabel="Done"
+        footer={
+          <Button
+            title="Clear all filters"
+            variant="secondary"
+            onPress={clearProductFilters}
+            disabled={!hasActiveProductFilters}
+          />
+        }
+      >
+        <View style={styles.filterSection}>
+          <AppText variant="bodyBold">Availability</AppText>
+          <View style={styles.filterChipWrap}>
+            {FILTER_OPTIONS.map((option) => (
+              <Chip
+                key={option.key}
+                label={option.label}
+                selected={selectedFilter === option.key}
+                onPress={() => setSelectedFilter(option.key)}
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.filterSection}>
+          <AppText variant="bodyBold">Price range</AppText>
+          <View style={styles.priceRow}>
+            <Input
+              label="Minimum price"
+              hideLabel
+              value={priceMin}
+              onChangeText={(text) => setPriceMin(text.replace(/[^0-9]/g, ''))}
+              placeholder="Min"
+              keyboardType="number-pad"
+              containerStyle={styles.priceInput}
+            />
+            <AppText variant="body" tone="muted">—</AppText>
+            <Input
+              label="Maximum price"
+              hideLabel
+              value={priceMax}
+              onChangeText={(text) => setPriceMax(text.replace(/[^0-9]/g, ''))}
+              placeholder="Max"
+              keyboardType="number-pad"
+              containerStyle={styles.priceInput}
+            />
+          </View>
+        </View>
+
+        <View style={styles.filterSection}>
+          <AppText variant="bodyBold">Offers</AppText>
+          <View style={styles.filterChipWrap}>
+            <Chip label="On sale" selected={onSaleOnly} onPress={() => setOnSaleOnly((value) => !value)} />
+          </View>
+        </View>
+
+        {sizeOptions.length > 0 ? (
+          <View style={styles.filterSection}>
+            <AppText variant="bodyBold">Sizes</AppText>
+            <View style={styles.filterChipWrap}>
+              {sizeOptions.map((size) => (
+                <Chip
+                  key={size}
+                  label={size}
+                  selected={selectedSizes.includes(size)}
+                  onPress={() =>
+                    setSelectedSizes((prev) =>
+                      prev.includes(size) ? prev.filter((value) => value !== size) : [...prev, size],
+                    )
+                  }
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {colorOptions.length > 0 ? (
+          <View style={styles.filterSection}>
+            <AppText variant="bodyBold">Colours</AppText>
+            <View style={styles.filterChipWrap}>
+              {colorOptions.map((color) => (
+                <Chip
+                  key={color}
+                  label={color}
+                  swatchColor={color}
+                  selected={selectedColors.includes(color)}
+                  onPress={() =>
+                    setSelectedColors((prev) =>
+                      prev.includes(color) ? prev.filter((value) => value !== color) : [...prev, color],
+                    )
+                  }
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
+      </AppBottomSheet>
     </View>
   );
 }
@@ -1143,6 +1397,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+  },
+  selectorRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+    marginTop: 2,
+  },
+  selectorTrigger: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  selectorTriggerLabel: {
+    flex: 1,
+  },
+  filterSection: {
+    gap: tokens.spacing.sm,
+  },
+  filterChipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  priceInput: {
+    flex: 1,
   },
   gridContainer: {
     paddingTop: 14,

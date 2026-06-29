@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 
@@ -57,12 +58,15 @@ import { useToast } from '@/src/toast/ToastContext';
 import type { MarketFeedResponse, MarketItem } from '@/src/types/market';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import {
   flushMarketSignals,
   startMarketSignalRuntime,
   trackMarketSignal,
 } from '@/src/services/marketSignals';
+import { navPerf } from '@/src/utils/navPerf';
+import { prefetchMedia } from '@/src/prefetch/navPrefetch';
 
 const SIDE_PADDING = tokens.spacing.lg;
 const SECTION_GAP = tokens.spacing.xl;
@@ -136,6 +140,7 @@ type MarketSettledResults = {
 
 const marketSnapshotCache = new Map<string, MarketSnapshot>();
 const marketRequestInFlight = new Map<string, Promise<MarketSettledResults>>();
+let marketSectionsCache: MarketSection[] | null = null;
 
 const toErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to load market right now.';
 
@@ -207,10 +212,11 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
   return debouncedValue;
 }
 
-function buildMarketQueryKey(filters: MarketFilters, searchValue: string) {
+function buildMarketQueryKey(filters: MarketFilters, searchValue: string, viewerKey: string) {
   const minPrice = parsePriceFilter(filters.minPrice);
   const maxPrice = parsePriceFilter(filters.maxPrice);
   return JSON.stringify({
+    viewerKey,
     category: filters.category ?? null,
     minPrice,
     maxPrice,
@@ -605,6 +611,7 @@ function MarketProductCard({
       actionLabel={unavailable ? 'Out' : BAG_IT_LABEL}
       actionBusy={bagBusy}
       actionDisabled={unavailable}
+      onPressIn={() => prefetchMedia({ src: media.mediaSrc, fileId: media.mediaFileId }, 'tap')}
       onPress={() => onOpen(item)}
       onActionPress={() => onBag(item)}
       onFavoritePress={() => onFavorite(item)}
@@ -644,6 +651,7 @@ function MarketDesignCard({
       actionLabel={canRequestCustomOrder ? BAG_IT_LABEL : undefined}
       actionBusy={bagBusy}
       actionDisabled={!canRequestCustomOrder}
+      onPressIn={() => prefetchMedia({ src: media.mediaSrc, fileId: media.mediaFileId }, 'tap')}
       onPress={() => onOpen(item)}
       onActionPress={canRequestCustomOrder ? () => onBag(item) : undefined}
       onFavoritePress={() => onFavorite(item)}
@@ -1303,14 +1311,30 @@ function EditorialCard({
 }
 
 export function MarketScreen() {
+  const flowKey = 'market';
+  // Phase 1 instrumentation (gated)
+  React.useEffect(() => {
+    navPerf.screenMounted(flowKey);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible(flowKey);
+  }, []);
+
+  React.useEffect(() => {
+    navPerf.firstVisibleUi(flowKey);
+  }, []);
+
   const { theme, scheme } = useTheme();
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const toast = useToast();
   const { insets, standardScreenBottomPadding } = useScreenChrome();
   const { width, height } = useWindowDimensions();
   const { bagProduct, bagSource } = useMobileBagging();
+  const deferredWorkReady = useDeferredScreenWork();
+  const marketViewerKey = status === 'authenticated' ? user?.id ?? 'authenticated' : 'guest';
   const initialMarketSnapshotRef = useRef<MarketSnapshot | null>(
-    readMarketSnapshot(buildMarketQueryKey(DEFAULT_MARKET_FILTERS, ''))?.snapshot ?? null,
+    readMarketSnapshot(buildMarketQueryKey(DEFAULT_MARKET_FILTERS, '', marketViewerKey))?.snapshot ?? null,
   );
   const [products, setProducts] = useState<StoreProduct[]>(() => initialMarketSnapshotRef.current?.products ?? []);
   const [designs, setDesigns] = useState<MarketItem[]>(() => initialMarketSnapshotRef.current?.designs ?? []);
@@ -1332,7 +1356,7 @@ export function MarketScreen() {
   const [collectionError, setCollectionError] = useState<string | null>(
     () => initialMarketSnapshotRef.current?.collectionError ?? null,
   );
-  const [apiSections, setApiSections] = useState<MarketSection[]>([]);
+  const [apiSections, setApiSections] = useState<MarketSection[]>(() => marketSectionsCache ?? []);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, MARKET_SEARCH_DEBOUNCE_MS);
   const [filters, setFilters] = useState<MarketFilters>(DEFAULT_MARKET_FILTERS);
@@ -1344,18 +1368,79 @@ export function MarketScreen() {
   const lastResetQueryKeyRef = useRef<string | null>(null);
   const resetInFlightKeyRef = useRef<string | null>(null);
   const moreInFlightKeyRef = useRef<string | null>(null);
+  const productsRef = useRef(products);
+  const designsRef = useRef(designs);
+  const collectionsRef = useRef(collections);
+  const productCursorRef = useRef(productCursor);
+  const designCursorRef = useRef(designCursor);
+  const productHasNextRef = useRef(productHasNext);
+  const designHasNextRef = useRef(designHasNext);
+  const collectionErrorRef = useRef(collectionError);
   const moodboardSectionSeenRef = useRef<string | null>(null);
   const moodboardSuggestionSeenRef = useRef<Set<string>>(new Set());
   const viewedSectionKeysRef = useRef<Set<string>>(new Set());
   const viewedItemKeysRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => startMarketSignalRuntime(), []);
+  useEffect(() => {
+    if (!deferredWorkReady) return undefined;
+    return startMarketSignalRuntime();
+  }, [deferredWorkReady]);
+
+  // Dev-only nav timing for tabs→market. Shell renders at mount (cached snapshot
+  // or skeleton); data is ready once the initial market load settles.
+  useEffect(() => {
+    navPerf.screenMounted('tabs→market');
+    navPerf.shellVisible('tabs→market');
+    navPerf.firstVisibleUi('tabs→market');
+    if (initialMarketSnapshotRef.current || marketSectionsCache !== null) {
+      navPerf.mark('cache_hit', 'tabs→market');
+      navPerf.mark('stale_ui_rendered', 'tabs→market');
+    } else {
+      navPerf.mark('cache_miss', 'tabs→market');
+      navPerf.mark('cold_skeleton_rendered', 'tabs→market');
+    }
+  }, []);
+  useEffect(() => {
+    if (!loading) navPerf.dataReady('tabs→market');
+  }, [loading]);
+
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
+
+  useEffect(() => {
+    designsRef.current = designs;
+  }, [designs]);
+
+  useEffect(() => {
+    collectionsRef.current = collections;
+  }, [collections]);
+
+  useEffect(() => {
+    productCursorRef.current = productCursor;
+  }, [productCursor]);
+
+  useEffect(() => {
+    designCursorRef.current = designCursor;
+  }, [designCursor]);
+
+  useEffect(() => {
+    productHasNextRef.current = productHasNext;
+  }, [productHasNext]);
+
+  useEffect(() => {
+    designHasNextRef.current = designHasNext;
+  }, [designHasNext]);
+
+  useEffect(() => {
+    collectionErrorRef.current = collectionError;
+  }, [collectionError]);
 
   const bottomClearance = standardScreenBottomPadding;
   const allItems = useMemo(() => buildContentItems(products, designs), [designs, products]);
   const marketQueryKey = useMemo(
-    () => buildMarketQueryKey(filters, debouncedSearch),
-    [debouncedSearch, filters.category, filters.maxPrice, filters.minPrice, filters.sort],
+    () => buildMarketQueryKey(filters, debouncedSearch, marketViewerKey),
+    [debouncedSearch, filters.category, filters.maxPrice, filters.minPrice, filters.sort, marketViewerKey],
   );
 
   const applyMarketSnapshot = useCallback((snapshot: MarketSnapshot) => {
@@ -1372,9 +1457,11 @@ export function MarketScreen() {
   const loadApiSections = useCallback(async () => {
     try {
       const response = await getMarketSections({ limit: 8 });
-      setApiSections(response.sections ?? []);
+      const nextSections = response.sections ?? [];
+      marketSectionsCache = nextSections;
+      setApiSections(nextSections);
     } catch {
-      setApiSections([]);
+      // Keep the last visible sections on transient refresh failures.
     }
   }, []);
 
@@ -1514,9 +1601,11 @@ export function MarketScreen() {
 
   const loadMarket = useCallback(
     async (mode: 'reset' | 'more', options?: { forceRefresh?: boolean }) => {
+      let didStartBackgroundRefresh = false;
       if (mode === 'reset') {
         const cached = options?.forceRefresh ? null : readMarketSnapshot(marketQueryKey);
         if (cached) {
+          navPerf.mark('cache_hit', 'tabs→market');
           applyMarketSnapshot(cached.snapshot);
           setError(null);
           setLoading(false);
@@ -1525,7 +1614,14 @@ export function MarketScreen() {
             lastResetQueryKeyRef.current = marketQueryKey;
             return;
           }
-        } else if (!options?.forceRefresh && lastResetQueryKeyRef.current === marketQueryKey && allItems.length > 0) {
+          navPerf.mark('stale_ui_rendered', 'tabs→market');
+          navPerf.mark('background_refresh_started', 'tabs→market');
+          didStartBackgroundRefresh = true;
+        } else if (
+          !options?.forceRefresh &&
+          lastResetQueryKeyRef.current === marketQueryKey &&
+          (allItems.length > 0 || collectionsRef.current.length > 0)
+        ) {
           return;
         }
 
@@ -1537,7 +1633,7 @@ export function MarketScreen() {
         loadedMorePageKeysRef.current.clear();
         setError(null);
         setCollectionError(null);
-        setLoading(!cached && allItems.length === 0);
+        setLoading(!cached && allItems.length === 0 && collectionsRef.current.length === 0);
       } else {
         const canFetchProducts = productHasNext && Boolean(productCursor);
         const canFetchDesigns = designHasNext && Boolean(designCursor);
@@ -1571,8 +1667,15 @@ export function MarketScreen() {
         const productOk = productValue !== null;
         const designOk = designValue !== null;
         const collectionOk = collectionResult.status === 'fulfilled';
+        const previousProducts = productsRef.current;
+        const previousDesigns = designsRef.current;
+        const previousCollections = collectionsRef.current;
+        const hasVisibleMarketState =
+          previousProducts.length > 0 ||
+          previousDesigns.length > 0 ||
+          previousCollections.length > 0;
 
-        if (!productOk && !designOk) {
+        if (!productOk && !designOk && !hasVisibleMarketState) {
           const failureReason =
             productResult.status === 'rejected'
               ? productResult.reason
@@ -1582,14 +1685,14 @@ export function MarketScreen() {
           setError(toErrorMessage(failureReason));
         }
 
-        let nextProducts: StoreProduct[] | null = null;
-        let nextDesigns: MarketItem[] | null = null;
-        let nextCollections: StoreCollectionSummary[] | null = null;
-        let nextProductCursor: string | null = null;
-        let nextDesignCursor: string | null = null;
-        let nextProductHasNext = false;
-        let nextDesignHasNext = false;
-        let nextCollectionError: string | null = null;
+        let nextProducts: StoreProduct[] | null = mode === 'reset' ? previousProducts : null;
+        let nextDesigns: MarketItem[] | null = mode === 'reset' ? previousDesigns : null;
+        let nextCollections: StoreCollectionSummary[] | null = mode === 'reset' ? previousCollections : null;
+        let nextProductCursor: string | null = mode === 'reset' ? productCursorRef.current : null;
+        let nextDesignCursor: string | null = mode === 'reset' ? designCursorRef.current : null;
+        let nextProductHasNext = mode === 'reset' ? productHasNextRef.current : false;
+        let nextDesignHasNext = mode === 'reset' ? designHasNextRef.current : false;
+        let nextCollectionError: string | null = mode === 'reset' ? collectionErrorRef.current : null;
 
         if (productValue) {
           nextProductCursor = productValue.nextCursor;
@@ -1607,11 +1710,6 @@ export function MarketScreen() {
           }
           setProductCursor(nextProductCursor);
           setProductHasNext(nextProductHasNext);
-        } else if (mode === 'reset') {
-          setProducts([]);
-          setProductCursor(null);
-          setProductHasNext(false);
-          nextProducts = [];
         }
 
         if (designValue) {
@@ -1630,11 +1728,6 @@ export function MarketScreen() {
           }
           setDesignCursor(nextDesignCursor);
           setDesignHasNext(nextDesignHasNext);
-        } else if (mode === 'reset') {
-          setDesigns([]);
-          setDesignCursor(null);
-          setDesignHasNext(false);
-          nextDesigns = [];
         }
 
         if (mode === 'reset') {
@@ -1645,11 +1738,9 @@ export function MarketScreen() {
           } else if (collectionResult.status === 'rejected') {
             nextCollectionError = toErrorMessage(collectionResult.reason);
             setCollectionError(nextCollectionError);
-            setCollections([]);
-            nextCollections = [];
           }
 
-          if (productValue || designValue) {
+          if (productValue || designValue || collectionValue) {
             writeMarketSnapshot(marketQueryKey, {
               products: nextProducts ?? [],
               designs: nextDesigns ?? [],
@@ -1671,6 +1762,9 @@ export function MarketScreen() {
             resetInFlightKeyRef.current = null;
           }
           setLoading(false);
+          if (didStartBackgroundRefresh) {
+            navPerf.mark('background_refresh_completed', 'tabs→market');
+          }
         } else {
           moreInFlightKeyRef.current = null;
           setLoadingMore(false);
@@ -1700,8 +1794,9 @@ export function MarketScreen() {
   }, [marketQueryKey]);
 
   useEffect(() => {
+    if (!deferredWorkReady) return;
     void loadApiSections();
-  }, [loadApiSections]);
+  }, [deferredWorkReady, loadApiSections]);
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
@@ -1712,7 +1807,7 @@ export function MarketScreen() {
   }, [products]);
 
   useEffect(() => {
-    if (status !== 'authenticated' || designs.length === 0) return undefined;
+    if (!deferredWorkReady || status !== 'authenticated' || designs.length === 0) return undefined;
     const ids = designs.map((item) => item.collectionId).filter(Boolean);
     let cancelled = false;
     SavedItemsApi.checkBatch('COLLECTION', ids)
@@ -1730,7 +1825,7 @@ export function MarketScreen() {
     return () => {
       cancelled = true;
     };
-  }, [designs, status]);
+  }, [deferredWorkReady, designs, status]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1760,10 +1855,10 @@ export function MarketScreen() {
     void flushMarketSignals();
 
     if (item.kind === 'product') {
-      router.push({ pathname: '/products/[productId]', params: { productId: item.product.id } } as any);
+      drillDownPush({ pathname: '/products/[productId]', params: { productId: item.product.id } } as any);
       return;
     }
-    router.push({
+    drillDownPush({
       pathname: '/market-viewer',
       params: {
         sourceType: 'DESIGN',
@@ -1785,7 +1880,7 @@ export function MarketScreen() {
       sectionKey: 'latest-collections',
     });
     void flushMarketSignals();
-    router.push({
+    drillDownPush({
       pathname: '/collection-viewer',
       params: { collectionId: collection.id, returnTo: '/(tabs)/discover' },
     } as any);
@@ -1801,7 +1896,9 @@ export function MarketScreen() {
       sectionKey,
     });
     void flushMarketSignals();
-    router.push({
+    navPerf.tap('market→section');
+    navPerf.navigationCalled();
+    drillDownPush({
       pathname: '/market-section',
       params: { sectionKey },
     } as any);
@@ -1821,11 +1918,11 @@ export function MarketScreen() {
     void flushMarketSignals();
 
     if (targetType === 'PRODUCT' && targetId) {
-      router.push({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
+      drillDownPush({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
       return;
     }
     if (targetType === 'DESIGN' && targetId) {
-      router.push({
+      drillDownPush({
         pathname: '/market-viewer',
         params: {
           sourceType: 'DESIGN',
@@ -1839,14 +1936,14 @@ export function MarketScreen() {
       return;
     }
     if (targetType === 'COLLECTION' && targetId) {
-      router.push({
+      drillDownPush({
         pathname: '/collection-viewer',
         params: { collectionId: targetId, returnTo: '/(tabs)/discover' },
       } as any);
       return;
     }
     if (targetType === 'BRAND' && targetId) {
-      router.push({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
+      drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
       return;
     }
     if (targetType === 'CATEGORY') {
@@ -2226,7 +2323,7 @@ export function MarketScreen() {
   const renderHeader = (
     <View style={styles.headerStack}>
       <View style={styles.topRow}>
-        <Pressable onPress={() => router.replace('/' as any)} style={({ pressed }) => [styles.logoButton, pressed && styles.pressed]}>
+        <Pressable onPress={() => topLevelNavigate('/' as any)} style={({ pressed }) => [styles.logoButton, pressed && styles.pressed]}>
           <WeazLogo size={30} />
         </Pressable>
         <View style={styles.titleWrap}>
@@ -2302,9 +2399,9 @@ export function MarketScreen() {
     </View>
   );
 
-  if (loading && allItems.length === 0) {
+  if (loading && allItems.length === 0 && collections.length === 0 && apiSections.length === 0) {
     return (
-      <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
+      <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.surface, paddingTop: insets.top }]}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <MarketSkeleton bottomPadding={bottomClearance} />
       </SafeAreaView>
@@ -2312,7 +2409,7 @@ export function MarketScreen() {
   }
 
   return (
-    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
+    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.surface, paddingTop: insets.top }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <FlatList
         data={rowData}

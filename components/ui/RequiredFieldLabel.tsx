@@ -14,12 +14,12 @@ export function RequiredFieldLabel({ children, required = false }: Props) {
     <View style={styles.row}>
       <AppText variant="captionBold" tone="secondary">
         {children}
+        {required ? (
+          // Inline red asterisk — no spelled-out "Required" text, no detached
+          // required checklist (Issue #3).
+          <AppText variant="captionBold" tone="danger"> *</AppText>
+        ) : null}
       </AppText>
-      {required ? (
-        <AppText variant="captionBold" tone="danger">
-          Required
-        </AppText>
-      ) : null}
     </View>
   );
 }
@@ -28,8 +28,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
   },
 });
 

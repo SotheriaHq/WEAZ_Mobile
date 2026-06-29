@@ -9,6 +9,7 @@ import {
 
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { isFontFallbackMode } from '@/src/styles/FontMode';
 
 type Variant =
   | 'display'
@@ -25,7 +26,20 @@ type Variant =
   | 'bodyRegular'
   | 'bodyStrong'
   | 'small'
-  | 'smallBold';
+  | 'smallBold'
+  | 'screenTitle'
+  | 'profileName'
+  | 'brandName'
+  | 'sectionTitle'
+  | 'cardTitle'
+  | 'bodyReadable'
+  | 'actionLabel'
+  | 'buttonLabel'
+  | 'badgeLabel'
+  | 'navLabel'
+  | 'meta'
+  | 'statValue'
+  | 'statLabel';
 
 type Tone = 'default' | 'secondary' | 'muted' | 'inverse' | 'primary' | 'danger' | 'success' | 'warning';
 type TypographyTokenKey =
@@ -39,7 +53,20 @@ type TypographyTokenKey =
   | 'h3'
   | 'bodyBold'
   | 'small'
-  | 'smallBold';
+  | 'smallBold'
+  | 'screenTitle'
+  | 'profileName'
+  | 'brandName'
+  | 'sectionTitle'
+  | 'cardTitle'
+  | 'bodyReadable'
+  | 'actionLabel'
+  | 'buttonLabel'
+  | 'badgeLabel'
+  | 'navLabel'
+  | 'meta'
+  | 'statValue'
+  | 'statLabel';
 
 type Props = Omit<TextProps, 'style'> & {
   variant?: Variant;
@@ -76,6 +103,19 @@ const VARIANT_MAP: Record<Variant, TypographyTokenKey> = {
   bodyStrong: 'body',
   small: 'small',
   smallBold: 'smallBold',
+  screenTitle: 'screenTitle',
+  profileName: 'profileName',
+  brandName: 'brandName',
+  sectionTitle: 'sectionTitle',
+  cardTitle: 'cardTitle',
+  bodyReadable: 'bodyReadable',
+  actionLabel: 'actionLabel',
+  buttonLabel: 'buttonLabel',
+  badgeLabel: 'badgeLabel',
+  navLabel: 'navLabel',
+  meta: 'meta',
+  statValue: 'statValue',
+  statLabel: 'statLabel',
 };
 
 const FONT_FAMILY_MAP: Record<TypographyTokenKey, string> = {
@@ -90,6 +130,19 @@ const FONT_FAMILY_MAP: Record<TypographyTokenKey, string> = {
   bodyBold: tokens.fontFamily.semiBold,
   small: tokens.fontFamily.medium,
   smallBold: tokens.fontFamily.semiBold,
+  screenTitle: tokens.fontFamily.bold,
+  profileName: tokens.fontFamily.bold,
+  brandName: tokens.fontFamily.bold,
+  sectionTitle: tokens.fontFamily.semiBold,
+  cardTitle: tokens.fontFamily.semiBold,
+  bodyReadable: tokens.fontFamily.semiBold,
+  actionLabel: tokens.fontFamily.semiBold,
+  buttonLabel: tokens.fontFamily.semiBold,
+  badgeLabel: tokens.fontFamily.bold,
+  navLabel: tokens.fontFamily.semiBold,
+  meta: tokens.fontFamily.medium,
+  statValue: tokens.fontFamily.bold,
+  statLabel: tokens.fontFamily.bold,
 };
 
 function getToneColor(tone: Tone, theme: ReturnType<typeof useTheme>['theme']) {
@@ -163,8 +216,9 @@ export function AppText({
   const tokenKey = VARIANT_MAP[variant];
   const tier = tokens.typography[tokenKey];
   const resolvedTone = muted && tone === 'default' ? 'muted' : tone;
-  const fontFamily =
-    variant === 'captionRegular'
+  const fontFamily = isFontFallbackMode
+    ? undefined
+    : variant === 'captionRegular'
       ? tokens.fontFamily.regular
       : variant === 'captionBold'
         ? tokens.fontFamily.bold
@@ -172,14 +226,27 @@ export function AppText({
           ? tokens.fontFamily.regular
           : variant === 'bodyStrong'
             ? tokens.fontFamily.bold
-        : FONT_FAMILY_MAP[tokenKey];
+            : FONT_FAMILY_MAP[tokenKey];
+
+  let defaultMaxFontSizeMultiplier: number | undefined = undefined;
+  if (['navLabel', 'badgeLabel', 'actionLabel', 'meta', 'caption', 'small', 'smallBold'].includes(variant)) {
+    defaultMaxFontSizeMultiplier = 1.2;
+  } else if (['screenTitle', 'profileName', 'brandName', 'display', 'title', 'h1'].includes(variant)) {
+    defaultMaxFontSizeMultiplier = 1.4;
+  } else {
+    // default for body, bodyReadable, etc.
+    defaultMaxFontSizeMultiplier = 1.6;
+  }
+
+  const { maxFontSizeMultiplier = defaultMaxFontSizeMultiplier, ...restProps } = rest;
 
   return (
     <Text
-      {...rest}
+      maxFontSizeMultiplier={maxFontSizeMultiplier}
+      {...restProps}
       style={[
         {
-          fontFamily,
+          ...(fontFamily ? { fontFamily } : {}),
           fontSize: tier.size,
           lineHeight: tier.lineHeight,
           color: getToneColor(resolvedTone, theme),

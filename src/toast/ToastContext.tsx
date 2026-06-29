@@ -21,13 +21,21 @@ export interface ToastData {
   type: ToastType;
   message: string;
   duration?: number;
+  actionLabel?: string;
+  onPress?: () => void;
 }
 
+export type ToastOptions = number | {
+  duration?: number;
+  actionLabel?: string;
+  onPress?: () => void;
+};
+
 interface ToastContextValue {
-  success: (message: string, duration?: number) => void;
-  error: (message: string, duration?: number) => void;
-  info: (message: string, duration?: number) => void;
-  warning: (message: string, duration?: number) => void;
+  success: (message: string, options?: ToastOptions) => void;
+  error: (message: string, options?: ToastOptions) => void;
+  info: (message: string, options?: ToastOptions) => void;
+  warning: (message: string, options?: ToastOptions) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -90,6 +98,12 @@ function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: str
     });
   };
 
+  const handleBodyPress = () => {
+    if (!toast.onPress) return;
+    toast.onPress();
+    dismissToast();
+  };
+
   return (
     <Animated.View
       style={[
@@ -102,10 +116,22 @@ function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: str
         },
       ]}
     >
-      <MaterialIcons name={colors.iconName} size={20} color={colors.icon} />
-      <AppText style={styles.toastText} numberOfLines={2}>
-        {toast.message}
-      </AppText>
+      <Pressable
+        onPress={handleBodyPress}
+        disabled={!toast.onPress}
+        style={styles.toastBody}
+        accessibilityRole={toast.onPress ? 'button' : undefined}
+      >
+        <MaterialIcons name={colors.iconName} size={20} color={colors.icon} />
+        <AppText variant="bodyReadable" tone="inverse" numberOfLines={2} style={styles.toastText}>
+          {toast.message}
+        </AppText>
+        {toast.actionLabel ? (
+          <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+            {toast.actionLabel}
+          </AppText>
+        ) : null}
+      </Pressable>
       <Pressable onPress={dismissToast} hitSlop={8}>
         <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.8)" />
       </Pressable>
@@ -137,22 +163,28 @@ function ToastContainer({ toasts, onDismiss }: { toasts: ToastData[]; onDismiss:
 
 let toastIdCounter = 0;
 
+function normalizeToastOptions(options?: ToastOptions) {
+  if (typeof options === 'number') return { duration: options };
+  return options ?? {};
+}
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastData[]>([]);
 
-  const addToast = useCallback((type: ToastType, message: string, duration?: number) => {
+  const addToast = useCallback((type: ToastType, message: string, options?: ToastOptions) => {
     const id = `toast-${++toastIdCounter}`;
-    setToasts((prev) => [...prev.slice(-2), { id, type, message, duration }]); // Keep max 3 toasts
+    const normalized = normalizeToastOptions(options);
+    setToasts((prev) => [...prev.slice(-2), { id, type, message, ...normalized }]); // Keep max 3 toasts
   }, []);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const success = useCallback((message: string, duration?: number) => addToast('success', message, duration), [addToast]);
-  const error = useCallback((message: string, duration?: number) => addToast('error', message, duration), [addToast]);
-  const info = useCallback((message: string, duration?: number) => addToast('info', message, duration), [addToast]);
-  const warning = useCallback((message: string, duration?: number) => addToast('warning', message, duration), [addToast]);
+  const success = useCallback((message: string, options?: ToastOptions) => addToast('success', message, options), [addToast]);
+  const error = useCallback((message: string, options?: ToastOptions) => addToast('error', message, options), [addToast]);
+  const info = useCallback((message: string, options?: ToastOptions) => addToast('info', message, options), [addToast]);
+  const warning = useCallback((message: string, options?: ToastOptions) => addToast('warning', message, options), [addToast]);
 
   const value: ToastContextValue = { success, error, info, warning };
 
@@ -193,10 +225,10 @@ export function setGlobalToastRef(ref: ToastContextValue) {
 }
 
 export const toast = {
-  success: (message: string, duration?: number) => globalToastRef?.success(message, duration),
-  error: (message: string, duration?: number) => globalToastRef?.error(message, duration),
-  info: (message: string, duration?: number) => globalToastRef?.info(message, duration),
-  warning: (message: string, duration?: number) => globalToastRef?.warning(message, duration),
+  success: (message: string, options?: ToastOptions) => globalToastRef?.success(message, options),
+  error: (message: string, options?: ToastOptions) => globalToastRef?.error(message, options),
+  info: (message: string, options?: ToastOptions) => globalToastRef?.info(message, options),
+  warning: (message: string, options?: ToastOptions) => globalToastRef?.warning(message, options),
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -227,9 +259,11 @@ const styles = StyleSheet.create({
   },
   toastText: {
     flex: 1,
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
+  },
+  toastBody: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
 });

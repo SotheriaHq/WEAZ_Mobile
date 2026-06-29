@@ -15,6 +15,7 @@ import {
   MOBILE_UPLOAD_POLICIES,
   assertValidPickedUploadAssets,
 } from '@/src/utils/uploadValidation';
+import { compressPickedImage } from '@/src/utils/imageCompression';
 
 export type MobileDesignAsset = {
   id: string;
@@ -24,6 +25,8 @@ export type MobileDesignAsset = {
   fileSize: number;
   mediaKind: 'image' | 'video';
   viewSlot?: MediaViewSlot | string | null;
+  width?: number;
+  height?: number;
 };
 
 export type DesignEditorAsset = MobileDesignAsset & {
@@ -557,24 +560,89 @@ async function uploadDesignAsset(
   const method = resolvePresignedUploadMethod(upload);
 
   if (method === 'POST') {
+    // S3 presigned POST (createPresignedPost). The signed policy fields MUST be
+    // appended BEFORE the file, and the file part MUST be appended last.
     const formData = new FormData();
     for (const [key, value] of Object.entries(upload.uploadFields ?? {})) {
-      formData.append(key, value);
+      formData.append(key, String(value));
     }
+    // The S3 policy pins `$Content-Type` to the server's trusted content type
+    // (the `Content-Type` value inside uploadFields). The multipart file part MUST
+    // carry that exact same type, otherwise S3 rejects with an access-denied /
+    // policy-condition error. Do NOT use the raw asset mimeType here — it may have
+    // been normalized server-side (e.g. image/jpg -> image/jpeg) or changed by
+    // compression, which would break the `["eq", "$Content-Type", ...]` condition.
+    const signedContentType =
+      (upload.uploadFields?.['Content-Type'] as string | undefined) ??
+      asset.mimeType ??
+      'application/octet-stream';
     formData.append('file', {
-      uri: asset.uri,
-      type: asset.mimeType,
-      name: asset.fileName,
+      uri: String(asset.uri),
+      type: String(signedContentType),
+      name: String(asset.fileName || `upload-${Date.now()}.bin`),
     } as any);
 
-    const response = await fetch(upload.uploadUrl, {
-      method: 'POST',
-      body: formData,
+    // CRITICAL native upload path: use XMLHttpRequest, NOT the global fetch.
+    // On Expo SDK 56 the global `fetch` is Expo's "winter" fetch, whose
+    // convertFormData does NOT support React Native's `{ uri, name, type }` file
+    // parts — it throws "Unsupported FormDataPart implementation" (it only accepts
+    // Blob/File). React Native's XMLHttpRequest streams `{ uri }` parts natively
+    // from disk AND sets `multipart/form-data; boundary=...` automatically (we must
+    // NOT set Content-Type ourselves or the boundary is dropped and S3 can't parse
+    // the body). XHR is used directly (not the axios apiClient) so no JWT headers
+    // attach to the S3 POST.
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', upload.uploadUrl);
+      const uploadHost = (() => {
+        try {
+          return new URL(upload.uploadUrl).host;
+        } catch {
+          return null;
+        }
+      })();
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+          return;
+        }
+        // S3 returns an XML body explaining exactly why (EntityTooSmall = 0-byte
+        // upload, AccessDenied = policy/Content-Type mismatch, etc.).
+        const detail = xhr.responseText || '';
+        const s3Code = /<Code>([^<]+)<\/Code>/.exec(detail)?.[1] ?? null;
+        const s3Message = /<Message>([^<]+)<\/Message>/.exec(detail)?.[1] ?? null;
+        console.warn('[design-upload] S3 POST rejected', {
+          status: xhr.status,
+          s3Code,
+          s3Message,
+          uploadHost,
+          fileName: asset.fileName,
+          declaredType: signedContentType,
+          assetMimeType: asset.mimeType,
+        });
+        // Map the most common, user-actionable S3 rejection to a clear message;
+        // everything else stays generic (and is scrubbed upstream).
+        if (s3Code === 'EntityTooLarge') {
+          reject(
+            new Error(
+              'This image is too large. Please choose a photo under 2 MB (or update the app to enable automatic compression).',
+            ),
+          );
+          return;
+        }
+        reject(new Error(`S3 upload failed (${xhr.status}${s3Code ? ` ${s3Code}` : ''})`));
+      };
+      xhr.onerror = () => {
+        console.warn('[design-upload] S3 POST transport error', {
+          status: xhr.status,
+          uploadHost,
+          fileName: asset.fileName,
+          hasUri: Boolean(asset.uri),
+        });
+        reject(new Error('S3 upload failed (network)'));
+      };
+      xhr.send(formData as any);
     });
-
-    if (!response.ok) {
-      throw new Error(`Upload failed with status ${response.status}`);
-    }
   } else {
     const fileResponse = await fetch(asset.uri);
     const blob = await fileResponse.blob();
@@ -609,7 +677,12 @@ async function initializeNewDesignUploads(payload: DesignSavePayload): Promise<I
       size: asset.fileSize,
       viewSlot: toBackendMediaViewSlot(asset.viewSlot),
     })),
-    isAvailableInStore: false,
+    // NOTE: do NOT send `isAvailableInStore` — it is not part of the backend
+    // InitializeDesignUploadDto/DesignMetadataDto and the global ValidationPipe
+    // runs with forbidNonWhitelisted, so including it 400s with
+    // "property isAvailableInStore should not exist". Availability (RTW / custom
+    // only / both) is expressed via `sizingMode` + `customOrderEnabled`, which
+    // are already part of buildMetadata above.
     draftOnly: payload.action === 'draft',
   });
 
@@ -975,13 +1048,48 @@ export async function deleteDesign(designId: string) {
 export async function saveDesignEditor(
   payload: DesignSavePayload,
   onProgress?: (value: number, message: string) => void,
+  onDesignCreated?: (designId: string) => void,
 ): Promise<{ id: string; detail: DesignDetail }> {
   const trimmedTitle = payload.title.trim() || 'Untitled design';
-  const filteredAssets = payload.assets.slice(0, DESIGN_EDITOR_MAX_MEDIA);
-  const localAssets = filteredAssets.filter((asset) => !asset.existingMediaId);
-  const existingMediaIds = filteredAssets
+  
+  onProgress?.(0.05, 'Preparing media...');
+  const processedFilteredAssets = await Promise.all(
+    payload.assets.slice(0, DESIGN_EDITOR_MAX_MEDIA).map(async (asset) => {
+      if (asset.mediaKind === 'video' || asset.existingMediaId) return asset;
+      try {
+        const compressed = await compressPickedImage(
+          asset.uri,
+          asset.width ?? 0,
+          asset.height ?? 0,
+          asset.fileName,
+          'designMedia',
+        );
+        return {
+          ...asset,
+          uri: compressed.uri,
+          width: compressed.width,
+          height: compressed.height,
+          mimeType: compressed.mimeType,
+          fileName: compressed.fileName,
+          // Only bypass the client size check when compression ACTUALLY ran (it
+          // produces a small JPEG). If the native image manipulator was
+          // unavailable and we fell back to the original full-size photo,
+          // KEEP the real fileSize so assertValidPickedUploadAssets rejects it
+          // up front with a clear "must be N MB or smaller" message instead of
+          // letting the oversized original hit S3 and fail with EntityTooLarge.
+          fileSize: compressed.compressed ? 0 : asset.fileSize,
+        };
+      } catch {
+        return asset; // Fallback to original
+      }
+    })
+  );
+
+  const localAssets = processedFilteredAssets.filter((asset) => !asset.existingMediaId);
+  const existingMediaIds = processedFilteredAssets
     .map((asset) => asset.existingMediaId)
     .filter((asset): asset is string => Boolean(asset));
+    
   assertValidPickedUploadAssets(localAssets, MOBILE_UPLOAD_POLICIES.designMedia, {
     existingCount: existingMediaIds.length,
     maxFiles: DESIGN_EDITOR_MAX_MEDIA,
@@ -996,20 +1104,22 @@ export async function saveDesignEditor(
     const initialized = await initializeNewDesignUploads({
       ...payload,
       title: trimmedTitle,
-      assets: filteredAssets,
+      assets: processedFilteredAssets,
+      action: 'draft', // FORCE draft on initialize, only finalize can publish
     });
     const designId = resolveDesignIdFromInitializeResponse(initialized);
 
     if (!designId) {
       throw new Error('The design draft could not be created.');
     }
+    onDesignCreated?.(designId);
 
     const uploads = Array.isArray(initialized.uploads) ? initialized.uploads : [];
     const completions: UploadCompletion[] = [];
 
     for (let index = 0; index < uploads.length; index += 1) {
       const upload = uploads[index];
-      const asset = filteredAssets[index];
+      const asset = processedFilteredAssets[index];
       if (!asset) continue;
       onProgress?.(
         0.2 + ((index + 1) / Math.max(uploads.length, 1)) * 0.55,
@@ -1029,7 +1139,7 @@ export async function saveDesignEditor(
       {
         ...payload,
         title: trimmedTitle,
-        assets: filteredAssets,
+        assets: processedFilteredAssets,
       },
       completions,
     );
@@ -1091,7 +1201,7 @@ export async function saveDesignEditor(
 
   const detail = await getDesignDetail(payload.designId, { forceRefresh: true });
   const finalMediaIds = detail.medias.map((media) => media.id);
-  const orderedExistingMediaIds = filteredAssets
+  const orderedExistingMediaIds = processedFilteredAssets
     .map((asset) => asset.existingMediaId)
     .filter((mediaId): mediaId is string => Boolean(mediaId && finalMediaIds.includes(mediaId)));
   const appendedMediaIds = finalMediaIds.filter((mediaId) => !orderedExistingMediaIds.includes(mediaId));

@@ -12,6 +12,7 @@ const feedKeysPath = path.join(repoRoot, 'src', 'features', 'feed', 'utils', 'fe
 const imageUriPath = path.join(repoRoot, 'src', 'hooks', 'useResolvedImageUri.ts');
 const notificationRealtimePath = path.join(repoRoot, 'src', 'realtime', 'notifications.ts');
 const messagingRealtimePath = path.join(repoRoot, 'src', 'realtime', 'messaging.ts');
+const secureStoragePath = path.join(repoRoot, 'src', 'storage', 'secureStorage.ts');
 
 function compile(filePath) {
   return ts.transpileModule(fs.readFileSync(filePath, 'utf8'), {
@@ -32,6 +33,7 @@ function loadSessionCleanup(options = {}) {
     secureDelete: [],
     removeAccessToken: 0,
     removeRefreshToken: 0,
+    removeCachedAuthUser: 0,
     purgePersistedQueryCache: 0,
     clearFeedCache: 0,
     clearBrandApi: 0,
@@ -39,6 +41,8 @@ function loadSessionCleanup(options = {}) {
     clearMessagingRealtime: 0,
     clearNotificationRealtime: 0,
     clearMarketSignalQueue: 0,
+    clearDesignEditorBackgroundTasks: 0,
+    clearWarmScreenStateCache: 0,
     deactivatePushToken: 0,
     asyncStorageGetAllKeys: 0,
     asyncStorageMultiRemove: [],
@@ -105,6 +109,12 @@ function loadSessionCleanup(options = {}) {
       if (request === '@/src/features/feed/api/feedApi') {
         return { clearCachedMarketFeed: async () => calls.clearFeedCache++ };
       }
+      if (request === '@/src/features/design-editor/designEditorBackgroundTasks') {
+        return {
+          clearDesignEditorBackgroundTasks: async () => calls.clearDesignEditorBackgroundTasks++,
+          DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY: 'threadly.designEditor.backgroundTasks.v1',
+        };
+      }
       if (request === '@/src/features/feed/utils/feedKeys') {
         return { PERSISTED_FEED_CACHE_PREFIX: 'threadly.feed.' };
       }
@@ -149,10 +159,14 @@ function loadSessionCleanup(options = {}) {
       if (request === '@/src/services/marketSignals') {
         return { clearMobileMarketSignalQueue: async () => calls.clearMarketSignalQueue++ };
       }
+      if (request === '@/src/state/screenWarmState') {
+        return { clearWarmScreenStateCache: () => calls.clearWarmScreenStateCache++ };
+      }
       if (request === '@/src/storage/secureStorage') {
         return {
           removeAccessToken: async () => calls.removeAccessToken++,
           removeRefreshToken: async () => calls.removeRefreshToken++,
+          removeCachedAuthUser: async () => calls.removeCachedAuthUser++,
         };
       }
       return require(request);
@@ -181,10 +195,11 @@ async function main() {
   assert.equal(calls.deactivatePushToken, 1, 'logout should try push-token deactivation');
   assert.equal(calls.removeAccessToken, 1, 'logout should remove SecureStore access token');
   assert.equal(calls.removeRefreshToken, 1, 'logout should remove SecureStore refresh token');
+  assert.equal(calls.removeCachedAuthUser, 1, 'logout should remove the token-bound cached user');
   assert.ok(calls.secureDelete.includes('threadly.activeBrandId'), 'logout should clear active brand');
   assert.ok(calls.secureDelete.includes('threadly.pendingBagAction.v1'), 'logout should clear pending bag action');
   assert.ok(calls.secureDelete.includes('threadly.mobileCheckout.pending.v1'), 'logout should clear pending mobile checkout');
-  assert.ok(calls.secureDelete.includes('THREADLY_USER'), 'logout should clear stored user profile');
+  assert.ok(!calls.secureDelete.includes('THREADLY_USER'), 'stored user cleanup should use the shared storage helper');
   assert.equal(calls.purgePersistedQueryCache, 1, 'logout should purge persisted React Query cache');
   assert.equal(calls.clearFeedCache, 1, 'logout should clear feed cache');
   assert.equal(calls.clearBrandApi, 1, 'logout should clear signed URL/brand API caches');
@@ -192,6 +207,8 @@ async function main() {
   assert.equal(calls.clearMessagingRealtime, 1, 'logout should disconnect messaging realtime');
   assert.equal(calls.clearNotificationRealtime, 1, 'logout should disconnect notification realtime');
   assert.equal(calls.clearMarketSignalQueue, 1, 'logout should clear persisted market signal queue');
+  assert.equal(calls.clearDesignEditorBackgroundTasks, 1, 'logout should clear design editor tasks');
+  assert.equal(calls.clearWarmScreenStateCache, 1, 'logout should clear warm screen state');
   assert.equal(calls.asyncStorageGetAllKeys, 1);
   assert.deepEqual(calls.asyncStorageMultiRemove[0], [
     'THREADLY_QUERY_CACHE_V1',
@@ -208,8 +225,14 @@ async function main() {
   const authContextSource = fs.readFileSync(authContextPath, 'utf8');
   assert.match(authContextSource, /clearMobilePrivateSessionState\(\{\s*client:\s*queryClient\s*\}\)/);
   assert.match(authContextSource, /deactivatePushToken:\s*false/);
+  assert.match(authContextSource, /getCachedAuthUser\(stored\)/);
+  assert.match(authContextSource, /setLocalSessionReady\(true\)[\s\S]*await validateToken\(\)/);
   assert.doesNotMatch(authContextSource, /removeAccessToken\(\)/);
   assert.doesNotMatch(authContextSource, /removeRefreshToken\(\)/);
+
+  const secureStorageSource = fs.readFileSync(secureStoragePath, 'utf8');
+  assert.match(secureStorageSource, /snapshot\.accessToken\s*!==\s*accessToken/);
+  assert.match(secureStorageSource, /version:\s*AUTH_USER_SNAPSHOT_VERSION/);
 
   const feedApiSource = fs.readFileSync(feedApiPath, 'utf8');
   const feedKeysSource = fs.readFileSync(feedKeysPath, 'utf8');

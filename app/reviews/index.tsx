@@ -13,6 +13,8 @@ import ReviewFormSheet from '@/components/reviews/ReviewFormSheet';
 import { targetLabel } from '@/components/reviews/reviewDisplay';
 import reviewApi, { type ReviewDto, type ReviewTargetType, type UpdateReviewPayload } from '@/src/api/ReviewApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { useCachedQuery, cachePolicies } from '@/src/cache';
+import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -84,11 +86,7 @@ export default function MyReviewsScreen() {
   const toast = useToast();
   const { status, user } = useAuth();
   const currentUserId = user?.id ?? null;
-  const [reviews, setReviews] = useState<ReviewDto[]>([]);
   const [filter, setFilter] = useState<ReviewFilter>('ALL');
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [editingReview, setEditingReview] = useState<ReviewDto | null>(null);
   const [deleteReview, setDeleteReview] = useState<ReviewDto | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -99,26 +97,24 @@ export default function MyReviewsScreen() {
     }
   }, [status]);
 
-  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (!silent) {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const response = await reviewApi.getMyReviews({ limit: 50 }, currentUserId);
-      setReviews(response.items);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to load your reviews.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [currentUserId]);
-
-  useEffect(() => {
-    if (status !== 'authenticated') return;
-    void load();
-  }, [load, status]);
+  // Cache-first: the reviews list paints from cache on re-entry, then revalidates.
+  const reviewsQuery = useCachedQuery<ReviewDto[]>({
+    key: queryKeys.reviews.mine(currentUserId),
+    fetcher: () => reviewApi.getMyReviews({ limit: 50 }, currentUserId).then((response) => response.items),
+    policy: cachePolicies.defaultQuery,
+    enabled: status === 'authenticated',
+  });
+  const reviews = reviewsQuery.data ?? [];
+  const loading = reviewsQuery.isLoading;
+  const refreshing = reviewsQuery.isRefreshing;
+  const error = reviewsQuery.error
+    ? reviewsQuery.error.message || 'Unable to load your reviews.'
+    : null;
+  const refetchReviews = reviewsQuery.refetch;
+  const mutateReviews = reviewsQuery.mutate;
+  const load = useCallback(() => {
+    void refetchReviews({ forceRefresh: true });
+  }, [refetchReviews]);
 
   const filteredReviews = useMemo(() => {
     const sorted = [...reviews].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -129,14 +125,13 @@ export default function MyReviewsScreen() {
   }, [filter, reviews]);
 
   const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    void load({ silent: true });
+    void load();
   }, [load]);
 
   const handleEdit = async (payload: UpdateReviewPayload) => {
     if (!editingReview) return;
     const updated = await reviewApi.updateReview(editingReview.id, payload);
-    setReviews((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    mutateReviews((current) => (current ?? []).map((item) => (item.id === updated.id ? updated : item)));
     setEditingReview(null);
     toast.success('Review updated');
   };
@@ -146,11 +141,11 @@ export default function MyReviewsScreen() {
     setDeleting(true);
     try {
       await reviewApi.deleteReview(deleteReview.id);
-      setReviews((current) => current.filter((item) => item.id !== deleteReview.id));
+      mutateReviews((current) => (current ?? []).filter((item) => item.id !== deleteReview.id));
       toast.success('Review deleted');
       setDeleteReview(null);
     } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Unable to delete review');
+      toast.error('Unable to delete review. Please try again.');
     } finally {
       setDeleting(false);
     }

@@ -24,8 +24,9 @@ type OwnerCatalogMediaHeaderProps = {
   onEditProfile?: () => void;
   onCreate?: () => void;
   createAnchorRef?: React.RefObject<View | null>;
-  onCreateAnchorLayout?: () => void;
   onShare?: () => void;
+  onOpenMenu?: (event?: any) => void;
+  menuAnchorRef?: React.RefObject<View | null>;
   qrTargetUrl?: string | null;
   onOpenQr?: () => void;
   onBack?: () => void;
@@ -34,6 +35,8 @@ type OwnerCatalogMediaHeaderProps = {
   stats?: BrandHeaderStat[];
   contactItems?: BrandHeaderContactItem[];
   badges?: ProfileBadgeModel[];
+  onNotifications?: () => void;
+  unreadNotificationCount?: number;
 };
 
 type PendingMediaState = {
@@ -57,8 +60,9 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   onEditProfile,
   onCreate,
   createAnchorRef,
-  onCreateAnchorLayout,
   onShare,
+  onOpenMenu,
+  menuAnchorRef,
   qrTargetUrl,
   onOpenQr,
   onBack,
@@ -67,6 +71,8 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   stats = [],
   contactItems = [],
   badges = [],
+  onNotifications,
+  unreadNotificationCount,
 }: OwnerCatalogMediaHeaderProps) {
   const { user, updateUser } = useAuth();
   const queryClient = useQueryClient();
@@ -306,13 +312,16 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       onEditProfile={onEditProfile}
       onCreate={onCreate}
       createAnchorRef={createAnchorRef}
-      onCreateAnchorLayout={onCreateAnchorLayout}
       onShare={onShare}
+      onOpenMenu={onOpenMenu}
+      menuAnchorRef={menuAnchorRef}
       qrTargetUrl={qrTargetUrl}
       onOpenQr={onOpenQr}
       onBack={onBack}
       onSearch={onSearch}
       onViewAvatar={onViewAvatar}
+      onNotifications={onNotifications}
+      unreadNotificationCount={unreadNotificationCount}
     />
   );
 });

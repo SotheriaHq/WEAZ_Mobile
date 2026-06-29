@@ -119,6 +119,9 @@ export interface CollectionDto {
   // Client-side status for publishing state
   clientStatus?: 'publishing' | 'publish-failed';
   clientStatusMessage?: string;
+  clientProgress?: number;
+  clientTaskId?: string;
+  clientFailureReason?: string | null;
 }
 
 export type CollectionScope = 'design' | 'store' | 'all';
@@ -586,7 +589,19 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
       (derivedLocation || null) ??
       null,
     brandTags: tagSource
-      .map((tag) => asString(tag))
+      .map((tag) => {
+        // Tags may arrive as plain strings or as objects ({ name|label|tag|value }).
+        // Resolve both shapes so brand tags reliably populate in the UI.
+        if (typeof tag === 'string') return asString(tag);
+        const tagRecord = asRecord(tag);
+        return (
+          asString(tagRecord.name) ??
+          asString(tagRecord.label) ??
+          asString(tagRecord.tag) ??
+          asString(tagRecord.value) ??
+          asString(tagRecord.normalizedName)
+        );
+      })
       .filter((tag): tag is string => Boolean(tag)),
     socialInstagram:
       asString(source.socialInstagram) ??
@@ -948,7 +963,7 @@ export const brandApi = {
   async getCollections(args?: {
     brandId?: string;
     visibility?: 'PUBLIC' | 'PRIVATE';
-    status?: CollectionPublicationStatus;
+    status?: CollectionPublicationStatus | CollectionPublicationStatus[];
     search?: string;
     page?: number;
     limit?: number;
@@ -967,7 +982,8 @@ export const brandApi = {
         ]);
         let merged = [...storeResult.items, ...designResult.items];
         if (args?.status) {
-          merged = merged.filter((item) => (item.publicationStatus ?? item.status) === args.status);
+          const statuses = Array.isArray(args.status) ? args.status : [args.status];
+          merged = merged.filter((item) => statuses.includes(item.publicationStatus ?? item.status as any));
         }
         if (args?.search) {
           const normalizedSearch = args.search.trim().toLowerCase();
@@ -1005,7 +1021,8 @@ export const brandApi = {
 
       let filtered = normalized.items;
       if (args?.status) {
-        filtered = filtered.filter((item) => (item.publicationStatus ?? item.status) === args.status);
+        const statuses = Array.isArray(args.status) ? args.status : [args.status];
+        filtered = filtered.filter((item) => statuses.includes(item.publicationStatus ?? item.status as any));
       }
       if (args?.search) {
         const normalizedSearch = args.search.trim().toLowerCase();
@@ -1350,11 +1367,12 @@ export const brandApi = {
         MOBILE_UPLOAD_POLICIES.profileImage,
       );
       
-      formData.append('file', {
-        uri,
-        type: mimeType,
-        name: fileName,
-      } as any);
+      const filePart = {
+        uri: String(uri),
+        type: String(mimeType),
+        name: String(fileName),
+      };
+      formData.append('file', JSON.parse(JSON.stringify(filePart)));
 
       const response = await apiClient.post('/uploads/profile-image', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -1379,11 +1397,12 @@ export const brandApi = {
         MOBILE_UPLOAD_POLICIES.bannerImage,
       );
       
-      formData.append('file', {
-        uri,
-        type: mimeType,
-        name: fileName,
-      } as any);
+      const filePart = {
+        uri: String(uri),
+        type: String(mimeType),
+        name: String(fileName),
+      };
+      formData.append('file', JSON.parse(JSON.stringify(filePart)));
 
       const response = await apiClient.post('/uploads/banner-image', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },

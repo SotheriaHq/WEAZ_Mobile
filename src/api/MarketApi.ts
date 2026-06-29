@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import { apiClient } from '@/src/api/httpClient';
 import { feedContractDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
-import type { MarketFeedResponse } from '@/src/types/market';
+import type { MarketFeedResponse, RunwayPinnedFeedResponse } from '@/src/types/market';
 import type { FeedMediaAsset, MarketFeedBrand, MarketItem, MarketMediaType } from '@/src/types/market';
 
 export type GetMarketFeedParams = {
@@ -533,7 +533,6 @@ type DropReason =
   | 'missing primaryMedia'
   | 'missing displayUrl'
   | 'invalid media status'
-  | 'invalid aspectRatio'
   | 'unsupported media type'
   | 'missing collectionId'
   | 'invalid displayUrl';
@@ -649,8 +648,16 @@ const parseFeedMediaAsset = (value: unknown, item: RawMarketItem): { asset: Feed
   const type = asString(media.type);
   if (type !== 'IMAGE' && type !== 'VIDEO') return { asset: null, reason: 'unsupported media type' };
 
-  const aspectRatio = asNumber(media.aspectRatio);
-  if (!aspectRatio || aspectRatio <= 0) return { asset: null, reason: 'invalid aspectRatio' };
+  const parsedWidth = asNumber(media.width);
+  const parsedHeight = asNumber(media.height);
+  const width = parsedWidth && parsedWidth > 0 ? parsedWidth : null;
+  const height = parsedHeight && parsedHeight > 0 ? parsedHeight : null;
+  const parsedAspectRatio = asNumber(media.aspectRatio);
+  const aspectRatio = parsedAspectRatio && parsedAspectRatio > 0
+    ? parsedAspectRatio
+    : width && height
+      ? width / height
+      : null;
 
   return {
     asset: {
@@ -662,8 +669,8 @@ const parseFeedMediaAsset = (value: unknown, item: RawMarketItem): { asset: Feed
       previewUrl: asString(media.previewUrl),
       blurHash: asString(media.blurHash),
       dominantColor: asString(media.dominantColor),
-      width: asNumber(media.width),
-      height: asNumber(media.height),
+      width,
+      height,
       aspectRatio,
       status: 'READY',
       orderIndex: asNumber(media.orderIndex) ?? 0,
@@ -1075,6 +1082,66 @@ export async function getMarketFeed(params?: GetMarketFeedParams, config?: Axios
     items,
     hasNextPage: Boolean((data as any).hasNextPage ?? items.length > 0),
     nextCursor: ((data as any).nextCursor as string | null | undefined) ?? null,
+  };
+}
+
+/**
+ * SEARCH-CORE-4/5: Runway search-pinned feed (mobile parity). Reuses the exact
+ * same item parsing as the default feed; the backend emits identical item DTOs
+ * plus additive pinned metadata (anchor/exhaustion/route hints).
+ */
+export async function getRunwayPinnedFeed(
+  params: {
+    query: string;
+    anchorDesignId?: string;
+    cursor?: string;
+    limit?: number;
+  },
+  config?: AxiosRequestConfig,
+): Promise<RunwayPinnedFeedResponse> {
+  const response = await apiClient.get('/collections/market', {
+    ...config,
+    params: {
+      feedMode: 'searchPinned',
+      query: params.query,
+      anchorDesignId: params.anchorDesignId || undefined,
+      cursor: params.cursor || undefined,
+      limit: params.limit ?? 20,
+      ...(config?.params ?? {}),
+    },
+  });
+
+  const unwrapped = unwrapPayload<unknown>(response.data);
+  const data = (unwrapped ?? response.data) as RunwayPinnedFeedResponse & {
+    items?: RawMarketItem[];
+  };
+  const rawItems =
+    data && Array.isArray((data as any).items) ? ((data as any).items as RawMarketItem[]) : [];
+  const previousDropReasons = currentDropReasons;
+  currentDropReasons = {};
+  const items = rawItems
+    .map((item) => {
+      const strictItem = parseStrictMarketFeedItem(item);
+      const mapped = strictItem ?? (isStrictDtoShape(item) ? null : normalizeLegacyMarketFeedItem(item));
+      if (!mapped) return null;
+      if (typeof (item as any).combinedCommentsCount === 'number') {
+        mapped.commentsCount = (item as any).combinedCommentsCount as number;
+      }
+      return mapped;
+    })
+    .filter((item): item is MarketItem => Boolean(item));
+  currentDropReasons = previousDropReasons;
+
+  return {
+    feedMode: 'searchPinned',
+    query: (data as any)?.query ?? params.query,
+    items,
+    nextCursor: ((data as any)?.nextCursor as string | null | undefined) ?? null,
+    hasMore: Boolean((data as any)?.hasMore),
+    anchorIncluded: Boolean((data as any)?.anchorIncluded),
+    exhaustedReason: ((data as any)?.exhaustedReason as RunwayPinnedFeedResponse['exhaustedReason']) ?? 'NONE',
+    searchContext: (data as any)?.searchContext,
+    routeHints: (data as any)?.routeHints,
   };
 }
 

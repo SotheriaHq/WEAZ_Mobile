@@ -1,5 +1,13 @@
 import React from 'react';
-import { Animated, Easing, Pressable, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import {
+  Animated,
+  Easing,
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
@@ -13,14 +21,29 @@ type Props = {
   swatchColor?: string;
   disabled?: boolean;
   variant?: 'default' | 'nav' | 'profile';
+  /** Custom tag awaiting global admin approval — rendered with a distinct,
+   *  warning-tinted "pending" treatment so it never reads as an approved tag. */
+  pending?: boolean;
 };
 
-export function Chip({ label, selected, onPress, style, swatchColor, disabled, variant = 'default' }: Props) {
-  const { theme } = useTheme();
+export function Chip({
+  label,
+  selected,
+  onPress,
+  style,
+  swatchColor,
+  disabled,
+  variant = 'default',
+  pending = false,
+}: Props) {
+  const { scheme, theme } = useTheme();
   const isSwatch = Boolean(swatchColor);
   const scale = React.useRef(new Animated.Value(1)).current;
   const isNav = variant === 'nav';
   const isProfile = variant === 'profile';
+  // Pending custom tags use a warning-tinted outline over a soft surface instead
+  // of the solid selected fill, so "added but not yet globally approved" is legible.
+  const usePendingTreatment = pending && !isNav && !isSwatch;
 
   const animatePress = React.useCallback(
     (toValue: number, duration: number) => {
@@ -35,10 +58,10 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
   );
 
   return (
-    <Animated.View style={{ transform: [{ scale }] }}>
+    <Animated.View style={[styles.touchTarget, { transform: [{ scale }] }]}>
       <Pressable
         onPress={onPress}
-        onPressIn={() => animatePress(0.96, 90)}
+        onPressIn={() => animatePress(0.98, 70)}
         onPressOut={() => animatePress(1, 140)}
         disabled={disabled}
         style={({ pressed }) => [
@@ -50,26 +73,38 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
           isNav && !selected && styles.navInactive,
           {
             backgroundColor: isSwatch
-              ? selected ? theme.colors.primarySoft : 'transparent'
+              ? selected
+                ? theme.colors.primarySoft
+                : 'transparent'
               : isNav
-                ? 'transparent'
-                : selected
-                  ? theme.colors.primary
-                  : pressed
+                ? scheme === 'dark'
+                  ? selected
                     ? theme.colors.primarySoft
+                    : theme.colors.controlSurface
+                  : 'transparent'
+                : usePendingTreatment
+                  ? theme.colors.surfaceAlt
+                  : selected
+                    ? theme.colors.primary
                     : theme.colors.surfaceAlt,
             borderColor: isNav
               ? 'transparent'
-              : selected || pressed
-                ? theme.colors.primary
-                : theme.colors.border,
-            borderBottomColor: isNav && selected ? theme.colors.primary : 'transparent',
-            opacity: disabled ? 0.48 : 1,
+              : usePendingTreatment
+                ? theme.colors.warning
+                : selected
+                  ? theme.colors.primary
+                  : theme.colors.border,
+            borderBottomColor:
+              isNav && selected ? theme.colors.primary : 'transparent',
+            opacity: disabled ? 0.48 : pressed ? 0.86 : 1,
           },
           style,
         ]}
         accessibilityRole="button"
-        accessibilityState={{ selected: Boolean(selected) }}
+        accessibilityState={{
+          selected: Boolean(selected),
+          disabled: Boolean(disabled),
+        }}
       >
         {isSwatch ? (
           <View
@@ -84,10 +119,20 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
           <View style={styles.labelWrap}>
             <AppText
               variant={isNav || isProfile ? 'captionBold' : 'smallBold'}
-              tone={isNav ? (selected ? 'primary' : 'default') : selected ? 'inverse' : 'secondary'}
+              tone={
+                isNav
+                  ? selected
+                    ? 'primary'
+                    : 'default'
+                  : usePendingTreatment
+                    ? 'warning'
+                    : selected
+                      ? 'inverse'
+                      : 'secondary'
+              }
               numberOfLines={1}
             >
-              {label}
+              {usePendingTreatment ? `${label} · pending` : label}
             </AppText>
           </View>
         )}
@@ -97,6 +142,11 @@ export function Chip({ label, selected, onPress, style, swatchColor, disabled, v
 }
 
 const styles = StyleSheet.create({
+  touchTarget: {
+    minHeight: 44,
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
+  },
   base: {
     paddingHorizontal: tokens.spacing.md,
     minHeight: 38,

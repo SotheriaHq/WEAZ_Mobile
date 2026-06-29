@@ -8,7 +8,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { router } from 'expo-router';
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 
 import { AppText } from '@/components/ui/AppText';
 import { Card } from '@/components/ui/Card';
@@ -92,24 +92,24 @@ const navigateToSuggestion = (item: MarketSectionItem) => {
   if (!targetId) return;
 
   if (targetType === 'PRODUCT') {
-    router.push({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
+    drillDownPush({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
     return;
   }
   if (targetType === 'COLLECTION') {
-    router.push({ pathname: '/collection-viewer', params: { collectionId: targetId } } as any);
+    drillDownPush({ pathname: '/collection-viewer', params: { collectionId: targetId } } as any);
     return;
   }
   if (targetType === 'DESIGN') {
-    router.push({ pathname: '/designs/[designId]', params: { designId: targetId } } as any);
+    drillDownPush({ pathname: '/designs/[designId]', params: { designId: targetId } } as any);
     return;
   }
   if (targetType === 'BRAND') {
-    router.push({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
+    drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
     return;
   }
   if (targetType === 'CATEGORY') {
     const query = item.category?.name ?? item.category?.slug ?? item.target?.key ?? item.title;
-    router.push({ pathname: '/search', params: { q: query, autoSubmit: '1' } } as any);
+    drillDownPush({ pathname: '/search', params: { q: query, autoSubmit: '1' } } as any);
   }
 };
 
