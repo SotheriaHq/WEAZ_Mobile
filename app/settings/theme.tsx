@@ -18,8 +18,8 @@ type ThemeOption = {
 
 const THEME_OPTIONS: ThemeOption[] = [
   { value: 'system', label: 'System Default', description: 'Matches your device appearance settings', icon: '💻' },
-  { value: 'light', label: 'Light', description: 'Always use the bright WEAZ theme', icon: '☀️' },
-  { value: 'dark', label: 'Dark', description: 'Always use the lower-glare WEAZ theme', icon: '🌙' },
+  { value: 'light', label: 'Light', description: 'Always use the bright WIEZ theme', icon: '☀️' },
+  { value: 'dark', label: 'Dark', description: 'Always use the lower-glare WIEZ theme', icon: '🌙' },
 ];
 
 export default function ThemeSettingsScreen() {

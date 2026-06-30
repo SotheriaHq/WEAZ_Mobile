@@ -19,8 +19,8 @@ import { Button } from '@/components/ui/Button';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { SocialProofPill } from '@/components/ui/SocialProofPill';
 import { Skeleton, SkeletonAvatar, SkeletonText } from '@/components/ui/Skeleton';
-import { WeazLogo } from '@/components/ui/WeazLogo';
-import WeazLogoLoader from '@/components/ui/WeazLogoLoader';
+import { WiezLogo } from '@/components/ui/WiezLogo';
+import WiezLogoLoader from '@/components/ui/WiezLogoLoader';
 import ThreadRailAction from '../../../../components/catalog/ThreadRailAction';
 import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
 import { brandApi, type CollectionDetailMediaDto } from '@/src/api/BrandApi';
@@ -252,7 +252,7 @@ const FeedBrandAvatar = React.memo(function FeedBrandAvatar({
             transition={80}
           />
         ) : loading ? (
-          <WeazLogoLoader size={26} />
+          <WiezLogoLoader size={26} />
         ) : (
           <AppText variant="captionBold" tone="inverse">{initials}</AppText>
         )}
@@ -576,7 +576,7 @@ const FeedSkeleton = ({
     <View style={styles.feedSkeletonRoot}>
       <View style={[styles.feedSkeletonHeader, { paddingTop: topOffset + 8 }]}>
         <View style={[styles.feedSkeletonLogoWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
-          <WeazLogo size={28} style={{ opacity: 0.92 }} />
+          <WiezLogo size={28} style={{ opacity: 0.92 }} />
         </View>
         <View style={styles.feedSkeletonHeaderActions}>
           <Skeleton width={40} height={40} borderRadius={20} />
@@ -2234,7 +2234,7 @@ export function MarketFeedScreen() {
                   ]}
                     accessibilityRole="button"
                     accessibilityLabel="Go to home">
-                    <WeazLogo size={30} style={styles.brandLogo} />
+                    <WiezLogo size={30} style={styles.brandLogo} />
                   </Pressable>
                 </View>
 

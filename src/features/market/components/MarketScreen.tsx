@@ -18,7 +18,7 @@ import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 
-import { WeazLogo } from '@/components/ui/WeazLogo';
+import { WiezLogo } from '@/components/ui/WiezLogo';
 import { AppText } from '@/components/ui/AppText';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Input } from '@/components/ui/Input';
@@ -501,7 +501,7 @@ function buildRows(args: {
     rows.push({
       id: 'fresh-row',
       type: 'HORIZONTAL_CARD_ROW',
-      title: 'Fresh on WEAZ',
+      title: 'Fresh on WIEZ',
       subtitle: 'New products and custom-ready runway',
       items: freshItems,
       onSeeAll: setNewestView,
@@ -523,7 +523,7 @@ function buildRows(args: {
     id: 'latest-collections',
     type: 'COLLECTION_ROW',
     title: 'Latest Collections',
-    subtitle: 'Shop complete edits from WEAZ brands',
+    subtitle: 'Shop complete edits from WIEZ brands',
     items: collections,
     error: collectionError,
   });
@@ -597,7 +597,7 @@ function MarketProductCard({
       width={width}
       height={height}
       title={getItemTitle(item)}
-      brandName={getItemBrand(item) ?? 'WEAZ brand'}
+      brandName={getItemBrand(item) ?? 'WIEZ brand'}
       priceLabel={getItemPriceLabel(item)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
@@ -638,7 +638,7 @@ function MarketDesignCard({
       width={width}
       height={height}
       title={getItemTitle(item)}
-      brandName={getItemBrand(item) ?? 'WEAZ brand'}
+      brandName={getItemBrand(item) ?? 'WIEZ brand'}
       priceLabel={getItemPriceLabel(item)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
@@ -913,7 +913,7 @@ function CollectionCard({
           {collection.title}
         </AppText>
         <AppText variant="caption" tone="inverse" numberOfLines={1}>
-          {collection.brandName ?? 'WEAZ brand'}
+          {collection.brandName ?? 'WIEZ brand'}
         </AppText>
         <View style={styles.collectionMetaRow}>
           <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
@@ -1302,7 +1302,7 @@ function EditorialCard({
           {item ? `Build a look around ${getItemTitle(item)}` : 'Discover curated African fashion'}
         </AppText>
         <AppText variant="caption" tone="inverse" numberOfLines={2}>
-          Mix custom-ready design inspiration with ready-to-wear finds from WEAZ brands.
+          Mix custom-ready design inspiration with ready-to-wear finds from WIEZ brands.
         </AppText>
         <AppText variant="captionBold" tone="primary">Read & Shop {String.fromCodePoint(0x2192)}</AppText>
       </View>
@@ -2324,7 +2324,7 @@ export function MarketScreen() {
     <View style={styles.headerStack}>
       <View style={styles.topRow}>
         <Pressable onPress={() => topLevelNavigate('/' as any)} style={({ pressed }) => [styles.logoButton, pressed && styles.pressed]}>
-          <WeazLogo size={30} />
+          <WiezLogo size={30} />
         </Pressable>
         <View style={styles.titleWrap}>
           <AppText variant="title">Market</AppText>

@@ -1,11 +1,11 @@
 import { StyleSheet, View } from 'react-native';
 
-import WeazLogoLoader from '@/components/ui/WeazLogoLoader';
+import WiezLogoLoader from '@/components/ui/WiezLogoLoader';
 
 export function FeedFooterLoader() {
   return (
     <View style={styles.root}>
-      <WeazLogoLoader size={24} />
+      <WiezLogoLoader size={24} />
     </View>
   );
 }

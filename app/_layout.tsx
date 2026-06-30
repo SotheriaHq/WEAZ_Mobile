@@ -86,7 +86,7 @@ function StartupFallback() {
   return (
     <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND, alignItems: 'center', justifyContent: 'center' }]}>
       <Image
-        source={require('../assets/images/weaz-splash-icon.png')}
+        source={require('../assets/images/wiez-splash-icon.png')}
         style={{ width: SPLASH_LOGO_SIZE, height: SPLASH_LOGO_SIZE }}
         contentFit="contain"
       />

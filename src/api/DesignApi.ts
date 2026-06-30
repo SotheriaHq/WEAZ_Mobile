@@ -953,7 +953,7 @@ export async function startDesignDraftSession(
   },
 ): Promise<DraftSessionResponse> {
   const response = await apiClient.post(`/designs/${designId}/draft-session`, {
-    deviceName: options?.deviceName ?? 'WEAZ mobile',
+    deviceName: options?.deviceName ?? 'WIEZ mobile',
     forceNew: options?.forceNew ?? false,
     existingToken: options?.existingToken,
   });

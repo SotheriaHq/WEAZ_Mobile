@@ -543,7 +543,7 @@ export default function StudioWebViewScreen() {
         reason: classification.reason,
         path: sanitizePathForTelemetry(classification.path),
       });
-      toast.info('Open this from the WEAZ app');
+      toast.info('Open this from the WIEZ app');
       return false;
     },
     [toast, trustedOrigins],

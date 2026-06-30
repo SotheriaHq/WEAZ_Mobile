@@ -52,7 +52,7 @@ const DELIVERY_ITEMS: ToggleConfig[] = [
   {
     id: 'push.enabled',
     label: 'Push notifications',
-    description: 'Allow WEAZ to send mobile push notifications.',
+    description: 'Allow WIEZ to send mobile push notifications.',
     section: 'push',
     key: 'enabled',
   },
@@ -66,7 +66,7 @@ const DELIVERY_ITEMS: ToggleConfig[] = [
   {
     id: 'push.sound',
     label: 'Sound',
-    description: 'Play the default notification sound for WEAZ pushes.',
+    description: 'Play the default notification sound for WIEZ pushes.',
     section: 'push',
     key: 'sound',
   },
@@ -223,7 +223,7 @@ const MESSAGING_ITEMS: ToggleConfig[] = [
 
 const DELIVERY_SECTION: ToggleSectionConfig = {
   title: 'Delivery',
-  description: 'Controls how WEAZ push notifications appear on this device.',
+  description: 'Controls how WIEZ push notifications appear on this device.',
   items: DELIVERY_ITEMS,
 };
 
@@ -390,7 +390,7 @@ function PermissionWarning({
           Device notifications are off
         </AppText>
         <AppText variant="captionRegular" tone="muted">
-          Notifications are enabled in WEAZ, but disabled at device level.
+          Notifications are enabled in WIEZ, but disabled at device level.
         </AppText>
       </View>
       <Button title="Open settings" size="sm" variant="secondary" onPress={onOpenSettings} />

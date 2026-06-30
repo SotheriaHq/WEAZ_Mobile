@@ -71,7 +71,7 @@ export default function MyBagSheet({ visible, onClose }: Props) {
               }}
             />
             <AppText variant="caption" tone="muted">
-              Payment opens through the secure provider and is verified by WEAZ before orders update.
+              Payment opens through the secure provider and is verified by WIEZ before orders update.
             </AppText>
           </View>
         ) : (

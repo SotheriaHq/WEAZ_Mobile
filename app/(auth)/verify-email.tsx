@@ -12,7 +12,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { WeazLogo } from '@/components/ui/WeazLogo';
+import { WiezLogo } from '@/components/ui/WiezLogo';
 
 type VerifyEmailState = 'verifying' | 'success' | 'error';
 
@@ -128,7 +128,7 @@ export default function VerifyEmailScreen() {
         <ActivityIndicator color={theme.colors.primary} />
         <AppText variant="title">Verifying email</AppText>
         <AppText variant="body" tone="muted">
-          Keep this screen open while WEAZ confirms your email address.
+          Keep this screen open while WIEZ confirms your email address.
         </AppText>
       </View>
     </View>
@@ -214,7 +214,7 @@ export default function VerifyEmailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to login"
           >
-            <WeazLogo size={36} />
+            <WiezLogo size={36} />
           </Pressable>
         </View>
 
@@ -226,7 +226,7 @@ export default function VerifyEmailScreen() {
           </AppText>
           <AppText variant="display">Confirm your email</AppText>
           <AppText variant="body" muted style={styles.subtitle}>
-            Use the secure link from your email to finish verifying your WEAZ account.
+            Use the secure link from your email to finish verifying your WIEZ account.
           </AppText>
         </View>
 

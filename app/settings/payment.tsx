@@ -160,7 +160,7 @@ export default function PaymentSettingsScreen() {
           <Card padding="lg" style={styles.card}>
             <AppText variant="bodyBold">Backend-verified checkout</AppText>
             <AppText variant="captionRegular" tone="muted">
-              WEAZ initializes payment from your backend bag and only updates order state after backend and provider verification.
+              WIEZ initializes payment from your backend bag and only updates order state after backend and provider verification.
             </AppText>
             <View style={styles.actionRow}>
               <View style={styles.actionSlot}>

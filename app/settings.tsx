@@ -269,7 +269,7 @@ export default function SettingsScreen() {
           {
             emoji: '🗑️',
             title: 'Delete account',
-            subtitle: 'Permanently remove your WEAZ account',
+            subtitle: 'Permanently remove your WIEZ account',
             danger: true,
             onPress: () => router.push('/settings/delete-account' as never),
           },

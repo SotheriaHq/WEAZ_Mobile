@@ -11,7 +11,7 @@ export type LegalPageDefinition = {
   sections: Array<{ heading: string; body: string }>;
 };
 
-const VERSION = '2026.06.08-weaz-draft.1';
+const VERSION = '2026.06.08-wiez-draft.1';
 const EFFECTIVE_DATE =
   '[LAWYER REVIEW] effective date pending counsel approval';
 const DRAFT_NOTICE =
@@ -26,23 +26,23 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
     version: VERSION,
     sourceDocument: 'docs/legal/user-facing/01_TERMS_AND_CONDITIONS.md',
     summary:
-      'Operating terms for WEAZ visitors, buyers, creators, brand owners, brand staff, marketplace content, checkout, and protected account actions.',
+      'Operating terms for WIEZ visitors, buyers, creators, brand owners, brand staff, marketplace content, checkout, and protected account actions.',
     sections: [
       { heading: 'Draft status', body: DRAFT_NOTICE },
       {
         heading: 'Who these terms cover',
         body:
-          'These terms apply when a person uses WEAZ as a visitor, buyer, brand owner, brand staff member, creator, or account holder. WEAZ is a fashion-focused social commerce platform for African fashion discovery, product sales, brand stores, custom-order requests, messaging, reviews, and marketplace services. [PRODUCT CONFIRMATION NEEDED] Confirm the legal entity, registered address, notice address, and any trading name.',
+          'These terms apply when a person uses WIEZ as a visitor, buyer, brand owner, brand staff member, creator, or account holder. WIEZ is a fashion-focused social commerce platform for African fashion discovery, product sales, brand stores, custom-order requests, messaging, reviews, and marketplace services. [PRODUCT CONFIRMATION NEEDED] Confirm the legal entity, registered address, notice address, and any trading name.',
       },
       {
         heading: 'Eligibility and accounts',
         body:
-          'Users must provide accurate account information, keep credentials secure, and use WEAZ only for lawful purposes. Brand owners and staff must have authority to act for the brand account they create, manage, or publish through. [PRODUCT CONFIRMATION NEEDED] Confirm minimum age and whether minors may browse, buy, sell, upload content, submit measurements, or create brand accounts.',
+          'Users must provide accurate account information, keep credentials secure, and use WIEZ only for lawful purposes. Brand owners and staff must have authority to act for the brand account they create, manage, or publish through. [PRODUCT CONFIRMATION NEEDED] Confirm minimum age and whether minors may browse, buy, sell, upload content, submit measurements, or create brand accounts.',
       },
       {
         heading: 'Marketplace role',
         body:
-          'WEAZ provides technology for brands to publish stores, products, designs, collections, custom-order flows, messages, and related content. Brands remain responsible for listings, product accuracy, lawful goods, fulfillment, customer communication, store policies, and payout details. [LAWYER REVIEW] Confirm whether WEAZ is marketplace facilitator, payment collection agent, escrow or hold administrator, seller of record, or another role.',
+          'WIEZ provides technology for brands to publish stores, products, designs, collections, custom-order flows, messages, and related content. Brands remain responsible for listings, product accuracy, lawful goods, fulfillment, customer communication, store policies, and payout details. [LAWYER REVIEW] Confirm whether WIEZ is marketplace facilitator, payment collection agent, escrow or hold administrator, seller of record, or another role.',
       },
       {
         heading: 'Payments and orders',
@@ -52,12 +52,12 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
       {
         heading: 'Content and conduct',
         body:
-          'Users keep ownership of content they own, while granting WEAZ permission to host, process, resize, display, recommend, moderate, and distribute content within the service. Users must not upload counterfeit goods, stolen designs, unauthorized media, misleading brand claims, fake reviews, harassment, scams, or unlawful content.',
+          'Users keep ownership of content they own, while granting WIEZ permission to host, process, resize, display, recommend, moderate, and distribute content within the service. Users must not upload counterfeit goods, stolen designs, unauthorized media, misleading brand claims, fake reviews, harassment, scams, or unlawful content.',
       },
       {
         heading: 'Legal updates',
         body:
-          'WEAZ records the version of required legal documents accepted during signup, checkout, store publish, and content publish flows. Existing users may need to accept this draft version or a later counsel-approved version before protected actions continue.',
+          'WIEZ records the version of required legal documents accepted during signup, checkout, store publish, and content publish flows. Existing users may need to accept this draft version or a later counsel-approved version before protected actions continue.',
       },
       {
         heading: 'Open legal items',
@@ -74,7 +74,7 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
     version: VERSION,
     sourceDocument: 'docs/legal/user-facing/02_PRIVACY_POLICY.md',
     summary:
-      'How WEAZ collects, uses, discloses, protects, retains, and deletes account, marketplace, commerce, content, safety, and device data.',
+      'How WIEZ collects, uses, discloses, protects, retains, and deletes account, marketplace, commerce, content, safety, and device data.',
     sections: [
       { heading: 'Draft status', body: DRAFT_NOTICE },
       {
@@ -83,24 +83,24 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
           'This policy covers visitors, buyers, brand owners, brand staff, creators, and account holders. [PRODUCT CONFIRMATION NEEDED] Confirm the controller/operator legal entity, registered address, privacy contact, data protection officer if required, and launch jurisdictions.',
       },
       {
-        heading: 'Data WEAZ collects',
+        heading: 'Data WIEZ collects',
         body:
-          'WEAZ collects account identity, profile, authentication, session, device, security, buyer order, shipping, payment reference, saved-card summary, brand verification, payout, store, product, media, review, message, social action, notification, push-token, marketplace-signal, support, body measurement, size-fit, custom-order, and KYC data.',
+          'WIEZ collects account identity, profile, authentication, session, device, security, buyer order, shipping, payment reference, saved-card summary, brand verification, payout, store, product, media, review, message, social action, notification, push-token, marketplace-signal, support, body measurement, size-fit, custom-order, and KYC data.',
       },
       {
         heading: 'How data is used',
         body:
-          'WEAZ uses data to create and secure accounts, operate stores, process checkout, verify payments, support shipping and fulfillment, manage custom orders, provide messaging, moderate safety issues, detect fraud, manage payouts, support users, improve reliability, and personalize marketplace discovery.',
+          'WIEZ uses data to create and secure accounts, operate stores, process checkout, verify payments, support shipping and fulfillment, manage custom orders, provide messaging, moderate safety issues, detect fraud, manage payouts, support users, improve reliability, and personalize marketplace discovery.',
       },
       {
         heading: 'Legal acceptance evidence',
         body:
-          'WEAZ records versioned legal acceptance evidence for required documents, including document key, version, source, surface, account type, timestamp, locale, app version, user agent, request evidence, and related metadata where available.',
+          'WIEZ records versioned legal acceptance evidence for required documents, including document key, version, source, surface, account type, timestamp, locale, app version, user agent, request evidence, and related metadata where available.',
       },
       {
         heading: 'Storage and processors',
         body:
-          'WEAZ uses cookies, local storage, session storage, mobile SecureStore, mobile AsyncStorage, query cache, signed URL cache, market signal queues, push-token storage, and WebView cookies. WEAZ may share data with hosting, database, storage, CDN, payment, fraud, email, push, monitoring, support, legal, and security providers. [PRODUCT CONFIRMATION NEEDED] Add the processor list.',
+          'WIEZ uses cookies, local storage, session storage, mobile SecureStore, mobile AsyncStorage, query cache, signed URL cache, market signal queues, push-token storage, and WebView cookies. WIEZ may share data with hosting, database, storage, CDN, payment, fraud, email, push, monitoring, support, legal, and security providers. [PRODUCT CONFIRMATION NEEDED] Add the processor list.',
       },
       {
         heading: 'Retention and rights',
@@ -117,28 +117,28 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
     version: VERSION,
     sourceDocument: 'docs/legal/user-facing/03_COOKIE_AND_TRACKING_POLICY.md',
     summary:
-      'How WEAZ uses cookies, browser storage, mobile storage, WebView cookies, anonymous sessions, and similar technologies.',
+      'How WIEZ uses cookies, browser storage, mobile storage, WebView cookies, anonymous sessions, and similar technologies.',
     sections: [
       { heading: 'Draft status', body: DRAFT_NOTICE },
       {
         heading: 'Essential storage',
         body:
-          'WEAZ uses essential cookies and storage for authentication, refresh sessions, fraud prevention, account security, checkout continuity, active brand context, legal acceptance flow support, and reliable app operation. Blocking essential storage can break login, checkout, store publishing, payment verification, or deletion flows.',
+          'WIEZ uses essential cookies and storage for authentication, refresh sessions, fraud prevention, account security, checkout continuity, active brand context, legal acceptance flow support, and reliable app operation. Blocking essential storage can break login, checkout, store publishing, payment verification, or deletion flows.',
       },
       {
         heading: 'Browser and mobile storage',
         body:
-          'WEAZ web uses local storage or session storage for user/session metadata, query cache, theme preferences, signed URL cache, pending bag or checkout state, active brand state, embedded surfaces, and market signals. WEAZ mobile uses SecureStore for tokens and active brand data, and AsyncStorage for query cache and marketplace signal queues.',
+          'WIEZ web uses local storage or session storage for user/session metadata, query cache, theme preferences, signed URL cache, pending bag or checkout state, active brand state, embedded surfaces, and market signals. WIEZ mobile uses SecureStore for tokens and active brand data, and AsyncStorage for query cache and marketplace signal queues.',
       },
       {
         heading: 'WebView cookies',
         body:
-          'WEAZ mobile may use WebView sessions for embedded studio or web surfaces. WebView cookie sharing can be required for authenticated users to access connected web workspaces from mobile. [LAWYER REVIEW] Confirm final WebView cookie disclosure.',
+          'WIEZ mobile may use WebView sessions for embedded studio or web surfaces. WebView cookie sharing can be required for authenticated users to access connected web workspaces from mobile. [LAWYER REVIEW] Confirm final WebView cookie disclosure.',
       },
       {
         heading: 'Marketplace signals',
         body:
-          'WEAZ collects views, saves, reactions, searches, bag interactions, suppressions, screen context, position context, and anonymous session identifiers to support recommendations, ranking, anti-abuse checks, analytics, and product reliability.',
+          'WIEZ collects views, saves, reactions, searches, bag interactions, suppressions, screen context, position context, and anonymous session identifiers to support recommendations, ranking, anti-abuse checks, analytics, and product reliability.',
       },
       {
         heading: 'Non-essential tracking',
@@ -155,7 +155,7 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
     version: VERSION,
     sourceDocument: 'docs/legal/user-facing/04_COMMUNITY_GUIDELINES.md',
     summary:
-      'Trust and safety rules for WEAZ profiles, stores, designs, products, collections, posts, comments, reviews, messages, and reports.',
+      'Trust and safety rules for WIEZ profiles, stores, designs, products, collections, posts, comments, reviews, messages, and reports.',
     sections: [
       { heading: 'Draft status', body: DRAFT_NOTICE },
       {
@@ -176,12 +176,12 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
       {
         heading: 'Messages and private content',
         body:
-          'Messages, private collection access, order communication, custom-order discussions, and support interactions must be used for legitimate WEAZ activity. [LAWYER REVIEW] Confirm final disclosure for admin/support access during safety, support, dispute, fraud, or legal reviews.',
+          'Messages, private collection access, order communication, custom-order discussions, and support interactions must be used for legitimate WIEZ activity. [LAWYER REVIEW] Confirm final disclosure for admin/support access during safety, support, dispute, fraud, or legal reviews.',
       },
       {
         heading: 'Enforcement',
         body:
-          'WEAZ may review, remove, hide, restrict, suspend, close, redact, or escalate content, stores, messages, reviews, and accounts where needed. [PRODUCT CONFIRMATION NEEDED] Define appeal channels, response targets, suspension notice rules, and repeat-violation thresholds.',
+          'WIEZ may review, remove, hide, restrict, suspend, close, redact, or escalate content, stores, messages, reviews, and accounts where needed. [PRODUCT CONFIRMATION NEEDED] Define appeal channels, response targets, suspension notice rules, and repeat-violation thresholds.',
       },
     ],
   },
@@ -193,7 +193,7 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
     version: VERSION,
     sourceDocument: 'docs/legal/user-facing/05_SELLER_BRAND_TERMS.md',
     summary:
-      'Additional terms for brands, sellers, designers, store owners, and staff operating WEAZ seller workflows.',
+      'Additional terms for brands, sellers, designers, store owners, and staff operating WIEZ seller workflows.',
     sections: [
       { heading: 'Draft status', body: DRAFT_NOTICE },
       {
@@ -219,7 +219,7 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
       {
         heading: 'Payments and disputes',
         body:
-          'WEAZ may record payments, commissions, settlement holds, refunds, chargebacks, reversals, payout eligibility, bank account data, and dispute outcomes. [PRODUCT CONFIRMATION NEEDED] Add commission, payout, reserve, tax, and fee-change terms. [LAWYER REVIEW] Confirm liability split for refunds, defective goods, delivery failures, custom fit disputes, and chargebacks.',
+          'WIEZ may record payments, commissions, settlement holds, refunds, chargebacks, reversals, payout eligibility, bank account data, and dispute outcomes. [PRODUCT CONFIRMATION NEEDED] Add commission, payout, reserve, tax, and fee-change terms. [LAWYER REVIEW] Confirm liability split for refunds, defective goods, delivery failures, custom fit disputes, and chargebacks.',
       },
     ],
   },
@@ -237,7 +237,7 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
       {
         heading: 'Checkout information',
         body:
-          'Buyers must provide accurate contact, delivery, order, and payment information. WEAZ may require authentication, current legal acceptance, payment policy acceptance, provider verification, idempotency checks, or fraud review before checkout continues.',
+          'Buyers must provide accurate contact, delivery, order, and payment information. WIEZ may require authentication, current legal acceptance, payment policy acceptance, provider verification, idempotency checks, or fraud review before checkout continues.',
       },
       {
         heading: 'Product orders',
@@ -275,17 +275,17 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
       {
         heading: 'Payment providers',
         body:
-          'WEAZ may use third-party payment providers to collect, authorize, verify, refund, reverse, reconcile, or dispute payments through redirects, hosted pages, WebBrowser flows, tokenized card authorization, webhooks, or backend verification. [PRODUCT CONFIRMATION NEEDED] Confirm launch providers, currencies, saved-card availability, and provider terms links.',
+          'WIEZ may use third-party payment providers to collect, authorize, verify, refund, reverse, reconcile, or dispute payments through redirects, hosted pages, WebBrowser flows, tokenized card authorization, webhooks, or backend verification. [PRODUCT CONFIRMATION NEEDED] Confirm launch providers, currencies, saved-card availability, and provider terms links.',
       },
       {
         heading: 'Verification',
         body:
-          'A buyer payment is not final merely because checkout opened or payment was attempted. WEAZ may wait for provider verification, backend status checks, webhook confirmation, fraud review, reconciliation, or delayed provider events before treating an order as paid.',
+          'A buyer payment is not final merely because checkout opened or payment was attempted. WIEZ may wait for provider verification, backend status checks, webhook confirmation, fraud review, reconciliation, or delayed provider events before treating an order as paid.',
       },
       {
         heading: 'Amounts and fees',
         body:
-          'WEAZ may store order totals, item totals, currency, exchange-rate snapshots, payment references, provider status, commission, settlement values, escrow or hold records, and payout eligibility records. [PRODUCT CONFIRMATION NEEDED] Add final consumer fee, seller commission, FX, refund fee, chargeback fee, and tax terms.',
+          'WIEZ may store order totals, item totals, currency, exchange-rate snapshots, payment references, provider status, commission, settlement values, escrow or hold records, and payout eligibility records. [PRODUCT CONFIRMATION NEEDED] Add final consumer fee, seller commission, FX, refund fee, chargeback fee, and tax terms.',
       },
       {
         heading: 'Refunds and payouts',
@@ -295,7 +295,7 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
       {
         heading: 'Subscriptions',
         body:
-          '[PRODUCT CONFIRMATION NEEDED] No active paid subscription product was identified in the current legal audit. If WEAZ adds subscriptions, premium seller plans, recurring billing, trials, or auto-renewals, this policy must be expanded before launch.',
+          '[PRODUCT CONFIRMATION NEEDED] No active paid subscription product was identified in the current legal audit. If WIEZ adds subscriptions, premium seller plans, recurring billing, trials, or auto-renewals, this policy must be expanded before launch.',
       },
     ],
   },
@@ -307,7 +307,7 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
     version: VERSION,
     sourceDocument: 'docs/legal/user-facing/08_CONTENT_IP_COPYRIGHT_POLICY.md',
     summary:
-      'WEAZ rules for user content, original work, image rights, designs, trademarks, counterfeits, takedowns, and repeat infringement.',
+      'WIEZ rules for user content, original work, image rights, designs, trademarks, counterfeits, takedowns, and repeat infringement.',
     sections: [
       { heading: 'Draft status', body: DRAFT_NOTICE },
       {
@@ -318,7 +318,7 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
       {
         heading: 'Ownership and license',
         body:
-          'Users keep ownership of content they own. By uploading content, users grant WEAZ a license to host, store, process, resize, transcode, reproduce, display, distribute, recommend, promote within the service, moderate, and preserve that content as needed to operate WEAZ.',
+          'Users keep ownership of content they own. By uploading content, users grant WIEZ a license to host, store, process, resize, transcode, reproduce, display, distribute, recommend, promote within the service, moderate, and preserve that content as needed to operate WIEZ.',
       },
       {
         heading: 'Rights-cleared content',
@@ -345,23 +345,23 @@ export const LEGAL_PAGES: LegalPageDefinition[] = [
     version: VERSION,
     sourceDocument: 'docs/legal/user-facing/09_ACCOUNT_DATA_DELETION_POLICY.md',
     summary:
-      'How WEAZ account deletion works, what current deletion changes, and what records may be retained after deletion.',
+      'How WIEZ account deletion works, what current deletion changes, and what records may be retained after deletion.',
     sections: [
       { heading: 'Draft status', body: DRAFT_NOTICE },
       {
         heading: 'Requesting deletion',
         body:
-          'Authenticated users can request account deletion from account settings where implemented. WEAZ may require password confirmation, a confirmation word, active authentication, and other safety checks before deletion starts.',
+          'Authenticated users can request account deletion from account settings where implemented. WIEZ may require password confirmation, a confirmation word, active authentication, and other safety checks before deletion starts.',
       },
       {
         heading: 'What deletion does',
         body:
-          'WEAZ current backend deletion revokes refresh tokens, disables account credential state, deactivates the user account, and pseudonymizes identifiers such as email and username. It is not a blanket immediate erasure of every related record. [LAWYER REVIEW] Counsel must approve final wording.',
+          'WIEZ current backend deletion revokes refresh tokens, disables account credential state, deactivates the user account, and pseudonymizes identifiers such as email and username. It is not a blanket immediate erasure of every related record. [LAWYER REVIEW] Counsel must approve final wording.',
       },
       {
         heading: 'Retained records',
         body:
-          'WEAZ may retain order records, payment records, payout records, refunds, chargebacks, fraud signals, security logs, legal acceptance records, moderation records, dispute records, tax/accounting records, support records, KYC or verification records, and audit logs where required or permitted.',
+          'WIEZ may retain order records, payment records, payout records, refunds, chargebacks, fraud signals, security logs, legal acceptance records, moderation records, dispute records, tax/accounting records, support records, KYC or verification records, and audit logs where required or permitted.',
       },
       {
         heading: 'Brand and store accounts',

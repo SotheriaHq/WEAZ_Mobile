@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "start:dev:tunnel": "expo start --dev-client --host tunnel --clear --scheme weazmobile",
-    "start:dev:lan": "expo start --dev-client --host lan --clear --scheme weazmobile",
+    "start:dev:tunnel": "expo start --dev-client --host tunnel --clear --scheme wiezmobile",
+    "start:dev:lan": "expo start --dev-client --host lan --clear --scheme wiezmobile",
     "start:perf": "expo start --no-dev --minify -c",
     "android": "expo run:android",
     "ios": "expo run:ios",

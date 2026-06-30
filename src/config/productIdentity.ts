@@ -1,9 +1,9 @@
 import { env } from '@/src/config/env';
 
-export const PRODUCT_NAME = 'WEAZ';
+export const PRODUCT_NAME = 'WIEZ';
 export const MOBILE_APP_NAME = PRODUCT_NAME;
 export const PRODUCT_NAME_FORMER = 'Threadly';
-export const PRODUCT_TAGLINE = 'When you think WEARS, you think WEAZ.';
+export const PRODUCT_TAGLINE = 'When you think WEARS, you think WIEZ.';
 export const PRODUCT_LOGO_TAGLINE = 'JUST WEAR';
 export const PUBLIC_WEB_URL =
   env.webAppUrl || '[PRODUCT CONFIRMATION NEEDED]';
@@ -12,9 +12,9 @@ export const LEGAL_EMAIL = '[PRODUCT CONFIRMATION NEEDED]';
 export const LOGO_ACCESSIBILITY_LABEL = `${PRODUCT_NAME} logo`;
 
 export const LOGO_ASSET_PATHS = {
-  mark: 'assets/brand/weaz-logo-mark.svg',
-  wordmark: 'assets/brand/weaz-wordmark.svg',
-  lockup: 'assets/brand/weaz-logo-lockup.svg',
+  mark: 'assets/brand/wiez-logo-mark.svg',
+  wordmark: 'assets/brand/wiez-wordmark.svg',
+  lockup: 'assets/brand/wiez-logo-lockup.svg',
 } as const;
 
 export const BRAND_PALETTE = {

@@ -714,7 +714,7 @@ export function DesignEditorProvider({
             const session = await startDesignDraftSession(activeDesignId, {
               forceNew: forceTakeOver,
               existingToken: draftSessionToken,
-              deviceName: 'WEAZ mobile',
+              deviceName: 'WIEZ mobile',
             });
             if (session.hasConflict) {
               setDraftConflict(session);

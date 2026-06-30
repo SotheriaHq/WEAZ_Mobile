@@ -37,7 +37,7 @@ export default function SupportSettingsScreen() {
   const reportText = useMemo(() => {
     const summary = problemSummary.trim();
     return [
-      'WEAZ support report',
+      'WIEZ support report',
       `Created: ${new Date().toISOString()}`,
       `User ID: ${user?.id ?? 'unknown'}`,
       `Email: ${user?.email ?? 'unknown'}`,

@@ -6,7 +6,7 @@ The first useful shell was gated by fonts, theme restoration, and the network-ba
 
 ## 2. App-owned and runtime-owned startup
 
-WEAZ owns the native splash configured by `expo-splash-screen`, the React fallback, local font/theme/session restoration, and the handoff after the first shell layout. Metro startup, JavaScript bundle download/compile time, Expo Go branding, and any dev-client native splash compiled before the latest asset change are runtime/build concerns. Verify the final launch experience in a rebuilt dev client and a release/minified build; Metro development timing is not representative of release startup.
+WIEZ owns the native splash configured by `expo-splash-screen`, the React fallback, local font/theme/session restoration, and the handoff after the first shell layout. Metro startup, JavaScript bundle download/compile time, Expo Go branding, and any dev-client native splash compiled before the latest asset change are runtime/build concerns. Verify the final launch experience in a rebuilt dev client and a release/minified build; Metro development timing is not representative of release startup.
 
 ## 3. Splash and fallback asset
 

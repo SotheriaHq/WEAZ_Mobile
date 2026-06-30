@@ -22,7 +22,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
-import { WeazLogo } from '@/components/ui/WeazLogo';
+import { WiezLogo } from '@/components/ui/WiezLogo';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
 import { GoogleMark } from '@/components/auth/GoogleMark';
 import { AccountTypeSelector } from '@/components/auth/AccountTypeSelector';
@@ -215,7 +215,7 @@ export default function SignupScreen() {
         legalAcceptances,
       });
       navigateAfterAuth();
-      toast.success('Welcome to WEAZ! 🎉');
+      toast.success('Welcome to WIEZ! 🎉');
     } catch (e: any) {
       const message =
         typeof e?.message === 'string' ? e.message : 'Signup failed. Please try again.';
@@ -263,7 +263,7 @@ export default function SignupScreen() {
         legalAcceptances,
       });
       navigateAfterAuth();
-      toast.success('Welcome to WEAZ!');
+      toast.success('Welcome to WIEZ!');
     } catch (e: any) {
       const message =
         typeof e?.message === 'string' ? e.message : 'Google signup could not be completed.';
@@ -274,7 +274,7 @@ export default function SignupScreen() {
   };
 
   const isBrand = userType === 'BRAND';
-  const ctaTitle = isBrand ? 'CREATE BRAND' : 'JOIN WEAZ';
+  const ctaTitle = isBrand ? 'CREATE BRAND' : 'JOIN WIEZ';
 
   // Theme-derived colors
   const bgGradient = [theme.colors.bg, theme.colors.bg, theme.colors.bg] as const;
@@ -317,7 +317,7 @@ export default function SignupScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go to home"
           >
-            <WeazLogo size={36} />
+            <WiezLogo size={36} />
           </Pressable>
         </Animated.View>
 

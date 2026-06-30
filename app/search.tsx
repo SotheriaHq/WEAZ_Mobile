@@ -565,7 +565,7 @@ export default function SearchScreen() {
             value={query}
             onChangeText={onChangeQuery}
             onSubmitEditing={onSubmitSearch}
-            placeholder="Search WEAZ"
+            placeholder="Search WIEZ"
             returnKeyType="search"
             trailing={
               query.length > 0 ? (
@@ -625,7 +625,7 @@ export default function SearchScreen() {
           <Card>
             <View style={styles.stateBlock}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
-              <AppText variant="body" tone="muted">Searching WEAZ...</AppText>
+              <AppText variant="body" tone="muted">Searching WIEZ...</AppText>
             </View>
           </Card>
         ) : null}
@@ -725,7 +725,7 @@ export default function SearchScreen() {
 
             {showPopularSection ? (
               <SearchSection
-                title="Popular on WEAZ"
+                title="Popular on WIEZ"
                 rightAction={
                   <AppText variant="captionRegular" tone="muted">{suggestions?.trending?.length ?? 0} trending</AppText>
                 }

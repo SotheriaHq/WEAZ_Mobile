@@ -9,7 +9,7 @@ import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsShee
 import ThreadRailAction from './ThreadRailAction';
 import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { Button } from '@/components/ui/Button';
-import { WeazLogoLoader } from '@/components/ui/WeazLogoLoader';
+import { WiezLogoLoader } from '@/components/ui/WiezLogoLoader';
 import { AspectAwareMedia } from '@/src/components/media/AspectAwareMedia';
 import {
   brandApi,
@@ -177,7 +177,7 @@ function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null;
   if (loading) {
     return (
       <View style={[StyleSheet.absoluteFill, styles.mediaLoadingSlide]}>
-        <WeazLogoLoader size={72} />
+        <WiezLogoLoader size={72} />
       </View>
     );
   }
@@ -613,7 +613,7 @@ export function CollectionDetailViewer({
   const shareCollection = useCallback(async () => {
     if (!detail) return;
     try {
-      await Share.share({ message: `${detail.title} by ${brandName} on WEAZ` });
+      await Share.share({ message: `${detail.title} by ${brandName} on WIEZ` });
     } catch {
       // Best effort.
     }

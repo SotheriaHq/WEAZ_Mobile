@@ -8,10 +8,10 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { WeazLogo } from './WeazLogo';
+import { WiezLogo } from './WiezLogo';
 import { PRODUCT_NAME } from '@/src/config/productIdentity';
 
-type WeazLogoLoaderProps = {
+type WiezLogoLoaderProps = {
   size?: number;
   style?: StyleProp<ViewStyle>;
   showWordmark?: boolean;
@@ -21,7 +21,7 @@ type WeazLogoLoaderProps = {
   messageColor?: string;
 };
 
-export function WeazLogoLoader({
+export function WiezLogoLoader({
   size = 72,
   style,
   showWordmark = false,
@@ -29,7 +29,7 @@ export function WeazLogoLoader({
   message = 'Loading your feed',
   titleColor = '#ffffff',
   messageColor = 'rgba(255,255,255,0.72)',
-}: WeazLogoLoaderProps) {
+}: WiezLogoLoaderProps) {
   const pulse = useRef(new Animated.Value(0)).current;
   const drift = useRef(new Animated.Value(0)).current;
 
@@ -128,7 +128,7 @@ export function WeazLogoLoader({
             transform: [{ scale }],
           }}
         >
-          <WeazLogo size={size} />
+          <WiezLogo size={size} />
         </Animated.View>
       </View>
       {showWordmark ? (
@@ -188,4 +188,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default WeazLogoLoader;
+export default WiezLogoLoader;

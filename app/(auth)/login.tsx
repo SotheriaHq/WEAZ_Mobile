@@ -10,7 +10,7 @@ import { GoogleMark } from '@/components/auth/GoogleMark';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { WeazLogo } from '@/components/ui/WeazLogo';
+import { WiezLogo } from '@/components/ui/WiezLogo';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
@@ -407,7 +407,7 @@ export default function LoginScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go to home"
           >
-            <WeazLogo size={36} />
+            <WiezLogo size={36} />
           </Pressable>
         </Animated.View>
 
@@ -489,7 +489,7 @@ export default function LoginScreen() {
               <View style={styles.statePanel}>
                 <AppText variant="bodyBold">This account uses Google sign-in.</AppText>
                 <AppText variant="caption" tone="muted" style={styles.statePanelText}>
-                  Continue with Google, or verify your email to create a WEAZ password.
+                  Continue with Google, or verify your email to create a WIEZ password.
                 </AppText>
               </View>
             ) : null}
@@ -534,7 +534,7 @@ export default function LoginScreen() {
               <View style={styles.inlineFlow}>
                 <AppText variant="bodyBold">Create your password</AppText>
                 <AppText variant="caption" tone="muted">
-                  This creates your first WEAZ password. You will sign in after it is saved.
+                  This creates your first WIEZ password. You will sign in after it is saved.
                 </AppText>
                 <FloatingLabelInput
                   label="New Password"
@@ -693,7 +693,7 @@ export default function LoginScreen() {
 
             <View style={styles.footerRow}>
               <AppText variant="body" tone="muted">
-                New to WEAZ?
+                New to WIEZ?
               </AppText>
               <Pressable
                 onPress={() => router.push({ pathname: '/(auth)/signup', params: { next: nextPath } })}

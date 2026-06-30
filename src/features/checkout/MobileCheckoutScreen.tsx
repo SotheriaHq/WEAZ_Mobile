@@ -268,7 +268,7 @@ export function MobileCheckoutScreen() {
           <View style={styles.header}>
             <AppText variant="title">Secure checkout</AppText>
             <AppText variant="body" tone="muted">
-              WEAZ recalculates the amount from your saved bag and verifies payment with the backend before any order is marked paid.
+              WIEZ recalculates the amount from your saved bag and verifies payment with the backend before any order is marked paid.
             </AppText>
           </View>
 
@@ -359,7 +359,7 @@ export function MobileCheckoutScreen() {
           <Card style={styles.card}>
             <AppText variant="subtitle">Payment</AppText>
             <AppText variant="body" tone="muted">
-              Card checkout opens in the secure provider page. Returning to WEAZ only triggers backend verification; it never marks payment as complete locally.
+              Card checkout opens in the secure provider page. Returning to WIEZ only triggers backend verification; it never marks payment as complete locally.
             </AppText>
             {message ? (
               <AppText variant="caption" tone={message.includes('Unable') ? 'danger' : 'muted'}>

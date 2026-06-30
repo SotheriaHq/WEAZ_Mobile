@@ -38,7 +38,7 @@ function getErrorMessage(error: unknown) {
 
 function actorName(item: MobileNotification) {
   const fullName = [item.actor?.firstName, item.actor?.lastName].filter(Boolean).join(' ').trim();
-  return item.actor?.username || fullName || (item.type.toUpperCase().includes('SYSTEM') ? 'WEAZ' : 'Someone');
+  return item.actor?.username || fullName || (item.type.toUpperCase().includes('SYSTEM') ? 'WIEZ' : 'Someone');
 }
 
 function compactTime(value: string) {

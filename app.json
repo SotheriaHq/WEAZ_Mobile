@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "WEAZ",
+    "name": "WIEZ",
     "slug": "threadly",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/weaz-icon.png",
-    "scheme": "weazmobile",
+    "icon": "./assets/images/wiez-icon.png",
+    "scheme": "wiezmobile",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
     "android": {
-      "package": "com.sotheriahq.weaz",
+      "package": "com.sotheriahq.wiez",
   "adaptiveIcon": {
-    "foregroundImage": "./assets/images/weaz-adaptive-icon.png",
+    "foregroundImage": "./assets/images/wiez-adaptive-icon.png",
     "backgroundColor": "#0b0710"
   },
   "predictiveBackGestureEnabled": false
@@ -21,7 +21,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/weaz-favicon.png"
+      "favicon": "./assets/images/wiez-favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -30,7 +30,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/weaz-splash-icon.png",
+          "image": "./assets/images/wiez-splash-icon.png",
           "imageWidth": 116,
           "resizeMode": "contain",
           "backgroundColor": "#FFFFFF"
