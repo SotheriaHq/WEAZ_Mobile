@@ -1,0 +1,56 @@
+name: Mobile CI (EAS build)
+
+# Typecheck gate + Expo EAS build. Not submitting to stores yet.
+# Requires:
+#   - Secret  EXPO_TOKEN  = Expo access token (expo.dev > Account settings > Access tokens)
+#   - eas.json with a "preview" build profile (run `npx eas build:configure` once)
+# (Deeper checks/tests live in phase8-quality-gate.yml.)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: mobile-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint --if-present
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+  eas-build:
+    name: EAS build (preview)
+    needs: typecheck
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Set up EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Build (preview, both platforms, non-blocking)
+        run: eas build --platform all --profile preview --non-interactive --no-wait
