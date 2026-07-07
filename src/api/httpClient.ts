@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import { env } from '@/src/config/env';
 import { apiHostDevLog, apiHostDevWarn, isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { finishNetworkTrace, startNetworkTrace } from './networkTrace';
+import { createRequestId } from '@/src/utils/requestId';
 
 const DEFAULT_PORT = 3040;
 const MOBILE_PLATFORM_HEADER = 'x-client-platform';
@@ -459,6 +460,9 @@ apiClient.interceptors.request.use((config) => {
 
   if (currentAuthToken) {
     headers.set('Authorization', `Bearer ${currentAuthToken}`);
+  }
+  if (!headers.get('x-request-id')) {
+    headers.set('x-request-id', createRequestId());
   }
   headers.set(MOBILE_PLATFORM_HEADER, MOBILE_PLATFORM_VALUE);
   retryableConfig.headers = headers;

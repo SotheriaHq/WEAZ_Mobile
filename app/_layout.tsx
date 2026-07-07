@@ -29,6 +29,9 @@ import { BagCountProvider } from '@/src/features/bagging/BagCountContext';
 import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
 import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
+import { initMobileSentry } from '@/src/observability/sentry';
+
+initMobileSentry();
 
 import { handleInitialNotification, setupNotificationListeners } from '@/src/utils/notificationRouting';
 import { useNotificationRouting } from '@/src/utils/notificationRouting';
