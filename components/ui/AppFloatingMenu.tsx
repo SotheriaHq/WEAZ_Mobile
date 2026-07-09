@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { BackHandler, Modal, Pressable, StyleSheet, View, Animated, InteractionManager, useWindowDimensions } from 'react-native';
+import { BackHandler, Modal, Pressable, StyleSheet, View, Animated, useWindowDimensions } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
@@ -145,7 +145,12 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
 
   const handleOptionPress = (optionOnPress: () => void) => {
     if (isClosing) return;
-    handleClose(() => InteractionManager.runAfterInteractions(optionOnPress));
+    // Navigate / act first — do NOT wait for InteractionManager. Waiting for
+    // "after interactions" was a multi-second stall when Runway/catalog
+    // animations or gesture handlers were still settling. Close the menu as a
+    // side effect so the destination paints immediately.
+    optionOnPress();
+    handleClose();
   };
 
   if (!internalVisible) return null;

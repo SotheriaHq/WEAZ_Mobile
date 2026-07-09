@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
-  InteractionManager,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -399,19 +398,18 @@ export default function SearchScreen() {
 
   useEffect(() => {
     let mounted = true;
-    const interaction = InteractionManager.runAfterInteractions(() => {
-      Promise.all([getLocalRecentSearches(), getHiddenSearches()])
-        .then(([recent, hidden]) => {
-          if (!mounted) return;
-          setLocalRecent(recent);
-          setHiddenRecent(hidden);
-        })
-        .catch(() => undefined);
-    });
+    // Local storage reads are cheap — do not wait for InteractionManager (can
+    // stall for seconds while other animations settle).
+    Promise.all([getLocalRecentSearches(), getHiddenSearches()])
+      .then(([recent, hidden]) => {
+        if (!mounted) return;
+        setLocalRecent(recent);
+        setHiddenRecent(hidden);
+      })
+      .catch(() => undefined);
 
     return () => {
       mounted = false;
-      interaction.cancel();
     };
   }, []);
 
@@ -434,22 +432,19 @@ export default function SearchScreen() {
     suggestAbortRef.current = controller;
     let cancelled = false;
 
-    const interaction = InteractionManager.runAfterInteractions(() => {
+    debounceRef.current = setTimeout(() => {
       if (cancelled) return;
-      debounceRef.current = setTimeout(() => {
-        void loadSuggestions(normalizedQuery, controller.signal);
-        if (normalizedQuery) {
-          void runSearch(normalizedQuery, filterType, { saveToRecent: false });
-        } else {
-          searchAbortRef.current?.abort();
-          setResultState({ status: 'idle' });
-        }
-      }, SEARCH_SCREEN_DEBOUNCE_MS);
-    });
+      void loadSuggestions(normalizedQuery, controller.signal);
+      if (normalizedQuery) {
+        void runSearch(normalizedQuery, filterType, { saveToRecent: false });
+      } else {
+        searchAbortRef.current?.abort();
+        setResultState({ status: 'idle' });
+      }
+    }, SEARCH_SCREEN_DEBOUNCE_MS);
 
     return () => {
       cancelled = true;
-      interaction.cancel();
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
       }
@@ -459,10 +454,7 @@ export default function SearchScreen() {
 
   useEffect(() => {
     if (autoSubmit === '1' || autoSubmit === 'true') {
-      const interaction = InteractionManager.runAfterInteractions(() => {
-        void runSearch(initialQuery, filterType);
-      });
-      return () => interaction.cancel();
+      void runSearch(initialQuery, filterType);
     }
   }, [autoSubmit, filterType, initialQuery, runSearch]);
 

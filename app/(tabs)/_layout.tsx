@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, BackHandler, InteractionManager, Platform } from 'react-native';
+import { AppState, BackHandler, Platform } from 'react-native';
 import { Tabs, router, usePathname, type Href } from 'expo-router';
 
 import {
@@ -226,21 +226,32 @@ export default function TabLayout() {
   );
 
   const scheduleRouteAfterFrame = useCallback((navFlow: string, run: () => void) => {
-    // Decouple the route call from the active-indicator commit (do NOT make this
-    // synchronous). The island sets its active state locally on press, so it
-    // paints on the very next frame. We defer the actual router.navigate to the
-    // following frame so the active indicator ALWAYS paints first and never waits
-    // on the destination's render — even on a cold first visit where the mount is
-    // heavy. Batching the navigate into the same commit as the indicator (the
-    // synchronous version we tried) is what made the indicator feel slow again:
-    // it inherited the navigation render cost.
-    //
-    // Top-level island routes use the tab navigator's direct JUMP_TO path where
-    // possible, and likely cold tabs are preloaded after first paint. The
-    // one-frame gap lets the indicator paint without inheriting destination
-    // render cost.
+    // Prefer immediate navigation when the destination tab is already warm —
+    // cold JUMP_TO/mount still gets a single rAF so the optimistic active
+    // indicator can commit without inheriting the destination render cost.
+    // Waiting a frame on warm tabs made revisits feel laggy for no benefit.
     cancelPendingRouteFrame();
     navPerf.routeScheduled(navFlow);
+
+    const tabName = (() => {
+      if (navFlow === 'tabs→catalog') return 'catalog';
+      if (navFlow === 'tabs→me') return 'me';
+      if (navFlow === 'tabs→discover' || navFlow === 'tabs→market') return 'discover';
+      if (navFlow === 'tabs→inbox' || navFlow === 'tabs→messages') return 'inbox';
+      if (navFlow === 'tabs→index' || navFlow === 'tabs→runway' || navFlow === 'tabs→home') return 'index';
+      return null;
+    })();
+    const isWarm =
+      tabName != null &&
+      (preloadedTabNamesRef.current.has(tabName) ||
+        getFocusedTabName(tabNavigationRef.current) === tabName);
+
+    if (isWarm) {
+      navPerf.frameYieldBeforeRoute(navFlow);
+      run();
+      return;
+    }
+
     pendingRouteFrameRef.current = requestAnimationFrame(() => {
       pendingRouteFrameRef.current = null;
       navPerf.frameYieldBeforeRoute(navFlow);
@@ -259,6 +270,9 @@ export default function TabLayout() {
       return;
     }
 
+    // Warm primary destinations early. Waiting on first Runway media left Market /
+    // Catalog / Me cold for 1.5s+ on slow networks — the exact "tap and wait ~3s"
+    // class of complaint when combined with a cold lazy mount.
     const nextTabsToWarm = ['discover'];
     if (status === 'authenticated') {
       nextTabsToWarm.push('inbox');
@@ -266,15 +280,16 @@ export default function TabLayout() {
     }
 
     let cancelled = false;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    let idleTask: { cancel: () => void } | null = null;
     let preloadTimers: Array<ReturnType<typeof setTimeout>> = [];
+    let earlyTimer: ReturnType<typeof setTimeout> | null = null;
+    let scheduled = false;
 
-    const schedulePreloads = (reason: 'first-media-visible' | 'first-media-timeout', firstMediaAt?: number) => {
-      if (cancelled || idleTask || preloadTimers.length > 0) return;
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer);
-        fallbackTimer = null;
+    const schedulePreloads = (reason: string, firstMediaAt?: number) => {
+      if (cancelled || scheduled || preloadTimers.length > 0) return;
+      scheduled = true;
+      if (earlyTimer) {
+        clearTimeout(earlyTimer);
+        earlyTimer = null;
       }
       navDevLog('tab-preload-scheduled', {
         scheduledAt: Date.now(),
@@ -282,14 +297,13 @@ export default function TabLayout() {
         firstMediaAt: firstMediaAt ?? null,
         tabNames: nextTabsToWarm,
       });
-      idleTask = InteractionManager.runAfterInteractions(() => {
-        if (cancelled) return;
-        preloadTimers = nextTabsToWarm.map((tabName, index) =>
-          setTimeout(() => {
-            if (!cancelled) preloadIslandTab(tabName);
-          }, 150 + index * 350),
-        );
-      });
+      // Stagger lightly but do not wait for InteractionManager — that API can
+      // delay many seconds while Runway carousels keep interactions busy.
+      preloadTimers = nextTabsToWarm.map((tabName, index) =>
+        setTimeout(() => {
+          if (!cancelled) preloadIslandTab(tabName);
+        }, 80 + index * 180),
+      );
     };
 
     const firstMedia = getRunwayFirstMediaVisible();
@@ -302,25 +316,15 @@ export default function TabLayout() {
           schedulePreloads('first-media-visible', event.timestamp);
         });
 
-    if (!firstMedia) {
-      navDevLog('tab-preload-deferred', {
-        deferredAt: Date.now(),
-        reason: 'awaiting-first-runway-media',
-        tabNames: nextTabsToWarm,
-      });
-      // Phase 3: do not let a slow/empty Runway keep every destination cold for
-      // eight seconds. The idle gate and stagger still prevent a mount burst,
-      // while this bounded fallback makes a normal first tab visit warm.
-      fallbackTimer = setTimeout(() => {
-        schedulePreloads('first-media-timeout');
-      }, 1500);
-    }
+    // Start warming almost immediately even if Runway media is slow/empty.
+    earlyTimer = setTimeout(() => {
+      schedulePreloads('early-warm');
+    }, firstMedia ? 0 : 250);
 
     return () => {
       cancelled = true;
       unsubscribe();
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-      idleTask?.cancel();
+      if (earlyTimer) clearTimeout(earlyTimer);
       preloadTimers.forEach((timer) => clearTimeout(timer));
     };
   }, [isBrand, preloadIslandTab, status]);
@@ -363,7 +367,13 @@ export default function TabLayout() {
   const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
     if (item.disabled) return;
     setOptimisticActiveKey(item.key as NativeIslandKey);
-  }, []);
+    // Warm the destination tab on press-in so JUMP_TO hits a preloaded scene
+    // instead of a cold lazy mount (main multi-second stall on first visit).
+    const tabName = getIslandTabRouteName(item.key, isBrand);
+    if (tabName) {
+      preloadIslandTab(tabName);
+    }
+  }, [isBrand, preloadIslandTab]);
 
   const islandItems = useMemo<NativeIslandNavItem[]>(
     () =>

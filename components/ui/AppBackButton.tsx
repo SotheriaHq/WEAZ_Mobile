@@ -34,16 +34,13 @@ export function AppBackButton({
   }, []);
 
   const scheduleBackRouteAfterFrame = React.useCallback((run: () => void) => {
-    // Defer one frame so the pressed feedback paints before navigating — keeps the
-    // back tap feeling instant. Single rAF (decoupled, not synchronous, not two
-    // frames).
+    // Back is always a warm stack pop — navigate immediately so the previous
+    // screen appears without a frame of dead air. Pressed feedback still paints
+    // via the button's native pressed style on the same commit.
     cancelPendingRouteFrame();
-    pendingRouteFrameRef.current = requestAnimationFrame(() => {
-      pendingRouteFrameRef.current = null;
-      navPerf.frameYieldBeforeRoute('back');
-      navPerf.navigationCalled('back');
-      run();
-    });
+    navPerf.frameYieldBeforeRoute('back');
+    navPerf.navigationCalled('back');
+    run();
   }, [cancelPendingRouteFrame]);
 
   React.useEffect(() => cancelPendingRouteFrame, [cancelPendingRouteFrame]);

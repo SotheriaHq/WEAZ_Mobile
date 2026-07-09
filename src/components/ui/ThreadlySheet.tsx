@@ -92,8 +92,10 @@ export function ThreadlySheet({
                 disabled={option.disabled}
                 onPress={() => {
                   if (option.disabled) return;
+                  // Act immediately so destination routes don't wait a frame
+                  // (or longer) while the sheet dismissal animation settles.
+                  option.onSelect();
                   onClose();
-                  requestAnimationFrame(option.onSelect);
                 }}
                 style={({ pressed }) => [
                   styles.optionRow,

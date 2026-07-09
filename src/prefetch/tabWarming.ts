@@ -16,9 +16,11 @@ import { prefetchRoute } from '@/src/prefetch/navPrefetch';
 import { setPrefetchPaused } from '@/src/prefetch/prefetchBudget';
 
 const PRIMARY_TABS = [
-  { href: '/(tabs)/discover', delayMs: 1000 },
-  { href: '/(tabs)/inbox', delayMs: 1500 },
-  { href: '/(tabs)/me', delayMs: 2000 },
+  { href: '/(tabs)/discover', delayMs: 400 },
+  { href: '/(tabs)/inbox', delayMs: 700 },
+  { href: '/(tabs)/me', delayMs: 1000 },
+  // Brand catalogue is a top-level island destination (href null) — warm it too.
+  { href: '/catalog', delayMs: 550 },
 ] as const;
 
 let warmedThisSession = false;
