@@ -15,6 +15,7 @@ import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
+import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import {
   getMarketSectionDetail,
   type MarketSection,
@@ -120,7 +121,12 @@ function SectionItemCard({
   sectionKey: string;
 }) {
   const { theme } = useTheme();
-  const imageUri = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
+  const rawImageUri = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
+  const imageUri = useResolvedImageUri({
+    src: rawImageUri,
+    fileId: item.media?.fileId ?? null,
+    enabled: Boolean(rawImageUri || item.media?.fileId),
+  });
 
   return (
     <Pressable

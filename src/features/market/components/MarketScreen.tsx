@@ -1115,7 +1115,12 @@ function ApiSectionCard({
   onOpen: (item: MarketSectionItem) => void;
 }) {
   const { theme } = useTheme();
-  const imageUri = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
+  const rawImageUri = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
+  const imageUri = useResolvedImageUri({
+    src: rawImageUri,
+    fileId: item.media?.fileId ?? null,
+    enabled: Boolean(rawImageUri || item.media?.fileId),
+  });
 
   return (
     <Pressable

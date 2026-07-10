@@ -60,6 +60,8 @@ export type MarketSectionItem = {
   media?: {
     url?: string | null;
     thumbnailUrl?: string | null;
+    /** Upload file id for client-side signed URL resolution (raw S3 URLs may be unsigned). */
+    fileId?: string | null;
     type?: 'IMAGE' | 'VIDEO' | 'UNKNOWN';
     alt?: string | null;
   } | null;

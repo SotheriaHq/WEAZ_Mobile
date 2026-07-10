@@ -13,6 +13,7 @@ import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { AppText } from '@/components/ui/AppText';
 import { Card } from '@/components/ui/Card';
 import { StableImage } from '@/components/ui/StableImage';
+import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import {
   createMarketSuppression,
   getMarketSuggestions,
@@ -133,7 +134,12 @@ function SuggestionCard({
   onHide,
 }: SuggestionCardProps) {
   const { theme } = useTheme();
-  const image = item.media?.thumbnailUrl ?? item.media?.url ?? null;
+  const rawImage = item.media?.thumbnailUrl ?? item.media?.url ?? null;
+  const image = useResolvedImageUri({
+    src: rawImage,
+    fileId: item.media?.fileId ?? null,
+    enabled: Boolean(rawImage || item.media?.fileId),
+  });
 
   const handlePress = useCallback(() => {
     trackMarketSignal({
