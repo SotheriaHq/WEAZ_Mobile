@@ -41,3 +41,24 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# AI agent workspace files — never commit (enforced by .github/workflows/agent-hygiene.yml)
+CLAUDE.md
+**/CLAUDE.md
+AGENTS.md
+CODEMAP.md
+LAST_SESSION.md
+GEMINI.md
+.cursorrules
+.windsurfrules
+.clinerules*
+.mcp.json
+.claude/
+.cursor/
+.windsurf/
+.gemini/
+.kilo/
+.ai/
+.aider*
+project-memory/
+memory-bank/
