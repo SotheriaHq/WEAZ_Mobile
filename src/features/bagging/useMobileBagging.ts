@@ -375,6 +375,12 @@ export function useMobileBagging() {
 
   const bagProduct = useCallback(
     async (product: BagProductInput, callbacks: BagInteractionCallbacks & BagFlowBagOptions = {}) => {
+      // Brand accounts are sellers only — never bag (project rule).
+      const accountType = String((user as { type?: string } | null | undefined)?.type ?? '').toUpperCase();
+      if (accountType === 'BRAND') {
+        toast.info('Brand accounts cannot bag items. Use a buyer account to shop.');
+        return null;
+      }
       if (authStatus !== 'authenticated') {
         if (callbacks.suppressAuthPrompt) return null;
         if (bagFlow) {
@@ -465,7 +471,7 @@ export function useMobileBagging() {
       }
       return { action: 'OPEN_CUSTOM_FLOW' as const, status };
     },
-    [addStandard, authStatus, bagFlow, prepareBag, toast],
+    [addStandard, authStatus, bagFlow, prepareBag, toast, user],
   );
 
   const bagSource = useCallback(
@@ -479,6 +485,12 @@ export function useMobileBagging() {
         sourceType: source.sourceType,
         sourceId: source.sourceId,
       };
+
+      const accountType = String((user as { type?: string } | null | undefined)?.type ?? '').toUpperCase();
+      if (accountType === 'BRAND') {
+        toast.info('Brand accounts cannot bag items. Use a buyer account to shop.');
+        return null;
+      }
 
       if (authStatus !== 'authenticated') {
         if (callbacks.suppressAuthPrompt) return null;
@@ -580,7 +592,7 @@ export function useMobileBagging() {
       }
       return { action: 'OPEN_CUSTOM_FLOW' as const, status };
     },
-    [addStandard, authStatus, bagFlow, prepareSourceBag, toast],
+    [addStandard, authStatus, bagFlow, prepareSourceBag, toast, user],
   );
 
   const clearBagStatus = useCallback((productId: string) => {
