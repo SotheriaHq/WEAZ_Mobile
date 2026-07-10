@@ -25,7 +25,7 @@ jobs:
 
       - name: Fail if tracked content references agent workspace files
         run: |
-          MATCHES=$(git grep -n -I -i -E "rules/AGENT_RULES|LAST_SESSION\.md|CODEMAP\.md|project-memory/INDEX" -- . ':(exclude).github/workflows/agent-hygiene.yml' || true)
+          MATCHES=$(git grep -n -I -i -E "rules/AGENT_RULES|LAST_SESSION\.md|CODEMAP\.md|project-memory/INDEX" -- . ':(exclude).github/workflows/agent-hygiene.yml' ':(exclude).gitignore' ':(exclude)**/.gitignore' || true)
           if [ -n "$MATCHES" ]; then
             echo "::error::Tracked content references agent workspace files:"
             echo "$MATCHES"
