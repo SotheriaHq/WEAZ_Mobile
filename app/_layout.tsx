@@ -49,6 +49,7 @@ import {
 } from '@/src/system/AndroidSystemBars';
 import { ScreenChromeProvider } from '@/src/system/ScreenChrome';
 import { QueryProvider } from '@/src/query/QueryProvider';
+import { useAndroidDoubleBackExit } from '@/src/hooks/useAndroidDoubleBackExit';
 import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 
 // Phase 1: Force nav perf instrumentation + logs when running perf builds (--no-dev --minify).
@@ -316,6 +317,7 @@ function RootBootstrap({
   const { localSessionReady, status } = useAuth();
   const bootReady = fontsReady && themeReady && localSessionReady;
   const hasLoggedReadyRef = useRef(false);
+  useAndroidDoubleBackExit();
 
   useEffect(() => {
     rootBootstrapMountCount += 1;
