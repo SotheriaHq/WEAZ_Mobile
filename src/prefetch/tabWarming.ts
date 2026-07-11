@@ -6,10 +6,11 @@
  * `router.prefetch` mounts each screen off-screen, so its primary queries +
  * media warm via the screen's own mount effects (no per-tab query wiring needed).
  *
- * Guards: once per session, only while the app is active, and only after
- * interactions settle (never competes with active scrolling).
+ * Guards: once per session and only while the app is active. Do not wait for
+ * InteractionManager here: long scroll/gesture interactions can keep likely
+ * destinations cold until the exact tap that needs them.
  */
-import { AppState, InteractionManager } from 'react-native';
+import { AppState } from 'react-native';
 
 import { navPerf } from '@/src/utils/navPerf';
 import { prefetchRoute } from '@/src/prefetch/navPrefetch';
@@ -33,10 +34,7 @@ export function warmPrimaryTabsAfterRunway(): void {
   PRIMARY_TABS.forEach(({ href, delayMs }) => {
     setTimeout(() => {
       if (AppState.currentState !== 'active') return;
-      InteractionManager.runAfterInteractions(() => {
-        if (AppState.currentState !== 'active') return;
-        prefetchRoute(href, 'idle');
-      });
+      prefetchRoute(href, 'idle');
     }, delayMs);
   });
   setTimeout(() => navPerf.mark('predictive_tab_warm_completed'), 2200);
