@@ -33,10 +33,10 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type LocationSheet = 'country' | 'state' | 'city' | null;
 
 const BUSINESS_TYPE_OPTIONS: SelectSheetOption[] = [
-  { value: 'Retailer', label: 'Retailer' },
+  { value: 'Retailer', label: 'Retailer', disabled: true },
   { value: 'Designer', label: 'Designer' },
-  { value: 'Wholesaler', label: 'Wholesaler' },
-  { value: 'Boutique', label: 'Boutique' },
+  { value: 'Wholesaler', label: 'Wholesaler', disabled: true },
+  { value: 'Boutique', label: 'Boutique', disabled: true },
 ];
 
 type BrandFormState = {
