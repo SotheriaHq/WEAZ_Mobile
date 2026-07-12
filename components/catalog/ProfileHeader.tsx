@@ -48,7 +48,6 @@ const PROFILE_LAYOUT = {
   avatarBorderWidth: 3,
   editBadgeSize: 28,
   heroControlSize: 44,
-  qrSize: 48,
   overlayLift: tokens.spacing.xl,
   descriptionPreviewLength: 150,
 };
@@ -197,13 +196,8 @@ function ProfileHero({
         ) : null}
       </View>
 
-      <View style={styles.qrContainer}>
-        <View style={[styles.qrBox, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
-          <AppText variant="captionBold" tone="inverse">
-            QR
-          </AppText>
-        </View>
-      </View>
+      {/* Public end-user profiles share via the Share action — no dummy QR
+          placeholder. Brand catalog QR lives on BrandProfileHeader + AppQrSheet. */}
     </View>
   );
 }
@@ -614,19 +608,6 @@ const styles = StyleSheet.create({
     width: PROFILE_LAYOUT.heroControlSize,
     height: PROFILE_LAYOUT.heroControlSize,
     borderRadius: tokens.radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  qrContainer: {
-    position: 'absolute',
-    top: tokens.spacing.md,
-    right: tokens.spacing.md,
-  },
-  qrBox: {
-    width: PROFILE_LAYOUT.qrSize,
-    height: PROFILE_LAYOUT.qrSize,
-    borderRadius: tokens.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

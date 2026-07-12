@@ -123,11 +123,20 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
     fileId: pendingBanner?.fileId ?? baseBanner.fileId,
   });
 
-  const brandName = profile?.brandFullName || user?.brandFullName || 'Your Brand';
-  const username = profile?.username || user?.username || undefined;
+  const brandName =
+    profile?.brandFullName?.trim() ||
+    user?.brandFullName?.trim() ||
+    profile?.username?.trim() ||
+    user?.username?.trim() ||
+    'Your Brand';
+  const username = profile?.username?.trim() || user?.username?.trim() || undefined;
   const location =
-    profile?.location ||
-    [profile?.brandCity, profile?.brandState, profile?.brandCountry].filter(Boolean).join(', ') || undefined;
+    profile?.location?.trim() ||
+    [profile?.brandCity, profile?.brandState, profile?.brandCountry]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter(Boolean)
+      .join(', ') ||
+    undefined;
 
   const handleEditAvatar = useCallback(async () => {
     const hasPermission = await requestPhotoPermission(

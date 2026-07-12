@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, Linking, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import QRCode from 'react-native-qrcode-svg';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -214,17 +213,12 @@ function BannerHeader({
 >) {
   const { scheme, theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { width: viewportWidth } = useWindowDimensions();
   const resolvedBanner = useResolvedImageUri({
     src: bannerUrl,
     fileId: bannerFileId ?? undefined,
     allowSignedFallback: isOwner,
   });
   const storeStatusBadge = getStoreStatusBadge(badges ?? []);
-  const isCompactPhone = viewportWidth < 390;
-  const isTablet = viewportWidth >= 700;
-  const qrPanelSize = isTablet ? 136 : isCompactPhone ? 92 : 106;
-  const qrCodeSize = isTablet ? 112 : isCompactPhone ? 72 : 84;
 
   return (
     <View style={[styles.bannerWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -509,23 +503,32 @@ function BrandTextTags({ tags }: { tags: string[] }) {
 }
 
 function SideBrandMetaBlock({
+  username,
   location,
   stats,
   tags,
   badges,
 }: {
+  username?: string | null;
   location?: string | null;
   stats: BrandHeaderStat[];
   tags: string[];
   badges: ProfileBadgeModel[];
 }) {
   const secondaryBadges = badges.filter((badge) => !badge.variant.startsWith('store_'));
+  const handle = username?.trim().replace(/^@+/, '') || '';
+  const locationLabel = location?.trim() || '';
 
   return (
     <View style={styles.metaBlock}>
-      {location ? (
+      {handle ? (
+        <AppText variant="smallBold" tone="primary" numberOfLines={1} style={styles.usernameText}>
+          @{handle}
+        </AppText>
+      ) : null}
+      {locationLabel ? (
         <AppText variant="smallBold" tone="secondary" numberOfLines={1} style={styles.locationText}>
-          📍 {location}
+          📍 {locationLabel}
         </AppText>
       ) : null}
 
@@ -961,6 +964,7 @@ export function BrandProfileHeader({
           onEditAvatar={onEditAvatar}
         />
         <SideBrandMetaBlock
+          username={username}
           location={location}
           stats={useFullWidthStats ? [] : stats}
           tags={tags}
@@ -1219,6 +1223,9 @@ const styles = StyleSheet.create({
   brandNameText: {
     minWidth: 0,
     flexShrink: 1,
+  },
+  usernameText: {
+    maxWidth: '100%',
   },
   locationText: {
     maxWidth: '100%',

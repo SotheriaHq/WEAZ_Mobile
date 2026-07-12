@@ -148,6 +148,106 @@ function buildProfileUrlFromConfig(brandId: string | null, username?: string | n
   return `${baseUrl}${path}`;
 }
 
+/** Extract `/u/:username` from backend public profile / QR / share URLs. */
+function extractUsernameFromProfileUrl(url?: string | null): string | null {
+  const raw = typeof url === 'string' ? url.trim() : '';
+  if (!raw) return null;
+  try {
+    const path = raw.includes('://') ? new URL(raw).pathname : raw.startsWith('/') ? raw : `/${raw}`;
+    const match = path.match(/\/u\/([^/?#]+)/i);
+    if (!match?.[1]) return null;
+    return decodeURIComponent(match[1]).replace(/^@+/, '').trim() || null;
+  } catch {
+    const match = raw.match(/\/u\/([^/?#]+)/i);
+    if (!match?.[1]) return null;
+    try {
+      return decodeURIComponent(match[1]).replace(/^@+/, '').trim() || null;
+    } catch {
+      return match[1].replace(/^@+/, '').trim() || null;
+    }
+  }
+}
+
+function resolveCatalogBrandUsername(profile: {
+  username?: string | null;
+  publicProfileUrl?: string | null;
+  qrTargetUrl?: string | null;
+  shareUrl?: string | null;
+} | null | undefined): string {
+  const direct = profile?.username?.trim().replace(/^@+/, '') || '';
+  if (direct) return direct;
+  return (
+    extractUsernameFromProfileUrl(profile?.publicProfileUrl) ||
+    extractUsernameFromProfileUrl(profile?.shareUrl) ||
+    extractUsernameFromProfileUrl(profile?.qrTargetUrl) ||
+    ''
+  );
+}
+
+function resolveCatalogBrandDisplayName(profile: {
+  brandFullName?: string | null;
+  username?: string | null;
+  publicProfileUrl?: string | null;
+  qrTargetUrl?: string | null;
+  shareUrl?: string | null;
+} | null | undefined): string {
+  const fullName = profile?.brandFullName?.trim() || '';
+  if (fullName) return fullName;
+  const username = resolveCatalogBrandUsername(profile);
+  if (username) return username;
+  return 'Brand';
+}
+
+function resolveCatalogBrandLocation(profile: {
+  location?: string | null;
+  brandCity?: string | null;
+  brandState?: string | null;
+  brandCountry?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+} | null | undefined): string | undefined {
+  const direct = profile?.location?.trim();
+  if (direct) return direct;
+  const joined = [
+    profile?.brandCity ?? profile?.city,
+    profile?.brandState ?? profile?.state,
+    profile?.brandCountry ?? profile?.country,
+  ]
+    .map((part) => (typeof part === 'string' ? part.trim() : ''))
+    .filter(Boolean)
+    .join(', ');
+  return joined || undefined;
+}
+
+function resolveCatalogBrandTags(profile: {
+  brandTags?: string[] | null;
+  tags?: string[] | null;
+  hashtags?: string[] | null;
+} | null | undefined): string[] {
+  const raw =
+    Array.isArray(profile?.brandTags) && profile.brandTags.length > 0
+      ? profile.brandTags
+      : Array.isArray((profile as { tags?: string[] } | null | undefined)?.tags)
+        ? (profile as { tags?: string[] }).tags!
+        : Array.isArray((profile as { hashtags?: string[] } | null | undefined)?.hashtags)
+          ? (profile as { hashtags?: string[] }).hashtags!
+          : [];
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const entry of raw) {
+    const tag = String(entry ?? '')
+      .trim()
+      .replace(/^#+/, '');
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push(tag);
+  }
+  return tags;
+}
+
 function buildCatalogUiStateKey(targetBrandId: string, isOwner: boolean) {
   return `catalog:${isOwner ? 'owner' : 'visitor'}:${targetBrandId}`;
 }
@@ -1051,21 +1151,37 @@ export default function CatalogScreen() {
   const modalAvatarUri = isOwner
     ? ownerAvatarUri ?? ownerAvatar.src ?? null
     : visitorAvatarUri ?? visitorAvatar.src ?? null;
-  const profileLocation =
-    effectiveProfile?.location ||
-    [effectiveProfile?.brandCity, effectiveProfile?.brandState, effectiveProfile?.brandCountry].filter(Boolean).join(', ') ||
-    undefined;
+  const profileUsername = useMemo(
+    () => resolveCatalogBrandUsername(effectiveProfile),
+    [effectiveProfile],
+  );
+  const profileDisplayName = useMemo(
+    () => resolveCatalogBrandDisplayName(effectiveProfile),
+    [effectiveProfile],
+  );
+  const profileLocation = useMemo(
+    () => resolveCatalogBrandLocation(effectiveProfile),
+    [effectiveProfile],
+  );
+  const profileTags = useMemo(
+    () => resolveCatalogBrandTags(effectiveProfile),
+    [effectiveProfile],
+  );
   const profileShareUrl = useMemo(
     () =>
       effectiveProfile?.shareUrl ??
       effectiveProfile?.publicProfileUrl ??
       effectiveProfile?.qrTargetUrl ??
-      buildProfileUrlFromConfig(targetBrandId, effectiveProfile?.username ?? user?.username ?? null),
+      buildProfileUrlFromConfig(
+        targetBrandId,
+        profileUsername || effectiveProfile?.username || user?.username || null,
+      ),
     [
       effectiveProfile?.publicProfileUrl,
       effectiveProfile?.qrTargetUrl,
       effectiveProfile?.shareUrl,
       effectiveProfile?.username,
+      profileUsername,
       targetBrandId,
       user?.username,
     ],
@@ -1431,8 +1547,12 @@ export default function CatalogScreen() {
     effectiveProfile?.totalReviews,
   ]);
   const headerContactItems = useMemo<BrandHeaderContactItem[]>(() => {
+    // Account email is owner-only (public brand API redacts it for visitors).
+    // Never surface another account's email on a scanned/shared brand profile.
     const candidates: BrandHeaderContactItem[] = [
-      { label: 'Email', value: readContactValue(effectiveProfile?.email) ?? '' },
+      ...(isOwner
+        ? [{ label: 'Email', value: readContactValue(effectiveProfile?.email) ?? '' }]
+        : []),
       { label: 'Phone', value: readContactValue(effectiveProfile?.phoneNumber) ?? '' },
       { label: 'Website', value: readContactValue(effectiveProfile?.socialWebsite) ?? '' },
       { label: 'Instagram', value: readContactValue(effectiveProfile?.socialInstagram) ?? '' },
@@ -1448,6 +1568,7 @@ export default function CatalogScreen() {
     effectiveProfile?.socialInstagram,
     effectiveProfile?.socialTwitter,
     effectiveProfile?.socialWebsite,
+    isOwner,
   ]);
   const headerBadges = useMemo(
     () =>
@@ -1815,12 +1936,16 @@ export default function CatalogScreen() {
           />
         ) : (
           <BrandProfileHeader
-            brandName={effectiveProfile?.brandFullName || 'Your Brand'}
-            username={effectiveProfile?.username || undefined}
+            brandName={profileDisplayName}
+            username={profileUsername || undefined}
             location={profileLocation}
-            description={effectiveProfile?.brandDescription ?? null}
+            description={
+              effectiveProfile?.brandDescription ??
+              effectiveProfile?.description ??
+              null
+            }
             contactItems={headerContactItems}
-            tags={effectiveProfile?.brandTags || []}
+            tags={profileTags}
             stats={headerStats}
             badges={headerBadges}
             avatarUrl={visitorAvatarUri ?? visitorAvatar.src ?? undefined}
@@ -2019,10 +2144,11 @@ export default function CatalogScreen() {
 
       <AppQrSheet
         visible={brandQrOpen}
-        title={`${effectiveProfile?.brandFullName || 'Brand'} QR code`}
+        title={`${profileDisplayName} QR code`}
         subtitle="Scan to open this public brand profile."
         qrValue={profileQrTargetUrl}
         displayUrl={profileShareUrl}
+        username={profileUsername || effectiveProfile?.username}
         shareMessage={profileShareMessage}
         onClose={() => setBrandQrOpen(false)}
       />
