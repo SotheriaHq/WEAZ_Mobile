@@ -318,6 +318,25 @@ export function routeForNotification(notification: MobileNotification): RouterTa
     notification.subTargetId ??
     (typeof payload.commentId === 'string' ? payload.commentId : null);
 
+  // Patch (user↔brand) routing is action-aware and must beat the generic
+  // USER-target handler below (which would send every patch notification to the
+  // brand catalog regardless of who it is for).
+  if (type === 'PATCH') {
+    const action = typeof payload.action === 'string' ? payload.action : null;
+    const brandId = targetType === 'USER' ? targetId : null;
+    if (action === 'USER_PATCH_CONFIRMED' && brandId) {
+      // The buyer's own confirmation opens the patched brand's catalog.
+      return { pathname: '/catalog/[brandId]', params: { brandId } } as Href;
+    }
+    if (action === 'PROFILE_PATCHED' || action === 'PROFILE_UNPATCHED') {
+      // Brand-facing patch notification opens the patcher's profile.
+      if (actorId) {
+        return { pathname: '/profile/[id]', params: { id: actorId } } as Href;
+      }
+      return { pathname: '/(tabs)/me', params: { tab: 'Patches' } } as Href;
+    }
+  }
+
   if (targetType === 'COLLECTION_MEDIA') {
     const collectionId = typeof payload.collectionId === 'string' ? payload.collectionId : null;
     if (collectionId) {
