@@ -167,6 +167,42 @@ function main() {
   );
 
   assert.equal(
+    toJson(routeForNotification({
+      type: 'BAG_ITEM_ADDED',
+      payload: { targetUrl: '/bag' },
+      targetUrl: '/bag',
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/checkout',
+  );
+
+  assert.equal(
+    toJson(routeForNotification({
+      type: 'BAG_CHECKOUT_REMINDER',
+      payload: { itemCount: 2 },
+      targetUrl: null,
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/checkout',
+  );
+
+  assert.equal(
+    toJson(routeForNotification({
+      type: 'UNKNOWN',
+      payload: {},
+      targetUrl: '/bag',
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/checkout',
+  );
+
+  assert.equal(
     normalizeNotificationContext({
       type: 'message',
       actorUserId: 'actor-1',
@@ -176,9 +212,10 @@ function main() {
   );
 
   const notificationRoutingSource = fs.readFileSync(notificationRoutingPath, 'utf8');
-  assert.match(notificationRoutingSource, /pendingNavigationRef\.current = \{ params: context, type: options\.type \}/);
-  assert.match(notificationRoutingSource, /pendingNavigationRef\.current = null;\s*navigateToMessage/s);
-  assert.match(notificationRoutingSource, /getMessageNotificationTarget\(\{ targetUrl: url \}\)/);
+  assert.match(notificationRoutingSource, /pendingNotificationRef\.current = notification/);
+  assert.match(notificationRoutingSource, /pendingNotificationRef\.current = null;\s*navigateToNotification\(pending\)/s);
+  assert.match(notificationRoutingSource, /routeForNotification\(notification\)/);
+  assert.match(notificationRoutingSource, /buildNotificationFromPushData\(\{ targetUrl: url \}\)/);
 
   console.log('Notification routing contract tests passed.');
 }

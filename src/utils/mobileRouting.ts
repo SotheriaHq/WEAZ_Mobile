@@ -405,6 +405,10 @@ export function routeForNotification(notification: MobileNotification): RouterTa
     return routeForProductTarget(notification);
   }
 
+  if (type === 'BAG_ITEM_ADDED' || type === 'BAG_CHECKOUT_REMINDER') {
+    return '/checkout' as Href;
+  }
+
   if (type === 'COLLECTION_DELETED') {
     return {
       pathname: '/catalog',
@@ -454,6 +458,9 @@ export function routeForNotification(notification: MobileNotification): RouterTa
       const tab = new URL(targetUrl, 'https://threadly.mobile').searchParams.get('tab')?.toLowerCase();
       if (tab === 'orders') return '/orders' as Href;
       return '/(tabs)/me' as Href;
+    }
+    if (path === '/bag') {
+      return '/checkout' as Href;
     }
     const orderId = parseHrefId(targetUrl, /\/orders\/([^/?#]+)/);
     const customOrderId = parseHrefId(targetUrl, /\/custom-orders\/([^/?#]+)/);
