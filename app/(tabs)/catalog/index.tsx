@@ -113,6 +113,10 @@ const REVIEW_VISIBILITY_STATUS: Partial<Record<VisibilityType, 'IN_REVIEW' | 'CH
   Rejected: 'REJECTED',
 };
 const BRAND_COLLECTIONS_QUERY_ROOT = ['brand', 'collections'] as const;
+// Stable identity for "no data yet" — a fresh `?? []` per render makes every
+// downstream memo/effect dependency churn, which can loop setState effects
+// (Maximum update depth) whenever queries are still loading or failing.
+const EMPTY_COLLECTIONS: CollectionDto[] = [];
 
 function removeCollectionFromList(items: CollectionDto[] | undefined, collectionId: string) {
   if (!Array.isArray(items)) return items;
@@ -578,15 +582,15 @@ export default function CatalogScreen() {
     enabled: isOwner && Boolean(collectionOwnerId) && (visibilityFilter === 'In Review' || deferredWorkReady),
   });
   const effectiveProfile = profileQuery.data !== undefined ? profileQuery.data : profile;
-  let effectiveCollections = collectionsQuery.data ?? [];
+  let effectiveCollections = collectionsQuery.data ?? EMPTY_COLLECTIONS;
   if (visibilityFilter === 'Drafts') {
-    effectiveCollections = draftsQuery.data ?? [];
+    effectiveCollections = draftsQuery.data ?? EMPTY_COLLECTIONS;
   } else if (visibilityFilter === 'Needs Attention') {
-    effectiveCollections = needsAttentionQuery.data ?? [];
+    effectiveCollections = needsAttentionQuery.data ?? EMPTY_COLLECTIONS;
   } else if (visibilityFilter === 'In Review') {
-    effectiveCollections = inReviewQuery.data ?? [];
+    effectiveCollections = inReviewQuery.data ?? EMPTY_COLLECTIONS;
   }
-  const effectiveDrafts = draftsQuery.data ?? [];
+  const effectiveDrafts = draftsQuery.data ?? EMPTY_COLLECTIONS;
   const catalogItemsRef = useRef<CollectionDto[]>([]);
   catalogItemsRef.current = [...effectiveDrafts, ...effectiveCollections];
 
@@ -1458,20 +1462,28 @@ export default function CatalogScreen() {
   }, [designBackgroundTasks, effectiveDrafts, inReviewQuery.data, needsAttentionQuery.data]);
 
   useEffect(() => {
+    // Reset via functional update returning `prev` when already empty so a
+    // no-op reset never triggers a re-render (guards against update loops).
+    const resetIfNeeded = () =>
+      setSavedCatalogById((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+
     if (isOwner || status !== 'authenticated') {
-      setSavedCatalogById({});
+      resetIfNeeded();
       return;
     }
 
-    if (savedCatalogIds.length === 0) {
-      setSavedCatalogById({});
+    // Read the ids from the ref: depending on the array identity re-fires this
+    // effect every render while queries are loading/failing (`?? []` churn).
+    const ids = savedCatalogIdsRef.current;
+    if (ids.length === 0) {
+      resetIfNeeded();
       return;
     }
 
     let cancelled = false;
     queryClient.fetchQuery({
-      queryKey: queryKeys.saved.batch('COLLECTION', savedCatalogIds),
-      queryFn: () => SavedItemsApi.checkBatch('COLLECTION', savedCatalogIds),
+      queryKey: queryKeys.saved.batch('COLLECTION', ids),
+      queryFn: () => SavedItemsApi.checkBatch('COLLECTION', ids),
       staleTime: THREADLY_SAVED_STATUS_STALE_TIME_MS,
     })
       .then((result) => {
@@ -1483,7 +1495,7 @@ export default function CatalogScreen() {
     return () => {
       cancelled = true;
     };
-  }, [isOwner, queryClient, savedCatalogIds, savedCatalogIdsKey, status]);
+  }, [isOwner, queryClient, savedCatalogIdsKey, status]);
 
   useEffect(() => {
     const completedVisibleTasks = visibleDesignBackgroundTasks.filter((task) => task.status === 'complete');

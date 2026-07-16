@@ -39,6 +39,7 @@ import {
   type MarketSectionItem,
 } from '@/src/api/MarketApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
+import { createMixSeed, mixScoredItems } from '@/src/utils/feedMixer';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { buildMoodboardSuggestionSection } from '@/src/recommendations/recommendationScoring';
@@ -1442,6 +1443,9 @@ export function MarketScreen() {
   }, [collectionError]);
 
   const bottomClearance = standardScreenBottomPadding;
+  // One rotation seed per screen mount: every market entry renders a freshly
+  // mixed stack; the order stays stable while the user is on the screen.
+  const marketMixSeedRef = useRef(createMixSeed());
   const allItems = useMemo(() => buildContentItems(products, designs), [designs, products]);
   const marketQueryKey = useMemo(
     () => buildMarketQueryKey(filters, debouncedSearch, marketViewerKey),
@@ -1511,11 +1515,22 @@ export function MarketScreen() {
       return true;
     });
 
-    return next.sort((a, b) => {
-      if (filters.sort === 'price_asc') return (getItemPrice(a) ?? Number.MAX_SAFE_INTEGER) - (getItemPrice(b) ?? Number.MAX_SAFE_INTEGER);
-      if (filters.sort === 'price_desc') return (getItemPrice(b) ?? 0) - (getItemPrice(a) ?? 0);
-      if (filters.sort === 'popular') return getPopularity(b) - getPopularity(a);
-      return new Date(getItemCreatedAt(b) ?? 0).getTime() - new Date(getItemCreatedAt(a) ?? 0).getTime();
+    if (filters.sort === 'price_asc' || filters.sort === 'price_desc' || filters.sort === 'popular') {
+      return next.sort((a, b) => {
+        if (filters.sort === 'price_asc') return (getItemPrice(a) ?? Number.MAX_SAFE_INTEGER) - (getItemPrice(b) ?? Number.MAX_SAFE_INTEGER);
+        if (filters.sort === 'price_desc') return (getItemPrice(b) ?? 0) - (getItemPrice(a) ?? 0);
+        return getPopularity(b) - getPopularity(a);
+      });
+    }
+
+    // Default view: scored rotation (recency + popularity weighted, seeded
+    // per screen mount) — the market never renders the same stack in the
+    // same order on every visit. Explicit user sorts above stay exact.
+    return mixScoredItems(next, marketMixSeedRef.current, {
+      getId: (item) => item.key,
+      getCreatedAtMs: (item) => new Date(getItemCreatedAt(item) ?? 0).getTime(),
+      getPopularity,
+      getBrandKey: (item) => getItemBrand(item),
     });
   }, [allItems, filters, search]);
 
