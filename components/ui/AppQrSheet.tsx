@@ -74,9 +74,6 @@ export function AppQrSheet({
     >
       {value ? (
         <View style={styles.content}>
-          <AppText variant="captionBold" tone="muted" style={styles.brandLabel}>
-            WIEZ QR
-          </AppText>
           <View
             style={[
               styles.qrFrame,
@@ -112,9 +109,6 @@ export function AppQrSheet({
               },
             ]}
           >
-            <AppText variant="captionBold" tone="muted">
-              Public link
-            </AppText>
             <AppText variant="captionRegular" numberOfLines={3}>
               {readableUrl}
             </AppText>
