@@ -4,6 +4,8 @@ import { router, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
+import { AppSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
+import { locationService, type CountryOption, type StateOption } from '@/src/services/locationService';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -121,6 +123,123 @@ export function MobileCheckoutScreen() {
     },
     [],
   );
+
+  // Location selections
+  const [countries, setCountries] = useState<CountryOption[]>([]);
+  const [loadingCountries, setLoadingCountries] = useState(false);
+  const [countrySheetVisible, setCountrySheetVisible] = useState(false);
+
+  const [states, setStates] = useState<StateOption[]>([]);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [stateSheetVisible, setStateSheetVisible] = useState(false);
+
+  const [cities, setCities] = useState<string[]>([]);
+  const [loadingCities, setLoadingCities] = useState(false);
+  const [citySheetVisible, setCitySheetVisible] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingCountries(true);
+    locationService.getCountries()
+      .then((data) => {
+        if (active) setCountries(data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoadingCountries(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!form.country) {
+      setStates([]);
+      return;
+    }
+    setLoadingStates(true);
+    locationService.getStates(form.country)
+      .then((data) => {
+        if (active) setStates(data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoadingStates(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [form.country]);
+
+  useEffect(() => {
+    let active = true;
+    if (!form.country || !form.state) {
+      setCities([]);
+      return;
+    }
+    setLoadingCities(true);
+    locationService.getCities(form.country, form.state)
+      .then((data) => {
+        if (active) setCities(data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoadingCities(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [form.country, form.state]);
+
+  const countryOptions = useMemo<SelectSheetOption[]>(() => {
+    return countries.map((c) => ({
+      value: c.name,
+      label: c.name,
+    }));
+  }, [countries]);
+
+  const stateOptions = useMemo<SelectSheetOption[]>(() => {
+    return states.map((s) => ({
+      value: s.name,
+      label: s.name,
+    }));
+  }, [states]);
+
+  const cityOptions = useMemo<SelectSheetOption[]>(() => {
+    return cities.map((c) => ({
+      value: c,
+      label: c,
+    }));
+  }, [cities]);
+
+  const handleSelectCountry = useCallback((countryName: string) => {
+    setForm((current) => ({
+      ...current,
+      country: countryName,
+      state: '',
+      city: '',
+    }));
+    setErrors((current) => current.filter((entry) => entry !== 'country'));
+  }, []);
+
+  const handleSelectState = useCallback((stateName: string) => {
+    setForm((current) => ({
+      ...current,
+      state: stateName,
+      city: '',
+    }));
+    setErrors((current) => current.filter((entry) => entry !== 'state'));
+  }, []);
+
+  const handleSelectCity = useCallback((cityName: string) => {
+    setForm((current) => ({
+      ...current,
+      city: cityName,
+    }));
+    setErrors((current) => current.filter((entry) => entry !== 'city'));
+  }, []);
 
   // Dev-only nav timing for bag→checkout. The checkout shell + form render at
   // mount; data is ready once the required legal acceptances load settles.
@@ -330,28 +449,69 @@ export function MobileCheckoutScreen() {
                 value={form.apartment}
                 onChangeText={(value) => updateField('apartment', value)}
               />
-              <Input
-                label="City"
-                value={form.city}
-                onChangeText={(value) => updateField('city', value)}
-                error={fieldError('city', errors)}
-              />
-              <Input
-                label="State"
-                value={form.state}
-                onChangeText={(value) => updateField('state', value)}
-                error={fieldError('state', errors)}
-              />
+              {/* Country Selector Trigger */}
+              <Pressable onPress={() => setCountrySheetVisible(true)}>
+                <View pointerEvents="none">
+                  <Input
+                    label="Country"
+                    value={form.country}
+                    placeholder="Select Country"
+                    error={fieldError('country', errors)}
+                    editable={false}
+                  />
+                </View>
+              </Pressable>
+
+              {/* State Selector Trigger / Fallback */}
+              {form.country && stateOptions.length > 0 ? (
+                <Pressable onPress={() => setStateSheetVisible(true)}>
+                  <View pointerEvents="none">
+                    <Input
+                      label="State"
+                      value={form.state}
+                      placeholder={loadingStates ? "Loading states..." : "Select State"}
+                      error={fieldError('state', errors)}
+                      editable={false}
+                    />
+                  </View>
+                </Pressable>
+              ) : (
+                <Input
+                  label="State"
+                  value={form.state}
+                  placeholder="State/Province"
+                  onChangeText={(value) => updateField('state', value)}
+                  error={fieldError('state', errors)}
+                />
+              )}
+
+              {/* City Selector Trigger / Fallback */}
+              {form.state && cityOptions.length > 0 ? (
+                <Pressable onPress={() => setCitySheetVisible(true)}>
+                  <View pointerEvents="none">
+                    <Input
+                      label="City"
+                      value={form.city}
+                      placeholder={loadingCities ? "Loading cities..." : "Select City"}
+                      error={fieldError('city', errors)}
+                      editable={false}
+                    />
+                  </View>
+                </Pressable>
+              ) : (
+                <Input
+                  label="City"
+                  value={form.city}
+                  placeholder="City"
+                  onChangeText={(value) => updateField('city', value)}
+                  error={fieldError('city', errors)}
+                />
+              )}
+
               <Input
                 label="Postal code"
                 value={form.postalCode}
                 onChangeText={(value) => updateField('postalCode', value)}
-              />
-              <Input
-                label="Country"
-                value={form.country}
-                onChangeText={(value) => updateField('country', value)}
-                error={fieldError('country', errors)}
               />
             </View>
           </Card>
@@ -416,6 +576,40 @@ export function MobileCheckoutScreen() {
           </Card>
         </ScrollView>
       </SafeAreaView>
+
+      <AppSelectSheet
+        visible={countrySheetVisible}
+        title="Select Country"
+        options={countryOptions}
+        value={form.country}
+        onChange={(val) => {
+          handleSelectCountry(val);
+        }}
+        onClose={() => setCountrySheetVisible(false)}
+        loading={loadingCountries}
+      />
+      <AppSelectSheet
+        visible={stateSheetVisible}
+        title="Select State"
+        options={stateOptions}
+        value={form.state}
+        onChange={(val) => {
+          handleSelectState(val);
+        }}
+        onClose={() => setStateSheetVisible(false)}
+        loading={loadingStates}
+      />
+      <AppSelectSheet
+        visible={citySheetVisible}
+        title="Select City"
+        options={cityOptions}
+        value={form.city}
+        onChange={(val) => {
+          handleSelectCity(val);
+        }}
+        onClose={() => setCitySheetVisible(false)}
+        loading={loadingCities}
+      />
     </>
   );
 }

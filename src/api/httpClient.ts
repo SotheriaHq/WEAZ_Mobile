@@ -66,7 +66,9 @@ function normalizeApiBaseUrl(
     }
 
     if (!parsed.port) {
-      parsed.port = String(DEFAULT_PORT);
+      if (isPrivateOrLoopbackHost(parsed.hostname)) {
+        parsed.port = String(DEFAULT_PORT);
+      }
     }
 
     return parsed.toString().replace(/\/$/, '');
@@ -103,7 +105,13 @@ function buildBaseUrlWithHost(baseUrl: string, hostname: string): string | null 
     const parsed = new URL(baseUrl);
     parsed.hostname = hostname;
     if (!parsed.port) {
-      parsed.port = String(DEFAULT_PORT);
+      if (isPrivateOrLoopbackHost(parsed.hostname)) {
+        parsed.port = String(DEFAULT_PORT);
+      }
+    }
+    // Downgrade SSL protocol to http for private/loopback failover hosts
+    if (isPrivateOrLoopbackHost(parsed.hostname) && parsed.protocol === 'https:') {
+      parsed.protocol = 'http:';
     }
     return parsed.toString().replace(/\/$/, '');
   } catch {
