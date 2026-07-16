@@ -28,7 +28,7 @@ export type LoginOptionsResponse = {
   message: string;
 };
 
-export type EmailLoginCodePurpose = 'PASSWORD_SETUP';
+export type EmailLoginCodePurpose = 'PASSWORD_SETUP' | 'DIRECT_LOGIN';
 
 export type RequestEmailLoginCodeParams = {
   email: string;
@@ -114,6 +114,15 @@ export async function requestEmailLoginCode(params: RequestEmailLoginCodeParams)
 export async function confirmEmailLoginCode(params: ConfirmEmailLoginCodeParams) {
   const response = await apiClient.post('/auth/email-login-code/confirm', params);
   return unwrapData<ConfirmEmailLoginCodeResponse>(response.data);
+}
+
+export async function confirmDirectLoginCode(email: string, code: string) {
+  const response = await apiClient.post('/auth/email-login-code/confirm', {
+    email,
+    code,
+    purpose: 'DIRECT_LOGIN',
+  });
+  return unwrapData<AuthTokensResponse>(response.data);
 }
 
 export async function setupPassword(params: SetupPasswordParams) {

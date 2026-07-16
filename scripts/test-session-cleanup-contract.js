@@ -148,6 +148,19 @@ function loadSessionCleanup(options = {}) {
             notifications: { unreadCount: () => ['notifications', 'unreadCount'] },
             messaging: { unreadCount: () => ['messaging', 'unreadCount'] },
           },
+          PRIVATE_QUERY_ROOTS: new Set([
+            'auth',
+            'brand',
+            'design',
+            'designs',
+            'store',
+            'saved',
+            'notifications',
+            'messaging',
+            'reviews',
+            'orders',
+            'brandStaff',
+          ]),
         };
       }
       if (request === '@/src/realtime/messaging') {

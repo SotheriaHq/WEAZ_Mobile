@@ -16,6 +16,7 @@ import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
 import {
   confirmEmailLoginCode,
+  confirmDirectLoginCode,
   getLoginOptions,
   requestEmailLoginCode,
   setupPassword as setupAccountPassword,
@@ -38,6 +39,7 @@ type LoginStep =
   | 'email'
   | 'password'
   | 'google-only'
+  | 'code-login'
   | 'generic'
   | 'code'
   | 'password-setup'
@@ -91,6 +93,8 @@ export default function LoginScreen() {
   const [flowError, setFlowError] = useState('');
   const [emailCode, setEmailCode] = useState('');
   const [emailCodeLoading, setEmailCodeLoading] = useState(false);
+  const [directLoginSendLoading, setDirectLoginSendLoading] = useState(false);
+  const [directLoginConfirmLoading, setDirectLoginConfirmLoading] = useState(false);
   const [passwordSetupToken, setPasswordSetupToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -220,7 +224,8 @@ export default function LoginScreen() {
       if (options.methods.password) {
         setLoginStep('password');
       } else if (options.methods.google || options.methods.passwordSetupAvailable) {
-        setLoginStep('google-only');
+        setLoginStep('code-login');
+        void sendDirectLoginCode(normalizedEmail, options.requestId);
       } else {
         recordCredentialFailure();
         toast.error('Invalid credentials');
@@ -235,6 +240,43 @@ export default function LoginScreen() {
       }
     } finally {
       setOptionsLoading(false);
+    }
+  };
+
+  const sendDirectLoginCode = async (emailToUse: string, requestId?: string) => {
+    setDirectLoginSendLoading(true);
+    try {
+      await requestEmailLoginCode({
+        email: emailToUse,
+        purpose: 'DIRECT_LOGIN',
+        requestId,
+      });
+      setEmailCode('');
+      toast.success('Sign-in code has been sent to your email.');
+    } catch (error) {
+      setFlowError(getErrorMessage(error, 'Unable to send direct login code.'));
+    } finally {
+      setDirectLoginSendLoading(false);
+    }
+  };
+
+  const confirmDirectLoginCodeFn = async () => {
+    const code = emailCode.trim();
+    if (!code) {
+      setFlowError('Enter the code from your inbox.');
+      return;
+    }
+    setFlowError('');
+    setDirectLoginConfirmLoading(true);
+    try {
+      const result = await confirmDirectLoginCode(normalizedEmail, code);
+      await signIn({ email: normalizedEmail, tokenPayload: result });
+      toast.success('Welcome back!');
+      setPendingNavigation(true);
+    } catch (error) {
+      setFlowError(getErrorMessage(error, 'Invalid or expired code.'));
+    } finally {
+      setDirectLoginConfirmLoading(false);
     }
   };
 
@@ -491,6 +533,43 @@ export default function LoginScreen() {
                 <AppText variant="caption" tone="muted" style={styles.statePanelText}>
                   Continue with Google, or verify your email to create a WIEZ password.
                 </AppText>
+              </View>
+            ) : null}
+
+            {loginStep === 'code-login' ? (
+              <View style={styles.inlineFlow}>
+                <AppText variant="bodyBold">Enter your sign-in code</AppText>
+                <AppText variant="caption" tone="muted">
+                  A sign-in code has been sent to your email address.
+                </AppText>
+                <FloatingLabelInput
+                  label="Verification Code"
+                  value={emailCode}
+                  onChangeText={(value) => {
+                    setEmailCode(value);
+                    setFlowError('');
+                  }}
+                  keyboardType="numeric"
+                  isPassword
+                  testID="direct-login-code-input"
+                />
+                <View style={styles.inlineActions}>
+                  <Button
+                    title="Verify code"
+                    onPress={confirmDirectLoginCodeFn}
+                    loading={directLoginConfirmLoading}
+                    disabled={directLoginConfirmLoading || directLoginSendLoading}
+                    fullWidth
+                  />
+                  <Button
+                    title="Resend code"
+                    variant="outline"
+                    onPress={() => sendDirectLoginCode(normalizedEmail, loginOptions?.requestId)}
+                    loading={directLoginSendLoading}
+                    disabled={directLoginConfirmLoading || directLoginSendLoading}
+                    fullWidth
+                  />
+                </View>
               </View>
             ) : null}
 

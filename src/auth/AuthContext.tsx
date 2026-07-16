@@ -91,7 +91,8 @@ export type AuthUser = {
 
 type SignInParams = {
   email: string;
-  password: string;
+  password?: string;
+  tokenPayload?: any;
 };
 
 type SignUpParams = {
@@ -617,7 +618,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyActiveBrandSelection, cacheAuthenticatedUser, validateToken]);
 
-  const signIn = useCallback(async ({ email, password }: SignInParams) => {
+  const signIn = useCallback(async ({ email, password, tokenPayload }: SignInParams) => {
     try {
       setApiAuthToken(null);
       setApiRefreshToken(null);
@@ -631,10 +632,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         deactivatePushToken: false,
       });
 
+      if (tokenPayload) {
+        await applyAuthResponse(tokenPayload);
+        return;
+      }
+
       const rawIdentifier = String(email ?? '');
       const rawPassword = String(password ?? '');
       const normalizedIdentifier = sanitizeLoginIdentifier(email);
-      const sanitizedPassword = sanitizeLoginPassword(password);
+      const sanitizedPassword = sanitizeLoginPassword(password ?? '');
       const looksLikeEmail = normalizedIdentifier.includes('@');
 
       if (isThreadlyDebugEnabled('auth')) {

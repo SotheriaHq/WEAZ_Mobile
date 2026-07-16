@@ -270,7 +270,7 @@ function main() {
   assert.equal(resolveMobileAuthRoute('threadlymobile://brand/staff/invite?token=abc123'), null);
 
   const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
-  assert.equal(appJson.expo.scheme, 'threadlymobile', 'Expo scheme must remain configured.');
+  assert.equal(appJson.expo.scheme, 'wiezmobile', 'Expo scheme must remain configured.');
   assert.equal(
     appJson.expo.ios?.associatedDomains,
     undefined,

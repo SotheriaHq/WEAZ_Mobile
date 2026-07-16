@@ -172,7 +172,7 @@ async function main() {
 
   const nativeIslandConfigSource = fs.readFileSync(nativeIslandConfigPath, 'utf8');
   assert.match(nativeIslandConfigSource, /market:\s*'market'/);
-  assert.match(nativeIslandConfigSource, /label:\s*'Market'/);
+  assert.match(nativeIslandConfigSource, /label:\s*'Shop'/);
   assert.match(nativeIslandConfigSource, /return '\/\(tabs\)\/discover' as const/);
 
   console.log('Store API contract tests passed.');
