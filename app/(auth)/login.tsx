@@ -306,8 +306,44 @@ export default function LoginScreen() {
       toast.success('Welcome back!');
       setPendingNavigation(true);
     } catch (error) {
-      recordCredentialFailure();
-      toast.error('Invalid credentials');
+      const responseData = (error as any)?.response?.data;
+      const structuredErrors =
+        responseData &&
+        typeof responseData.errors === 'object' &&
+        responseData.errors !== null &&
+        !Array.isArray(responseData.errors)
+          ? (responseData.errors as Record<string, unknown>)
+          : undefined;
+      const structuredCode =
+        typeof structuredErrors?.code === 'string' ? structuredErrors.code : undefined;
+
+      if (
+        structuredCode === 'LOGIN_TEMPORARILY_LOCKED' ||
+        structuredCode === 'ACCOUNT_SUSPENDED_LOGIN_LOCKOUT'
+      ) {
+        // Progressive lockout: surface the backend wait/suspension guidance.
+        const message =
+          (typeof responseData?.message === 'string' && responseData.message) ||
+          'Too many failed sign-in attempts. Try again later.';
+        setFlowError(message);
+        toast.error(message);
+      } else {
+        recordCredentialFailure();
+        const attemptsRemaining =
+          typeof structuredErrors?.attemptsRemaining === 'number'
+            ? structuredErrors.attemptsRemaining
+            : null;
+        if (attemptsRemaining !== null && attemptsRemaining <= 5) {
+          const warning =
+            attemptsRemaining <= 1
+              ? 'Invalid credentials — one more failed attempt will suspend this account.'
+              : `Invalid credentials — ${attemptsRemaining} attempts remaining before this account is suspended.`;
+          setFlowError(warning);
+          toast.error(warning);
+        } else {
+          toast.error('Invalid credentials');
+        }
+      }
     } finally {
       setSubmitting(false);
     }
