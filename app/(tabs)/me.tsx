@@ -266,7 +266,9 @@ function ProfileAction({
       accessibilityRole="button"
       style={({ pressed }) => [
         styles.actionCard,
-        { backgroundColor: pressed ? theme.colors.surface : theme.colors.surfaceAlt },
+        // Bare, theme-neutral tiles: no fill in either theme so they sit ON the
+        // page instead of looking like misplaced cards; press feedback only.
+        { backgroundColor: pressed ? theme.colors.surfaceAlt : 'transparent' },
       ]}
     >
       <View style={[styles.actionIcon, { backgroundColor: accentColor }]}>
@@ -280,7 +282,10 @@ function ProfileAction({
 function formatMeasurementKeyLabel(key: string): string {
   const known = MEASUREMENT_FIELDS.find((field) => field.key === key);
   if (known) return known.label;
+  // Measurement point KEYS carry MEN_/WOMEN_ namespacing, but labels must not:
+  // the brand already chose who the design is for — "Inseam", never "Men Inseam".
   return key
+    .replace(/^(MEN|WOMEN|MENS|WOMENS|UNISEX)_/i, '')
     .toLowerCase()
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (ch) => ch.toUpperCase());
@@ -1026,6 +1031,14 @@ export default function BuyerProfileScreen() {
             {profileIdentity.locationLabel ? (
               <AppText variant="captionRegular" tone="muted" style={styles.centerText}>
                 {profileIdentity.locationLabel}
+              </AppText>
+            ) : null}
+            {state.computedSizeFit?.estimatedSize || state.computedSizeFit?.displayRange ? (
+              <AppText variant="captionBold" tone="secondary" style={styles.centerText}>
+                📐 {state.computedSizeFit.estimatedSize ?? state.computedSizeFit.displayRange}
+                {state.computedSizeFit.preferredRegion
+                  ? ` · ${state.computedSizeFit.preferredRegion.replace(/_/g, ' ')}`
+                  : ''}
               </AppText>
             ) : null}
           </View>
