@@ -12,7 +12,14 @@ import { resolveRunwayMediaStrategy } from '@/src/features/feed/media/runwayMedi
 import { feedMediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { markRunwayFirstMediaVisible } from '@/src/features/feed/utils/runwayReadiness';
 import { resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+
+// The runway is an immersive media surface: the stage behind every image is
+// deep black in BOTH themes (true-black dark token), so letterboxed content
+// sits on an invisible stage instead of white/soft padding.
+const RUNWAY_MATTE = tokens.themes.dark.colors.bg;
+const RUNWAY_SHIMMER = tokens.themes.dark.colors.border;
 
 type FeedImageLoadState = 'idle' | 'resolving' | 'loading' | 'loaded' | 'failed';
 type FeedImageAspectClass = 'portrait' | 'square' | 'landscape' | 'unknown';
@@ -316,11 +323,11 @@ export const FeedImage = React.memo(function FeedImage({
   if (loadState === 'failed' && !visibleSuccessfulSource) return renderFallback('Tap to retry');
 
   return (
-    <View style={[styles.root, { backgroundColor: placeholderSurface }, style]}>
+    <View style={[styles.root, { backgroundColor: RUNWAY_MATTE }, style]}>
       {!visibleSuccessfulSource ? (
         <FeedImagePlaceholder
-          backgroundColor={placeholderSurface}
-          shimmerColor={theme.colors.border}
+          backgroundColor={RUNWAY_MATTE}
+          shimmerColor={RUNWAY_SHIMMER}
         />
       ) : null}
 
@@ -328,7 +335,7 @@ export const FeedImage = React.memo(function FeedImage({
         <AspectAwareMedia
           source={successfulImageSource}
           blurhash={blurHash}
-          dominantColor={placeholderSurface}
+          dominantColor={RUNWAY_MATTE}
           imageWidth={resolvedImageWidth}
           imageHeight={resolvedImageHeight}
           imageAspectRatio={strategyResult.imageAspectRatio}
@@ -346,7 +353,7 @@ export const FeedImage = React.memo(function FeedImage({
           source={currentImageSource}
           placeholderSource={placeholderSource}
           blurhash={blurHash}
-          dominantColor={placeholderSurface}
+          dominantColor={RUNWAY_MATTE}
           imageWidth={resolvedImageWidth}
           imageHeight={resolvedImageHeight}
           imageAspectRatio={strategyResult.imageAspectRatio}

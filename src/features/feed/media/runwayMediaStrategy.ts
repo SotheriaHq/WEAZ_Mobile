@@ -54,18 +54,25 @@ export function resolveRunwayMediaStrategy({
     };
   }
 
+  // Full-view-first runway policy: vertical media fills the phone screen
+  // edge-to-edge; anything that cannot cover snugly is contained UNCROPPED on
+  // the deep-black runway matte. Blur/soft ambient backdrops are banned here —
+  // the blurred copy painted a frame after the foreground and read as a
+  // double-render flash, and pale mattes read as white padding around content.
+  const isPortrait = imageClass === 'portrait' || imageClass === 'ultra-portrait';
   const hasViewport = isPositiveFinite(viewportWidth) && isPositiveFinite(viewportHeight);
   if (!hasViewport) {
     return {
-      strategy: imageClass === 'landscape' || imageClass === 'ultra-wide' ? 'letter-blur' : 'letter-soft',
+      strategy: isPortrait ? 'edge' : 'letter-solid',
       imageAspectRatio: resolvedAspect,
       imageClass,
       coverCropFraction: null,
     };
   }
 
-  const crop = getCoverCropFraction(resolvedAspect, viewportWidth / viewportHeight);
-  if (crop <= RUNWAY_SAFE_COVER_CROP_TOLERANCE) {
+  const viewportAspect = viewportWidth / viewportHeight;
+  const crop = getCoverCropFraction(resolvedAspect, viewportAspect);
+  if (crop <= RUNWAY_SAFE_COVER_CROP_TOLERANCE || (isPortrait && viewportAspect < 1)) {
     return {
       strategy: 'edge',
       imageAspectRatio: resolvedAspect,
@@ -75,7 +82,7 @@ export function resolveRunwayMediaStrategy({
   }
 
   return {
-    strategy: imageClass === 'landscape' || imageClass === 'ultra-wide' ? 'letter-blur' : 'letter-soft',
+    strategy: 'letter-solid',
     imageAspectRatio: resolvedAspect,
     imageClass,
     coverCropFraction: crop,

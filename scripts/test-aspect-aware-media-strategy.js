@@ -210,6 +210,10 @@ if (safePortraitRunway.coverCropFraction > RUNWAY_SAFE_COVER_CROP_TOLERANCE) {
   failures.push('runway edge strategy exceeded the safe crop tolerance');
 }
 
+// Runway full-view policy: vertical media fills the phone screen edge-to-edge;
+// square/landscape are contained UNCROPPED on the deep-black matte. Blur/soft
+// ambient backdrops are banned on the runway (they painted a frame late and
+// read as a double-render flash).
 const portraitRunway = resolveRunwayMediaStrategy({
   viewportWidth: 400,
   viewportHeight: 800,
@@ -225,11 +229,17 @@ const landscapeSpecificRunway = resolveRunwayMediaStrategy({
   viewportHeight: 800,
   imageAspectRatio: 1.4,
 });
-check('runway portrait avoids generic dark letterbox', portraitRunway.strategy, 'letter-soft');
-check('runway square uses restrained ambience', squareSpecificRunway.strategy, 'letter-soft');
-check('runway landscape uses image-reflective ambience', landscapeSpecificRunway.strategy, 'letter-blur');
-if (squareSpecificRunway.strategy === landscapeSpecificRunway.strategy) {
-  failures.push('runway square and landscape must use distinct ambience');
+check('runway portrait fills the vertical viewport', portraitRunway.strategy, 'edge');
+check('runway square uses the solid black matte', squareSpecificRunway.strategy, 'letter-solid');
+check('runway landscape uses the solid black matte', landscapeSpecificRunway.strategy, 'letter-solid');
+for (const [label, result] of [
+  ['portrait', portraitRunway],
+  ['square', squareSpecificRunway],
+  ['landscape', landscapeSpecificRunway],
+]) {
+  if (result.strategy === 'letter-blur' || result.strategy === 'letter-soft') {
+    failures.push(`runway ${label} must never use a blurred/soft ambient backdrop`);
+  }
 }
 
 const progressiveSources = resolveFeedImageSourcePolicy({
