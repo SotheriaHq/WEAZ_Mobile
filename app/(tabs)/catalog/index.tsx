@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Catalog Screen - Mobile
  * Brand catalog page with profile header, collections, reviews, and about tabs
  * Routes: /catalog (owner view) or /catalog/[brandId] (visitor view)
@@ -1482,7 +1482,7 @@ export default function CatalogScreen() {
 
     let cancelled = false;
     queryClient.fetchQuery({
-      queryKey: queryKeys.saved.batch('COLLECTION', ids),
+      queryKey: queryKeys.saved.batch('COLLECTION', savedCatalogIds),
       queryFn: () => SavedItemsApi.checkBatch('COLLECTION', ids),
       staleTime: THREADLY_SAVED_STATUS_STALE_TIME_MS,
     })
