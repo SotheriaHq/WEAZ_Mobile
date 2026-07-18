@@ -14,6 +14,7 @@ import {
   paymentApi,
   type ShippingAddress,
 } from '@/src/api/PaymentApi';
+import { ProfileApi } from '@/src/api/ProfileApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { queryClient } from '@/src/query/queryClient';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
@@ -123,6 +124,38 @@ export function MobileCheckoutScreen() {
     },
     [],
   );
+
+  // Cross-platform address book: prefill from the backend-saved delivery
+  // addresses (same book the web checkout maintains) so an address saved on
+  // web appears here. Never overwrite anything the user already typed.
+  useEffect(() => {
+    let active = true;
+    ProfileApi.getDeliveryAddresses()
+      .then((items) => {
+        if (!active || items.length === 0) return;
+        const primary = items[0];
+        setForm((current) => {
+          if (current.street.trim()) return current;
+          return {
+            ...current,
+            firstName: current.firstName.trim() ? current.firstName : primary.firstName,
+            lastName: current.lastName.trim() ? current.lastName : primary.lastName,
+            email: current.email.trim() ? current.email : primary.contactEmail,
+            phone: current.phone.trim() ? current.phone : primary.phone,
+            street: primary.street,
+            apartment: primary.apartment,
+            city: primary.city,
+            state: primary.state,
+            postalCode: primary.postalCode,
+            country: primary.country || current.country,
+          };
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Location selections
   const [countries, setCountries] = useState<CountryOption[]>([]);

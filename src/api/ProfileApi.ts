@@ -93,6 +93,22 @@ export interface SizeRecommendationResponse {
   fabricStretch?: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN' | null;
 }
 
+export interface SavedDeliveryAddress {
+  id: string;
+  firstName: string;
+  lastName: string;
+  customerName: string;
+  contactEmail: string;
+  phone: string;
+  street: string;
+  apartment: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  updatedAt: string;
+}
+
 export interface ComputedSizeFitProfile {
   estimatedSize: string | null;
   displayRange: string | null;
@@ -413,6 +429,29 @@ export const ProfileApi = {
     const res = await apiClient.get('/users/me/size-fit');
     const d = (res.data?.data ?? res.data) as any;
     return d ?? null;
+  },
+
+  async getDeliveryAddresses(): Promise<SavedDeliveryAddress[]> {
+    const res = await apiClient.get('/users/me/delivery-addresses');
+    const d = (res.data?.data ?? res.data) as any;
+    const items = Array.isArray(d?.items) ? d.items : [];
+    return items
+      .map((entry: any) => ({
+        id: String(entry?.id ?? ''),
+        firstName: String(entry?.firstName ?? ''),
+        lastName: String(entry?.lastName ?? ''),
+        customerName: String(entry?.customerName ?? ''),
+        contactEmail: String(entry?.contactEmail ?? ''),
+        phone: String(entry?.phone ?? ''),
+        street: String(entry?.street ?? ''),
+        apartment: String(entry?.apartment ?? ''),
+        city: String(entry?.city ?? ''),
+        state: String(entry?.state ?? ''),
+        postalCode: String(entry?.postalCode ?? ''),
+        country: String(entry?.country ?? 'Nigeria'),
+        updatedAt: String(entry?.updatedAt ?? ''),
+      }))
+      .filter((entry: SavedDeliveryAddress) => Boolean(entry.id && entry.street && entry.city));
   },
 
   async getComputedSizeFit(params?: { region?: SizingRegion }): Promise<ComputedSizeFitProfile | null> {
