@@ -52,12 +52,20 @@ export interface CartState {
   items: Array<{
     id: string;
     productId: string;
+    quantity: number;
+    name: string | null;
+    brandName: string | null;
+    thumbnail: string | null;
+    unitPrice: number | null;
+    itemTotal: number | null;
     selectedSize?: string | null;
     selectedColor?: string | null;
     sizeRecommendationSnapshot?: SizeRecommendationSnapshot | Record<string, unknown> | null;
   }>;
   itemCount: number;
   totalQuantity: number;
+  subtotal: number | null;
+  currency: string;
 }
 
 export interface WishlistState {
@@ -85,6 +93,14 @@ export interface CustomBagState {
     sessionId: string;
     sourceType: string;
     sourceId: string;
+    sourceTitle: string | null;
+    sourceBrandName: string | null;
+    sourcePrimaryMediaUrl: string | null;
+    rushSelected: boolean;
+    measurementCount: number;
+    grandTotal: number | null;
+    currency: string;
+    isPriceLockExpired: boolean;
   }>;
   total: number;
 }
@@ -1193,12 +1209,21 @@ export const MobileStoreApi = {
       .map((entry) => {
         const item = asRecord(entry);
         const product = asRecord(item.product);
+        const brand = asRecord(item.brand);
         const id = asString(item.id);
         const productId = asString(item.productId) ?? asString(product.id);
         if (!id || !productId) return null;
+        const unitPrice = asNumber(product.effectivePrice, Number.NaN);
+        const itemTotal = asNumber(item.itemTotal, Number.NaN);
         return {
           id,
           productId,
+          quantity: Math.max(1, asNumber(item.quantity, 1)),
+          name: asString(product.name),
+          brandName: asString(brand.name),
+          thumbnail: asString(product.thumbnail),
+          unitPrice: Number.isFinite(unitPrice) ? unitPrice : null,
+          itemTotal: Number.isFinite(itemTotal) ? itemTotal : null,
           selectedSize: asString(item.selectedSize),
           selectedColor: asString(item.selectedColor),
           sizeRecommendationSnapshot: item.sizeRecommendationSnapshot as Record<string, unknown> | null,
@@ -1206,10 +1231,13 @@ export const MobileStoreApi = {
       })
       .filter(Boolean) as CartState['items'];
 
+    const subtotal = asNumber(payload?.subtotal, Number.NaN);
     return {
       items: mapped,
       itemCount: asNumber(payload?.itemCount, mapped.length),
       totalQuantity: asNumber(payload?.totalQuantity, mapped.length),
+      subtotal: Number.isFinite(subtotal) ? subtotal : null,
+      currency: asString(payload?.currency) ?? 'NGN',
     };
   },
 
@@ -1359,13 +1387,27 @@ export const MobileStoreApi = {
     const mapped = items
       .map((entry) => {
         const item = asRecord(entry);
+        const priceSummary = asRecord(item.buyerPriceSummary);
         const sessionId = asString(item.sessionId);
         const sourceType = asString(item.sourceType);
         const sourceId = asString(item.sourceId);
         if (!sessionId || !sourceType || !sourceId) return null;
-        return { sessionId, sourceType, sourceId };
+        const grandTotal = asNumber(priceSummary.grandTotal, Number.NaN);
+        return {
+          sessionId,
+          sourceType,
+          sourceId,
+          sourceTitle: asString(item.sourceTitle),
+          sourceBrandName: asString(item.sourceBrandName),
+          sourcePrimaryMediaUrl: asString(item.sourcePrimaryMediaUrl),
+          rushSelected: item.rushSelected === true,
+          measurementCount: asNumber(item.measurementCount, 0),
+          grandTotal: Number.isFinite(grandTotal) ? grandTotal : null,
+          currency: asString(priceSummary.currency) ?? 'NGN',
+          isPriceLockExpired: item.isPriceLockExpired === true,
+        };
       })
-      .filter((entry): entry is { sessionId: string; sourceType: string; sourceId: string } => Boolean(entry));
+      .filter(Boolean) as CustomBagState['items'];
 
     return {
       items: mapped,
