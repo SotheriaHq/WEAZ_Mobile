@@ -768,9 +768,25 @@ export async function getMeasurementPoints(params?: {
   }));
 }
 
-export async function getVisibleCustomOrderConfigurations(limit = 50): Promise<DesignCustomOrderConfiguration[]> {
+/**
+ * Lists custom-order configurations for the authenticated brand owner only.
+ * Platform-wide dumps are no longer allowed (IDOR hardening). Prefer
+ * getActiveDesignCustomConfiguration(designId) for a single source.
+ */
+export async function getVisibleCustomOrderConfigurations(
+  limit = 50,
+  options?: { brandId?: string; sourceType?: 'PRODUCT' | 'DESIGN'; sourceId?: string },
+): Promise<DesignCustomOrderConfiguration[]> {
   const response = await apiClient.get('/custom-order-configurations', {
-    params: { page: 1, limit, isActive: true },
+    params: {
+      page: 1,
+      limit,
+      isActive: true,
+      ...(options?.brandId ? { brandId: options.brandId } : {}),
+      ...(options?.sourceType && options?.sourceId
+        ? { sourceType: options.sourceType, sourceId: options.sourceId }
+        : {}),
+    },
   });
   return unwrapItems(response.data)
     .map((entry) => normalizeCustomOrderConfiguration(entry))
