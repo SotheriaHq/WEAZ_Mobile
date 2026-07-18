@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import ProfileImageModal from '@/components/profile/ProfileImageModal';
-import { ProfileApi, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
+import { ProfileApi, type ComputedSizeFitProfile, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
 import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
 import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
@@ -49,6 +49,7 @@ type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 type ProfileState = {
   profile: UserProfile | null;
   sizeFit: SizeFitProfile | null;
+  computedSizeFit: ComputedSizeFitProfile | null;
   saved: SavedItem[];
   patches: PatchedBrand[];
   orders: BuyerOrderSummary[];
@@ -103,6 +104,7 @@ function createEmptyProfileState(): ProfileState {
   return {
     profile: null,
     sizeFit: null,
+    computedSizeFit: null,
     saved: [],
     patches: [],
     orders: [],
@@ -264,8 +266,7 @@ function ProfileAction({
       accessibilityRole="button"
       style={({ pressed }) => [
         styles.actionCard,
-        { backgroundColor: theme.colors.surface, borderColor: accentColor },
-        pressed ? styles.pressed : null,
+        { backgroundColor: pressed ? theme.colors.surface : theme.colors.surfaceAlt },
       ]}
     >
       <View style={[styles.actionIcon, { backgroundColor: accentColor }]}>
@@ -276,16 +277,30 @@ function ProfileAction({
   );
 }
 
+function formatMeasurementKeyLabel(key: string): string {
+  const known = MEASUREMENT_FIELDS.find((field) => field.key === key);
+  if (known) return known.label;
+  return key
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
 function MeasurementCard({
   sizeFit,
+  computed,
   onPress,
 }: {
   sizeFit: SizeFitProfile | null;
+  computed: ComputedSizeFitProfile | null;
   onPress: () => void;
 }) {
   const { theme } = useTheme();
   const measurements = Object.entries(sizeFit?.measurements ?? {}).filter(([, value]) => String(value).trim().length > 0);
   const measurementCount = measurements.length;
+  const unitLabel = (sizeFit?.preferredLengthUnit ?? 'CM').toLowerCase();
+  const computedLabel = computed?.estimatedSize ?? computed?.displayRange ?? null;
+  const computedRegion = computed?.preferredRegion ? computed.preferredRegion.replace(/_/g, ' ') : null;
 
   return (
     <Card padding="sm" style={[styles.fittingsCard, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -301,17 +316,34 @@ function MeasurementCard({
         <Button title={measurements.length > 0 ? 'Edit' : 'Add'} size="sm" variant="secondary" onPress={onPress} />
       </View>
 
+      {computedLabel ? (
+        <View style={[styles.computedFitRow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <AppText variant="captionRegular" tone="muted">Computed fit</AppText>
+          <AppText variant="bodyBold">
+            📐 {computedLabel}
+            {computedRegion ? ` · ${computedRegion}` : ''}
+          </AppText>
+        </View>
+      ) : null}
+
       {measurements.length === 0 ? (
         <AppText variant="body" tone="muted" style={styles.measurementCopy}>
           Add your baseline measurements once and reuse them across custom orders.
         </AppText>
-      ) : null}
-
-      {measurements.length > 0 ? (
-        <AppText variant="captionRegular" tone="muted" style={styles.measurementCopy}>
-          Tap Edit to update your saved fit or add a missing measurement.
-        </AppText>
-      ) : null}
+      ) : (
+        <View style={styles.measurementChips}>
+          {measurements.map(([key, value]) => (
+            <View
+              key={key}
+              style={[styles.measurementChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+            >
+              <AppText variant="captionBold">
+                {formatMeasurementKeyLabel(key)} · {String(value).trim()} {unitLabel}
+              </AppText>
+            </View>
+          ))}
+        </View>
+      )}
     </Card>
   );
 }
@@ -603,9 +635,10 @@ export default function BuyerProfileScreen() {
     setOrdersLoading(true);
     setError(null);
     try {
-      const [profileResult, sizeFitResult, savedResult, patchesResult, ordersResult] = await Promise.allSettled([
+      const [profileResult, sizeFitResult, computedSizeFitResult, savedResult, patchesResult, ordersResult] = await Promise.allSettled([
         ProfileApi.getMe(),
         ProfileApi.getSizeFit(),
+        ProfileApi.getComputedSizeFit(),
         ProfileApi.getSaved(),
         ProfileApi.getPatches(user.id),
         BuyerOrdersApi.list({ limit: PROFILE_ORDERS_PREVIEW_LIMIT }),
@@ -619,12 +652,15 @@ export default function BuyerProfileScreen() {
           ? profileResult.value
           : previousState.profile ?? fallbackProfile;
       const nextSizeFit = sizeFitResult.status === 'fulfilled' ? sizeFitResult.value : previousState.sizeFit;
+      const nextComputedSizeFit =
+        computedSizeFitResult.status === 'fulfilled' ? computedSizeFitResult.value : previousState.computedSizeFit;
       const nextSaved = savedResult.status === 'fulfilled' ? savedResult.value : previousState.saved;
       const nextPatches = patchesResult.status === 'fulfilled' ? patchesResult.value : previousState.patches;
       const nextOrders = ordersResult.status === 'fulfilled' ? ordersResult.value : previousState.orders;
       const profileFailed = profileResult.status === 'rejected' && !isNotFoundError(profileResult.reason);
       const optionalFailures = [
         { section: 'size-fit', endpoint: '/users/me/size-fit', result: sizeFitResult },
+        { section: 'size-fit-computed', endpoint: '/users/me/size-fit/computed', result: computedSizeFitResult },
         { section: 'saved', endpoint: '/saved/me', result: savedResult },
         { section: 'patches', endpoint: `/users/${user.id}/patches`, result: patchesResult },
         { section: 'orders', endpoint: '/store/orders + /custom-orders', result: ordersResult },
@@ -642,6 +678,7 @@ export default function BuyerProfileScreen() {
       setState({
         profile: nextProfile,
         sizeFit: nextSizeFit,
+        computedSizeFit: nextComputedSizeFit,
         saved: nextSaved,
         patches: nextPatches,
         orders: nextOrders,
@@ -652,6 +689,7 @@ export default function BuyerProfileScreen() {
         writeWarmScreenState(warmProfileStateKey, {
           profile: nextProfile,
           sizeFit: nextSizeFit,
+          computedSizeFit: nextComputedSizeFit,
           saved: nextSaved,
           patches: nextPatches,
           orders: nextOrders,
@@ -1018,7 +1056,7 @@ export default function BuyerProfileScreen() {
           <SummaryStat title="Recent" value={String(profileCounts.orders)} subtitle="orders" />
         </View>
 
-        <MeasurementCard sizeFit={state.sizeFit} onPress={() => setFittingsOpen(true)} />
+        <MeasurementCard sizeFit={state.sizeFit} computed={state.computedSizeFit} onPress={() => setFittingsOpen(true)} />
 
         {error ? (
           <View style={[styles.inlineNotice, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
@@ -1256,12 +1294,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: tokens.spacing.xs,
   },
+  // Instagram-style soft action tile: solid tokenized fill, no outline —
+  // hairline accent borders rendered as scratchy dashes on Android densities.
   actionCard: {
     flex: 1,
     minWidth: 0,
     minHeight: 68,
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
     gap: tokens.spacing.xs,
@@ -1290,6 +1329,27 @@ const styles = StyleSheet.create({
   },
   fittingsCard: {
     gap: tokens.spacing.sm,
+  },
+  computedFitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+    borderRadius: tokens.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  measurementChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  measurementChip: {
+    borderRadius: tokens.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
