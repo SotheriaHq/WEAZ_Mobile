@@ -36,6 +36,7 @@ import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import {
   AppMultiSelectSheet,
   AppSelectSheet,
+  type SelectSheetOption,
 } from '@/components/ui/AppSelectSheet';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -85,6 +86,24 @@ const PRIVACY_OPTIONS = [
 const TARGET_AGE_OPTIONS: Array<{ value: 'ADULT' | 'CHILD'; label: string }> = [
   { value: 'ADULT', label: DESIGN_TARGET_AGE_LABELS.ADULT },
   { value: 'CHILD', label: DESIGN_TARGET_AGE_LABELS.CHILD },
+];
+
+const REVISION_POLICY_PRESETS: SelectSheetOption[] = [
+  { value: 'One revision after delivery confirmation.', label: 'One revision after delivery confirmation.' },
+  { value: 'Two revisions within 7 days of delivery confirmation.', label: 'Two revisions within 7 days of delivery confirmation.' },
+  { value: 'One revision before final stitching and one after delivery.', label: 'One revision before final stitching and one after delivery.' },
+];
+
+const RETURN_POLICY_PRESETS: SelectSheetOption[] = [
+  { value: 'Custom orders are not returnable except where required by policy.', label: 'Custom orders are not returnable except where required by policy.' },
+  { value: 'Returns allowed only for manufacturing defects verified by support.', label: 'Returns allowed only for manufacturing defects verified by support.' },
+  { value: 'No returns after production starts. Pre-production cancellation may qualify for partial refund.', label: 'No returns after production starts. Pre-production cancellation may qualify for partial refund.' },
+];
+
+const DEFECT_POLICY_PRESETS: SelectSheetOption[] = [
+  { value: 'Defects and material faults are reviewed through support.', label: 'Defects and material faults are reviewed through support.' },
+  { value: 'Brand will repair confirmed defects within 7 days of report.', label: 'Brand will repair confirmed defects within 7 days of report.' },
+  { value: 'Confirmed defects qualify for remake or partial refund based on severity.', label: 'Confirmed defects qualify for remake or partial refund based on severity.' },
 ];
 
 const STYLE_DETAIL_DIMENSION_SLUGS = new Set([
@@ -162,6 +181,9 @@ export default function CreateDesignComposerScreen() {
   const [heritageOpen, setHeritageOpen] = useState(false);
   const [occasionOpen, setOccasionOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
+  const [revisionPolicyOpen, setRevisionPolicyOpen] = useState(false);
+  const [returnPolicyOpen, setReturnPolicyOpen] = useState(false);
+  const [defectPolicyOpen, setDefectPolicyOpen] = useState(false);
   // Source chosen in the media option sheet, launched only AFTER the sheet has
   // fully dismissed so the app sheet/backdrop never lingers behind the system
   // picker (see the pending-picker effect below).
@@ -1427,6 +1449,25 @@ export default function CreateDesignComposerScreen() {
                 />
               </Reanimated.View>
             ) : null}
+
+            <View style={styles.sheetSection}>
+              <RequiredFieldLabel required>Fabric sourcing</RequiredFieldLabel>
+              <View style={styles.sheetChipWrap}>
+                {([
+                  { value: 'BRAND_SOURCED', label: 'Brand Sourced' },
+                  { value: 'BUYER_SUPPLIED', label: 'Buyer Supplied' },
+                  { value: 'EITHER', label: 'Either' }
+                ] as const).map((opt) => (
+                  <Chip
+                    key={opt.value}
+                    label={opt.label}
+                    selected={form.fabricSourcingMode === opt.value}
+                    onPress={() => updateField('fabricSourcingMode', opt.value)}
+                  />
+                ))}
+              </View>
+            </View>
+
             <View style={styles.priceRow}>
               <Input
                 label="Delivery min days"
@@ -1470,14 +1511,27 @@ export default function CreateDesignComposerScreen() {
               helperText="1-7 days to produce the custom order."
               error={customOrderFieldErrors.productionTime ?? undefined}
             />
-            <Input
-              label="Fallback yards"
-              value={form.fallbackOutputYards}
-              onChangeText={(value) => updateField('fallbackOutputYards', value.replace(/[^0-9.]/g, ''))}
-              keyboardType="decimal-pad"
-              placeholder="4"
-              error={customOrderFieldErrors.fallbackYards ?? undefined}
-            />
+
+            <View style={styles.priceRow}>
+              <Input
+                label="Fallback yards"
+                value={form.fallbackOutputYards}
+                onChangeText={(value) => updateField('fallbackOutputYards', value.replace(/[^0-9.]/g, ''))}
+                keyboardType="decimal-pad"
+                placeholder="4"
+                containerStyle={styles.priceInput}
+                error={customOrderFieldErrors.fallbackYards ?? undefined}
+              />
+              <Input
+                label="Average base yards"
+                value={form.averageBaseYards}
+                onChangeText={(value) => updateField('averageBaseYards', value.replace(/[^0-9.]/g, ''))}
+                keyboardType="decimal-pad"
+                placeholder="3.5"
+                containerStyle={styles.priceInput}
+              />
+            </View>
+
             <Input
               label="Delivery scope"
               value={form.deliveryScope}
@@ -1498,23 +1552,50 @@ export default function CreateDesignComposerScreen() {
               multiline
               placeholder="Internal notes about this configuration..."
             />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: tokens.spacing.md }}>
+              <AppText variant="captionBold">Revision policy</AppText>
+              <Pressable onPress={() => setRevisionPolicyOpen(true)}>
+                <AppText variant="captionBold" tone="primary">Presets</AppText>
+              </Pressable>
+            </View>
             <Input
               label="Revision policy"
+              hideLabel
               value={form.revisionPolicy}
               onChangeText={(value) => updateField('revisionPolicy', value)}
               multiline
+              containerStyle={{ marginTop: 4 }}
             />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: tokens.spacing.md }}>
+              <AppText variant="captionBold">Return policy</AppText>
+              <Pressable onPress={() => setReturnPolicyOpen(true)}>
+                <AppText variant="captionBold" tone="primary">Presets</AppText>
+              </Pressable>
+            </View>
             <Input
               label="Return policy"
+              hideLabel
               value={form.returnPolicy}
               onChangeText={(value) => updateField('returnPolicy', value)}
               multiline
+              containerStyle={{ marginTop: 4 }}
             />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: tokens.spacing.md }}>
+              <AppText variant="captionBold">Defect policy</AppText>
+              <Pressable onPress={() => setDefectPolicyOpen(true)}>
+                <AppText variant="captionBold" tone="primary">Presets</AppText>
+              </Pressable>
+            </View>
             <Input
               label="Defect policy"
+              hideLabel
               value={form.defectPolicy}
               onChangeText={(value) => updateField('defectPolicy', value)}
               multiline
+              containerStyle={{ marginTop: 4 }}
             />
           </Reanimated.View>
         ) : null}
@@ -1538,6 +1619,45 @@ export default function CreateDesignComposerScreen() {
         value={form.targetAgeGroup}
         onChange={(value) => updateField('targetAgeGroup', value as typeof form.targetAgeGroup)}
         onClose={() => setAgeGroupOpen(false)}
+      />
+
+      <AppSelectSheet
+        visible={revisionPolicyOpen}
+        title="Revision Policy Presets"
+        subtitle="Select a standard policy to autofill."
+        options={REVISION_POLICY_PRESETS}
+        value={form.revisionPolicy}
+        onChange={(value) => {
+          updateField('revisionPolicy', value);
+          setRevisionPolicyOpen(false);
+        }}
+        onClose={() => setRevisionPolicyOpen(false)}
+      />
+
+      <AppSelectSheet
+        visible={returnPolicyOpen}
+        title="Return Policy Presets"
+        subtitle="Select a standard policy to autofill."
+        options={RETURN_POLICY_PRESETS}
+        value={form.returnPolicy}
+        onChange={(value) => {
+          updateField('returnPolicy', value);
+          setReturnPolicyOpen(false);
+        }}
+        onClose={() => setReturnPolicyOpen(false)}
+      />
+
+      <AppSelectSheet
+        visible={defectPolicyOpen}
+        title="Defect Policy Presets"
+        subtitle="Select a standard policy to autofill."
+        options={DEFECT_POLICY_PRESETS}
+        value={form.defectPolicy}
+        onChange={(value) => {
+          updateField('defectPolicy', value);
+          setDefectPolicyOpen(false);
+        }}
+        onClose={() => setDefectPolicyOpen(false)}
       />
 
       <AppBottomSheet

@@ -94,6 +94,7 @@ type FormState = {
   defectPolicy: string;
   fabricSourcingMode: 'BRAND_SOURCED' | 'BUYER_SUPPLIED' | 'EITHER';
   fallbackOutputYards: string;
+  averageBaseYards: string;
   fitPreference: FitPreference;
   targetAgeGroup: TargetAgeGroup;
   rushEnabled: boolean;
@@ -172,6 +173,7 @@ const INITIAL_FORM: FormState = {
   defectPolicy: 'Defects and material faults are reviewed through support.',
   fabricSourcingMode: 'BRAND_SOURCED',
   fallbackOutputYards: '4',
+  averageBaseYards: '',
   fitPreference: 'REGULAR',
   targetAgeGroup: 'ADULT',
   rushEnabled: false,
@@ -229,6 +231,7 @@ function syncFormFromDetail(detail: DesignDetail): FormState {
     defectPolicy: 'Defects and material faults are reviewed through support.',
     fabricSourcingMode: 'BRAND_SOURCED',
     fallbackOutputYards: '4',
+    averageBaseYards: '',
     fitPreference: detail.fitPreference ?? 'REGULAR',
     targetAgeGroup: detail.targetAgeGroup ?? 'ADULT',
     rushEnabled: false,
@@ -498,6 +501,9 @@ export function DesignEditorProvider({
   const [measurementPoints, setMeasurementPoints] = useState<MeasurementPointOption[]>([]);
   const [customOrderConfigurations, setCustomOrderConfigurations] = useState<DesignCustomOrderConfiguration[]>([]);
   const [selectedCustomOrderConfigurationId, setSelectedCustomOrderConfigurationId] = useState('');
+  const [loadedRules, setLoadedRules] = useState<DesignCustomOrderConfiguration['rules'] | null>(null);
+  const [loadedSizeExtraYards, setLoadedSizeExtraYards] = useState<any[] | null>(null);
+  const [loadedFabricRuleBasisId, setLoadedFabricRuleBasisId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
 
   // Eagerly consume staged assets so they are instantly visible during the route transition,
@@ -701,7 +707,13 @@ export function DesignEditorProvider({
                   ? activeCustomConfiguration.fabricSourcingMode
                   : 'BRAND_SOURCED',
               fallbackOutputYards: activeCustomConfiguration.rules.find((rule) => rule.isFallback)?.outputYards ?? '4',
+              averageBaseYards: activeCustomConfiguration.yardProfile?.averageBaseYards != null
+                ? String(activeCustomConfiguration.yardProfile.averageBaseYards)
+                : '',
             }));
+            setLoadedRules(activeCustomConfiguration.rules);
+            setLoadedSizeExtraYards(activeCustomConfiguration.yardProfile?.sizeExtraYards ?? null);
+            setLoadedFabricRuleBasisId(activeCustomConfiguration.fabricRuleBasisId ?? null);
             setCustomOrderConfigurations((prev) => {
               if (prev.some((entry) => entry.id === activeCustomConfiguration.id)) return prev;
               return [activeCustomConfiguration, ...prev];
@@ -1016,6 +1028,26 @@ export function DesignEditorProvider({
               (filterSelection[dimension.id] ?? []).includes(valueId),
           ),
         );
+        let rulesPayload: DesignCustomOrderConfigurationInput['rules'] = [
+          {
+            priority: 1,
+            conditionsJson: {},
+            outputYards: form.fallbackOutputYards,
+            isFallback: true,
+          },
+        ];
+        if (loadedRules && loadedRules.length > 0) {
+          rulesPayload = loadedRules.map((rule) => {
+            if (rule.isFallback) {
+              return {
+                ...rule,
+                outputYards: form.fallbackOutputYards,
+              };
+            }
+            return rule;
+          });
+        }
+
         const customOrderConfiguration: DesignCustomOrderConfigurationInput | undefined = form.customOrderEnabled
           ? {
               title: form.title.trim() || 'Design custom order',
@@ -1036,14 +1068,10 @@ export function DesignEditorProvider({
               returnPolicy: form.returnPolicy.trim() || 'Custom orders are not returnable except where required by policy.',
               defectPolicy: form.defectPolicy.trim() || 'Defects and material faults are reviewed through support.',
               fabricSourcingMode: form.fabricSourcingMode,
-              rules: [
-                {
-                  priority: 1,
-                  conditionsJson: {},
-                  outputYards: form.fallbackOutputYards,
-                  isFallback: true,
-                },
-              ],
+              averageBaseYards: form.averageBaseYards.trim() ? Number(form.averageBaseYards) : undefined,
+              sizeExtraYards: loadedSizeExtraYards || undefined,
+              fabricRuleBasisId: loadedFabricRuleBasisId || undefined,
+              rules: rulesPayload,
             }
           : undefined;
         const payload = {

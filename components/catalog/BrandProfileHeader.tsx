@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, Linking, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, Linking, Text, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -151,17 +151,17 @@ function HeaderIconButton({
         styles.headerIconButton,
         bare && styles.headerIconButtonBare,
         {
-          backgroundColor: bare ? 'transparent' : theme.colors.glassSurfaceStrong,
-          borderColor: bare ? 'transparent' : theme.colors.glassBorder,
+          backgroundColor: bare ? 'transparent' : 'rgba(0, 0, 0, 0.28)',
+          borderColor: bare ? 'transparent' : 'rgba(255, 255, 255, 0.15)',
           opacity: disabled ? 0.55 : pressed ? 0.78 : 1,
         },
       ]}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <AppText variant="subtitle" tone="default" style={styles.headerIconText}>
+      <Text style={[styles.headerIconText, { color: bare ? theme.colors.text : '#ffffff', fontWeight: 'bold' }]}>
         {value}
-      </AppText>
+      </Text>
       {typeof badgeCount === 'number' && badgeCount > 0 ? (
         // Notification count: no background pill — the number renders in the
         // system/brand color and bold, matching the runway + island convention.
@@ -258,19 +258,19 @@ function BannerHeader({
       ) : null}
 
       <View style={[styles.bannerControls, { top: insets.top }]}>
-        <HeaderIconButton label="Go back" value="👈" onPress={onBack} bare />
+        <HeaderIconButton label="Go back" value="👈" onPress={onBack} />
         <View style={styles.bannerRightControls}>
           {onNotifications ? (
-            <HeaderIconButton label="Notifications" value="🔔" onPress={onNotifications} badgeCount={unreadNotificationCount} bare />
+            <HeaderIconButton label="Notifications" value="🔔" onPress={onNotifications} badgeCount={unreadNotificationCount} />
           ) : (
-            <HeaderIconButton label="Search" value="🔍" onPress={onSearch} bare />
+            <HeaderIconButton label="Search" value="🔍" onPress={onSearch} />
           )}
           {onOpenMenu ? (
             <View ref={menuAnchorRef} collapsable={false}>
-              <HeaderIconButton label="More options" value="⋯" onPress={onOpenMenu} bare />
+              <HeaderIconButton label="More options" value="⋯" onPress={onOpenMenu} />
             </View>
           ) : (
-            <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} bare />
+            <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} />
           )}
         </View>
       </View>
@@ -1068,7 +1068,7 @@ const styles = StyleSheet.create({
   headerIconButton: {
     width: 48,
     height: 48,
-    borderRadius: tokens.radius.lg,
+    borderRadius: tokens.radius.full,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',

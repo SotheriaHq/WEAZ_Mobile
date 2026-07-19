@@ -44,12 +44,12 @@ function resolveMenuPosition({
   menuWidth: number;
   windowWidth: number;
 }) {
-  const minLeft = tokens.spacing.md;
-  const maxLeft = Math.max(minLeft, windowWidth - menuWidth - tokens.spacing.md);
+  const minLeft = 12;
+  const maxLeft = Math.max(minLeft, windowWidth - menuWidth - 12);
   const preferredLeft = pageX + width - menuWidth + tokens.spacing.xs;
 
   return {
-    top: pageY + height + 12,
+    top: pageY + height + 16, // Aligned below the trigger with a small gap
     left: Math.min(Math.max(preferredLeft, minLeft), maxLeft),
   };
 }
@@ -66,11 +66,8 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
 
   const menuWidth = useMemo(() => {
     if (width) return width;
-    const longestTitleLength = options.reduce((longest, option) => Math.max(longest, option.title.length), 0);
-    const hasIcons = options.some((option) => Boolean(option.icon));
-    const estimatedContentWidth = longestTitleLength * 8 + tokens.spacing.md * 2 + (hasIcons ? 32 : 0);
-    return Math.min(Math.max(estimatedContentWidth, 132), windowWidth - tokens.spacing.md * 2);
-  }, [options, width, windowWidth]);
+    return 190; // Fixed WhatsApp standard menu dropdown width
+  }, [width]);
 
   const resolvedPosition = anchorMetrics
     ? resolveMenuPosition({ ...anchorMetrics, menuWidth, windowWidth })
@@ -182,13 +179,17 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
           styles.menu,
           {
             backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
             top: resolvedPosition.top,
             left: resolvedPosition.left,
             width: menuWidth,
             opacity: fadeAnim,
             transform: [{ scale: scaleAnim }],
-            ...tokens.elevation.md,
+            // WhatsApp shadow style
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.16,
+            shadowRadius: 8,
+            elevation: 8,
           },
         ]}
       >
@@ -202,14 +203,13 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
               disabled={isClosing || option.disabled}
               style={({ pressed }) => [
                 styles.option,
-                isFirst && { borderTopLeftRadius: tokens.radius.lg - 1, borderTopRightRadius: tokens.radius.lg - 1 },
-                isLast && { borderBottomLeftRadius: tokens.radius.lg - 1, borderBottomRightRadius: tokens.radius.lg - 1 },
+                isFirst && { borderTopLeftRadius: 11, borderTopRightRadius: 11 },
+                isLast && { borderBottomLeftRadius: 11, borderBottomRightRadius: 11 },
                 pressed && {
                   backgroundColor: theme.colors.primarySoft,
                 },
                 pressed && styles.optionPressed,
                 option.disabled && styles.optionDisabled,
-                !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
               ]}
               onPress={() => handleOptionPress(option.onPress)}
             >
@@ -227,16 +227,16 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
 const styles = StyleSheet.create({
   menu: {
     position: 'absolute',
-    borderWidth: 1,
-    borderRadius: tokens.radius.lg,
-    minWidth: 132,
+    borderWidth: 0,
+    borderRadius: 12,
+    paddingVertical: 8,
   },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 44,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     gap: tokens.spacing.sm,
   },
   optionPressed: {

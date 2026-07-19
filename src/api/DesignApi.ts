@@ -229,6 +229,13 @@ export type DesignCustomOrderConfiguration = {
   defectPolicy: string;
   fabricSourcingMode: string;
   notes?: string | null;
+  yardProfile?: {
+    averageBaseYards?: number;
+    sizeExtraYards?: Array<{
+      sizeLabel: string;
+      extraYards: number;
+    }>;
+  } | null;
   rules: Array<{
     priority: number;
     conditionsJson: Record<string, unknown>;
@@ -267,6 +274,7 @@ export type DesignCustomOrderConfigurationInput = {
   buyerInstructionText?: string;
   requiredMeasurementKeys: string[];
   requiredFreeformPointIds?: string[];
+  fabricRuleBasisId?: string;
   baseProductionCharge: string;
   fabricCostPerYard: string;
   rushEnabled: boolean;
@@ -281,6 +289,11 @@ export type DesignCustomOrderConfigurationInput = {
   defectPolicy: string;
   fabricSourcingMode: 'BRAND_SOURCED' | 'BUYER_SUPPLIED' | 'EITHER';
   notes?: string;
+  averageBaseYards?: number;
+  sizeExtraYards?: Array<{
+    sizeLabel: string;
+    extraYards: number;
+  }>;
   rules: Array<{
     priority: number;
     conditionsJson: Record<string, unknown>;
@@ -445,6 +458,17 @@ const normalizeCustomOrderConfiguration = (raw: unknown): DesignCustomOrderConfi
     defectPolicy: asString(source.defectPolicy) ?? 'Defect policy applies.',
     fabricSourcingMode: asString(source.fabricSourcingMode) ?? 'BUYER_SUPPLIED',
     notes: asString(source.notes),
+    yardProfile: source.yardProfile
+      ? {
+          averageBaseYards: asNumber(asRecord(source.yardProfile).averageBaseYards) ?? undefined,
+          sizeExtraYards: Array.isArray(asRecord(source.yardProfile).sizeExtraYards)
+            ? asRecord(source.yardProfile).sizeExtraYards.map((item: any) => ({
+                sizeLabel: String(item?.sizeLabel || ''),
+                extraYards: Number(item?.extraYards || 0),
+              }))
+            : undefined,
+        }
+      : null,
     rules,
   };
 };
