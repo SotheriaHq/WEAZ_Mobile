@@ -29,6 +29,7 @@ function BagLineRow({
   meta,
   warning,
   price,
+  action,
 }: {
   thumbnail: string | null;
   title: string;
@@ -36,6 +37,7 @@ function BagLineRow({
   meta: string;
   warning?: string | null;
   price: string | null;
+  action?: React.ReactNode;
 }) {
   const { theme } = useTheme();
   return (
@@ -61,6 +63,7 @@ function BagLineRow({
         {warning ? (
           <AppText variant="caption" tone="secondary" numberOfLines={2}>{warning}</AppText>
         ) : null}
+        {action ? <View style={styles.lineAction}>{action}</View> : null}
       </View>
       {price ? <AppText variant="bodyBold">{price}</AppText> : null}
     </View>
@@ -73,6 +76,8 @@ export default function MyBagSheet({ visible, onClose }: Props) {
   const [linesLoading, setLinesLoading] = useState(false);
   const [cart, setCart] = useState<CartState | null>(null);
   const [customBag, setCustomBag] = useState<CustomBagState | null>(null);
+  const [relockingSessionId, setRelockingSessionId] = useState<string | null>(null);
+  const [relockError, setRelockError] = useState<string | null>(null);
   const hasItems = count.combinedCount > 0;
 
   const loadLines = useCallback(async () => {
@@ -91,7 +96,43 @@ export default function MyBagSheet({ visible, onClose }: Props) {
 
   useEffect(() => {
     if (visible) void loadLines();
+    if (!visible) setRelockError(null);
   }, [visible, loadLines]);
+
+  const handleRelock = useCallback(
+    async (sessionId: string) => {
+      setRelockingSessionId(sessionId);
+      setRelockError(null);
+      try {
+        const updated = await MobileStoreApi.relockCustomBagLine(sessionId);
+        if (updated) {
+          setCustomBag((current) =>
+            current
+              ? {
+                  ...current,
+                  items: current.items.map((item) =>
+                    item.sessionId === sessionId ? updated : item,
+                  ),
+                }
+              : current,
+          );
+        } else {
+          await loadLines();
+        }
+      } catch (error) {
+        const message =
+          (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+        setRelockError(
+          message === 'MANUAL_QUOTE_REQUIRED'
+            ? 'This request needs a manual quote — reopen it to continue.'
+            : message || 'Unable to refresh this price lock. Try again.',
+        );
+      } finally {
+        setRelockingSessionId(null);
+      }
+    },
+    [loadLines],
+  );
 
   const standardItems = cart?.items ?? [];
   const customItems = customBag?.items ?? [];
@@ -175,6 +216,9 @@ export default function MyBagSheet({ visible, onClose }: Props) {
         {customItems.length > 0 ? (
           <View style={styles.section}>
             <AppText variant="bodyBold">Custom requests · {loading ? '…' : count.customLineCount}</AppText>
+            {relockError ? (
+              <AppText variant="caption" tone="secondary">⚠️ {relockError}</AppText>
+            ) : null}
             <View style={styles.sectionList}>
               {customItems.map((item) => {
                 const metaParts = ['Qty 1'];
@@ -182,6 +226,7 @@ export default function MyBagSheet({ visible, onClose }: Props) {
                   metaParts.push(`${item.measurementCount} measurement${item.measurementCount === 1 ? '' : 's'}`);
                 }
                 if (item.rushSelected) metaParts.push('Rush');
+                const showRelock = item.isPriceLockExpired && item.canRelockPrice;
                 return (
                   <BagLineRow
                     key={item.sessionId}
@@ -189,8 +234,26 @@ export default function MyBagSheet({ visible, onClose }: Props) {
                     title={item.sourceTitle ?? 'Custom request'}
                     brandName={item.sourceBrandName}
                     meta={metaParts.join(' · ')}
-                    warning={item.isPriceLockExpired ? '⏳ Price lock expired — refresh it during checkout.' : null}
+                    warning={
+                      item.isPriceLockExpired
+                        ? showRelock
+                          ? '⏳ Price lock expired.'
+                          : '⏳ Price lock expired — reopen this request to relock pricing.'
+                        : null
+                    }
                     price={formatMarketPrice(item.grandTotal, item.currency)}
+                    action={
+                      showRelock ? (
+                        <Button
+                          title={relockingSessionId === item.sessionId ? 'Relocking…' : '🔒 Relock price'}
+                          size="xs"
+                          variant="secondary"
+                          loading={relockingSessionId === item.sessionId}
+                          disabled={relockingSessionId !== null}
+                          onPress={() => void handleRelock(item.sessionId)}
+                        />
+                      ) : null
+                    }
                   />
                 );
               })}
@@ -254,6 +317,10 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: tokens.spacing.xs,
+  },
+  lineAction: {
+    alignSelf: 'flex-start',
+    marginTop: tokens.spacing.xs,
   },
   totalRow: {
     flexDirection: 'row',

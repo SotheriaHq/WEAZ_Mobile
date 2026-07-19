@@ -101,6 +101,8 @@ export interface CustomBagState {
     grandTotal: number | null;
     currency: string;
     isPriceLockExpired: boolean;
+    canRelockPrice: boolean;
+    priceLockExpiresAt: string | null;
   }>;
   total: number;
 }
@@ -1385,28 +1387,7 @@ export const MobileStoreApi = {
     const items = Array.isArray(payload?.items) ? payload.items : [];
 
     const mapped = items
-      .map((entry) => {
-        const item = asRecord(entry);
-        const priceSummary = asRecord(item.buyerPriceSummary);
-        const sessionId = asString(item.sessionId);
-        const sourceType = asString(item.sourceType);
-        const sourceId = asString(item.sourceId);
-        if (!sessionId || !sourceType || !sourceId) return null;
-        const grandTotal = asNumber(priceSummary.grandTotal, Number.NaN);
-        return {
-          sessionId,
-          sourceType,
-          sourceId,
-          sourceTitle: asString(item.sourceTitle),
-          sourceBrandName: asString(item.sourceBrandName),
-          sourcePrimaryMediaUrl: asString(item.sourcePrimaryMediaUrl),
-          rushSelected: item.rushSelected === true,
-          measurementCount: asNumber(item.measurementCount, 0),
-          grandTotal: Number.isFinite(grandTotal) ? grandTotal : null,
-          currency: asString(priceSummary.currency) ?? 'NGN',
-          isPriceLockExpired: item.isPriceLockExpired === true,
-        };
-      })
+      .map((entry) => normalizeCustomBagLine(entry))
       .filter(Boolean) as CustomBagState['items'];
 
     return {
@@ -1415,9 +1396,40 @@ export const MobileStoreApi = {
     };
   },
 
+  async relockCustomBagLine(sessionId: string): Promise<CustomBagState['items'][number] | null> {
+    const response = await apiClient.post(`/custom-orders/checkout-sessions/${sessionId}/relock`);
+    const payload = unwrapData<Record<string, unknown>>(response.data);
+    return normalizeCustomBagLine(payload);
+  },
+
   async removeCustomBagLine(sessionId: string): Promise<void> {
     await apiClient.delete(`/custom-orders/checkout-sessions/${sessionId}`);
   },
 };
+
+function normalizeCustomBagLine(entry: unknown): CustomBagState['items'][number] | null {
+  const item = asRecord(entry);
+  const priceSummary = asRecord(item.buyerPriceSummary);
+  const sessionId = asString(item.sessionId);
+  const sourceType = asString(item.sourceType);
+  const sourceId = asString(item.sourceId);
+  if (!sessionId || !sourceType || !sourceId) return null;
+  const grandTotal = asNumber(priceSummary.grandTotal, Number.NaN);
+  return {
+    sessionId,
+    sourceType,
+    sourceId,
+    sourceTitle: asString(item.sourceTitle),
+    sourceBrandName: asString(item.sourceBrandName),
+    sourcePrimaryMediaUrl: asString(item.sourcePrimaryMediaUrl),
+    rushSelected: item.rushSelected === true,
+    measurementCount: asNumber(item.measurementCount, 0),
+    grandTotal: Number.isFinite(grandTotal) ? grandTotal : null,
+    currency: asString(priceSummary.currency) ?? 'NGN',
+    isPriceLockExpired: item.isPriceLockExpired === true,
+    canRelockPrice: item.canRelockPrice === true,
+    priceLockExpiresAt: asString(item.priceLockExpiresAt),
+  };
+}
 
 export default MobileStoreApi;
