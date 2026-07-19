@@ -44,6 +44,7 @@ function loadSessionCleanup(options = {}) {
     clearDesignEditorBackgroundTasks: 0,
     clearWarmScreenStateCache: 0,
     deactivatePushToken: 0,
+    clearAppBadge: 0,
     asyncStorageGetAllKeys: 0,
     asyncStorageMultiRemove: [],
     queryCancel: [],
@@ -123,6 +124,9 @@ function loadSessionCleanup(options = {}) {
       }
       if (request === '@/src/hooks/useResolvedImageUri') {
         return { clearResolvedImageUriCache: () => calls.clearImageUri++ };
+      }
+      if (request === '@/src/notifications/appBadge') {
+        return { clearAppBadge: async () => calls.clearAppBadge++ };
       }
       if (request === '@/src/notifications/pushTokenRegistration') {
         return {
@@ -206,6 +210,7 @@ async function main() {
   assert.deepEqual(calls.setAuthToken, [null]);
   assert.deepEqual(calls.setRefreshToken, [null]);
   assert.equal(calls.deactivatePushToken, 1, 'logout should try push-token deactivation');
+  assert.equal(calls.clearAppBadge, 1, 'logout should clear the app icon badge');
   assert.equal(calls.removeAccessToken, 1, 'logout should remove SecureStore access token');
   assert.equal(calls.removeRefreshToken, 1, 'logout should remove SecureStore refresh token');
   assert.equal(calls.removeCachedAuthUser, 1, 'logout should remove the token-bound cached user');

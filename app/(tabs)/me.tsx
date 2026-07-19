@@ -136,6 +136,8 @@ function buildFallbackProfile(user: AuthUser | null): UserProfile | null {
     address: null,
     location: null,
     profileVisibility: 'UNLOCKED',
+    showUsername: true,
+    showLocation: true,
     profilePhotoUpdatedAt: user.profilePhotoUpdatedAt ?? null,
     profilePhotoViewState: null,
     isEmailVerified: typeof user.isEmailVerified === 'boolean' ? user.isEmailVerified : false,

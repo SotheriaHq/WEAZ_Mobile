@@ -23,6 +23,8 @@ export interface UserProfile {
   address?: string | null;
   location?: string | null;
   profileVisibility: 'UNLOCKED' | 'LOCKED';
+  showUsername: boolean;
+  showLocation: boolean;
   profilePhotoUpdatedAt?: string | null;
   profilePhotoViewState?: ProfilePhotoViewState | null;
   isEmailVerified?: boolean;
@@ -240,6 +242,8 @@ function normalizeProfile(raw: unknown): UserProfile | null {
     address: s.address ?? null,
     location: s.location ?? s.address ?? null,
     profileVisibility: s.profileVisibility === 'LOCKED' ? 'LOCKED' : 'UNLOCKED',
+    showUsername: s.showUsername !== false,
+    showLocation: s.showLocation !== false,
     profilePhotoUpdatedAt: s.profilePhotoUpdatedAt ?? null,
     profilePhotoViewState: s.profilePhotoViewState ?? null,
     isEmailVerified:
@@ -402,6 +406,18 @@ export const ProfileApi = {
     const d = (res.data?.data ?? res.data) as any;
     return {
       profileVisibility: d?.profileVisibility === 'LOCKED' ? 'LOCKED' : 'UNLOCKED',
+    };
+  },
+
+  async updateProfilePrivacy(payload: {
+    showUsername?: boolean;
+    showLocation?: boolean;
+  }): Promise<{ showUsername: boolean; showLocation: boolean }> {
+    const res = await apiClient.patch('/users/me/profile-privacy', payload);
+    const d = (res.data?.data ?? res.data) as any;
+    return {
+      showUsername: d?.showUsername !== false,
+      showLocation: d?.showLocation !== false,
     };
   },
 

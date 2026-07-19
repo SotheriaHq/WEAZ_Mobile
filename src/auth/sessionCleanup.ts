@@ -13,6 +13,7 @@ import {
 } from '@/src/features/design-editor/designEditorBackgroundTasks';
 import { PERSISTED_FEED_CACHE_PREFIX } from '@/src/features/feed/utils/feedKeys';
 import { clearResolvedImageUriCache } from '@/src/hooks/useResolvedImageUri';
+import { clearAppBadge } from '@/src/notifications/appBadge';
 import { deactivateRegisteredPushTokenForLogout } from '@/src/notifications/pushTokenRegistration';
 import { queryClient as defaultQueryClient } from '@/src/query/queryClient';
 import {
@@ -85,6 +86,7 @@ export async function clearMobilePrivateSessionState({
   clearDesignEditorBackgroundTasks();
 
   await Promise.allSettled([
+    clearAppBadge(),
     removeAccessToken(),
     removeRefreshToken(),
     SecureStore.deleteItemAsync(ACTIVE_BRAND_STORAGE_KEY),

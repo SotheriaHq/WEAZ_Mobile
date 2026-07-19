@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -59,6 +59,44 @@ function VisibilityRow({
   );
 }
 
+function PrivacyToggleRow({
+  emoji,
+  label,
+  hint,
+  value,
+  disabled,
+  onToggle,
+}: {
+  emoji: string;
+  label: string;
+  hint: string;
+  value: boolean;
+  disabled: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  const { theme } = useTheme();
+
+  return (
+    <View style={[styles.row, styles.toggleRow, { borderBottomColor: theme.colors.border }]}>
+      <AppText variant="body">{emoji}</AppText>
+      <View style={styles.toggleTextWrap}>
+        <AppText variant="bodyBold">{label}</AppText>
+        <AppText variant="captionRegular" tone="muted">
+          {hint}
+        </AppText>
+      </View>
+      <Switch
+        accessibilityRole="switch"
+        accessibilityState={{ checked: value, disabled }}
+        disabled={disabled}
+        value={value}
+        onValueChange={onToggle}
+        trackColor={{ true: theme.colors.primary, false: theme.colors.border }}
+      />
+    </View>
+  );
+}
+
 export default function PrivacySettingsScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -91,6 +129,35 @@ export default function PrivacySettingsScreen() {
     if (status === 'loading') return;
     void loadProfile();
   }, [loadProfile, status]);
+
+  const updatePrivacyToggle = useCallback(
+    async (key: 'showUsername' | 'showLocation', next: boolean) => {
+      if (!profile || busy) return;
+      const previous = profile[key];
+      if (previous === next) return;
+      setBusy(true);
+      setProfile({ ...profile, [key]: next });
+      try {
+        const updated = await ProfileApi.updateProfilePrivacy({ [key]: next });
+        setProfile((current) => (current ? { ...current, ...updated } : current));
+        toast.success(
+          key === 'showUsername'
+            ? next
+              ? 'Your username is visible again.'
+              : 'Your username is now hidden from your public profile.'
+            : next
+              ? 'Your location is visible again.'
+              : 'Your location is now hidden from your public profile.',
+        );
+      } catch (error) {
+        setProfile((current) => (current ? { ...current, [key]: previous } : current));
+        toast.error(extractErrorMessage(error, 'Unable to update that just now — try again.'));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, profile, toast],
+  );
 
   const updateVisibility = useCallback(
     async (nextVisibility: UserProfile['profileVisibility']) => {
@@ -186,6 +253,26 @@ export default function PrivacySettingsScreen() {
         </View>
 
         <View style={[styles.section, { borderBottomColor: theme.colors.border }]}>
+          <AppText variant="captionBold" tone="muted">WHAT OTHERS SEE</AppText>
+          <PrivacyToggleRow
+            emoji="🪪"
+            label="Show my username"
+            hint="Your @handle on your public profile"
+            value={profile.showUsername}
+            disabled={busy}
+            onToggle={(next) => void updatePrivacyToggle('showUsername', next)}
+          />
+          <PrivacyToggleRow
+            emoji="📍"
+            label="Show my location"
+            hint="Your location on your public profile"
+            value={profile.showLocation}
+            disabled={busy}
+            onToggle={(next) => void updatePrivacyToggle('showLocation', next)}
+          />
+        </View>
+
+        <View style={[styles.section, { borderBottomColor: theme.colors.border }]}>
           <AppText variant="captionBold" tone="muted">MARKET</AppText>
           <Pressable
             accessibilityRole="button"
@@ -244,6 +331,13 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     flex: 1,
+  },
+  toggleRow: {
+    paddingVertical: tokens.spacing.sm,
+  },
+  toggleTextWrap: {
+    flex: 1,
+    gap: 2,
   },
   radio: {
     width: 22,

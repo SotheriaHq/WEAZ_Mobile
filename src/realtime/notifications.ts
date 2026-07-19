@@ -3,6 +3,7 @@ import { io, type Socket } from 'socket.io-client';
 
 import { apiClient } from '@/src/api/httpClient';
 import { NotificationsApi, type MobileNotification } from '@/src/api/NotificationsApi';
+import { syncAppBadgeCount } from '@/src/notifications/appBadge';
 import { queryClient, THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { markMarketFeedDirty } from '@/src/features/feed/api/feedApi';
@@ -63,6 +64,10 @@ function setUnreadCount(nextCount: number) {
   if (normalized === unreadCount) return;
   unreadCount = normalized;
   queryClient.setQueryData(queryKeys.notifications.unreadCount(), { count: normalized });
+  // Every unread mutation (inbox load, mark read, realtime, logout reset)
+  // funnels through here, so the OS app-icon badge stays in lock-step with
+  // the same backend count pushes stamp on delivery.
+  void syncAppBadgeCount(normalized);
   emitUnreadCount();
 }
 

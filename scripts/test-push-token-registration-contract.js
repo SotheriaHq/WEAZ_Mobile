@@ -67,6 +67,9 @@ function loadPushRegistration(options = {}) {
       if (request === '@/src/api/httpClient') {
         return { getActiveApiBaseUrl: () => 'https://api.threadly.test' };
       }
+      if (request === '@/src/notifications/pushChannels') {
+        return { ensureAndroidPushChannels: async () => undefined };
+      }
       return require(request);
     },
     console,

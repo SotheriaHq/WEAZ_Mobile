@@ -216,7 +216,7 @@ export default function PublicProfileScreen() {
     if (!profile) return;
     try {
       await Share.share({
-        message: `View @${profile.username} on WIEZ`,
+        message: profile.username ? `View @${profile.username} on WIEZ` : `Check out ${displayName} on WIEZ`,
         url: `https://threadly.app/profile/${profile.id}`,
       });
     } catch {
@@ -290,7 +290,11 @@ export default function PublicProfileScreen() {
           <View style={styles.summaryRow}>
             <View style={styles.summaryCell}>
               <AppText variant="captionRegular" tone="muted">Username</AppText>
-              <AppText variant="bodyBold">@{profile?.username || 'unknown'}</AppText>
+              {profile?.username ? (
+                <AppText variant="bodyBold">@{profile.username}</AppText>
+              ) : (
+                <AppText variant="bodyBold" tone="muted">Hidden 🙈</AppText>
+              )}
             </View>
             <View style={styles.summaryCell}>
               <AppText variant="captionRegular" tone="muted">Patched brands</AppText>
