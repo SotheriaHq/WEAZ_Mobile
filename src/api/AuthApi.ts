@@ -80,7 +80,7 @@ export type SecuritySession = {
 };
 
 export type DeleteAccountParams = {
-  confirmationWord: string;
+  email: string;
   currentPassword: string;
 };
 

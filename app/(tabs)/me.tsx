@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Easing, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -291,6 +291,59 @@ function formatMeasurementKeyLabel(key: string): string {
     .replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
+function FittingsMarqueeRow({
+  entries,
+  unitLabel,
+  reverse = false,
+}: {
+  entries: Array<[string, unknown]>;
+  unitLabel: string;
+  reverse?: boolean;
+}) {
+  const { theme } = useTheme();
+  const translateX = useRef(new Animated.Value(0)).current;
+  const [contentWidth, setContentWidth] = useState(0);
+
+  useEffect(() => {
+    if (contentWidth <= 0) return undefined;
+    // The row holds its chips twice, so translating by half the content width
+    // wraps seamlessly back to the start.
+    const distance = contentWidth / 2;
+    const duration = Math.max(9000, entries.length * (reverse ? 3400 : 2700));
+    translateX.setValue(0);
+    const animation = Animated.loop(
+      Animated.timing(translateX, {
+        toValue: -distance,
+        duration,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [contentWidth, entries.length, reverse, translateX]);
+
+  return (
+    <View style={styles.marqueeClip}>
+      <Animated.View
+        onLayout={(event) => setContentWidth(Math.round(event.nativeEvent.layout.width))}
+        style={[styles.marqueeRow, { transform: [{ translateX }] }]}
+      >
+        {[...entries, ...entries].map(([key, value], chipIndex) => (
+          <View
+            key={`${key}-${chipIndex}`}
+            style={[styles.measurementChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+          >
+            <AppText variant="captionBold">
+              {formatMeasurementKeyLabel(key)} · {String(value).trim()} {unitLabel}
+            </AppText>
+          </View>
+        ))}
+      </Animated.View>
+    </View>
+  );
+}
+
 function MeasurementCard({
   sizeFit,
   computed,
@@ -306,6 +359,9 @@ function MeasurementCard({
   const unitLabel = (sizeFit?.preferredLengthUnit ?? 'CM').toLowerCase();
   const computedLabel = computed?.estimatedSize ?? computed?.displayRange ?? null;
   const computedRegion = computed?.preferredRegion ? computed.preferredRegion.replace(/_/g, ' ') : null;
+  const missingBaseline = computed?.missingBaselineMeasurements ?? [];
+  const marqueeTopRow = measurements.filter((_, index) => index % 2 === 0);
+  const marqueeBottomRow = measurements.filter((_, index) => index % 2 === 1);
 
   return (
     <Card padding="sm" style={[styles.fittingsCard, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -329,6 +385,18 @@ function MeasurementCard({
             {computedRegion ? ` · ${computedRegion}` : ''}
           </AppText>
         </View>
+      ) : missingBaseline.length > 0 ? (
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel="Add the missing baseline measurements to compute your size"
+          style={[styles.computedFitRow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+        >
+          <AppText variant="captionRegular" tone="muted">Computed fit</AppText>
+          <AppText variant="captionBold" tone="secondary">
+            ⚠️ Add {missingBaseline.map((key) => formatMeasurementKeyLabel(key)).join(' · ')} to see your size
+          </AppText>
+        </Pressable>
       ) : null}
 
       {measurements.length === 0 ? (
@@ -336,17 +404,11 @@ function MeasurementCard({
           Add your baseline measurements once and reuse them across custom orders.
         </AppText>
       ) : (
-        <View style={styles.measurementChips}>
-          {measurements.map(([key, value]) => (
-            <View
-              key={key}
-              style={[styles.measurementChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-            >
-              <AppText variant="captionBold">
-                {formatMeasurementKeyLabel(key)} · {String(value).trim()} {unitLabel}
-              </AppText>
-            </View>
-          ))}
+        <View style={styles.marqueeGroup}>
+          <FittingsMarqueeRow entries={marqueeTopRow} unitLabel={unitLabel} />
+          {marqueeBottomRow.length > 0 ? (
+            <FittingsMarqueeRow entries={marqueeBottomRow} unitLabel={unitLabel} reverse />
+          ) : null}
         </View>
       )}
     </Card>
@@ -1353,10 +1415,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
   },
-  measurementChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  marqueeGroup: {
     gap: tokens.spacing.sm,
+  },
+  marqueeClip: {
+    overflow: 'hidden',
+  },
+  marqueeRow: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    gap: tokens.spacing.sm,
+    paddingRight: tokens.spacing.sm,
   },
   measurementChip: {
     borderRadius: tokens.radius.md,
