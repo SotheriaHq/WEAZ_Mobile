@@ -5,6 +5,11 @@ import {
 } from '@/src/components/media/aspectAwareMediaStrategy';
 
 export const RUNWAY_SAFE_COVER_CROP_TOLERANCE = 0.12;
+// Portrait media may stretch the tolerance a little further to stay immersive
+// (9:16 stills on 20:9 phones crop ~18–20%), but near-square portrait shots
+// (4:5, 3:4) must never cover-fill: beyond this cap they contain uncropped so
+// no part of the design hides off-screen.
+export const RUNWAY_PORTRAIT_EDGE_MAX_CROP = 0.2;
 
 type RunwayMediaStrategyInput = {
   viewportWidth?: number | null;
@@ -72,7 +77,10 @@ export function resolveRunwayMediaStrategy({
 
   const viewportAspect = viewportWidth / viewportHeight;
   const crop = getCoverCropFraction(resolvedAspect, viewportAspect);
-  if (crop <= RUNWAY_SAFE_COVER_CROP_TOLERANCE || (isPortrait && viewportAspect < 1)) {
+  if (
+    crop <= RUNWAY_SAFE_COVER_CROP_TOLERANCE ||
+    (isPortrait && viewportAspect < 1 && crop <= RUNWAY_PORTRAIT_EDGE_MAX_CROP)
+  ) {
     return {
       strategy: 'edge',
       imageAspectRatio: resolvedAspect,

@@ -360,7 +360,11 @@ export const FeedImage = React.memo(function FeedImage({
           style={StyleSheet.absoluteFill}
           strategyOverride={strategyResult.strategy}
           recyclingKey={`${id}:${activeTier}:${retryToken}`}
-          transition={activeTier === 'detail' ? 180 : 120}
+          // Detail upgrades swap over an identical-layout preview already on
+          // screen: transition 0 reads as an instant sharpen. A fade here
+          // cross-faded the whole image right after it appeared — one of the
+          // per-page "double blink" sources.
+          transition={activeTier === 'detail' ? 0 : 120}
           accessibilityLabel={label ?? 'Feed image'}
           diagnosticsLabel="RunwayFeedImage"
           onLoad={(event) => {

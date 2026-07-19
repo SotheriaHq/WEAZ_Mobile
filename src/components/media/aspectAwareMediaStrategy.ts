@@ -126,8 +126,10 @@ export function resolveMediaStrategy(params: {
     case 'portrait':
     case 'ultra-portrait':
     default:
-      // Tall media stays immersive in a portrait container; in a landscape
-      // container (e.g. wide tablet viewer) it falls back to a clean matte.
-      return containerAspect < 1 ? 'edge' : 'letter-solid';
+      // Reaching this switch means a cover fit would crop more than the
+      // tolerance allows. Tall media used to force edge-fill anyway in portrait
+      // containers, which hid 30%+ of near-square portrait shots (4:5, 3:4)
+      // off-screen. Contain instead — no design detail is ever cropped away.
+      return 'letter-solid';
   }
 }

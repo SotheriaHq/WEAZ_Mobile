@@ -75,19 +75,22 @@ const imageAspects = {
 //   • letter-solid → contained image on a clean dominant-color matte (square / non-fitting portrait)
 //   • letter-blur  → contained image on a subtle, image-reflective blur (landscape / ultra-wide)
 const matrix = {
+  // Portrait media only edge-fills when the cover crop stays within tolerance
+  // (<= 0.28). Beyond that it contains on the solid matte — cover-filling badly
+  // mismatched portrait media hid 30%+ of near-square shots off-screen.
   'ultra-portrait': {
     'ultra-tall': 'edge',
     tall: 'edge',
-    'standard-tall': 'edge',
-    'near-square-portrait': 'edge',
+    'standard-tall': 'letter-solid',
+    'near-square-portrait': 'letter-solid',
     'square-ish': 'letter-solid',
     'near-square-landscape': 'letter-solid',
     wide: 'letter-solid',
     'ultra-wide': 'letter-solid',
   },
   portrait: {
-    'ultra-tall': 'edge',
-    tall: 'edge',
+    'ultra-tall': 'letter-solid',
+    tall: 'letter-solid',
     'standard-tall': 'edge',
     'near-square-portrait': 'edge',
     'square-ish': 'letter-solid',
@@ -210,14 +213,20 @@ if (safePortraitRunway.coverCropFraction > RUNWAY_SAFE_COVER_CROP_TOLERANCE) {
   failures.push('runway edge strategy exceeded the safe crop tolerance');
 }
 
-// Runway full-view policy: vertical media fills the phone screen edge-to-edge;
-// square/landscape are contained UNCROPPED on the deep-black matte. Blur/soft
-// ambient backdrops are banned on the runway (they painted a frame late and
-// read as a double-render flash).
+// Runway full-view policy: vertical media fills the phone screen edge-to-edge
+// only while the cover crop stays within the portrait cap (<= 0.2); beyond
+// that, near-square portrait shots (4:5, 3:4) contain UNCROPPED so no design
+// detail hides off-screen. Square/landscape are contained UNCROPPED on the
+// deep-black matte. Blur/soft ambient backdrops are banned on the runway.
 const portraitRunway = resolveRunwayMediaStrategy({
   viewportWidth: 400,
   viewportHeight: 800,
   imageAspectRatio: 0.7,
+});
+const tallPhonePortraitRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 450,
+  viewportHeight: 1000,
+  imageAspectRatio: 9 / 16,
 });
 const squareSpecificRunway = resolveRunwayMediaStrategy({
   viewportWidth: 400,
@@ -229,7 +238,8 @@ const landscapeSpecificRunway = resolveRunwayMediaStrategy({
   viewportHeight: 800,
   imageAspectRatio: 1.4,
 });
-check('runway portrait fills the vertical viewport', portraitRunway.strategy, 'edge');
+check('runway near-square portrait contains uncropped', portraitRunway.strategy, 'letter-solid');
+check('runway 9:16 on a 20:9 phone stays immersive', tallPhonePortraitRunway.strategy, 'edge');
 check('runway square uses the solid black matte', squareSpecificRunway.strategy, 'letter-solid');
 check('runway landscape uses the solid black matte', landscapeSpecificRunway.strategy, 'letter-solid');
 for (const [label, result] of [

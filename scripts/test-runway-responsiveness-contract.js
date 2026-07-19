@@ -17,14 +17,15 @@ expectIncludes(feedScreen, 'disableIntervalMomentum', 'vertical feed must stop a
 expectNotMatches(feedScreen, /pagingEnabled=\{true\}/, 'vertical feed must not combine pagingEnabled with interval snapping');
 expectNotMatches(feedScreen, /shouldCorrectJump/, 'momentum end must not teleport multi-page flings');
 expectIncludes(feedScreen, 'initialNumToRender={1}', 'first render must mount one full-screen row');
-expectIncludes(feedScreen, 'maxToRenderPerBatch={1}', 'row batches must stay bounded');
+expectIncludes(feedScreen, 'maxToRenderPerBatch={2}', 'row batches must stay bounded');
+expectIncludes(feedScreen, 'windowSize={5}', 'render window must keep previous/next pages painted for smooth paging');
 expectIncludes(feedScreen, 'removeClippedSubviews={false}', 'full-screen rows must avoid Android clipping flashes');
 expectIncludes(feedScreen, 'InteractionManager.runAfterInteractions', 'hydration and analytics must wait for interaction idle');
 expectIncludes(feedScreen, 'hydratedCandidates: adjacentItem ? 2 : 1', 'hydration candidates must be bounded to current and next');
 expectNotMatches(feedScreen, /for \(let offset = -1; offset <= 2/, 'four-row hydration must not return');
 
 const carousel = 'src/features/feed/components/FeedMediaCarousel.tsx';
-expectIncludes(carousel, 'Math.abs(index - activeIndex) <= 1', 'carousel must mount only current and adjacent media');
+expectIncludes(carousel, 'Math.abs(index - activeIndex) <= 2', 'carousel must mount a bounded window around the active media');
 expectIncludes(carousel, 'shouldMountSlide(index, safeActiveIndex) ?', 'off-window angle frames must not mount media');
 expectNotMatches(carousel, /scrollTo\(\{ x: nextIndex \* width, y: 0, animated: false \}\)/, 'horizontal settle must not visibly correct momentum');
 

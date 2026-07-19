@@ -1092,26 +1092,32 @@ export function MarketFeedScreen() {
     });
   }, [activePageIndex, items, pageHeight]);
 
+  // Warm the image cache in BOTH scroll directions (next two pages + previous
+  // page) so a settled page always reveals already-cached media instead of a
+  // shimmer that resolves after the swipe.
   useEffect(() => {
     if (!deferredWorkReady) return;
-    const nextItem = items[activePageIndex + 1];
-    const nextMedia = nextItem ? buildFallbackMediaItems(nextItem)[0] : null;
-    if (!nextMedia) return;
-    const nextDirectUrl =
-      normalizeStableUri(nextMedia.previewUrl) ??
-      normalizeStableUri(nextMedia.thumbnailUrl) ??
-      normalizeStableUri(nextMedia.displayUrl) ??
-      normalizeStableUri(nextMedia.url);
-    if (!nextDirectUrl || !isUsableImageHttpUrl(nextDirectUrl)) return;
-    void prefetchResolvedImageAsset({
-      src: nextDirectUrl,
-      fileId: null,
-      allowSignedFallback: false,
-      debugContext: {
-        designId: nextMedia.id,
-        mediaIndex: 0,
-        sourceField: 'feed.next.preview',
-      },
+    const candidateIndices = [activePageIndex + 1, activePageIndex - 1, activePageIndex + 2];
+    candidateIndices.forEach((candidateIndex) => {
+      const candidateItem = candidateIndex >= 0 ? items[candidateIndex] : null;
+      const candidateMedia = candidateItem ? buildFallbackMediaItems(candidateItem)[0] : null;
+      if (!candidateMedia) return;
+      const directUrl =
+        normalizeStableUri(candidateMedia.previewUrl) ??
+        normalizeStableUri(candidateMedia.thumbnailUrl) ??
+        normalizeStableUri(candidateMedia.displayUrl) ??
+        normalizeStableUri(candidateMedia.url);
+      if (!directUrl || !isUsableImageHttpUrl(directUrl)) return;
+      void prefetchResolvedImageAsset({
+        src: directUrl,
+        fileId: null,
+        allowSignedFallback: false,
+        debugContext: {
+          designId: candidateMedia.id,
+          mediaIndex: 0,
+          sourceField: 'feed.next.preview',
+        },
+      });
     });
   }, [activePageIndex, deferredWorkReady, items]);
 
@@ -2081,6 +2087,20 @@ export function MarketFeedScreen() {
     [activePageIndex, feedItems, feedLoopEnabled, feedLoopHeadOffset, hasNextPage, items.length, pageHeight],
   );
 
+  // Android drops onMomentumScrollEnd when the finger releases exactly on a
+  // page boundary (zero velocity → no momentum phase). A stale activePageIndex
+  // then froze detail upgrades, prefetch, and settled work until the next full
+  // fling. Drag end with ~zero vertical velocity is the missing settle signal;
+  // the index math is idempotent with the momentum handler.
+  const handleFeedScrollEndDrag = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const velocityY = e.nativeEvent.velocity?.y ?? 0;
+      if (Math.abs(velocityY) > 0.05) return;
+      handleFeedMomentumEnd(e);
+    },
+    [handleFeedMomentumEnd],
+  );
+
   const getFeedItemLayout = useCallback(
     (_: ArrayLike<FeedListEntry> | null | undefined, index: number) => ({
       length: pageHeight,
@@ -2326,9 +2346,10 @@ export function MarketFeedScreen() {
           {!feedViewportReady ? (
             <FeedSkeleton theme={theme} pageHeight={fallbackPageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
           ) : (
-          /* One initial row prioritizes first media. A three-row window bounds
-             memory; clipping stays off because detached full-screen Android
-             image rows can flash blank when they are reattached. */
+          /* One initial row prioritizes first media. A five-row window keeps the
+             previous and next pages fully rendered so paging reveals painted
+             content, not a shimmer; clipping stays off because detached
+             full-screen Android image rows can flash blank when reattached. */
           <MarketFeedList
             ref={feedListRef}
             key={feedListKey}
@@ -2345,9 +2366,9 @@ export function MarketFeedScreen() {
             overScrollMode="never"
             removeClippedSubviews={false}
             initialNumToRender={1}
-            maxToRenderPerBatch={1}
+            maxToRenderPerBatch={2}
             updateCellsBatchingPeriod={50}
-            windowSize={3}
+            windowSize={5}
             initialScrollIndex={feedActiveIndex > 0 ? Math.min(feedActiveIndex, feedItems.length - 1) : undefined}
             scrollEnabled={!commentsTarget}
             showsVerticalScrollIndicator={false}
@@ -2358,6 +2379,7 @@ export function MarketFeedScreen() {
             onViewableItemsChanged={stableOnViewableItemsChangedRef.current}
             onScrollToIndexFailed={handleScrollToIndexFailed}
             onMomentumScrollEnd={handleFeedMomentumEnd}
+            onScrollEndDrag={handleFeedScrollEndDrag}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
             renderItem={renderFeedItem}
           />
@@ -2520,6 +2542,9 @@ const styles = StyleSheet.create({
   feedListContainer: {
     flex: 1,
     overflow: 'hidden',
+    // Runway stage: any not-yet-painted gap between pages must read as the
+    // deep-black matte in both themes, never a light theme surface flash.
+    backgroundColor: tokens.themes.dark.colors.bg,
   },
   feedList: {
     backgroundColor: 'transparent',

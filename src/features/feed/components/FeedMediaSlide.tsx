@@ -2,9 +2,13 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
-import { useTheme } from '@/src/theme/ThemeProvider';
 import { FeedImage } from '@/src/features/feed/components/FeedImage';
 import type { FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
+import { tokens } from '@/src/styles/tokens';
+
+// The runway stage is deep black in BOTH themes. Using a theme surface here
+// flashed a light frame behind/around media in light mode on every swipe.
+const RUNWAY_MATTE = tokens.themes.dark.colors.bg;
 
 type FeedMediaSlideProps = {
   media: FeedViewerMedia | null;
@@ -48,8 +52,7 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
   allowDetailUpgrade = true,
   onPress,
 }: FeedMediaSlideProps) {
-  const { scheme, theme } = useTheme();
-  const placeholderSurface = scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt;
+  const placeholderSurface = RUNWAY_MATTE;
   const aspectRatio = getMediaAspectRatio(media);
   const aspectClass = getAspectClass(aspectRatio);
 

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { tokens } from '@/src/styles/tokens';
 import { isUsableImageHttpUrl, prefetchResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { feedMediaDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
@@ -20,8 +21,12 @@ const getAspectClass = (aspectRatio?: number | null) => {
   return 'square';
 };
 
+// Mount two slides on each side of the active one: the incoming slide is fully
+// rendered (image decoded and painted) BEFORE the swipe reveals it, and a late
+// or missed momentum event can no longer strand the next slide unmounted —
+// that unmounted frame was the "freeze + flicker on swipe" symptom.
 const shouldMountSlide = (index: number, activeIndex: number) =>
-  Math.abs(index - activeIndex) <= 1;
+  Math.abs(index - activeIndex) <= 2;
 
 type FeedMediaCarouselProps = {
   collectionId: string;
@@ -67,9 +72,12 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   const hasMultipleItems = mediaItems.length > 1;
   const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
   const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
+  // Slide frames sit on the immersive runway: the frame behind every image is
+  // the deep-black matte in BOTH themes. A theme surface here flashed white in
+  // light mode whenever a not-yet-painted slide entered the viewport.
   const slideFrameStyle = useMemo(
-    () => [styles.slide, { width, backgroundColor: theme.colors.surfaceAlt }],
-    [theme.colors.surfaceAlt, width],
+    () => [styles.slide, { width, backgroundColor: tokens.themes.dark.colors.bg }],
+    [width],
   );
 
   const stableMediaItems = useMemo(
@@ -115,27 +123,35 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     });
   }, [collectionId, safeActiveIndex, stableMediaItems.length, uniqueDisplayUrls, uniqueMediaIds]);
 
-  // Prefetch next image to eliminate loading lag on swipe.
+  // Prefetch adjacent images in BOTH directions (and one extra ahead) so a
+  // swipe left or right always reveals an already-cached image — never a
+  // shimmer that resolves seconds later.
   useEffect(() => {
     if (stableMediaItems.length < 2) return;
-    const nextIndex = Math.min(stableMediaItems.length - 1, safeActiveIndex + 1);
-    const next = stableMediaItems[nextIndex];
-    if (!next) return;
-    const nextDirectUrl =
-      normalizeStableUri(next.previewUrl) ??
-      normalizeStableUri(next.thumbnailUrl) ??
-      normalizeStableUri(next.displayUrl) ??
-      normalizeStableUri(next.url);
-    if (!nextDirectUrl || !isUsableImageHttpUrl(nextDirectUrl)) return;
-    void prefetchResolvedImageAsset({
-      src: nextDirectUrl,
-      fileId: null,
-      allowSignedFallback: false,
-      debugContext: {
-        designId: next.id,
-        mediaIndex: nextIndex,
-        sourceField: 'feed.media.adjacent-preview',
-      },
+    const candidateIndices = [
+      safeActiveIndex + 1,
+      safeActiveIndex - 1,
+      safeActiveIndex + 2,
+    ].filter((index) => index >= 0 && index <= stableMediaItems.length - 1);
+    candidateIndices.forEach((candidateIndex) => {
+      const candidate = stableMediaItems[candidateIndex];
+      if (!candidate) return;
+      const directUrl =
+        normalizeStableUri(candidate.previewUrl) ??
+        normalizeStableUri(candidate.thumbnailUrl) ??
+        normalizeStableUri(candidate.displayUrl) ??
+        normalizeStableUri(candidate.url);
+      if (!directUrl || !isUsableImageHttpUrl(directUrl)) return;
+      void prefetchResolvedImageAsset({
+        src: directUrl,
+        fileId: null,
+        allowSignedFallback: false,
+        debugContext: {
+          designId: candidate.id,
+          mediaIndex: candidateIndex,
+          sourceField: 'feed.media.adjacent-preview',
+        },
+      });
     });
   }, [safeActiveIndex, stableMediaItems]);
 
@@ -185,7 +201,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleMomentumEnd = useCallback(
+  const settleToMeasuredIndex = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const measuredIndex = Math.max(
         0,
@@ -225,6 +241,21 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     [onActiveIndexChange, stableMediaItems, width],
   );
 
+  // Momentum end is the primary settle signal, but Android drops it when the
+  // finger releases exactly on a page boundary (zero velocity → no momentum
+  // phase). A stale activeIndex then left the upcoming slide unmounted and the
+  // dots frozen until the NEXT full swipe — the "swipe waits/holds" symptom.
+  // Drag end with ~zero horizontal velocity is that missing settle signal; the
+  // index math is idempotent, so double-firing with momentum end is harmless.
+  const handleScrollEndDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const velocityX = event.nativeEvent.velocity?.x ?? 0;
+      if (Math.abs(velocityX) > 0.05) return;
+      settleToMeasuredIndex(event);
+    },
+    [settleToMeasuredIndex],
+  );
+
   if (!mediaItems.length) {
     return (
       <View style={StyleSheet.absoluteFill}>
@@ -262,7 +293,8 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         overScrollMode="never"
         showsHorizontalScrollIndicator={false}
         scrollEnabled
-        onMomentumScrollEnd={handleMomentumEnd}
+        onMomentumScrollEnd={settleToMeasuredIndex}
+        onScrollEndDrag={handleScrollEndDrag}
       >
         {stableMediaItems.map((item, index) => (
           <View key={item.id} style={slideFrameStyle}>
