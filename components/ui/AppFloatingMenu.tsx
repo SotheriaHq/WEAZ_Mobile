@@ -49,7 +49,7 @@ function resolveMenuPosition({
   const preferredLeft = pageX + width - menuWidth + tokens.spacing.xs;
 
   return {
-    top: pageY + height + 16, // Aligned below the trigger with a small gap
+    top: pageY + height + 20, // Aligned below the trigger with a small gap
     left: Math.min(Math.max(preferredLeft, minLeft), maxLeft),
   };
 }

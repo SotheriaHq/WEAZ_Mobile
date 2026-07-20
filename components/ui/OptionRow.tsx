@@ -97,14 +97,14 @@ export function OptionRow({
           </View>
         ) : null}
         <View style={styles.copy}>
-          <AppText variant="bodyBold" numberOfLines={1}>
+          <AppText variant="bodyBold">
             {title}
             {required ? (
               <AppText variant="bodyBold" tone="danger">{' '}*</AppText>
             ) : null}
           </AppText>
           {subtitle ? (
-            <AppText variant="captionRegular" tone="muted" numberOfLines={2}>
+            <AppText variant="captionRegular" tone="muted">
               {subtitle}
             </AppText>
           ) : null}
@@ -127,7 +127,6 @@ export function OptionRow({
                 <AppText
                   variant={resolvedState === 'placeholder' ? 'captionRegular' : 'captionBold'}
                   tone={resolvedValueTone}
-                  numberOfLines={1}
                 >
                   {value}
                 </AppText>
@@ -177,7 +176,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   trailingWrap: {
-    maxWidth: '42%',
+    maxWidth: '55%',
     minWidth: 44,
     alignItems: 'flex-end',
     justifyContent: 'center',
