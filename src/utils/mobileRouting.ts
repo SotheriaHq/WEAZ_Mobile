@@ -401,6 +401,20 @@ export function routeForNotification(notification: MobileNotification): RouterTa
   }
 
   if (type.startsWith('ORDER_') || type.startsWith('CUSTOM_ORDER_')) {
+    // Route to the EXACT order when we can identify it (matches the web fix), so
+    // taps land on the order screen instead of the generic list. Brand/admin
+    // previews (/studio/*, /admin/*) fall through to the buyer orders list, which
+    // is the existing safe behaviour for non-buyer recipients on mobile.
+    const previewPath = readString(target?.preview);
+    const isBuyerContext = !previewPath || previewPath.startsWith('/custom-orders/') || previewPath.startsWith('/orders/');
+    const explicitOrderId =
+      (typeof payload.customOrderId === 'string' && payload.customOrderId) ||
+      (typeof payload.orderId === 'string' && payload.orderId) ||
+      (previewPath ? parseHrefId(previewPath, /\/(?:custom-orders|orders)\/([^/?#]+)/) : null) ||
+      null;
+    if (isBuyerContext && explicitOrderId) {
+      return { pathname: '/orders/[orderId]', params: { orderId: explicitOrderId } } as Href;
+    }
     return '/orders' as Href;
   }
 

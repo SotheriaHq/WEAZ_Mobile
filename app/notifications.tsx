@@ -105,7 +105,12 @@ function NotificationRow({
 }) {
   const { theme } = useTheme();
   const unread = !item.isRead;
-  const previewUri = item.target?.preview ?? (typeof item.payload?.preview === 'string' ? item.payload.preview : null);
+  const rawPreview = item.target?.preview ?? (typeof item.payload?.preview === 'string' ? item.payload.preview : null);
+  // `target.preview` is a thumbnail URL for content notifications, but system
+  // notifications reuse it to carry a route path (e.g. "/custom-orders/:id").
+  // Only feed real image sources to StableImage — never an app path.
+  const previewUri =
+    rawPreview && !rawPreview.startsWith('/') ? rawPreview : null;
 
   return (
     <Pressable
