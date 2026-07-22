@@ -407,13 +407,24 @@ export function routeForNotification(notification: MobileNotification): RouterTa
     // is the existing safe behaviour for non-buyer recipients on mobile.
     const previewPath = readString(target?.preview);
     const isBuyerContext = !previewPath || previewPath.startsWith('/custom-orders/') || previewPath.startsWith('/orders/');
+    const isCustom =
+      type.startsWith('CUSTOM_ORDER_') ||
+      typeof payload.customOrderId === 'string' ||
+      Boolean(previewPath?.startsWith('/custom-orders/'));
     const explicitOrderId =
       (typeof payload.customOrderId === 'string' && payload.customOrderId) ||
       (typeof payload.orderId === 'string' && payload.orderId) ||
       (previewPath ? parseHrefId(previewPath, /\/(?:custom-orders|orders)\/([^/?#]+)/) : null) ||
       null;
     if (isBuyerContext && explicitOrderId) {
-      return { pathname: '/orders/[orderId]', params: { orderId: explicitOrderId } } as Href;
+      return {
+        pathname: '/orders/[orderId]',
+        params: {
+          orderId: explicitOrderId,
+          // Skip the standard-order 404 hop when we already know the kind.
+          kind: isCustom ? 'CUSTOM' : 'STANDARD',
+        },
+      } as Href;
     }
     return '/orders' as Href;
   }

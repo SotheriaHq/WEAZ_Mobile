@@ -157,7 +157,8 @@ export const queryKeys = {
   },
   orders: {
     list: (userId?: string | null) => ['orders', 'list', normalizeId(userId)] as const,
-    detail: (orderId?: string | null) => ['orders', 'detail', normalizeId(orderId)] as const,
+    detail: (orderId?: string | null, kind?: string | null) =>
+      ['orders', 'detail', normalizeId(orderId), kind ?? 'any'] as const,
   },
   brandStaff: {
     list: (brandId?: string | null) => ['brandStaff', 'list', normalizeId(brandId)] as const,

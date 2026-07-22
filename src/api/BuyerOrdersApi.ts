@@ -395,18 +395,40 @@ export const BuyerOrdersApi = {
     return merged.slice(0, limit);
   },
 
-  async getById(orderId: string): Promise<BuyerOrderDetail> {
-    try {
+  async getById(
+    orderId: string,
+    options?: { prefer?: 'STANDARD' | 'CUSTOM' },
+  ): Promise<BuyerOrderDetail> {
+    // Prefer the known kind to avoid a guaranteed 404 RTT on custom-order taps.
+    const prefer = options?.prefer ?? 'STANDARD';
+    const tryCustom = async () => {
+      const response = await apiClient.get(`/custom-orders/${orderId}`);
+      return normalizeCustomDetail(response.data);
+    };
+    const tryStandard = async () => {
       const response = await apiClient.get(`/store/orders/${orderId}`);
       return normalizeStandardDetail(response.data);
+    };
+
+    if (prefer === 'CUSTOM') {
+      try {
+        return await tryCustom();
+      } catch (error) {
+        if (getHttpStatus(error) !== 404) {
+          throw error;
+        }
+        return tryStandard();
+      }
+    }
+
+    try {
+      return await tryStandard();
     } catch (error) {
       if (getHttpStatus(error) !== 404) {
         throw error;
       }
+      return tryCustom();
     }
-
-    const response = await apiClient.get(`/custom-orders/${orderId}`);
-    return normalizeCustomDetail(response.data);
   },
 
   async confirmDelivery(order: BuyerOrderDetail, note?: string): Promise<BuyerOrderDetail> {

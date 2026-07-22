@@ -93,15 +93,25 @@ export default function BuyerOrderDetailScreen() {
   const toast = useToast();
   const { status } = useAuth();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ orderId?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    orderId?: string | string[];
+    kind?: string | string[];
+  }>();
   const orderId = Array.isArray(params.orderId) ? params.orderId[0] : params.orderId;
+  const kindParam = Array.isArray(params.kind) ? params.kind[0] : params.kind;
+  const preferKind =
+    kindParam === 'CUSTOM' || kindParam === 'STANDARD'
+      ? kindParam
+      : undefined;
 
   const [saving, setSaving] = useState(false);
 
   // Cache-first: a previously viewed order paints instantly, then revalidates.
+  // `prefer` avoids a guaranteed 404 RTT when the notification already knows the kind.
   const orderQuery = useCachedQuery<BuyerOrderDetail>({
-    key: queryKeys.orders.detail(orderId),
-    fetcher: () => BuyerOrdersApi.getById(orderId as string),
+    key: queryKeys.orders.detail(orderId, preferKind),
+    fetcher: () =>
+      BuyerOrdersApi.getById(orderId as string, preferKind ? { prefer: preferKind } : undefined),
     policy: cachePolicies.defaultQuery,
     enabled: status === 'authenticated' && Boolean(orderId),
   });
