@@ -432,7 +432,7 @@ const normalizeCustomOrderConfiguration = (raw: unknown): DesignCustomOrderConfi
 
   return {
     id,
-    title: asString(source.title) ?? 'Custom order configuration',
+    title: asString(source.title) ?? 'Custom order',
     sourceType: String(source.sourceType ?? '').toUpperCase() === 'PRODUCT' ? 'PRODUCT' : 'DESIGN',
     sourceId: asString(source.sourceId) ?? '',
     isActive: source.isActive !== false,

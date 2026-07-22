@@ -60,6 +60,17 @@ function isAllowedStudioRoute(url: URL): boolean {
     return !tab || STUDIO_TAB_VALUES.has(tab);
   }
 
+  // Store-management settings (store-general, store-hours, store-policies,
+  // store-payments, …) are web-app screens owned by the studio. Render them
+  // inside the studio WebView rather than bouncing to the NATIVE user-settings
+  // screen (which the generic `/settings` block would do). This is what makes
+  // the Business Hours capture — and the working-hours hard-gate redirect —
+  // reachable on mobile without a separate native screen.
+  if (pathname === '/settings') {
+    const tab = url.searchParams.get('tab');
+    if (tab && tab.startsWith('store-')) return true;
+  }
+
   if (STATIC_STUDIO_PATHS.has(pathname)) return true;
   if (/^\/studio\/store\/products\/[^/]+$/.test(pathname)) return true;
   if (/^\/studio\/store\/products\/[^/]+\/edit$/.test(pathname)) return true;
