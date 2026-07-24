@@ -16,7 +16,12 @@ import { StableImage } from '@/components/ui/StableImage';
 import StudioApi from '@/src/api/StudioApi';
 import { env } from '@/src/config/env';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
-import { getActiveBrandId, hasActiveBrandMembership, isBrandOwner } from '@/src/auth/brandAccess';
+import {
+  canReadPayouts,
+  getActiveBrandId,
+  hasActiveBrandMembership,
+  isBrandOwner,
+} from '@/src/auth/brandAccess';
 import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
 import {
   buildStudioPath,
@@ -178,6 +183,7 @@ function StudioProfileMenu({
   onOpenProfile,
   onOpenNotifications,
   onOpenOrders,
+  onOpenFinance,
   onOpenStaff,
   onOpenHelp,
   onSignOut,
@@ -189,6 +195,7 @@ function StudioProfileMenu({
   onOpenProfile: () => void;
   onOpenNotifications: () => void;
   onOpenOrders: () => void;
+  onOpenFinance: () => void;
   onOpenStaff: () => void;
   onOpenHelp: () => void;
   onSignOut: () => void;
@@ -206,6 +213,7 @@ function StudioProfileMenu({
   const maxHeight = Math.max(260, height - topOffset - tokens.spacing.lg);
   const activeBrandId = getActiveBrandId(user);
   const owner = isBrandOwner(user, activeBrandId);
+  const payoutsReadable = canReadPayouts(user, activeBrandId);
 
   const items: StudioMenuItem[] = [
     {
@@ -226,6 +234,16 @@ function StudioProfileMenu({
       label: 'My Orders',
       onPress: onOpenOrders,
     },
+    ...(payoutsReadable
+      ? [
+          {
+            key: 'finance',
+            emoji: '💰',
+            label: 'Finance',
+            onPress: onOpenFinance,
+          },
+        ]
+      : []),
     ...(owner
       ? [
           {
@@ -403,10 +421,21 @@ export default function StudioWebViewScreen() {
   }, []);
 
   useEffect(() => {
+    // Finance is a native screen — never boot the Studio WebView for it.
+    if (resolvedRouteKey === 'finance') {
+      router.replace('/studio/finance' as any);
+      return;
+    }
+  }, [resolvedRouteKey]);
+
+  useEffect(() => {
     let mounted = true;
 
     const run = async () => {
       if (status === 'loading') return;
+      if (resolvedRouteKey === 'finance') {
+        return;
+      }
       if (invalidRouteKey) {
         setErrorMessage('Invalid Studio route.');
         setLoadState('error');
@@ -661,6 +690,11 @@ export default function StudioWebViewScreen() {
     router.replace('/orders' as any);
   }, []);
 
+  const handleMenuFinance = useCallback(() => {
+    setProfileMenuVisible(false);
+    router.push('/studio/finance' as any);
+  }, []);
+
   const handleMenuStaff = useCallback(() => {
     setProfileMenuVisible(false);
     router.push('/studio/staff' as any);
@@ -806,6 +840,7 @@ export default function StudioWebViewScreen() {
         onOpenProfile={handleMenuProfile}
         onOpenNotifications={handleMenuNotifications}
         onOpenOrders={handleMenuOrders}
+        onOpenFinance={handleMenuFinance}
         onOpenStaff={handleMenuStaff}
         onOpenHelp={openHelp}
         onSignOut={handleStudioSignOut}

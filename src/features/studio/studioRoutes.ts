@@ -163,7 +163,7 @@ export const STUDIO_ROUTES: Record<StudioRouteKey, StudioRouteConfig> = {
     title: 'Finance',
     subtitle: 'Payouts, earnings, and account state',
     emoji: '💰',
-    path: '/studio?tab=finance',
+    path: '/studio/finance',
   },
 };
 

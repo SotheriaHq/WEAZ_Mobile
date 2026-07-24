@@ -14,7 +14,7 @@ export type StudioWebNavigationClassification =
   | { type: 'external'; url: string }
   | { type: 'blocked'; reason: string; path?: string };
 
-const STUDIO_TAB_VALUES = new Set(['orders', 'customers', 'analytics', 'finance']);
+const STUDIO_TAB_VALUES = new Set(['orders', 'customers', 'analytics']);
 const UUID_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STATIC_STUDIO_PATHS = new Set([
   '/studio',
@@ -57,6 +57,8 @@ function isAllowedStudioRoute(url: URL): boolean {
   const pathname = url.pathname.replace(/\/+$/g, '') || '/';
   if (pathname === '/studio') {
     const tab = url.searchParams.get('tab');
+    // finance is native-owned; do not keep it inside the Studio WebView.
+    if (tab === 'finance') return false;
     return !tab || STUDIO_TAB_VALUES.has(tab);
   }
 
@@ -82,6 +84,14 @@ function isAllowedStudioRoute(url: URL): boolean {
 function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | null {
   const pathname = url.pathname.replace(/\/+$/g, '') || '/';
   const path = pathWithSearch(url);
+
+  // Native brand finance (held funds, incoming, payouts) — not WebView.
+  if (pathname === '/studio/finance') {
+    return { type: 'native', path, nativeRoute: '/studio/finance' as Href };
+  }
+  if (pathname === '/studio' && url.searchParams.get('tab') === 'finance') {
+    return { type: 'native', path, nativeRoute: '/studio/finance' as Href };
+  }
 
   if (pathname === '/') {
     return { type: 'native', path, nativeRoute: '/(tabs)' as Href };

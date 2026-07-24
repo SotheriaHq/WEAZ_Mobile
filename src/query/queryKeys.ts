@@ -163,6 +163,10 @@ export const queryKeys = {
   brandStaff: {
     list: (brandId?: string | null) => ['brandStaff', 'list', normalizeId(brandId)] as const,
   },
+  brandFinance: {
+    bundle: (brandId?: string | null) =>
+      ['brandFinance', 'bundle', normalizeId(brandId)] as const,
+  },
 };
 
 // Single source of truth for which query roots hold user/brand-private data and
@@ -179,6 +183,7 @@ export const PRIVATE_QUERY_ROOTS = new Set<string>([
   'reviews',
   'orders',
   'brandStaff',
+  'brandFinance',
 ]);
 
 export const isPersistableThreadlyQueryKey = (queryKey: readonly unknown[]) => {
