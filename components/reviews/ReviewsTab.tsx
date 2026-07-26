@@ -14,7 +14,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
-import { THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 
 const emptySummary: ReviewSummaryDto = {
@@ -97,7 +97,7 @@ export default function ReviewsTab({ brandId, productId, compact = false, enable
           productId
             ? reviewApi.getProductReviews(productId, { limit: reviewLimit }, currentUserId)
             : reviewApi.getBrandReviews(brandId as string, { limit: reviewLimit }, currentUserId),
-        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+        staleTime: WIEZ_QUERY_STALE_TIME_MS,
       });
       applyList(response);
     } catch (nextError) {

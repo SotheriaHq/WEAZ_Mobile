@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 
-const SEARCH_HISTORY_KEY = 'threadly.mobile.search.history';
-const SEARCH_HISTORY_HIDDEN_KEY = 'threadly.mobile.search.hidden';
+const SEARCH_HISTORY_KEY = 'wiez.mobile.search.history';
+const SEARCH_HISTORY_HIDDEN_KEY = 'wiez.mobile.search.hidden';
 const MAX_RECENT = 12;
 
 async function readList(key: string): Promise<string[]> {

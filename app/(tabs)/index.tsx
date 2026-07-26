@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-import { MarketFeedScreen } from '@/src/features/feed/components/MarketFeedScreen';
+import { RunwayFeedScreen } from '@/src/features/feed/components/RunwayFeedScreen';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { warmPrimaryTabsAfterRunway } from '@/src/prefetch/tabWarming';
 
@@ -12,5 +12,5 @@ export default function HomeScreen() {
     if (deferredReady) warmPrimaryTabsAfterRunway();
   }, [deferredReady]);
 
-  return <MarketFeedScreen />;
+  return <RunwayFeedScreen />;
 }

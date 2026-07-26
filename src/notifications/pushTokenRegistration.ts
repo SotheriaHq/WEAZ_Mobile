@@ -26,7 +26,7 @@ type PushRegistrationResult =
   | { status: 'registered'; token: string }
   | { status: 'skipped'; reason: string };
 
-const PUSH_REGISTRATION_STORAGE_KEY = 'threadly.pushTokenRegistration.v1';
+const PUSH_REGISTRATION_STORAGE_KEY = 'wiez.pushTokenRegistration.v1';
 
 let inFlightRegistrationKey: string | null = null;
 let inFlightRegistrationPromise: Promise<PushRegistrationResult> | null = null;

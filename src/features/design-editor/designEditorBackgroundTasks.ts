@@ -5,7 +5,7 @@ import type { DesignEditorAsset, DesignFilterSelection } from '@/src/api/DesignA
 export type DesignEditorBackgroundTaskAction = 'draft' | 'publish';
 export type DesignEditorBackgroundTaskStatus = 'running' | 'complete' | 'failed';
 
-export const DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY = 'threadly.designEditor.backgroundTasks.v1';
+export const DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY = 'wiez.designEditor.backgroundTasks.v1';
 export const DESIGN_EDITOR_FAILED_TASK_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type DesignEditorRecoverySnapshot = {

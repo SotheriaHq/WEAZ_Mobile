@@ -9,7 +9,7 @@ import {
   type CollectionScope,
 } from '@/src/api/BrandApi';
 import { getDesignDetail, type DesignDetail } from '@/src/api/DesignApi';
-import { THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 
 type EnabledOption = { enabled?: boolean };
@@ -134,7 +134,7 @@ export function useBrandDraftsQuery(
       },
       enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
       initialData: () => queryClient.getQueryData(queryKey),
-      staleTime: THREADLY_QUERY_STALE_TIME_MS,
+      staleTime: WIEZ_QUERY_STALE_TIME_MS,
     });
   }
 
@@ -162,7 +162,7 @@ export function useBrandDraftsQuery(
       },
       enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
       initialData: () => queryClient.getQueryData(queryKey),
-      staleTime: THREADLY_QUERY_STALE_TIME_MS,
+      staleTime: WIEZ_QUERY_STALE_TIME_MS,
     });
   }
 
@@ -247,7 +247,7 @@ export function useMediaPublicUrlQuery(fileId?: string | null, options?: Enabled
     queryKey: queryKeys.media.publicUrl(fileId),
     queryFn: () => brandApi.getPublicFileUrl(String(fileId)),
     enabled: isEnabled(fileId, options?.enabled ?? true),
-    staleTime: THREADLY_QUERY_STALE_TIME_MS,
+    staleTime: WIEZ_QUERY_STALE_TIME_MS,
   });
 }
 
@@ -256,8 +256,8 @@ export function useMediaSignedUrlQuery(fileId?: string | null, options?: Enabled
     queryKey: queryKeys.media.signedUrl(fileId),
     queryFn: () => brandApi.getPrivateSignedFileUrl(String(fileId)),
     enabled: isEnabled(fileId, options?.enabled ?? true),
-    staleTime: THREADLY_QUERY_STALE_TIME_MS,
-    gcTime: THREADLY_QUERY_STALE_TIME_MS,
+    staleTime: WIEZ_QUERY_STALE_TIME_MS,
+    gcTime: WIEZ_QUERY_STALE_TIME_MS,
   });
 }
 

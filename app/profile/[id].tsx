@@ -217,7 +217,7 @@ export default function PublicProfileScreen() {
     try {
       await Share.share({
         message: profile.username ? `View @${profile.username} on WIEZ` : `Check out ${displayName} on WIEZ`,
-        url: `https://threadly.app/profile/${profile.id}`,
+        url: `https://wiez.app/profile/${profile.id}`,
       });
     } catch {
       toast.info('Sharing is not available right now.');

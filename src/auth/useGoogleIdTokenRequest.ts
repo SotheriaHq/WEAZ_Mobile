@@ -8,7 +8,7 @@ import { env } from '@/src/config/env';
 WebBrowser.maybeCompleteAuthSession();
 
 const UNCONFIGURED_GOOGLE_CLIENT_ID =
-  'threadly-google-auth-not-configured.apps.googleusercontent.com';
+  'wiez-google-auth-not-configured.apps.googleusercontent.com';
 
 const usableClientId = (value: string | undefined | null): string | undefined => {
   const normalized = String(value ?? '').trim();

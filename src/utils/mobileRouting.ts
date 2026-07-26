@@ -17,7 +17,7 @@ function parseHrefId(href: string, pattern: RegExp): string | null {
 
 function parseTargetUrlPath(targetUrl: string) {
   try {
-    return new URL(targetUrl, 'https://threadly.mobile').pathname;
+    return new URL(targetUrl, 'https://wiez.mobile').pathname;
   } catch {
     return targetUrl.split('?')[0] || targetUrl;
   }
@@ -37,7 +37,7 @@ function firstQueryValue(params: URLSearchParams, keys: string[]): string | null
 
 function parseTargetUrl(targetUrl: string): { path: string; params: URLSearchParams } | null {
   try {
-    const parsed = new URL(targetUrl, 'https://threadly.mobile');
+    const parsed = new URL(targetUrl, 'https://wiez.mobile');
     const schemeHostPath =
       parsed.protocol !== 'http:' &&
       parsed.protocol !== 'https:' &&
@@ -499,7 +499,7 @@ export function routeForNotification(notification: MobileNotification): RouterTa
       return { pathname: '/designs/[designId]/edit', params: { designId: draftId } } as unknown as Href;
     }
     if (path === '/profile') {
-      const tab = new URL(targetUrl, 'https://threadly.mobile').searchParams.get('tab')?.toLowerCase();
+      const tab = new URL(targetUrl, 'https://wiez.mobile').searchParams.get('tab')?.toLowerCase();
       if (tab === 'orders') return '/orders' as Href;
       return '/(tabs)/me' as Href;
     }

@@ -88,7 +88,7 @@ import {
   useBrandNeedsAttentionQuery,
   useBrandProfileQuery,
 } from '@/src/query/catalogQueries';
-import { THREADLY_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
+import { WIEZ_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { readWarmScreenUiState, writeWarmScreenUiState } from '@/src/state/screenWarmState';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
@@ -1484,7 +1484,7 @@ export default function CatalogScreen() {
     queryClient.fetchQuery({
       queryKey: queryKeys.saved.batch('COLLECTION', savedCatalogIds),
       queryFn: () => SavedItemsApi.checkBatch('COLLECTION', ids),
-      staleTime: THREADLY_SAVED_STATUS_STALE_TIME_MS,
+      staleTime: WIEZ_SAVED_STATUS_STALE_TIME_MS,
     })
       .then((result) => {
         if (cancelled) return;
@@ -1662,9 +1662,9 @@ export default function CatalogScreen() {
     }
   }, [activeListFetching, hasCachedCatalogContent, profileQuery.isFetching]);
 
-  // Tab configuration
+  // Tab configuration — UI labels only; keys stay Collections for routing/state.
   const tabs = [
-    { key: 'Collections', label: 'Content' },
+    { key: 'Collections', label: isOwner ? 'My Content' : 'Content' },
     { key: 'Shop', label: 'Shop' },
     { key: 'Reviews', label: 'Reviews' },
   ];
@@ -1686,7 +1686,7 @@ export default function CatalogScreen() {
   const handleShareCollection = useCallback(
     async (collectionId: string) => {
       const collection = currentCollectionsRef.current.find((item) => item.id === collectionId);
-      const title = collection?.title?.trim() || 'WIEZ catalog item';
+      const title = collection?.title?.trim() || 'WIEZ design';
       const profileUrl = profileShareUrl ?? '';
       const url = profileUrl ? `${profileUrl}${profileUrl.includes('?') ? '&' : '?'}collectionId=${encodeURIComponent(collectionId)}` : '';
 
@@ -1697,7 +1697,7 @@ export default function CatalogScreen() {
           url: url || undefined,
         });
       } catch {
-        toast.error('Could not share this catalog item.');
+        toast.error('Could not share this item.');
       }
     },
     [profileShareUrl, toast],

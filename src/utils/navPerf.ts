@@ -1,11 +1,11 @@
-import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 
 /**
  * Dev-only navigation timing instrumentation.
  *
  * Emits `[NAV_PERF]` breadcrumbs for a single in-flight navigation so the
  * tap -> route shell -> first paint -> data ready timeline can be measured on a
- * device/emulator. Output is gated by `isThreadlyDebugEnabled('nav')`, which is
+ * device/emulator. Output is gated by `isWiezDebugEnabled('nav')`, which is
  * itself `__DEV__`-only and opt-in via `EXPO_PUBLIC_DEBUG_NAV=1`. It produces no
  * output in production builds and stays silent in dev unless the flag is set, so
  * there is never user-visible log spam. Logs are buffered off the tap path so
@@ -181,7 +181,7 @@ const enabled = () => {
     return true;
   }
 
-  const fromHelper = isThreadlyDebugEnabled('nav');
+  const fromHelper = isWiezDebugEnabled('nav');
   if (fromHelper) return true;
 
   // Fallback: direct raw check (helps when the project's env loader only "exports" certain DEBUG_ vars)

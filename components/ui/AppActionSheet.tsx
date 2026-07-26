@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 
 import { AppText } from '@/components/ui/AppText';
-import { ThreadlySheet, type ThreadlySheetOption } from '@/src/components/ui/ThreadlySheet';
+import { WiezSheet, type WiezSheetOption } from '@/src/components/ui/WiezSheet';
 
 export type AppActionSheetOption = {
   key: string;
@@ -34,7 +34,7 @@ export function AppActionSheet({
   emptyMessage = 'No actions available.',
   errorMessage,
 }: Props) {
-  const sheetOptions = useMemo<ThreadlySheetOption[]>(() => {
+  const sheetOptions = useMemo<WiezSheetOption[]>(() => {
     if (errorMessage) {
       return [{ label: errorMessage, disabled: true, onSelect: () => undefined }];
     }
@@ -59,7 +59,7 @@ export function AppActionSheet({
   }, [emptyMessage, errorMessage, loading, options]);
 
   return (
-    <ThreadlySheet
+    <WiezSheet
       visible={visible}
       title={title}
       subtitle={subtitle}

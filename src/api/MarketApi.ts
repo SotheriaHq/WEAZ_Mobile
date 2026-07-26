@@ -1036,6 +1036,15 @@ export const normalizeLegacyMarketFeedItem = (raw: RawMarketItem): MarketItem | 
   };
 };
 
+/**
+ * Design feed for the Runway UI (backend Design domain).
+ * Prefer `getRunwayFeed` at call sites; transport path may still be /collections/market.
+ */
+export async function getRunwayFeed(params?: GetMarketFeedParams, config?: AxiosRequestConfig): Promise<MarketFeedResponse> {
+  return getMarketFeed(params, config);
+}
+
+/** @deprecated Prefer getRunwayFeed — this is the design/Runway feed, not commerce Market. */
 export async function getMarketFeed(params?: GetMarketFeedParams, config?: AxiosRequestConfig): Promise<MarketFeedResponse> {
   feedContractDevLog('fetch-started', {
     cursor: params?.cursor ?? null,

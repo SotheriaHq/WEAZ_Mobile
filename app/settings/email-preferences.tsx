@@ -37,7 +37,7 @@ const GROUP_ORDER = [
   'Security',
   'Orders & Checkout',
   'Messaging & Social',
-  'Brand & Catalog',
+  'Brand & Content',
   'Size & Fit',
   'Platform & Operations',
 ] as const;
@@ -46,7 +46,7 @@ const GROUP_COPY: Record<string, string> = {
   Security: 'Account-access, recovery, and sign-in email safeguards.',
   'Orders & Checkout': 'Purchases, checkout, delivery, and custom-order milestones.',
   'Messaging & Social': 'Messages, replies, comments, follows, tags, and social activity.',
-  'Brand & Catalog': 'Publishing, private access, brand updates, and catalog work.',
+  'Brand & Content': 'Publishing, private access, brand updates, and content work.',
   'Size & Fit': 'Measurement reminders and size-fit sharing events.',
   'Platform & Operations': 'Wishlist, featured, review, and operational notices.',
 };
@@ -117,7 +117,7 @@ function inferScenarioGroup(scenarioKey: string) {
   if (key.startsWith('AUTH.') || key.includes('LOGIN') || key.includes('LOGOUT') || key.includes('SIGNUP')) return 'Security';
   if (key.includes('ORDER') || key.includes('PAYMENT') || key.includes('DISPUTE') || key.includes('DELIVERED')) return 'Orders & Checkout';
   if (key.includes('MESSAGE') || key.includes('THREAD') || key.includes('COMMENT') || key.includes('FOLLOW') || key.includes('TAG') || key.includes('PATCH')) return 'Messaging & Social';
-  if (key.includes('COLLECTION') || key.includes('PRODUCT') || key.includes('PRIVATE_ACCESS') || key.includes('CONTRIBUTION') || key.includes('VERIFICATION')) return 'Brand & Catalog';
+  if (key.includes('COLLECTION') || key.includes('PRODUCT') || key.includes('PRIVATE_ACCESS') || key.includes('CONTRIBUTION') || key.includes('VERIFICATION')) return 'Brand & Content';
   if (key.includes('SIZE_FIT')) return 'Size & Fit';
   return 'Platform & Operations';
 }

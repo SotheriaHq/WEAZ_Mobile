@@ -186,7 +186,7 @@ export const PRIVATE_QUERY_ROOTS = new Set<string>([
   'brandFinance',
 ]);
 
-export const isPersistableThreadlyQueryKey = (queryKey: readonly unknown[]) => {
+export const isPersistableWiezQueryKey = (queryKey: readonly unknown[]) => {
   const [root, scope] = queryKey;
   if (
     root === 'brand' ||

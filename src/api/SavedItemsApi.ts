@@ -3,7 +3,7 @@ import {
   mapCatalogTargetForLegacyApi,
   type CatalogTargetInput,
 } from '@/src/features/catalog/catalogTarget';
-import { queryClient, THREADLY_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryClient, WIEZ_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 
 export type SavedItemTargetType = 'COLLECTION' | 'COLLECTION_MEDIA';
@@ -78,7 +78,7 @@ export const SavedItemsApi = {
           return acc;
         }, {});
       },
-      staleTime: THREADLY_SAVED_STATUS_STALE_TIME_MS,
+      staleTime: WIEZ_SAVED_STATUS_STALE_TIME_MS,
     });
   },
 

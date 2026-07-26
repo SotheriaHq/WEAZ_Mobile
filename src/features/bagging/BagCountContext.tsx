@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import type { BagCount } from '@/src/api/StoreApi';
-import { queryClient, THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryClient, WIEZ_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { baggingService } from '@/src/services/bagging';
 
@@ -68,7 +68,7 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
         const nextCount = await queryClient.fetchQuery({
           queryKey: bagCountQueryKey,
           queryFn: baggingService.getBagCount,
-          staleTime: THREADLY_COUNT_STALE_TIME_MS,
+          staleTime: WIEZ_COUNT_STALE_TIME_MS,
         });
         setCount(nextCount);
         return nextCount;
@@ -100,7 +100,7 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        if (Date.now() - lastRefreshAttemptAtRef.current < THREADLY_COUNT_STALE_TIME_MS) {
+        if (Date.now() - lastRefreshAttemptAtRef.current < WIEZ_COUNT_STALE_TIME_MS) {
           return;
         }
         void refreshGlobalBagCount();

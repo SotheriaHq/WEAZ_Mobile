@@ -17,11 +17,11 @@ import {
 } from '@/src/storage/secureStorage';
 import { googleAuth, type GoogleAuthParams } from '@/src/api/AuthApi';
 import type { LegalAcceptancePayload } from '@/src/api/LegalApi';
-import { queryClient, THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryClient, WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
-import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import {
   ACTIVE_BRAND_STORAGE_KEY,
   clearMobilePrivateSessionState,
@@ -150,7 +150,7 @@ const CONTROL_CHAR_REGEX = /[\u0000-\u001F\u007F]/;
 let authBootstrapCompletionCount = 0;
 
 function devAuthLog(event: string, details?: Record<string, unknown>) {
-  if (!isThreadlyDebugEnabled('auth')) return;
+  if (!isWiezDebugEnabled('auth')) return;
   console.log('[auth-bootstrap]', details ? { event, ...details } : { event });
 }
 
@@ -551,7 +551,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const response = await apiClient.get('/auth/profile');
           return unwrapData<any>(response.data);
         },
-        staleTime: forceRefresh ? 0 : THREADLY_QUERY_STALE_TIME_MS,
+        staleTime: forceRefresh ? 0 : WIEZ_QUERY_STALE_TIME_MS,
       });
 
       const mappedUser = normalizeAuthUser(profile);
@@ -643,7 +643,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const sanitizedPassword = sanitizeLoginPassword(password ?? '');
       const looksLikeEmail = normalizedIdentifier.includes('@');
 
-      if (isThreadlyDebugEnabled('auth')) {
+      if (isWiezDebugEnabled('auth')) {
         console.log('[auth] login submit diagnostics', {
           rawIdentifierMeta: summarizeIdentifier(rawIdentifier),
           normalizedIdentifierMeta: summarizeIdentifier(normalizedIdentifier),
@@ -662,7 +662,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         candidatePayload: { email: string; password: string } | { identifier: string; password: string },
         label: string,
       ) => {
-        if (isThreadlyDebugEnabled('auth')) {
+        if (isWiezDebugEnabled('auth')) {
           console.log('[auth] /auth/login payload', {
             attempt: label,
             payload: {
@@ -677,7 +677,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         return apiClient.post('/auth/login', candidatePayload).catch((error) => {
-          if (isThreadlyDebugEnabled('auth')) {
+          if (isWiezDebugEnabled('auth')) {
             console.log('[auth] login attempt failed', {
               attempt: label,
               status: (error as any)?.response?.status,
@@ -701,7 +701,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 password: candidatePassword,
               },
         ).catch((error) => {
-          if (isThreadlyDebugEnabled('auth')) {
+          if (isWiezDebugEnabled('auth')) {
             console.log('[auth] login attempt failed', {
               attempt: label,
               status: (error as any)?.response?.status,

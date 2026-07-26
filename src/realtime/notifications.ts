@@ -4,7 +4,7 @@ import { io, type Socket } from 'socket.io-client';
 import { apiClient } from '@/src/api/httpClient';
 import { NotificationsApi, type MobileNotification } from '@/src/api/NotificationsApi';
 import { syncAppBadgeCount } from '@/src/notifications/appBadge';
-import { queryClient, THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryClient, WIEZ_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { markMarketFeedDirty } from '@/src/features/feed/api/feedApi';
 
@@ -193,7 +193,7 @@ export async function refreshUnreadNotificationCount({
     .fetchQuery({
       queryKey: queryKeys.notifications.unreadCount(),
       queryFn: NotificationsApi.getUnreadCount,
-      staleTime: THREADLY_COUNT_STALE_TIME_MS,
+      staleTime: WIEZ_COUNT_STALE_TIME_MS,
     })
     .then(({ count }) => {
       replaceUnreadNotificationCount(count);

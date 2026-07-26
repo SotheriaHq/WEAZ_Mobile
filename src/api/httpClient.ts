@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 import { env } from '@/src/config/env';
-import { apiHostDevLog, apiHostDevWarn, isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { apiHostDevLog, apiHostDevWarn, isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { finishNetworkTrace, startNetworkTrace } from './networkTrace';
 import { createRequestId } from '@/src/utils/requestId';
 
@@ -326,7 +326,7 @@ function promoteActiveHostTo(index: number, reason: string) {
   const next = getActiveBaseUrl();
   applyBaseUrl(next);
 
-  if (isThreadlyDebugEnabled('network')) {
+  if (isWiezDebugEnabled('network')) {
     apiHostDevWarn('active-host-pinned', { baseURL: next, reason });
   }
 }
@@ -475,7 +475,7 @@ apiClient.interceptors.request.use((config) => {
   headers.set(MOBILE_PLATFORM_HEADER, MOBILE_PLATFORM_VALUE);
   retryableConfig.headers = headers;
 
-  if (isThreadlyDebugEnabled('network')) {
+  if (isWiezDebugEnabled('network')) {
     const activeRequestBaseUrl = retryableConfig.baseURL ?? apiClient.defaults.baseURL ?? '';
     console.log(
       `[api] ${retryableConfig.method?.toUpperCase()} ${activeRequestBaseUrl}${retryableConfig.url}`,
@@ -498,14 +498,14 @@ apiClient.interceptors.response.use(
       promoteActiveHostTo(successfulIndex, `HTTP ${res.status}`);
     }
 
-    if (isThreadlyDebugEnabled('network')) {
+    if (isWiezDebugEnabled('network')) {
       console.log(`[api] ? ${res.status} ${res.config.url}`);
     }
     return res;
   },
   async (error: AxiosError) => {
     finishNetworkTrace(error.config, error.response, error);
-    if (isThreadlyDebugEnabled('network')) {
+    if (isWiezDebugEnabled('network')) {
       console.log(`[api] ? ${error.message}`, {
         url: error.config?.url,
         status: error.response?.status,

@@ -12,7 +12,7 @@ import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
-export type ThreadlySheetOption = {
+export type WiezSheetOption = {
   label: string;
   onSelect: () => void;
   destructive?: boolean;
@@ -20,21 +20,21 @@ export type ThreadlySheetOption = {
   icon?: React.ReactNode;
 };
 
-export type ThreadlySheetProps = {
+export type WiezSheetProps = {
   visible: boolean;
   title?: string;
   subtitle?: string;
-  options: ThreadlySheetOption[];
+  options: WiezSheetOption[];
   onClose: () => void;
 };
 
-export function ThreadlySheet({
+export function WiezSheet({
   visible,
   title,
   subtitle,
   options,
   onClose,
-}: ThreadlySheetProps) {
+}: WiezSheetProps) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -178,4 +178,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ThreadlySheet;
+export default WiezSheet;

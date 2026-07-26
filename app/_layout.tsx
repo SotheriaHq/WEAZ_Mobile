@@ -50,7 +50,7 @@ import {
 import { ScreenChromeProvider } from '@/src/system/ScreenChrome';
 import { QueryProvider } from '@/src/query/QueryProvider';
 import { useAndroidDoubleBackExit } from '@/src/hooks/useAndroidDoubleBackExit';
-import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 
 // Phase 1: Force nav perf instrumentation + logs when running perf builds (--no-dev --minify).
 // This bypasses flaky EXPO_PUBLIC_DEBUG_NAV inlining in the project's env loader for perf mode.
@@ -77,7 +77,7 @@ export const unstable_settings = {
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 void SplashScreen.preventAutoHideAsync();
 
-const THEME_MODE_KEY = 'threadly.theme.mode';
+const THEME_MODE_KEY = 'wiez.theme.mode';
 // Must stay in lock-step with the native splash (expo-splash-screen plugin in
 // app.json): same asset, same backgroundColor, same logo size. This makes the JS
 // fallback a pixel-identical continuation of the native splash, so the native→JS
@@ -109,7 +109,7 @@ let splashHidden = false;
 const bootStartedAt = Date.now();
 
 function devBootLog(event: string, details?: Record<string, unknown>) {
-  if (!isThreadlyDebugEnabled('boot')) return;
+  if (!isWiezDebugEnabled('boot')) return;
   console.log('[boot]', details ? { event, ...details } : { event });
 }
 
@@ -167,7 +167,7 @@ function NotificationSetup() {
         const unsubscribe = isExpoGoAndroid ? () => {} : setupNotificationListeners(
           (notification) => {
             // Handle foreground notification
-            if (isThreadlyDebugEnabled('boot')) {
+            if (isWiezDebugEnabled('boot')) {
               console.log('Notification received while foreground');
             }
           },

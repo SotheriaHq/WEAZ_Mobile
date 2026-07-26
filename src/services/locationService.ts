@@ -2,7 +2,7 @@ import axios from 'axios';
 
 /**
  * Location cascade source for profile/checkout forms.
- * Kept in parity with `fthreadly/src/services/LocationService.ts`:
+ * Kept in parity with `fwiez/src/services/LocationService.ts`:
  * Country (name) → State/Province → City/LGA.
  */
 

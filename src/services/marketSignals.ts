@@ -14,11 +14,11 @@ export const MARKET_SIGNAL_EVENT_TTL_MS = 24 * 60 * 60 * 1000;
 export const MARKET_SIGNAL_MAX_RETRIES = 5;
 export const MARKET_SIGNAL_RETRY_BASE_MS = 2_000;
 export const MARKET_SIGNAL_RETRY_MAX_MS = 60_000;
-export const MARKET_SIGNAL_QUEUE_STORAGE_KEY = 'threadly.market.signalQueue.v1';
-export const MARKET_SIGNAL_RECENT_STORAGE_KEY = 'threadly.market.signalRecent.v1';
-export const MARKET_SIGNAL_IDENTITY_STORAGE_KEY = 'threadly.market.signalIdentity.v1';
+export const MARKET_SIGNAL_QUEUE_STORAGE_KEY = 'wiez.market.signalQueue.v1';
+export const MARKET_SIGNAL_RECENT_STORAGE_KEY = 'wiez.market.signalRecent.v1';
+export const MARKET_SIGNAL_IDENTITY_STORAGE_KEY = 'wiez.market.signalIdentity.v1';
 export const MARKET_SIGNAL_LAST_CLEARED_STORAGE_KEY =
-  'threadly.market.signalLastClearedAt.v1';
+  'wiez.market.signalLastClearedAt.v1';
 
 type QueuedMarketSignal = {
   event: MarketSignalEvent & { clientEventId: string };

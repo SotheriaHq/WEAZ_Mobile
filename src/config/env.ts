@@ -33,12 +33,12 @@ const apiWithCredentials = parseBoolean(getEnvVar('EXPO_PUBLIC_API_WITH_CREDENTI
 const googleWebClientId = getEnvVar('EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID', '');
 const googleIosClientId = getEnvVar('EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID', '');
 const googleAndroidClientId = getEnvVar('EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID', '');
-const tokenStorageKey = getEnvVar('EXPO_PUBLIC_TOKEN_STORAGE_KEY', 'THREADLY_ACCESS_TOKEN');
+const tokenStorageKey = getEnvVar('EXPO_PUBLIC_TOKEN_STORAGE_KEY', 'WIEZ_ACCESS_TOKEN');
 const refreshTokenStorageKey = getEnvVar(
   'EXPO_PUBLIC_REFRESH_TOKEN_STORAGE_KEY',
-  'THREADLY_REFRESH_TOKEN',
+  'WIEZ_REFRESH_TOKEN',
 );
-const userStorageKey = getEnvVar('EXPO_PUBLIC_USER_STORAGE_KEY', 'THREADLY_USER');
+const userStorageKey = getEnvVar('EXPO_PUBLIC_USER_STORAGE_KEY', 'WIEZ_USER');
 const mobileCheckoutEnabled = parseBoolean(
   getEnvVar('EXPO_PUBLIC_MOBILE_CHECKOUT_ENABLED', 'true'),
 );

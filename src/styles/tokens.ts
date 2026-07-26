@@ -138,7 +138,7 @@ export const tokens = {
 
   // Backwards-compatible aliases used by existing screens.
   colors: {
-    // Keep aligned with the web app's Tailwind tokens (fthreadly/tailwind.config.js).
+    // Keep aligned with the web app's Tailwind tokens (fwiez/tailwind.config.js).
     dark: '#000000',
     lightGray: '#f0f2f5',
     primary: '#9333EA',

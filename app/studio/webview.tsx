@@ -90,7 +90,7 @@ function sanitizeUrlForTelemetry(url: string): string {
 function sanitizePathForTelemetry(path: string | undefined): string | undefined {
   if (!path) return undefined;
   try {
-    const parsed = new URL(path, 'https://threadly.local');
+    const parsed = new URL(path, 'https://wiez.local');
     parsed.searchParams.delete('handoffCode');
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch {
@@ -662,7 +662,7 @@ export default function StudioWebViewScreen() {
   const openSearch = useCallback(() => {
     if (loadState === 'ready' && webViewRef.current) {
       webViewRef.current.injectJavaScript(`
-        window.dispatchEvent(new CustomEvent('threadly:native-search-open'));
+        window.dispatchEvent(new CustomEvent('wiez:native-search-open'));
         true;
       `);
       return;

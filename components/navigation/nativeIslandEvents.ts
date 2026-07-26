@@ -1,6 +1,6 @@
 import { DeviceEventEmitter } from 'react-native';
 
-const COLLAPSE_EVENT = 'threadly.nativeIsland.collapse';
+const COLLAPSE_EVENT = 'wiez.nativeIsland.collapse';
 
 export function requestNativeIslandCollapse() {
   DeviceEventEmitter.emit(COLLAPSE_EVENT);

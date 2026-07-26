@@ -1,3 +1,7 @@
+/**
+ * RunwayFeedScreen — native design feed (UI label: Runway).
+ * Backend domain: Design. Not the commerce Market tab (`MarketScreen` / discover).
+ */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, FlatList, InteractionManager, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -48,8 +52,8 @@ import { perfMark } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
 import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { fetchMarketFilterChipsQuery } from '@/src/query/bootstrapQueries';
-import { MarketFeedItem } from '@/src/features/feed/components/MarketFeedItem';
-import { MarketFeedList } from '@/src/features/feed/components/MarketFeedList';
+import { RunwayFeedItem } from '@/src/features/feed/components/RunwayFeedItem';
+import { RunwayFeedList } from '@/src/features/feed/components/RunwayFeedList';
 import type { FeedListEntry, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
 
 /**
@@ -640,7 +644,7 @@ const FeedSkeleton = ({
   );
 };
 
-export function MarketFeedScreen() {
+export function RunwayFeedScreen() {
   const flowKey = 'runway';
   // Phase 1 instrumentation - safe, gated, no behavior change
   React.useEffect(() => {
@@ -1908,7 +1912,7 @@ export function MarketFeedScreen() {
       ].join('|');
 
       return (
-        <MarketFeedItem
+        <RunwayFeedItem
           collectionId={item.collectionId}
           pageHeight={pageHeight}
           mediaItems={mediaItems}
@@ -2350,7 +2354,7 @@ export function MarketFeedScreen() {
              previous and next pages fully rendered so paging reveals painted
              content, not a shimmer; clipping stays off because detached
              full-screen Android image rows can flash blank when reattached. */
-          <MarketFeedList
+          <RunwayFeedList
             ref={feedListRef}
             key={feedListKey}
             data={feedItems}

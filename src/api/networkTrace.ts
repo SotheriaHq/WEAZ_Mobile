@@ -4,7 +4,7 @@ import { AppState } from 'react-native';
 type TraceHeaders = Record<string, unknown> | { get?: (name: string) => unknown };
 
 type TraceableRequestConfig = InternalAxiosRequestConfig & {
-  __threadlyTrace?: {
+  __wiezTrace?: {
     id: number;
     requestTimestampMs: number;
     requestTimestamp: string;
@@ -80,7 +80,7 @@ const isTraceEnabled =
   typeof __DEV__ !== 'undefined' &&
   __DEV__ &&
   process.env.NODE_ENV !== 'test' &&
-  process.env.EXPO_PUBLIC_THREADLY_NETWORK_TRACE !== '0';
+  process.env.EXPO_PUBLIC_WIEZ_NETWORK_TRACE !== '0';
 
 let nextTraceId = 1;
 let currentScreenLabel: string | null = null;
@@ -142,7 +142,7 @@ function appendParams(searchParams: URLSearchParams, params: unknown) {
 
 function getRequestUrlParts(config: TraceableRequestConfig) {
   const rawUrl = typeof config.url === 'string' ? config.url : '';
-  const rawBaseUrl = typeof config.baseURL === 'string' && config.baseURL ? config.baseURL : 'http://threadly.local';
+  const rawBaseUrl = typeof config.baseURL === 'string' && config.baseURL ? config.baseURL : 'http://wiez.local';
   const parsed = new URL(rawUrl || '/', rawBaseUrl);
   appendParams(parsed.searchParams, config.params);
 
@@ -277,7 +277,7 @@ export function startNetworkTrace(config: InternalAxiosRequestConfig) {
   if (!isTraceEnabled) return config;
   const traceableConfig = config as TraceableRequestConfig;
   const now = Date.now();
-  traceableConfig.__threadlyTrace = {
+  traceableConfig.__wiezTrace = {
     id: nextTraceId++,
     requestTimestampMs: now,
     requestTimestamp: new Date(now).toISOString(),
@@ -295,7 +295,7 @@ export function finishNetworkTrace(
 ) {
   if (!isTraceEnabled || !config) return;
   const traceableConfig = config as TraceableRequestConfig;
-  const trace = traceableConfig.__threadlyTrace;
+  const trace = traceableConfig.__wiezTrace;
   if (!trace) return;
 
   const responseTimestampMs = Date.now();
@@ -412,7 +412,7 @@ export function getNetworkTraceSummary(): NetworkTraceSummary {
 
 export function printNetworkTraceSummary() {
   const summary = getNetworkTraceSummary();
-  console.log('[threadly-network-trace] summary', summary);
+  console.log('[wiez-network-trace] summary', summary);
   if (typeof console.table === 'function') {
     console.table(summary.duplicateBuckets.slice(0, 10));
     console.table(summary.signedUrlCalls.buckets.slice(0, 10));
@@ -433,7 +433,7 @@ const controls: NetworkTraceControls = {
 };
 
 if (isTraceEnabled) {
-  (globalThis as typeof globalThis & { __THREADLY_NETWORK_TRACE__?: NetworkTraceControls }).__THREADLY_NETWORK_TRACE__ = controls;
+  (globalThis as typeof globalThis & { __WIEZ_NETWORK_TRACE__?: NetworkTraceControls }).__WIEZ_NETWORK_TRACE__ = controls;
 }
 
 export const networkTraceEnabled = isTraceEnabled;

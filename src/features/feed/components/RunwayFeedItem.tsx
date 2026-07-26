@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { FeedMediaCarousel } from '@/src/features/feed/components/FeedMediaCarousel';
 import type { FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
 
-type MarketFeedItemProps = {
+type RunwayFeedItemProps = {
   collectionId: string;
   pageHeight: number;
   mediaItems: FeedViewerMedia[];
@@ -18,7 +18,7 @@ type MarketFeedItemProps = {
   onContentPress: (collectionId: string) => void;
 };
 
-function MarketFeedItemComponent({
+function RunwayFeedItemComponent({
   collectionId,
   pageHeight,
   mediaItems,
@@ -29,7 +29,7 @@ function MarketFeedItemComponent({
   badgeOverlay,
   onCarouselIndexChange,
   onContentPress,
-}: MarketFeedItemProps) {
+}: RunwayFeedItemProps) {
   const handleActiveIndexChange = useCallback(
     (nextIndex: number) => {
       onCarouselIndexChange(collectionId, nextIndex);
@@ -58,8 +58,8 @@ function MarketFeedItemComponent({
   );
 }
 
-export const MarketFeedItem = React.memo(
-  MarketFeedItemComponent,
+export const RunwayFeedItem = React.memo(
+  RunwayFeedItemComponent,
   // Overlay/action elements are composed by the parent. The primitive version
   // captures their visible state so unrelated row updates can skip safely.
   (previous, next) =>

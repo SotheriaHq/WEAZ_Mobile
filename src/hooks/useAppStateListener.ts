@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import { THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 
 /**
  * Hook to invalidate queries when app comes to foreground.
@@ -12,7 +12,7 @@ import { THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
  */
 export const useAppStateListener = (queryPatterns: (string | string[])[] = [], staleTimeMs?: number) => {
   const queryClient = useQueryClient();
-  const staleThresholdMs = staleTimeMs ?? THREADLY_QUERY_STALE_TIME_MS;
+  const staleThresholdMs = staleTimeMs ?? WIEZ_QUERY_STALE_TIME_MS;
   const lastInactiveAtRef = useRef<number | null>(null);
   const appStateRef = useRef(AppState.currentState);
   const patternKey = JSON.stringify(queryPatterns);

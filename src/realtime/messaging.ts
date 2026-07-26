@@ -3,7 +3,7 @@ import { io, type Socket } from 'socket.io-client';
 
 import { apiClient } from '@/src/api/httpClient';
 import { MessagingApi } from '@/src/api/MessagingApi';
-import { queryClient, THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryClient, WIEZ_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import type {
   MessageCreatedRealtimeEvent,
@@ -275,7 +275,7 @@ export async function refreshUnreadMessageCount({
     .fetchQuery({
       queryKey: queryKeys.messaging.unreadCount(),
       queryFn: MessagingApi.getUnreadMessageCount,
-      staleTime: THREADLY_COUNT_STALE_TIME_MS,
+      staleTime: WIEZ_COUNT_STALE_TIME_MS,
     })
     .then(({ unreadCount: nextUnreadCount }) => {
       replaceUnreadMessageCount(nextUnreadCount);

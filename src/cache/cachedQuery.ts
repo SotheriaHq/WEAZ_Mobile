@@ -4,7 +4,7 @@ import type { QueryClient, QueryKey } from '@tanstack/react-query';
 import { cachePolicies, type CachePolicy } from '@/src/cache/policies';
 import {
   queryClient as defaultQueryClient,
-  THREADLY_QUERY_CACHE_MAX_ENTRIES,
+  WIEZ_QUERY_CACHE_MAX_ENTRIES,
 } from '@/src/query/queryClient';
 
 type CachedFetcher<T> = (context: { signal?: AbortSignal }) => Promise<T>;
@@ -175,7 +175,7 @@ export function cancelCachedQuery(
 
 export function enforceCachedQueryBudget(
   client: QueryClient = defaultQueryClient,
-  maxEntries = THREADLY_QUERY_CACHE_MAX_ENTRIES,
+  maxEntries = WIEZ_QUERY_CACHE_MAX_ENTRIES,
 ) {
   const queries = client.getQueryCache().findAll();
   if (queries.length <= maxEntries) return;

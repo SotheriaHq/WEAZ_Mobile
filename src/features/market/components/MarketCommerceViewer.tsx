@@ -36,7 +36,7 @@ import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
-import { queryClient, THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryClient, WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { navPerf } from '@/src/utils/navPerf';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
@@ -46,7 +46,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import type { SizeRecommendationResponse } from '@/src/api/ProfileApi';
 import { CONFIDENCE_LABELS, SIZING_REGION_LABELS } from '@/src/utils/sizeRecommendation';
-import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { backOrNavigate } from '@/src/utils/mobileNavigation';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
 
@@ -81,7 +81,7 @@ const ACTION_KIND_MESSAGE = 'message';
 const ACTION_KIND_SHARE = 'share';
 
 const shouldLogViewerTiming = () =>
-  isThreadlyDebugEnabled('network') ||
+  isWiezDebugEnabled('network') ||
   process.env.EXPO_PUBLIC_BAGGING_OBSERVABILITY === 'true';
 
 const logViewerTiming = (event: string, startedAt: number, context: Record<string, unknown>) => {
@@ -357,7 +357,7 @@ export function MarketCommerceViewer({
         const nextProduct = await queryClient.fetchQuery({
           queryKey: productKey,
           queryFn: () => MobileStoreApi.getProductById(normalizedSourceId),
-          staleTime: THREADLY_QUERY_STALE_TIME_MS,
+          staleTime: WIEZ_QUERY_STALE_TIME_MS,
         });
         setProduct(nextProduct);
         setDesign(null);
@@ -373,7 +373,7 @@ export function MarketCommerceViewer({
       const nextDesign = await queryClient.fetchQuery({
         queryKey: designKey,
         queryFn: () => brandApi.getCollectionDetail(normalizedSourceId, { scope: 'design' }),
-        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+        staleTime: WIEZ_QUERY_STALE_TIME_MS,
       });
       if (!nextDesign) {
         throw new Error('Design unavailable.');

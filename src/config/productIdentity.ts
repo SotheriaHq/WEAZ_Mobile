@@ -2,7 +2,8 @@ import { env } from '@/src/config/env';
 
 export const PRODUCT_NAME = 'WIEZ';
 export const MOBILE_APP_NAME = PRODUCT_NAME;
-export const PRODUCT_NAME_FORMER = 'Threadly';
+/** @deprecated Product is WIEZ only — do not surface former codenames. */
+export const PRODUCT_NAME_FORMER = 'WIEZ';
 export const PRODUCT_TAGLINE = 'When you think WEARS, you think WIEZ.';
 export const PRODUCT_LOGO_TAGLINE = 'JUST WEAR';
 export const PUBLIC_WEB_URL =

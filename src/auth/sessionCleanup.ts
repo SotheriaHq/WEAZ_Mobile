@@ -18,7 +18,7 @@ import { deactivateRegisteredPushTokenForLogout } from '@/src/notifications/push
 import { queryClient as defaultQueryClient } from '@/src/query/queryClient';
 import {
   purgeMobilePersistedQueryCache,
-  THREADLY_QUERY_CACHE_STORAGE_KEY,
+  WIEZ_QUERY_CACHE_STORAGE_KEY,
 } from '@/src/query/queryPersistor';
 import { queryKeys, PRIVATE_QUERY_ROOTS } from '@/src/query/queryKeys';
 import { clearMessagingRealtimeSession } from '@/src/realtime/messaging';
@@ -27,8 +27,8 @@ import { clearMobileMarketSignalQueue } from '@/src/services/marketSignals';
 import { clearWarmScreenStateCache } from '@/src/state/screenWarmState';
 import { removeAccessToken, removeCachedAuthUser, removeRefreshToken } from '@/src/storage/secureStorage';
 
-export const ACTIVE_BRAND_STORAGE_KEY = 'threadly.activeBrandId';
-const PENDING_BAG_ACTION_STORAGE_KEY = 'threadly.pendingBagAction.v1';
+export const ACTIVE_BRAND_STORAGE_KEY = 'wiez.activeBrandId';
+const PENDING_BAG_ACTION_STORAGE_KEY = 'wiez.pendingBagAction.v1';
 
 export function isMobilePrivateSessionQueryKey(queryKey: QueryKey) {
   const [root, scope] = queryKey;
@@ -50,7 +50,7 @@ export async function clearMobilePrivateAsyncStorage() {
     const keys = await AsyncStorage.getAllKeys();
     const privateKeys = keys.filter(
       (key) =>
-        key === THREADLY_QUERY_CACHE_STORAGE_KEY ||
+        key === WIEZ_QUERY_CACHE_STORAGE_KEY ||
         key === DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY ||
         key.startsWith(PERSISTED_FEED_CACHE_PREFIX) ||
         key === env.userStorageKey,

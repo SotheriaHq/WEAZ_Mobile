@@ -285,7 +285,7 @@ export default function SettingsScreen() {
         title: 'Studio / Brand',
         rows: [
           { emoji: '🏪', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => topLevelNavigate('/catalog' as never) },
-          { emoji: '🗂️', title: 'Catalog settings', subtitle: 'Runway, products, collections', onPress: () => topLevelNavigate('/catalog' as never) },
+          { emoji: '🗂️', title: 'My Content settings', subtitle: 'Designs, products, collections', onPress: () => topLevelNavigate('/catalog' as never) },
           { emoji: '✅', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => router.push('/studio' as never) },
           { emoji: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => router.push('/studio' as never) },
         ],

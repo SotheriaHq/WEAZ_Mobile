@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 
 import { env } from '../config/env';
 
-const WEB_DEV_SECURE_STORE_PREFIX = 'THREADLY_DEV_SECURE_STORE:';
+const WEB_DEV_SECURE_STORE_PREFIX = 'WIEZ_DEV_SECURE_STORE:';
 const AUTH_USER_SNAPSHOT_VERSION = 1;
 
 type AuthUserSnapshot = {

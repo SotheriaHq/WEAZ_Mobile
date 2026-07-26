@@ -31,7 +31,7 @@ import {
   subscribeRunwayFirstMediaVisible,
 } from '@/src/features/feed/utils/runwayReadiness';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
-import { THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
+import { WIEZ_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import {
   NATIVE_ISLAND_ICONS,
   NATIVE_ISLAND_KEYS,
@@ -521,7 +521,7 @@ export default function TabLayout() {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        if (Date.now() - lastNotificationRefreshAttemptAtRef.current < THREADLY_COUNT_STALE_TIME_MS) {
+        if (Date.now() - lastNotificationRefreshAttemptAtRef.current < WIEZ_COUNT_STALE_TIME_MS) {
           return;
         }
         void refreshUnreadNotificationCount();
@@ -536,7 +536,7 @@ export default function TabLayout() {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        if (Date.now() - lastMessageRefreshAttemptAtRef.current < THREADLY_COUNT_STALE_TIME_MS) {
+        if (Date.now() - lastMessageRefreshAttemptAtRef.current < WIEZ_COUNT_STALE_TIME_MS) {
           return;
         }
         void refreshUnreadMessageCount();

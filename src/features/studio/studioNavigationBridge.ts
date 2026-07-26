@@ -97,7 +97,7 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
     return { type: 'native', path, nativeRoute: '/(tabs)' as Href };
   }
 
-  if (pathname === '/market' || pathname === '/market-place' || pathname === '/marketplace') {
+  if (pathname === '/market' || pathname === '/market' || pathname === '/marketplace') {
     return { type: 'native', path, nativeRoute: '/(tabs)/discover' as Href };
   }
 

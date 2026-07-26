@@ -32,7 +32,7 @@ export type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const THEME_MODE_KEY = 'threadly.theme.mode';
+const THEME_MODE_KEY = 'wiez.theme.mode';
 
 function computeScheme(mode: ThemeMode, systemScheme: ColorSchemeName): ResolvedTheme {
   if (mode === 'light') return 'light';

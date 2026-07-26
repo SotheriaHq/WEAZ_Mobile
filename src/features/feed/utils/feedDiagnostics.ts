@@ -63,7 +63,7 @@ const isScopeDebugFlagEnabled = (scope: DebugScope) => {
   }
 };
 
-export const isThreadlyDebugEnabled = (scope: DebugScope) => {
+export const isWiezDebugEnabled = (scope: DebugScope) => {
   // Debug scopes are opt-in via EXPO_PUBLIC_DEBUG_<SCOPE> flags. We honor the
   // flag even outside __DEV__ so performance can be measured against a
   // production-mode JS bundle (`expo start --no-dev --minify`) — release-speed JS
@@ -79,7 +79,7 @@ const writeDevDiagnostic = (
   event: string,
   details?: Record<string, unknown>,
 ) => {
-  if (!isThreadlyDebugEnabled(DEBUG_SCOPE_BY_PREFIX[prefix])) return;
+  if (!isWiezDebugEnabled(DEBUG_SCOPE_BY_PREFIX[prefix])) return;
   const payload = { event, ...(details ?? {}) };
   if (level === 'warn') {
     console.warn(`[${prefix}]`, payload);

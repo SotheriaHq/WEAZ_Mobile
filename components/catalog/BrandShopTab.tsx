@@ -30,7 +30,7 @@ import { useProductBagging } from '@/src/hooks/useProductBagging';
 import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
-import { THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { brandShopDevLog, brandShopDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 
@@ -443,7 +443,7 @@ export function BrandShopTab({
       const items = await queryClient.fetchQuery({
         queryKey: brandProductsQueryKey,
         queryFn: () => MobileStoreApi.getBrandProducts(normalizedBrandId, 80),
-        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+        staleTime: WIEZ_QUERY_STALE_TIME_MS,
       });
       setProducts(items);
     } catch (err) {

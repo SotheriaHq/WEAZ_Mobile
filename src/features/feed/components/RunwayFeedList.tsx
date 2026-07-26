@@ -3,9 +3,9 @@ import { FlatList, type FlatListProps } from 'react-native';
 
 import type { FeedListEntry } from '@/src/features/feed/components/feedComponentTypes';
 
-export type MarketFeedListProps = FlatListProps<FeedListEntry>;
+export type RunwayFeedListProps = FlatListProps<FeedListEntry>;
 
-export const MarketFeedList = React.forwardRef<FlatList<FeedListEntry>, MarketFeedListProps>(function MarketFeedList(
+export const RunwayFeedList = React.forwardRef<FlatList<FeedListEntry>, RunwayFeedListProps>(function RunwayFeedList(
   props,
   ref,
 ) {
