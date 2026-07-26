@@ -166,7 +166,7 @@ function ProfileSelectField({
           <AppText variant="body" tone={value ? 'default' : 'muted'} style={styles.selectValue}>
             {value || placeholder}
           </AppText>
-          <AppText variant="captionBold" tone={disabled ? 'muted' : 'primary'}>
+          <AppText variant="captionBold" tone={disabled ? 'muted' : 'primary'} style={styles.selectChoose}>
             Choose
           </AppText>
         </View>
@@ -607,9 +607,9 @@ export default function BrandProfileEditScreen() {
             </View>
             <View style={[styles.group, styles.rowItem]}>
               <ProfileSelectField
-                label="State"
+                label="State / Province"
                 value={getOptionLabel(stateOptions, form.brandState)}
-                placeholder={form.brandCountry ? 'Select state' : 'Select country first'}
+                placeholder={form.brandCountry ? 'Select state / province' : 'Select country first'}
                 onPress={() => setLocationSheet('state')}
                 disabled={!form.brandCountry}
               />
@@ -618,9 +618,9 @@ export default function BrandProfileEditScreen() {
 
           <View style={styles.group}>
             <ProfileSelectField
-              label="City"
+              label="City / LGA"
               value={getOptionLabel(cityOptions, form.brandCity)}
-              placeholder={form.brandState ? 'Select city' : 'Select state first'}
+              placeholder={form.brandState ? 'Select city / LGA' : 'Select state first'}
               onPress={() => setLocationSheet('city')}
               disabled={!form.brandState}
             />
@@ -726,7 +726,7 @@ export default function BrandProfileEditScreen() {
 
       <AppSelectSheet
         visible={locationSheet === 'state'}
-        title="State"
+        title="State / Province"
         subtitle="Choose the state or province for this brand."
         options={stateOptions}
         value={form.brandState || null}
@@ -742,8 +742,8 @@ export default function BrandProfileEditScreen() {
 
       <AppSelectSheet
         visible={locationSheet === 'city'}
-        title="City"
-        subtitle="Choose the city for this brand."
+        title="City / LGA"
+        subtitle="Choose the city or LGA for this brand."
         options={cityOptions}
         value={form.brandCity || null}
         loading={locationLoading && cities.length === 0}
@@ -863,11 +863,15 @@ const styles = StyleSheet.create({
   },
   selectValueRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: tokens.spacing.sm,
   },
   selectValue: {
     flex: 1,
+    flexShrink: 1,
+  },
+  selectChoose: {
+    flexShrink: 0,
   },
   tagField: {
     minHeight: 56,

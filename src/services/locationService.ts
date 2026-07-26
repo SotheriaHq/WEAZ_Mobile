@@ -1,23 +1,91 @@
 import axios from 'axios';
 
+/**
+ * Location cascade source for profile/checkout forms.
+ * Kept in parity with `fthreadly/src/services/LocationService.ts`:
+ * Country (name) → State/Province → City/LGA.
+ */
+
 export type CountryOption = {
   name: string;
+  /** ISO-3166 alpha-2 (same as web `iso2`). */
+  iso2: string;
+  /** @deprecated alias of iso2 — prefer iso2 */
   code: string;
+  flag: string;
+  flagImage: string;
 };
 
 export type StateOption = {
   name: string;
+  iso2: string;
+  /** @deprecated alias of iso2 — prefer iso2 */
   code: string;
 };
 
+export type CityOption = {
+  name: string;
+};
+
+const COUNTRIES_API = 'https://countriesnow.space/api/v0.1/countries';
+const REST_COUNTRIES_API =
+  'https://restcountries.com/v3.1/all?fields=name,cca2,flags';
+const LOCATION_REQUEST_TIMEOUT_MS = 8000;
+
+/** Platform operating markets (same fallback list as web). */
+export const FALLBACK_COUNTRIES: CountryOption[] = [
+  {
+    name: 'Ghana',
+    iso2: 'GH',
+    code: 'GH',
+    flag: '',
+    flagImage: 'https://flagcdn.com/gh.svg',
+  },
+  {
+    name: 'Kenya',
+    iso2: 'KE',
+    code: 'KE',
+    flag: '',
+    flagImage: 'https://flagcdn.com/ke.svg',
+  },
+  {
+    name: 'Nigeria',
+    iso2: 'NG',
+    code: 'NG',
+    flag: '',
+    flagImage: 'https://flagcdn.com/ng.svg',
+  },
+  {
+    name: 'South Africa',
+    iso2: 'ZA',
+    code: 'ZA',
+    flag: '',
+    flagImage: 'https://flagcdn.com/za.svg',
+  },
+  {
+    name: 'United Kingdom',
+    iso2: 'GB',
+    code: 'GB',
+    flag: '',
+    flagImage: 'https://flagcdn.com/gb.svg',
+  },
+  {
+    name: 'United States',
+    iso2: 'US',
+    code: 'US',
+    flag: '',
+    flagImage: 'https://flagcdn.com/us.svg',
+  },
+];
+
 type RestCountry = {
-  name?: {
-    common?: string;
-  };
+  name?: { common?: string };
   cca2?: string;
+  flags?: { alt?: string; svg?: string };
 };
 
 type CountriesNowStatesResponse = {
+  error?: boolean;
   data?: {
     states?: Array<{
       name?: string;
@@ -27,19 +95,29 @@ type CountriesNowStatesResponse = {
 };
 
 type CountriesNowCitiesResponse = {
+  error?: boolean;
   data?: string[];
 };
-
-const REST_COUNTRIES_URL = 'https://restcountries.com/v3.1/all?fields=name,cca2';
-const COUNTRIES_NOW_STATES_URL = 'https://countriesnow.space/api/v0.1/countries/states';
-const COUNTRIES_NOW_CITIES_URL = 'https://countriesnow.space/api/v0.1/countries/state/cities';
 
 let cachedCountries: CountryOption[] | null = null;
 const statesCache = new Map<string, StateOption[]>();
 const citiesCache = new Map<string, string[]>();
 
 function sortByName<T extends { name: string }>(items: T[]): T[] {
-  return items.sort((a, b) => a.name.localeCompare(b.name));
+  return [...items].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function mapCountry(raw: RestCountry): CountryOption | null {
+  const name = raw.name?.common?.trim() ?? '';
+  if (!name) return null;
+  const iso2 = (raw.cca2?.trim() ?? name).toUpperCase();
+  return {
+    name,
+    iso2,
+    code: iso2,
+    flag: raw.flags?.alt ?? '',
+    flagImage: raw.flags?.svg ?? `https://flagcdn.com/${iso2.toLowerCase()}.svg`,
+  };
 }
 
 export const locationService = {
@@ -49,18 +127,16 @@ export const locationService = {
     }
 
     try {
-      const response = await axios.get<RestCountry[]>(REST_COUNTRIES_URL);
+      const response = await axios.get<RestCountry[]>(REST_COUNTRIES_API, {
+        timeout: LOCATION_REQUEST_TIMEOUT_MS,
+      });
       cachedCountries = sortByName(
-        response.data
-          .map((country) => ({
-            name: country.name?.common?.trim() ?? '',
-            code: country.cca2?.trim() ?? country.name?.common?.trim() ?? '',
-          }))
-          .filter((country) => country.name.length > 0),
+        response.data.map(mapCountry).filter((c): c is CountryOption => Boolean(c)),
       );
       return cachedCountries;
     } catch {
-      return [];
+      cachedCountries = FALLBACK_COUNTRIES;
+      return cachedCountries;
     }
   },
 
@@ -74,16 +150,23 @@ export const locationService = {
     }
 
     try {
-      const response = await axios.post<CountriesNowStatesResponse>(COUNTRIES_NOW_STATES_URL, {
-        country: normalizedCountry,
-      });
+      const response = await axios.post<CountriesNowStatesResponse>(
+        `${COUNTRIES_API}/states`,
+        { country: normalizedCountry },
+        { timeout: LOCATION_REQUEST_TIMEOUT_MS },
+      );
+      if (response.data?.error) {
+        return [];
+      }
       const states = sortByName(
         (response.data.data?.states ?? [])
-          .map((state) => ({
-            name: state.name?.trim() ?? '',
-            code: state.state_code?.trim() ?? state.name?.trim() ?? '',
-          }))
-          .filter((state) => state.name.length > 0),
+          .map((state) => {
+            const name = state.name?.trim() ?? '';
+            if (!name) return null;
+            const iso2 = state.state_code?.trim() ?? name;
+            return { name, iso2, code: iso2 };
+          })
+          .filter((state): state is StateOption => Boolean(state)),
       );
       statesCache.set(normalizedCountry, states);
       return states;
@@ -105,10 +188,17 @@ export const locationService = {
     }
 
     try {
-      const response = await axios.post<CountriesNowCitiesResponse>(COUNTRIES_NOW_CITIES_URL, {
-        country: normalizedCountry,
-        state: normalizedState,
-      });
+      const response = await axios.post<CountriesNowCitiesResponse>(
+        `${COUNTRIES_API}/state/cities`,
+        {
+          country: normalizedCountry,
+          state: normalizedState,
+        },
+        { timeout: LOCATION_REQUEST_TIMEOUT_MS },
+      );
+      if (response.data?.error) {
+        return [];
+      }
       const cities = (response.data.data ?? [])
         .map((city) => city.trim())
         .filter((city) => city.length > 0)

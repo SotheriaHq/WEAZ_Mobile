@@ -34,6 +34,13 @@ import {
   LEGAL_PAYMENT_DOCUMENT_KEYS,
   type LegalAcceptancePayload,
 } from '@/src/api/LegalApi';
+import {
+  isEmptyPhone,
+  isValidPhone,
+  normalizePhoneToE164,
+  PHONE_INVALID_MESSAGE,
+  sanitizePhoneInput,
+} from '@/src/utils/phoneNumber';
 
 type CheckoutForm = {
   firstName: string;
@@ -76,16 +83,15 @@ function toShippingAddress(form: CheckoutForm): ShippingAddress {
     state: form.state,
     ...(form.postalCode ? { postalCode: form.postalCode } : {}),
     country: form.country,
-    phone: form.phone,
+    phone: normalizePhoneToE164(form.phone) ?? form.phone.trim(),
   };
 }
 
 function missingRequiredFields(form: CheckoutForm): string[] {
-  return [
+  const missing = [
     ['firstName', form.firstName],
     ['lastName', form.lastName],
     ['email', form.email],
-    ['phone', form.phone],
     ['street', form.street],
     ['city', form.city],
     ['state', form.state],
@@ -93,10 +99,18 @@ function missingRequiredFields(form: CheckoutForm): string[] {
   ]
     .filter(([, value]) => !String(value ?? '').trim())
     .map(([key]) => String(key));
+
+  if (isEmptyPhone(form.phone) || !isValidPhone(form.phone)) {
+    missing.push('phone');
+  }
+
+  return missing;
 }
 
 function fieldError(field: keyof CheckoutForm, errors: string[]) {
-  return errors.includes(field) ? 'Required for checkout' : undefined;
+  if (!errors.includes(field)) return undefined;
+  if (field === 'phone') return PHONE_INVALID_MESSAGE;
+  return 'Required for checkout';
 }
 
 export function MobileCheckoutScreen() {
@@ -336,13 +350,13 @@ export function MobileCheckoutScreen() {
         customerName: fullName || `${trimmed.firstName} ${trimmed.lastName}`,
         shippingAddress,
         contactInfo: {
-          phone: trimmed.phone,
+          phone: normalizePhoneToE164(trimmed.phone) ?? trimmed.phone,
           email: trimmed.email,
           billingSameAsShipping: true,
           channel: 'CARD',
         },
         paymentData: {
-          phone: trimmed.phone,
+          phone: normalizePhoneToE164(trimmed.phone) ?? trimmed.phone,
           email: trimmed.email,
           consentAccepted: paymentPolicyAccepted,
           legalAcceptances: paymentLegalAcceptances,
@@ -467,7 +481,9 @@ export function MobileCheckoutScreen() {
               <Input
                 label="Phone"
                 value={form.phone}
-                onChangeText={(value) => updateField('phone', value)}
+                onChangeText={(value) =>
+                  updateField('phone', sanitizePhoneInput(value))
+                }
                 keyboardType="phone-pad"
                 error={fieldError('phone', errors)}
               />
@@ -500,9 +516,9 @@ export function MobileCheckoutScreen() {
                 <Pressable onPress={() => setStateSheetVisible(true)}>
                   <View pointerEvents="none">
                     <Input
-                      label="State"
+                      label="State / Province"
                       value={form.state}
-                      placeholder={loadingStates ? "Loading states..." : "Select State"}
+                      placeholder={loadingStates ? 'Loading states...' : 'Select state / province'}
                       error={fieldError('state', errors)}
                       editable={false}
                     />
@@ -510,22 +526,22 @@ export function MobileCheckoutScreen() {
                 </Pressable>
               ) : (
                 <Input
-                  label="State"
+                  label="State / Province"
                   value={form.state}
-                  placeholder="State/Province"
+                  placeholder="State / Province"
                   onChangeText={(value) => updateField('state', value)}
                   error={fieldError('state', errors)}
                 />
               )}
 
-              {/* City Selector Trigger / Fallback */}
+              {/* City / LGA Selector Trigger / Fallback */}
               {form.state && cityOptions.length > 0 ? (
                 <Pressable onPress={() => setCitySheetVisible(true)}>
                   <View pointerEvents="none">
                     <Input
-                      label="City"
+                      label="City / LGA"
                       value={form.city}
-                      placeholder={loadingCities ? "Loading cities..." : "Select City"}
+                      placeholder={loadingCities ? 'Loading cities...' : 'Select city / LGA'}
                       error={fieldError('city', errors)}
                       editable={false}
                     />
@@ -533,9 +549,9 @@ export function MobileCheckoutScreen() {
                 </Pressable>
               ) : (
                 <Input
-                  label="City"
+                  label="City / LGA"
                   value={form.city}
-                  placeholder="City"
+                  placeholder="City / LGA"
                   onChangeText={(value) => updateField('city', value)}
                   error={fieldError('city', errors)}
                 />
@@ -623,7 +639,7 @@ export function MobileCheckoutScreen() {
       />
       <AppSelectSheet
         visible={stateSheetVisible}
-        title="Select State"
+        title="Select State / Province"
         options={stateOptions}
         value={form.state}
         onChange={(val) => {
@@ -634,7 +650,7 @@ export function MobileCheckoutScreen() {
       />
       <AppSelectSheet
         visible={citySheetVisible}
-        title="Select City"
+        title="Select City / LGA"
         options={cityOptions}
         value={form.city}
         onChange={(val) => {

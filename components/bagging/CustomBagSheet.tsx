@@ -14,6 +14,12 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
 import type { BagSourceType } from '@/src/api/StoreApi';
+import {
+  isValidPhone,
+  normalizePhoneToE164,
+  PHONE_INVALID_MESSAGE,
+  sanitizePhoneInput,
+} from '@/src/utils/phoneNumber';
 
 type BagProductInput = {
   id: string;
@@ -187,7 +193,7 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
     const missing: string[] = [];
     if (trimmedCustomerName.length < 3) missing.push('name');
     if (!isValidEmail(trimmedEmail)) missing.push('valid email');
-    if (trimmedPhone.length < 6) missing.push('phone');
+    if (!isValidPhone(trimmedPhone)) missing.push('phone');
     if (!trimmedCity) missing.push('city');
     if (!trimmedState) missing.push('state');
     if (!trimmedCountry) missing.push('country');
@@ -257,7 +263,7 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
         shippingAddress,
         contactInfo: {
           email: trimmedEmail,
-          phone: trimmedPhone,
+          phone: normalizePhoneToE164(trimmedPhone) ?? trimmedPhone,
           customerName: trimmedCustomerName,
         },
         customerName: trimmedCustomerName,
@@ -326,10 +332,14 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
               <Input
                 label="Phone"
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={(value) => setPhone(sanitizePhoneInput(value))}
                 keyboardType="phone-pad"
-                placeholder="Phone number"
-                error={trimmedPhone.length > 0 && trimmedPhone.length < 6 ? 'Enter a reachable phone number' : undefined}
+                placeholder="080XXXXXXXX or +234..."
+                error={
+                  trimmedPhone.length > 0 && !isValidPhone(trimmedPhone)
+                    ? PHONE_INVALID_MESSAGE
+                    : undefined
+                }
               />
               <Input label="City" value={city} onChangeText={setCity} placeholder="City" />
               <Input label="State" value={stateName} onChangeText={setStateName} placeholder="State" />
