@@ -27,16 +27,32 @@ export function resolveFeedImageSourcePolicy({
   const detail = normalizeUrl(displayUrl);
   const preview = normalizeUrl(previewUrl);
   const thumbnail = normalizeUrl(thumbnailUrl);
-  const initialUrl = preview ?? thumbnail ?? detail;
-  const initialTier: FeedImageSourceTier = preview ? 'preview' : thumbnail ? 'thumbnail' : 'detail';
-  const detailUrl = detail ?? initialUrl;
+
+  // Detail-first: render the full display image from the start so a page never
+  // swaps tiers (preview -> detail) after it becomes active. That swap changed
+  // the ExpoImage recyclingKey + cacheKey and remounted the image on every
+  // activation — the per-scroll "blink". A low-res preview/thumbnail still
+  // rides along as the placeholder so the decode gap shows a soft image, never
+  // a black frame. Neighbors are prefetched at the display tier, so a settled
+  // page usually paints the sharp image instantly.
+  const initialUrl = detail ?? preview ?? thumbnail;
+  const initialTier: FeedImageSourceTier = detail ? 'detail' : preview ? 'preview' : 'thumbnail';
+  const detailUrl = initialUrl;
+
+  const placeholderUrl =
+    preview && preview !== initialUrl
+      ? preview
+      : thumbnail && thumbnail !== initialUrl
+        ? thumbnail
+        : null;
 
   return {
     initialUrl,
     initialTier,
     detailUrl,
-    placeholderUrl: thumbnail && thumbnail !== initialUrl ? thumbnail : null,
-    hasDetailUpgrade: Boolean(detailUrl && initialUrl && detailUrl !== initialUrl),
+    placeholderUrl,
+    // No per-activation upgrade: we already start at the best available tier.
+    hasDetailUpgrade: false,
   };
 }
 

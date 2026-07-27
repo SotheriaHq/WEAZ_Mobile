@@ -137,10 +137,10 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       const candidate = stableMediaItems[candidateIndex];
       if (!candidate) return;
       const directUrl =
-        normalizeStableUri(candidate.previewUrl) ??
-        normalizeStableUri(candidate.thumbnailUrl) ??
         normalizeStableUri(candidate.displayUrl) ??
-        normalizeStableUri(candidate.url);
+        normalizeStableUri(candidate.url) ??
+        normalizeStableUri(candidate.previewUrl) ??
+        normalizeStableUri(candidate.thumbnailUrl);
       if (!directUrl || !isUsableImageHttpUrl(directUrl)) return;
       void prefetchResolvedImageAsset({
         src: directUrl,

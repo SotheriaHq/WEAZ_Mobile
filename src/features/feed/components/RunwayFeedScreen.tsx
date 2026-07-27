@@ -1107,10 +1107,10 @@ export function RunwayFeedScreen() {
       const candidateMedia = candidateItem ? buildFallbackMediaItems(candidateItem)[0] : null;
       if (!candidateMedia) return;
       const directUrl =
-        normalizeStableUri(candidateMedia.previewUrl) ??
-        normalizeStableUri(candidateMedia.thumbnailUrl) ??
         normalizeStableUri(candidateMedia.displayUrl) ??
-        normalizeStableUri(candidateMedia.url);
+        normalizeStableUri(candidateMedia.url) ??
+        normalizeStableUri(candidateMedia.previewUrl) ??
+        normalizeStableUri(candidateMedia.thumbnailUrl);
       if (!directUrl || !isUsableImageHttpUrl(directUrl)) return;
       void prefetchResolvedImageAsset({
         src: directUrl,

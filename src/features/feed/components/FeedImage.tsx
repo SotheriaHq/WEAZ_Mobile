@@ -324,7 +324,12 @@ export const FeedImage = React.memo(function FeedImage({
 
   return (
     <View style={[styles.root, { backgroundColor: RUNWAY_MATTE }, style]}>
-      {!visibleSuccessfulSource ? (
+      {/* Detail-first: the ExpoImage below paints its blurhash/thumbnail
+          placeholder immediately, so the animated black shimmer is reserved for
+          the true cold case with no placeholder at all. Showing it whenever a
+          placeholder exists caused a black flash when a recycled row remounted
+          its already-cached image on revisit. */}
+      {!visibleSuccessfulSource && !blurHash && !metadataPlaceholderUrl ? (
         <FeedImagePlaceholder
           backgroundColor={RUNWAY_MATTE}
           shimmerColor={RUNWAY_SHIMMER}
@@ -360,11 +365,11 @@ export const FeedImage = React.memo(function FeedImage({
           style={StyleSheet.absoluteFill}
           strategyOverride={strategyResult.strategy}
           recyclingKey={`${id}:${activeTier}:${retryToken}`}
-          // Detail upgrades swap over an identical-layout preview already on
-          // screen: transition 0 reads as an instant sharpen. A fade here
-          // cross-faded the whole image right after it appeared — one of the
-          // per-page "double blink" sources.
-          transition={activeTier === 'detail' ? 0 : 120}
+          // Detail-first render: the image fades up from its blurhash/thumbnail
+          // placeholder exactly once, then stays. There is no preview->detail
+          // tier swap anymore, so a gentle fade reads as a smooth reveal rather
+          // than the old per-activation "double blink".
+          transition={160}
           accessibilityLabel={label ?? 'Feed image'}
           diagnosticsLabel="RunwayFeedImage"
           onLoad={(event) => {
