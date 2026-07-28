@@ -690,6 +690,13 @@ export function RunwayFeedScreen() {
   const initialFeedSnapshot = initialFeedCacheRef.current?.snapshot ?? null;
   
   const feedListRef = useRef<FlatList<FeedListEntry> | null>(null);
+  // Drives the per-page transit scrim (see RunwayFeedItem). Native-driven, so it
+  // never touches the JS thread and cannot regress the paging work above.
+  const feedScrollY = useRef(new Animated.Value(0)).current;
+  const handleFeedScroll = useMemo(
+    () => Animated.event([{ nativeEvent: { contentOffset: { y: feedScrollY } } }], { useNativeDriver: true }),
+    [feedScrollY],
+  );
   const initializedLoopKeyRef = useRef<string | null>(null);
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>(DEFAULT_MARKET_FILTER_CHIPS);
   const [selectedFilterId, setSelectedFilterId] = useState(DEFAULT_MARKET_FILTER_CHIPS[0].id);
@@ -803,7 +810,14 @@ export function RunwayFeedScreen() {
 
   const fallbackPageHeight = useMemo(() => Math.max(1, Math.round(windowHeight || 0)), [windowHeight]);
   const measuredBasePageHeight = measuredFeedViewportHeight > 0 ? measuredFeedViewportHeight : fallbackPageHeight;
-  const pageHeight = Math.max(1, Math.round(measuredBasePageHeight || fallbackPageHeight));
+  // Deliberately NOT rounded to whole dp. Native paging snaps to multiples of the
+  // scroll view's own pixel height, so the row height has to describe that same
+  // box exactly. Rounding put row k at round(k * pageHeight * density) while
+  // paging targeted k * viewportPx; on fractional-density devices (2.625, 2.75,
+  // 3.5) those drift ~0.5px per page until a sliver of the neighbouring page
+  // shows at the edge. Sub-dp measurement jitter cannot thrash this: the height
+  // is locked on the first measure per window geometry (handleFeedViewportLayout).
+  const pageHeight = Math.max(1, measuredBasePageHeight || fallbackPageHeight);
   const feedViewportHeight = pageHeight;
   const feedViewportReady = measuredFeedViewportHeight > 0;
   const viewportGeometryKey = `${Math.round(windowWidth)}x${Math.round(windowHeight)}`;
@@ -938,7 +952,8 @@ export function RunwayFeedScreen() {
   }, [bottomClearance, feedViewportHeight, insets.bottom, insets.top, measuredFeedViewportHeight, pageHeight, windowHeight]);
 
   const handleFeedViewportLayout = useCallback((event: LayoutChangeEvent) => {
-    const nextHeight = Math.round(event.nativeEvent.layout.height);
+    // Unrounded on purpose — see the pageHeight note above.
+    const nextHeight = event.nativeEvent.layout.height;
     if (nextHeight <= 0) return;
 
     const previous = pageHeightMeasurementRef.current;
@@ -1837,7 +1852,7 @@ export function RunwayFeedScreen() {
   }, []);
 
   const renderFeedItem = useCallback(
-    ({ item: entry }: { item: FeedListEntry }) => {
+    ({ item: entry, index }: { item: FeedListEntry; index: number }) => {
       const item = entry.item;
       const fallbackMediaItems = fallbackMediaByCollection[item.collectionId] ?? [];
       const hydratedMediaItems = collectionMediaMap[item.collectionId] ?? [];
@@ -1915,6 +1930,9 @@ export function RunwayFeedScreen() {
         <RunwayFeedItem
           collectionId={item.collectionId}
           pageHeight={pageHeight}
+          pageIndex={index}
+          scrollY={feedScrollY}
+          scrimColor={theme.colors.bg}
           mediaItems={mediaItems}
           activeMediaIndex={activeMediaIndex}
           isActive={isActiveFeedItem}
@@ -1979,6 +1997,7 @@ export function RunwayFeedScreen() {
       canPatchBrands,
       collectionMediaMap,
       fallbackMediaByCollection,
+      feedScrollY,
       handleCarouselIndexChange,
       handleOpenBrand,
       handlePatchBrand,
@@ -1994,6 +2013,7 @@ export function RunwayFeedScreen() {
       scheme,
       showMetaOverlay,
       status,
+      theme.colors.bg,
       threadStateByMedia,
       threadingMediaById,
       user?.id,
@@ -2359,11 +2379,31 @@ export function RunwayFeedScreen() {
             key={feedListKey}
             data={feedItems}
             keyExtractor={(entry) => entry.listKey}
-            snapToInterval={pageHeight}
-            snapToAlignment="start"
-            disableIntervalMomentum
+            /* Native paging — NOT snapToInterval + disableIntervalMomentum.
+               That combination is what made every swipe track the finger
+               smoothly and then speed up and slam into the next page:
+                 · Android (ReactScrollView.flingAndSnap) — disableIntervalMomentum
+                   throws away the velocity projection and uses the raw offset at
+                   finger-lift, then the snap branch runs
+                   `velocityY += (largerOffset - targetOffset) * 10`. That boost is
+                   sized for small carousel items; here the term is up to a FULL
+                   PAGE of remaining travel, so it injects ~10x the page remainder
+                   as synthetic velocity into an OverScroller fling clamped to
+                   min=max=target. The last leg rockets, then stops dead.
+                 · iOS (RCTEnhancedScrollView) — the same flag retargets from the
+                   raw lift offset and ceil()s on any positive velocity, so a 5%
+                   flick commits to a whole page that UIScrollView then has to
+                   cover under decelerationRate="fast".
+               pagingEnabled routes iOS to UIScrollView's own paging curve and
+               Android to smoothScrollAndSnap (one-page clamp, no boost), so the
+               drag and the settle are one continuous motion.
+               snapToAlignment must stay off as well: any explicit value keeps
+               Android on the boosted branch even with no interval set. And
+               decelerationRate stays default — "fast" shortens Android's fling
+               projection, which biases smoothScrollAndSnap into snapping BACK on
+               gentle flicks ("the swipe didn't take"). */
+            pagingEnabled
             getItemLayout={getFeedItemLayout}
-            decelerationRate="fast"
             directionalLockEnabled
             nestedScrollEnabled={false}
             bounces={false}
@@ -2378,6 +2418,11 @@ export function RunwayFeedScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             onScrollBeginDrag={handleFeedScrollBeginDrag}
+            /* Native-driven offset for the per-page transit scrim. This is the
+               ONLY onScroll on the list and it carries no JS listener, so the
+               per-frame work stays entirely on the native thread. */
+            onScroll={handleFeedScroll}
+            scrollEventThrottle={16}
             style={styles.feedList}
             viewabilityConfig={viewabilityConfigRef.current}
             onViewableItemsChanged={stableOnViewableItemsChangedRef.current}

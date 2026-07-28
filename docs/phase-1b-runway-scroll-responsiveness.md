@@ -15,7 +15,11 @@ the runtime acceptance evidence.
 
 ## 2. Vertical paging config
 
-The feed now has one paging owner: interval snapping.
+> **Superseded 2026-07-28 — see §11.** The "one paging owner" rule still holds, but
+> the owner is now native paging, not interval snapping. The list below is kept for
+> history; do not restore it.
+
+The feed had one paging owner: interval snapping.
 
 - `snapToInterval = measured pageHeight`
 - `snapToAlignment = start`
@@ -112,3 +116,98 @@ preload defer/schedule/start/skip reasons.
 - [ ] Rotate/rescale once and verify geometry-change correction only
 - [ ] iPad visual check
 - [ ] Capture release/dev-client `gfxinfo` or Perfetto evidence for final timing
+
+## 11. Amendment (2026-07-28) — interval snapping replaced by native paging
+
+Phase 1B correctly diagnosed *double* paging ownership (`pagingEnabled` **and**
+`snapToInterval`, plus a JS corrective teleport) and correctly removed the teleport.
+It picked the wrong survivor. Interval snapping is itself the source of the
+long-standing "swipe is smooth while my finger is down, then speeds up and slams
+into the next page" complaint.
+
+Verified in the installed React Native 0.85.3 sources, not inferred:
+
+- **Android** — `ReactScrollView.flingAndSnap()`. `disableIntervalMomentum`
+  replaces the velocity projection with the raw offset at finger-lift
+  (`targetOffset = getScrollY()`), and the snap branch then runs
+  `velocityY += (largerOffset - targetOffset) * 10.0`. That boost was written for
+  small carousel items; on a full-screen page the term is up to a whole page of
+  remaining travel, so it injects roughly ten times the page remainder as
+  synthetic velocity into an `OverScroller.fling` clamped to `minY == maxY ==
+  target`. The last leg rockets and stops dead — and it is *worst* on a short
+  flick, because that leaves the most distance for the boost to multiply.
+- **iOS** — `RCTEnhancedScrollView.scrollViewWillEndDragging`. The same flag
+  retargets from `scrollView.contentOffset` and takes `ceil()` on any positive
+  velocity, so a 5%-travel flick commits to a full page that UIScrollView must
+  then cover under `decelerationRate="fast"`.
+
+Both are the same defect in different clothing: the drag phase is finger-driven
+and the settle phase's speed is a function of *remaining distance*, not of the
+user's gesture, so the two phases do not share a velocity.
+
+Current config — still exactly one paging owner:
+
+- `pagingEnabled`
+- no `snapToInterval`, no `snapToAlignment`, no `disableIntervalMomentum`
+- `decelerationRate` left at default. `"fast"` shortens Android's fling
+  projection, which biases `smoothScrollAndSnap` toward snapping *back* on gentle
+  flicks — the "my swipe didn't take" failure mode.
+- no momentum-end corrective jump (unchanged from Phase 1B)
+- `pageHeight` is now the **unrounded** measured viewport height. Native paging
+  snaps to multiples of the scroll view's own pixel height, so rounding the row
+  height to whole dp made row *k* start at `round(k * pageHeight * density)` while
+  paging targeted `k * viewportPx`; on fractional-density devices (2.625, 2.75,
+  3.5) those drift ~0.5px per page until a sliver of the neighbouring page shows.
+
+`snapToAlignment` must stay unset as well: any explicit value keeps Android on the
+boosted branch even when no interval is set (`flingAndSnap` only short-circuits to
+`smoothScrollAndSnap` when interval, offsets **and** alignment are all unset).
+
+`scripts/test-runway-responsiveness-contract.js` now enforces this and was
+repointed from the deprecated `MarketFeedScreen.tsx` re-export shim to
+`RunwayFeedScreen.tsx` — against the shim, eight of its assertions had been
+silently failing since the rename.
+
+## 12. Amendment (2026-07-28) — transit scrim
+
+§11 fixed the *motion* of the settle. It did not change what the eye is asked to
+process during the settle, which was reported separately as visual fatigue: "when
+I'm scrolling, everything is just really vivid as they're transitioning, so it
+feels like your eyes are seeing so many things at the same time."
+
+That is a real and separate defect. Mid-transit the feed presented, at full
+luminance and with a hard seam between them:
+
+- two full-bleed images
+- two `FeedActionRail`s — high-contrast icons plus numeric counts, at the same
+  screen edge, sliding past each other at different vertical positions
+
+Nothing in the feed was keyed to scroll position. `activePageIndex` only moves at
+momentum end, so no element de-emphasised while the pages were actually sharing
+the viewport; `NewDropBadge` gated on `isActive`, and `FeedActionRail` did not
+gate at all.
+
+Fix — a per-page transit scrim in `RunwayFeedItem`:
+
+- `Animated.Value` on the screen fed by `onScroll` with
+  `useNativeDriver: true`, `scrollEventThrottle={16}`, **no JS listener**. The
+  per-frame path stays entirely on the native thread, so this cannot regress §11.
+- `RunwayFeedList` is now an `Animated.createAnimatedComponent(FlatList)`; a plain
+  FlatList cannot host a native-driven `onScroll`. The forwarded ref still
+  resolves to the FlatList, so the loop's `scrollToOffset` calls are unaffected.
+- Each row interpolates a `theme.colors.bg` scrim on `|scrollY - index *
+  pageHeight|`, clamped, peaking at `RUNWAY_PAGE_SCRIM_MAX_OPACITY` (0.55) one
+  full page away and reaching **0 at centre** — an idle feed is pixel-identical to
+  before. Midpoint is 0.72x the peak rather than 0.5x, so the outgoing page
+  recedes while the two pages actually overlap rather than only once it is
+  already leaving.
+- The scrim is the **last child** of the page, so it covers the action rail and
+  meta overlay as well as the media, and is `pointerEvents="none"`.
+
+Because the curve is symmetric about the centred page, it needs no direction
+detection and behaves identically for up-swipes, down-swipes, and the loop
+teleport.
+
+`RUNWAY_PAGE_SCRIM_MAX_OPACITY` is the single tuning knob; the contract test
+asserts the constant, the interpolation, the clamp, the `pointerEvents`, and the
+native driver.

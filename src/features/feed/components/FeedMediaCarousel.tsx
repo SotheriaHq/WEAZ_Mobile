@@ -281,13 +281,19 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
 
   return (
     <View style={StyleSheet.absoluteFill}>
+      {/* No `disableIntervalMomentum` here. With pagingEnabled and no
+          snapToInterval it is dead on both platforms (iOS only reads it inside
+          the snapToInterval/snapToOffsets branches of scrollViewWillEndDragging;
+          Android short-circuits to smoothScrollAndSnap before reading it), and
+          it was dropped so the flag does not get copied back onto the vertical
+          feed — there it caused the slam-into-page settle. See the paging
+          comment on RunwayFeedScreen's list. */}
       <ScrollView
         ref={carouselRef}
         horizontal
         pagingEnabled
         bounces={false}
         decelerationRate="fast"
-        disableIntervalMomentum
         directionalLockEnabled
         nestedScrollEnabled
         overScrollMode="never"
