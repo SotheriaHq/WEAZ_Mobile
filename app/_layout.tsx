@@ -501,8 +501,10 @@ function RootStack() {
       }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
-      {/* Catalogue moved into the (tabs) group for persistent top-level lifetime;
-          the /catalog URL is unchanged (route groups are omitted from the path). */}
+      {/* Catalogue and Studio both live in the (tabs) group for persistent
+          top-level lifetime and to inherit the single floating island; the
+          /catalog and /studio URLs are unchanged (route groups are omitted
+          from the path). */}
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
       <Stack.Screen name="reviews/index" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="messages/[threadId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
@@ -511,7 +513,6 @@ function RootStack() {
       <Stack.Screen name="collection-gallery" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="search" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="products/[productId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
-      <Stack.Screen name="studio" options={{ headerShown: false, animation: 'slide_from_right' }} />
     </Stack>
   );
 }

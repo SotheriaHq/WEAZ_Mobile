@@ -33,6 +33,7 @@ import {
 } from '@/src/features/studio/studioRoutes';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
@@ -66,6 +67,20 @@ const isStudioRouteKey = (value: string | undefined): value is StudioRouteKey =>
   Boolean(value && value in STUDIO_ROUTES);
 
 const READY_TIMEOUT_MS = 20_000;
+
+/**
+ * Waiting copy, in the order the work actually happens. The old single line
+ * ("Preparing secure brand session") read like a bank security screen and,
+ * because it never changed, made an already-slow boot feel stalled. These are
+ * warm, first-person, and tied to real progress so the message is honest.
+ */
+type StudioWaitStage = 'session' | 'opening' | 'almost';
+
+const STUDIO_WAIT_COPY: Record<StudioWaitStage, { title: string; body: string }> = {
+  session: { title: 'Getting your keys 🔑', body: 'Unlocking your studio…' },
+  opening: { title: 'Opening your store 🛍️', body: 'Bringing in your products and orders…' },
+  almost: { title: 'Almost there ✨', body: 'Setting out the last few things…' },
+};
 
 type StudioWebViewEventName =
   | 'route-open'
@@ -385,9 +400,11 @@ export default function StudioWebViewScreen() {
   const { scheme, theme } = useTheme();
   const toast = useToast();
   const insets = useSafeAreaInsets();
+  const { standardScreenBottomPadding } = useScreenChrome();
   const webViewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>('booting');
+  const [loadProgress, setLoadProgress] = useState(0);
   const [webUrl, setWebUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('Studio could not load.');
   const [retryKey, setRetryKey] = useState(0);
@@ -417,8 +434,17 @@ export default function StudioWebViewScreen() {
   const retry = useCallback(() => {
     setWebUrl(null);
     setLoadState('booting');
+    setLoadProgress(0);
     setRetryKey((current) => current + 1);
   }, []);
+
+  // The colour scheme only seasons the handoff URL. Keeping it out of the
+  // effect's deps matters: ThemeProvider resolves the stored preference just
+  // after mount, and that flip used to re-run the effect — minting a SECOND
+  // handoff code and remounting the WebView, so the entire web bundle
+  // downloaded twice. That was a large part of "the creation time is slow".
+  const schemeRef = useRef(scheme);
+  schemeRef.current = scheme;
 
   useEffect(() => {
     // Finance is a native screen — never boot the Studio WebView for it.
@@ -465,7 +491,7 @@ export default function StudioWebViewScreen() {
             routeKey: resolvedRouteKey,
             params: { productId, orderId },
             handoffCode: handoff.code,
-            theme: scheme,
+            theme: schemeRef.current,
           }),
         );
         trackStudioWebViewEvent('route-open', { routeKey: resolvedRouteKey });
@@ -493,7 +519,7 @@ export default function StudioWebViewScreen() {
     return () => {
       mounted = false;
     };
-  }, [hasBrandWorkspace, invalidRouteKey, isStudioEligible, orderId, productId, resolvedRouteKey, retryKey, scheme, status]);
+  }, [hasBrandWorkspace, invalidRouteKey, isStudioEligible, orderId, productId, resolvedRouteKey, retryKey, status]);
 
   useEffect(() => {
     if (!webUrl || loadState !== 'loading') return;
@@ -709,6 +735,14 @@ export default function StudioWebViewScreen() {
 
   const studioShellBackground = theme.colors.bg;
 
+  // Tie the waiting copy to the work actually in flight, so the screen never
+  // shows the same frozen sentence for the whole boot.
+  const waitStage: StudioWaitStage =
+    loadState === 'booting' ? 'session' : loadProgress >= 0.7 ? 'almost' : 'opening';
+  const waitCopy = STUDIO_WAIT_COPY[waitStage];
+  // Reserve a slice of the bar for the handoff so the meter never sits at 0.
+  const waitProgress = loadState === 'booting' ? 0.12 : 0.15 + loadProgress * 0.85;
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: studioShellBackground }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
@@ -742,7 +776,15 @@ export default function StudioWebViewScreen() {
         }
       />
 
-      <View style={[styles.webHost, { backgroundColor: studioShellBackground }]}>
+      {/* Studio lives inside (tabs) now, so the floating island overlays this
+          screen's bottom edge — inset the web surface so the island never
+          covers Studio's own controls. */}
+      <View
+        style={[
+          styles.webHost,
+          { backgroundColor: studioShellBackground, paddingBottom: standardScreenBottomPadding },
+        ]}
+      >
         {webUrl ? (
           <WebView
             ref={webViewRef}
@@ -779,6 +821,7 @@ export default function StudioWebViewScreen() {
               })();
             `}
             onLoadStart={() => setLoadState((current) => (current === 'ready' ? current : 'loading'))}
+            onLoadProgress={({ nativeEvent }) => setLoadProgress(nativeEvent.progress ?? 0)}
             onError={() => {
               setErrorMessage('Studio could not load. Check your connection and try again.');
               trackStudioWebViewEvent('load-failed', { routeKey: resolvedRouteKey, reason: 'webview-error' });
@@ -808,10 +851,23 @@ export default function StudioWebViewScreen() {
           <View style={[styles.loadingOverlay, { backgroundColor: studioShellBackground }]}>
             <View style={styles.loadingContent}>
               <ActivityIndicator size="large" color={theme.colors.primary} />
-              <AppText variant="h3">Studio</AppText>
-              <AppText variant="body" tone="muted" style={styles.centerText}>
-                Preparing secure brand session
+              <AppText variant="h3" style={styles.centerText}>
+                {waitCopy.title}
               </AppText>
+              <AppText variant="body" tone="muted" style={styles.centerText}>
+                {waitCopy.body}
+              </AppText>
+              <View style={[styles.progressTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      backgroundColor: theme.colors.primary,
+                      width: `${Math.round(Math.min(1, Math.max(0, waitProgress)) * 100)}%`,
+                    },
+                  ]}
+                />
+              </View>
             </View>
           </View>
         ) : null}
@@ -893,6 +949,16 @@ const styles = StyleSheet.create({
     maxWidth: 300,
     alignItems: 'center',
     gap: tokens.spacing.md,
+  },
+  progressTrack: {
+    alignSelf: 'stretch',
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
   },
   menuBackdrop: {
     ...StyleSheet.absoluteFill,

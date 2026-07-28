@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
@@ -14,6 +14,7 @@ import {
 import { useAuth, type BrandMemberRole } from '@/src/auth/AuthContext';
 import { getActiveBrandId, isBrandOwner } from '@/src/auth/brandAccess';
 import { tokens } from '@/src/styles/tokens';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { useCachedQuery, cachePolicies } from '@/src/cache';
@@ -39,7 +40,7 @@ const memberName = (member: BrandStaffMember) =>
 
 export default function StudioStaffScreen() {
   const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { standardScreenBottomPadding } = useScreenChrome();
   const toast = useToast();
   const { user, validateToken } = useAuth();
   const activeBrandId = getActiveBrandId(user);
@@ -209,7 +210,9 @@ export default function StudioStaffScreen() {
       ) : (
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing.xl2 }]}
+          // Studio now sits inside (tabs), so the floating island overlays the
+          // bottom of this screen — reserve the shared clearance for it.
+          contentContainerStyle={[styles.content, { paddingBottom: standardScreenBottomPadding }]}
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.panel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>

@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
@@ -25,6 +25,7 @@ import { canReadPayouts, getActiveBrandId } from '@/src/auth/brandAccess';
 import { useCachedQuery, cachePolicies } from '@/src/cache';
 import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 
@@ -79,7 +80,7 @@ const statusTone = (
 
 export default function StudioFinanceScreen() {
   const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { standardScreenBottomPadding } = useScreenChrome();
   const toast = useToast();
   const { user } = useAuth();
   const brandId = getActiveBrandId(user);
@@ -186,7 +187,9 @@ export default function StudioFinanceScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: Math.max(insets.bottom, tokens.spacing.lg) + tokens.spacing.xl },
+            // Studio now sits inside (tabs), so the floating island overlays the
+            // bottom of this screen — reserve the shared clearance for it.
+            { paddingBottom: standardScreenBottomPadding },
           ]}
           refreshControl={
             <RefreshControl

@@ -657,6 +657,19 @@ export default function TabLayout() {
             href: null,
           }}
         />
+
+        {/* Studio follows the Catalogue pattern: it lives inside (tabs) so it
+            keeps the floating island (its own island bar used to vanish the
+            moment Studio opened) and gets tab-level lifetime, so returning to
+            Store does not re-run the handoff and reload the whole web bundle.
+            The /studio URL is unchanged — route groups are omitted from the
+            path — and it stays out of the visible bar via href: null. */}
+        <Tabs.Screen
+          name="studio"
+          options={{
+            href: null,
+          }}
+        />
       </Tabs>
 
       {hideIslandForFocusedFlow ? null : (
