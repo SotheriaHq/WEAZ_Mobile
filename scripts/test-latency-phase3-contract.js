@@ -7,14 +7,20 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 
 const tabLayout = read('app/(tabs)/_layout.tsx');
 const market = read('src/features/market/components/MarketScreen.tsx');
-const runway = read('src/features/feed/components/MarketFeedScreen.tsx');
+// Was pointed at the deprecated `MarketFeedScreen.tsx` re-export shim, so every
+// `runway` assertion below was running against an eight-line re-export.
+const runway = read('src/features/feed/components/RunwayFeedScreen.tsx');
 const profile = read('app/(tabs)/me.tsx');
 const inbox = read('app/(tabs)/inbox.tsx');
 const catalog = read('app/(tabs)/catalog/index.tsx');
 
+// The 1500ms 'first-media-timeout' fallback was replaced by the much earlier
+// 'early-warm' timer: Runway carousels keep interactions busy, so the old gating
+// left Market/Catalog/Me cold for seconds (the "tap and wait ~3s" complaint).
+// This assertion was never updated and had been failing ever since.
 assert.match(
   tabLayout,
-  /schedulePreloads\('first-media-timeout'\);\s*},\s*1500\);/,
+  /setTimeout\(\(\) => \{\s*schedulePreloads\('early-warm'\);\s*\},\s*firstMedia \? 0 : \d+\);/,
   'Tab warming must have a bounded fallback when first Runway media is slow or absent.',
 );
 assert.match(

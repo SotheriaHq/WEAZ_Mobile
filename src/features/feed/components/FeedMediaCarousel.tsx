@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Animated, ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
@@ -34,6 +34,15 @@ type FeedMediaCarouselProps = {
   pageHeight: number;
   isActive: boolean;
   initialActiveIndex?: number;
+  /**
+   * The owning page's chrome fade, from RunwayFeedItem. The dot row is the one
+   * piece of chrome that lives inside the carousel rather than in the page's
+   * chrome layer, so without this it stays at full opacity through a vertical
+   * swipe while the action rail, meta card and badge all fade — leaving two rows
+   * of bright white pills as the most prominent moving thing on screen. Native
+   * driven, so binding it costs no JS work per frame.
+   */
+  chromeOpacity?: Animated.AnimatedInterpolation<number>;
   onActiveIndexChange: (nextIndex: number) => void;
   onContentPress?: () => void;
 };
@@ -58,6 +67,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   pageHeight,
   isActive,
   initialActiveIndex = 0,
+  chromeOpacity,
   onActiveIndexChange,
   onContentPress,
 }: FeedMediaCarouselProps) {
@@ -319,8 +329,12 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       </ScrollView>
 
       {/* Dots update on momentum end only; no JS state during drag keeps the
-          thread free and touch fully responsive on low-end Android devices. */}
-      <View style={styles.dotRow} pointerEvents="none">
+          thread free and touch fully responsive on low-end Android devices.
+          The opacity binding is the page's vertical transit fade, not anything
+          this carousel drives — see the chromeOpacity prop. */}
+      <Animated.View
+        style={chromeOpacity ? [styles.dotRow, { opacity: chromeOpacity }] : styles.dotRow}
+        pointerEvents="none">
         {stableMediaItems.map((_, index) => (
           <View
             key={`${stableMediaItems[index]?.id ?? index}-${index}`}
@@ -334,7 +348,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
             ]}
           />
         ))}
-      </View>
+      </Animated.View>
     </View>
   );
 });

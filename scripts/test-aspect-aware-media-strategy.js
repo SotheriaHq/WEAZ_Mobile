@@ -252,15 +252,58 @@ for (const [label, result] of [
   }
 }
 
+// Feed image tiering is DETAIL-FIRST as of 2026-07-27. These assertions used to
+// describe the older progressive path (start on the card tier, upgrade to detail
+// once the page went active) and were left behind when the policy changed, so
+// this file had been failing ever since.
+//
+// The upgrade was removed on purpose: swapping tiers after activation changed the
+// ExpoImage recyclingKey + cacheKey and remounted the image every time a page
+// became active — the per-scroll "blink", which also repeated on revisit when
+// windowSize-evicted rows remounted. A lower tier still rides along as the
+// placeholder so the decode gap shows a soft image rather than a black frame.
+//
+// `hasDetailUpgrade === false` is the anti-blink invariant. If it ever reads true
+// again, the blink is back.
 const progressiveSources = resolveFeedImageSourcePolicy({
   displayUrl: 'https://cdn.threadly.test/look-detail.webp',
   previewUrl: 'https://cdn.threadly.test/look-card.webp',
   thumbnailUrl: 'https://cdn.threadly.test/look-thumb.webp',
 });
-check('progressive source starts with card', progressiveSources.initialUrl, 'https://cdn.threadly.test/look-card.webp');
-check('progressive source finishes with detail', progressiveSources.detailUrl, 'https://cdn.threadly.test/look-detail.webp');
-check('progressive source exposes thumbnail placeholder', progressiveSources.placeholderUrl, 'https://cdn.threadly.test/look-thumb.webp');
-check('progressive source has detail upgrade', progressiveSources.hasDetailUpgrade, true);
+check('feed source starts at the detail tier', progressiveSources.initialUrl, 'https://cdn.threadly.test/look-detail.webp');
+check('feed source reports the detail tier', progressiveSources.initialTier, 'detail');
+check('feed source detail target equals the initial url', progressiveSources.detailUrl, 'https://cdn.threadly.test/look-detail.webp');
+check('feed source uses the best sub-tier as placeholder', progressiveSources.placeholderUrl, 'https://cdn.threadly.test/look-card.webp');
+check('feed source must not re-introduce a per-activation upgrade', progressiveSources.hasDetailUpgrade, false);
+
+// Degradation path: the policy has to start at the best tier that actually
+// exists, and must never hand back a placeholder identical to the image it is
+// standing in for (that would render the same decode twice).
+const previewOnlySources = resolveFeedImageSourcePolicy({
+  displayUrl: null,
+  previewUrl: 'https://cdn.threadly.test/look-card.webp',
+  thumbnailUrl: 'https://cdn.threadly.test/look-thumb.webp',
+});
+check('preview-only source starts at the preview tier', previewOnlySources.initialUrl, 'https://cdn.threadly.test/look-card.webp');
+check('preview-only source reports the preview tier', previewOnlySources.initialTier, 'preview');
+check('preview-only source falls back to the thumbnail placeholder', previewOnlySources.placeholderUrl, 'https://cdn.threadly.test/look-thumb.webp');
+check('preview-only source has no upgrade', previewOnlySources.hasDetailUpgrade, false);
+
+const thumbnailOnlySources = resolveFeedImageSourcePolicy({
+  displayUrl: '   ',
+  previewUrl: null,
+  thumbnailUrl: 'https://cdn.threadly.test/look-thumb.webp',
+});
+check('blank display url is treated as absent', thumbnailOnlySources.initialUrl, 'https://cdn.threadly.test/look-thumb.webp');
+check('thumbnail-only source reports the thumbnail tier', thumbnailOnlySources.initialTier, 'thumbnail');
+check('thumbnail-only source has no duplicate placeholder', thumbnailOnlySources.placeholderUrl, null);
+
+const singleTierSources = resolveFeedImageSourcePolicy({
+  displayUrl: 'https://cdn.threadly.test/look-detail.webp',
+  previewUrl: 'https://cdn.threadly.test/look-detail.webp',
+  thumbnailUrl: null,
+});
+check('placeholder must not repeat the initial url', singleTierSources.placeholderUrl, null);
 check(
   'signed URL query does not fragment cache key',
   buildFeedImageCacheKey({

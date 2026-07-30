@@ -44,8 +44,11 @@ const assertCacheBypassIsForceGuarded = (relativePath) => {
 
 assertIncludes('src/query/queryClient.ts', 'refetchOnMount: false', 'query defaults must not refetch on mount');
 assertIncludes('src/query/queryClient.ts', 'refetchOnWindowFocus: false', 'query defaults must not refetch on focus');
-assertIncludes('src/query/queryClient.ts', 'staleTime: THREADLY_QUERY_STALE_TIME_MS', 'query defaults must keep shared staleTime');
-assertIncludes('src/query/queryClient.ts', 'gcTime: THREADLY_QUERY_GC_TIME_MS', 'query defaults must keep shared gcTime');
+// Constants carry the WIEZ_ prefix since the brand rename. This guard still
+// named them THREADLY_*, so these two assertions had been failing on every run
+// rather than protecting anything.
+assertIncludes('src/query/queryClient.ts', 'staleTime: WIEZ_QUERY_STALE_TIME_MS', 'query defaults must keep shared staleTime');
+assertIncludes('src/query/queryClient.ts', 'gcTime: WIEZ_QUERY_GC_TIME_MS', 'query defaults must keep shared gcTime');
 
 assertNotMatches('src/query/queryKeys.ts', /Date\.now\(|Math\.random\(/, 'query keys must stay deterministic');
 assertIncludes('src/query/queryKeys.ts', "scope === 'publicUrl'", 'public media URLs should remain persistable');
@@ -82,7 +85,11 @@ assertIncludes('src/features/feed/components/FeedImage.tsx', 'allowSignedFallbac
 assertIncludes('src/features/feed/media/mediaUrlResolver.ts', 'allowSignedFallback: false', 'feed media resolver must keep public-first/no-signed policy');
 assertIncludes('src/features/feed/media/mediaCache.ts', 'isUsableImageHttpUrl', 'feed prefetch must require stable direct public URLs');
 assertIncludes('src/features/feed/components/FeedMediaCarousel.tsx', 'allowSignedFallback: false', 'feed carousel prefetch must not sign public media');
-assertIncludes('src/features/feed/components/MarketFeedScreen.tsx', 'lastSavedCheckKeyRef', 'feed saved status checks must dedupe stable item ID sets');
+// Repointed from the deprecated `MarketFeedScreen.tsx` re-export shim, which
+// contains no implementation — the same stale-target bug the Runway
+// responsiveness contract hit, where assertions ran against the shim and could
+// never pass. The real screen is RunwayFeedScreen.
+assertIncludes('src/features/feed/components/RunwayFeedScreen.tsx', 'lastSavedCheckKeyRef', 'feed saved status checks must dedupe stable item ID sets');
 assertIncludes('src/features/market/components/MarketScreen.tsx', 'MARKET_SEARCH_DEBOUNCE_MS', 'market search must debounce API-backed query changes');
 assertIncludes('src/features/market/components/MarketScreen.tsx', 'marketSnapshotCache', 'market screen must preserve recent data on navigation return');
 assertIncludes('src/features/market/components/MarketScreen.tsx', 'marketRequestInFlight', 'market screen must dedupe identical API batches');
@@ -109,7 +116,7 @@ assertIncludes('src/features/feed/utils/feedDiagnostics.ts', "case 'scroll'", 's
 assertNotMatches('src/features/feed/utils/feedDiagnostics.ts', /EXPO_PUBLIC_DEBUG_THREADLY/, 'normal QA diagnostics must not be re-enabled by one global debug flag');
 
 assertIncludes('app/(tabs)/catalog/index.tsx', 'completedTaskRefreshKeyRef', 'completed design tasks must not force-refresh collections repeatedly on route remount');
-assertIncludes('app/(tabs)/catalog/index.tsx', 'THREADLY_SAVED_STATUS_STALE_TIME_MS', 'catalog saved checks must use query staleTime instead of repeating on rerender');
+assertIncludes('app/(tabs)/catalog/index.tsx', 'WIEZ_SAVED_STATUS_STALE_TIME_MS', 'catalog saved checks must use query staleTime instead of repeating on rerender');
 assertIncludes('app/(tabs)/catalog/index.tsx', "queryKeys.saved.batch('COLLECTION', savedCatalogIds)", 'catalog saved checks must use a stable saved batch query key');
 assertIncludes('app/(tabs)/catalog/index.tsx', "enabled={dataActiveTab === 'Shop' || Boolean(routeProductId)}", 'brand products should not load while the Shop tab is inactive');
 assertIncludes('app/(tabs)/catalog/index.tsx', "enabled={dataActiveTab === 'Reviews'}", 'brand reviews should not load while the Reviews tab is inactive');

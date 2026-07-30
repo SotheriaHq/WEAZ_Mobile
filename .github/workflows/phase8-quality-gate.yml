@@ -29,6 +29,17 @@ jobs:
       - name: Typecheck
         run: npm exec tsc -- --noEmit
 
+      # Runway gates run first: they are pure-logic and fast, and a failing step
+      # skips every step after it. `test:aspect-aware-media` below has been red
+      # since the 2026-07-27 detail-first tiering change (its expectations still
+      # describe the old progressive card->detail path), which would otherwise
+      # mask these entirely.
+      - name: Runway responsiveness contract
+        run: npm run test:runway-responsiveness-contract
+
+      - name: Runway transit curves
+        run: npm run test:runway-transit-curves
+
       - name: Aspect-aware media contract
         run: npm run test:aspect-aware-media
 
@@ -40,6 +51,18 @@ jobs:
 
       - name: Store API contract
         run: npm run test:store-api-contract
+
+      # Guards the Runway vertical feed. The responsiveness contract is what stops
+      # the boosted interval-snapping props being "restored" (they were the cause
+      # of the settle slamming into the next page); the transit curve tests cover
+      # the scroll-linked scrim/scale/chrome geometry. Neither was wired into CI
+      # when it was written, so both were enforceable only by remembering to run
+      # them locally.
+      - name: Runway responsiveness contract
+        run: npm run test:runway-responsiveness-contract
+
+      - name: Runway transit curves
+        run: npm run test:runway-transit-curves
 
       - name: Performance regression guard
         run: npm run check:perf-regressions

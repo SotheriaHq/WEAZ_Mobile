@@ -41,6 +41,7 @@ import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
 import { isUsableImageHttpUrl, prefetchResolvedImageAsset, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
+import { useReduceMotion } from '@/src/hooks/useReduceMotion';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
@@ -697,6 +698,10 @@ export function RunwayFeedScreen() {
     () => Animated.event([{ nativeEvent: { contentOffset: { y: feedScrollY } } }], { useNativeDriver: true }),
     [feedScrollY],
   );
+  // Scale is the only genuinely *motion* part of the transit treatment, so it is
+  // the only part Reduce Motion suppresses. The scrim and chrome cross-fades stay
+  // — a cross-fade is what that setting wants instead of movement.
+  const pageScaleEnabled = !useReduceMotion();
   const initializedLoopKeyRef = useRef<string | null>(null);
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>(DEFAULT_MARKET_FILTER_CHIPS);
   const [selectedFilterId, setSelectedFilterId] = useState(DEFAULT_MARKET_FILTER_CHIPS[0].id);
@@ -1932,7 +1937,15 @@ export function RunwayFeedScreen() {
           pageHeight={pageHeight}
           pageIndex={index}
           scrollY={feedScrollY}
-          scrimColor={theme.colors.bg}
+          // Matches styles.feedListContainer, not theme.colors.bg. The Runway
+          // stage is a deep-black matte in BOTH themes by deliberate choice, so a
+          // receding page has to dissolve toward that same matte — otherwise the
+          // light theme scrims toward paper white and mid-swipe becomes a brighter
+          // frame than either page, which is the exact opposite of what the
+          // "my eyes were starting to bother me" report needs. It is also the
+          // light-theme surface flash feedListContainer already warns about.
+          scrimColor={tokens.themes.dark.colors.bg}
+          pageScaleEnabled={pageScaleEnabled}
           mediaItems={mediaItems}
           activeMediaIndex={activeMediaIndex}
           isActive={isActiveFeedItem}
@@ -2006,6 +2019,7 @@ export function RunwayFeedScreen() {
       openCommentsSheet,
       overlaySurface,
       pageHeight,
+      pageScaleEnabled,
       patchedBrandIds,
       patchingBrandIds,
       savedLookByCollectionId,
@@ -2013,7 +2027,6 @@ export function RunwayFeedScreen() {
       scheme,
       showMetaOverlay,
       status,
-      theme.colors.bg,
       threadStateByMedia,
       threadingMediaById,
       user?.id,

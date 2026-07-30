@@ -55,16 +55,75 @@ expectNotMatches(
   'scroll event must not carry a JS listener on the per-frame path',
 );
 
+// The stage behind the pages is a deep-black matte in BOTH themes
+// (styles.feedListContainer). The scrim must dissolve pages toward that same
+// matte — scrimming toward theme.colors.bg makes the light theme brighten at the
+// midpoint of every swipe, which is the fatigue this work exists to remove.
+expectIncludes(feedScreen, 'scrimColor={tokens.themes.dark.colors.bg}', 'scrim must match the Runway stage matte in both themes');
+
+// Geometry itself is NOT asserted here. The curves live in a pure module and are
+// covered behaviourally by `npm run test:runway-transit-curves`, which evaluates
+// them at real scroll offsets. What is asserted below are the things a unit test
+// genuinely cannot see: that the component keeps binding to the native scroll
+// value, and that the render tree stays shaped the way the design requires.
 const feedItem = 'src/features/feed/components/RunwayFeedItem.tsx';
-expectIncludes(feedItem, 'RUNWAY_PAGE_SCRIM_MAX_OPACITY', 'page scrim depth must stay a single named constant');
-expectIncludes(feedItem, 'scrollY.interpolate', 'scrim must be driven by scroll position, not by active-page state');
-expectIncludes(feedItem, "extrapolate: 'clamp'", 'scrim must clamp outside the adjacent-page range');
+expectIncludes(feedItem, 'runwayTransitCurves', 'transition geometry must stay in the unit-tested pure module');
+expectNotMatches(
+  feedItem,
+  /inputRange:\s*\[/,
+  'interpolation ranges must not be hand-rolled in the component — use runwayTransitCurves',
+);
+expectIncludes(feedItem, 'scrollY.interpolate', 'curves must be driven by scroll position, not by active-page state');
+expectMatches(feedItem, /extrapolate:\s*'clamp'/, 'curves must clamp outside the adjacent-page range');
 expectIncludes(feedItem, 'pointerEvents="none"', 'scrim must not intercept taps meant for the action rail');
+expectIncludes(feedItem, 'pointerEvents="box-none"', 'chrome fade wrapper must stay transparent to touches');
+// The scrim has to be the LAST child or it stops covering the chrome, and the
+// chrome wrapper has to wrap all three overlays or the rails keep competing.
+expectMatches(
+  feedItem,
+  /badgeOverlay\}[\s\S]{0,80}\{actionRail\}[\s\S]{0,80}\{metaOverlay\}/,
+  'badge, action rail and meta must share one fade wrapper',
+);
+// Scale must stay a transform: row height feeds getItemLayout and native paging,
+// so any layout-affecting recede desynchronises paging from row geometry.
+expectIncludes(feedItem, 'transform: [{ scale: pageScale }]', 'page recede must be a transform, never a layout change');
+expectMatches(feedItem, /height:\s*pageHeight\s*[,}]/, 'row height must be exactly pageHeight');
+expectNotMatches(feedItem, /height:\s*pageHeight\s*\*/, 'row height must never be scaled');
+// Reduce Motion suppresses the scale only. If the component stops accepting the
+// flag, the accessibility path silently dies.
+expectIncludes(feedItem, 'pageScaleEnabled', 'scale must be suppressible for Reduce Motion');
+expectIncludes(feedScreen, 'pageScaleEnabled={pageScaleEnabled}', 'screen must pass the Reduce Motion state to rows');
+expectIncludes(feedScreen, 'useReduceMotion()', 'screen must read the OS Reduce Motion setting');
+
+// The pure module is the single source of truth for every tuning knob.
+const curves = 'src/features/feed/utils/runwayTransitCurves.ts';
+for (const constant of [
+  'RUNWAY_PAGE_SCRIM_MAX_OPACITY',
+  'SCRIM_MIDPOINT_RATIO',
+  'SCRIM_INCOMING_RATIO',
+  'RUNWAY_PAGE_SCALE_MIN',
+  'CHROME_FADE_END_RATIO',
+]) {
+  expectIncludes(curves, `export const ${constant}`, `${constant} must stay an exported named constant`);
+}
+expectNotMatches(curves, /from 'react/, 'transit curves must stay free of React/RN imports so they remain unit-testable');
+
+// These two files used to re-export the whole RunwayFeedScreen under component
+// names, so importing one silently pulled in the entire feed screen.
+for (const shim of ['src/features/feed/components/FeedActionRail.tsx', 'src/features/feed/components/FeedMetaOverlay.tsx']) {
+  if (fs.existsSync(path.join(root, shim))) {
+    failures.push(`${shim}: mis-pointed re-export shim must not come back (components are local to RunwayFeedScreen)`);
+  }
+}
 
 const carousel = 'src/features/feed/components/FeedMediaCarousel.tsx';
 expectIncludes(carousel, 'Math.abs(index - activeIndex) <= 2', 'carousel must mount a bounded window around the active media');
 expectIncludes(carousel, 'shouldMountSlide(index, safeActiveIndex) ?', 'off-window angle frames must not mount media');
 expectNotMatches(carousel, /scrollTo\(\{ x: nextIndex \* width, y: 0, animated: false \}\)/, 'horizontal settle must not visibly correct momentum');
+// The dot row is the only overlay outside the page's chrome layer. It must keep
+// receiving the fade explicitly, or it silently becomes the brightest moving
+// element mid-swipe while every other overlay dims.
+expectIncludes(carousel, 'chromeOpacity', 'carousel must keep accepting the page chrome fade for its dot row');
 
 const chip = 'components/ui/Chip.tsx';
 expectIncludes(chip, 'minHeight: 44', 'chip touch frame must meet the 44px target');
