@@ -1203,9 +1203,23 @@ export function DesignEditorProvider({
 
           // Invalidate owner content caches so the new/updated item appears in the
           // correct tab (e.g. In Review) and is removed from any stale Public list.
-          void queryClient.invalidateQueries({ queryKey: ['brand', 'collections'] });
-          void queryClient.invalidateQueries({ queryKey: ['designs', 'user'] });
-          void queryClient.invalidateQueries({ queryKey: ['design', 'detail', result.id] });
+          //
+          // refetchType: 'all' is load-bearing, not defensive. The default is
+          // 'active', which only refetches queries that have a mounted observer
+          // at THIS instant — and the owner catalog tabs are lazy, so the tab the
+          // new design belongs to (In Review / Drafts) usually has none yet. Those
+          // queries were then merely marked invalidated, and because the client
+          // sets `refetchOnMount: false` globally (a deliberate perf policy,
+          // pinned by scripts/check-perf-regressions.cjs), mounting the tab did
+          // NOT fetch either: it rendered the stale cached list. Net effect was
+          // that a freshly created design stayed invisible until the user
+          // pull-to-refreshed — which worked only because pull-to-refresh
+          // invalidates while the screen IS active. 'all' refetches inactive
+          // queries too, so the list is already correct when the tab mounts.
+          const refetchEverywhere = { refetchType: 'all' } as const;
+          void queryClient.invalidateQueries({ queryKey: ['brand', 'collections'], ...refetchEverywhere });
+          void queryClient.invalidateQueries({ queryKey: ['designs', 'user'], ...refetchEverywhere });
+          void queryClient.invalidateQueries({ queryKey: ['design', 'detail', result.id], ...refetchEverywhere });
 
           router.replace({
             pathname: '/catalog',

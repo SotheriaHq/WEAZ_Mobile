@@ -48,6 +48,15 @@ export function isCachedQueryFresh(
   policy: CachePolicy = cachePolicies.defaultQuery,
   client: QueryClient = defaultQueryClient,
 ) {
+  // An invalidated entry is never fresh, whatever its age. invalidateQueries
+  // sets state.isInvalidated but leaves dataUpdatedAt untouched, so an age-only
+  // check reported "fresh" for data we had explicitly declared stale — and the
+  // read paths below then served it until the TTL elapsed. That silently made
+  // every invalidation from this layer a no-op, including invalidateCache and
+  // invalidateByPrefix, which pass refetchType: 'none' precisely because they
+  // expect this function to force the revalidation on the next read.
+  const state = client.getQueryState(key);
+  if (!state || state.isInvalidated) return false;
   const ageMs = getCachedQueryAgeMs(key, client);
   return typeof ageMs === 'number' && ageMs <= policy.ttl;
 }

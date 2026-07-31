@@ -42,7 +42,17 @@ const assertCacheBypassIsForceGuarded = (relativePath) => {
   });
 };
 
-assertIncludes('src/query/queryClient.ts', 'refetchOnMount: false', 'query defaults must not refetch on mount');
+// The policy this guards is "a STALE query must not refetch on mount" — not the
+// literal `false`. A bare `false` also suppressed refetching for explicitly
+// INVALIDATED queries, which silently broke every invalidateQueries call in the
+// app (created content stayed invisible until a manual pull-to-refresh). The
+// predicate below keeps the perf policy and restores the invalidation contract;
+// both halves are asserted so neither can be dropped.
+assertIncludes(
+  'src/query/queryClient.ts',
+  "refetchOnMount: (query) => (query.state.isInvalidated ? 'always' : false)",
+  'stale queries must not refetch on mount, but invalidated ones must',
+);
 assertIncludes('src/query/queryClient.ts', 'refetchOnWindowFocus: false', 'query defaults must not refetch on focus');
 // Constants carry the WIEZ_ prefix since the brand rename. This guard still
 // named them THREADLY_*, so these two assertions had been failing on every run
