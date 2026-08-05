@@ -43,8 +43,10 @@ const {
   resolveMediaStrategy,
 } = moduleShim.exports;
 const {
+  RUNWAY_FILL_MAX_ASPECT,
   RUNWAY_SAFE_COVER_CROP_TOLERANCE,
   resolveRunwayMediaStrategy,
+  shouldRunwayMediaFill,
 } = loadTsModule(path.join(projectRoot, 'src', 'features', 'feed', 'media', 'runwayMediaStrategy.ts'));
 const {
   buildFeedImageCacheKey,
@@ -213,15 +215,27 @@ if (safePortraitRunway.coverCropFraction > RUNWAY_SAFE_COVER_CROP_TOLERANCE) {
   failures.push('runway edge strategy exceeded the safe crop tolerance');
 }
 
-// Runway full-view policy: vertical media fills the phone screen edge-to-edge
-// only while the cover crop stays within the portrait cap (<= 0.2); beyond
-// that, near-square portrait shots (4:5, 3:4) contain UNCROPPED so no design
-// detail hides off-screen. Square/landscape are contained UNCROPPED on the
-// deep-black matte. Blur/soft ambient backdrops are banned on the runway.
-const portraitRunway = resolveRunwayMediaStrategy({
+// RUNWAY FIT POLICY (2026-08-04) — decided by image SHAPE, not crop percentage.
+//
+//   tall (aspect < RUNWAY_FILL_MAX_ASPECT)  → 'edge', fills the screen
+//   square-favouring (3:4, 4:5, 1:1)        → 'letter-solid', padded uncropped
+//   landscape / wide                        → 'letter-solid', padded uncropped
+//
+// This supersedes the old 0.12/0.20 crop caps, which put a cliff in the middle
+// of the common phone-photo range (0.5235 filled, 0.5625 letterboxed — the
+// "inconsistent rendering" report). Blur/soft ambient backdrops stay banned.
+//
+// The SAME numbers are duplicated in the web twin,
+// fthreadly/src/components/runway/runwayMediaFit.ts. Change both together.
+const nearSquarePortraitRunway = resolveRunwayMediaStrategy({
   viewportWidth: 400,
   viewportHeight: 800,
-  imageAspectRatio: 0.7,
+  imageAspectRatio: 0.75, // 3:4 — "favours square", must stay whole
+});
+const tallPortraitRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 400,
+  viewportHeight: 800,
+  imageAspectRatio: 2 / 3, // 0.667 — a vertical shot, must fill
 });
 const tallPhonePortraitRunway = resolveRunwayMediaStrategy({
   viewportWidth: 450,
@@ -238,12 +252,56 @@ const landscapeSpecificRunway = resolveRunwayMediaStrategy({
   viewportHeight: 800,
   imageAspectRatio: 1.4,
 });
-check('runway near-square portrait contains uncropped', portraitRunway.strategy, 'letter-solid');
+check('runway 3:4 pads rather than crops', nearSquarePortraitRunway.strategy, 'letter-solid');
+check('runway 2:3 fills the stage', tallPortraitRunway.strategy, 'edge');
 check('runway 9:16 on a 20:9 phone stays immersive', tallPhonePortraitRunway.strategy, 'edge');
 check('runway square uses the solid black matte', squareSpecificRunway.strategy, 'letter-solid');
 check('runway landscape uses the solid black matte', landscapeSpecificRunway.strategy, 'letter-solid');
+
+// The cliff regression guard: the two neighbouring shots that used to land on
+// opposite sides of the old 0.20 crop cap must now agree. Both are tall.
+const cliffLow = resolveRunwayMediaStrategy({
+  viewportWidth: 411,
+  viewportHeight: 937,
+  imageAspectRatio: 0.5235,
+});
+const cliffHigh = resolveRunwayMediaStrategy({
+  viewportWidth: 411,
+  viewportHeight: 937,
+  imageAspectRatio: 0.5625,
+});
+check('runway neighbouring tall shots agree (low)', cliffLow.strategy, 'edge');
+check('runway neighbouring tall shots agree (high)', cliffHigh.strategy, 'edge');
+
+// Shape decision must be viewport-independent, so the pre-layout paint and the
+// settled paint agree and no image visibly re-fits after measurement.
+for (const aspect of [9 / 16, 2 / 3, 0.75, 1, 1.4]) {
+  const measured = resolveRunwayMediaStrategy({
+    viewportWidth: 411,
+    viewportHeight: 937,
+    imageAspectRatio: aspect,
+  }).strategy;
+  const unmeasured = resolveRunwayMediaStrategy({ imageAspectRatio: aspect }).strategy;
+  if (measured !== unmeasured) {
+    failures.push(
+      `runway aspect ${aspect} re-fits after measurement (${unmeasured} → ${measured})`,
+    );
+  }
+  const expectedFill = shouldRunwayMediaFill(aspect);
+  if ((measured === 'edge') !== expectedFill) {
+    failures.push(`runway aspect ${aspect} disagrees with shouldRunwayMediaFill`);
+  }
+}
+
+if (!(RUNWAY_FILL_MAX_ASPECT > 2 / 3 && RUNWAY_FILL_MAX_ASPECT <= 0.75)) {
+  failures.push(
+    'RUNWAY_FILL_MAX_ASPECT must keep 2:3 filling and 3:4 padded; the web twin ' +
+      'fthreadly/src/components/runway/runwayMediaFit.ts must carry the same value',
+  );
+}
+
 for (const [label, result] of [
-  ['portrait', portraitRunway],
+  ['near-square portrait', nearSquarePortraitRunway],
   ['square', squareSpecificRunway],
   ['landscape', landscapeSpecificRunway],
 ]) {

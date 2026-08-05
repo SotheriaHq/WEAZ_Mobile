@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Easing, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Animated, Easing, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -595,7 +595,6 @@ export default function BuyerProfileScreen() {
   });
   const loadRequestIdRef = useRef(0);
   const lastUserIdRef = useRef<string | null>(null);
-  const redirectToAuthRef = useRef(false);
   const stateRef = useRef(state);
 
   useEffect(() => {
@@ -648,7 +647,6 @@ export default function BuyerProfileScreen() {
 
   useEffect(() => {
     if (status === 'authenticated' && user?.id) {
-      redirectToAuthRef.current = false;
       if (lastUserIdRef.current !== user.id) {
         lastUserIdRef.current = user.id;
         const cachedState = warmProfileStateKey ? readWarmScreenState<ProfileState>(warmProfileStateKey) : null;
@@ -662,7 +660,6 @@ export default function BuyerProfileScreen() {
     }
 
     lastUserIdRef.current = null;
-    redirectToAuthRef.current = false;
     setState(createEmptyProfileState());
     setError(null);
     setLoading(false);
@@ -670,11 +667,11 @@ export default function BuyerProfileScreen() {
     setHasWarmProfileSnapshot(false);
   }, [status, user?.id]);
 
-  useEffect(() => {
-    if (status !== 'unauthenticated' || redirectToAuthRef.current) return;
-    redirectToAuthRef.current = true;
-    router.replace(PROFILE_LOGIN_ROUTE as any);
-  }, [status]);
+  // NO auto-redirect to /(auth)/login here. WIEZ is browse-first: signing in is
+  // a choice, never a toll gate. This screen also mounts unfocused during the
+  // island tab pre-warm, so a mount-time `router.replace` yanked a signed-out
+  // shopper off the Runway and onto the login form seconds after cold start.
+  // The signed-out branch below offers sign-in instead of forcing it.
 
   useEffect(() => {
     if (!requestedTab) return;
@@ -1019,14 +1016,36 @@ export default function BuyerProfileScreen() {
   }
 
   if (status !== 'authenticated') {
+    // Signed-out is a valid, permanent state — not a stopover on the way to a
+    // login form. Offer the door; never push anyone through it.
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <View style={styles.loadingState}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
-          <AppText variant="subtitle">Redirecting to sign in</AppText>
+          <AppText variant="display">👤</AppText>
+          <AppText variant="subtitle">You&apos;re browsing as a guest</AppText>
           <AppText variant="body" tone="muted" style={styles.emptyBody}>
-            Sign in to manage your saved looks, fittings, and orders.
+            Keep exploring the Runway freely. Sign in whenever you want to save looks, patch brands,
+            and track orders.
           </AppText>
+          <View style={styles.guestActions}>
+            <Button
+              title="Sign in"
+              onPress={() => router.push(PROFILE_LOGIN_ROUTE as any)}
+              fullWidth
+            />
+            <Button
+              title="Create an account"
+              variant="secondary"
+              onPress={() => router.push({ pathname: '/(auth)/signup', params: { next: '/(tabs)/me' } } as any)}
+              fullWidth
+            />
+            <Button
+              title="Back to Runway"
+              variant="ghost"
+              onPress={() => router.replace('/' as any)}
+              fullWidth
+            />
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -1322,6 +1341,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.xl,
+  },
+  guestActions: {
+    alignSelf: 'stretch',
+    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.md,
   },
   topBar: {
     flexDirection: 'row',

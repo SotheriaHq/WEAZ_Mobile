@@ -53,6 +53,18 @@ type MeasuredSize = {
 };
 
 const SOLID_DARK_SURFACE = tokens.themes.dark.colors.surface;
+/**
+ * Smallest container change worth re-measuring against, in dp.
+ *
+ * Yoga re-emits `onLayout` with sub-dp differences for a box that has not
+ * actually moved — on the reported device the same runway page reported
+ * 937.1428833 / 937.1427002 / 937.1430664 dp in a single scroll. Accepting each
+ * one re-rendered the media, and with `transition` set that re-render is a
+ * cross-fade: the image visibly twitched before settling. The resolved strategy
+ * depends only on the container's *aspect*, which sub-dp noise cannot move, so
+ * anything under half a dp is dropped.
+ */
+const LAYOUT_NOISE_EPSILON_DP = 0.5;
 // Phase 10: ambient backdrops must stay light and image-reflective — never a dark
 // blanket. The blurred same-image copy sits at low opacity over the dominant-color
 // matte; the wash is only a faint legibility scrim. Square and landscape use
@@ -189,7 +201,13 @@ export function AspectAwareMedia({
     if (!isPositiveFinite(width) || !isPositiveFinite(height)) return;
 
     setContainerSize((current) => {
-      if (current?.width === width && current.height === height) return current;
+      if (
+        current &&
+        Math.abs(current.width - width) < LAYOUT_NOISE_EPSILON_DP &&
+        Math.abs(current.height - height) < LAYOUT_NOISE_EPSILON_DP
+      ) {
+        return current;
+      }
       return { width, height };
     });
   }, []);

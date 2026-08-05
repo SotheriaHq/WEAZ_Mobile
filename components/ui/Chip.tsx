@@ -24,6 +24,15 @@ type Props = {
   /** Custom tag awaiting global admin approval — rendered with a distinct,
    *  warning-tinted "pending" treatment so it never reads as an approved tag. */
   pending?: boolean;
+  /**
+   * Render for a surface that is dark in BOTH themes — the Runway stage.
+   *
+   * Without this the chip is themed by the app scheme while the stage behind it
+   * is not: in light mode `nav` chips render transparent with near-black text
+   * onto the deep-black matte and vanish entirely. Forcing the dark palette is
+   * the same opt-out `RUNWAY_MATTE` and the transit `scrimColor` already use.
+   */
+  onDarkStage?: boolean;
 };
 
 export function Chip({
@@ -35,12 +44,23 @@ export function Chip({
   disabled,
   variant = 'default',
   pending = false,
+  onDarkStage = false,
 }: Props) {
-  const { scheme, theme } = useTheme();
+  const { scheme: activeScheme, theme: activeTheme } = useTheme();
+  const scheme = onDarkStage ? 'dark' : activeScheme;
+  const theme = onDarkStage
+    ? ({ ...activeTheme, colors: tokens.themes.dark.colors } as typeof activeTheme)
+    : activeTheme;
   const isSwatch = Boolean(swatchColor);
   const scale = React.useRef(new Animated.Value(1)).current;
   const isNav = variant === 'nav';
   const isProfile = variant === 'profile';
+  // Nav chips floating directly on the runway stage. The default dark-nav
+  // treatment gives every chip a `controlSurface` fill with `borderRadius: 0`
+  // and a 2px underline — square plates that read as pasted-on boxes against
+  // the deep black. On the stage the chips are chrome, not cards: unselected is
+  // pure text, and only the selected chip carries a soft rounded pill.
+  const isStageNav = isNav && onDarkStage;
   // Pending custom tags use a warning-tinted outline over a soft surface instead
   // of the solid selected fill, so "added but not yet globally approved" is legible.
   const usePendingTreatment = pending && !isNav && !isSwatch;
@@ -71,22 +91,27 @@ export function Chip({
           isProfile && styles.profileBase,
           isNav && selected && styles.navSelected,
           isNav && !selected && styles.navInactive,
+          isStageNav && styles.stageNavBase,
           {
             backgroundColor: isSwatch
               ? selected
                 ? theme.colors.primarySoft
                 : 'transparent'
-              : isNav
-                ? scheme === 'dark'
-                  ? selected
-                    ? theme.colors.primarySoft
-                    : theme.colors.controlSurface
+              : isStageNav
+                ? selected
+                  ? theme.colors.controlSurfaceActive
                   : 'transparent'
-                : usePendingTreatment
-                  ? theme.colors.surfaceAlt
-                  : selected
-                    ? theme.colors.primary
-                    : theme.colors.surfaceAlt,
+                : isNav
+                  ? scheme === 'dark'
+                    ? selected
+                      ? theme.colors.primarySoft
+                      : theme.colors.controlSurface
+                    : 'transparent'
+                  : usePendingTreatment
+                    ? theme.colors.surfaceAlt
+                    : selected
+                      ? theme.colors.primary
+                      : theme.colors.surfaceAlt,
             borderColor: isNav
               ? 'transparent'
               : usePendingTreatment
@@ -95,7 +120,7 @@ export function Chip({
                   ? theme.colors.primary
                   : theme.colors.border,
             borderBottomColor:
-              isNav && selected ? theme.colors.primary : 'transparent',
+              isNav && selected && !isStageNav ? theme.colors.primary : 'transparent',
             opacity: disabled ? 0.48 : pressed ? 0.86 : 1,
           },
           style,
@@ -118,9 +143,17 @@ export function Chip({
         ) : (
           <View style={styles.labelWrap}>
             <AppText
+              onDarkStage={onDarkStage}
               variant={isNav || isProfile ? 'captionBold' : 'smallBold'}
               tone={
-                isNav
+                isStageNav
+                  ? // Bright white = active, dimmed white = available. Accent
+                    // purple on the black stage read as a third UI colour and
+                    // needed the plate behind it to stay legible.
+                    selected
+                    ? 'default'
+                    : 'secondary'
+                  : isNav
                   ? selected
                     ? 'primary'
                     : 'default'
@@ -176,6 +209,17 @@ const styles = StyleSheet.create({
   },
   navInactive: {
     backgroundColor: 'transparent',
+  },
+  // Runway-stage nav chips: rounded, underline-free, symmetrical padding. The
+  // square plate + tab underline is a header treatment; on a full-bleed photo
+  // stage it needs to melt into the black instead of framing itself.
+  stageNavBase: {
+    borderRadius: tokens.radius.full,
+    borderBottomWidth: 0,
+    paddingHorizontal: tokens.spacing.md,
+    paddingTop: 0,
+    paddingBottom: 0,
+    minHeight: 34,
   },
   profileBase: {
     minHeight: tokens.button.xs.height,

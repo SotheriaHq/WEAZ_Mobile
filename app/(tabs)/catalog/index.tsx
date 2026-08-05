@@ -74,7 +74,7 @@ import { catalogDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { formatCount } from '@/src/utils/formatCount';
 import { env } from '@/src/config/env';
-import { routeForDesignTarget, routeForStoreCollectionTarget } from '@/src/utils/mobileRouting';
+import { routeForDesignTarget } from '@/src/utils/mobileRouting';
 import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { perfMark } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
@@ -1025,10 +1025,31 @@ export default function CatalogScreen() {
       return;
     }
 
+    // Published content opens in the SAME viewer the shop uses — the immersive
+    // full-bleed media stage with the collapsible metadata dock — rather than
+    // the separate catalog detail screen. One review surface for brands and
+    // shoppers means one place to fix, and a brand sees their piece exactly as a
+    // shopper will.
+    //
+    // Drafts stay on CollectionDetailViewer: the shop viewer is a commerce
+    // surface with no publish/retry/visibility tooling, and a draft has nothing
+    // for it to render.
+    if (collection.status === 'DRAFT') {
+      drillDownPush(routeForDesignTarget(collection.id, { legacyCollectionId: collection.id }) as any);
+      return;
+    }
+
     drillDownPush(
       collection.isAvailableInStore
-        ? routeForStoreCollectionTarget(collection.id)
-        : routeForDesignTarget(collection.id, { legacyCollectionId: collection.id }) as any,
+        ? ({ pathname: '/collection-viewer', params: { collectionId: collection.id } } as any)
+        : ({
+            pathname: '/market-viewer',
+            params: {
+              sourceType: 'DESIGN',
+              sourceId: collection.id,
+              title: collection.title ?? '',
+            },
+          } as any),
     );
   }, []);
 

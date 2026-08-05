@@ -8,12 +8,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { tokens, type AppTheme } from '@/src/styles/tokens';
+import { tokens } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
 import { useAppStateListener } from '@/src/hooks/useAppStateListener';
@@ -34,7 +35,7 @@ import { DEFAULT_MARKET_FILTER_CHIPS, type MarketFilterChip, toggleCollectionMed
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { consumeMarketFeedDirty, fetchMarketFeedPage, readCachedMarketFeed, readMemoryCachedMarketFeed, writeCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { buildFeedCacheIdentity } from '@/src/features/feed/utils/feedKeys';
-import { brandAvatarDevLog, feedDevLog, feedLoadDevLog, feedMediaDevLog, layoutDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
+import { brandAvatarDevLog, feedDevLog, feedLoadDevLog, feedMediaDevLog, isWiezDebugEnabled, layoutDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import type { MarketItem } from '@/src/types/market';
 import type { ResolvedTheme } from '@/src/types/theme';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
@@ -69,6 +70,18 @@ let feedMountCount = 0;
 const carouselIndexMap = new Map<string, number>();
 
 const devLog = __DEV__ ? (prefix: string, ...args: any[]) => feedDevLog(prefix, { args }) : () => {};
+
+/**
+ * Whether the feed pays for scroll instrumentation this session.
+ *
+ * Read once, at module load, because the FlatList viewability props derived from
+ * it must keep a stable identity for the list's whole lifetime — FlatList throws
+ * on `onViewableItemsChanged` changing on the fly.
+ */
+const SCROLL_DIAGNOSTICS_ENABLED = isWiezDebugEnabled('scroll');
+
+/** How many pages from the end the next page request fires. */
+const FEED_PREFETCH_LEAD_PAGES = 4;
 
 const toCompactCount = (value: number | null | undefined) => {
   const n = typeof value === 'number' ? value : 0;
@@ -168,6 +181,36 @@ const sortFeedItemsForDisplay = (feedItems: MarketItem[]) =>
     if (!aValid && bValid) return 1;
     return 0;
   });
+
+/**
+ * Merge a revalidated first page into what is already on screen WITHOUT moving
+ * the design the viewer is currently looking at.
+ *
+ * `GET /collections/market` is a ranked + ROTATED feed: it reseeds a weighted
+ * shuffle per request, so two calls seconds apart legitimately return the same
+ * designs in a different order. Stale-while-revalidate then painted cache order
+ * A and replaced it wholesale with network order B — the design under the
+ * viewer's eyes changed identity mid-look. That is the "one content was shown,
+ * the system blinked, then another content, different from the first" report;
+ * it was never an image-loading bug.
+ *
+ * Everything up to and including the active page is held exactly as-is; the
+ * fresh page supplies everything below it, minus anything already held. Cold
+ * loads (no previous items) return `incoming` untouched, and explicit
+ * pull-to-refresh deliberately does NOT come through here — asking for new
+ * content is exactly when a reshuffle is wanted.
+ */
+const reconcileFeedItems = (
+  previous: MarketItem[],
+  incoming: MarketItem[],
+  keepThroughIndex: number,
+): MarketItem[] => {
+  if (previous.length === 0) return incoming;
+  const keepCount = Math.min(previous.length, Math.max(1, keepThroughIndex + 1));
+  const head = previous.slice(0, keepCount);
+  const heldIds = new Set(head.map((item) => item.id));
+  return [...head, ...incoming.filter((item) => !heldIds.has(item.id))];
+};
 
 const normalizeStableUri = (value?: string | null) => {
   const normalized = typeof value === 'string' ? value.trim() : '';
@@ -565,80 +608,84 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
   );
 });
 
-// Feed Skeleton Component for loading state
+// Feed Skeleton Component for loading state.
+//
+// Every placeholder here is `onDarkStage`. The runway stage is the deep-black
+// matte in BOTH themes, so a scheme-themed skeleton painted the light palette's
+// 90%-white shimmer across it — the "shiny black and white" strobe reported on
+// cold start. On the dark stage the sweep is a soft 4% → 14% white instead, and
+// the whole placeholder recedes into the stage the way it should.
 const FeedSkeleton = ({
-  theme,
   pageHeight,
   topOffset,
   bottomClearance,
 }: {
-  theme: AppTheme;
   pageHeight: number;
   topOffset: number;
   bottomClearance: number;
 }) => {
   return (
-    <View style={styles.feedSkeletonRoot}>
+    <View style={[styles.feedSkeletonRoot, { backgroundColor: RUNWAY_STAGE_MATTE }]}>
       <View style={[styles.feedSkeletonHeader, { paddingTop: topOffset + 8 }]}>
-        <View style={[styles.feedSkeletonLogoWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
+        <View style={styles.feedSkeletonLogoWrap}>
           <WiezLogo size={28} style={{ opacity: 0.92 }} />
         </View>
         <View style={styles.feedSkeletonHeaderActions}>
-          <Skeleton width={40} height={40} borderRadius={20} />
-          <Skeleton width={40} height={40} borderRadius={20} />
+          <Skeleton width={40} height={40} borderRadius={20} onDarkStage />
+          <Skeleton width={40} height={40} borderRadius={20} onDarkStage />
         </View>
       </View>
 
-      <View style={[styles.feedSkeletonChips, { top: topOffset + 56 }]}> 
-        <Skeleton width={68} height={34} borderRadius={999} />
-        <Skeleton width={88} height={34} borderRadius={999} />
-        <Skeleton width={76} height={34} borderRadius={999} />
-        <Skeleton width={92} height={34} borderRadius={999} />
+      <View style={[styles.feedSkeletonChips, { top: topOffset + 56 }]}>
+        <Skeleton width={68} height={34} borderRadius={999} onDarkStage />
+        <Skeleton width={88} height={34} borderRadius={999} onDarkStage />
+        <Skeleton width={76} height={34} borderRadius={999} onDarkStage />
+        <Skeleton width={92} height={34} borderRadius={999} onDarkStage />
       </View>
 
       <View style={{ height: pageHeight, width: '100%', position: 'relative' }}>
         {/* Main image skeleton */}
-        <Skeleton width="100%" height="100%" borderRadius={0} />
+        <Skeleton width="100%" height="100%" borderRadius={0} onDarkStage />
 
         {/* Right rail skeleton (action buttons) */}
         <View style={{ position: 'absolute', right: 12, bottom: bottomClearance + 44, alignItems: 'center', gap: 20 }}>
           {/* Avatar skeleton */}
           <View style={{ marginBottom: 8 }}>
-            <SkeletonAvatar size={44} />
+            <SkeletonAvatar size={44} onDarkStage />
           </View>
 
           {/* Like button skeleton */}
           <View style={{ alignItems: 'center', gap: 4 }}>
-            <Skeleton width={30} height={30} borderRadius={15} />
-            <Skeleton width={24} height={12} borderRadius={4} />
+            <Skeleton width={30} height={30} borderRadius={15} onDarkStage />
+            <Skeleton width={24} height={12} borderRadius={4} onDarkStage />
           </View>
 
           {/* Comment button skeleton */}
           <View style={{ alignItems: 'center', gap: 4 }}>
-            <Skeleton width={30} height={30} borderRadius={15} />
-            <Skeleton width={24} height={12} borderRadius={4} />
+            <Skeleton width={30} height={30} borderRadius={15} onDarkStage />
+            <Skeleton width={24} height={12} borderRadius={4} onDarkStage />
           </View>
 
           {/* Share button skeleton */}
           <View style={{ alignItems: 'center', gap: 4 }}>
-            <Skeleton width={30} height={30} borderRadius={15} />
-            <Skeleton width={24} height={12} borderRadius={4} />
+            <Skeleton width={30} height={30} borderRadius={15} onDarkStage />
+            <Skeleton width={24} height={12} borderRadius={4} onDarkStage />
           </View>
 
           {/* Save button skeleton */}
           <View style={{ alignItems: 'center', gap: 4 }}>
-            <Skeleton width={30} height={30} borderRadius={15} />
+            <Skeleton width={30} height={30} borderRadius={15} onDarkStage />
           </View>
         </View>
 
         {/* Bottom info skeleton */}
         <View style={{ position: 'absolute', left: 16, right: 88, bottom: bottomClearance, gap: 8 }}>
           {/* Brand name skeleton */}
-          <Skeleton width={120} height={18} borderRadius={4} />
+          <Skeleton width={120} height={18} borderRadius={4} onDarkStage />
           {/* Price skeleton */}
-          <Skeleton width={80} height={22} borderRadius={4} />
+          <Skeleton width={80} height={22} borderRadius={4} onDarkStage />
           {/* Description skeleton */}
-          <SkeletonText lines={2} lineHeight={14} spacing={8} lastLineWidth="70%" />
+          <SkeletonText lines={2} lineHeight={14} spacing={8} lastLineWidth="70%" onDarkStage />
         </View>
       </View>
     </View>
@@ -729,6 +776,13 @@ export function RunwayFeedScreen() {
   const [items, setItems] = useState<MarketItem[]>(() =>
     initialFeedSnapshot ? sortFeedItemsForDisplay(initialFeedSnapshot.items) : [],
   );
+  /**
+   * What is currently painted, readable synchronously from async callbacks.
+   * `loadFirstPage` needs it AFTER awaiting the network to decide what to pin
+   * (see `reconcileFeedItems`), and by then its captured `items` closure is a
+   * render or two stale.
+   */
+  const itemsRef = useRef<MarketItem[]>(items);
   const [collectionMediaMap, setCollectionMediaMap] = useState<Record<string, FeedViewerMedia[]>>({});
   const collectionMediaMapRef = useRef<Record<string, FeedViewerMedia[]>>({});
   // Carousel index is tracked in module-level carouselIndexMap (persists across remounts).
@@ -778,6 +832,10 @@ export function RunwayFeedScreen() {
     if (!loading) navPerf.dataReady('tabs→runway');
   }, [loading]);
 
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
   const skeletonOpacity = useRef(new Animated.Value(1)).current;
   const [isSkeletonFadingOut, setIsSkeletonFadingOut] = useState(false);
 
@@ -813,7 +871,25 @@ export function RunwayFeedScreen() {
     }
   }, [status, user?.id, user?.type]);
 
-  const fallbackPageHeight = useMemo(() => Math.max(1, Math.round(windowHeight || 0)), [windowHeight]);
+  /**
+   * Pre-measurement stand-in for the stage height.
+   *
+   * This is NOT `windowHeight`. The feed renders inside `SafeAreaView edges={[]}`
+   * — deliberately full-bleed — so the stage spans the whole screen, insets
+   * included, while `useWindowDimensions` reports the height *excluding* the
+   * system bars. On the reported device that was 892.19 vs a real 937.14
+   * (892.19 + 28.95 top + 16 bottom): every row, `getItemLayout` offset and snap
+   * interval was 5% short until `handleFeedViewportLayout` landed, and then all
+   * of them changed underneath a live scroll position. That mid-flight resize is
+   * the "settles, shakes up and down, settles again" report — and it also made
+   * the skeleton a different height from the feed it hands off to.
+   *
+   * Unrounded, for the same reason `pageHeight` is (see below).
+   */
+  const fallbackPageHeight = useMemo(
+    () => Math.max(1, (windowHeight || 0) + insets.top + insets.bottom),
+    [insets.bottom, insets.top, windowHeight],
+  );
   const measuredBasePageHeight = measuredFeedViewportHeight > 0 ? measuredFeedViewportHeight : fallbackPageHeight;
   // Deliberately NOT rounded to whole dp. Native paging snaps to multiples of the
   // scroll view's own pixel height, so the row height has to describe that same
@@ -1222,6 +1298,9 @@ export function RunwayFeedScreen() {
         isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
       })));
       setItems(sortedCachedItems);
+      // Set synchronously too: the revalidation below reads this straight after
+      // awaiting the network and must not race the sync effect.
+      itemsRef.current = sortedCachedItems;
       setNextCursor(cached.snapshot.nextCursor);
       setHasNextPage(cached.snapshot.hasNextPage);
       hasLoadedFirstPageRef.current = true;
@@ -1243,8 +1322,12 @@ export function RunwayFeedScreen() {
       navPerf.mark('background_refresh_started', 'tabs→runway');
       didStartBackgroundRefresh = true;
     } else {
-      // No cache - show skeleton on first load
-      setLoading(true);
+      // No cache for THIS identity. Only fall back to the blocking skeleton if
+      // the screen is genuinely empty. A cache miss can also mean the identity
+      // changed under us (sign-in resolving, then the 401 sign-out), and
+      // blanking painted content back to a skeleton for that is the second
+      // flash in the cold-start blink report.
+      setLoading(!hasLoadedFirstPageRef.current);
       navPerf.mark('cache_miss', 'tabs→runway');
       if (wasColdLoad) navPerf.mark('cold_skeleton_rendered', 'tabs→runway');
       feedLoadDevLog('summary', {
@@ -1277,13 +1360,16 @@ export function RunwayFeedScreen() {
         title: item.collectionTitle,
         isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
       })));
-      setItems(sortedItems);
+      // Pin whatever is already on screen; the reshuffled page only supplies
+      // what comes below it. See `reconcileFeedItems`.
+      const nextItems = reconcileFeedItems(itemsRef.current, sortedItems, feedActiveIndex);
+      setItems(nextItems);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
       hasLoadedFirstPageRef.current = true;
       setHasLoadedFirstPage(true);
       void writeCachedMarketFeed(cacheIdentity, {
-        items: sortedItems,
+        items: nextItems,
         nextCursor: res.nextCursor ?? null,
         hasNextPage: res.hasNextPage,
       }).catch((cacheError) => {
@@ -1419,18 +1505,37 @@ export function RunwayFeedScreen() {
     }
   }, []);
 
-  const viewabilityConfigRef = useRef({
-    itemVisiblePercentThreshold: 80,
-    minimumViewTime: 120,
-  });
+  // Viewability is DIAGNOSTICS ONLY here — `latestViewableIndexRef` is read in
+  // exactly one place, the `vertical-settle-warning` in handleFeedMomentumEnd.
+  // Paging, prefetch and the active row all key off the settle handler, never
+  // off viewability.
+  //
+  // It is therefore attached only when the scroll debug scope is on. A live
+  // `onViewableItemsChanged` makes VirtualizedList build a viewability tuple and
+  // run `_updateViewableItems` inside `_onScroll` — JS work on EVERY scroll
+  // event, in both directions, for a value nothing in the product reads. That is
+  // the frame budget the drag start and the pre-settle leg were spending.
+  //
+  // Read once at module scope so the props keep a stable identity for the whole
+  // session; FlatList throws if `onViewableItemsChanged` changes on the fly.
+  const viewabilityConfigRef = useRef(
+    SCROLL_DIAGNOSTICS_ENABLED
+      ? {
+          itemVisiblePercentThreshold: 80,
+          minimumViewTime: 120,
+        }
+      : undefined,
+  );
 
   const stableOnViewableItemsChangedRef = useRef(
-    ({ viewableItems }: { viewableItems: Array<{ item: FeedListEntry | null; index?: number | null }> }) => {
-      const primaryEntry = viewableItems.find(({ item }) => item && !item.isGhost)?.item;
-      if (primaryEntry && !primaryEntry.isGhost) {
-        latestViewableIndexRef.current = primaryEntry.realIndex;
-      }
-    },
+    SCROLL_DIAGNOSTICS_ENABLED
+      ? ({ viewableItems }: { viewableItems: Array<{ item: FeedListEntry | null; index?: number | null }> }) => {
+          const primaryEntry = viewableItems.find(({ item }) => item && !item.isGhost)?.item;
+          if (primaryEntry && !primaryEntry.isGhost) {
+            latestViewableIndexRef.current = primaryEntry.realIndex;
+          }
+        }
+      : undefined,
   );
 
   const scheduleSettledFeedWork = useCallback((previousIndex: number, nextIndex: number) => {
@@ -2117,7 +2222,13 @@ export function RunwayFeedScreen() {
       settledFromIndexRef.current = previousIndex;
       feedActiveIndex = measuredRealIndex;
       setActivePageIndex(measuredRealIndex);
-      if (measuredRealIndex >= items.length - 2 && hasNextPage) {
+      // Four pages of runway, not two. `loadMore` resolves into `setItems`,
+      // which rebuilds `fallbackMediaByCollection`, `feedItems` and therefore
+      // every mounted row. At a two-page lead that landed while the next swipe
+      // was already in flight — a full list re-render mid-gesture, felt as the
+      // stall just before the page settles. Four pages puts the mutation inside
+      // a dwell instead.
+      if (measuredRealIndex >= items.length - FEED_PREFETCH_LEAD_PAGES && hasNextPage) {
         void loadMore();
       }
     },
@@ -2223,8 +2334,14 @@ export function RunwayFeedScreen() {
   }, [activeTag, items.length, status, user?.id]);
 
   useEffect(() => {
+    // `loadFirstPage` is keyed on the auth identity (it rides in the feed cache
+    // key). Auth boots as 'loading', so running here would fetch an anonymous
+    // feed, then refetch the moment the stored session resolves — a guaranteed
+    // extra cold load on every launch. Wait for auth to settle; the memory
+    // snapshot already gives us something to paint in the meantime.
+    if (status === 'loading' && !hasLoadedFirstPageRef.current) return;
     loadFirstPage();
-  }, [loadFirstPage]);
+  }, [loadFirstPage, status]);
 
   useFocusEffect(
     useCallback(() => {
@@ -2269,8 +2386,20 @@ export function RunwayFeedScreen() {
     >
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
 
-      {!loading ? (
+      {/* The header is NOT gated on `loading`. It used to be, so every
+          revalidation cycle blanked the filter row and painted it back — one of
+          the flashes in the cold-start blink report. The chips are stage chrome:
+          they belong on screen from first frame to last. */}
+      {!showBlockingLoader ? (
         <>
+          {/* Chips sit on the runway stage, which is black where media is
+              letterboxed but is the photo itself where media edge-fills. This
+              scrim guarantees the row reads over both. */}
+          <LinearGradient
+            colors={[RUNWAY_STAGE_MATTE, `${RUNWAY_STAGE_MATTE}00`]}
+            style={[styles.headerScrim, { height: insets.top + 72 }]}
+            pointerEvents="none"
+          />
           <View
             style={[
               styles.header,
@@ -2306,6 +2435,11 @@ export function RunwayFeedScreen() {
                         key={chip.id}
                         label={chip.label}
                         variant="nav"
+                        // The stage behind this row is the deep-black runway
+                        // matte in BOTH themes. Without this the light theme
+                        // paints near-black chip text onto it and the whole
+                        // filter row disappears.
+                        onDarkStage
                         selected={chip.id === selectedFilterId}
                         onPress={() => setSelectedFilterId(chip.id)}
                         style={styles.headerFilterChip}
@@ -2354,7 +2488,7 @@ export function RunwayFeedScreen() {
 
       {(showBlockingLoader || isSkeletonFadingOut) ? (
         <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 100, opacity: skeletonOpacity }]} pointerEvents={showBlockingLoader ? 'auto' : 'none'}>
-          <FeedSkeleton theme={theme} pageHeight={pageHeight || fallbackPageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
+          <FeedSkeleton pageHeight={pageHeight || fallbackPageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
         </Animated.View>
       ) : null}
 
@@ -2381,7 +2515,7 @@ export function RunwayFeedScreen() {
           onLayout={handleFeedViewportLayout}
         >
           {!feedViewportReady ? (
-            <FeedSkeleton theme={theme} pageHeight={fallbackPageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
+            <FeedSkeleton pageHeight={fallbackPageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
           ) : (
           /* One initial row prioritizes first media. A five-row window keeps the
              previous and next pages fully rendered so paging reveals painted
@@ -2459,6 +2593,10 @@ export function RunwayFeedScreen() {
   );
 }
 
+/** The runway stage colour — deep black in BOTH themes. Header chrome that sits
+ *  on it must be coloured from this, not from the active theme. */
+const RUNWAY_STAGE_MATTE = tokens.themes.dark.colors.bg;
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -2526,10 +2664,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerFilterChip: {
-    minHeight: 30,
-    paddingHorizontal: 8,
-    paddingTop: 1,
-    paddingBottom: 3,
+    // Symmetric now that the stage chip is a pill, not an underlined tab — the
+    // old 1/3 top/bottom split existed to optically centre the label above a
+    // 2px underline that no longer renders here.
+    minHeight: 32,
+    paddingHorizontal: 12,
+    paddingVertical: 0,
   },
   headerEmoji: {
     fontSize: 16,
@@ -2591,6 +2731,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    // No fill: a themed `surfaceAlt` plate here was a bright white slab on the
+    // black stage in light mode. The mark carries itself.
+    backgroundColor: 'transparent',
   },
   feedSkeletonChips: {
     position: 'absolute',
@@ -2600,6 +2743,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     paddingHorizontal: 16,
+  },
+  headerScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    zIndex: 19,
   },
   feedListContainer: {
     flex: 1,

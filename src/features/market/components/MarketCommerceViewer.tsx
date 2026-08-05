@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
+  PanResponder,
   Pressable,
   ScrollView,
   Share,
@@ -11,6 +12,14 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import Animated, {
+  Easing as ReEasing,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -79,6 +88,22 @@ const ACTION_KIND_BAG = 'bag';
 const ACTION_KIND_SAVE = 'save';
 const ACTION_KIND_MESSAGE = 'message';
 const ACTION_KIND_SHARE = 'share';
+
+/**
+ * Docked height of the metadata sheet.
+ *
+ * Was 56 with a 48pt handle block inside it — a slab across the bottom of a
+ * full-bleed photograph for the sake of one line of type. 40 keeps the 44pt tap
+ * target (the handle Pressable overhangs via hitSlop) while giving the image
+ * back the strip it was eating.
+ */
+const COLLAPSED_SHEET_HEIGHT = 40;
+/** dp/ms past which a release counts as a fling rather than a position. */
+const SHEET_FLING_VELOCITY = 0.4;
+/** Emoji-only dock actions — the sheet is chrome over media, not a toolbar. */
+const MESSAGE_EMOJI = '💬';
+const WISHLIST_EMOJI_ON = '💖';
+const WISHLIST_EMOJI_OFF = '🤍';
 
 const shouldLogViewerTiming = () =>
   isWiezDebugEnabled('network') ||
@@ -328,11 +353,98 @@ export function MarketCommerceViewer({
   const normalizedSourceId = String(sourceId ?? '').trim();
   const sourceStatusKey = sourceType === 'PRODUCT' ? normalizedSourceId : `${sourceType}:${normalizedSourceId}`;
   const bagBusy = Boolean(loadingByProductId[sourceStatusKey] || busyAction === ACTION_KIND_BAG);
-  const activeSheetHeight = sheetExpanded
-    ? Math.min(420, Math.max(320, Math.round(height * 0.48)))
-    : 56;
+  const expandedSheetHeight = Math.min(440, Math.max(320, Math.round(height * 0.5)));
   const mediaHeight = height;
-  const actionTop = chrome.insets.top + tokens.spacing['3xl'] + tokens.spacing.md;
+  // Top-of-media chrome (pagination, in-bag confirmation) now that bag/wishlist/
+  // message have moved down to the dock and freed this band.
+  const topChromeBaseline = chrome.insets.top + tokens.spacing['3xl'] + tokens.spacing.md;
+
+  // ── Metadata dock: collapse/expand ────────────────────────────────────────
+  //
+  // `sheetProgress` (0 collapsed → 1 expanded) is the single source of truth for
+  // both the height and the content fade, and it lives on the UI thread. The
+  // previous version had NO animation at all: `height` jumped between two
+  // numbers while the body was conditionally mounted, so expanding was a hard
+  // cut plus a layout spike. Reanimated applies layout props on the UI thread,
+  // so height can be tweened here without a per-frame JS round trip.
+  //
+  // The drag maps 1:1 onto the same value, which is what makes the gesture feel
+  // attached to the finger rather than being a switch that plays a canned
+  // animation on release.
+  const sheetProgress = useSharedValue(0);
+  const [sheetBodyMounted, setSheetBodyMounted] = useState(false);
+  const sheetExpandedRef = useRef(sheetExpanded);
+  sheetExpandedRef.current = sheetExpanded;
+
+  const animateSheet = useCallback(
+    (expand: boolean) => {
+      setSheetExpanded(expand);
+      if (expand) setSheetBodyMounted(true);
+      sheetProgress.value = withTiming(
+        expand ? 1 : 0,
+        // Decelerating quint: fast commit, long soft landing. Matches the
+        // paging settle on the runway so the app has one motion accent.
+        { duration: expand ? 280 : 240, easing: ReEasing.bezier(0.22, 1, 0.36, 1) },
+        (finished) => {
+          // Keep the body mounted for the whole collapse so the closing frames
+          // animate real content instead of an empty box.
+          if (finished && !expand) runOnJS(setSheetBodyMounted)(false);
+        },
+      );
+    },
+    [sheetProgress],
+  );
+
+  const toggleSheet = useCallback(() => {
+    animateSheet(!sheetExpandedRef.current);
+  }, [animateSheet]);
+
+  const collapseSheet = useCallback(() => {
+    if (sheetExpandedRef.current) animateSheet(false);
+  }, [animateSheet]);
+
+  const sheetPan = useMemo(
+    () =>
+      PanResponder.create({
+        // Vertical intent only, and only past the tap slop — otherwise this
+        // swallows taps on the handle and horizontal swipes on the media pager.
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderMove: (_event, gesture) => {
+          const base = sheetExpandedRef.current ? 1 : 0;
+          const travel = Math.max(1, expandedSheetHeight - COLLAPSED_SHEET_HEIGHT);
+          // Upward drag (negative dy) opens.
+          const next = base - gesture.dy / travel;
+          sheetProgress.value = Math.min(1, Math.max(0, next));
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          const flungOpen = gesture.vy < -SHEET_FLING_VELOCITY;
+          const flungShut = gesture.vy > SHEET_FLING_VELOCITY;
+          if (flungOpen) return animateSheet(true);
+          if (flungShut) return animateSheet(false);
+          // No decisive fling: settle to whichever end the sheet is nearer.
+          animateSheet(sheetProgress.value >= 0.5);
+        },
+        onPanResponderTerminate: () => animateSheet(sheetExpandedRef.current),
+      }),
+    [animateSheet, expandedSheetHeight, sheetProgress],
+  );
+
+  const sheetAnimatedStyle = useAnimatedStyle(() => ({
+    height: interpolate(sheetProgress.value, [0, 1], [COLLAPSED_SHEET_HEIGHT, expandedSheetHeight]),
+  }));
+
+  // Body arrives in the back half of the open so it never cross-fades against a
+  // box that is still visibly growing under it.
+  const sheetBodyAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(sheetProgress.value, [0, 0.45, 1], [0, 0, 1]),
+  }));
+
+  // Flanking actions are the inverse: present while docked, gone once the sheet
+  // owns them.
+  const dockFlankAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(sheetProgress.value, [0, 0.4], [1, 0]),
+  }));
 
   const load = useCallback(async () => {
     if (!normalizedSourceId) {
@@ -685,31 +797,153 @@ export function MarketCommerceViewer({
     [mediaHeight, normalizedSourceId, sourceType, width],
   );
 
-  const renderMetadataSheet = () => (
-    <View
-      style={[
-        styles.metadataSheet,
+  const renderBagAction = (variant: 'dock' | 'sheet') => (
+    <Pressable
+      onPress={handleBagPress}
+      disabled={bagDisabled}
+      style={({ pressed }) => [
+        variant === 'dock' ? styles.dockBagAction : styles.sheetBagAction,
         {
-          height: activeSheetHeight,
-          bottom: chrome.immersiveOverlayBottomClearance,
-          backgroundColor: sheetExpanded ? theme.colors.bottomSheetSurface : theme.colors.glassSurfaceStrong,
-          borderColor: sheetExpanded ? theme.colors.border : theme.colors.glassBorder,
+          backgroundColor: bagDisabled ? theme.colors.surfaceAlt : theme.colors.primary,
+          borderColor: bagDisabled ? theme.colors.border : theme.colors.primary,
         },
+        pressed && styles.pressed,
       ]}
+      accessibilityRole="button"
+      accessibilityLabel={bagLabel}
     >
-      <Pressable
-        onPress={() => setSheetExpanded((current) => !current)}
-        style={[styles.sheetHandleWrap, !sheetExpanded && styles.sheetHandleWrapCollapsed]}
-        accessibilityRole="button"
-        accessibilityLabel={sheetExpanded ? 'Collapse product details' : 'Expand product details'}
-      >
-        <View style={[styles.sheetHandle, { backgroundColor: theme.colors.bottomSheetHandle }]} />
-        <AppText variant="captionBold" tone="muted">
-          {sheetExpanded ? 'Collapse details for full view' : 'Swipe up for details'}
+      {bagBusy ? (
+        <ActivityIndicator color={bagDisabled ? theme.colors.primary : theme.colors.onPrimary} />
+      ) : (
+        <AppText variant="captionBold" tone={bagDisabled ? 'muted' : 'inverse'} numberOfLines={1}>
+          {variant === 'dock' ? BAG_IT_EMOJI : bagLabel}
         </AppText>
-      </Pressable>
+      )}
+    </Pressable>
+  );
 
-      {sheetExpanded ? (
+  const renderWishlistAction = (variant: 'dock' | 'sheet') => (
+    <Pressable
+      onPress={handleSavePress}
+      disabled={busyAction === ACTION_KIND_SAVE}
+      style={({ pressed }) => [
+        variant === 'dock' ? styles.dockGlyphAction : styles.sheetInlineAction,
+        { backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder },
+        pressed && styles.pressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={
+        sourceType === 'PRODUCT'
+          ? saved ? 'Remove from wishlist' : 'Save to wishlist'
+          : saved ? 'Remove from Saved Looks' : 'Save look for inspiration'
+      }
+    >
+      <AppText variant="bodyBold" tone="default" numberOfLines={1}>
+        {variant === 'dock'
+          ? saved ? WISHLIST_EMOJI_ON : WISHLIST_EMOJI_OFF
+          : `${saved ? WISHLIST_EMOJI_ON : WISHLIST_EMOJI_OFF}  ${
+              sourceType === 'PRODUCT' ? (saved ? 'Wishlisted' : 'Wishlist') : saved ? 'Saved' : 'Save'
+            }`}
+      </AppText>
+    </Pressable>
+  );
+
+  const renderMessageAction = (variant: 'dock' | 'sheet') => (
+    <Pressable
+      onPress={handleMessagePress}
+      disabled={!canMessageBrand || busyAction === ACTION_KIND_MESSAGE}
+      style={({ pressed }) => [
+        variant === 'dock' ? styles.dockGlyphAction : styles.sheetInlineAction,
+        {
+          backgroundColor: theme.colors.glassSurfaceStrong,
+          borderColor: theme.colors.glassBorder,
+          opacity: canMessageBrand ? 1 : 0.62,
+        },
+        pressed && styles.pressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel="Message brand"
+    >
+      <AppText variant="bodyBold" tone="default" numberOfLines={1}>
+        {variant === 'dock' ? MESSAGE_EMOJI : `${MESSAGE_EMOJI}  Message`}
+      </AppText>
+    </Pressable>
+  );
+
+  /**
+   * Bottom dock.
+   *
+   * Collapsed:  [💬][🤍]  ——— metadata ———  [👜]
+   * Expanded:   [——————— metadata, actions inside ———————]
+   *
+   * The row is `alignItems: 'flex-end'`, so the sheet grows upward out of the
+   * dock while the flanking clusters stay pinned to the bottom edge. That is
+   * what lets wishlist / message / bag stay individually tappable at every point
+   * of the animation instead of being swallowed by the panel.
+   */
+  const renderMetadataDock = () => (
+    <View
+      style={[styles.bottomDock, { bottom: chrome.immersiveOverlayBottomClearance }]}
+      pointerEvents="box-none"
+    >
+      {!sheetExpanded ? (
+        <Animated.View style={[styles.dockFlank, dockFlankAnimatedStyle]}>
+          {renderMessageAction('dock')}
+          {renderWishlistAction('dock')}
+        </Animated.View>
+      ) : null}
+
+      <Animated.View
+        style={[
+          styles.metadataSheet,
+          sheetAnimatedStyle,
+          {
+            backgroundColor: sheetExpanded ? theme.colors.bottomSheetSurface : theme.colors.glassSurfaceStrong,
+            borderColor: sheetExpanded ? theme.colors.border : theme.colors.glassBorder,
+          },
+        ]}
+      >
+        {/* The drag lives on the grab strip, NOT the whole panel. Claiming
+            vertical gestures across the panel would steal every scroll from the
+            details ScrollView once expanded. Collapsed, the strip *is* the whole
+            visible sheet, so a swipe anywhere on the pill still opens it. */}
+        <View {...sheetPan.panHandlers}>
+          <Pressable
+            onPress={toggleSheet}
+            hitSlop={8}
+            style={styles.sheetHandleWrap}
+            accessibilityRole="button"
+            accessibilityLabel={sheetExpanded ? 'Collapse details' : 'Expand details'}
+            accessibilityHint="Swipe up or down to change the details panel"
+          >
+            <View style={[styles.sheetHandle, { backgroundColor: theme.colors.bottomSheetHandle }]} />
+            <AppText variant="captionBold" tone="muted" numberOfLines={1}>
+              {sheetExpanded ? 'Details' : title}
+            </AppText>
+          </Pressable>
+        </View>
+
+        {sheetBodyMounted ? (
+          <Animated.View style={[styles.sheetBody, sheetBodyAnimatedStyle]}>
+            <View style={styles.sheetActionRow}>
+              {renderWishlistAction('sheet')}
+              {renderMessageAction('sheet')}
+              {renderBagAction('sheet')}
+            </View>
+            {renderSheetBody()}
+          </Animated.View>
+        ) : null}
+      </Animated.View>
+
+      {!sheetExpanded ? (
+        <Animated.View style={[styles.dockFlank, dockFlankAnimatedStyle]}>
+          {renderBagAction('dock')}
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+
+  const renderSheetBody = () => (
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.sheetContent}
@@ -860,8 +1094,6 @@ export function MarketCommerceViewer({
             </View>
           ) : null}
         </ScrollView>
-      ) : null}
-    </View>
   );
 
   return (
@@ -918,80 +1150,41 @@ export function MarketCommerceViewer({
       </View>
 
       {media.length > 1 ? (
-        <View style={[styles.paginationPill, { top: actionTop + 56, backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder }]}>
+        <View style={[styles.paginationPill, { top: topChromeBaseline, backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder }]}>
           <AppText variant="captionBold" tone="default">
             {activeIndex + 1} / {media.length}
           </AppText>
         </View>
       ) : null}
 
-      <View style={[styles.actionCluster, { top: actionTop }]}>
-        <Pressable
-          onPress={handleBagPress}
-          disabled={bagDisabled}
-          style={({ pressed }) => [
-            styles.bagAction,
-            styles.bagActionTop,
+      {bagStatus?.standard.inBag || bagStatus?.custom.alreadyBagged ? (
+        <View
+          style={[
+            styles.inBagPill,
             {
-              backgroundColor: bagDisabled ? theme.colors.surfaceAlt : theme.colors.primary,
-              borderColor: bagDisabled ? theme.colors.border : theme.colors.primary,
+              top: topChromeBaseline,
+              backgroundColor: theme.colors.glassSurfaceStrong,
+              borderColor: theme.colors.glassBorder,
             },
-            pressed && styles.pressed,
           ]}
-          accessibilityRole="button"
-          accessibilityLabel={bagLabel}
+          pointerEvents="none"
         >
-          {bagBusy ? (
-            <ActivityIndicator color={bagDisabled ? theme.colors.primary : theme.colors.onPrimary} />
-          ) : (
-            <>
-              <AppText variant="captionBold" tone={bagDisabled ? 'muted' : 'inverse'} numberOfLines={1}>
-                {`${BAG_IT_EMOJI} ${BAG_IT_LABEL}`}
-              </AppText>
-              {bagStatus?.standard.inBag || bagStatus?.custom.alreadyBagged ? (
-                <AppText variant="captionBold" tone={bagDisabled ? 'muted' : 'inverse'}>Already in My Bag</AppText>
-              ) : null}
-            </>
-          )}
-        </Pressable>
-
-        <View style={styles.secondaryActions}>
-          <Pressable
-            onPress={handleSavePress}
-            disabled={busyAction === ACTION_KIND_SAVE}
-            style={({ pressed }) => [
-              styles.sideAction,
-              { backgroundColor: theme.colors.glassSurfaceStrong },
-              pressed && styles.pressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={
-              sourceType === 'PRODUCT'
-                ? saved ? 'Remove from wishlist' : 'Save to wishlist'
-                : saved ? 'Remove from Saved Looks' : 'Save look for inspiration'
-            }
-          >
-            <AppText variant="bodyBold" tone="default">
-              {sourceType === 'PRODUCT' ? (saved ? 'Wishlisted' : 'Wishlist') : (saved ? 'Saved' : 'Save')}
-            </AppText>
-          </Pressable>
-          <Pressable
-            onPress={handleMessagePress}
-            disabled={!canMessageBrand || busyAction === ACTION_KIND_MESSAGE}
-            style={({ pressed }) => [
-              styles.sideAction,
-              { backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder, opacity: canMessageBrand ? 1 : 0.62 },
-              pressed && styles.pressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Message brand"
-          >
-            <AppText variant="bodyBold" tone="default">Message</AppText>
-          </Pressable>
+          <AppText variant="captionBold" tone="default">Already in My Bag</AppText>
         </View>
-      </View>
+      ) : null}
 
-      {renderMetadataSheet()}
+      {/* Tap-outside-to-collapse. Only mounted while the sheet is open, so it
+          never sits between the user and the media pager. */}
+      {sheetExpanded ? (
+        <Pressable
+          style={styles.sheetDismissLayer}
+          onPress={collapseSheet}
+          accessibilityRole="button"
+          accessibilityLabel="Collapse details"
+        />
+      ) : null}
+
+      {renderMetadataDock()}
 
       {loading ? (
         <View style={[styles.stateOverlay, { backgroundColor: theme.colors.backdrop }]}>
@@ -1067,47 +1260,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionCluster: {
+  inBagPill: {
     position: 'absolute',
-    left: tokens.spacing.lg,
-    right: tokens.spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-  },
-  bagAction: {
-    minHeight: 58,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    alignSelf: 'center',
+    minHeight: 30,
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.lg,
-    gap: tokens.spacing.xs,
   },
-  bagActionTop: {
-    flex: 1.15,
-    minHeight: 44,
-    borderRadius: tokens.radius.full,
-    paddingHorizontal: tokens.spacing.md,
+  sheetDismissLayer: {
+    ...StyleSheet.absoluteFill,
   },
-  secondaryActions: {
+  bottomDock: {
+    position: 'absolute',
+    left: tokens.spacing.md,
+    right: tokens.spacing.md,
     flexDirection: 'row',
-    flex: 1,
+    // Pins the flanking clusters to the bottom edge while the sheet between
+    // them grows upward. Any other alignment makes the buttons ride the panel.
+    alignItems: 'flex-end',
     gap: tokens.spacing.sm,
   },
-  sideAction: {
-    flex: 1,
-    minHeight: 44,
+  dockFlank: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  dockGlyphAction: {
+    width: 44,
+    height: COLLAPSED_SHEET_HEIGHT,
     borderRadius: tokens.radius.full,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.sm,
+  },
+  dockBagAction: {
+    width: 52,
+    height: COLLAPSED_SHEET_HEIGHT,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   metadataSheet: {
-    position: 'absolute',
-    left: tokens.spacing.md,
-    right: tokens.spacing.md,
+    flex: 1,
+    minWidth: 0,
     borderTopLeftRadius: tokens.radius.xl,
     borderTopRightRadius: tokens.radius.xl,
     borderBottomLeftRadius: tokens.radius.lg,
@@ -1116,18 +1315,45 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sheetHandleWrap: {
-    minHeight: 48,
+    height: COLLAPSED_SHEET_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: tokens.spacing.xs,
-  },
-  sheetHandleWrapCollapsed: {
-    minHeight: 56,
+    gap: 3,
+    paddingHorizontal: tokens.spacing.sm,
   },
   sheetHandle: {
-    width: 54,
-    height: 5,
+    width: 36,
+    height: 4,
     borderRadius: tokens.radius.full,
+  },
+  sheetBody: {
+    flex: 1,
+    minHeight: 0,
+  },
+  sheetActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingBottom: tokens.spacing.sm,
+  },
+  sheetInlineAction: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.sm,
+  },
+  sheetBagAction: {
+    flex: 1.1,
+    minHeight: 40,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.sm,
   },
   sheetContent: {
     paddingHorizontal: tokens.spacing.lg,
@@ -1202,20 +1428,6 @@ const styles = StyleSheet.create({
   suggestionBlocks: {
     marginTop: tokens.spacing.lg,
     paddingBottom: tokens.spacing.lg,
-  },
-  collapsedSheetContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.md,
-    paddingHorizontal: tokens.spacing.lg,
-    paddingBottom: tokens.spacing.lg,
-  },
-  collapsedCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: tokens.spacing.xs,
   },
   stateOverlay: {
     ...StyleSheet.absoluteFill,

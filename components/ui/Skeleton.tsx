@@ -3,13 +3,30 @@ import { Animated, DimensionValue, Easing, StyleSheet, View, ViewStyle } from 'r
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { tokens } from '@/src/styles/tokens';
 
 interface SkeletonProps {
   width?: DimensionValue;
   height?: DimensionValue;
   borderRadius?: number;
   style?: ViewStyle;
+  /**
+   * Render for a surface that is dark in BOTH themes — the Runway stage.
+   *
+   * The light palette shimmers a 90%-white band across a near-transparent base.
+   * That is correct on a white screen and violent on the deep-black runway
+   * matte: it reads as a strobing black-and-white sheet rather than a resting
+   * placeholder. On the dark stage the sweep drops to a soft 4% → 14% white so
+   * the skeleton sits *in* the theme instead of fighting it.
+   */
+  onDarkStage?: boolean;
 }
+
+/** Deep-black-stage shimmer pair — subtle by design; do not brighten. */
+const DARK_STAGE_SKELETON = {
+  base: tokens.themes.dark.colors.skeletonBase,
+  highlight: tokens.themes.dark.colors.controlSurfaceActive,
+} as const;
 
 /**
  * Animated shimmer skeleton placeholder for loading states.
@@ -19,9 +36,10 @@ export function Skeleton({
   height = 16,
   borderRadius = 8,
   style,
+  onDarkStage = false,
 }: SkeletonProps) {
   const { theme } = useTheme();
-  
+
   const shimmerAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -42,9 +60,13 @@ export function Skeleton({
     outputRange: [-200, 200],
   });
 
-  const backgroundColor = theme.colors.skeletonBase;
+  const backgroundColor = onDarkStage ? DARK_STAGE_SKELETON.base : theme.colors.skeletonBase;
 
-  const shimmerColors = ['transparent', theme.colors.skeletonHighlight, 'transparent'];
+  const shimmerColors = [
+    'transparent',
+    onDarkStage ? DARK_STAGE_SKELETON.highlight : theme.colors.skeletonHighlight,
+    'transparent',
+  ];
 
   return (
     <View
@@ -85,6 +107,7 @@ interface SkeletonTextProps {
   lineHeight?: number;
   spacing?: number;
   lastLineWidth?: DimensionValue;
+  onDarkStage?: boolean;
 }
 
 /**
@@ -95,6 +118,7 @@ export function SkeletonText({
   lineHeight = 14,
   spacing = 10,
   lastLineWidth = '60%',
+  onDarkStage = false,
 }: SkeletonTextProps) {
   return (
     <View style={{ gap: spacing }}>
@@ -104,6 +128,7 @@ export function SkeletonText({
           width={i === lines - 1 ? lastLineWidth : '100%'}
           height={lineHeight}
           borderRadius={6}
+          onDarkStage={onDarkStage}
         />
       ))}
     </View>
@@ -113,8 +138,8 @@ export function SkeletonText({
 /**
  * Avatar/Profile picture skeleton
  */
-export function SkeletonAvatar({ size = 48 }: { size?: number }) {
-  return <Skeleton width={size} height={size} borderRadius={size / 2} />;
+export function SkeletonAvatar({ size = 48, onDarkStage = false }: { size?: number; onDarkStage?: boolean }) {
+  return <Skeleton width={size} height={size} borderRadius={size / 2} onDarkStage={onDarkStage} />;
 }
 
 /**

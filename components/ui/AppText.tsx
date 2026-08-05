@@ -72,6 +72,16 @@ type Props = Omit<TextProps, 'style'> & {
   variant?: Variant;
   tone?: Tone;
   muted?: boolean;
+  /**
+   * Resolve `tone` against the DARK palette regardless of the active theme.
+   *
+   * For chrome that sits on a scheme-independent dark surface — the Runway
+   * stage is deep black in both themes (see `RUNWAY_MATTE`) — so in light mode
+   * `tone="default"` resolves to near-black text and disappears against it.
+   * This is the sanctioned way to fix that: colour still comes from
+   * variant/tone, never from a `style` override (which `sanitizeStyle` strips).
+   */
+  onDarkStage?: boolean;
   style?: StyleProp<TextStyle>;
   children: React.ReactNode;
 };
@@ -86,6 +96,12 @@ const FORBIDDEN_STYLE_KEYS: Array<keyof TextStyle> = [
 
 const warnedOverrides = new Set<string>();
 const warnedMissingVariant = new Set<string>();
+
+/** Palette used by `onDarkStage` — the same tokens the Runway matte is built
+ *  from, so stage chrome stays legible in light mode. */
+const DARK_STAGE_THEME = { colors: tokens.themes.dark.colors } as ReturnType<
+  typeof useTheme
+>['theme'];
 
 const VARIANT_MAP: Record<Variant, TypographyTokenKey> = {
   display: 'display',
@@ -198,11 +214,13 @@ export function AppText({
   variant: providedVariant,
   tone = 'default',
   muted = false,
+  onDarkStage = false,
   style,
   children,
   ...rest
 }: Props) {
-  const { theme } = useTheme();
+  const { theme: activeTheme } = useTheme();
+  const theme = onDarkStage ? DARK_STAGE_THEME : activeTheme;
   const variant = providedVariant ?? 'body';
 
   if (__DEV__ && !providedVariant) {
