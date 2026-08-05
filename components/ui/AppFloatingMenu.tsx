@@ -203,6 +203,11 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
               disabled={isClosing || option.disabled}
               style={({ pressed }) => [
                 styles.option,
+                // Same row rhythm as the Studio profile menu: a hairline rule
+                // between entries so each link reads as its own target rather
+                // than one undivided block of text. The last row is left open so
+                // the rule never doubles up with the panel's own edge.
+                !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
                 isFirst && { borderTopLeftRadius: 11, borderTopRightRadius: 11 },
                 isLast && { borderBottomLeftRadius: 11, borderBottomRightRadius: 11 },
                 pressed && {
@@ -213,7 +218,7 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
               ]}
               onPress={() => handleOptionPress(option.onPress)}
             >
-              {option.icon ? <AppText variant="body" tone="muted">{option.icon}</AppText> : null}
+              {option.icon ? <AppText variant="body">{option.icon}</AppText> : null}
               <AppText variant="body" numberOfLines={2} style={styles.optionTitle}>{option.title}</AppText>
             </Pressable>
           );

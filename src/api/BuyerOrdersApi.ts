@@ -358,15 +358,43 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
   };
 }
 
-async function listCustomOrders(page = 1, limit = 50): Promise<BuyerOrderSummary[]> {
-  const response = await apiClient.get('/custom-orders', {
-    params: { page, limit },
-  });
-  const items = unwrapCollection<unknown>(response.data);
+/**
+ * `/custom-orders` is buyer-only — the API answers 400 "Endpoint requires user
+ * type REGULAR" for BRAND accounts. Two problems followed from calling it
+ * blindly: the `Promise.all` below rejected, so a brand viewing Orders lost the
+ * standard orders that HAD loaded; and the request was re-issued on every
+ * refresh, once per screen focus, purely to fail again. Remember the refusal
+ * and stop asking for the rest of the session.
+ */
+let customOrdersUnavailable = false;
 
-  return items
-    .map((entry) => normalizeCustomSummary(asRecord(entry)))
-    .filter((entry): entry is BuyerOrderSummary => Boolean(entry));
+async function listCustomOrders(page = 1, limit = 50): Promise<BuyerOrderSummary[]> {
+  if (customOrdersUnavailable) return [];
+
+  try {
+    const response = await apiClient.get('/custom-orders', {
+      params: { page, limit },
+    });
+    const items = unwrapCollection<unknown>(response.data);
+
+    return items
+      .map((entry) => normalizeCustomSummary(asRecord(entry)))
+      .filter((entry): entry is BuyerOrderSummary => Boolean(entry));
+  } catch (error) {
+    const status = (error as { response?: { status?: number } })?.response?.status;
+    // 400/403 here means "this account type has no custom orders", not a
+    // transient failure — anything else stays a real error worth surfacing.
+    if (status === 400 || status === 403) {
+      customOrdersUnavailable = true;
+      return [];
+    }
+    throw error;
+  }
+}
+
+/** Clear the cached "not a buyer" verdict — call on sign-out / account switch. */
+export function resetCustomOrdersAvailability() {
+  customOrdersUnavailable = false;
 }
 
 async function listStandardOrders(page = 1, limit = 50): Promise<BuyerOrderSummary[]> {

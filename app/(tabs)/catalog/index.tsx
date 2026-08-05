@@ -1052,6 +1052,11 @@ export default function CatalogScreen() {
               sourceType: 'DESIGN',
               sourceId: collection.id,
               title: collection.title ?? '',
+              // The card's cover is already decoded and cached on this screen —
+              // handing it over lets the viewer paint the image on the first
+              // frame instead of holding a spinner for the detail request.
+              coverImage: collection.coverImage ?? '',
+              coverFileId: collection.coverFileId ?? '',
             },
           } as any),
     );
@@ -1850,16 +1855,19 @@ export default function CatalogScreen() {
     () => [
       {
         key: 'camera',
+        icon: '📷',
         title: 'Camera',
         onPress: () => launchComposer({ source: 'camera', openPicker: true }),
       },
       {
         key: 'library',
+        icon: '🖼️',
         title: 'Photo library',
         onPress: () => launchComposer({ source: 'library', openPicker: true }),
       },
       {
         key: 'blank',
+        icon: '✏️',
         title: 'Start blank',
         onPress: () => launchComposer({ openPicker: false }),
       },
@@ -1876,28 +1884,33 @@ export default function CatalogScreen() {
   }, []);
   const profileMenuOptions = useMemo<FloatingMenuOption[]>(
     () => {
+      // Emoji + separators mirror the Studio profile menu so both menus read as
+      // the same control (see `StudioProfileMenu` in app/(tabs)/studio/webview.tsx).
       if (isOwner) {
         return [
-          { key: 'settings', title: 'Settings', onPress: () => router.push('/settings' as any) },
-          { key: 'store', title: 'Store', onPress: () => router.push('/studio' as any) },
+          { key: 'settings', icon: '⚙️', title: 'Settings', onPress: () => router.push('/settings' as any) },
+          { key: 'store', icon: '🛍️', title: 'Store', onPress: () => router.push('/studio' as any) },
         ];
       }
 
       const publicActions: FloatingMenuOption[] = [
         {
           key: 'share-profile',
+          icon: '↗️',
           title: 'Share profile',
           onPress: () => void handleNativeShareProfile(),
           disabled: !profileShareUrl,
         },
         {
           key: 'copy-profile-link',
+          icon: '🔗',
           title: 'Copy profile link',
           onPress: () => void handleCopyProfileLink(),
           disabled: !profileShareUrl,
         },
         {
           key: 'show-qr-code',
+          icon: '🔳',
           title: 'Show QR code',
           onPress: () => setBrandQrOpen(true),
           disabled: !profileQrTargetUrl,
@@ -1905,7 +1918,10 @@ export default function CatalogScreen() {
       ];
 
       return status === 'authenticated'
-        ? [{ key: 'settings', title: 'Settings', onPress: () => router.push('/settings' as any) }, ...publicActions]
+        ? [
+            { key: 'settings', icon: '⚙️', title: 'Settings', onPress: () => router.push('/settings' as any) },
+            ...publicActions,
+          ]
         : publicActions;
     },
     [handleCopyProfileLink, handleNativeShareProfile, isOwner, profileQrTargetUrl, profileShareUrl, status],

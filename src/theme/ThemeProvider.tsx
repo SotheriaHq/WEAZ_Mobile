@@ -122,6 +122,33 @@ export function ThemeProvider({
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
+/**
+ * Force everything rendered inside to resolve dark-theme tokens, regardless of
+ * the user's light/dark preference.
+ *
+ * Some surfaces are a deep-black *stage* in BOTH themes — the Runway, and any
+ * full-bleed media viewer that mattes letterboxed images against
+ * `tokens.themes.dark.colors.bg`. Chrome floating over such a stage must belong
+ * to the stage, not to the app's ambient scheme: in light mode a themed island,
+ * chip or skeleton lights up as a bright slab on black.
+ *
+ * This is the general form of the per-component `onDarkStage` props (see `Chip`,
+ * `Skeleton`, `AppText`) — the same intent expressed as scope instead of a prop
+ * threaded through every child. The stored preference and its setters pass
+ * through untouched, so a control rendered inside a scope still writes the real
+ * user preference.
+ */
+export function DarkStageThemeScope({ children }: { children: React.ReactNode }) {
+  const parent = useTheme();
+
+  const value = useMemo<ThemeContextValue>(
+    () => ({ ...parent, resolvedTheme: 'dark', scheme: 'dark', theme: tokens.themes.dark }),
+    [parent],
+  );
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
 export function useTheme() {
   const ctx = React.useContext(ThemeContext);
   if (!ctx) throw new Error('useTheme must be used within ThemeProvider');

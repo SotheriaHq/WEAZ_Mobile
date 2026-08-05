@@ -79,6 +79,14 @@ type MarketCommerceViewerProps = {
   initialBrandId?: string | null;
   initialBrandName?: string | null;
   initialPriceLabel?: string | null;
+  /**
+   * Cover the caller already has on screen (the tapped card's image). Painted as
+   * the first frame so opening an item is instant instead of a spinner held for
+   * the length of the detail request — the calling surface has already loaded
+   * and cached this exact bitmap.
+   */
+  initialMediaUrl?: string | null;
+  initialMediaFileId?: string | null;
   fallbackHref?: string;
 };
 
@@ -103,6 +111,16 @@ const SHEET_FLING_VELOCITY = 0.4;
 const MESSAGE_EMOJI = '💬';
 const WISHLIST_EMOJI_ON = '💖';
 const WISHLIST_EMOJI_OFF = '🤍';
+/** Rule: navigation affordances are emoji, never icon glyphs. Matches `AppBackButton`. */
+const BACK_EMOJI = '\u{1F448}';
+/**
+ * The stage behind the media is deep black in BOTH themes — the same matte the
+ * Runway and `FeedImage` use, so a letterboxed image sits in one continuous
+ * field instead of on the light-theme app background.
+ */
+const VIEWER_STAGE_MATTE = tokens.themes.dark.colors.bg;
+/** Shadow under the bare chrome glyphs — stage-scoped, so it does not follow the theme. */
+const VIEWER_GLYPH_SHADOW = tokens.themes.dark.colors.backdrop;
 const WHY_SIZE_EMOJI = 'ℹ️';
 /** Spring config shared by open and close so the sheet feels attached, not canned. */
 const SHEET_SPRING = {
@@ -361,6 +379,8 @@ export function MarketCommerceViewer({
   initialBrandId,
   initialBrandName,
   initialPriceLabel,
+  initialMediaUrl,
+  initialMediaFileId,
   fallbackHref = '/(tabs)/discover',
 }: MarketCommerceViewerProps) {
   const { theme } = useTheme();
@@ -410,7 +430,14 @@ export function MarketCommerceViewer({
   const sourceStatusKey = sourceType === 'PRODUCT' ? normalizedSourceId : `${sourceType}:${normalizedSourceId}`;
   const bagBusy = Boolean(loadingByProductId[sourceStatusKey] || busyAction === ACTION_KIND_BAG);
   const expandedSheetHeight = Math.min(440, Math.max(320, Math.round(height * 0.5)));
-  const mediaHeight = height;
+  // Under Android edge-to-edge `useWindowDimensions().height` EXCLUDES the
+  // system bars, so a page sized to it stops short of the gesture bar and the
+  // root's own background shows through as a band along the bottom — white in
+  // light theme, which read as "an extra padding the phone added". The Runway
+  // solves the same problem the same way (`windowHeight + insets.top +
+  // insets.bottom`); this screen was the one full-bleed surface still using the
+  // bare window height.
+  const mediaHeight = height + chrome.insets.top + chrome.insets.bottom;
   // Top-of-media chrome (pagination, in-bag confirmation) now that bag/wishlist/
   // message have moved down to the dock and freed this band.
   const topChromeBaseline = chrome.insets.top + tokens.spacing['3xl'] + tokens.spacing.md;
@@ -488,6 +515,25 @@ export function MarketCommerceViewer({
 
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
     height: interpolate(sheetProgress.value, [0, 1], [COLLAPSED_SHEET_HEIGHT, expandedSheetHeight]),
+  }));
+
+  // Collapsed, the sheet has NO surface at all — just the grab handle floating
+  // on the media, the way a short-form video player marks its pull-up. The old
+  // always-on panel painted a plate the full width of the dock, and because the
+  // emoji flanks sit above it the whole row read as one opaque island glued
+  // over the photograph. The surface now belongs to the *expanded* state only.
+  //
+  // It is a separate fading layer rather than an animated `backgroundColor`:
+  // `interpolateColor` treats `'transparent'` as fully-transparent BLACK, so
+  // tweening from it toward a light surface passes through a grey wash mid-drag.
+  const sheetSurfaceAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(sheetProgress.value, [0, 0.3, 1], [0, 0, 1]),
+  }));
+
+  // The collapsed state is the handle alone; the label belongs to the open
+  // panel. Fading (not unmounting) keeps the handle band's layout constant.
+  const sheetLabelAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(sheetProgress.value, [0, 0.6, 1], [0, 0, 1]),
   }));
 
   // Body fades in earlier (from ~20%) so expand does not feel like an empty
@@ -624,8 +670,20 @@ export function MarketCommerceViewer({
     const entries = product ? buildProductMedia(product) : design ? buildDesignMedia(design) : [];
     return entries.length > 0
       ? entries
-      : [{ id: EMPTY_MEDIA_ID, url: null, fileId: null, label: initialTitle ?? 'Market item' }];
-  }, [design, initialTitle, product]);
+      : [
+          {
+            id: EMPTY_MEDIA_ID,
+            // Handed down from the tapped card, so the first frame is the image
+            // the user just pressed rather than an empty state.
+            url: initialMediaUrl ?? null,
+            fileId: initialMediaFileId ?? null,
+            label: initialTitle ?? 'Market item',
+          },
+        ];
+  }, [design, initialMediaFileId, initialMediaUrl, initialTitle, product]);
+
+  /** A cover was handed in, so there is something real to look at while the detail loads. */
+  const hasPreviewFrame = Boolean(initialMediaUrl || initialMediaFileId);
 
   const title = product?.name ?? design?.title ?? initialTitle ?? 'Market item';
   const brandName =
@@ -877,6 +935,7 @@ export function MarketCommerceViewer({
           variant={variant === 'dock' ? 'title' : 'captionBold'}
           tone={variant === 'dock' ? 'inverse' : bagDisabled ? 'muted' : 'inverse'}
           numberOfLines={1}
+          style={variant === 'dock' ? styles.dockGlyphText : undefined}
         >
           {variant === 'dock' ? BAG_IT_EMOJI : bagLabel}
         </AppText>
@@ -902,7 +961,12 @@ export function MarketCommerceViewer({
           : saved ? 'Remove from Saved Looks' : 'Save look for inspiration'
       }
     >
-      <AppText variant={variant === 'dock' ? 'title' : 'bodyBold'} tone={variant === 'dock' ? 'inverse' : 'default'} numberOfLines={1}>
+      <AppText
+        variant={variant === 'dock' ? 'title' : 'bodyBold'}
+        tone={variant === 'dock' ? 'inverse' : 'default'}
+        numberOfLines={1}
+        style={variant === 'dock' ? styles.dockGlyphText : undefined}
+      >
         {variant === 'dock'
           ? saved ? WISHLIST_EMOJI_ON : WISHLIST_EMOJI_OFF
           : `${saved ? WISHLIST_EMOJI_ON : WISHLIST_EMOJI_OFF}  ${
@@ -930,7 +994,12 @@ export function MarketCommerceViewer({
       accessibilityRole="button"
       accessibilityLabel="Message brand"
     >
-      <AppText variant={variant === 'dock' ? 'title' : 'bodyBold'} tone={variant === 'dock' ? 'inverse' : 'default'} numberOfLines={1}>
+      <AppText
+        variant={variant === 'dock' ? 'title' : 'bodyBold'}
+        tone={variant === 'dock' ? 'inverse' : 'default'}
+        numberOfLines={1}
+        style={variant === 'dock' ? styles.dockGlyphText : undefined}
+      >
         {variant === 'dock' ? MESSAGE_EMOJI : `${MESSAGE_EMOJI}  Message`}
       </AppText>
     </Pressable>
@@ -949,35 +1018,49 @@ export function MarketCommerceViewer({
       style={[styles.bottomDock, { bottom: chrome.immersiveOverlayBottomClearance }]}
       pointerEvents="box-none"
     >
-      <Animated.View
-        style={[
-          styles.metadataSheet,
-          sheetAnimatedStyle,
-          {
-            // One surface for both states — swapping glass ↔ solid mid-animation
-            // was the hard "state click" the expand still had after the height tween.
-            backgroundColor: theme.colors.bottomSheetSurface,
-            borderColor: theme.colors.border,
-          },
-        ]}
-      >
+      <Animated.View style={[styles.metadataSheet, sheetAnimatedStyle]}>
+        {/* Surface layer — invisible while collapsed, so the handle reads as a
+            bare grabber on the media rather than a plate. */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.sheetSurface,
+            sheetSurfaceAnimatedStyle,
+            {
+              backgroundColor: theme.colors.bottomSheetSurface,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        />
+
         {/* The drag lives on the grab strip, NOT the whole panel. Claiming
             vertical gestures across the panel would steal every scroll from the
             details ScrollView once expanded. Collapsed, the strip *is* the whole
-            visible sheet, so a swipe anywhere on the pill still opens it. */}
+            visible sheet, so a swipe anywhere on it still opens it. */}
         <View {...sheetPan.panHandlers}>
           <Pressable
             onPress={toggleSheet}
-            hitSlop={8}
+            hitSlop={12}
             style={styles.sheetHandleWrap}
             accessibilityRole="button"
             accessibilityLabel={sheetExpanded ? 'Collapse details' : 'Expand details'}
             accessibilityHint="Swipe up or down to change the details panel"
           >
-            <View style={[styles.sheetHandle, { backgroundColor: theme.colors.bottomSheetHandle }]} />
-            <AppText variant="captionBold" tone="muted" numberOfLines={1}>
-              {sheetExpanded ? 'Details' : title}
-            </AppText>
+            <View
+              style={[
+                styles.sheetHandle,
+                {
+                  backgroundColor: sheetExpanded
+                    ? theme.colors.bottomSheetHandle
+                    : theme.colors.textInverse,
+                },
+              ]}
+            />
+            <Animated.View style={sheetLabelAnimatedStyle} pointerEvents="none">
+              <AppText variant="captionBold" tone="muted" numberOfLines={1}>
+                Details
+              </AppText>
+            </Animated.View>
           </Pressable>
         </View>
 
@@ -1165,7 +1248,7 @@ export function MarketCommerceViewer({
   );
 
   return (
-    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg }]}>
+    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: VIEWER_STAGE_MATTE }]}>
       <StatusBar style="light" />
 
       <FlatList
@@ -1188,6 +1271,19 @@ export function MarketCommerceViewer({
         style={[styles.topGradient, { height: Math.max(150, chrome.insets.top + 112) }]}
       />
 
+      {/* Bottom scrim. With the dock's plate gone the bare emojis and grabber
+          have to read over whatever photograph is behind them; a gradient is
+          the affordance that buys that contrast WITHOUT reintroducing a bounded
+          box. Mirrors `topGradient`. */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={['transparent', theme.colors.backdrop, theme.colors.backdropStrong]}
+        style={[
+          styles.bottomScrim,
+          { height: chrome.immersiveOverlayBottomClearance + COLLAPSED_SHEET_HEIGHT + tokens.spacing.xl },
+        ]}
+      />
+
       <View style={[styles.topControls, { top: chrome.insets.top + tokens.spacing.md }]}>
         <Pressable
           onPress={handleBack}
@@ -1196,7 +1292,9 @@ export function MarketCommerceViewer({
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <AppText variant="title" tone="inverse">{String.fromCodePoint(0x2039)}</AppText>
+          <AppText variant="title" tone="inverse" style={styles.dockGlyphText}>
+            {BACK_EMOJI}
+          </AppText>
         </Pressable>
 
         <Pressable
@@ -1207,7 +1305,9 @@ export function MarketCommerceViewer({
           accessibilityRole="button"
           accessibilityLabel="Share"
         >
-          <AppText variant="title" tone="inverse">↗️</AppText>
+          <AppText variant="title" tone="inverse" style={styles.dockGlyphText}>
+            ↗️
+          </AppText>
         </Pressable>
       </View>
 
@@ -1258,7 +1358,11 @@ export function MarketCommerceViewer({
 
       {renderMetadataDock()}
 
-      {loading ? (
+      {/* The blocking loader is only for a cold open with nothing to show. When
+          the caller handed down the tapped card's cover, that image IS the
+          screen while the detail request finishes — covering it with a spinner
+          is what made opening content feel like a second of dead time. */}
+      {loading && !hasPreviewFrame ? (
         <View style={[styles.stateOverlay, { backgroundColor: theme.colors.backdrop }]}>
           <ActivityIndicator color={theme.colors.textInverse} />
           <AppText variant="bodyBold" tone="inverse">Loading market item</AppText>
@@ -1303,6 +1407,12 @@ const styles = StyleSheet.create({
   topGradient: {
     position: 'absolute',
     top: 0,
+    left: 0,
+    right: 0,
+  },
+  bottomScrim: {
+    position: 'absolute',
+    bottom: 0,
     left: 0,
     right: 0,
   },
@@ -1377,6 +1487,16 @@ const styles = StyleSheet.create({
   },
   // Emoji-only dock glyphs: no glass plate, no border. A frosted chip behind
   // the emoji made the actions read as broken links over the photograph.
+  //
+  // With no plate the glyphs have to earn their own contrast, so they carry a
+  // soft drop shadow (the standard trick for bare controls over unpredictable
+  // photography). `textShadow*` is not in AppText's forbidden-style list —
+  // only typography and colour must come from variant/tone.
+  dockGlyphText: {
+    textShadowColor: VIEWER_GLYPH_SHADOW,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
   dockGlyphAction: {
     width: 44,
     height: COLLAPSED_SHEET_HEIGHT,
@@ -1395,20 +1515,32 @@ const styles = StyleSheet.create({
   },
   metadataSheet: {
     width: '100%',
+    // Radii stay on the clipping container so the expanded body is cut to the
+    // same rounded shape the surface layer paints. Harmless while collapsed —
+    // the container itself is transparent.
+    borderTopLeftRadius: tokens.radius.xl,
+    borderTopRightRadius: tokens.radius.xl,
+    borderBottomLeftRadius: tokens.radius.lg,
+    borderBottomRightRadius: tokens.radius.lg,
+    overflow: 'hidden',
+  },
+  // Painted separately from `metadataSheet` so it can fade independently of the
+  // handle and body (see `sheetSurfaceAnimatedStyle`).
+  sheetSurface: {
+    ...StyleSheet.absoluteFill,
     borderTopLeftRadius: tokens.radius.xl,
     borderTopRightRadius: tokens.radius.xl,
     borderBottomLeftRadius: tokens.radius.lg,
     borderBottomRightRadius: tokens.radius.lg,
     borderWidth: 1,
-    overflow: 'hidden',
   },
   sheetHandleWrap: {
     height: COLLAPSED_SHEET_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-    // Clear the absolute-positioned emoji flanks so the collapsed title stays
-    // centered in the free middle band of the full-width sheet.
+    // Clears the absolute-positioned emoji flanks so the grabber stays centered
+    // in the free middle band of the full-width sheet.
     paddingHorizontal: 96,
   },
   sheetHandle: {

@@ -40,8 +40,25 @@ let lockTimeoutId: ReturnType<typeof setTimeout> | null = null;
 // a deliberate second navigation after the first lands is not blocked.
 const LOCK_TIMEOUT_MS = 1100;
 
+/**
+ * Collapse an href into the string used for lock / same-target comparisons.
+ *
+ * The query string is part of the identity, NOT decoration. Dropping it for
+ * string hrefs (while the object branch below carefully sorts and keeps its
+ * params) made the two forms disagree: `'/studio?routeKey=store'` normalized to
+ * `/studio`, matched the pathname the user was already on, and every Studio dock
+ * chip was discarded as "same target" — the dock looked dead. Both branches now
+ * produce the same key for the same destination.
+ */
 function normalizeTarget(href: Href): string {
-  if (typeof href === 'string') return href.split('?')[0];
+  if (typeof href === 'string') {
+    const [path, query] = href.split('?');
+    const base = path || '/';
+    if (!query) return base;
+    // Sorted so a string href and its object equivalent hash identically.
+    const sorted = query.split('&').filter(Boolean).sort().join('&');
+    return sorted ? `${base}?${sorted}` : base;
+  }
   const p = href as any;
   let base = (p.pathname || '').split('?')[0];
   if (p.params && Object.keys(p.params).length) {

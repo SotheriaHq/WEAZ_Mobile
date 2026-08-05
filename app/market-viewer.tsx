@@ -6,6 +6,12 @@ import MarketCommerceViewer from '@/src/features/market/components/MarketCommerc
 const firstParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 
+/** Router params cannot carry null, so callers send '' for "no cover". */
+const optionalParam = (value: string | string[] | undefined) => {
+  const first = firstParam(value);
+  return first && first.length > 0 ? first : null;
+};
+
 export default function MarketViewerRoute() {
   const params = useLocalSearchParams<{
     sourceType?: string | string[];
@@ -14,6 +20,8 @@ export default function MarketViewerRoute() {
     title?: string | string[];
     brandName?: string | string[];
     priceLabel?: string | string[];
+    coverImage?: string | string[];
+    coverFileId?: string | string[];
   }>();
   const sourceType = firstParam(params.sourceType) === 'PRODUCT' ? 'PRODUCT' : 'DESIGN';
 
@@ -25,6 +33,8 @@ export default function MarketViewerRoute() {
       initialTitle={firstParam(params.title) ?? null}
       initialBrandName={firstParam(params.brandName) ?? null}
       initialPriceLabel={firstParam(params.priceLabel) ?? null}
+      initialMediaUrl={optionalParam(params.coverImage)}
+      initialMediaFileId={optionalParam(params.coverFileId)}
       fallbackHref="/(tabs)/discover"
     />
   );

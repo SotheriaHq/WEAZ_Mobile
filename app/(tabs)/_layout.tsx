@@ -8,7 +8,7 @@ import {
 } from '@/components/navigation/NativeIslandBottomNav';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
-import { useTheme } from '@/src/theme/ThemeProvider';
+import { DarkStageThemeScope, useTheme } from '@/src/theme/ThemeProvider';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -38,6 +38,7 @@ import {
   buildNativeIslandItems,
   buildStudioIslandItems,
   getNativeIslandRoute,
+  isDarkStageIslandPath,
   isStudioIslandKey,
   isStudioIslandPath,
   mapPathnameToIslandKey,
@@ -164,6 +165,7 @@ export default function TabLayout() {
     ? NATIVE_ISLAND_KEYS.bag
     : optimisticActiveKey ?? activeIslandKey;
   const hideIslandForFocusedFlow = FOCUSED_CATALOG_FLOW.test(pathname);
+  const onDarkStageRoute = isDarkStageIslandPath(pathname);
 
   const refreshUnreadNotificationCount = useCallback(async () => {
     lastNotificationRefreshAttemptAtRef.current = Date.now();
@@ -452,11 +454,24 @@ export default function TabLayout() {
   useEffect(() => {
     navPerf.setContext(null, null, pathname);
     navPerf.pathChanged(pathname);
-    // Sync for central guard same-target check
-    (global as any).__navCurrentPathname = pathname;
-    // Release lock if matches pending target
+    // Sync for central guard same-target check.
+    //
+    // Inside Studio the destination identity is (pathname + routeKey), not the
+    // pathname alone — every section lives at `/studio`. Publishing the bare
+    // pathname made the guard compare `/studio?routeKey=store` against
+    // `/studio` for section chips (always different, so they worked) but
+    // `/studio` against `/studio` for the Dashboard chip (always equal, so it
+    // never fired). Carry the routeKey so both sides describe the same thing.
+    (global as any).__navCurrentPathname =
+      inStudioIsland && studioRouteKeyParam ? `${pathname}?routeKey=${studioRouteKeyParam}` : pathname;
+    // Release lock if matches pending target.
+    //
+    // `studioRouteKeyParam` is in the deps on purpose: a Studio section switch
+    // keeps `pathname` at `/studio` and only swaps `?routeKey=`, so a
+    // pathname-only effect never fired and the lock sat until its 1100ms
+    // timeout — making consecutive dock taps feel dead.
     releaseNavigationLock('path_match');
-  }, [pathname]);
+  }, [inStudioIsland, pathname, studioRouteKeyParam]);
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
@@ -741,7 +756,19 @@ export default function TabLayout() {
         />
       </Tabs>
 
-      {hideIslandForFocusedFlow ? null : (
+      {hideIslandForFocusedFlow ? null : onDarkStageRoute ? (
+        // The Runway stage is deep black in BOTH themes, so in light mode the
+        // themed island used to float over it as a bright white slab. Resolve
+        // the island against dark tokens for the duration of that route — it
+        // belongs to the stage, not to the ambient scheme.
+        <DarkStageThemeScope>
+          <NativeIslandBottomNav
+            items={islandItems}
+            onSelect={handleSelect}
+            onPressIn={markOptimisticActive}
+          />
+        </DarkStageThemeScope>
+      ) : (
         <NativeIslandBottomNav
           items={islandItems}
           onSelect={handleSelect}

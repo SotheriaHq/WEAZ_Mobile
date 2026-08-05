@@ -23,6 +23,7 @@ import {
 import { queryKeys, PRIVATE_QUERY_ROOTS } from '@/src/query/queryKeys';
 import { clearMessagingRealtimeSession } from '@/src/realtime/messaging';
 import { clearNotificationRealtimeSession } from '@/src/realtime/notifications';
+import { resetCustomOrdersAvailability } from '@/src/api/BuyerOrdersApi';
 import { clearMobileMarketSignalQueue } from '@/src/services/marketSignals';
 import { clearWarmScreenStateCache } from '@/src/state/screenWarmState';
 import { removeAccessToken, removeCachedAuthUser, removeRefreshToken } from '@/src/storage/secureStorage';
@@ -84,6 +85,9 @@ export async function clearMobilePrivateSessionState({
   clearWarmScreenStateCache();
   clearResolvedImageUriCache();
   clearDesignEditorBackgroundTasks();
+  // "This account type has no custom orders" is a per-account verdict, so it
+  // must not survive into the next sign-in (brand → buyer would stay suppressed).
+  resetCustomOrdersAvailability();
 
   await Promise.allSettled([
     clearAppBadge(),
