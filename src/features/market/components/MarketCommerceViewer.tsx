@@ -13,12 +13,11 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import Animated, {
-  Easing as ReEasing,
   interpolate,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
+  withSpring,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -104,6 +103,14 @@ const SHEET_FLING_VELOCITY = 0.4;
 const MESSAGE_EMOJI = '💬';
 const WISHLIST_EMOJI_ON = '💖';
 const WISHLIST_EMOJI_OFF = '🤍';
+const WHY_SIZE_EMOJI = 'ℹ️';
+/** Spring config shared by open and close so the sheet feels attached, not canned. */
+const SHEET_SPRING = {
+  damping: 22,
+  stiffness: 220,
+  mass: 0.85,
+  overshootClamping: true,
+} as const;
 
 const shouldLogViewerTiming = () =>
   isWiezDebugEnabled('network') ||
@@ -175,20 +182,23 @@ const getCollectionMediaFileId = (media: CollectionDetailMediaDto) =>
   asString(media.id);
 
 const buildProductMedia = (product: StoreProduct): ViewerMediaEntry[] => {
-  const entries: ViewerMediaEntry[] = [
-    {
-      id: `${product.id}:cover`,
-      url: product.coverImage ?? null,
-      fileId: product.coverImageId ?? null,
-      label: product.name,
-    },
-    ...product.images.map((image, index) => ({
-      id: `${product.id}:image:${image.fileId ?? image.url ?? index}`,
-      url: image.url ?? null,
-      fileId: image.fileId ?? null,
-      label: `${product.name} ${index + 1}`,
-    })),
-  ];
+  const fromImages = product.images.map((image, index) => ({
+    id: `${product.id}:image:${image.fileId ?? image.url ?? index}`,
+    url: image.url ?? null,
+    fileId: image.fileId ?? null,
+    label: `${product.name} ${index + 1}`,
+  }));
+  const entries: ViewerMediaEntry[] =
+    fromImages.length > 0
+      ? fromImages
+      : [
+          {
+            id: `${product.id}:cover`,
+            url: product.coverImage ?? null,
+            fileId: product.coverImageId ?? null,
+            label: product.name,
+          },
+        ];
 
   const seen = new Set<string>();
   return entries.filter((entry) => {
@@ -199,24 +209,67 @@ const buildProductMedia = (product: StoreProduct): ViewerMediaEntry[] => {
   });
 };
 
+const readPositiveNumber = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
+  return value;
+};
+
+const getMediaGeometry = (media: CollectionDetailMediaDto) => {
+  // Detail DTO is loosely typed at the edges; width/height ride optional file
+  // metadata when the backend has preprocessed the asset. Prefer them so the
+  // viewer commits cover/contain on first paint instead of after onLoad.
+  const file = media.file as (CollectionDetailMediaDto['file'] & {
+    width?: number | null;
+    height?: number | null;
+    aspectRatio?: number | null;
+    blurhash?: string | null;
+    dominantColor?: string | null;
+  }) | null | undefined;
+  const raw = media as CollectionDetailMediaDto & {
+    width?: number | null;
+    height?: number | null;
+    aspectRatio?: number | null;
+    blurhash?: string | null;
+    dominantColor?: string | null;
+  };
+  const imageWidth = readPositiveNumber(raw.width) ?? readPositiveNumber(file?.width);
+  const imageHeight = readPositiveNumber(raw.height) ?? readPositiveNumber(file?.height);
+  const imageAspectRatio =
+    readPositiveNumber(raw.aspectRatio) ??
+    readPositiveNumber(file?.aspectRatio) ??
+    (imageWidth && imageHeight ? imageWidth / imageHeight : undefined);
+  return {
+    imageWidth,
+    imageHeight,
+    imageAspectRatio,
+    blurhash: asString(raw.blurhash) ?? asString(file?.blurhash),
+    dominantColor: asString(raw.dominantColor) ?? asString(file?.dominantColor),
+  };
+};
+
 const buildDesignMedia = (detail: CollectionDetailDto): ViewerMediaEntry[] => {
-  const entries: ViewerMediaEntry[] = [
-    {
-      id: `${detail.id}:cover`,
-      url: detail.coverImageUrl ?? null,
-      fileId: detail.coverMediaId ?? null,
-      label: detail.title,
-    },
-    ...(detail.medias ?? []).map((media, index) => ({
-      id: `${detail.id}:media:${media.id ?? index}`,
-      url: getCollectionMediaDirectUrl(media),
-      fileId: getCollectionMediaFileId(media),
-      label: media.caption ?? `${detail.title} ${index + 1}`,
-      // Properties like imageWidth, imageHeight, blurhash etc. are omitted
-      // because they are not currently exposed in CollectionDetailMediaDto.
-      // AspectAwareMedia will fall back to determining dimensions post-load safely.
-    })),
-  ];
+  // Prefer the medias array. Cover is only a fallback when medias is empty —
+  // prepending cover *and* medias doubled the pager (dots/count) whenever the
+  // cover file was the same shot under a different id.
+  const fromMedias = (detail.medias ?? []).map((media, index) => ({
+    id: `${detail.id}:media:${media.id ?? index}`,
+    url: getCollectionMediaDirectUrl(media),
+    fileId: getCollectionMediaFileId(media),
+    label: media.caption ?? `${detail.title} ${index + 1}`,
+    ...getMediaGeometry(media),
+  }));
+
+  const entries: ViewerMediaEntry[] =
+    fromMedias.length > 0
+      ? fromMedias
+      : [
+          {
+            id: `${detail.id}:cover`,
+            url: detail.coverImageUrl ?? null,
+            fileId: detail.coverMediaId ?? null,
+            label: detail.title,
+          },
+        ];
 
   const seen = new Set<string>();
   return entries.filter((entry) => {
@@ -288,6 +341,9 @@ function MediaSlide({
           imageStyle={styles.mediaImage}
           blurhash={item.blurhash}
           dominantColor={item.dominantColor}
+          // Viewer pages are full-bleed and stable; a 160ms cross-fade on every
+          // strategy settle was reading as a shake on open.
+          transition={item.imageAspectRatio || item.imageWidth ? 0 : 120}
           diagnosticsLabel={`MarketCommerceViewer:${sourceType}`}
           onError={() => setFailed(true)}
         />
@@ -380,11 +436,11 @@ export function MarketCommerceViewer({
     (expand: boolean) => {
       setSheetExpanded(expand);
       if (expand) setSheetBodyMounted(true);
-      sheetProgress.value = withTiming(
+      // Spring tracks the finger better than a fixed 280ms curve — withTiming
+      // felt like a second, delayed motion after the swipe released.
+      sheetProgress.value = withSpring(
         expand ? 1 : 0,
-        // Decelerating quint: fast commit, long soft landing. Matches the
-        // paging settle on the runway so the app has one motion accent.
-        { duration: expand ? 280 : 240, easing: ReEasing.bezier(0.22, 1, 0.36, 1) },
+        SHEET_SPRING,
         (finished) => {
           // Keep the body mounted for the whole collapse so the closing frames
           // animate real content instead of an empty box.
@@ -434,16 +490,16 @@ export function MarketCommerceViewer({
     height: interpolate(sheetProgress.value, [0, 1], [COLLAPSED_SHEET_HEIGHT, expandedSheetHeight]),
   }));
 
-  // Body arrives in the back half of the open so it never cross-fades against a
-  // box that is still visibly growing under it.
+  // Body fades in earlier (from ~20%) so expand does not feel like an empty
+  // growing slab that only populates at the end.
   const sheetBodyAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(sheetProgress.value, [0, 0.45, 1], [0, 0, 1]),
+    opacity: interpolate(sheetProgress.value, [0, 0.2, 0.55, 1], [0, 0, 1, 1]),
   }));
 
-  // Flanking actions are the inverse: present while docked, gone once the sheet
-  // owns them.
+  // Flanking actions stay mounted for the whole expand so they fade under the
+  // sheet instead of popping out (the old `{!sheetExpanded ? … : null}` cut).
   const dockFlankAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(sheetProgress.value, [0, 0.4], [1, 0]),
+    opacity: interpolate(sheetProgress.value, [0, 0.35, 0.55], [1, 0.35, 0]),
   }));
 
   const load = useCallback(async () => {
@@ -803,19 +859,25 @@ export function MarketCommerceViewer({
       disabled={bagDisabled}
       style={({ pressed }) => [
         variant === 'dock' ? styles.dockBagAction : styles.sheetBagAction,
-        {
-          backgroundColor: bagDisabled ? theme.colors.surfaceAlt : theme.colors.primary,
-          borderColor: bagDisabled ? theme.colors.border : theme.colors.primary,
-        },
+        variant === 'dock'
+          ? null
+          : {
+              backgroundColor: bagDisabled ? theme.colors.surfaceAlt : theme.colors.primary,
+              borderColor: bagDisabled ? theme.colors.border : theme.colors.primary,
+            },
         pressed && styles.pressed,
       ]}
       accessibilityRole="button"
       accessibilityLabel={bagLabel}
     >
       {bagBusy ? (
-        <ActivityIndicator color={bagDisabled ? theme.colors.primary : theme.colors.onPrimary} />
+        <ActivityIndicator color={variant === 'dock' ? theme.colors.textInverse : bagDisabled ? theme.colors.primary : theme.colors.onPrimary} />
       ) : (
-        <AppText variant="captionBold" tone={bagDisabled ? 'muted' : 'inverse'} numberOfLines={1}>
+        <AppText
+          variant={variant === 'dock' ? 'title' : 'captionBold'}
+          tone={variant === 'dock' ? 'inverse' : bagDisabled ? 'muted' : 'inverse'}
+          numberOfLines={1}
+        >
           {variant === 'dock' ? BAG_IT_EMOJI : bagLabel}
         </AppText>
       )}
@@ -828,7 +890,9 @@ export function MarketCommerceViewer({
       disabled={busyAction === ACTION_KIND_SAVE}
       style={({ pressed }) => [
         variant === 'dock' ? styles.dockGlyphAction : styles.sheetInlineAction,
-        { backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder },
+        variant === 'dock'
+          ? null
+          : { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
         pressed && styles.pressed,
       ]}
       accessibilityRole="button"
@@ -838,7 +902,7 @@ export function MarketCommerceViewer({
           : saved ? 'Remove from Saved Looks' : 'Save look for inspiration'
       }
     >
-      <AppText variant="bodyBold" tone="default" numberOfLines={1}>
+      <AppText variant={variant === 'dock' ? 'title' : 'bodyBold'} tone={variant === 'dock' ? 'inverse' : 'default'} numberOfLines={1}>
         {variant === 'dock'
           ? saved ? WISHLIST_EMOJI_ON : WISHLIST_EMOJI_OFF
           : `${saved ? WISHLIST_EMOJI_ON : WISHLIST_EMOJI_OFF}  ${
@@ -854,17 +918,19 @@ export function MarketCommerceViewer({
       disabled={!canMessageBrand || busyAction === ACTION_KIND_MESSAGE}
       style={({ pressed }) => [
         variant === 'dock' ? styles.dockGlyphAction : styles.sheetInlineAction,
-        {
-          backgroundColor: theme.colors.glassSurfaceStrong,
-          borderColor: theme.colors.glassBorder,
-          opacity: canMessageBrand ? 1 : 0.62,
-        },
+        variant === 'dock'
+          ? { opacity: canMessageBrand ? 1 : 0.5 }
+          : {
+              backgroundColor: theme.colors.surfaceAlt,
+              borderColor: theme.colors.border,
+              opacity: canMessageBrand ? 1 : 0.62,
+            },
         pressed && styles.pressed,
       ]}
       accessibilityRole="button"
       accessibilityLabel="Message brand"
     >
-      <AppText variant="bodyBold" tone="default" numberOfLines={1}>
+      <AppText variant={variant === 'dock' ? 'title' : 'bodyBold'} tone={variant === 'dock' ? 'inverse' : 'default'} numberOfLines={1}>
         {variant === 'dock' ? MESSAGE_EMOJI : `${MESSAGE_EMOJI}  Message`}
       </AppText>
     </Pressable>
@@ -873,33 +939,25 @@ export function MarketCommerceViewer({
   /**
    * Bottom dock.
    *
-   * Collapsed:  [💬][🤍]  ——— metadata ———  [👜]
-   * Expanded:   [——————— metadata, actions inside ———————]
-   *
-   * The row is `alignItems: 'flex-end'`, so the sheet grows upward out of the
-   * dock while the flanking clusters stay pinned to the bottom edge. That is
-   * what lets wishlist / message / bag stay individually tappable at every point
-   * of the animation instead of being swallowed by the panel.
+   * Collapsed: absolute flanks over a full-width sheet
+   *   [💬][🤍]  ——— metadata ———  [👜]
+   * Expanded: sheet alone, edge-to-edge of the dock padding (same width as
+   * before the flank row was introduced — flanks must NOT steal flex width).
    */
   const renderMetadataDock = () => (
     <View
       style={[styles.bottomDock, { bottom: chrome.immersiveOverlayBottomClearance }]}
       pointerEvents="box-none"
     >
-      {!sheetExpanded ? (
-        <Animated.View style={[styles.dockFlank, dockFlankAnimatedStyle]}>
-          {renderMessageAction('dock')}
-          {renderWishlistAction('dock')}
-        </Animated.View>
-      ) : null}
-
       <Animated.View
         style={[
           styles.metadataSheet,
           sheetAnimatedStyle,
           {
-            backgroundColor: sheetExpanded ? theme.colors.bottomSheetSurface : theme.colors.glassSurfaceStrong,
-            borderColor: sheetExpanded ? theme.colors.border : theme.colors.glassBorder,
+            // One surface for both states — swapping glass ↔ solid mid-animation
+            // was the hard "state click" the expand still had after the height tween.
+            backgroundColor: theme.colors.bottomSheetSurface,
+            borderColor: theme.colors.border,
           },
         ]}
       >
@@ -935,11 +993,20 @@ export function MarketCommerceViewer({
         ) : null}
       </Animated.View>
 
-      {!sheetExpanded ? (
-        <Animated.View style={[styles.dockFlank, dockFlankAnimatedStyle]}>
-          {renderBagAction('dock')}
-        </Animated.View>
-      ) : null}
+      {/* Flanks are absolute so they never shrink the sheet's width. */}
+      <Animated.View
+        style={[styles.dockFlankLeft, dockFlankAnimatedStyle]}
+        pointerEvents={sheetExpanded ? 'none' : 'box-none'}
+      >
+        {renderMessageAction('dock')}
+        {renderWishlistAction('dock')}
+      </Animated.View>
+      <Animated.View
+        style={[styles.dockFlankRight, dockFlankAnimatedStyle]}
+        pointerEvents={sheetExpanded ? 'none' : 'box-none'}
+      >
+        {renderBagAction('dock')}
+      </Animated.View>
     </View>
   );
 
@@ -1004,13 +1071,11 @@ export function MarketCommerceViewer({
                   <Pressable
                     onPress={() => setWhySizeOpen((current) => !current)}
                     accessibilityRole="button"
-                    style={({ pressed }) => [
-                      styles.inlineLinkButton,
-                      { borderColor: theme.colors.border },
-                      pressed && styles.pressed,
-                    ]}
+                    style={({ pressed }) => [styles.inlineLinkButton, pressed && styles.pressed]}
                   >
-                    <AppText variant="captionBold" tone="primary">Why this size?</AppText>
+                    <AppText variant="captionBold" tone="primary">
+                      {WHY_SIZE_EMOJI} Why this size?
+                    </AppText>
                   </Pressable>
                   {whySizeOpen ? (
                     <View style={styles.whySizeBlock}>
@@ -1064,9 +1129,12 @@ export function MarketCommerceViewer({
             ) : null}
           </View>
 
-          {sourceType === 'PRODUCT' ? (
+          {sourceType === 'PRODUCT' && sheetExpanded ? (
             <View style={styles.reviewSummaryWrap}>
-              <ReviewsTab productId={normalizedSourceId} compact />
+              {/* Only fetch reviews while the sheet is open — remounting the
+                  compact tab on every parent re-render was hammering
+                  /reviews/product (7× in one open session in the logs). */}
+              <ReviewsTab productId={normalizedSourceId} compact enabled={sheetExpanded} />
             </View>
           ) : null}
 
@@ -1123,37 +1191,41 @@ export function MarketCommerceViewer({
       <View style={[styles.topControls, { top: chrome.insets.top + tokens.spacing.md }]}>
         <Pressable
           onPress={handleBack}
-          style={({ pressed }) => [
-            styles.iconButton,
-            { backgroundColor: theme.colors.glassSurfaceStrong },
-            pressed && styles.pressed,
-          ]}
+          hitSlop={12}
+          style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <AppText variant="subtitle" tone="default">{String.fromCodePoint(0x2039)}</AppText>
+          <AppText variant="title" tone="inverse">{String.fromCodePoint(0x2039)}</AppText>
         </Pressable>
 
         <Pressable
           onPress={handleSharePress}
           disabled={busyAction === ACTION_KIND_SHARE}
-          style={({ pressed }) => [
-            styles.iconButton,
-            { backgroundColor: theme.colors.glassSurfaceStrong },
-            pressed && styles.pressed,
-          ]}
+          hitSlop={12}
+          style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Share"
         >
-          <AppText variant="subtitle" tone="default">{String.fromCodePoint(0x2197)}</AppText>
+          <AppText variant="title" tone="inverse">↗️</AppText>
         </Pressable>
       </View>
 
       {media.length > 1 ? (
-        <View style={[styles.paginationPill, { top: topChromeBaseline, backgroundColor: theme.colors.glassSurfaceStrong, borderColor: theme.colors.glassBorder }]}>
-          <AppText variant="captionBold" tone="default">
-            {activeIndex + 1} / {media.length}
-          </AppText>
+        <View style={[styles.paginationDots, { top: topChromeBaseline }]} pointerEvents="none">
+          {media.map((entry, index) => (
+            <View
+              key={entry.id}
+              style={[
+                styles.paginationDot,
+                {
+                  opacity: index === activeIndex ? 1 : 0.38,
+                  width: index === activeIndex ? 16 : 6,
+                  backgroundColor: theme.colors.textInverse,
+                },
+              ]}
+            />
+          ))}
         </View>
       ) : null}
 
@@ -1249,16 +1321,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  paginationPill: {
-    position: 'absolute',
-    top: 96,
-    alignSelf: 'center',
-    minHeight: 30,
-    borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.md,
+  iconButtonBare: {
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  paginationDots: {
+    position: 'absolute',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 20,
+  },
+  paginationDot: {
+    height: 6,
+    borderRadius: tokens.radius.full,
   },
   inBagPill: {
     position: 'absolute',
@@ -1277,36 +1357,44 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: tokens.spacing.md,
     right: tokens.spacing.md,
-    flexDirection: 'row',
-    // Pins the flanking clusters to the bottom edge while the sheet between
-    // them grows upward. Any other alignment makes the buttons ride the panel.
-    alignItems: 'flex-end',
-    gap: tokens.spacing.sm,
+    // Sheet is full dock width; flanks float over it via absolute position so
+    // expand never narrows the panel.
   },
-  dockFlank: {
+  dockFlankLeft: {
+    position: 'absolute',
+    left: 0,
+    bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
   },
+  dockFlankRight: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  // Emoji-only dock glyphs: no glass plate, no border. A frosted chip behind
+  // the emoji made the actions read as broken links over the photograph.
   dockGlyphAction: {
     width: 44,
     height: COLLAPSED_SHEET_HEIGHT,
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   dockBagAction: {
     width: 52,
     height: COLLAPSED_SHEET_HEIGHT,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   metadataSheet: {
-    flex: 1,
-    minWidth: 0,
+    width: '100%',
     borderTopLeftRadius: tokens.radius.xl,
     borderTopRightRadius: tokens.radius.xl,
     borderBottomLeftRadius: tokens.radius.lg,
@@ -1319,7 +1407,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-    paddingHorizontal: tokens.spacing.sm,
+    // Clear the absolute-positioned emoji flanks so the collapsed title stays
+    // centered in the free middle band of the full-width sheet.
+    paddingHorizontal: 96,
   },
   sheetHandle: {
     width: 36,
@@ -1405,9 +1495,6 @@ const styles = StyleSheet.create({
   },
   inlineLinkButton: {
     alignSelf: 'flex-start',
-    borderRadius: tokens.radius.full,
-    borderWidth: 1,
-    paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.xs,
   },
   whySizeBlock: {

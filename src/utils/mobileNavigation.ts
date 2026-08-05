@@ -35,9 +35,10 @@ import { navPerf } from '@/src/utils/navPerf';
 /** Switch to a persistent top-level destination, reusing any existing instance. */
 let inFlightTarget: string | null = null;
 let lockTimeoutId: ReturnType<typeof setTimeout> | null = null;
-// Short lock: only dedupes double-taps. A 2s lock previously made rapid
-// sequential navigations feel "stuck" on the current screen.
-const LOCK_TIMEOUT_MS = 450;
+// Long enough to cover a slow route mount (notifications/search) so rapid
+// re-taps cannot stack N instances of the same screen. Still short enough that
+// a deliberate second navigation after the first lands is not blocked.
+const LOCK_TIMEOUT_MS = 1100;
 
 function normalizeTarget(href: Href): string {
   if (typeof href === 'string') return href.split('?')[0];

@@ -569,17 +569,21 @@ export default function CatalogScreen() {
         visibilityFilter !== 'In Review',
     },
   );
+  // Only fetch the active visibility bucket. Preloading drafts / needs-attention
+  // / in-review on every catalog open doubled designs+store-collections fan-out
+  // (scope=all is already two HTTP calls per query) and lit up the network while
+  // the owner was still on Public content.
   const draftsQuery = useBrandDraftsQuery({
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId) && (visibilityFilter === 'Drafts' || deferredWorkReady),
+    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'Drafts',
   });
   const needsAttentionQuery = useBrandNeedsAttentionQuery({ isFocused,
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId) && (visibilityFilter === 'Needs Attention' || deferredWorkReady),
+    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'Needs Attention',
   });
   const inReviewQuery = useBrandInReviewQuery({ isFocused,
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId) && (visibilityFilter === 'In Review' || deferredWorkReady),
+    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'In Review',
   });
   const effectiveProfile = profileQuery.data !== undefined ? profileQuery.data : profile;
   let effectiveCollections = collectionsQuery.data ?? EMPTY_COLLECTIONS;
@@ -1963,8 +1967,8 @@ export default function CatalogScreen() {
             qrTargetUrl={profileQrTargetUrl}
             onOpenQr={() => setBrandQrOpen(true)}
             onBack={handleBackNavigation}
-            onSearch={() => router.push('/search')}
-            onNotifications={() => router.push('/notifications')}
+            onSearch={() => drillDownPush('/search' as any)}
+            onNotifications={() => drillDownPush('/notifications' as any)}
             unreadNotificationCount={unreadNotificationCount}
           />
         ) : (
@@ -1997,10 +2001,12 @@ export default function CatalogScreen() {
             onOpenQr={() => setBrandQrOpen(true)}
             onMessage={handleMessageBrand}
             onBack={handleBackNavigation}
-            onSearch={() => router.push('/search')}
+            onSearch={() => drillDownPush('/search' as any)}
             onOpenMenu={handleOpenProfileMenu}
             menuAnchorRef={profileMenuAnchorRef}
-            onNotifications={status === 'authenticated' ? () => router.push('/notifications') : undefined}
+            onNotifications={
+              status === 'authenticated' ? () => drillDownPush('/notifications' as any) : undefined
+            }
             unreadNotificationCount={status === 'authenticated' ? unreadNotificationCount : undefined}
           />
         )}

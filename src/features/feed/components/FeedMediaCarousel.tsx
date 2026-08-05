@@ -21,12 +21,12 @@ const getAspectClass = (aspectRatio?: number | null) => {
   return 'square';
 };
 
-// Mount two slides on each side of the active one: the incoming slide is fully
-// rendered (image decoded and painted) BEFORE the swipe reveals it, and a late
-// or missed momentum event can no longer strand the next slide unmounted —
-// that unmounted frame was the "freeze + flicker on swipe" symptom.
-const shouldMountSlide = (index: number, activeIndex: number) =>
-  Math.abs(index - activeIndex) <= 2;
+// Active page: mount two slides either side so the next angle is already
+// painted before a horizontal swipe. Inactive pages (above/below the vertical
+// feed): mount ONLY the current angle — five full-bleed pages each mounting
+// five images was the progressive "gets shakier after a few scrolls" tax.
+const shouldMountSlide = (index: number, activeIndex: number, isActivePage: boolean) =>
+  isActivePage ? Math.abs(index - activeIndex) <= 2 : index === activeIndex;
 
 type FeedMediaCarouselProps = {
   collectionId: string;
@@ -129,9 +129,9 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       nextIndex: stableMediaItems.length > 1 ? Math.min(stableMediaItems.length - 1, safeActiveIndex + 1) : null,
       mountedIndices: stableMediaItems
         .map((_, index) => index)
-        .filter((index) => shouldMountSlide(index, safeActiveIndex)),
+        .filter((index) => shouldMountSlide(index, safeActiveIndex, isActive)),
     });
-  }, [collectionId, safeActiveIndex, stableMediaItems.length, uniqueDisplayUrls, uniqueMediaIds]);
+  }, [collectionId, isActive, safeActiveIndex, stableMediaItems.length, uniqueDisplayUrls, uniqueMediaIds]);
 
   // Prefetch adjacent images in BOTH directions (and one extra ahead) so a
   // swipe left or right always reveals an already-cached image — never a
@@ -231,7 +231,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         corrected: false,
         mountedIndices: stableMediaItems
           .map((_, index) => index)
-          .filter((index) => shouldMountSlide(index, nextIndex)),
+          .filter((index) => shouldMountSlide(index, nextIndex, true)),
       });
       if (nextIndex !== previousIndex) {
         const nextMedia = stableMediaItems[nextIndex] ?? null;
@@ -305,16 +305,20 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         bounces={false}
         decelerationRate="fast"
         directionalLockEnabled
-        nestedScrollEnabled
+        nestedScrollEnabled={false}
         overScrollMode="never"
         showsHorizontalScrollIndicator={false}
-        scrollEnabled
+        // Only the settled vertical page accepts horizontal pans. Inactive
+        // rows would otherwise compete with the outer FlatList for the
+        // gesture at the start of a vertical drag — the "drags then goes"
+        // feel that horizontal swipes never had.
+        scrollEnabled={isActive}
         onMomentumScrollEnd={settleToMeasuredIndex}
         onScrollEndDrag={handleScrollEndDrag}
       >
         {stableMediaItems.map((item, index) => (
           <View key={item.id} style={slideFrameStyle}>
-            {shouldMountSlide(index, safeActiveIndex) ? (
+            {shouldMountSlide(index, safeActiveIndex, isActive) ? (
               <FeedMediaSlide
                 media={item}
                 imageIndex={index}

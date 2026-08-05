@@ -90,17 +90,16 @@ export const SCRIM_INCOMING_RATIO = 0.5;
  * 0.85 is tuned for a card pager, and on a full-bleed page it opens a ~60px
  * matte band at the seam that reads as a layout bug.
  *
- * 0.94 is enough for the one job that matters here — **breaking the hard seam**.
- * Without it the outgoing and incoming photographs abut edge-to-edge and read as
- * one continuous surface, with no boundary telling the eye where one piece of
- * content ends.
+ * Disabled at 1.0 (2026-08-05 round 3). Full-bleed pages with a live scale
+ * transform force the GPU to re-composite multi-megapixel bitmaps every frame
+ * of a vertical fling. Horizontal angle swipes stay smooth because they are a
+ * plain ScrollView with no scale. Vertical felt like it "dragged at the start
+ * and while rendering" for that reason. Seam breaking is left to the scrim only.
  *
- * Set to 1 to disable. This is also the value suppressed under Reduce Motion,
- * since scale is the only one of the three curves that is actually *motion*;
- * the scrim and chrome fades are cross-fades, which is what Reduce Motion
- * prefers as a substitute for movement rather than something it wants removed.
+ * Set below 1 to re-enable (0.97 was the last tuned value). Reduce Motion also
+ * forces scale off via `pageScaleEnabled` on the row.
  */
-export const RUNWAY_PAGE_SCALE_MIN = 0.94;
+export const RUNWAY_PAGE_SCALE_MIN = 1;
 
 /**
  * Fraction of a page's travel over which its chrome (action rail, meta card,

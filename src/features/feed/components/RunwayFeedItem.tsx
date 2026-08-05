@@ -74,10 +74,18 @@ function RunwayFeedItemComponent({
     [pageHeight, pageIndex, scrollY],
   );
 
-  // Transform, not layout: scale never feeds back into row height, so
-  // getItemLayout and native paging keep agreeing on `pageHeight * index`.
+  // Scale is optional. When disabled (default), skip the transform entirely so
+  // the compositor is not layering multi-megapixel bitmaps on every scroll frame.
+  // getItemLayout still agrees on `pageHeight * index` either way — scale never
+  // feeds back into row height.
   return (
-    <Animated.View style={[styles.page, { height: pageHeight, transform: [{ scale: pageScale }] }]}>
+    <Animated.View
+      style={[
+        styles.page,
+        { height: pageHeight },
+        pageScaleEnabled ? { transform: [{ scale: pageScale }] } : null,
+      ]}
+    >
       <FeedMediaCarousel
         collectionId={collectionId}
         mediaItems={mediaItems}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -114,9 +114,17 @@ export default function ReviewsTab({ brandId, productId, compact = false, enable
     }
   }, [applyList, brandId, currentUserId, enabled, productId, queryClient, reviewLimit, reviewQueryKey]);
 
+  // Load once per identity. Depending on the whole `load` callback re-fired on
+  // every parent re-render (MarketCommerceViewer sheet churn) and, when the
+  // request 401'd, never filled the query cache so each fire hit the network.
+  const loadIdentity = `${enabled ? 1 : 0}:${productId ?? ''}:${brandId ?? ''}:${currentUserId ?? ''}:${reviewLimit}`;
+  const lastLoadIdentityRef = useRef<string | null>(null);
   useEffect(() => {
+    if (!enabled) return;
+    if (lastLoadIdentityRef.current === loadIdentity) return;
+    lastLoadIdentityRef.current = loadIdentity;
     void load();
-  }, [load]);
+  }, [enabled, load, loadIdentity]);
 
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),

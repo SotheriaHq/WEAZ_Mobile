@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { AppText } from '@/components/ui/AppText';
@@ -27,6 +27,8 @@ export type NativeIslandNavItem = {
   badge?: number;
   navFlow?: string;
   targetRoute?: string | null;
+  /** Optional Expo Router params (e.g. Studio WebView `routeKey`). */
+  targetParams?: Record<string, string>;
 };
 
 type NativeIslandBottomNavProps = {
@@ -177,7 +179,11 @@ export function NativeIslandBottomNav({
   const { scheme, theme } = useTheme();
   const { windowWidth, islandLayout } = useScreenChrome();
   const { bottomOffset, sideOffset, islandWidth } = islandLayout;
-  const compact = items.length >= 6 || windowWidth < 380;
+  // Studio docks have 9 chips — do not compress them into flex:1 slots.
+  // Scroll horizontally with a fixed min width so spacing matches the main
+  // 5-item dock instead of "crammed into the bar".
+  const scrollableDock = items.length > 5;
+  const compact = !scrollableDock && (items.length >= 6 || windowWidth < 380);
   const [pressedItemKey, setPressedItemKey] = React.useState<string | null>(null);
   const [immediateActiveKey, setImmediateActiveKey] = React.useState<string | null>(null);
   const [immediateActiveNavFlow, setImmediateActiveNavFlow] = React.useState<string | null>(null);
@@ -248,40 +254,88 @@ export function NativeIslandBottomNav({
       >
         <IslandGlass scheme={scheme} theme={theme} />
         <View style={styles.navItems}>
-          <View style={[styles.navModeLayer, styles.expandedItemsLayer]}>
-            {items.map((item) => (
-              <Pressable
-                key={item.key}
-                accessibilityRole="tab"
-                accessibilityState={{
-                  selected: Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key) && !item.disabled),
-                  disabled: item.disabled,
-                }}
-                accessibilityLabel={item.label}
-                disabled={item.disabled}
-                onPressIn={item.disabled ? undefined : () => handleItemPressIn(item)}
-                onPressOut={clearPressedItem}
-                onPress={undefined}
-                android_ripple={{
-                  color: scheme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(147,51,234,0.14)',
-                  borderless: false,
-                  foreground: true,
-                }}
-                style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
-              >
-                {({ pressed }) => (
-                  <NativeIslandTabIcon
-                    label={item.label}
-                    emoji={item.emoji}
-                    avatarUri={item.avatarUri}
-                    focused={Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key || pressed) && !item.disabled)}
-                    badge={item.badge}
-                    compact={compact}
-                  />
-                )}
-              </Pressable>
-            ))}
-          </View>
+          {scrollableDock ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              bounces={false}
+              overScrollMode="never"
+              contentContainerStyle={styles.scrollDockContent}
+              style={styles.scrollDock}
+            >
+              {items.map((item) => (
+                <Pressable
+                  key={item.key}
+                  accessibilityRole="tab"
+                  accessibilityState={{
+                    selected: Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key) && !item.disabled),
+                    disabled: item.disabled,
+                  }}
+                  accessibilityLabel={item.label}
+                  disabled={item.disabled}
+                  onPressIn={item.disabled ? undefined : () => handleItemPressIn(item)}
+                  onPressOut={clearPressedItem}
+                  onPress={undefined}
+                  android_ripple={{
+                    color: scheme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(147,51,234,0.14)',
+                    borderless: false,
+                    foreground: true,
+                  }}
+                  style={({ pressed }) => [
+                    styles.navItemScroll,
+                    item.disabled && styles.navItemDisabled,
+                    pressed && styles.navItemPressed,
+                  ]}
+                >
+                  {({ pressed }) => (
+                    <NativeIslandTabIcon
+                      label={item.label}
+                      emoji={item.emoji}
+                      avatarUri={item.avatarUri}
+                      focused={Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key || pressed) && !item.disabled)}
+                      badge={item.badge}
+                      compact={false}
+                    />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={[styles.navModeLayer, styles.expandedItemsLayer]}>
+              {items.map((item) => (
+                <Pressable
+                  key={item.key}
+                  accessibilityRole="tab"
+                  accessibilityState={{
+                    selected: Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key) && !item.disabled),
+                    disabled: item.disabled,
+                  }}
+                  accessibilityLabel={item.label}
+                  disabled={item.disabled}
+                  onPressIn={item.disabled ? undefined : () => handleItemPressIn(item)}
+                  onPressOut={clearPressedItem}
+                  onPress={undefined}
+                  android_ripple={{
+                    color: scheme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(147,51,234,0.14)',
+                    borderless: false,
+                    foreground: true,
+                  }}
+                  style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
+                >
+                  {({ pressed }) => (
+                    <NativeIslandTabIcon
+                      label={item.label}
+                      emoji={item.emoji}
+                      avatarUri={item.avatarUri}
+                      focused={Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key || pressed) && !item.disabled)}
+                      badge={item.badge}
+                      compact={compact}
+                    />
+                  )}
+                </Pressable>
+              ))}
+            </View>
+          )}
         </View>
       </View>
     </View>
@@ -323,6 +377,23 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollDock: {
+    flex: 1,
+  },
+  scrollDockContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingHorizontal: NATIVE_ISLAND_NAV.horizontalPadding,
+    gap: 2,
+  },
+  // Fixed chip width so Studio's 9 items keep the same breathing room as the
+  // main 5-item dock; the bar scrolls instead of squashing labels.
+  navItemScroll: {
+    width: 72,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -365,17 +365,26 @@ export const FeedImage = React.memo(function FeedImage({
           style={StyleSheet.absoluteFill}
           strategyOverride={strategyResult.strategy}
           recyclingKey={`${id}:${activeTier}:${retryToken}`}
-          // Detail-first render: the image fades up from its blurhash/thumbnail
-          // placeholder exactly once, then stays. There is no preview->detail
-          // tier swap anymore, so a gentle fade reads as a smooth reveal rather
-          // than the old per-activation "double blink".
-          transition={160}
+          // Detail-first: no cross-fade once we are already on the display URL.
+          // A 160ms soft→sharp reveal is exactly the "not sharp at first, then
+          // sharpens" report. Keep a short fade only when we are showing a
+          // lower-tier source with no detail URL yet.
+          transition={activeTier === 'detail' ? 0 : 120}
           accessibilityLabel={label ?? 'Feed image'}
           diagnosticsLabel="RunwayFeedImage"
           onLoad={(event) => {
             const nextWidth = event.source?.width;
             const nextHeight = event.source?.height;
-            if (isPositiveFinite(nextWidth) && isPositiveFinite(nextHeight)) {
+            // Only adopt onLoad geometry when the feed row did not already ship
+            // dimensions. Writing the same numbers back re-ran the fit policy
+            // and forced AspectAwareMedia through another render mid-scroll.
+            if (
+              isPositiveFinite(nextWidth) &&
+              isPositiveFinite(nextHeight) &&
+              !isPositiveFinite(naturalWidth) &&
+              !isPositiveFinite(naturalHeight) &&
+              !isPositiveFinite(aspectRatio)
+            ) {
               setLoadedNaturalSize({ width: nextWidth, height: nextHeight });
             }
             setSuccessfulSource({ identity: sourceIdentity, uri: currentUri, tier: activeTier });

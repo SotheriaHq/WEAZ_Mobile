@@ -182,7 +182,12 @@ export function AppSelectSheet({
             selected={option.value === value}
             onPress={() => {
               if (option.disabled) return;
-              pendingValueRef.current = option.value;
+              // Apply immediately, then close. Deferring onChange to onDismiss
+              // left the sheet stuck open when the close animation was cancelled
+              // (selecting the already-active "All categories" was the repro:
+              // visible flipped false, finished=false, finishDismiss never ran).
+              onChange(option.value);
+              pendingValueRef.current = null;
               onClose();
             }}
           />

@@ -92,7 +92,11 @@ export function AppBottomSheet({
     onDismissRef.current = onDismiss;
   }, [onDismiss]);
 
+  const dismissCompletedRef = useRef(false);
   const finishDismiss = React.useCallback(() => {
+    // Idempotent: animation callback + force-unmount timeout can both fire.
+    if (dismissCompletedRef.current) return;
+    dismissCompletedRef.current = true;
     setMounted(false);
     onDismissRef.current?.();
   }, []);
@@ -221,18 +225,30 @@ export function AppBottomSheet({
     if (!mounted) return;
 
     if (visible) {
+      dismissCompletedRef.current = false;
       translateY.value = 28;
       opacity.value = 0;
       translateY.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
       opacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
-    } else {
-      translateY.value = withTiming(28, { duration: 180, easing: Easing.in(Easing.cubic) });
-      opacity.value = withTiming(0, { duration: 160, easing: Easing.in(Easing.cubic) }, (finished) => {
-        if (finished) {
-          runOnJS(finishDismiss)();
-        }
-      });
+      return;
     }
+
+    translateY.value = withTiming(28, { duration: 180, easing: Easing.in(Easing.cubic) });
+    opacity.value = withTiming(0, { duration: 160, easing: Easing.in(Easing.cubic) }, (finished) => {
+      // Always unmount. Reanimated can report finished=false when a new timing
+      // interrupts the close (rapid re-open/close, same-value reselect) and the
+      // old path left the Modal mounted forever — "categories selector never
+      // closes".
+      runOnJS(finishDismiss)();
+      if (!finished) {
+        // no-op: finishDismiss already handles the unmount
+      }
+    });
+    // Hard fallback if the UI-thread callback never fires.
+    const forceUnmount = setTimeout(() => {
+      finishDismiss();
+    }, 320);
+    return () => clearTimeout(forceUnmount);
   }, [finishDismiss, mounted, opacity, translateY, visible]);
 
   const sheetStyle = useAnimatedStyle(() => ({

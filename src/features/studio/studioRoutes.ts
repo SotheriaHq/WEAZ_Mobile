@@ -14,6 +14,7 @@ export type StudioRouteKey =
   | 'customOrders'
   | 'customOrderDetail'
   | 'messages'
+  | 'staff'
   | 'setup'
   | 'essentials'
   | 'orders'
@@ -122,6 +123,13 @@ export const STUDIO_ROUTES: Record<StudioRouteKey, StudioRouteConfig> = {
     subtitle: 'Customer conversations',
     emoji: '💬',
     path: '/studio/messages',
+  },
+  staff: {
+    key: 'staff',
+    title: 'Staff',
+    subtitle: 'Team access and roles',
+    emoji: '👥',
+    path: '/studio/staff',
   },
   setup: {
     key: 'setup',

@@ -684,7 +684,8 @@ export default function BuyerProfileScreen() {
     if (normalized === 'saved') setActiveTab('Saved');
   }, [requestedTab]);
 
-  const load = useCallback(async (options?: { silent?: boolean }) => {
+  const lastProfileLoadAtRef = useRef(0);
+  const load = useCallback(async (options?: { silent?: boolean; force?: boolean }) => {
     const silent = options?.silent ?? false;
     if (status !== 'authenticated' || !user?.id) {
       setLoading(false);
@@ -693,6 +694,18 @@ export default function BuyerProfileScreen() {
       setState(createEmptyProfileState());
       return;
     }
+
+    // Tab pre-warm + deferredWorkReady can both schedule `load` within a few
+    // hundred ms. Coalesce so Me does not double-hit profile/size-fit/saved/
+    // patches/orders (the log showed every endpoint twice in one open).
+    const now = Date.now();
+    if (!options?.force && now - lastProfileLoadAtRef.current < 15_000) {
+      setLoading(false);
+      setOrdersLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    lastProfileLoadAtRef.current = now;
 
     const requestId = ++loadRequestIdRef.current;
     if (!silent && !hasWarmProfileSnapshot) {
@@ -866,18 +879,19 @@ export default function BuyerProfileScreen() {
   ]);
 
   const handleOpenNotifications = useCallback(() => {
-    router.push('/notifications' as any);
+    drillDownPush('/notifications' as any);
   }, []);
 
   const handleOpenSettings = useCallback(() => {
-    router.push('/settings' as any);
+    drillDownPush('/settings' as any);
   }, []);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
+    lastProfileLoadAtRef.current = 0;
     await Promise.all([
       validateToken({ forceRefresh: true }),
-      load({ silent: true }),
+      load({ silent: true, force: true }),
       refreshUnreadNotificationCount({ authenticated: true, forceRefresh: true }),
     ]);
   }, [load, validateToken]);

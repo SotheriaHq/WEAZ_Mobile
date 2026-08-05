@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, BackHandler, Platform } from 'react-native';
-import { Tabs, router, usePathname, type Href } from 'expo-router';
+import { Tabs, router, useGlobalSearchParams, usePathname, type Href } from 'expo-router';
 
 import {
   NativeIslandBottomNav,
@@ -36,8 +36,13 @@ import {
   NATIVE_ISLAND_ICONS,
   NATIVE_ISLAND_KEYS,
   buildNativeIslandItems,
+  buildStudioIslandItems,
   getNativeIslandRoute,
+  isStudioIslandKey,
+  isStudioIslandPath,
   mapPathnameToIslandKey,
+  mapPathnameToStudioIslandKey,
+  type AnyIslandKey,
   type NativeIslandKey,
 } from '@/src/navigation/nativeIslandConfig';
 import { withNavigationLock, releaseNavigationLock } from '@/src/utils/mobileNavigation';
@@ -105,18 +110,23 @@ export default function TabLayout() {
   const bagFlow = useBagFlow();
   const { count: bagCount } = useBagCount();
   const pathname = usePathname();
+  const globalParams = useGlobalSearchParams<{ routeKey?: string | string[] }>();
+  const studioRouteKeyParam = Array.isArray(globalParams.routeKey)
+    ? globalParams.routeKey[0]
+    : globalParams.routeKey;
   const { windowWidth, islandLayout } = useScreenChrome();
   const unreadNotificationCount = useUnreadNotificationCount();
   const unreadMessageCount = useUnreadMessageCount();
   const [notificationCountReady, setNotificationCountReady] = useState(false);
   const [messageCountReady, setMessageCountReady] = useState(false);
+  const inStudioIsland = isStudioIslandPath(pathname);
   const lastBackPressAtRef = useRef(0);
   const lastNotificationRefreshAttemptAtRef = useRef(0);
   const lastMessageRefreshAttemptAtRef = useRef(0);
   const pendingRouteFrameRef = useRef<number | null>(null);
   const tabNavigationRef = useRef<HiddenTabNavigation | null>(null);
   const preloadedTabNamesRef = useRef<Set<string>>(new Set());
-  const [optimisticActiveKey, setOptimisticActiveKey] = useState<NativeIslandKey | null>(null);
+  const [optimisticActiveKey, setOptimisticActiveKey] = useState<AnyIslandKey | null>(null);
 
   const isBrand = hasActiveBrandMembership(user);
   const canOpenProfileMenu = status === 'authenticated';
@@ -145,9 +155,12 @@ export default function TabLayout() {
     pathname === '/(tabs)';
 
   const activeIslandKey = useMemo(() => {
+    if (inStudioIsland) {
+      return mapPathnameToStudioIslandKey(pathname, studioRouteKeyParam);
+    }
     return mapPathnameToIslandKey(pathname);
-  }, [pathname]);
-  const displayedActiveKey = bagFlow?.isMyBagOpen
+  }, [inStudioIsland, pathname, studioRouteKeyParam]);
+  const displayedActiveKey = bagFlow?.isMyBagOpen && !inStudioIsland
     ? NATIVE_ISLAND_KEYS.bag
     : optimisticActiveKey ?? activeIslandKey;
   const hideIslandForFocusedFlow = FOCUSED_CATALOG_FLOW.test(pathname);
@@ -366,49 +379,62 @@ export default function TabLayout() {
 
   const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
     if (item.disabled) return;
-    setOptimisticActiveKey(item.key as NativeIslandKey);
+    setOptimisticActiveKey(item.key);
     // Warm the destination tab on press-in so JUMP_TO hits a preloaded scene
     // instead of a cold lazy mount (main multi-second stall on first visit).
+    // Studio chips stay inside the studio tab — no main-app tab preload.
+    if (isStudioIslandKey(item.key)) return;
     const tabName = getIslandTabRouteName(item.key, isBrand);
     if (tabName) {
       preloadIslandTab(tabName);
     }
   }, [isBrand, preloadIslandTab]);
 
-  const islandItems = useMemo<NativeIslandNavItem[]>(
-    () =>
-      buildNativeIslandItems({
-        activeKey: displayedActiveKey,
-        isBrand,
-        profileLabel: profileNavLabel,
-        profileIcon: profileNavEmoji,
-        profileAvatarUri: profileNavAvatarUri,
-        profileBadge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
-        inboxBadge: canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
-        bagBadge: bagCount.combinedCount,
-      }).map((item) => ({
-        ...item,
-        disabled:
-          status === 'loading' &&
-          (item.key === NATIVE_ISLAND_KEYS.inbox || item.key === NATIVE_ISLAND_KEYS.profile),
-        navFlow: getIslandNavFlow(item, isBrand, canOpenProfileMenu),
-        targetRoute: getNativeIslandRoute(item.key, isBrand),
-      })),
-    [
-      bagCount.combinedCount,
-      canOpenProfileMenu,
-      displayedActiveKey,
+  const islandItems = useMemo<NativeIslandNavItem[]>(() => {
+    // Inside Studio the dock must show Studio destinations (Dashboard, Store,
+    // Orders, …) — same contract as web StudioSidebar / IslandBottomNav. Leaving
+    // the main WIEZ island up made the surface look like the brand never left
+    // the consumer app.
+    if (inStudioIsland) {
+      return buildStudioIslandItems({
+        activeKey: String(displayedActiveKey),
+        messagesBadge:
+          canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
+      });
+    }
+
+    return buildNativeIslandItems({
+      activeKey: displayedActiveKey as NativeIslandKey,
       isBrand,
-      messageCountReady,
-      notificationCountReady,
-      profileNavAvatarUri,
-      profileNavEmoji,
-      profileNavLabel,
-      status,
-      unreadMessageCount,
-      unreadNotificationCount,
-    ],
-  );
+      profileLabel: profileNavLabel,
+      profileIcon: profileNavEmoji,
+      profileAvatarUri: profileNavAvatarUri,
+      profileBadge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
+      inboxBadge: canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
+      bagBadge: bagCount.combinedCount,
+    }).map((item) => ({
+      ...item,
+      disabled:
+        status === 'loading' &&
+        (item.key === NATIVE_ISLAND_KEYS.inbox || item.key === NATIVE_ISLAND_KEYS.profile),
+      navFlow: getIslandNavFlow(item, isBrand, canOpenProfileMenu),
+      targetRoute: getNativeIslandRoute(item.key, isBrand),
+    }));
+  }, [
+    bagCount.combinedCount,
+    canOpenProfileMenu,
+    displayedActiveKey,
+    inStudioIsland,
+    isBrand,
+    messageCountReady,
+    notificationCountReady,
+    profileNavAvatarUri,
+    profileNavEmoji,
+    profileNavLabel,
+    status,
+    unreadMessageCount,
+    unreadNotificationCount,
+  ]);
 
   useEffect(() => {
     navDevLog('island-layout', {
@@ -434,6 +460,42 @@ export default function TabLayout() {
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
+      // Studio dock: every chip is a studio destination (or native finance/staff).
+      if (isStudioIslandKey(item.key) || inStudioIsland) {
+        const nextPath = item.targetRoute;
+        if (!nextPath) return;
+        const nextHref = item.targetParams
+          ? ({ pathname: nextPath, params: item.targetParams } as Href)
+          : (nextPath as Href);
+        const lockKey = item.targetParams
+          ? `${nextPath}?${Object.entries(item.targetParams)
+              .map(([k, v]) => `${k}=${v}`)
+              .join('&')}`
+          : nextPath;
+        const activeNow = mapPathnameToStudioIslandKey(pathname, studioRouteKeyParam);
+        if (activeNow === item.key) {
+          navPerf.mark?.('navigation_same_target_ignored', lockKey);
+          return;
+        }
+        const navFlow = item.navFlow ?? `studio→${item.key}`;
+        navPerf.setContext(pathname, lockKey, pathname);
+        const locked = withNavigationLock(lockKey as Href, () => {
+          scheduleRouteAfterFrame(navFlow, () => {
+            navPerf.navigationCalled(navFlow);
+            navPerf.routeCallStart(navFlow, { target: lockKey });
+            // Prefer navigate so the studio tab stack reuses the WebView shell
+            // and only swaps routeKey / native sub-screens.
+            router.navigate(nextHref as any);
+            navPerf.routeCallEnd(navFlow, { target: lockKey });
+          });
+          return true;
+        }, { force: false });
+        if (!locked) {
+          navPerf.mark?.('navigation_ignored_duplicate', lockKey);
+        }
+        return;
+      }
+
       if (item.key === 'profile') {
         handleProfilePress();
         return;
@@ -488,17 +550,24 @@ export default function TabLayout() {
       cancelPendingRouteFrame,
       canOpenProfileMenu,
       handleProfilePress,
+      inStudioIsland,
       isBrand,
       jumpToIslandTab,
+      pathname,
       scheduleRouteAfterFrame,
+      studioRouteKeyParam,
     ],
   );
 
   useEffect(() => {
-    if (optimisticActiveKey && mapPathnameToIslandKey(pathname) === optimisticActiveKey) {
+    if (!optimisticActiveKey) return;
+    const resolved = inStudioIsland
+      ? mapPathnameToStudioIslandKey(pathname, studioRouteKeyParam)
+      : mapPathnameToIslandKey(pathname);
+    if (resolved === optimisticActiveKey) {
       clearSelectionState();
     }
-  }, [clearSelectionState, optimisticActiveKey, pathname]);
+  }, [clearSelectionState, inStudioIsland, optimisticActiveKey, pathname, studioRouteKeyParam]);
 
   useEffect(() => {
     if (optimisticActiveKey === NATIVE_ISLAND_KEYS.bag && bagFlow?.isMyBagOpen === false) {

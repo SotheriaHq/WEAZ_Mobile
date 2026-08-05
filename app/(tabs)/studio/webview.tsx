@@ -423,6 +423,19 @@ export default function StudioWebViewScreen() {
   const hasBrandWorkspace = hasActiveBrandMembership(user);
   const isStudioEligible = user?.type === 'BRAND' && hasBrandWorkspace;
 
+  // Session is established once per Studio visit. Island hops must NOT mint a
+  // new handoff or remount the WebView — that re-downloaded the whole web bundle
+  // on every Dashboard↔Store↔Staff switch.
+  const sessionEstablishedRef = useRef(false);
+  const lastInjectedRouteRef = useRef<string | null>(null);
+  const pendingRouteRef = useRef<{
+    routeKey: StudioRouteKey;
+    productId?: string;
+    orderId?: string;
+  } | null>(null);
+  const loadStateRef = useRef(loadState);
+  loadStateRef.current = loadState;
+
   const closeStudio = useCallback(() => {
     if (router.canGoBack()) {
       router.back();
@@ -432,6 +445,9 @@ export default function StudioWebViewScreen() {
   }, [hasBrandWorkspace]);
 
   const retry = useCallback(() => {
+    sessionEstablishedRef.current = false;
+    lastInjectedRouteRef.current = null;
+    pendingRouteRef.current = null;
     setWebUrl(null);
     setLoadState('booting');
     setLoadProgress(0);
@@ -453,6 +469,47 @@ export default function StudioWebViewScreen() {
       return;
     }
   }, [resolvedRouteKey]);
+
+  const navigateStudioInPlace = useCallback(
+    (route: StudioRouteKey, params?: { productId?: string; orderId?: string }) => {
+      if (!webViewRef.current) return false;
+      try {
+        const path = buildStudioPath(route, params);
+        const nextUrl = buildStudioWebUrl({
+          routeKey: route,
+          params,
+          // No handoff — cookies from the first boot keep the session.
+          handoffCode: null,
+          theme: schemeRef.current,
+        });
+        const signature = `${route}:${params?.productId ?? ''}:${params?.orderId ?? ''}`;
+        if (lastInjectedRouteRef.current === signature) return true;
+        lastInjectedRouteRef.current = signature;
+        // Prefer SPA history when the web app listens; fall back to assign so
+        // we still land on the right path without a native remount.
+        const script = `
+          (function() {
+            try {
+              var target = ${JSON.stringify(nextUrl)};
+              var path = ${JSON.stringify(path)};
+              if (typeof window.__WIEZ_STUDIO_NAV__ === 'function') {
+                window.__WIEZ_STUDIO_NAV__(path);
+              } else if (window.location.href !== target) {
+                window.location.assign(target);
+              }
+            } catch (e) {}
+            true;
+          })();
+        `;
+        webViewRef.current.injectJavaScript(script);
+        trackStudioWebViewEvent('route-open', { routeKey: route, inPlace: true });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -482,10 +539,26 @@ export default function StudioWebViewScreen() {
         return;
       }
 
+      // Warm session: island tab switch → SPA navigate, zero handoff.
+      if (sessionEstablishedRef.current && loadStateRef.current === 'ready' && webViewRef.current) {
+        pendingRouteRef.current = null;
+        navigateStudioInPlace(resolvedRouteKey, { productId, orderId });
+        return;
+      }
+
+      // Shell still booting: remember the latest island target and apply it
+      // when READY arrives. Never stack a second handoff.
+      if (sessionEstablishedRef.current && loadStateRef.current !== 'error') {
+        pendingRouteRef.current = { routeKey: resolvedRouteKey, productId, orderId };
+        return;
+      }
+
       try {
         const intendedPath = buildStudioPath(resolvedRouteKey, { productId, orderId });
         const handoff = await StudioApi.createHandoff(intendedPath);
         if (!mounted) return;
+        sessionEstablishedRef.current = true;
+        lastInjectedRouteRef.current = `${resolvedRouteKey}:${productId ?? ''}:${orderId ?? ''}`;
         setWebUrl(
           buildStudioWebUrl({
             routeKey: resolvedRouteKey,
@@ -494,10 +567,11 @@ export default function StudioWebViewScreen() {
             theme: schemeRef.current,
           }),
         );
-        trackStudioWebViewEvent('route-open', { routeKey: resolvedRouteKey });
+        trackStudioWebViewEvent('route-open', { routeKey: resolvedRouteKey, cold: true });
         setLoadState('loading');
       } catch (error) {
         if (!mounted) return;
+        sessionEstablishedRef.current = false;
         const message = error instanceof Error ? error.message : '';
         if (message.includes('Missing productId')) {
           setErrorMessage('Missing product id for this Studio route.');
@@ -519,7 +593,17 @@ export default function StudioWebViewScreen() {
     return () => {
       mounted = false;
     };
-  }, [hasBrandWorkspace, invalidRouteKey, isStudioEligible, orderId, productId, resolvedRouteKey, retryKey, status]);
+  }, [
+    hasBrandWorkspace,
+    invalidRouteKey,
+    isStudioEligible,
+    navigateStudioInPlace,
+    orderId,
+    productId,
+    resolvedRouteKey,
+    retryKey,
+    status,
+  ]);
 
   useEffect(() => {
     if (!webUrl || loadState !== 'loading') return;
@@ -644,9 +728,23 @@ export default function StudioWebViewScreen() {
       switch (message?.type) {
         case 'READY':
           setLoadState('ready');
+          sessionEstablishedRef.current = true;
+          // Apply the latest island target if the user tapped another tab while
+          // the first handoff was still confirming.
+          if (pendingRouteRef.current) {
+            const pending = pendingRouteRef.current;
+            pendingRouteRef.current = null;
+            requestAnimationFrame(() => {
+              navigateStudioInPlace(pending.routeKey, {
+                productId: pending.productId,
+                orderId: pending.orderId,
+              });
+            });
+          }
           break;
         case 'AUTH_REQUIRED':
         case 'HANDOFF_FAILED':
+          sessionEstablishedRef.current = false;
           setErrorMessage(
             message.type === 'HANDOFF_FAILED' && message.status
               ? `Studio handoff failed during ${message.stage ?? 'exchange'} with HTTP ${message.status}.`
@@ -682,7 +780,7 @@ export default function StudioWebViewScreen() {
           break;
       }
     },
-    [closeStudio, openNavigationTarget, toast],
+    [closeStudio, navigateStudioInPlace, openNavigationTarget, toast],
   );
 
   const openSearch = useCallback(() => {
@@ -723,8 +821,14 @@ export default function StudioWebViewScreen() {
 
   const handleMenuStaff = useCallback(() => {
     setProfileMenuVisible(false);
-    router.push('/studio/staff' as any);
-  }, []);
+    // Stay in the WebView shell — native /studio/staff unmounted the session
+    // and forced a full re-handoff when returning to Store.
+    if (sessionEstablishedRef.current && loadState === 'ready') {
+      navigateStudioInPlace('staff');
+      return;
+    }
+    router.push({ pathname: '/studio', params: { routeKey: 'staff' } } as any);
+  }, [loadState, navigateStudioInPlace]);
 
   const handleStudioSignOut = useCallback(() => {
     setProfileMenuVisible(false);

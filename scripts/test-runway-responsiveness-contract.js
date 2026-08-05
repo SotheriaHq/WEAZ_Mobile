@@ -32,8 +32,11 @@ expectMatches(feedScreen, bareProp('pagingEnabled'), 'vertical feed must use nat
 expectNotMatches(feedScreen, /snapToInterval=\{/, 'vertical feed must not combine interval snapping with native paging');
 expectNotMatches(feedScreen, bareProp('disableIntervalMomentum'), 'vertical feed must not re-add the boosted/retargeted interval settle');
 expectNotMatches(feedScreen, /shouldCorrectJump/, 'momentum end must not teleport multi-page flings');
-expectIncludes(feedScreen, 'initialNumToRender={1}', 'first render must mount one full-screen row');
-expectIncludes(feedScreen, 'maxToRenderPerBatch={2}', 'row batches must stay bounded');
+// Two rows on first paint so the next page is already committed when the first
+// swipe starts (IG-style). Batches stay small enough that a mid-scroll mount
+// cannot rebuild the whole window, but large enough to cover prev/active/next.
+expectIncludes(feedScreen, 'initialNumToRender={2}', 'first render must mount active + next full-screen rows');
+expectIncludes(feedScreen, 'maxToRenderPerBatch={3}', 'row batches must stay bounded');
 expectIncludes(feedScreen, 'windowSize={5}', 'render window must keep previous/next pages painted for smooth paging');
 expectIncludes(feedScreen, 'removeClippedSubviews={false}', 'full-screen rows must avoid Android clipping flashes');
 expectIncludes(feedScreen, 'InteractionManager.runAfterInteractions', 'hydration and analytics must wait for interaction idle');
@@ -118,7 +121,8 @@ for (const shim of ['src/features/feed/components/FeedActionRail.tsx', 'src/feat
 
 const carousel = 'src/features/feed/components/FeedMediaCarousel.tsx';
 expectIncludes(carousel, 'Math.abs(index - activeIndex) <= 2', 'carousel must mount a bounded window around the active media');
-expectIncludes(carousel, 'shouldMountSlide(index, safeActiveIndex) ?', 'off-window angle frames must not mount media');
+expectIncludes(carousel, 'shouldMountSlide(index, safeActiveIndex, isActive)', 'off-window angle frames must not mount media');
+expectIncludes(carousel, 'scrollEnabled={isActive}', 'inactive vertical pages must not compete for horizontal pans');
 expectNotMatches(carousel, /scrollTo\(\{ x: nextIndex \* width, y: 0, animated: false \}\)/, 'horizontal settle must not visibly correct momentum');
 // The dot row is the only overlay outside the page's chrome layer. It must keep
 // receiving the fade explicitly, or it silently becomes the brightest moving

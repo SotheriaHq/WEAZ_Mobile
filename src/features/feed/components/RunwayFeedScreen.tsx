@@ -43,6 +43,7 @@ import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
 import { isUsableImageHttpUrl, prefetchResolvedImageAsset, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { useReduceMotion } from '@/src/hooks/useReduceMotion';
+import { RUNWAY_PAGE_SCALE_MIN } from '@/src/features/feed/utils/runwayTransitCurves';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
@@ -745,10 +746,11 @@ export function RunwayFeedScreen() {
     () => Animated.event([{ nativeEvent: { contentOffset: { y: feedScrollY } } }], { useNativeDriver: true }),
     [feedScrollY],
   );
-  // Scale is the only genuinely *motion* part of the transit treatment, so it is
-  // the only part Reduce Motion suppresses. The scrim and chrome cross-fades stay
-  // — a cross-fade is what that setting wants instead of movement.
-  const pageScaleEnabled = !useReduceMotion();
+  // Scale is OFF while RUNWAY_PAGE_SCALE_MIN === 1 (vertical GPU cost). Always
+  // call useReduceMotion — never gate the hook behind `false &&` (short-circuit
+  // skips the call and breaks React's rules-of-hooks queue).
+  const reduceMotion = useReduceMotion();
+  const pageScaleEnabled = !reduceMotion && RUNWAY_PAGE_SCALE_MIN < 1;
   const initializedLoopKeyRef = useRef<string | null>(null);
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>(DEFAULT_MARKET_FILTER_CHIPS);
   const [selectedFilterId, setSelectedFilterId] = useState(DEFAULT_MARKET_FILTER_CHIPS[0].id);
@@ -1485,17 +1487,22 @@ export function RunwayFeedScreen() {
           [collectionId]: normalizedMediaItems,
         };
       });
+      // Only write thread state when there are NEW keys. A no-op map clone was
+      // re-rendering every visible row after each settle hydration — the
+      // progressive "shakier after a few scrolls" report.
       setThreadStateByMedia((prev) => {
+        let changed = false;
         const next = { ...prev };
         normalizedMediaItems.forEach((media) => {
           if (!next[media.id]) {
+            changed = true;
             next[media.id] = {
               threaded: media.id === item?.id ? Boolean(item?.isThreaded) : false,
               count: media.threadsCount,
             };
           }
         });
-        return next;
+        return changed ? next : prev;
       });
       hydratedCollectionIdsRef.current.add(collectionId);
     } catch {
@@ -1838,17 +1845,18 @@ export function RunwayFeedScreen() {
 
   const handleOpenSearch = useCallback(() => {
     perfMark('runway-search-tap');
-    router.push('/search' as any);
+    // drillDownPush is single-flight: rapid re-taps while the route is slow
+    // must not stack N search screens (same for notifications below).
+    drillDownPush('/search' as any);
   }, []);
 
   const handleOpenNotifications = useCallback(() => {
     navPerf.tap('runway→notifications');
-    navPerf.navigationCalled();
     if (status === 'authenticated') {
-      router.push('/notifications' as any);
+      drillDownPush('/notifications' as any);
       return;
     }
-    router.push({
+    drillDownPush({
       pathname: '/(auth)/login',
       params: { next: '/notifications' },
     } as any);
@@ -1939,7 +1947,9 @@ export function RunwayFeedScreen() {
       clearTimeout(metaOverlayHideTimerRef.current);
       metaOverlayHideTimerRef.current = null;
     }
-    setVisibleMetaCollectionId(null);
+    // Bail when already hidden so every drag does not re-render every row
+    // (rowRenderVersion includes isMetaVisible).
+    setVisibleMetaCollectionId((current) => (current == null ? current : null));
   }, []);
 
   const showMetaOverlay = useCallback((collectionId: string) => {
@@ -2227,9 +2237,12 @@ export function RunwayFeedScreen() {
       // every mounted row. At a two-page lead that landed while the next swipe
       // was already in flight — a full list re-render mid-gesture, felt as the
       // stall just before the page settles. Four pages puts the mutation inside
-      // a dwell instead.
+      // a dwell instead. Also defer one frame past the settle setState so the
+      // active-row paint commits before pagination mutates the list.
       if (measuredRealIndex >= items.length - FEED_PREFETCH_LEAD_PAGES && hasNextPage) {
-        void loadMore();
+        requestAnimationFrame(() => {
+          void loadMore();
+        });
       }
     },
     [activePageIndex, feedItems, feedLoopEnabled, feedLoopHeadOffset, hasNextPage, items.length, pageHeight],
@@ -2517,10 +2530,10 @@ export function RunwayFeedScreen() {
           {!feedViewportReady ? (
             <FeedSkeleton pageHeight={fallbackPageHeight} topOffset={insets.top} bottomClearance={bottomClearance} />
           ) : (
-          /* One initial row prioritizes first media. A five-row window keeps the
-             previous and next pages fully rendered so paging reveals painted
-             content, not a shimmer; clipping stays off because detached
-             full-screen Android image rows can flash blank when reattached. */
+          /* Two initial rows so the next page is already painted when the first
+             swipe starts (IG-style). A five-row window keeps previous/next fully
+             rendered; clipping stays off because detached full-screen Android
+             image rows can flash blank when reattached. */
           <RunwayFeedList
             ref={feedListRef}
             key={feedListKey}
@@ -2556,9 +2569,9 @@ export function RunwayFeedScreen() {
             bounces={false}
             overScrollMode="never"
             removeClippedSubviews={false}
-            initialNumToRender={1}
-            maxToRenderPerBatch={2}
-            updateCellsBatchingPeriod={50}
+            initialNumToRender={2}
+            maxToRenderPerBatch={3}
+            updateCellsBatchingPeriod={16}
             windowSize={5}
             initialScrollIndex={feedActiveIndex > 0 ? Math.min(feedActiveIndex, feedItems.length - 1) : undefined}
             scrollEnabled={!commentsTarget}
@@ -2576,7 +2589,18 @@ export function RunwayFeedScreen() {
             onScrollToIndexFailed={handleScrollToIndexFailed}
             onMomentumScrollEnd={handleFeedMomentumEnd}
             onScrollEndDrag={handleFeedScrollEndDrag}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
+            /* Pull-to-refresh only at the first page. On Android a live
+               RefreshControl on a paging FlatList steals the start of many
+               downward drags ("it drags, then scrolls"), which is the exact
+               asymmetry vs the horizontal angle carousel that has no PTR. */
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={theme.colors.primary}
+                enabled={activePageIndex === 0}
+              />
+            }
             renderItem={renderFeedItem}
           />
           )}

@@ -123,12 +123,23 @@ export function AspectAwareMedia({
 }: AspectAwareMediaProps) {
   const [containerSize, setContainerSize] = useState<MeasuredSize | null>(null);
   const [loadedSize, setLoadedSize] = useState<MeasuredSize | null>(null);
+  const [hasRevealed, setHasRevealed] = useState(false);
   const warnedInvalidDimensionsRef = useRef(false);
+  /**
+   * Once a source has a known aspect + a measured container, freeze the fit.
+   * Yoga re-layout and post-load dimension refinement were flipping
+   * letter-solid ↔ edge and re-running ExpoImage's cross-fade — the runway
+   * "shake before it balances" report. Identity is recyclingKey when present
+   * so FlatList cell reuse starts clean.
+   */
+  const lockedStrategyRef = useRef<{ identity: string; strategy: AspectAwareMediaStrategy } | null>(null);
+  const lastLoggedStrategyRef = useRef<string | null>(null);
   const imageSource = useMemo(() => normalizeSource(source), [source]);
   const normalizedPlaceholderSource = useMemo(
     () => normalizeSource(placeholderSource),
     [placeholderSource],
   );
+  const sourceIdentity = recyclingKey ?? imageSource?.uri ?? '';
   const containerBackground = dominantColor || SOLID_DARK_SURFACE;
   const resolvedImageWidth = imageWidth ?? loadedSize?.width ?? null;
   const resolvedImageHeight = imageHeight ?? loadedSize?.height ?? null;
@@ -138,7 +149,7 @@ export function AspectAwareMedia({
       ? resolvedImageWidth / resolvedImageHeight
       : null);
 
-  const strategy = resolveMediaStrategy({
+  const resolvedStrategy = resolveMediaStrategy({
     containerWidth: containerSize?.width ?? 0,
     containerHeight: containerSize?.height ?? 0,
     imageWidth: resolvedImageWidth,
@@ -146,6 +157,30 @@ export function AspectAwareMedia({
     imageAspectRatio: resolvedAspectRatio,
     override: strategyOverride,
   });
+
+  // Lock only after aspect is known. Unknown → letter-solid is a temporary
+  // first paint; locking it would permanently letterbox tall media that only
+  // reports size in onLoad (MarketCommerceViewer designs are the common case).
+  // Do NOT key the lock on strategyOverride alone — FeedImage always passes
+  // one, even while aspect is still null.
+  const canLockStrategy = resolvedAspectRatio != null;
+
+  let strategy = resolvedStrategy;
+  if (canLockStrategy) {
+    const locked = lockedStrategyRef.current;
+    if (!locked || locked.identity !== sourceIdentity) {
+      lockedStrategyRef.current = { identity: sourceIdentity, strategy: resolvedStrategy };
+      strategy = resolvedStrategy;
+    } else {
+      strategy = locked.strategy;
+    }
+  } else if (lockedStrategyRef.current?.identity !== sourceIdentity) {
+    lockedStrategyRef.current = null;
+  }
+
+  // One reveal fade only. After the first successful load, further prop churn
+  // (strategy lock, parent re-render, sub-dp layout) must not re-cross-fade.
+  const effectiveTransition = hasRevealed ? 0 : transition;
 
   useEffect(() => {
     if (!__DEV__ || warnedInvalidDimensionsRef.current) return;
@@ -161,15 +196,26 @@ export function AspectAwareMedia({
     }
   }, [imageAspectRatio, imageHeight, imageWidth]);
 
-  // Dev-only media diagnostics: surface, media + viewport geometry, the resolved
-  // class, foreground fit, backdrop mode, blur amount, and whether the dimensions
-  // were inferred only after onLoad. Mirrors the runway image-fit-policy logs.
+  // Dev-only media diagnostics. Log only when the *decided* fit changes — the
+  // previous effect re-fired on every parent render and flooded Metro while
+  // making strategy thrash look worse than it was.
   useEffect(() => {
     if (!__DEV__) return;
     const viewportAspect =
       containerSize && containerSize.height > 0 ? containerSize.width / containerSize.height : null;
     const usesBackdrop =
       strategy === 'contain-blur' || strategy === 'letter-blur' || strategy === 'letter-soft';
+    const signature = [
+      diagnosticsLabel ?? 'AspectAwareMedia',
+      sourceIdentity,
+      strategy,
+      resolvedImageWidth ?? 'x',
+      resolvedImageHeight ?? 'x',
+      containerSize?.width != null ? Math.round(containerSize.width) : 'x',
+      containerSize?.height != null ? Math.round(containerSize.height) : 'x',
+    ].join('|');
+    if (lastLoggedStrategyRef.current === signature) return;
+    lastLoggedStrategyRef.current = signature;
     console.debug('[AspectAwareMedia] strategy', {
       source: diagnosticsLabel ?? 'AspectAwareMedia',
       mediaWidth: resolvedImageWidth,
@@ -183,8 +229,10 @@ export function AspectAwareMedia({
       backdropMode: usesBackdrop ? (strategy === 'letter-soft' ? 'soft-blur' : 'blur') : 'matte',
       blurAmount: usesBackdrop ? (strategy === 'letter-soft' ? BACKDROP_BLUR_SOFT : BACKDROP_BLUR_STRONG) : 0,
       dimensionsInferredPostLoad: imageAspectRatio == null && imageWidth == null && loadedSize != null,
+      locked: canLockStrategy,
     });
   }, [
+    canLockStrategy,
     containerSize,
     diagnosticsLabel,
     imageAspectRatio,
@@ -193,6 +241,7 @@ export function AspectAwareMedia({
     resolvedAspectRatio,
     resolvedImageHeight,
     resolvedImageWidth,
+    sourceIdentity,
     strategy,
   ]);
 
@@ -215,11 +264,41 @@ export function AspectAwareMedia({
   const handleLoad = useCallback(
     (event: any) => {
       const nextSize = getLoadedSize(event);
-      if (nextSize) setLoadedSize(nextSize);
+      if (nextSize) {
+        // Skip state when the parent already supplied dimensions — writing the
+        // same size back forces a re-render (and used to re-run strategy).
+        setLoadedSize((current) => {
+          if (
+            isPositiveFinite(imageWidth) &&
+            isPositiveFinite(imageHeight)
+          ) {
+            return current;
+          }
+          if (
+            current &&
+            current.width === nextSize.width &&
+            current.height === nextSize.height
+          ) {
+            return current;
+          }
+          return nextSize;
+        });
+      }
+      setHasRevealed(true);
       onLoad?.(event);
     },
-    [onLoad],
+    [imageHeight, imageWidth, onLoad],
   );
+
+  const previousSourceIdentityRef = useRef(sourceIdentity);
+  useEffect(() => {
+    // Only reset on a real identity change — running on first mount would race
+    // the first onLoad and re-enable the cross-fade after the image had already
+    // painted, which reintroduced the shake on recycled cells.
+    if (previousSourceIdentityRef.current === sourceIdentity) return;
+    previousSourceIdentityRef.current = sourceIdentity;
+    setHasRevealed(false);
+  }, [sourceIdentity]);
 
   const placeholder = blurhash ? { blurhash } : normalizedPlaceholderSource ?? undefined;
   const foreground = imageSource ? (
@@ -230,7 +309,7 @@ export function AspectAwareMedia({
       contentFit={strategy === 'edge' ? 'cover' : 'contain'}
       placeholderContentFit={strategy === 'edge' ? 'cover' : 'contain'}
       cachePolicy={cachePolicy}
-      transition={transition}
+      transition={effectiveTransition}
       priority={priority}
       recyclingKey={recyclingKey}
       accessibilityLabel={accessibilityLabel}
