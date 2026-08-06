@@ -3,6 +3,8 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, View } fr
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { drillDownPush } from '@/src/utils/mobileNavigation';
+
 import { ProfileApi, type UserProfile } from '@/src/api/ProfileApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { SettingsHeader, SettingsStateCard } from '@/components/settings/SettingsPrimitives';
@@ -202,7 +204,7 @@ export default function PrivacySettingsScreen() {
           <SettingsStateCard
             title="Sign in required"
             actionTitle="Sign in"
-            onAction={() => router.push('/(auth)/login' as never)}
+            onAction={() => drillDownPush('/(auth)/login' as never)}
           />
         </View>
       </SafeAreaView>
@@ -276,7 +278,7 @@ export default function PrivacySettingsScreen() {
           <AppText variant="captionBold" tone="muted">MARKET</AppText>
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push('/settings/market-preferences' as never)}
+            onPress={() => drillDownPush('/settings/market-preferences' as never)}
             style={({ pressed }) => [
               styles.row,
               { borderBottomColor: theme.colors.border },

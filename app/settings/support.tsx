@@ -5,6 +5,8 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { drillDownPush } from '@/src/utils/mobileNavigation';
+
 import { useAuth } from '@/src/auth/AuthContext';
 import { env } from '@/src/config/env';
 import { AppText } from '@/components/ui/AppText';
@@ -79,18 +81,18 @@ export default function SupportSettingsScreen() {
             </AppText>
             <View style={styles.buttonGrid}>
               <View style={styles.buttonSlot}>
-                <Button title="Orders" variant="secondary" onPress={() => router.push('/orders' as never)} />
+                <Button title="Orders" variant="secondary" onPress={() => drillDownPush('/orders' as never)} />
               </View>
               <View style={styles.buttonSlot}>
-                <Button title="Account" variant="secondary" onPress={() => router.push('/settings/account-security' as never)} />
+                <Button title="Account" variant="secondary" onPress={() => drillDownPush('/settings/account-security' as never)} />
               </View>
             </View>
             <View style={styles.buttonGrid}>
               <View style={styles.buttonSlot}>
-                <Button title="Payments" variant="secondary" onPress={() => router.push('/settings/payment' as never)} />
+                <Button title="Payments" variant="secondary" onPress={() => drillDownPush('/settings/payment' as never)} />
               </View>
               <View style={styles.buttonSlot}>
-                <Button title="Legal" variant="secondary" onPress={() => router.push('/legal' as never)} />
+                <Button title="Legal" variant="secondary" onPress={() => drillDownPush('/legal' as never)} />
               </View>
             </View>
           </Card>
@@ -131,12 +133,12 @@ export default function SupportSettingsScreen() {
             <Button
               title="Payment policy"
               variant="outline"
-              onPress={() => router.push('/legal/payment-policy' as never)}
+              onPress={() => drillDownPush('/legal/payment-policy' as never)}
             />
             <Button
               title="Trust and safety"
               variant="outline"
-              onPress={() => router.push('/legal/trust-safety-policy' as never)}
+              onPress={() => drillDownPush('/legal/trust-safety-policy' as never)}
             />
           </Card>
         </SettingsSection>

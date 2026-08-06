@@ -20,7 +20,7 @@ export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
 
 type Props = {
   title: string;
-  onPress?: () => void;
+  onPress?: () => void | Promise<unknown>;
   disabled?: boolean;
   loading?: boolean;
   fullWidth?: boolean;
@@ -31,7 +31,24 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   testID?: string;
+  /**
+   * Opt out of the built-in single-fire guard for controls where distinct
+   * rapid presses are a legitimate interaction (steppers, counters).
+   */
+  allowRapidPress?: boolean;
 };
+
+/**
+ * Every Button is single-fire by default. Under dev/SIT latency a press can
+ * take seconds to produce visible feedback, and users respond by pressing
+ * again — which used to submit duplicate mutations and stack duplicate
+ * screens. Two layers close that:
+ *   1. If onPress returns a promise, the button goes busy (spinner + disabled)
+ *      until it settles — automatic loading state for async handlers.
+ *   2. Sync handlers (fire-and-forget `void doAsync()` wrappers, navigation)
+ *      get a rapid-press window: presses inside it are ignored.
+ */
+const RAPID_PRESS_IGNORE_MS = 650;
 
 /**
  * Resolves the correct size dimensions and typography from the token system.
@@ -61,11 +78,34 @@ export function Button({
   style,
   textStyle,
   testID,
+  allowRapidPress,
 }: Props) {
   const { theme } = useTheme();
   const sz = sizeStyles(size);
-  const isDisabled = disabled || loading;
+  const pendingPressRef = React.useRef(false);
+  const lastPressAtRef = React.useRef(0);
+  const [pendingPress, setPendingPress] = React.useState(false);
+  const isBusy = loading || pendingPress;
+  const isDisabled = disabled || isBusy;
   const scale = React.useRef(new Animated.Value(1)).current;
+
+  const handlePress = React.useCallback(() => {
+    if (!onPress) return;
+    if (pendingPressRef.current) return;
+    const now = Date.now();
+    if (!allowRapidPress && now - lastPressAtRef.current < RAPID_PRESS_IGNORE_MS) return;
+    lastPressAtRef.current = now;
+    const result = onPress() as unknown;
+    if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
+      pendingPressRef.current = true;
+      setPendingPress(true);
+      const settle = () => {
+        pendingPressRef.current = false;
+        setPendingPress(false);
+      };
+      (result as PromiseLike<unknown>).then(settle, settle);
+    }
+  }, [allowRapidPress, onPress]);
 
   const animatePress = React.useCallback(
     (toValue: number, duration: number) => {
@@ -135,7 +175,7 @@ export function Button({
     <Animated.View style={[styles.scaleWrap, { transform: [{ scale }] }]}>
       <Pressable
         testID={testID}
-        onPress={onPress}
+        onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={isDisabled}
@@ -160,7 +200,7 @@ export function Button({
               style={[
                 styles.text,
                 {
-                  opacity: loading ? 0 : 1,
+                  opacity: isBusy ? 0 : 1,
                 },
                 textStyle,
               ]}
@@ -168,7 +208,7 @@ export function Button({
             >
               {title}
             </AppText>
-            {loading ? (
+            {isBusy ? (
               <View style={styles.loaderOverlay} pointerEvents="none">
                 <ActivityIndicator
                   size="small"

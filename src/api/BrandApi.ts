@@ -1461,14 +1461,15 @@ export const brandApi = {
   },
 
   /**
-   * Delete a collection
+   * Delete a design (domain rule: design actions call design endpoints —
+   * the only caller deletes catalog design drafts).
    */
-  async deleteCollection(collectionId: string): Promise<boolean> {
+  async deleteDesign(designId: string): Promise<boolean> {
     try {
-      await apiClient.delete(`/collections/${collectionId}`);
+      await apiClient.delete(`/designs/${designId}`);
       return true;
     } catch (error) {
-      console.error('Error deleting collection:', error);
+      console.error('Error deleting design:', error);
       throw error;
     }
   },

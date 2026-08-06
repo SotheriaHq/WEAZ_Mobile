@@ -1859,7 +1859,7 @@ export function MarketScreen() {
   const requireAuth = useCallback(() => {
     if (status === 'authenticated') return true;
     toast.info('Please sign in to continue.');
-    router.push({ pathname: '/(auth)/login', params: { next: '/(tabs)/discover' } } as any);
+    drillDownPush({ pathname: '/(auth)/login', params: { next: '/(tabs)/discover' } } as any);
     return false;
   }, [status, toast]);
 

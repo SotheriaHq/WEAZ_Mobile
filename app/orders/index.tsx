@@ -348,7 +348,7 @@ export default function OrdersScreen() {
             <AppText variant="body" tone="muted" style={styles.centerText}>
               Open your buyer order history after you sign in.
             </AppText>
-            <Button title="Sign in" onPress={() => router.push('/(auth)/login' as any)} />
+            <Button title="Sign in" onPress={() => drillDownPush('/(auth)/login' as any)} />
           </Card>
         </View>
       </SafeAreaView>

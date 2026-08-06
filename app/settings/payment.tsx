@@ -3,6 +3,8 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { drillDownPush } from '@/src/utils/mobileNavigation';
+
 import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { AppText } from '@/components/ui/AppText';
@@ -51,7 +53,7 @@ function PaymentOrderRow({ order }: { order: BuyerOrderSummary }) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Open order ${order.title}`}
-      onPress={() => router.push({ pathname: '/orders/[orderId]', params: { orderId: order.id } } as never)}
+      onPress={() => drillDownPush({ pathname: '/orders/[orderId]', params: { orderId: order.id } } as never)}
       style={({ pressed }) => [styles.orderRow, { borderColor: theme.colors.border }, pressed ? styles.pressed : null]}
     >
       <View style={styles.orderCopy}>
@@ -142,7 +144,7 @@ export default function PaymentSettingsScreen() {
             title="Sign in required"
             body="Payment settings and receipts are tied to your account."
             actionTitle="Sign in"
-            onAction={() => router.push('/(auth)/login' as never)}
+            onAction={() => drillDownPush('/(auth)/login' as never)}
           />
         </View>
       </SafeAreaView>
@@ -164,10 +166,10 @@ export default function PaymentSettingsScreen() {
             </AppText>
             <View style={styles.actionRow}>
               <View style={styles.actionSlot}>
-                <Button title="Open checkout" onPress={() => router.push('/checkout' as never)} />
+                <Button title="Open checkout" onPress={() => drillDownPush('/checkout' as never)} />
               </View>
               <View style={styles.actionSlot}>
-                <Button title="View orders" variant="secondary" onPress={() => router.push('/orders' as never)} />
+                <Button title="View orders" variant="secondary" onPress={() => drillDownPush('/orders' as never)} />
               </View>
             </View>
           </Card>
@@ -204,7 +206,7 @@ export default function PaymentSettingsScreen() {
               title="No payments yet"
               body="Your checkout and order payment states will appear here after your first order."
               actionTitle="Open checkout"
-              onAction={() => router.push('/checkout' as never)}
+              onAction={() => drillDownPush('/checkout' as never)}
             />
           ) : (
             <Card padding="lg" style={styles.card}>
@@ -224,7 +226,7 @@ export default function PaymentSettingsScreen() {
             <Button
               title="Read payment policy"
               variant="secondary"
-              onPress={() => router.push('/legal/payment-policy' as never)}
+              onPress={() => drillDownPush('/legal/payment-policy' as never)}
             />
           </Card>
         </SettingsSection>

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, Stack } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -319,7 +321,7 @@ export function MobileCheckoutScreen() {
     }
     if (auth.status !== 'authenticated' || !auth.user) {
       toast.info('Sign in before checkout.');
-      router.push('/(tabs)/me' as never);
+      drillDownPush('/(tabs)/me' as never);
       return;
     }
 
@@ -602,7 +604,7 @@ export function MobileCheckoutScreen() {
               </View>
             </Pressable>
             <Pressable
-              onPress={() => router.push('/legal/payment-policy' as never)}
+              onPress={() => drillDownPush('/legal/payment-policy' as never)}
               accessibilityRole="button"
               accessibilityLabel="View Payment Policy"
             >

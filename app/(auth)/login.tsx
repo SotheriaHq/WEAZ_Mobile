@@ -3,6 +3,8 @@ import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { router, useLocalSearchParams } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
@@ -723,7 +725,7 @@ export default function LoginScreen() {
                 variant="ghost"
                 size="xs"
                 onPress={() =>
-                  router.push({
+                  drillDownPush({
                     pathname: '/forgot-password',
                     params: { email: normalizedEmail },
                   })
@@ -780,7 +782,7 @@ export default function LoginScreen() {
                   New here?{' '}
                 </AppText>
                 <Pressable
-                  onPress={() => router.push({ pathname: '/(auth)/signup', params: { next: nextPath } })}
+                  onPress={() => drillDownPush({ pathname: '/(auth)/signup', params: { next: nextPath } })}
                   accessibilityRole="button"
                   accessibilityLabel="Create an account"
                 >
@@ -811,7 +813,7 @@ export default function LoginScreen() {
                 New to WIEZ?
               </AppText>
               <Pressable
-                onPress={() => router.push({ pathname: '/(auth)/signup', params: { next: nextPath } })}
+                onPress={() => drillDownPush({ pathname: '/(auth)/signup', params: { next: nextPath } })}
                 accessibilityRole="button"
                 accessibilityLabel="Create account"
               >

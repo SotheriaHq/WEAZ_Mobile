@@ -101,7 +101,9 @@ const navigateToSuggestion = (item: MarketSectionItem) => {
     return;
   }
   if (targetType === 'DESIGN') {
-    drillDownPush({ pathname: '/designs/[designId]', params: { designId: targetId } } as any);
+    // Shop context opens the shop viewer — /designs/[designId] is the
+    // comment-anchored detail viewer reserved for notification/comment links.
+    drillDownPush({ pathname: '/market-viewer', params: { sourceType: 'DESIGN', sourceId: targetId } } as any);
     return;
   }
   if (targetType === 'BRAND') {

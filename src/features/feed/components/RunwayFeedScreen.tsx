@@ -53,7 +53,7 @@ import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { perfMark } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
-import { drillDownPush } from '@/src/utils/mobileNavigation';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { fetchMarketFilterChipsQuery } from '@/src/query/bootstrapQueries';
 import { RunwayFeedItem } from '@/src/features/feed/components/RunwayFeedItem';
 import { RunwayFeedList } from '@/src/features/feed/components/RunwayFeedList';
@@ -2425,7 +2425,7 @@ export function RunwayFeedScreen() {
             <View style={styles.headerRow} pointerEvents="box-none">
                 <View style={styles.headerLeftGroup}>
                 <Pressable
-                  onPress={() => { router.push('/'); }}
+                  onPress={() => { topLevelNavigate('/'); }}
                   hitSlop={10}
                   style={({ pressed }) => [
                     styles.headerLogoButton,

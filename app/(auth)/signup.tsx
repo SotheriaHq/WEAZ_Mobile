@@ -16,6 +16,8 @@ import { Animated, Easing, LayoutAnimation, Platform, Pressable, StyleSheet, UIM
 import { LinearGradient } from 'expo-linear-gradient';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { router, useLocalSearchParams } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -492,14 +494,14 @@ export default function SignupScreen() {
             </Pressable>
             <View style={styles.legalLinksRow}>
               <Pressable
-                onPress={() => router.push('/legal/terms' as never)}
+                onPress={() => drillDownPush('/legal/terms' as never)}
                 accessibilityRole="button"
                 accessibilityLabel="View Terms of Service"
               >
                 <AppText variant="captionBold" tone="primary">View Terms</AppText>
               </Pressable>
               <Pressable
-                onPress={() => router.push('/legal/privacy' as never)}
+                onPress={() => drillDownPush('/legal/privacy' as never)}
                 accessibilityRole="button"
                 accessibilityLabel="View Privacy Policy"
               >

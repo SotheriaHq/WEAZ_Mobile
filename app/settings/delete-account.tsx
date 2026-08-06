@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { router, Stack } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -55,7 +57,8 @@ export default function DeleteAccountScreen() {
       });
       await signOut();
       toast.success('Your account has been deleted.');
-      router.replace('/(auth)/login' as never);
+      // Browse-first: the account is gone — land on the guest Runway, not auth.
+      router.replace('/(tabs)' as never);
     } catch (error) {
       const message =
         (error as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
@@ -98,7 +101,7 @@ export default function DeleteAccountScreen() {
             <Button
               title="View account deletion policy"
               variant="secondary"
-              onPress={() => router.push('/legal/account-deletion' as never)}
+              onPress={() => drillDownPush('/legal/account-deletion' as never)}
             />
           </Card>
 

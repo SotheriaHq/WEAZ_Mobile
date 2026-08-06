@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -91,11 +93,8 @@ export default function MyReviewsScreen() {
   const [deleteReview, setDeleteReview] = useState<ReviewDto | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.replace({ pathname: '/(auth)/login', params: { next: '/reviews' } } as any);
-    }
-  }, [status]);
+  // Browse-first policy: no mount redirect to /(auth)/login. Signed-out renders
+  // the guest branch in `content` below with a sign-in button instead.
 
   // Cache-first: the reviews list paints from cache on re-entry, then revalidates.
   const reviewsQuery = useCachedQuery<ReviewDto[]>({
@@ -152,6 +151,22 @@ export default function MyReviewsScreen() {
   };
 
   const content = (() => {
+    if (status === 'unauthenticated') {
+      return (
+        <Card padding="lg" style={styles.stateCard}>
+          <AppText variant="subtitle">Sign in to see your reviews</AppText>
+          <AppText variant="body" tone="muted" style={styles.centerText}>
+            Reviews you leave on completed orders live here.
+          </AppText>
+          <Button
+            title="Sign in"
+            onPress={() => drillDownPush({ pathname: '/(auth)/login', params: { next: '/reviews' } } as any)}
+            fullWidth
+          />
+        </Card>
+      );
+    }
+
     if (status === 'loading' || loading) {
       return (
         <View style={styles.centerState}>
@@ -178,7 +193,7 @@ export default function MyReviewsScreen() {
           <AppText variant="body" tone="muted" style={styles.centerText}>
             Completed-order reviews you submit will appear here.
           </AppText>
-          <Button title="View orders" variant="secondary" onPress={() => router.push('/orders' as any)} fullWidth />
+          <Button title="View orders" variant="secondary" onPress={() => drillDownPush('/orders' as any)} fullWidth />
         </Card>
       );
     }

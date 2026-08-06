@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
@@ -641,7 +643,7 @@ export default function StudioWebViewScreen() {
       const aliasTarget = getTrustedAliasPath(target);
       if (aliasTarget) {
         perfMark('studio-webview-tap');
-        router.push({
+        drillDownPush({
           pathname: '/studio/resolve-alias',
           params: {
             aliasType: aliasTarget.type,
@@ -663,7 +665,7 @@ export default function StudioWebViewScreen() {
           source,
           path: sanitizePathForTelemetry(classification.path),
         });
-        router.push(classification.nativeRoute as any);
+        drillDownPush(classification.nativeRoute as any);
         return false;
       }
 
@@ -816,7 +818,7 @@ export default function StudioWebViewScreen() {
 
   const handleMenuFinance = useCallback(() => {
     setProfileMenuVisible(false);
-    router.push('/studio/finance' as any);
+    drillDownPush('/studio/finance' as any);
   }, []);
 
   const handleMenuStaff = useCallback(() => {
@@ -827,13 +829,14 @@ export default function StudioWebViewScreen() {
       navigateStudioInPlace('staff');
       return;
     }
-    router.push({ pathname: '/studio', params: { routeKey: 'staff' } } as any);
+    drillDownPush({ pathname: '/studio', params: { routeKey: 'staff' } } as any);
   }, [loadState, navigateStudioInPlace]);
 
   const handleStudioSignOut = useCallback(() => {
     setProfileMenuVisible(false);
     void signOut().finally(() => {
-      router.replace('/(auth)/login' as any);
+      // Browse-first: sign-out exits to the guest Runway, never the auth screen.
+      router.replace('/(tabs)' as any);
     });
   }, [signOut]);
 

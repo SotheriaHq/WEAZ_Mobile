@@ -55,7 +55,7 @@ import { useToast } from '@/src/toast/ToastContext';
 import type { SizeRecommendationResponse } from '@/src/api/ProfileApi';
 import { CONFIDENCE_LABELS, SIZING_REGION_LABELS } from '@/src/utils/sizeRecommendation';
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
-import { backOrNavigate } from '@/src/utils/mobileNavigation';
+import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
 
 type CommerceSourceType = Extract<BagSourceType, 'PRODUCT' | 'DESIGN'>;
@@ -763,7 +763,7 @@ export function MarketCommerceViewer({
   const requireAuth = useCallback((message: string) => {
     if (authStatus === 'authenticated') return true;
     toast.info(message);
-    router.push({ pathname: '/(auth)/login', params: { next: routePath } } as any);
+    drillDownPush({ pathname: '/(auth)/login', params: { next: routePath } } as any);
     return false;
   }, [authStatus, routePath, toast]);
 
@@ -875,7 +875,7 @@ export function MarketCommerceViewer({
       return;
     }
 
-    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId } } as any);
+    drillDownPush({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId } } as any);
   }, [brandId, canMessageBrand, isOwnBrand, requireAuth, toast]);
 
   const handleSharePress = useCallback(async () => {

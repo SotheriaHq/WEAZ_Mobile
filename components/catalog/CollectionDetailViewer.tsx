@@ -3,6 +3,8 @@ import { Animated, Easing, Image, Pressable, ScrollView, Share, StyleSheet, View
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useQueryClient } from '@tanstack/react-query';
 
 import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
@@ -607,7 +609,7 @@ export function CollectionDetailViewer({
 
   const openBrandProfile = useCallback(() => {
     if (!detail?.owner?.id) return;
-    router.push({ pathname: '/catalog/[brandId]', params: { brandId: detail.owner.id } } as any);
+    drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: detail.owner.id } } as any);
   }, [detail?.owner?.id]);
 
   const shareCollection = useCallback(async () => {
@@ -768,7 +770,10 @@ export function CollectionDetailViewer({
               variant="primary"
               onPress={async () => {
                 if (status !== 'authenticated') {
-                  router.push({ pathname: '/login', params: { next: `/catalog/view/${collectionId}` } } as any);
+                  // Return to the live alias route for this viewer — the old
+                  // /catalog/view/[collectionId] route is deleted.
+                  const nextPath = resolvedScope === 'store' ? `/collections/${collectionId}` : `/designs/${collectionId}`;
+                  drillDownPush({ pathname: '/login', params: { next: nextPath } } as any);
                   return;
                 }
                 setRequestingAccess(true);
@@ -848,7 +853,7 @@ export function CollectionDetailViewer({
 
         <View style={[styles.topRight, { top: insets.top + 12 }]} pointerEvents="box-none">
           <Pressable
-            onPress={() => router.push({ pathname: '/(tabs)/me', params: { tab: 'Saved' } } as any)}
+            onPress={() => drillDownPush({ pathname: '/(tabs)/me', params: { tab: 'Saved' } } as any)}
             style={({ pressed }) => [styles.glassIconBtn, pressed && { opacity: 0.75 }]}
             accessibilityLabel="Saved items"
           >

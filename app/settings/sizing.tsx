@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 
 import { ProfileApi, type SizeFitProfile } from '@/src/api/ProfileApi';
 import { useAuth } from '@/src/auth/AuthContext';
-import { topLevelNavigate } from '@/src/utils/mobileNavigation';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -195,7 +195,7 @@ export default function SizingSettingsScreen() {
             title="Sign in required"
             body="Sizing preferences are tied to your account."
             actionTitle="Sign in"
-            onAction={() => router.push('/(auth)/login' as never)}
+            onAction={() => drillDownPush('/(auth)/login' as never)}
           />
         </View>
       </SafeAreaView>

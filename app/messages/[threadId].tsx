@@ -16,7 +16,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { backOrNavigate } from '@/src/utils/mobileNavigation';
+import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -1178,7 +1178,7 @@ export default function ChatThreadScreen() {
             title={stateTitle}
             body={stateBody}
             actionTitle="Sign in"
-            onAction={() => router.push({ pathname: '/(auth)/login', params: { next: '/(tabs)/inbox' } } as any)}
+            onAction={() => drillDownPush({ pathname: '/(auth)/login', params: { next: '/(tabs)/inbox' } } as any)}
           />
         ) : phase === 'invalid' || phase === 'unsupported' || phase === 'error' ? (
           <StateBlock

@@ -10,6 +10,8 @@ import React, {
 import { Linking, LayoutAnimation } from 'react-native';
 import { router } from 'expo-router';
 
+import { drillDownPush } from '@/src/utils/mobileNavigation';
+
 import {
   getDesignDetail,
   getActiveDesignCustomConfiguration,
@@ -1244,7 +1246,7 @@ export function DesignEditorProvider({
               duration: 9000,
               actionLabel: 'Review',
               onPress: () => {
-                router.push({
+                drillDownPush({
                   pathname: '/catalog',
                   params: { tab: 'Collections', visibility: 'In Review' },
                 } as any);

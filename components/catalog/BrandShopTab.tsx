@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -641,7 +643,7 @@ export function BrandShopTab({
 
   const openProductDetail = useCallback(
     async (product: StoreProduct) => {
-      router.push({ pathname: '/products/[productId]', params: { productId: product.id } } as any);
+      drillDownPush({ pathname: '/products/[productId]', params: { productId: product.id } } as any);
     },
     [],
   );

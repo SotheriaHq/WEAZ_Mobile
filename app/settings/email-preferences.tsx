@@ -3,6 +3,8 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-na
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { drillDownPush } from '@/src/utils/mobileNavigation';
+
 import {
   NotificationsApi,
   type EmailNotificationSettings,
@@ -375,7 +377,7 @@ export default function EmailPreferencesSettingsScreen() {
             title="Sign in required"
             body="Email delivery preferences are tied to your account."
             actionTitle="Sign in"
-            onAction={() => router.push('/(auth)/login' as never)}
+            onAction={() => drillDownPush('/(auth)/login' as never)}
           />
         </View>
       </SafeAreaView>

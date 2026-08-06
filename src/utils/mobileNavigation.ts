@@ -35,10 +35,12 @@ import { navPerf } from '@/src/utils/navPerf';
 /** Switch to a persistent top-level destination, reusing any existing instance. */
 let inFlightTarget: string | null = null;
 let lockTimeoutId: ReturnType<typeof setTimeout> | null = null;
-// Long enough to cover a slow route mount (notifications/search) so rapid
-// re-taps cannot stack N instances of the same screen. Still short enough that
-// a deliberate second navigation after the first lands is not blocked.
-const LOCK_TIMEOUT_MS = 1100;
+// Failsafe only — a successful navigation releases the lock early via the
+// path-match effect in app/(tabs)/_layout.tsx. It must outlast the slowest
+// screen mount we ship: under dev/SIT latency heavy screens take 1–2s to
+// commit, and the old 1100ms window expired mid-mount, letting a frustrated
+// re-tap stack a second copy of the same screen.
+const LOCK_TIMEOUT_MS = 2500;
 
 /**
  * Collapse an href into the string used for lock / same-target comparisons.

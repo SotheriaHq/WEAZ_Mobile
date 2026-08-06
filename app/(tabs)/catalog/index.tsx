@@ -1063,7 +1063,7 @@ export default function CatalogScreen() {
   }, []);
 
   const handleEditCollection = useCallback((id: string) => {
-    router.push({
+    drillDownPush({
       pathname: '/designs/[designId]/edit',
       params: { designId: id },
     } as any);
@@ -1084,13 +1084,13 @@ export default function CatalogScreen() {
       touchDesignEditorBackgroundTask(task.id);
       setDesignBackgroundTasks(readDesignEditorBackgroundTasks(userId));
       if (task.designId) {
-        router.push({
+        drillDownPush({
           pathname: '/designs/[designId]/edit',
           params: { designId: task.designId, recoveryTaskId: task.id },
         } as any);
         return;
       }
-      router.push({
+      drillDownPush({
         pathname: '/catalog/create-design/composer',
         params: { recoveryTaskId: task.id, blank: '1' },
       } as any);
@@ -1146,7 +1146,7 @@ export default function CatalogScreen() {
     setDraftDeletePhrase('');
 
     try {
-      await brandApi.deleteCollection(deletedId);
+      await brandApi.deleteDesign(deletedId);
       void queryClient.invalidateQueries({
         queryKey: BRAND_COLLECTIONS_QUERY_ROOT,
         refetchType: 'inactive',
@@ -1706,11 +1706,11 @@ export default function CatalogScreen() {
     }
 
     if (status !== 'authenticated') {
-      router.push({ pathname: '/(auth)/login', params: { next: `/catalog/${targetBrandId}` } } as any);
+      drillDownPush({ pathname: '/(auth)/login', params: { next: `/catalog/${targetBrandId}` } } as any);
       return;
     }
 
-    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId: targetBrandId } } as any);
+    drillDownPush({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId: targetBrandId } } as any);
   }, [status, targetBrandId, toast]);
 
   const handleShareCollection = useCallback(
@@ -1737,7 +1737,7 @@ export default function CatalogScreen() {
     async (collection: CollectionDto) => {
       if (isOwner) return;
       if (status !== 'authenticated') {
-        router.push({ pathname: '/(auth)/login', params: { next: `/catalog/${targetBrandId ?? ''}` } } as any);
+        drillDownPush({ pathname: '/(auth)/login', params: { next: `/catalog/${targetBrandId ?? ''}` } } as any);
         return;
       }
 
@@ -1823,12 +1823,12 @@ export default function CatalogScreen() {
         navPerf.navigationCalled();
 
         if (opts.openPicker && opts.source) {
-          router.push({
+          drillDownPush({
             pathname: '/catalog/create-design/composer',
             params: { autoOpenPickerSource: opts.source, brandId: targetBrandId },
           } as any);
         } else {
-          router.push({
+          drillDownPush({
             pathname: '/catalog/create-design/composer',
             params: { blank: '1', brandId: targetBrandId },
           } as any);
@@ -1888,8 +1888,8 @@ export default function CatalogScreen() {
       // the same control (see `StudioProfileMenu` in app/(tabs)/studio/webview.tsx).
       if (isOwner) {
         return [
-          { key: 'settings', icon: '⚙️', title: 'Settings', onPress: () => router.push('/settings' as any) },
-          { key: 'store', icon: '🛍️', title: 'Store', onPress: () => router.push('/studio' as any) },
+          { key: 'settings', icon: '⚙️', title: 'Settings', onPress: () => drillDownPush('/settings' as any) },
+          { key: 'store', icon: '🛍️', title: 'Store', onPress: () => drillDownPush('/studio' as any) },
         ];
       }
 
@@ -1919,7 +1919,7 @@ export default function CatalogScreen() {
 
       return status === 'authenticated'
         ? [
-            { key: 'settings', icon: '⚙️', title: 'Settings', onPress: () => router.push('/settings' as any) },
+            { key: 'settings', icon: '⚙️', title: 'Settings', onPress: () => drillDownPush('/settings' as any) },
             ...publicActions,
           ]
         : publicActions;
@@ -1972,7 +1972,7 @@ export default function CatalogScreen() {
             badges={headerBadges}
             onEditProfile={() => {
               if (!targetBrandId) return;
-              router.push({ pathname: '/catalog/edit-profile', params: { brandId: targetBrandId } } as any);
+              drillDownPush({ pathname: '/catalog/edit-profile', params: { brandId: targetBrandId } } as any);
             }}
             onCreate={handleCreatePress}
             createAnchorRef={createAnchorRef}

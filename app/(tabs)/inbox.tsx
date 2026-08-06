@@ -604,7 +604,7 @@ export default function InboxScreen() {
       if (params?.threadId || params?.conversationId) {
         navPerf.tap('inbox→pending_thread');
         navPerf.navigationCalled();
-        router.push({
+        drillDownPush({
           pathname: '/messages/[threadId]',
           params: {
             threadId: params.threadId || params.conversationId,
@@ -706,7 +706,7 @@ export default function InboxScreen() {
           </AppText>
           <Button
             title="Sign in"
-            onPress={() => router.push({ pathname: '/(auth)/login', params: { next: '/(tabs)/inbox' } } as any)}
+            onPress={() => drillDownPush({ pathname: '/(auth)/login', params: { next: '/(tabs)/inbox' } } as any)}
           />
         </View>
       ) : loading && !warmInboxSnapshot ? (

@@ -133,6 +133,7 @@ export const queryKeys = {
   },
   notifications: {
     unreadCount: () => ['notifications', 'unreadCount'] as const,
+    list: (userId?: string | null) => ['notifications', 'list', normalizeId(userId)] as const,
   },
   messaging: {
     unreadCount: () => ['messaging', 'unreadCount'] as const,

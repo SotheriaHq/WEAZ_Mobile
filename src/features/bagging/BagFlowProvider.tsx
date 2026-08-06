@@ -6,6 +6,8 @@ import React, {
   useState,
 } from 'react';
 import { router, usePathname } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import * as SecureStore from 'expo-secure-store';
 import { StyleSheet, View } from 'react-native';
 
@@ -438,7 +440,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
             <Button
               title="Sign in"
               onPress={() => {
-                router.push({
+                drillDownPush({
                   pathname: '/login',
                   params: {
                     reason: 'auth_required',
@@ -451,7 +453,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
               title="Create account"
               variant="secondary"
               onPress={() => {
-                router.push({
+                drillDownPush({
                   pathname: '/signup',
                   params: {
                     reason: 'auth_required',

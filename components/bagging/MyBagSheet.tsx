@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 
+import { drillDownPush } from '@/src/utils/mobileNavigation';
+
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -156,7 +158,7 @@ export default function MyBagSheet({ visible, onClose }: Props) {
                 onClose();
                 navPerf.tap('bag→checkout');
                 navPerf.navigationCalled();
-                router.push('/checkout' as never);
+                drillDownPush('/checkout' as never);
               }}
             />
           ) : null}
@@ -277,7 +279,7 @@ export default function MyBagSheet({ visible, onClose }: Props) {
           variant="outline"
           onPress={() => {
             onClose();
-            router.push('/orders' as never);
+            drillDownPush('/orders' as never);
           }}
         />
       </View>

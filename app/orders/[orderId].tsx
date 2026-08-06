@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { backOrNavigate } from '@/src/utils/mobileNavigation';
+import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -161,7 +161,7 @@ export default function BuyerOrderDetailScreen() {
             <AppText variant="body" tone="muted" style={styles.centerText}>
               Open your order history after you sign in.
             </AppText>
-            <Button title="Sign in" onPress={() => router.push('/(auth)/login' as any)} />
+            <Button title="Sign in" onPress={() => drillDownPush('/(auth)/login' as any)} />
           </Card>
         </View>
       </SafeAreaView>

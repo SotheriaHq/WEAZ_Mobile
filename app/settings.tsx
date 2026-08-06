@@ -10,7 +10,7 @@ import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { navPerf } from '@/src/utils/navPerf';
-import { topLevelNavigate } from '@/src/utils/mobileNavigation';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 type SettingsRow = {
   emoji: string;
@@ -108,26 +108,26 @@ export default function SettingsScreen() {
             emoji: '👤',
             title: 'Profile information',
             subtitle: 'Name, username, photo',
-            onPress: () => router.push('/(tabs)/me-edit' as never),
+            onPress: () => drillDownPush('/(tabs)/me-edit' as never),
           },
           {
             emoji: '📍',
             title: 'Location',
             subtitle: 'Saved city, address, and device settings',
-            onPress: () => router.push('/settings/location' as never),
+            onPress: () => drillDownPush('/settings/location' as never),
           },
           {
             emoji: '📧',
             title: 'Phone & email',
             subtitle: 'Login and contact details',
             metadata: user?.email ? 'Email set' : undefined,
-            onPress: () => router.push('/settings/account-security' as never),
+            onPress: () => drillDownPush('/settings/account-security' as never),
           },
           {
             emoji: '🔒',
             title: 'Password & security',
             subtitle: 'Password, sessions, passkeys',
-            onPress: () => router.push('/settings/account-security' as never),
+            onPress: () => drillDownPush('/settings/account-security' as never),
           },
         ],
       },
@@ -138,19 +138,19 @@ export default function SettingsScreen() {
             emoji: '🛡️',
             title: 'Privacy controls',
             subtitle: 'Visibility, blocked users',
-            onPress: () => router.push('/settings/privacy' as never),
+            onPress: () => drillDownPush('/settings/privacy' as never),
           },
           {
             emoji: '📱',
             title: 'Login sessions',
             subtitle: 'Manage active devices',
-            onPress: () => router.push('/settings/account-security' as never),
+            onPress: () => drillDownPush('/settings/account-security' as never),
           },
           {
             emoji: '🔑',
             title: 'Two-factor authentication',
             subtitle: 'Extra account protection',
-            onPress: () => router.push('/settings/account-security' as never),
+            onPress: () => drillDownPush('/settings/account-security' as never),
           },
         ],
       },
@@ -161,19 +161,19 @@ export default function SettingsScreen() {
             emoji: '🔔',
             title: 'Push notifications',
             subtitle: 'Likes, comments, messages',
-            onPress: () => router.push('/settings/notifications' as never),
+            onPress: () => drillDownPush('/settings/notifications' as never),
           },
           {
             emoji: '📧',
             title: 'Email notifications',
             subtitle: 'Orders and account updates',
-            onPress: () => router.push('/settings/email-preferences' as never),
+            onPress: () => drillDownPush('/settings/email-preferences' as never),
           },
           {
             emoji: '💬',
             title: 'Chat alerts',
             subtitle: 'Message and thread alerts',
-            onPress: () => router.push('/settings/notifications' as never),
+            onPress: () => drillDownPush('/settings/notifications' as never),
           },
         ],
       },
@@ -196,25 +196,25 @@ export default function SettingsScreen() {
             emoji: '↔️',
             title: 'Sizing settings',
             subtitle: 'Region, fit preference, and auto-apply',
-            onPress: () => router.push('/settings/sizing' as never),
+            onPress: () => drillDownPush('/settings/sizing' as never),
           },
           {
             emoji: '📐',
             title: 'Size Guide / Charts',
             subtitle: 'Sizing systems, measurements, and limitations',
-            onPress: () => router.push('/size-guide' as never),
+            onPress: () => drillDownPush('/size-guide' as never),
           },
           {
             emoji: '🧵',
             title: 'Market preferences',
             subtitle: 'Hidden content and market reset controls',
-            onPress: () => router.push('/settings/market-preferences' as never),
+            onPress: () => drillDownPush('/settings/market-preferences' as never),
           },
           {
             emoji: '💳',
             title: 'Payment settings',
             subtitle: 'Checkout, receipts, and payment policy',
-            onPress: () => router.push('/settings/payment' as never),
+            onPress: () => drillDownPush('/settings/payment' as never),
           },
         ],
       },
@@ -225,13 +225,13 @@ export default function SettingsScreen() {
             emoji: '⬆️',
             title: 'Upload preferences',
             subtitle: 'Quality limits and data usage',
-            onPress: () => router.push('/settings/upload-preferences' as never),
+            onPress: () => drillDownPush('/settings/upload-preferences' as never),
           },
           {
             emoji: '🌗',
             title: 'Theme',
             subtitle: 'Light, Dark, or System default',
-            onPress: () => router.push('/settings/theme' as never),
+            onPress: () => drillDownPush('/settings/theme' as never),
           },
         ],
       },
@@ -242,17 +242,17 @@ export default function SettingsScreen() {
             emoji: '❓',
             title: 'Help center',
             subtitle: 'Guides and common questions',
-            onPress: () => router.push('/settings/support' as never),
+            onPress: () => drillDownPush('/settings/support' as never),
           },
           {
             emoji: '⚠️',
             title: 'Report a problem',
             subtitle: 'Get to the right support path',
-            onPress: () => router.push('/settings/support' as never),
+            onPress: () => drillDownPush('/settings/support' as never),
           },
-          { emoji: '📄', title: 'Terms & conditions', onPress: () => router.push('/legal/terms' as never) },
-          { emoji: '🛡️', title: 'Privacy policy', onPress: () => router.push('/legal/privacy' as never) },
-          { emoji: '⚖️', title: 'Legal center', onPress: () => router.push('/legal' as never) },
+          { emoji: '📄', title: 'Terms & conditions', onPress: () => drillDownPush('/legal/terms' as never) },
+          { emoji: '🛡️', title: 'Privacy policy', onPress: () => drillDownPush('/legal/privacy' as never) },
+          { emoji: '⚖️', title: 'Legal center', onPress: () => drillDownPush('/legal' as never) },
         ],
       },
       {
@@ -263,7 +263,9 @@ export default function SettingsScreen() {
             title: 'Sign out',
             subtitle: 'Sign out of this device',
             onPress: () => {
-              void signOut().finally(() => router.replace('/(auth)/login' as never));
+              // Browse-first: after sign-out the home surface is the guest
+              // Runway, never the auth screen.
+              void signOut().finally(() => router.replace('/(tabs)' as never));
             },
           },
           {
@@ -271,7 +273,7 @@ export default function SettingsScreen() {
             title: 'Delete account',
             subtitle: 'Permanently remove your WIEZ account',
             danger: true,
-            onPress: () => router.push('/settings/delete-account' as never),
+            onPress: () => drillDownPush('/settings/delete-account' as never),
           },
         ],
       },
@@ -286,8 +288,8 @@ export default function SettingsScreen() {
         rows: [
           { emoji: '🏪', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => topLevelNavigate('/catalog' as never) },
           { emoji: '🗂️', title: 'My Content settings', subtitle: 'Designs, products, collections', onPress: () => topLevelNavigate('/catalog' as never) },
-          { emoji: '✅', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => router.push('/studio' as never) },
-          { emoji: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => router.push('/studio' as never) },
+          { emoji: '✅', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => drillDownPush('/studio' as never) },
+          { emoji: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => drillDownPush('/studio' as never) },
         ],
       },
       ...base.slice(4),

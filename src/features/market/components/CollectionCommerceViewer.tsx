@@ -225,7 +225,7 @@ export function CollectionCommerceViewer({
   const requireAuth = useCallback((message: string) => {
     if (authStatus === 'authenticated') return true;
     toast.info(message);
-    router.push({ pathname: '/(auth)/login', params: { next: routePath } } as any);
+    drillDownPush({ pathname: '/(auth)/login', params: { next: routePath } } as any);
     return false;
   }, [authStatus, routePath, toast]);
 
@@ -368,7 +368,7 @@ export function CollectionCommerceViewer({
       toast.info('Messaging is disabled for your own brand.');
       return;
     }
-    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId: status.collection.brandId } } as any);
+    drillDownPush({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId: status.collection.brandId } } as any);
   }, [isOwnBrand, requireAuth, status?.collection.brandId, toast]);
 
   const renderProduct = ({ item }: { item: CollectionBagProductStatus }) => {

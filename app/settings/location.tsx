@@ -3,6 +3,8 @@ import { ActivityIndicator, Linking, ScrollView, StyleSheet, View } from 'react-
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { drillDownPush } from '@/src/utils/mobileNavigation';
+
 import { ProfileApi, type UserProfile } from '@/src/api/ProfileApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { AppText } from '@/components/ui/AppText';
@@ -109,7 +111,7 @@ export default function LocationSettingsScreen() {
             title="Sign in required"
             body="Location settings are tied to your account."
             actionTitle="Sign in"
-            onAction={() => router.push('/(auth)/login' as never)}
+            onAction={() => drillDownPush('/(auth)/login' as never)}
           />
         </View>
       </SafeAreaView>

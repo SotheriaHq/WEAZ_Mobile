@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -50,7 +52,7 @@ export default function CreateCollectionScreen() {
   const canSave = useMemo(() => title.trim().length > 0 && !saving, [saving, title]);
 
   const openStudioBuilder = () => {
-    router.push({ pathname: '/studio/webview', params: { routeKey: 'createCollection' } } as any);
+    drillDownPush({ pathname: '/studio/webview', params: { routeKey: 'createCollection' } } as any);
   };
 
   const handleCreate = async () => {

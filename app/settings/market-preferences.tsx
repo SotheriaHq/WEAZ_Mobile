@@ -3,6 +3,8 @@ import { ActivityIndicator, Alert, FlatList, StyleSheet, View } from 'react-nati
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { drillDownPush } from '@/src/utils/mobileNavigation';
+
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -286,7 +288,7 @@ export default function MarketPreferencesScreen() {
           <AppText variant="bodyRegular" tone="muted" style={styles.centerText}>
             Account-level hidden content and reset controls are available after sign in.
           </AppText>
-          <Button title="Sign in" onPress={() => router.push('/(auth)/login' as never)} />
+          <Button title="Sign in" onPress={() => drillDownPush('/(auth)/login' as never)} />
         </View>
       </SafeAreaView>
     );

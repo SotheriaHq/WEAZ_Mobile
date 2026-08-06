@@ -3,6 +3,8 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { drillDownPush } from '@/src/utils/mobileNavigation';
+
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -163,7 +165,7 @@ export default function SizeGuideScreen() {
               This guide is educational. Product recommendations are computed by the backend from approved operational chart data, not this text.
             </AppText>
           </View>
-          <Button title="Update my measurements" onPress={() => router.push('/(tabs)/me' as any)} />
+          <Button title="Update my measurements" onPress={() => drillDownPush('/(tabs)/me' as any)} />
         </Card>
       </ScrollView>
     </SafeAreaView>

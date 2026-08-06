@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable } from 'react-native';
-import { router } from 'expo-router';
+import { topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 import { Header } from '@/components/ui/Header';
 import { WiezLogo } from '@/components/ui/WiezLogo';
@@ -12,7 +12,7 @@ export function BrandHeader({ right }: { right?: React.ReactNode }) {
       title={PRODUCT_NAME}
       left={
         <Pressable
-          onPress={() => router.push('/')}
+          onPress={() => topLevelNavigate('/')}
           style={({ pressed }) => [pressed && { opacity: 0.75 }]}
           accessibilityRole="button"
           accessibilityLabel="Go to home"

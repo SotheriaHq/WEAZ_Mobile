@@ -24,6 +24,8 @@ import {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -1147,7 +1149,7 @@ export default function CreateDesignComposerScreen() {
                 title="Preview"
                 disabled={!canPreview}
                 onPress={() =>
-                  router.push('/catalog/create-design/preview' as any)
+                  drillDownPush('/catalog/create-design/preview' as any)
                 }
                 fullWidth
               />

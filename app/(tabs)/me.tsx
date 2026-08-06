@@ -1044,13 +1044,13 @@ export default function BuyerProfileScreen() {
           <View style={styles.guestActions}>
             <Button
               title="Sign in"
-              onPress={() => router.push(PROFILE_LOGIN_ROUTE as any)}
+              onPress={() => drillDownPush(PROFILE_LOGIN_ROUTE as any)}
               fullWidth
             />
             <Button
               title="Create an account"
               variant="secondary"
-              onPress={() => router.push({ pathname: '/(auth)/signup', params: { next: '/(tabs)/me' } } as any)}
+              onPress={() => drillDownPush({ pathname: '/(auth)/signup', params: { next: '/(tabs)/me' } } as any)}
               fullWidth
             />
             <Button
@@ -1150,12 +1150,12 @@ export default function BuyerProfileScreen() {
 
         <View style={styles.actionGrid}>
           <View style={styles.actionRow}>
-            <ProfileAction emoji="✏️" label="Edit info" accent="primary" onPress={() => router.push('/(tabs)/me-edit' as any)} />
+            <ProfileAction emoji="✏️" label="Edit info" accent="primary" onPress={() => drillDownPush('/(tabs)/me-edit' as any)} />
             <ProfileAction emoji="📏" label="My fits" accent="success" onPress={() => setFittingsOpen(true)} />
             <ProfileAction emoji="📦" label="Orders" accent="primary" onPress={() => setActiveTab('Orders')} />
           </View>
           <View style={styles.actionRow}>
-            <ProfileAction emoji="⭐" label="Reviews" accent="warning" onPress={() => router.push('/reviews' as any)} />
+            <ProfileAction emoji="⭐" label="Reviews" accent="warning" onPress={() => drillDownPush('/reviews' as any)} />
             <ProfileAction emoji="⚙️" label="Settings" accent="textSecondary" onPress={handleOpenSettings} />
           </View>
         </View>
@@ -1256,7 +1256,7 @@ export default function BuyerProfileScreen() {
                   <OrderRow key={order.id} order={order} />
                 ))}
               </View>
-              <Button title="View all orders" variant="outline" onPress={() => router.push('/orders' as any)} />
+              <Button title="View all orders" variant="outline" onPress={() => drillDownPush('/orders' as any)} />
             </>
           )
         ) : null}
