@@ -294,6 +294,21 @@ let currentRefreshToken: string | null = null;
 let unauthorizedHandler: (() => void) | null = null;
 let refreshPromise: Promise<string | null> | null = null;
 
+/**
+ * Set once the server has told us this session is definitively dead (the refresh
+ * token itself was rejected), as opposed to a network blip.
+ *
+ * Without this latch every wave of 401s starts a *fresh* `/auth/refresh` round
+ * trip, because `refreshPromise` clears in its own `finally`. A boot that fans
+ * out ~15 authenticated calls against a dead session therefore pays for several
+ * serial refresh attempts against a slow API — one `bag/count` was measured at
+ * 10.5s. It also cannot succeed: a rejected refresh token stays rejected until
+ * the user signs in again.
+ *
+ * Cleared by `setApiRefreshToken` whenever a real token arrives (sign-in).
+ */
+let refreshTokenRejected = false;
+
 type RetryableConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
   _hostFailoverAttempts?: number;
@@ -395,6 +410,8 @@ function summarizeLoginPayload(payload: Record<string, unknown> | null) {
 
 async function refreshAccessToken(): Promise<string | null> {
   if (!currentRefreshToken) return null;
+  // Already told "no" by the server — fail fast instead of re-asking per request.
+  if (refreshTokenRejected) return null;
 
   if (!refreshPromise) {
     refreshPromise = (async () => {
@@ -416,7 +433,13 @@ async function refreshAccessToken(): Promise<string | null> {
         }
 
         return accessToken;
-      } catch {
+      } catch (error) {
+        // Only latch on an explicit rejection. A timeout or offline device must
+        // stay retryable, or a tunnel blip would strand a valid session.
+        const refreshStatus = Number((error as any)?.response?.status ?? 0);
+        if (refreshStatus === 401 || refreshStatus === 403) {
+          refreshTokenRejected = true;
+        }
         return null;
       } finally {
         refreshPromise = null;
@@ -438,6 +461,10 @@ export function setApiAuthToken(token: string | null) {
 
 export function setApiRefreshToken(token: string | null) {
   currentRefreshToken = token;
+  // A new refresh token means a new session — the previous rejection no longer
+  // applies. Clearing the token (sign-out) also resets the latch so the next
+  // sign-in starts clean.
+  refreshTokenRejected = false;
 }
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {

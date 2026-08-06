@@ -308,7 +308,15 @@ export default function SignupScreen() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + tokens.spacing.lg, paddingBottom: insets.bottom + tokens.spacing['3xl'] },
+          {
+            paddingTop: insets.top + tokens.spacing.lg,
+            // Floor the inset before padding on top of it. Android edge-to-edge
+            // with gesture nav reports a bottom inset of ~16 while the swipe
+            // handle occupies more than that, so `insets.bottom + 3xl` left the
+            // "SIGN IN" link sitting in the gesture strip — tappable in theory,
+            // swipe-to-home in practice.
+            paddingBottom: Math.max(insets.bottom, tokens.spacing.xl) + tokens.spacing['3xl'],
+          },
         ]}
       >
         {/* ── Logo — icon only, top left ── */}

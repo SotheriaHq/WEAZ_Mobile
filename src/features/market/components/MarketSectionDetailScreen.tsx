@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 import { AppText } from '@/components/ui/AppText';
+import { ScreenState } from '@/components/ui/ScreenState';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import {
@@ -340,12 +341,25 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
         }}
         onEndReachedThreshold={0.55}
         ListEmptyComponent={
-          <View style={styles.centerState}>
-            <AppText variant="bodyBold">{error ? 'Section could not load' : 'No items yet'}</AppText>
-            <AppText variant="small" tone="muted" numberOfLines={2}>
-              {error ?? 'This section is active but has no market-ready items right now.'}
-            </AppText>
-          </View>
+          // A failed load and a genuinely empty section used to render the same
+          // block, so there was no way to tell which one you were looking at —
+          // and only one of them is worth retrying.
+          error ? (
+            <ScreenState
+              compact
+              kind="server"
+              title="Section could not load"
+              message={error}
+              onAction={onRefresh}
+            />
+          ) : (
+            <ScreenState
+              compact
+              kind="empty"
+              title="No items yet"
+              message="This section is active but has no market-ready items right now."
+            />
+          )
         }
       />
     </SafeAreaView>

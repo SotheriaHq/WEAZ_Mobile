@@ -15,6 +15,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { ScreenState, classifyScreenState, type ScreenStateKind } from '@/components/ui/ScreenState';
 import { SearchApi } from '@/src/api/SearchApi';
 import { LAYOUT, tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -44,7 +45,10 @@ type ResultState =
   | { status: 'loading' }
   | { status: 'ready'; items: SearchItem[]; hasNextPage: boolean }
   | { status: 'empty' }
-  | { status: 'error'; message: string };
+  // `kind` is classified where the error is caught, while the original error is
+  // still in hand — a message string alone cannot distinguish "you are offline"
+  // from "the server broke", and those need different copy and different advice.
+  | { status: 'error'; message: string; kind: ScreenStateKind };
 
 const FILTER_OPTIONS: Array<{ key: FilterType; label: string }> = [
   { key: 'all', label: 'All' },
@@ -382,7 +386,11 @@ export default function SearchScreen() {
         if (reusableCachedResult) {
           return;
         }
-        const nextErrorState: ResultState = { status: 'error', message: getErrorMessage(error) };
+        const nextErrorState: ResultState = {
+          status: 'error',
+          message: getErrorMessage(error),
+          kind: classifyScreenState(error),
+        };
         setResultState(nextErrorState);
       } finally {
         if (activeSearchRequestKeyRef.current === requestKey) {
@@ -623,24 +631,21 @@ export default function SearchScreen() {
         ) : null}
 
         {submitted && resultState.status === 'error' ? (
-          <Card>
-            <View style={styles.stateBlock}>
-              <AppText variant="subtitle">⚠️</AppText>
-              <AppText variant="bodyBold">Search failed</AppText>
-              <AppText variant="body" tone="muted">{resultState.message}</AppText>
-              <Button title="Retry" onPress={onSubmitSearch} size="sm" />
-            </View>
-          </Card>
+          <ScreenState
+            compact
+            kind={resultState.kind}
+            message={resultState.message}
+            onAction={onSubmitSearch}
+          />
         ) : null}
 
         {submitted && resultState.status === 'empty' ? (
-          <Card>
-            <View style={styles.stateBlock}>
-              <AppText variant="subtitle">🫥</AppText>
-              <AppText variant="bodyBold">No results found</AppText>
-              <AppText variant="body" tone="muted">Try a different keyword, handle, or tag.</AppText>
-            </View>
-          </Card>
+          <ScreenState
+            compact
+            kind="noResults"
+            title="No results found"
+            message="Try a different keyword, handle, or tag."
+          />
         ) : null}
 
         {submitted && resultState.status === 'empty' && normalizeQuery(query) ? (

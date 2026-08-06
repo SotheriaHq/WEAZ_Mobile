@@ -13,7 +13,7 @@ import { useFocusEffect } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
 
 import { useAuth } from '@/src/auth/AuthContext';
-import { useTheme } from '@/src/theme/ThemeProvider';
+import { DarkStageThemeScope, useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
@@ -40,6 +40,7 @@ import type { MarketItem } from '@/src/types/market';
 import type { ResolvedTheme } from '@/src/types/theme';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
+import { ScreenState } from '@/components/ui/ScreenState';
 import { isUsableImageHttpUrl, prefetchResolvedImageAsset, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { useReduceMotion } from '@/src/hooks/useReduceMotion';
@@ -2395,9 +2396,17 @@ export function RunwayFeedScreen() {
   return (
     <SafeAreaView
       edges={[]}
-      style={[styles.root, { backgroundColor: theme.colors.bg }]}
+      // The runway is a deep-black stage in BOTH themes — the same surface the
+      // island already resolves against via `DarkStageThemeScope` in
+      // `app/(tabs)/_layout.tsx`. Painting the ambient `theme.colors.bg` here
+      // meant that in light mode the root was white and only *media* covered it:
+      // the moment the feed had nothing to show (empty, error, or pre-first-page)
+      // a white screen appeared under a dark island. The stage owns this
+      // background regardless of preference.
+      style={[styles.root, { backgroundColor: RUNWAY_STAGE_MATTE }]}
     >
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      {/* Always light: the content behind it is black in both themes. */}
+      <StatusBar style="light" />
 
       {/* The header is NOT gated on `loading`. It used to be, so every
           revalidation cycle blanked the filter row and painted it back — one of
@@ -2505,23 +2514,35 @@ export function RunwayFeedScreen() {
         </Animated.View>
       ) : null}
 
+      {/* Non-content states sit directly on the black stage, so they resolve dark
+          tokens like the island does — otherwise the card, its text and its
+          button render as a bright slab on black in light mode. */}
       {error && isNetworkError && !showBlockingLoader ? (
-        <View style={styles.loadingWrap}>
-          <NetworkErrorState onRetry={loadFirstPage} />
-        </View>
+        <DarkStageThemeScope>
+          <View style={styles.loadingWrap}>
+            <NetworkErrorState onRetry={loadFirstPage} />
+          </View>
+        </DarkStageThemeScope>
       ) : error && !showBlockingLoader ? (
-        <View style={[styles.loadingWrap, { paddingHorizontal: 20, gap: 12 }]}>
-          <AppText variant="subtitle" style={{ textAlign: 'center' }}>Unable to load feed</AppText>
-          <AppText variant="body" tone="muted" style={{ textAlign: 'center' }}>{error}</AppText>
-          <Button title="Retry" variant="primary" onPress={loadFirstPage} fullWidth />
-        </View>
+        <DarkStageThemeScope>
+          <View style={styles.loadingWrap}>
+            <ScreenState
+              kind="server"
+              title="Unable to load the runway"
+              message={error}
+              onAction={loadFirstPage}
+            />
+          </View>
+        </DarkStageThemeScope>
       ) : items.length === 0 && !showBlockingLoader ? (
-        <ScrollView
-          contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: overlayScrollPadding }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}>
-          <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? DEFAULT_MARKET_FILTER_CHIPS[0].id)} />
-        </ScrollView>
+        <DarkStageThemeScope>
+          <ScrollView
+            contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: overlayScrollPadding }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}>
+            <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? DEFAULT_MARKET_FILTER_CHIPS[0].id)} />
+          </ScrollView>
+        </DarkStageThemeScope>
       ) : (
         <View
           style={styles.feedListContainer}

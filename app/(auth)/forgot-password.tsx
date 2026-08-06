@@ -95,7 +95,9 @@ export default function ForgotPasswordScreen() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 36 },
+          // Floor the bottom inset — see the note in signup.tsx: Android gesture
+          // nav under-reports it relative to the swipe handle's real footprint.
+          { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom, 24) + 40 },
         ]}
       >
         <View style={styles.logoRow}>
@@ -203,13 +205,19 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    justifyContent: 'flex-end',
+    // `flex-end` pushed the whole form against the bottom of the screen and left
+    // a large dead gap above the logo. Login and signup both anchor to the top;
+    // this screen was the only one that did not.
+    justifyContent: 'flex-start',
   },
   logoRow: {
     alignSelf: 'flex-start',
   },
   spacer: {
-    minHeight: 140,
+    // Was 140, which existed only to offset the old `flex-end` anchoring. With
+    // the content anchored to the top it reads as the logo-to-headline gap, and
+    // matches the `spacing['3xl']` that login and signup use there.
+    minHeight: 40,
   },
   headlineBlock: {
     marginBottom: 20,

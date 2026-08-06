@@ -9,6 +9,10 @@
  * stack a second bottom nav bar. The tab shell hides that island for the focused
  * catalogue sub-flows (create-design, view, create-collection, edit-profile) to
  * preserve the previous full-screen, island-free behaviour.
+ *
+ * There is no `view/[collectionId]` screen: collection viewing happens inline
+ * via `CollectionDetailViewer`. Declaring it here made expo-router warn about a
+ * route with no matching file.
  */
 
 import { Stack } from 'expo-router';
@@ -18,7 +22,6 @@ export default function CatalogLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="[brandId]" />
-      <Stack.Screen name="view/[collectionId]" />
       <Stack.Screen name="create-design" />
       <Stack.Screen name="create-collection" />
     </Stack>

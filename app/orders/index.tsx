@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 
-import { drillDownPush } from '@/src/utils/mobileNavigation';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -10,6 +10,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { ErrorScreenState, ScreenState } from '@/components/ui/ScreenState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import ReviewFormSheet from '@/components/reviews/ReviewFormSheet';
@@ -114,22 +115,18 @@ function OrderSkeleton() {
   );
 }
 
-function EmptyState({ onRetry }: { onRetry: () => void }) {
-  const { theme } = useTheme();
+// No "Retry" here: an empty order history is a fact, not a failure, and offering
+// to retry it implies the list might be wrong. Shopping is the useful next step.
+function EmptyState() {
   return (
-    <Card padding="lg" style={styles.emptyCard}>
-      <AppText variant="display">📦</AppText>
-      <AppText variant="subtitle">No orders yet</AppText>
-      <AppText variant="body" tone="muted" style={styles.centerText}>
-        Your standard and custom purchase history will appear here.
-      </AppText>
-      <Button title="Retry" onPress={onRetry} fullWidth />
-      <View style={[styles.emptyHint, { borderColor: theme.colors.border }]}>
-        <AppText variant="captionRegular" tone="muted" style={styles.centerText}>
-          This native screen combines the buyer order sources that the web app already exposes.
-        </AppText>
-      </View>
-    </Card>
+    <ScreenState
+      kind="empty"
+      emoji="📦"
+      title="No orders yet"
+      message="Your standard and custom purchase history will appear here."
+      actionLabel="Browse the market"
+      onAction={() => topLevelNavigate({ pathname: '/(tabs)/discover' } as any)}
+    />
   );
 }
 
@@ -464,13 +461,15 @@ export default function OrdersScreen() {
           loading ? (
             <OrdersLoadingState />
           ) : error ? (
-            <Card padding="lg" style={styles.errorCard}>
-              <AppText variant="subtitle">Could not load orders</AppText>
-              <AppText variant="body" tone="muted" style={styles.centerText}>{error}</AppText>
-              <Button title="Retry" onPress={() => void load()} />
-            </Card>
+            // Classified from the raw error so an offline device is told it is
+            // offline, rather than "could not load orders".
+            <ErrorScreenState
+              error={ordersQuery.error}
+              message={error}
+              onRetry={() => void load()}
+            />
           ) : (
-            <EmptyState onRetry={() => void load()} />
+            <EmptyState />
           )
         }
         ListFooterComponent={

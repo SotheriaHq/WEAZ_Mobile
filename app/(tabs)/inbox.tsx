@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { CollapsibleSearch } from '@/components/ui/CollapsibleSearch';
+import { ScreenState } from '@/components/ui/ScreenState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { Tabs } from '@/components/catalog/Tabs';
@@ -712,23 +713,29 @@ export default function InboxScreen() {
       ) : loading && !warmInboxSnapshot ? (
         <MessagesSkeleton bottomPadding={bottomPadding} />
       ) : error && !hasLoadedConversations && !warmInboxSnapshot ? (
-        <View style={stateContainerStyle}>
-          <AppText variant="subtitle">Could not load messages</AppText>
-          <AppText variant="body" tone="muted" style={styles.stateText}>{error}</AppText>
-          <Button title="Retry" size="sm" onPress={() => void loadConversations('reset')} />
-        </View>
+        <ScreenState
+          kind="server"
+          title="Could not load messages"
+          message={error}
+          onAction={() => void loadConversations('reset')}
+        />
       ) : filteredConversations.length === 0 ? (
         <View style={stateContainerStyle}>
-          <AppText variant="subtitle">
-            {isSearching ? 'No matching messages' : activeFilter === 'unread' ? 'No unread messages' : activeFilter === 'orders' ? 'No order messages' : 'No messages yet'}
-          </AppText>
-          <AppText variant="body" tone="muted" style={styles.stateText}>
-            {isSearching
-              ? 'Try another real name, message preview, or order reference.'
-              : activeFilter === 'all'
-                ? 'Conversations will appear here after a real message is started.'
-                : 'This filter only uses real conversation data already returned by messaging.'}
-          </AppText>
+          {/* Searching/filtering to nothing is `noResults` (change the query);
+              a genuinely empty inbox is `empty` (nothing to change). */}
+          <ScreenState
+            compact
+            kind={isSearching || activeFilter !== 'all' ? 'noResults' : 'empty'}
+            emoji={isSearching ? '⌕' : '💬'}
+            title={isSearching ? 'No matching messages' : activeFilter === 'unread' ? 'No unread messages' : activeFilter === 'orders' ? 'No order messages' : 'No messages yet'}
+            message={
+              isSearching
+                ? 'Try another real name, message preview, or order reference.'
+                : activeFilter === 'all'
+                  ? 'Conversations will appear here after a real message is started.'
+                  : 'This filter only uses real conversation data already returned by messaging.'
+            }
+          />
           {error ? (
             <Button title="Retry" size="sm" onPress={() => void loadConversations('reset')} />
           ) : null}
