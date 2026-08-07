@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type * as ExpoNotificationsType from 'expo-notifications';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
@@ -12,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
@@ -678,10 +678,7 @@ export default function NotificationSettingsScreen() {
         </View>
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.keyboardWrap}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoider style={styles.keyboardWrap}>
         {loading ? (
           <View style={styles.stateWrap}>
             <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -740,7 +737,7 @@ export default function NotificationSettingsScreen() {
             ))}
           </ScrollView>
         )}
-      </KeyboardAvoidingView>
+      </KeyboardAvoider>
     </SafeAreaView>
   );
 }

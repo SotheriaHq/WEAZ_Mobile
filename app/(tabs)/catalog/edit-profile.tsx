@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -532,7 +533,7 @@ export default function BrandProfileEditScreen() {
         </View>
       </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
+      <KeyboardAvoider style={styles.flex}>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.content}
@@ -695,7 +696,7 @@ export default function BrandProfileEditScreen() {
           </View>
 
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAvoider>
 
       <AppSelectSheet
         visible={businessTypeSheetOpen}

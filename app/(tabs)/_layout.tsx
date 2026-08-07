@@ -345,17 +345,37 @@ export default function TabLayout() {
   }, [isBrand, preloadIslandTab, status]);
 
   const navigateToProfile = useCallback(() => {
+    const target = isBrand ? '/catalog' : '/(tabs)/me';
+
+    // The `profile` key returns early in `handleSelect`, so it never reached the
+    // same-target check or the navigation lock that every other island key gets.
+    // Tapping Profile while already on Profile re-navigated, and rapid taps were
+    // not deduped at all — the one island key exempt from both protections.
+    const normTarget = target.replace('/(tabs)', '');
+    const normCurrent = String(pathname).replace('/(tabs)', '');
+    if (normTarget === normCurrent) {
+      navPerf.mark?.('navigation_same_target_ignored', target);
+      return;
+    }
+
     setOptimisticActiveKey(NATIVE_ISLAND_KEYS.profile);
     // navigate (not push) so an already-mounted Catalogue/Me instance is reused
     // instead of mounting a fresh copy on every visit.
     const navFlow = isBrand ? 'tabs→catalog' : 'tabs→me';
-    scheduleRouteAfterFrame(navFlow, () => {
-      navPerf.navigationCalled(navFlow);
-      navPerf.routeCallStart(navFlow, { target: isBrand ? '/catalog' : '/(tabs)/me' });
-      jumpToIslandTab(isBrand ? 'catalog' : 'me', isBrand ? '/catalog' : '/(tabs)/me');
-      navPerf.routeCallEnd(navFlow, { target: isBrand ? '/catalog' : '/(tabs)/me' });
-    });
-  }, [isBrand, jumpToIslandTab, scheduleRouteAfterFrame]);
+    navPerf.setContext(pathname, target, pathname);
+    const locked = withNavigationLock(target as Href, () => {
+      scheduleRouteAfterFrame(navFlow, () => {
+        navPerf.navigationCalled(navFlow);
+        navPerf.routeCallStart(navFlow, { target });
+        jumpToIslandTab(isBrand ? 'catalog' : 'me', target);
+        navPerf.routeCallEnd(navFlow, { target });
+      });
+      return true;
+    }, { force: false });
+    if (!locked) {
+      navPerf.mark?.('navigation_ignored_duplicate', target);
+    }
+  }, [isBrand, jumpToIslandTab, pathname, scheduleRouteAfterFrame]);
 
   const handleProfilePress = useCallback(
     () => {

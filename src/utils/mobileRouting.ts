@@ -307,7 +307,27 @@ function routeForProductTarget(notification: MobileNotification): RouterTarget {
   return '/(tabs)/discover' as Href;
 }
 
-export function routeForNotification(notification: MobileNotification): RouterTarget {
+/**
+ * Who is reading the notification. Account-lifecycle notifications point at
+ * "your profile", and which screen that is depends on the account type — a brand
+ * owner's home is their catalogue, not the shopper profile.
+ */
+export type NotificationViewer = {
+  type?: 'BRAND' | 'REGULAR' | string | null;
+  activeBrandId?: string | null;
+} | null;
+
+const viewerIsBrand = (viewer: NotificationViewer): boolean =>
+  Boolean(viewer && (viewer.type === 'BRAND' || viewer.activeBrandId));
+
+/** The viewer's own profile home, by account type. */
+const routeForOwnProfile = (viewer: NotificationViewer): RouterTarget =>
+  (viewerIsBrand(viewer) ? '/catalog' : '/(tabs)/me') as Href;
+
+export function routeForNotification(
+  notification: MobileNotification,
+  viewer: NotificationViewer = null,
+): RouterTarget {
   const type = notification.type.toUpperCase();
   const payload = (notification.payload ?? {}) as Record<string, unknown>;
   const target = notification.target;
@@ -461,7 +481,10 @@ export function routeForNotification(notification: MobileNotification): RouterTa
   }
 
   if (type === 'LOGIN' || type === 'LOGOUT' || type === 'LOGOUT_ALL' || type === 'SIGNUP') {
-    return '/(tabs)/me' as Href;
+    // Was hard-coded to '/(tabs)/me'. A brand tapping their own "welcome, your
+    // account is created" notification therefore landed on the SHOPPER profile
+    // rendering their own account — the right data in the wrong home.
+    return routeForOwnProfile(viewer);
   }
 
   if (type.startsWith('VERIFICATION_')) {

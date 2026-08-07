@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Animated, FlatList, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiClient } from '@/src/api/httpClient';
@@ -368,7 +369,7 @@ export default function CollectionCommentsSheet({
             />
           )}
 
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <KeyboardAvoider>
             <View
               style={[
                 styles.commentInput,
@@ -411,7 +412,7 @@ export default function CollectionCommentsSheet({
                 {sendingComment ? <ActivityIndicator size="small" color="#fff" /> : <AppText variant="h3" tone="inverse">↑</AppText>}
               </Pressable>
             </View>
-          </KeyboardAvoidingView>
+          </KeyboardAvoider>
         </Animated.View>
       </View>
     </Modal>

@@ -7,13 +7,13 @@ import React, {
 } from 'react';
 import {
   InteractionManager,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
+import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import Reanimated, {
   FadeIn,
   FadeOut,
@@ -771,10 +771,7 @@ export default function CreateDesignComposerScreen() {
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.flex} 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoider style={styles.flex}>
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <View style={styles.header}>
           <AppBackButton fallbackHref="/catalog" />
@@ -1732,7 +1729,7 @@ export default function CreateDesignComposerScreen() {
       </>
       ) : null}
     </SafeAreaView>
-    </KeyboardAvoidingView>
+    </KeyboardAvoider>
   );
 }
 

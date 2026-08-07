@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from 'react';
 import {
   Animated,
   Dimensions,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 
@@ -101,15 +101,11 @@ export function GlassBottomSheet({
         )}
 
         {/* Content */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.kavContainer}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        >
+        <KeyboardAvoider style={styles.kavContainer}>
           <ContentWrapper style={styles.content} {...contentProps}>
             {children}
           </ContentWrapper>
-        </KeyboardAvoidingView>
+        </KeyboardAvoider>
       </View>
     </Animated.View>
   );

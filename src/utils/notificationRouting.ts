@@ -99,7 +99,7 @@ function resolvePaymentReturnRoute(url: string | null) {
  * the exact content it references, not just messages.
  */
 export function useNotificationRouting() {
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const toast = useToast();
 
   // Track the last handled notification to prevent duplicate navigation when the
@@ -141,7 +141,9 @@ export function useNotificationRouting() {
       }
 
       try {
-        const route = routeForNotification(notification);
+        // Same as the in-app list: account-lifecycle notifications resolve to the
+        // viewer's own home, which differs for brands and shoppers.
+        const route = routeForNotification(notification, user);
         // Navigation lock (drillDownPush) dedupes same-target taps and rapid
         // double taps, and `push` keeps a coherent back stack from the launch tab.
         drillDownPush(route);
@@ -156,7 +158,7 @@ export function useNotificationRouting() {
         void NotificationsApi.markAsRead(notification.id).catch(() => undefined);
       }
     },
-    [status, toast],
+    [status, toast, user],
   );
 
   // Flush any intent captured while unauthenticated once auth is ready.

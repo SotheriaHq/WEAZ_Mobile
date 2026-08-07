@@ -196,8 +196,10 @@ export default function NotificationsScreen() {
     // this measures tap→navigation_called for the notification open.
     navPerf.tap('notifications→target');
     navPerf.navigationCalled();
-    drillDownPush(routeForNotification(item));
-  }, []);
+    // Viewer type decides where "your profile" is — brands own a catalogue, not
+    // the shopper profile.
+    drillDownPush(routeForNotification(item, user));
+  }, [user]);
 
   const handleMarkAllRead = useCallback(async () => {
     setMarkingAll(true);

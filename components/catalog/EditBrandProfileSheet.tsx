@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
-  KeyboardAvoidingView,
   PanResponder,
   Platform,
   Pressable,
@@ -12,6 +11,7 @@ import {
 } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AppSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
@@ -463,7 +463,7 @@ export function EditBrandProfileSheet({
           <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
         </Animated.View>
 
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardRoot}>
+        <KeyboardAvoider style={styles.keyboardRoot}>
           <ScrollView
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
@@ -593,7 +593,7 @@ export function EditBrandProfileSheet({
               />
             </View>
           </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAvoider>
       </Animated.View>
 
       <AppSelectSheet

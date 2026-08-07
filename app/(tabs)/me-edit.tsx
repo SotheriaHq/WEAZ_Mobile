@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -10,6 +11,7 @@ import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { getFriendlyErrorMessage } from '@/src/utils/errorMessage';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { compressPickedImage } from '@/src/utils/imageCompression';
 import {
@@ -57,9 +59,11 @@ function formsEqual(a: ProfileFormState, b: ProfileFormState): boolean {
   );
 }
 
-function statusLabel(state: SaveState, savedAt: Date | null): string | null {
-  if (state === 'saving') return 'Saving changes...';
-  if (state === 'error') return 'Could not save changes. Fix the issue before leaving.';
+function statusLabel(state: SaveState, savedAt: Date | null, error: string | null): string | null {
+  if (state === 'saving') return 'Saving changes';
+  // Prefer the specific failure over the generic sentence — "Username already
+  // taken" tells the user what to do; "Could not save changes" does not.
+  if (state === 'error') return error ?? 'Could not save changes. Fix the issue before leaving.';
   if (state === 'saved' && savedAt) {
     return `Saved ${savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   }
@@ -84,6 +88,9 @@ export default function MeEditScreen() {
   const [form, setForm] = useState<ProfileFormState>(initialForm);
   const [baseline, setBaseline] = useState<ProfileFormState>(initialForm);
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  // Carries the specific reason a save failed, so the header can say what went
+  // wrong instead of "Could not save changes."
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   const latestFormRef = useRef<ProfileFormState | null>(null);
@@ -151,24 +158,36 @@ export default function MeEditScreen() {
           username,
           address: draft.address.trim() || undefined,
         });
-        if (updated) {
-          setProfile(updated);
-          setBaseline(resolvedDraft);
-          setSaveState('saved');
-          setLastSavedAt(new Date());
-          updateUser({
-            firstName: updated.firstName,
-            lastName: updated.lastName,
-            username: updated.username,
-            profileImage: updated.profileImage,
-            profileImageId: updated.profileImageId,
-            profileImageFile: updated.profileImageFile,
-          });
+        // A falsy response means nothing was persisted. Returning `true` here —
+        // as this did — let `beforeRemove` navigate away on the strength of a
+        // save that never happened, discarding the user's edits silently.
+        if (!updated) {
+          setSaveState('error');
+          toast.error('Your profile did not save. Please try again.');
+          return false;
         }
+
+        setProfile(updated);
+        setBaseline(resolvedDraft);
+        setSaveState('saved');
+        setLastSavedAt(new Date());
+        updateUser({
+          firstName: updated.firstName,
+          lastName: updated.lastName,
+          username: updated.username,
+          profileImage: updated.profileImage,
+          profileImageId: updated.profileImageId,
+          profileImageFile: updated.profileImageFile,
+        });
         return true;
-      } catch {
+      } catch (error) {
         setSaveState('error');
-        toast.error('Failed to save your profile changes.');
+        // The bare `catch` here used to collapse every cause into one generic
+        // sentence, so a taken username, an expired session and a dropped
+        // connection were indistinguishable — and none of them actionable.
+        const reason = getFriendlyErrorMessage(error, 'Failed to save your profile changes.');
+        setSaveError(reason);
+        toast.error(reason);
         return false;
       }
     },
@@ -310,7 +329,7 @@ export default function MeEditScreen() {
   );
   const statusTone =
     saveState === 'error' ? 'danger' : saveState === 'saving' ? 'warning' : 'muted';
-  const currentStatusLabel = statusLabel(saveState, lastSavedAt);
+  const currentStatusLabel = statusLabel(saveState, lastSavedAt, saveError);
 
   const updateField = useCallback((patch: Partial<ProfileFormState>) => {
     hasUserEditedRef.current = true;
@@ -324,14 +343,22 @@ export default function MeEditScreen() {
         <View style={styles.headerTextWrap}>
           <AppText variant="bodyBold">Edit Profile</AppText>
           {currentStatusLabel ? (
-            <AppText variant="caption" tone={statusTone} style={styles.status}>
-              {currentStatusLabel}
-            </AppText>
+            // A spinner alongside the label: "Saving changes" as static text
+            // gives no sign the app is actually working, which is why a stalled
+            // save is indistinguishable from a frozen screen.
+            <View style={styles.statusRow}>
+              {saveState === 'saving' ? (
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+              ) : null}
+              <AppText variant="caption" tone={statusTone} style={styles.status}>
+                {currentStatusLabel}
+              </AppText>
+            </View>
           ) : null}
         </View>
       </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
+      <KeyboardAvoider style={styles.flex}>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.content}
@@ -398,7 +425,7 @@ export default function MeEditScreen() {
             </View>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAvoider>
     </SafeAreaView>
   );
 }
@@ -418,8 +445,14 @@ const styles = StyleSheet.create({
   headerTextWrap: {
     flex: 1,
   },
-  status: {
+  statusRow: {
     marginTop: tokens.spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  status: {
+    flexShrink: 1,
   },
   content: {
     paddingHorizontal: tokens.spacing.lg,

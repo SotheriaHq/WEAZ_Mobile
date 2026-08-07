@@ -4,7 +4,6 @@ import {
   Animated,
   AppState,
   FlatList,
-  KeyboardAvoidingView,
   PanResponder,
   Platform,
   RefreshControl,
@@ -13,6 +12,7 @@ import {
   View,
   type ListRenderItemInfo,
 } from 'react-native';
+import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { useFocusEffect } from 'expo-router';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -1149,10 +1149,9 @@ export default function ChatThreadScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <KeyboardAvoidingView
+      <KeyboardAvoider
         style={styles.keyboardRoot}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+        offset={Platform.OS === 'ios' ? insets.top : 0}
       >
         <Header
           title={title}
@@ -1370,7 +1369,7 @@ export default function ChatThreadScreen() {
             </View>
           </>
         )}
-      </KeyboardAvoidingView>
+      </KeyboardAvoider>
     </SafeAreaView>
   );
 }

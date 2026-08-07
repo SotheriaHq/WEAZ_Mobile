@@ -220,9 +220,15 @@ const emit = (stage: string, flow: string, extra?: { source?: string | null; tar
     const lines = pendingLogLines;
     pendingLogLines = [];
     lines.forEach((nextLine) => {
-      // In --no-dev perf builds, console.log sometimes only appears reliably in the debugger or adb logcat.
       console.log(nextLine);
-      console.warn(nextLine);  // often more visible in some channels
+      // The duplicate `console.warn` exists because in --no-dev perf builds
+      // console.log is not reliably surfaced. In a DEV build it is pure cost:
+      // every warn goes through LogBox, which symbolicates and renders it, and
+      // boot emits dozens of these — visible as a long "Reloading…" stall.
+      // Keep the duplicate only where it was actually needed.
+      if (!__DEV__) {
+        console.warn(nextLine);
+      }
     });
   }, 1200);
 };
