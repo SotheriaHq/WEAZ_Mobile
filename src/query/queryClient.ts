@@ -1,5 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 
+import { replaceEqualDeepPreservingSignedUrls } from '@/src/query/structuralSharing';
+
 export const WIEZ_QUERY_STALE_TIME_MS = 3 * 60 * 1000;
 export const WIEZ_QUERY_GC_TIME_MS = 30 * 60 * 1000;
 export const WIEZ_COUNT_STALE_TIME_MS = 30 * 1000;
@@ -29,6 +31,13 @@ export const queryClient = new QueryClient({
       refetchOnMount: (query) => (query.state.isInvalidated ? 'always' : false),
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
+      // Stock structural sharing was defeated by re-signed S3 URLs, so every
+      // background revalidation produced brand-new object references. On a
+      // FlatList that means every visible row re-renders and every Image
+      // re-resolves its source — the shake users see when a screen refreshes.
+      // Mirrors fthreadly/src/query/queryClient.ts. See ./structuralSharing.
+      structuralSharing: (previous, next) =>
+        replaceEqualDeepPreservingSignedUrls(previous, next),
     },
   },
 });

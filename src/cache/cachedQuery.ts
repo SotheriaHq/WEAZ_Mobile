@@ -262,12 +262,13 @@ export function useCachedQuery<T>({
 
     let cancelled = false;
     const cached = client.getQueryData<T>(stableKey);
-    if (cached !== undefined) {
-      setData(cached);
-      setIsLoading(false);
-    } else {
-      setIsLoading(true);
-    }
+    // Assign unconditionally, including `undefined`. The miss branch used to
+    // leave `data` untouched, so when the key changed to something uncached
+    // (opening a second brand, switching profile tabs) the screen kept
+    // rendering the PREVIOUS key's rows underneath the loading flag and then
+    // swapped them out when the fetch landed — wrong content first, then a jump.
+    setData(cached);
+    setIsLoading(cached === undefined);
 
     const shouldRevalidate =
       forceRefresh ||

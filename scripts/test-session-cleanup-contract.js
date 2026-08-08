@@ -43,6 +43,7 @@ function loadSessionCleanup(options = {}) {
     clearMarketSignalQueue: 0,
     clearDesignEditorBackgroundTasks: 0,
     clearWarmScreenStateCache: 0,
+    resetCustomOrdersAvailability: 0,
     deactivatePushToken: 0,
     clearAppBadge: 0,
     asyncStorageGetAllKeys: 0,
@@ -52,9 +53,9 @@ function loadSessionCleanup(options = {}) {
   };
 
   const asyncStorageKeys = [
-    'THREADLY_QUERY_CACHE_V1',
-    'threadly.feed.market:api:user-1:all',
-    'THREADLY_USER',
+    'WIEZ_QUERY_CACHE_V1',
+    'wiez.feed.market:api:user-1:all',
+    'WIEZ_USER',
     'public.catalog.cache',
   ];
 
@@ -101,9 +102,9 @@ function loadSessionCleanup(options = {}) {
       if (request === '@/src/config/env') {
         return {
           env: {
-            userStorageKey: 'THREADLY_USER',
-            tokenStorageKey: 'THREADLY_ACCESS_TOKEN',
-            refreshTokenStorageKey: 'THREADLY_REFRESH_TOKEN',
+            userStorageKey: 'WIEZ_USER',
+            tokenStorageKey: 'WIEZ_ACCESS_TOKEN',
+            refreshTokenStorageKey: 'WIEZ_REFRESH_TOKEN',
           },
         };
       }
@@ -113,14 +114,14 @@ function loadSessionCleanup(options = {}) {
       if (request === '@/src/features/design-editor/designEditorBackgroundTasks') {
         return {
           clearDesignEditorBackgroundTasks: async () => calls.clearDesignEditorBackgroundTasks++,
-          DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY: 'threadly.designEditor.backgroundTasks.v1',
+          DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY: 'wiez.designEditor.backgroundTasks.v1',
         };
       }
       if (request === '@/src/features/feed/utils/feedKeys') {
-        return { PERSISTED_FEED_CACHE_PREFIX: 'threadly.feed.' };
+        return { PERSISTED_FEED_CACHE_PREFIX: 'wiez.feed.' };
       }
       if (request === '@/src/features/checkout/mobileCheckoutPending') {
-        return { MOBILE_PENDING_CHECKOUT_STORAGE_KEY: 'threadly.mobileCheckout.pending.v1' };
+        return { MOBILE_PENDING_CHECKOUT_STORAGE_KEY: 'wiez.mobileCheckout.pending.v1' };
       }
       if (request === '@/src/hooks/useResolvedImageUri') {
         return { clearResolvedImageUriCache: () => calls.clearImageUri++ };
@@ -142,7 +143,12 @@ function loadSessionCleanup(options = {}) {
       if (request === '@/src/query/queryPersistor') {
         return {
           purgeMobilePersistedQueryCache: async () => calls.purgePersistedQueryCache++,
-          THREADLY_QUERY_CACHE_STORAGE_KEY: 'THREADLY_QUERY_CACHE_V1',
+          // Same `threadly.* -> wiez.*` rename: the export the mock published no
+          // longer matched the one sessionCleanup imports, so the constant read
+          // as `undefined` and the persisted query cache silently stopped being
+          // matched for removal on logout — in the test only, but that is
+          // exactly the regression this contract exists to catch.
+          WIEZ_QUERY_CACHE_STORAGE_KEY: 'WIEZ_QUERY_CACHE_V1',
         };
       }
       if (request === '@/src/query/queryKeys') {
@@ -172,6 +178,9 @@ function loadSessionCleanup(options = {}) {
       }
       if (request === '@/src/realtime/notifications') {
         return { clearNotificationRealtimeSession: () => calls.clearNotificationRealtime++ };
+      }
+      if (request === '@/src/api/BuyerOrdersApi') {
+        return { resetCustomOrdersAvailability: () => calls.resetCustomOrdersAvailability++ };
       }
       if (request === '@/src/services/marketSignals') {
         return { clearMobileMarketSignalQueue: async () => calls.clearMarketSignalQueue++ };
@@ -214,10 +223,15 @@ async function main() {
   assert.equal(calls.removeAccessToken, 1, 'logout should remove SecureStore access token');
   assert.equal(calls.removeRefreshToken, 1, 'logout should remove SecureStore refresh token');
   assert.equal(calls.removeCachedAuthUser, 1, 'logout should remove the token-bound cached user');
-  assert.ok(calls.secureDelete.includes('threadly.activeBrandId'), 'logout should clear active brand');
-  assert.ok(calls.secureDelete.includes('threadly.pendingBagAction.v1'), 'logout should clear pending bag action');
-  assert.ok(calls.secureDelete.includes('threadly.mobileCheckout.pending.v1'), 'logout should clear pending mobile checkout');
-  assert.ok(!calls.secureDelete.includes('THREADLY_USER'), 'stored user cleanup should use the shared storage helper');
+  // These two keys are declared inside sessionCleanup.ts itself rather than
+  // mocked above, so they carry the real values. Both were renamed
+  // `threadly.*` -> `wiez.*` in the source without the assertions following,
+  // and this script has been failing on the rename ever since.
+  assert.ok(calls.secureDelete.includes(cleanup.ACTIVE_BRAND_STORAGE_KEY), 'logout should clear active brand');
+  assert.equal(cleanup.ACTIVE_BRAND_STORAGE_KEY, 'wiez.activeBrandId');
+  assert.ok(calls.secureDelete.includes('wiez.pendingBagAction.v1'), 'logout should clear pending bag action');
+  assert.ok(calls.secureDelete.includes('wiez.mobileCheckout.pending.v1'), 'logout should clear pending mobile checkout');
+  assert.ok(!calls.secureDelete.includes('WIEZ_USER'), 'stored user cleanup should use the shared storage helper');
   assert.equal(calls.purgePersistedQueryCache, 1, 'logout should purge persisted React Query cache');
   assert.equal(calls.clearFeedCache, 1, 'logout should clear feed cache');
   assert.equal(calls.clearBrandApi, 1, 'logout should clear signed URL/brand API caches');
@@ -229,9 +243,9 @@ async function main() {
   assert.equal(calls.clearWarmScreenStateCache, 1, 'logout should clear warm screen state');
   assert.equal(calls.asyncStorageGetAllKeys, 1);
   assert.deepEqual(calls.asyncStorageMultiRemove[0], [
-    'THREADLY_QUERY_CACHE_V1',
-    'threadly.feed.market:api:user-1:all',
-    'THREADLY_USER',
+    'WIEZ_QUERY_CACHE_V1',
+    'wiez.feed.market:api:user-1:all',
+    'WIEZ_USER',
   ]);
   assert.ok(calls.queryCancel.some((entry) => typeof entry.predicate === 'function'));
   assert.ok(calls.queryRemove.some((entry) => typeof entry.predicate === 'function'));
@@ -254,7 +268,7 @@ async function main() {
 
   const feedApiSource = fs.readFileSync(feedApiPath, 'utf8');
   const feedKeysSource = fs.readFileSync(feedKeysPath, 'utf8');
-  assert.match(feedKeysSource, /PERSISTED_FEED_CACHE_PREFIX\s*=\s*'threadly\.feed\.'/);
+  assert.match(feedKeysSource, /PERSISTED_FEED_CACHE_PREFIX\s*=\s*'wiez\.feed\.'/);
   assert.match(feedApiSource, /export const clearCachedMarketFeed/);
   assert.match(feedApiSource, /memoryCache\.clear\(\)/);
   assert.match(feedApiSource, /AsyncStorage\.getAllKeys\(\)/);

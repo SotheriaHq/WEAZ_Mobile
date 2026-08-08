@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "react-native-expo": {
+      "source": "hairyf/skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-native-expo/SKILL.md",
+      "computedHash": "49fdaaef87e270dd3698e5ac735d73e04b1ce7fc23a29ed63a1522542d555e07"
+    }
+  }
+}

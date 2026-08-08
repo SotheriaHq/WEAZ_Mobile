@@ -205,5 +205,16 @@ export const isPersistableWiezQueryKey = (queryKey: readonly unknown[]) => {
   if (root === 'media') {
     return scope === 'publicUrl';
   }
+  // Profile tabs the user round-trips between. Read-only display data with no
+  // PII, already purged on logout via PRIVATE_QUERY_ROOTS above. Left out
+  // originally, so reviews were the one profile tab that cold-loaded with a
+  // skeleton after every app restart while the catalog tabs repainted instantly.
+  // Mirrors fthreadly/src/query/queryKeys.ts.
+  //
+  // `orders`, `brandFinance` and `brandStaff` stay memory-only on purpose:
+  // addresses, payment references and staff records do not belong on disk.
+  if (root === 'reviews') {
+    return true;
+  }
   return false;
 };
