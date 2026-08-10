@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { useKeyboardFormField } from '@/components/ui/KeyboardAwareFormScroll';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
@@ -26,9 +27,11 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
   containerStyle,
   variant = 'default',
   multiline,
+  onFocus,
   ...rest
 }, ref) {
   const { theme } = useTheme();
+  const keyboardForm = useKeyboardFormField();
   const hasError = Boolean(error);
   const isBare = variant === 'bare';
 
@@ -55,6 +58,11 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
           ref={ref}
           {...rest}
           multiline={multiline}
+          onFocus={(event) => {
+            onFocus?.(event);
+            // Scroll the caret clear of the keyboard when nested in KeyboardAwareFormScroll.
+            keyboardForm?.onFieldFocus();
+          }}
           style={[
             styles.input,
             {

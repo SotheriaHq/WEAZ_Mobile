@@ -33,6 +33,11 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
 import {
+  AuthRequestError,
+  getAuthErrorMessage,
+  GoogleSignInError,
+} from '@/src/auth/authErrors';
+import {
   getRequiredLegalAcceptances,
   LEGAL_SIGNUP_DOCUMENT_KEYS,
 } from '@/src/api/LegalApi';
@@ -260,16 +265,29 @@ export default function SignupScreen() {
       );
       await signInWithGoogle({
         idToken,
+        intent: 'SIGNUP',
         type: userType ?? 'REGULAR',
         ...(userType === 'BRAND' ? { brandFullName: trimmedBrandName } : {}),
         legalAcceptances,
       });
       navigateAfterAuth();
       toast.success('Welcome to WIEZ!');
-    } catch (e: any) {
-      const message =
-        typeof e?.message === 'string' ? e.message : 'Google signup could not be completed.';
-      toast.error(message);
+    } catch (error) {
+      // Backing out of the Google sheet is a decision, not a failure.
+      if (error instanceof GoogleSignInError && error.reason === 'cancelled') {
+        return;
+      }
+
+      // The mirror of login's `GOOGLE_NO_ACCOUNT`: this email already has a
+      // WIEZ account, and signup will never quietly log into it. Send them to
+      // the screen that can actually get them in.
+      if (error instanceof AuthRequestError && error.code === 'EMAIL_ALREADY_EXISTS') {
+        toast.info('That email already has a WIEZ account — log in to continue.');
+        router.replace('/(auth)/login');
+        return;
+      }
+
+      toast.error(getAuthErrorMessage(error));
     } finally {
       setGoogleSubmitting(false);
     }

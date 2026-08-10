@@ -159,7 +159,19 @@ function main() {
   assert.match(loginSource, /confirmEmailLoginCode/, 'Mobile login must support email-code confirmation.');
   assert.match(loginSource, /setupAccountPassword/, 'Mobile login must support first-password setup.');
   assert.match(loginSource, /useGoogleIdTokenRequest/, 'Mobile login must request a Google ID token through AuthSession.');
-  assert.match(loginSource, /signInWithGoogle\(\{\s*idToken\s*\}\)/, 'Mobile login must send only ID token for Google login.');
+  assert.match(
+    loginSource,
+    /signInWithGoogle\(\{\s*idToken,\s*intent:\s*'LOGIN'\s*\}\)/,
+    'Mobile login must send the ID token with an explicit LOGIN intent (and no other credentials).',
+  );
+  // The backend refuses to provision an account from the login screen and
+  // answers GOOGLE_NO_ACCOUNT. Without this branch the user hits a dead end on
+  // the one screen that cannot resolve it.
+  assert.match(
+    loginSource,
+    /GOOGLE_NO_ACCOUNT[\s\S]{0,240}\(auth\)\/signup/,
+    'Mobile login must route an unknown Google account to signup.',
+  );
   assert.doesNotMatch(loginSource, /onChangeText=\{(?:(?!\n\s*\})[\s\S])*getLoginOptions/, 'Mobile login must not call login-options while typing.');
   assert.doesNotMatch(loginSource, /console\.(log|warn|error).*token/, 'Mobile login must not log raw Google/password setup tokens.');
 
@@ -167,6 +179,28 @@ function main() {
   assert.match(signupSource, /signup-google-button/, 'Mobile signup must render a Google signup action.');
   assert.match(signupSource, /signInWithGoogle\(\{\s*idToken,/s, 'Mobile signup must send Google ID token to backend auth.');
   assert.match(signupSource, /brandFullName: trimmedBrandName/, 'Mobile Google brand signup must send brand full name.');
+  // The mirror of login's GOOGLE_NO_ACCOUNT branch.
+  assert.match(
+    signupSource,
+    /EMAIL_ALREADY_EXISTS[\s\S]{0,240}\(auth\)\/login/,
+    'Mobile signup must route an already-registered Google account to login.',
+  );
+
+  // Neither screen may toast a raw `error.message`: that is how "Google did not
+  // return an ID token." reached a user. Copy comes from `getAuthErrorMessage`,
+  // which falls back to a generic line for anything unvetted.
+  for (const [label, source] of [['login', loginSource], ['signup', signupSource]]) {
+    assert.match(
+      source,
+      /getAuthErrorMessage\(error\)/,
+      `Mobile ${label} must render Google failures through getAuthErrorMessage.`,
+    );
+    assert.match(
+      source,
+      /reason === 'cancelled'/,
+      `Mobile ${label} must stay silent when the user backs out of Google sign-in.`,
+    );
+  }
 
   const googleMarkSource = fs.readFileSync(googleMarkPath, 'utf8');
   assert.match(googleMarkSource, /react-native-svg/, 'Mobile Google social mark must use an SVG component.');
@@ -182,6 +216,28 @@ function main() {
   const googleHookSource = fs.readFileSync(googleHookPath, 'utf8');
   assert.match(googleHookSource, /expo-auth-session\/providers\/google/, 'Mobile Google auth must use Expo AuthSession Google provider.');
   assert.match(googleHookSource, /useIdTokenAuthRequest/, 'Mobile Google auth must request ID tokens.');
+  // On native, `useIdTokenAuthRequest` falls back to the PKCE code flow, so
+  // `promptAsync` resolves with an authorization code and NEVER an id_token —
+  // the provider's auto-exchange publishes on a later render and cannot reach
+  // that promise. Reading `id_token` off it broke every Android sign-in before
+  // the API was ever called. The exchange has to be explicit.
+  assert.match(
+    googleHookSource,
+    /exchangeCodeAsync\(/,
+    'Mobile Google auth must exchange the authorization code for an ID token itself.',
+  );
+  assert.match(
+    googleHookSource,
+    /code_verifier:\s*request\.codeVerifier/,
+    'Mobile Google auth must send the PKCE verifier on the code exchange.',
+  );
+  // Toast copy is owned by `authErrors`; a bare `throw new Error(...)` here is
+  // how engineer-facing strings reach users.
+  assert.doesNotMatch(
+    googleHookSource,
+    /throw new Error\(/,
+    'Mobile Google auth must throw typed GoogleSignInError values, not bare Errors.',
+  );
   assert.match(
     googleHookSource,
     /UNCONFIGURED_GOOGLE_CLIENT_ID/,
@@ -270,7 +326,19 @@ function main() {
   assert.equal(resolveMobileAuthRoute('threadlymobile://brand/staff/invite?token=abc123'), null);
 
   const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
-  assert.equal(appJson.expo.scheme, 'wiezmobile', 'Expo scheme must remain configured.');
+  // `scheme` is an array, and order matters: `Linking.createURL` uses the FIRST
+  // entry, so `wiezmobile` has to stay first or every in-app deep link changes
+  // scheme. The package entry is what lets Google's OAuth redirect
+  // (`com.sotheriahq.wiez:/oauthredirect`) reach the app at all — prebuild only
+  // emits intent filters for declared schemes.
+  const declaredSchemes = Array.isArray(appJson.expo.scheme)
+    ? appJson.expo.scheme
+    : [appJson.expo.scheme];
+  assert.equal(declaredSchemes[0], 'wiezmobile', 'Expo scheme must remain configured and stay first.');
+  assert.ok(
+    declaredSchemes.includes(appJson.expo.android?.package),
+    'Expo schemes must include the Android package so the Google OAuth redirect can reach the app.',
+  );
   assert.equal(
     appJson.expo.ios?.associatedDomains,
     undefined,

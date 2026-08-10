@@ -17,6 +17,11 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
 import {
+  AuthRequestError,
+  getAuthErrorMessage,
+  GoogleSignInError,
+} from '@/src/auth/authErrors';
+import {
   confirmEmailLoginCode,
   confirmDirectLoginCode,
   getLoginOptions,
@@ -356,11 +361,27 @@ export default function LoginScreen() {
     setGoogleLoading(true);
     try {
       const idToken = await googleTokenRequest.requestGoogleIdToken();
-      await signInWithGoogle({ idToken });
+      await signInWithGoogle({ idToken, intent: 'LOGIN' });
       toast.success('Welcome back!');
       setPendingNavigation(true);
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Google sign-in could not be completed.'));
+      // Backing out of the Google sheet is a decision, not a failure. Toasting
+      // it just nags someone who already knows what they did.
+      if (error instanceof GoogleSignInError && error.reason === 'cancelled') {
+        return;
+      }
+
+      // No WIEZ account for this Google email. The API refuses to create one
+      // from the login screen on purpose — an account needs a type and current
+      // legal acceptances — so hand the user to signup instead of showing them
+      // a dead end they cannot resolve from here.
+      if (error instanceof AuthRequestError && error.code === 'GOOGLE_NO_ACCOUNT') {
+        toast.info("No WIEZ account for that Google email yet — let's get you signed up.");
+        router.replace('/(auth)/signup');
+        return;
+      }
+
+      toast.error(getAuthErrorMessage(error));
     } finally {
       setGoogleLoading(false);
     }

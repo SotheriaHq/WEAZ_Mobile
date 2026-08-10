@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+  type TextInputProps,
+} from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { useKeyboardFormField } from '@/components/ui/KeyboardAwareFormScroll';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 
@@ -12,6 +19,7 @@ interface FloatingLabelInputProps {
   icon?: string;
   value?: string;
   onChangeText?: (value: string) => void;
+  onFocus?: TextInputProps['onFocus'];
   keyboardType?: 'default' | 'email-address' | 'numeric' | 'phone-pad';
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   autoCorrect?: boolean;
@@ -28,12 +36,14 @@ export function FloatingLabelInput({
   icon,
   value,
   onChangeText,
+  onFocus,
   hideLabel = false,
   placeholder,
   ...rest
 }: FloatingLabelInputProps) {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const { theme } = useTheme();
+  const keyboardForm = useKeyboardFormField();
   const hasError = Boolean(error);
 
   return (
@@ -61,6 +71,10 @@ export function FloatingLabelInput({
           {...rest}
           value={value}
           onChangeText={onChangeText}
+          onFocus={(event) => {
+            onFocus?.(event);
+            keyboardForm?.onFieldFocus();
+          }}
           accessibilityLabel={label}
           placeholder={placeholder ?? (hideLabel ? label : undefined)}
           secureTextEntry={isPassword && !passwordVisible}

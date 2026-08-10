@@ -13,6 +13,13 @@ export type AuthTokensResponse = {
 
 export type GoogleAuthParams = {
   idToken: string;
+  /**
+   * Which screen the user started from. The API refuses to create an account
+   * from a `LOGIN` (it answers `GOOGLE_NO_ACCOUNT`) and refuses to log into an
+   * existing one from a `SIGNUP` (`EMAIL_ALREADY_EXISTS`). Sending it removes
+   * the need for the backend to infer intent from whether `type` is present.
+   */
+  intent?: 'LOGIN' | 'SIGNUP';
   type?: AuthUserType;
   brandFullName?: string;
   legalAcceptances?: LegalAcceptancePayload[];

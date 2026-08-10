@@ -16,8 +16,7 @@
         "foregroundImage": "./assets/images/wiez-adaptive-icon.png",
         "backgroundColor": "#0b0710"
       },
-      "predictiveBackGestureEnabled": false,
-      "softwareKeyboardLayoutMode": "pan"
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "bundler": "metro",

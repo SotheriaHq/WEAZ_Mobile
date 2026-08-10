@@ -1,52 +1,72 @@
-import React from 'react';
-import { type StyleProp, type ViewStyle } from 'react-native';
+import React, { useEffect } from 'react';
 import {
-  KeyboardAvoidingView,
-  type KeyboardAvoidingViewProps,
-} from 'react-native-keyboard-controller';
+  Keyboard,
+  Platform,
+  type KeyboardEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 /**
- * Keyboard avoidance for non-scroll / fixed-layout surfaces (chat composer
- * under a list, sheet composer, single-field overlays).
- *
- * Uses `react-native-keyboard-controller`'s `KeyboardAvoidingView`, which tracks
- * the IME on the UI thread and works under WIEZ's edge-to-edge Android window
- * (where OS `adjustResize` does not shrink the layout and RN's stock
- * KeyboardAvoidingView is a no-op on Android).
- *
- * For multi-field forms, prefer `KeyboardAwareFormScroll` — it also scrolls the
- * focused field into view, which padding alone cannot do.
- *
- * `offset` maps to `keyboardVerticalOffset` — set it to the height of any fixed
- * header above this view so padding is measured from the correct origin.
+ * Keyboard avoidance for non-scroll surfaces (chat composer, modals).
+ * Reanimated padding — one smooth ease, no React-state layout jumps.
  */
-export type KeyboardAvoiderProps = Omit<
-  KeyboardAvoidingViewProps,
-  'behavior' | 'keyboardVerticalOffset'
-> & {
+export type KeyboardAvoiderProps = {
   offset?: number;
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 };
 
+const easeOut = Easing.out(Easing.cubic);
+
 export function KeyboardAvoider({
   offset = 0,
   style,
   children,
-  ...rest
 }: KeyboardAvoiderProps) {
+  const pad = useSharedValue(0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (event: KeyboardEvent) => {
+      const height = Math.max(0, event.endCoordinates?.height ?? 0);
+      const duration = event.duration > 0 ? event.duration : Platform.OS === 'ios' ? 250 : 220;
+      pad.value = withTiming(Math.max(0, height - offset), {
+        duration,
+        easing: easeOut,
+      });
+    };
+
+    const onHide = (event: KeyboardEvent) => {
+      const duration = event?.duration > 0 ? event.duration : Platform.OS === 'ios' ? 220 : 180;
+      pad.value = withTiming(0, { duration, easing: easeOut });
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onShow);
+    const hideSub = Keyboard.addListener(hideEvent, onHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [offset, pad]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    paddingBottom: pad.value,
+  }));
+
   return (
-    <KeyboardAvoidingView
-      behavior="padding"
-      keyboardVerticalOffset={offset}
-      // No default flex: drop-in for existing usages (e.g. comments sheet
-      // composer) that size to children. Callers that fill the screen pass
-      // `style={{ flex: 1 }}`.
-      style={style}
-      {...rest}
-    >
+    <Animated.View style={[style, animatedStyle]}>
       {children}
-    </KeyboardAvoidingView>
+    </Animated.View>
   );
 }
 

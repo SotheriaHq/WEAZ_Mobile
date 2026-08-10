@@ -13,7 +13,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import 'react-native-reanimated';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { installPrefetchAppStateBridge } from '@/src/prefetch/tabWarming';
 import { ThemeProvider, useTheme, type ThemeMode } from '@/src/theme/ThemeProvider';
@@ -473,28 +472,20 @@ function RootLayoutNav({
 
   return (
     <ThemeProvider initialMode={initialThemeMode} bootstrapped>
-      {/*
-        KeyboardProvider powers KeyboardAwareFormScroll / KeyboardAvoider /
-        KeyboardStickyFooter. preload=false avoids a brief IME flash on cold start
-        under edge-to-edge Android; the controller still attaches before any form
-        is shown.
-      */}
-      <KeyboardProvider preload={false}>
-        <QueryProvider>
-          <ToastProvider>
-            <AuthProvider>
-              <ThemeBackendSync />
-              <BagCountProvider>
-                <BagFlowProvider>
-                  <ScreenChromeProvider>
-                    <RootBootstrap fontsReady={fontsReady} />
-                  </ScreenChromeProvider>
-                </BagFlowProvider>
-              </BagCountProvider>
-            </AuthProvider>
-          </ToastProvider>
-        </QueryProvider>
-      </KeyboardProvider>
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ThemeBackendSync />
+            <BagCountProvider>
+              <BagFlowProvider>
+                <ScreenChromeProvider>
+                  <RootBootstrap fontsReady={fontsReady} />
+                </ScreenChromeProvider>
+              </BagFlowProvider>
+            </BagCountProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>
     </ThemeProvider>
   );
 }

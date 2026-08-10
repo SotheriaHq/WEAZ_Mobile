@@ -26,6 +26,11 @@ import {
   ACTIVE_BRAND_STORAGE_KEY,
   clearMobilePrivateSessionState,
 } from '@/src/auth/sessionCleanup';
+import {
+  AuthRequestError,
+  extractAuthErrorCode,
+  GENERIC_AUTH_ERROR_MESSAGE,
+} from '@/src/auth/authErrors';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -791,7 +796,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await googleAuth(params);
       await applyAuthResponse(data);
     } catch (error: any) {
-      throw new Error(extractAuthErrorMessage(error) ?? 'Google sign-in could not be completed. Please try again.');
+      // Keep the `code`. `GOOGLE_NO_ACCOUNT` and `EMAIL_ALREADY_EXISTS` are how
+      // the API tells the screen to send the user to the *other* auth screen;
+      // flattening this to `new Error(message)` threw that away and left login
+      // with a dead end where a redirect to signup belongs.
+      throw new AuthRequestError(
+        extractAuthErrorMessage(error) ?? GENERIC_AUTH_ERROR_MESSAGE,
+        {
+          code: extractAuthErrorCode(error),
+          status: Number(error?.response?.status) || undefined,
+        },
+      );
     }
   }, [applyAuthResponse]);
 
