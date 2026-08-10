@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -376,28 +377,30 @@ export default function CreateDesignPreviewScreen() {
       >
         <View style={[styles.modalRoot, { backgroundColor: theme.colors.overlay }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setDeleteOpen(false)} />
-          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <AppText variant="subtitle">Delete draft?</AppText>
-            <AppText variant="body" tone="muted">
-              This permanently deletes {form.title.trim() ? `"${form.title.trim()}"` : 'this draft'}.
-            </AppText>
-            <Input
-              label="Type DELETE to confirm"
-              value={deletePhrase}
-              onChangeText={setDeletePhrase}
-              autoCapitalize="characters"
-              autoCorrect={false}
-            />
-            <View style={styles.modalActions}>
-              <Button title="Cancel" variant="outline" onPress={() => setDeleteOpen(false)} />
-              <Button
-                title="Delete draft"
-                variant="danger"
-                disabled={!canDelete}
-                onPress={() => void deleteDraft()}
+          <KeyboardAvoider style={styles.modalKeyboard}>
+            <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <AppText variant="subtitle">Delete draft?</AppText>
+              <AppText variant="body" tone="muted">
+                This permanently deletes {form.title.trim() ? `"${form.title.trim()}"` : 'this draft'}.
+              </AppText>
+              <Input
+                label="Type DELETE to confirm"
+                value={deletePhrase}
+                onChangeText={setDeletePhrase}
+                autoCapitalize="characters"
+                autoCorrect={false}
               />
+              <View style={styles.modalActions}>
+                <Button title="Cancel" variant="outline" onPress={() => setDeleteOpen(false)} />
+                <Button
+                  title="Delete draft"
+                  variant="danger"
+                  disabled={!canDelete}
+                  onPress={() => void deleteDraft()}
+                />
+              </View>
             </View>
-          </View>
+          </KeyboardAvoider>
         </View>
       </Modal>
     </SafeAreaView>
@@ -529,6 +532,11 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
+  },
+  modalKeyboard: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
   },
   modalRoot: {
     flex: 1,

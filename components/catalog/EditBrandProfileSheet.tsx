@@ -5,13 +5,12 @@ import {
   PanResponder,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
-import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AppSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
@@ -463,12 +462,10 @@ export function EditBrandProfileSheet({
           <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
         </Animated.View>
 
-        <KeyboardAvoider style={styles.keyboardRoot}>
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
+        <KeyboardAwareFormScroll
+          style={styles.keyboardRoot}
+          contentContainerStyle={styles.scrollContent}
+        >
             <AppText variant="title">Edit Brand Profile</AppText>
             <AppText variant="caption" tone="muted" style={styles.subtitle}>
               Update your brand information visible to shoppers
@@ -592,8 +589,7 @@ export function EditBrandProfileSheet({
                 style={styles.saveButton}
               />
             </View>
-          </ScrollView>
-        </KeyboardAvoider>
+        </KeyboardAwareFormScroll>
       </Animated.View>
 
       <AppSelectSheet

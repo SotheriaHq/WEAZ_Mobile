@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -15,6 +15,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import {
   SettingsHeader,
   SettingsSection,
@@ -404,9 +405,7 @@ export default function EmailPreferencesSettingsScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <SettingsHeader title="Email notifications" subtitle="Backend email delivery preferences" />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAwareFormScroll
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
       >
         <SettingsSection title="Master controls">
@@ -495,7 +494,7 @@ export default function EmailPreferencesSettingsScreen() {
             </Card>
           </SettingsSection>
         ))}
-      </ScrollView>
+      </KeyboardAwareFormScroll>
     </SafeAreaView>
   );
 }

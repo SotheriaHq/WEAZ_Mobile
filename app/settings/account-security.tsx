@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -18,6 +18,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import {
   SettingsHeader,
   SettingsSection,
@@ -325,9 +326,7 @@ export default function AccountSecuritySettingsScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <SettingsHeader title="Account security" subtitle="Email, password, and sessions" />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAwareFormScroll
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
       >
         <SettingsSection title="Email">
@@ -490,7 +489,7 @@ export default function AccountSecuritySettingsScreen() {
             </View>
           </Card>
         </SettingsSection>
-      </ScrollView>
+      </KeyboardAwareFormScroll>
     </SafeAreaView>
   );
 }

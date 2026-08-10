@@ -126,11 +126,14 @@ export function ThemeProvider({
  * Force everything rendered inside to resolve dark-theme tokens, regardless of
  * the user's light/dark preference.
  *
- * Some surfaces are a deep-black *stage* in BOTH themes — the Runway, and any
- * full-bleed media viewer that mattes letterboxed images against
- * `tokens.themes.dark.colors.bg`. Chrome floating over such a stage must belong
- * to the stage, not to the app's ambient scheme: in light mode a themed island,
- * chip or skeleton lights up as a bright slab on black.
+ * For full-bleed media viewers that matte images against
+ * `tokens.themes.dark.colors.bg` in both themes. Chrome floating over such a
+ * stage must belong to the stage, not to the app's ambient scheme: in light mode
+ * a themed chip or skeleton lights up as a bright slab on black.
+ *
+ * The Runway is NOT one of these any more — it follows the ambient theme via
+ * `theme.colors.runwayStage`, which has a value per scheme. Reach for this only
+ * where the backdrop is genuinely dark regardless of preference.
  *
  * This is the general form of the per-component `onDarkStage` props (see `Chip`,
  * `Skeleton`, `AppText`) — the same intent expressed as scope instead of a prop

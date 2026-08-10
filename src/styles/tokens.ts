@@ -16,6 +16,17 @@ export const LAYOUT = {
 type Theme = {
   colors: {
     bg: string;
+    /**
+     * Matte behind full-bleed feed media — the Runway stage.
+     *
+     * Distinct from `bg` because letterboxed portrait photography needs a
+     * settled backdrop, not paper white. In the light theme the stage is a soft
+     * neutral rather than `#FFFFFF`: a pure-white matte strobes on every swipe
+     * as media slides across it, which is what the light-theme eye-strain report
+     * was about. Keeping it a token means the stage can be tuned per theme
+     * without any screen hardcoding a colour again.
+     */
+    runwayStage: string;
     surface: string;
     surfaceAlt: string;
     surfaceOverlay: string;
@@ -59,6 +70,7 @@ export const tokens = {
     light: {
       colors: {
         bg: '#FFFFFF',
+        runwayStage: '#E9EEF5',
         surface: '#ffffff',
         surfaceAlt: '#E9EEF5',
         surfaceOverlay: '#FFFFFF',
@@ -98,6 +110,7 @@ export const tokens = {
     dark: {
       colors: {
         bg: '#080A0F',
+        runwayStage: '#080A0F',
         surface: '#111620',
         surfaceAlt: '#1A2230',
         surfaceOverlay: '#202938',

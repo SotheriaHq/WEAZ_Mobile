@@ -12,14 +12,7 @@ import { resolveRunwayMediaStrategy } from '@/src/features/feed/media/runwayMedi
 import { feedMediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import { markRunwayFirstMediaVisible } from '@/src/features/feed/utils/runwayReadiness';
 import { resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
-import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
-
-// The runway is an immersive media surface: the stage behind every image is
-// deep black in BOTH themes (true-black dark token), so letterboxed content
-// sits on an invisible stage instead of white/soft padding.
-const RUNWAY_MATTE = tokens.themes.dark.colors.bg;
-const RUNWAY_SHIMMER = tokens.themes.dark.colors.border;
 
 type FeedImageLoadState = 'idle' | 'resolving' | 'loading' | 'loaded' | 'failed';
 type FeedImageAspectClass = 'portrait' | 'square' | 'landscape' | 'unknown';
@@ -119,6 +112,11 @@ export const FeedImage = React.memo(function FeedImage({
   allowDetailUpgrade = true,
 }: FeedImageProps) {
   const { theme } = useTheme();
+  // Letterboxed media is matted against the Runway stage, which follows the
+  // theme. It has to be the same token the screen root, the slide frame and the
+  // inter-page scrim use, or the seams show whenever an image does not edge-fill.
+  const matte = theme.colors.runwayStage;
+  const matteShimmer = theme.colors.border;
   const placeholderSurface = dominantColor || theme.colors.surfaceAlt;
   const sourcePolicy = useMemo(
     () => resolveFeedImageSourcePolicy({ displayUrl, previewUrl, thumbnailUrl }),
@@ -323,16 +321,16 @@ export const FeedImage = React.memo(function FeedImage({
   if (loadState === 'failed' && !visibleSuccessfulSource) return renderFallback('Tap to retry');
 
   return (
-    <View style={[styles.root, { backgroundColor: RUNWAY_MATTE }, style]}>
+    <View style={[styles.root, { backgroundColor: matte }, style]}>
       {/* Detail-first: the ExpoImage below paints its blurhash/thumbnail
-          placeholder immediately, so the animated black shimmer is reserved for
-          the true cold case with no placeholder at all. Showing it whenever a
+          placeholder immediately, so the animated shimmer is reserved for the
+          true cold case with no placeholder at all. Showing it whenever a
           placeholder exists caused a black flash when a recycled row remounted
           its already-cached image on revisit. */}
       {!visibleSuccessfulSource && !blurHash && !metadataPlaceholderUrl ? (
         <FeedImagePlaceholder
-          backgroundColor={RUNWAY_MATTE}
-          shimmerColor={RUNWAY_SHIMMER}
+          backgroundColor={matte}
+          shimmerColor={matteShimmer}
         />
       ) : null}
 
@@ -340,7 +338,7 @@ export const FeedImage = React.memo(function FeedImage({
         <AspectAwareMedia
           source={successfulImageSource}
           blurhash={blurHash}
-          dominantColor={RUNWAY_MATTE}
+          dominantColor={matte}
           imageWidth={resolvedImageWidth}
           imageHeight={resolvedImageHeight}
           imageAspectRatio={strategyResult.imageAspectRatio}
@@ -358,7 +356,7 @@ export const FeedImage = React.memo(function FeedImage({
           source={currentImageSource}
           placeholderSource={placeholderSource}
           blurhash={blurHash}
-          dominantColor={RUNWAY_MATTE}
+          dominantColor={matte}
           imageWidth={resolvedImageWidth}
           imageHeight={resolvedImageHeight}
           imageAspectRatio={strategyResult.imageAspectRatio}

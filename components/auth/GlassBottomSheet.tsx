@@ -3,13 +3,12 @@ import {
   Animated,
   Dimensions,
   Platform,
-  ScrollView,
   StyleSheet,
   View,
   Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 
@@ -58,18 +57,6 @@ export function GlassBottomSheet({
 
   const sheetHeight = SCREEN_HEIGHT * heightRatio;
 
-  const ContentWrapper = scrollable ? ScrollView : View;
-  const contentProps = scrollable
-    ? {
-        showsVerticalScrollIndicator: false,
-        contentContainerStyle: [
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + 20 },
-        ],
-        keyboardShouldPersistTaps: 'handled' as const,
-      }
-    : {};
-
   return (
     <Animated.View
       style={[
@@ -100,12 +87,20 @@ export function GlassBottomSheet({
           </View>
         )}
 
-        {/* Content */}
-        <KeyboardAvoider style={styles.kavContainer}>
-          <ContentWrapper style={styles.content} {...contentProps}>
+        {/* Content — keyboard-aware so focused fields stay above the IME */}
+        {scrollable ? (
+          <KeyboardAwareFormScroll
+            style={styles.kavContainer}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: insets.bottom + 20 },
+            ]}
+          >
             {children}
-          </ContentWrapper>
-        </KeyboardAvoider>
+          </KeyboardAwareFormScroll>
+        ) : (
+          <View style={[styles.content, styles.kavContainer]}>{children}</View>
+        )}
       </View>
     </Animated.View>
   );

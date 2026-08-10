@@ -108,6 +108,16 @@ function main() {
   );
   assert.match(
     composer,
+    /KeyboardAwareFormScroll/,
+    'composer form must use the design-system keyboard-aware scroll owner',
+  );
+  assert.match(
+    composer,
+    /KeyboardStickyFooter/,
+    'composer sticky actions must lift with the keyboard',
+  );
+  assert.match(
+    composer,
     /automaticallyAdjustKeyboardInsets=\{false\}/,
     'composer ScrollView must defer to its single owner',
   );

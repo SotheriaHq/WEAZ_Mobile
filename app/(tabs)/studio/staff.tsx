@@ -1,11 +1,12 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import {
   brandStaffApi,
   type BrandStaffInvite,
@@ -208,12 +209,11 @@ export default function StudioStaffScreen() {
           <ActivityIndicator color={theme.colors.primary} />
         </View>
       ) : (
-        <ScrollView
+        <KeyboardAwareFormScroll
           style={styles.scroll}
           // Studio now sits inside (tabs), so the floating island overlays the
           // bottom of this screen — reserve the shared clearance for it.
           contentContainerStyle={[styles.content, { paddingBottom: standardScreenBottomPadding }]}
-          showsVerticalScrollIndicator={false}
         >
           <View style={[styles.panel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <AppText variant="subtitle">Invite staff</AppText>
@@ -356,7 +356,7 @@ export default function StudioStaffScreen() {
               ))
             )}
           </View>
-        </ScrollView>
+        </KeyboardAwareFormScroll>
       )}
     </SafeAreaView>
   );

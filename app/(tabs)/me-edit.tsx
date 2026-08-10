@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -358,13 +358,10 @@ export default function MeEditScreen() {
         </View>
       </View>
 
-      <KeyboardAvoider style={styles.flex}>
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+      <KeyboardAwareFormScroll
+        style={styles.flex}
+        contentContainerStyle={styles.content}
+      >
           <View style={styles.avatarSection}>
             <Pressable
               onPress={handlePickAvatar}
@@ -424,8 +421,7 @@ export default function MeEditScreen() {
             />
             </View>
           </View>
-        </ScrollView>
-      </KeyboardAvoider>
+      </KeyboardAwareFormScroll>
     </SafeAreaView>
   );
 }

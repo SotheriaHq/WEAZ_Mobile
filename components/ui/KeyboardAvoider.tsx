@@ -1,39 +1,31 @@
 import React from 'react';
+import { type StyleProp, type ViewStyle } from 'react-native';
 import {
   KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
   type KeyboardAvoidingViewProps,
-  type ViewStyle,
-} from 'react-native';
+} from 'react-native-keyboard-controller';
 
 /**
- * Keyboard avoidance that actually works on Android in this app.
+ * Keyboard avoidance for non-scroll / fixed-layout surfaces (chat composer
+ * under a list, sheet composer, single-field overlays).
  *
- * Every form here used `behavior={Platform.OS === 'ios' ? 'padding' : undefined}`.
- * On Android that is a no-op by design: it assumes the OS will shrink the window
- * via `adjustResize`, and `KeyboardAvoidingView` then has nothing to do.
+ * Uses `react-native-keyboard-controller`'s `KeyboardAvoidingView`, which tracks
+ * the IME on the UI thread and works under WIEZ's edge-to-edge Android window
+ * (where OS `adjustResize` does not shrink the layout and RN's stock
+ * KeyboardAvoidingView is a no-op on Android).
  *
- * That assumption does not hold for this app. WIEZ draws edge-to-edge (see
- * `plugins/with-android-system-bars`), and an edge-to-edge Android window is not
- * resized when the IME appears — the keyboard is composited over the content
- * instead. So the layout never moved and the focused input stayed underneath the
- * keyboard, on every Android form.
- *
- * `padding` is driven by the keyboard events rather than by window resizing, so
- * it behaves the same on both platforms here. Because the window does not
- * shrink, there is no double-compensation to worry about.
+ * For multi-field forms, prefer `KeyboardAwareFormScroll` — it also scrolls the
+ * focused field into view, which padding alone cannot do.
  *
  * `offset` maps to `keyboardVerticalOffset` — set it to the height of any fixed
- * header above this view, otherwise the padding is measured from the wrong
- * origin and overshoots.
+ * header above this view so padding is measured from the correct origin.
  */
 export type KeyboardAvoiderProps = Omit<
   KeyboardAvoidingViewProps,
   'behavior' | 'keyboardVerticalOffset'
 > & {
   offset?: number;
-  style?: ViewStyle | ViewStyle[];
+  style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 };
 
@@ -45,12 +37,11 @@ export function KeyboardAvoider({
 }: KeyboardAvoiderProps) {
   return (
     <KeyboardAvoidingView
-      // Deliberately the same on both platforms — see the note above.
       behavior="padding"
       keyboardVerticalOffset={offset}
-      // No default flex: this is a drop-in for existing `KeyboardAvoidingView`
-      // usages, and one of them (the comments sheet composer) relies on sizing to
-      // its children. Callers that want to fill pass their own `flex: 1`.
+      // No default flex: drop-in for existing usages (e.g. comments sheet
+      // composer) that size to children. Callers that fill the screen pass
+      // `style={{ flex: 1 }}`.
       style={style}
       {...rest}
     >

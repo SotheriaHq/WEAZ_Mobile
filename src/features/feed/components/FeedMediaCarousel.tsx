@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { tokens } from '@/src/styles/tokens';
 import { isUsableImageHttpUrl, prefetchResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { feedMediaDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
@@ -82,12 +81,13 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   const hasMultipleItems = mediaItems.length > 1;
   const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
   const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
-  // Slide frames sit on the immersive runway: the frame behind every image is
-  // the deep-black matte in BOTH themes. A theme surface here flashed white in
-  // light mode whenever a not-yet-painted slide entered the viewport.
+  // Slide frames sit on the runway stage. `runwayStage` rather than `bg`: a
+  // not-yet-painted slide entering the viewport shows this colour, so it has to
+  // be the stage matte exactly, and in the light theme the stage is a settled
+  // neutral so the frame does not flash paper white on the way in.
   const slideFrameStyle = useMemo(
-    () => [styles.slide, { width, backgroundColor: tokens.themes.dark.colors.bg }],
-    [width],
+    () => [styles.slide, { width, backgroundColor: theme.colors.runwayStage }],
+    [theme.colors.runwayStage, width],
   );
 
   const stableMediaItems = useMemo(

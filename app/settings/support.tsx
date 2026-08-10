@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import React, { useCallback, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -13,6 +13,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import {
   SettingsHeader,
   SettingsSection,
@@ -68,9 +69,7 @@ export default function SupportSettingsScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <SettingsHeader title="Support" subtitle="Help, reports, and account paths" />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAwareFormScroll
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
       >
         <SettingsSection title="Fast help">
@@ -142,7 +141,7 @@ export default function SupportSettingsScreen() {
             />
           </Card>
         </SettingsSection>
-      </ScrollView>
+      </KeyboardAwareFormScroll>
     </SafeAreaView>
   );
 }

@@ -13,7 +13,7 @@ import { useFocusEffect } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
 
 import { useAuth } from '@/src/auth/AuthContext';
-import { DarkStageThemeScope, useTheme } from '@/src/theme/ThemeProvider';
+import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
@@ -37,7 +37,6 @@ import { consumeMarketFeedDirty, fetchMarketFeedPage, readCachedMarketFeed, read
 import { buildFeedCacheIdentity } from '@/src/features/feed/utils/feedKeys';
 import { brandAvatarDevLog, feedDevLog, feedLoadDevLog, feedMediaDevLog, isWiezDebugEnabled, layoutDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import type { MarketItem } from '@/src/types/market';
-import type { ResolvedTheme } from '@/src/types/theme';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
 import { ScreenState } from '@/components/ui/ScreenState';
@@ -539,7 +538,6 @@ type FeedMetaOverlayProps = {
   title: string;
   threadCount: number;
   feedPosition?: number;
-  scheme: ResolvedTheme;
   overlaySurface: {
     backgroundColor: string;
     borderColor: string;
@@ -557,7 +555,6 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
   title,
   threadCount,
   feedPosition,
-  scheme,
   overlaySurface,
   bottomClearance,
   visible,
@@ -571,7 +568,8 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
       importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}
     >
       <BlurView
-        tint={scheme === 'dark' ? 'dark' : 'light'}
+        // Pinned dark to match `overlaySurface` — see its comment.
+        tint="dark"
         intensity={overlaySurface.blurIntensity}
         style={[
           styles.metaCard,
@@ -612,11 +610,11 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
 
 // Feed Skeleton Component for loading state.
 //
-// Every placeholder here is `onDarkStage`. The runway stage is the deep-black
-// matte in BOTH themes, so a scheme-themed skeleton painted the light palette's
-// 90%-white shimmer across it — the "shiny black and white" strobe reported on
-// cold start. On the dark stage the sweep is a soft 4% → 14% white instead, and
-// the whole placeholder recedes into the stage the way it should.
+// Placeholders resolve the ambient scheme. They used to be pinned `onDarkStage`
+// because the stage was black in both themes and the light palette's 90%-white
+// shimmer strobed across it on cold start — the "shiny black and white" report.
+// Now the stage is themed, so the light sweep lands on a light matte and the
+// dark sweep on a dark one; the placeholder recedes into the stage either way.
 const FeedSkeleton = ({
   pageHeight,
   topOffset,
@@ -626,74 +624,90 @@ const FeedSkeleton = ({
   topOffset: number;
   bottomClearance: number;
 }) => {
+  const { theme } = useTheme();
+
   return (
-    <View style={[styles.feedSkeletonRoot, { backgroundColor: RUNWAY_STAGE_MATTE }]}>
+    <View style={[styles.feedSkeletonRoot, { backgroundColor: theme.colors.runwayStage }]}>
       <View style={[styles.feedSkeletonHeader, { paddingTop: topOffset + 8 }]}>
         <View style={styles.feedSkeletonLogoWrap}>
           <WiezLogo size={28} style={{ opacity: 0.92 }} />
         </View>
         <View style={styles.feedSkeletonHeaderActions}>
-          <Skeleton width={40} height={40} borderRadius={20} onDarkStage />
-          <Skeleton width={40} height={40} borderRadius={20} onDarkStage />
+          <Skeleton width={40} height={40} borderRadius={20} />
+          <Skeleton width={40} height={40} borderRadius={20} />
         </View>
       </View>
 
       <View style={[styles.feedSkeletonChips, { top: topOffset + 56 }]}>
-        <Skeleton width={68} height={34} borderRadius={999} onDarkStage />
-        <Skeleton width={88} height={34} borderRadius={999} onDarkStage />
-        <Skeleton width={76} height={34} borderRadius={999} onDarkStage />
-        <Skeleton width={92} height={34} borderRadius={999} onDarkStage />
+        <Skeleton width={68} height={34} borderRadius={999} />
+        <Skeleton width={88} height={34} borderRadius={999} />
+        <Skeleton width={76} height={34} borderRadius={999} />
+        <Skeleton width={92} height={34} borderRadius={999} />
       </View>
 
       <View style={{ height: pageHeight, width: '100%', position: 'relative' }}>
         {/* Main image skeleton */}
-        <Skeleton width="100%" height="100%" borderRadius={0} onDarkStage />
+        <Skeleton width="100%" height="100%" borderRadius={0} />
 
         {/* Right rail skeleton (action buttons) */}
         <View style={{ position: 'absolute', right: 12, bottom: bottomClearance + 44, alignItems: 'center', gap: 20 }}>
           {/* Avatar skeleton */}
           <View style={{ marginBottom: 8 }}>
-            <SkeletonAvatar size={44} onDarkStage />
+            <SkeletonAvatar size={44} />
           </View>
 
           {/* Like button skeleton */}
           <View style={{ alignItems: 'center', gap: 4 }}>
-            <Skeleton width={30} height={30} borderRadius={15} onDarkStage />
-            <Skeleton width={24} height={12} borderRadius={4} onDarkStage />
+            <Skeleton width={30} height={30} borderRadius={15} />
+            <Skeleton width={24} height={12} borderRadius={4} />
           </View>
 
           {/* Comment button skeleton */}
           <View style={{ alignItems: 'center', gap: 4 }}>
-            <Skeleton width={30} height={30} borderRadius={15} onDarkStage />
-            <Skeleton width={24} height={12} borderRadius={4} onDarkStage />
+            <Skeleton width={30} height={30} borderRadius={15} />
+            <Skeleton width={24} height={12} borderRadius={4} />
           </View>
 
           {/* Share button skeleton */}
           <View style={{ alignItems: 'center', gap: 4 }}>
-            <Skeleton width={30} height={30} borderRadius={15} onDarkStage />
-            <Skeleton width={24} height={12} borderRadius={4} onDarkStage />
+            <Skeleton width={30} height={30} borderRadius={15} />
+            <Skeleton width={24} height={12} borderRadius={4} />
           </View>
 
           {/* Save button skeleton */}
           <View style={{ alignItems: 'center', gap: 4 }}>
-            <Skeleton width={30} height={30} borderRadius={15} onDarkStage />
+            <Skeleton width={30} height={30} borderRadius={15} />
           </View>
         </View>
 
         {/* Bottom info skeleton */}
         <View style={{ position: 'absolute', left: 16, right: 88, bottom: bottomClearance, gap: 8 }}>
           {/* Brand name skeleton */}
-          <Skeleton width={120} height={18} borderRadius={4} onDarkStage />
+          <Skeleton width={120} height={18} borderRadius={4} />
           {/* Price skeleton */}
-          <Skeleton width={80} height={22} borderRadius={4} onDarkStage />
+          <Skeleton width={80} height={22} borderRadius={4} />
           {/* Description skeleton */}
-          <SkeletonText lines={2} lineHeight={14} spacing={8} lastLineWidth="70%" onDarkStage />
+          <SkeletonText lines={2} lineHeight={14} spacing={8} lastLineWidth="70%" />
         </View>
       </View>
     </View>
   );
 };
 
+/**
+ * The runway follows the ambient theme like every other screen.
+ *
+ * It used to be a deep-black stage in BOTH themes, which is why the chrome on it
+ * is threaded with dark-stage overrides — the island resolved dark tokens for
+ * this route, placeholders forced their dark shimmer, and the WIEZ mark tinted
+ * itself with `theme.colors.text` and vanished into the black. All of that goes
+ * away here: the stage is `theme.colors.runwayStage`, a token with a value per
+ * theme, so the same components read correctly in both without opting in.
+ *
+ * Chrome that sits on the *media* rather than on the stage — the meta card, the
+ * action rail, the bottom gradient — stays light-on-dark, because a photograph
+ * is dark in either theme.
+ */
 export function RunwayFeedScreen() {
   const flowKey = 'runway';
   // Phase 1 instrumentation - safe, gated, no behavior change
@@ -978,13 +992,17 @@ export function RunwayFeedScreen() {
   );
   const bottomClearance = immersiveOverlayBottomClearance;
   const overlayScrollPadding = bottomClearance;
+  // Dark glass in both themes: this card floats on the *photograph*, not on the
+  // stage, and its text is `tone="inverse"`. Resolving the ambient scheme gave
+  // the light theme a 92%-white pane under white text — the card was legible
+  // only in dark mode.
   const overlaySurface = useMemo(
     () => ({
-      backgroundColor: theme.colors.glassSurfaceStrong,
-      borderColor: theme.colors.glassBorder,
-      blurIntensity: theme.colors.glassBlur as number,
+      backgroundColor: tokens.themes.dark.colors.glassSurfaceStrong,
+      borderColor: tokens.themes.dark.colors.glassBorder,
+      blurIntensity: tokens.themes.dark.colors.glassBlur as number,
     }),
-    [theme.colors.glassBlur, theme.colors.glassBorder, theme.colors.glassSurfaceStrong],
+    [],
   );
 
   useEffect(() => {
@@ -2053,14 +2071,13 @@ export function RunwayFeedScreen() {
           pageHeight={pageHeight}
           pageIndex={index}
           scrollY={feedScrollY}
-          // Matches styles.feedListContainer, not theme.colors.bg. The Runway
-          // stage is a deep-black matte in BOTH themes by deliberate choice, so a
-          // receding page has to dissolve toward that same matte — otherwise the
-          // light theme scrims toward paper white and mid-swipe becomes a brighter
-          // frame than either page, which is the exact opposite of what the
-          // "my eyes were starting to bother me" report needs. It is also the
-          // light-theme surface flash feedListContainer already warns about.
-          scrimColor={tokens.themes.dark.colors.bg}
+          // The stage colour, not `theme.colors.bg`. A receding page dissolves
+          // toward whatever the matte behind it is, so this has to track the
+          // stage exactly; scrimming toward `bg` would make mid-swipe a brighter
+          // frame than either page in the light theme — the "my eyes were
+          // starting to bother me" report. `runwayStage` is a settled neutral
+          // in light rather than paper white for the same reason.
+          scrimColor={theme.colors.runwayStage}
           pageScaleEnabled={pageScaleEnabled}
           mediaItems={mediaItems}
           activeMediaIndex={activeMediaIndex}
@@ -2110,7 +2127,6 @@ export function RunwayFeedScreen() {
               title={item.collectionTitle}
               threadCount={threadCountRaw}
               feedPosition={entry.realIndex}
-              scheme={scheme}
               overlaySurface={overlaySurface}
               bottomClearance={bottomClearance}
               visible={isMetaVisible}
@@ -2396,17 +2412,15 @@ export function RunwayFeedScreen() {
   return (
     <SafeAreaView
       edges={[]}
-      // The runway is a deep-black stage in BOTH themes — the same surface the
-      // island already resolves against via `DarkStageThemeScope` in
-      // `app/(tabs)/_layout.tsx`. Painting the ambient `theme.colors.bg` here
-      // meant that in light mode the root was white and only *media* covered it:
-      // the moment the feed had nothing to show (empty, error, or pre-first-page)
-      // a white screen appeared under a dark island. The stage owns this
-      // background regardless of preference.
-      style={[styles.root, { backgroundColor: RUNWAY_STAGE_MATTE }]}
+      // `runwayStage`, not `bg`: the matte behind letterboxed media is a
+      // deliberate surface per theme, and it must be the same colour everywhere
+      // the stage shows through — root, skeleton, inter-page scrim — or the feed
+      // flashes a different shade the moment it has nothing to paint (empty,
+      // error, or pre-first-page).
+      style={[styles.root, { backgroundColor: theme.colors.runwayStage }]}
     >
-      {/* Always light: the content behind it is black in both themes. */}
-      <StatusBar style="light" />
+      {/* Status bar icons contrast with the stage, which now follows the theme. */}
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
 
       {/* The header is NOT gated on `loading`. It used to be, so every
           revalidation cycle blanked the filter row and painted it back — one of
@@ -2418,7 +2432,7 @@ export function RunwayFeedScreen() {
               letterboxed but is the photo itself where media edge-fills. This
               scrim guarantees the row reads over both. */}
           <LinearGradient
-            colors={[RUNWAY_STAGE_MATTE, `${RUNWAY_STAGE_MATTE}00`]}
+            colors={[theme.colors.runwayStage, `${theme.colors.runwayStage}00`]}
             style={[styles.headerScrim, { height: insets.top + 72 }]}
             pointerEvents="none"
           />
@@ -2457,11 +2471,6 @@ export function RunwayFeedScreen() {
                         key={chip.id}
                         label={chip.label}
                         variant="nav"
-                        // The stage behind this row is the deep-black runway
-                        // matte in BOTH themes. Without this the light theme
-                        // paints near-black chip text onto it and the whole
-                        // filter row disappears.
-                        onDarkStage
                         selected={chip.id === selectedFilterId}
                         onPress={() => setSelectedFilterId(chip.id)}
                         style={styles.headerFilterChip}
@@ -2514,38 +2523,31 @@ export function RunwayFeedScreen() {
         </Animated.View>
       ) : null}
 
-      {/* Non-content states sit directly on the black stage, so they resolve dark
-          tokens like the island does — otherwise the card, its text and its
-          button render as a bright slab on black in light mode. */}
+      {/* Non-content states sit directly on the stage, which is a themed surface
+          now, so they resolve ambient tokens like every other screen's do. */}
       {error && isNetworkError && !showBlockingLoader ? (
-        <DarkStageThemeScope>
-          <View style={styles.loadingWrap}>
-            <NetworkErrorState onRetry={loadFirstPage} />
-          </View>
-        </DarkStageThemeScope>
+        <View style={styles.loadingWrap}>
+          <NetworkErrorState onRetry={loadFirstPage} />
+        </View>
       ) : error && !showBlockingLoader ? (
-        <DarkStageThemeScope>
-          <View style={styles.loadingWrap}>
-            <ScreenState
-              kind="server"
-              title="Unable to load the runway"
-              message={error}
-              onAction={loadFirstPage}
-            />
-          </View>
-        </DarkStageThemeScope>
+        <View style={styles.loadingWrap}>
+          <ScreenState
+            kind="server"
+            title="Unable to load the runway"
+            message={error}
+            onAction={loadFirstPage}
+          />
+        </View>
       ) : items.length === 0 && !showBlockingLoader ? (
-        <DarkStageThemeScope>
-          <ScrollView
-            contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
-            contentContainerStyle={{ flexGrow: 1, paddingBottom: overlayScrollPadding }}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}>
-            <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? DEFAULT_MARKET_FILTER_CHIPS[0].id)} />
-          </ScrollView>
-        </DarkStageThemeScope>
+        <ScrollView
+          contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: overlayScrollPadding }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}>
+          <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? DEFAULT_MARKET_FILTER_CHIPS[0].id)} />
+        </ScrollView>
       ) : (
         <View
-          style={styles.feedListContainer}
+          style={[styles.feedListContainer, { backgroundColor: theme.colors.runwayStage }]}
           onLayout={handleFeedViewportLayout}
         >
           {!feedViewportReady ? (
@@ -2637,10 +2639,6 @@ export function RunwayFeedScreen() {
     </SafeAreaView>
   );
 }
-
-/** The runway stage colour — deep black in BOTH themes. Header chrome that sits
- *  on it must be coloured from this, not from the active theme. */
-const RUNWAY_STAGE_MATTE = tokens.themes.dark.colors.bg;
 
 const styles = StyleSheet.create({
   root: {
@@ -2799,9 +2797,9 @@ const styles = StyleSheet.create({
   feedListContainer: {
     flex: 1,
     overflow: 'hidden',
-    // Runway stage: any not-yet-painted gap between pages must read as the
-    // deep-black matte in both themes, never a light theme surface flash.
-    backgroundColor: tokens.themes.dark.colors.bg,
+    // `backgroundColor` is applied inline from `theme.colors.runwayStage`: any
+    // not-yet-painted gap between pages has to read as the stage matte, and the
+    // stage is themed, so it cannot be baked into the stylesheet.
   },
   feedList: {
     backgroundColor: 'transparent',

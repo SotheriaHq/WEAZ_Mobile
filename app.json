@@ -5,18 +5,19 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/wiez-icon.png",
-    "scheme": "wiezmobile",
+    "scheme": ["wiezmobile", "com.sotheriahq.wiez"],
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "package": "com.sotheriahq.wiez",
-  "adaptiveIcon": {
-    "foregroundImage": "./assets/images/wiez-adaptive-icon.png",
-    "backgroundColor": "#0b0710"
-  },
-  "predictiveBackGestureEnabled": false
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/wiez-adaptive-icon.png",
+        "backgroundColor": "#0b0710"
+      },
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "bundler": "metro",

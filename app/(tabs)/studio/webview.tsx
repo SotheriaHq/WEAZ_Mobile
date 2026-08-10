@@ -903,6 +903,11 @@ export default function StudioWebViewScreen() {
             onMessage={handleMessage}
             injectedJavaScript={`
               (function() {
+                if (window.__WIEZ_STUDIO_KEYBOARD_BOOTSTRAPPED__) {
+                  return true;
+                }
+                window.__WIEZ_STUDIO_KEYBOARD_BOOTSTRAPPED__ = true;
+
                 var originalPushState = history.pushState;
                 var originalReplaceState = history.replaceState;
                 history.pushState = function(state, title, url) {
@@ -925,8 +930,46 @@ export default function StudioWebViewScreen() {
                     path: window.location.pathname + window.location.search + window.location.hash
                   }));
                 });
+
+                // Store setup / Studio web forms: native WebView does not inherit
+                // React Native keyboard-aware scroll. When a field focuses, center
+                // it in the visible viewport so the soft keyboard never covers it.
+                function isEditable(el) {
+                  if (!el || el === document.body) return false;
+                  var tag = (el.tagName || '').toLowerCase();
+                  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+                  return !!el.isContentEditable;
+                }
+                function scrollFocusedFieldIntoView() {
+                  var el = document.activeElement;
+                  if (!isEditable(el)) return;
+                  var run = function() {
+                    try {
+                      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+                    } catch (e) {
+                      try { el.scrollIntoView(true); } catch (e2) {}
+                    }
+                  };
+                  // Wait for the OS keyboard animation before measuring.
+                  setTimeout(run, 80);
+                  setTimeout(run, 320);
+                }
+                document.addEventListener('focusin', scrollFocusedFieldIntoView, true);
+                window.addEventListener('resize', function() {
+                  if (isEditable(document.activeElement)) scrollFocusedFieldIntoView();
+                });
+                if (window.visualViewport) {
+                  window.visualViewport.addEventListener('resize', function() {
+                    if (isEditable(document.activeElement)) scrollFocusedFieldIntoView();
+                  });
+                }
               })();
+              true;
             `}
+            // iOS: allow programmatic focus paths used by Studio multi-step forms.
+            keyboardDisplayRequiresUserAction={false}
+            // Android: prefer software layer so IME resize/pan composites cleanly.
+            androidLayerType="hardware"
             onLoadStart={() => setLoadState((current) => (current === 'ready' ? current : 'loading'))}
             onLoadProgress={({ nativeEvent }) => setLoadProgress(nativeEvent.progress ?? 0)}
             onError={() => {

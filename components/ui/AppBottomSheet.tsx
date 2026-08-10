@@ -5,13 +5,13 @@ import {
   PanResponder,
   Platform,
   Pressable,
-  ScrollView,
   StyleProp,
   StyleSheet,
   View,
   ViewStyle,
   useWindowDimensions,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import Animated, {
   Easing,
@@ -264,14 +264,21 @@ export function AppBottomSheet({
     paddingBottom: keyboardBehavior === 'auto' ? keyboardInset.value : 0,
   }));
 
-  const Body = scrollable ? ScrollView : View;
+  // KeyboardAwareScrollView scrolls the focused field into view inside the
+  // sheet. Sheet-level lift (keyboardWrapStyle) still owns IME clearance so the
+  // sticky Done/footer stays above the keyboard.
+  const Body = scrollable ? KeyboardAwareScrollView : View;
   const bodyProps = scrollable
     ? {
         showsVerticalScrollIndicator: false,
         keyboardShouldPersistTaps: 'handled' as const,
         keyboardDismissMode: 'interactive' as const,
-        // keyboard avoidance is handled smoothly by our animated wrap; don't double count
         automaticallyAdjustKeyboardInsets: false,
+        bottomOffset: tokens.spacing.xl,
+        // Sheet already lifts by keyboard height; do not re-extend content by
+        // the full keyboard frame (would leave a large empty gap).
+        extraKeyboardSpace: keyboardVisible ? -Math.max(0, keyboardEventHeight - tokens.spacing['2xl']) : 0,
+        enabled: keyboardBehavior === 'auto' && (keyboardActive ?? true),
         contentContainerStyle: [
           styles.bodyContent,
           keyboardBehavior === 'auto' ? styles.bodyContentKeyboard : null,

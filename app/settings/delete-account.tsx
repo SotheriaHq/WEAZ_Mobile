@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { router, Stack } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
@@ -10,6 +10,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { deleteAccount } from '@/src/api/AuthApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { tokens } from '@/src/styles/tokens';
@@ -84,7 +85,7 @@ export default function DeleteAccountScreen() {
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <KeyboardAwareFormScroll contentContainerStyle={styles.content}>
           <Card style={styles.card}>
             <AppText variant="subtitle" tone="danger">⚠️ This cannot be undone</AppText>
             <AppText variant="body" tone="muted">
@@ -164,7 +165,7 @@ export default function DeleteAccountScreen() {
               />
             </Card>
           )}
-        </ScrollView>
+        </KeyboardAwareFormScroll>
       </SafeAreaView>
     </>
   );

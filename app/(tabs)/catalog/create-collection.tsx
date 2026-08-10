@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
@@ -9,6 +9,7 @@ import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { brandApi } from '@/src/api/BrandApi';
 import { tokens } from '@/src/styles/tokens';
@@ -84,7 +85,7 @@ export default function CreateCollectionScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareFormScroll contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
           <AppBackButton emoji={'\u{1F448}'} fallbackHref="/catalog" />
           <View style={styles.headerText}>
@@ -170,7 +171,7 @@ export default function CreateCollectionScreen() {
             </View>
           </View>
         )}
-      </ScrollView>
+      </KeyboardAwareFormScroll>
     </SafeAreaView>
   );
 }

@@ -8,7 +8,7 @@ import {
 } from '@/components/navigation/NativeIslandBottomNav';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
-import { DarkStageThemeScope, useTheme } from '@/src/theme/ThemeProvider';
+import { useTheme } from '@/src/theme/ThemeProvider';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -38,7 +38,6 @@ import {
   buildNativeIslandItems,
   buildStudioIslandItems,
   getNativeIslandRoute,
-  isDarkStageIslandPath,
   isStudioIslandKey,
   isStudioIslandPath,
   mapPathnameToIslandKey,
@@ -165,7 +164,6 @@ export default function TabLayout() {
     ? NATIVE_ISLAND_KEYS.bag
     : optimisticActiveKey ?? activeIslandKey;
   const hideIslandForFocusedFlow = FOCUSED_CATALOG_FLOW.test(pathname);
-  const onDarkStageRoute = isDarkStageIslandPath(pathname);
 
   const refreshUnreadNotificationCount = useCallback(async () => {
     lastNotificationRefreshAttemptAtRef.current = Date.now();
@@ -776,19 +774,10 @@ export default function TabLayout() {
         />
       </Tabs>
 
-      {hideIslandForFocusedFlow ? null : onDarkStageRoute ? (
-        // The Runway stage is deep black in BOTH themes, so in light mode the
-        // themed island used to float over it as a bright white slab. Resolve
-        // the island against dark tokens for the duration of that route — it
-        // belongs to the stage, not to the ambient scheme.
-        <DarkStageThemeScope>
-          <NativeIslandBottomNav
-            items={islandItems}
-            onSelect={handleSelect}
-            onPressIn={markOptimisticActive}
-          />
-        </DarkStageThemeScope>
-      ) : (
+      {/* The island resolves the ambient scheme on every route. It used to be
+          forced dark over the Runway, whose stage was black in both themes;
+          the stage is themed now, so a themed island matches it. */}
+      {hideIslandForFocusedFlow ? null : (
         <NativeIslandBottomNav
           items={islandItems}
           onSelect={handleSelect}

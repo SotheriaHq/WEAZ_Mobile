@@ -114,9 +114,10 @@ const WISHLIST_EMOJI_OFF = '🤍';
 /** Rule: navigation affordances are emoji, never icon glyphs. Matches `AppBackButton`. */
 const BACK_EMOJI = '\u{1F448}';
 /**
- * The stage behind the media is deep black in BOTH themes — the same matte the
- * Runway and `FeedImage` use, so a letterboxed image sits in one continuous
- * field instead of on the light-theme app background.
+ * The stage behind the media is deep black in BOTH themes, so a letterboxed
+ * image sits in one continuous field instead of on the light-theme app
+ * background. This is a focused viewer opened over the app, not a tab surface —
+ * unlike the Runway, which follows the theme through `theme.colors.runwayStage`.
  */
 const VIEWER_STAGE_MATTE = tokens.themes.dark.colors.bg;
 /** Shadow under the bare chrome glyphs — stage-scoped, so it does not follow the theme. */

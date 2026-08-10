@@ -13,7 +13,8 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
+import { KeyboardStickyFooter } from '@/components/ui/KeyboardStickyFooter';
 import Reanimated, {
   FadeIn,
   FadeOut,
@@ -770,8 +771,11 @@ export default function CreateDesignComposerScreen() {
     return <AppLoaderScreen message="Loading composer" />;
   }
 
+  // Sticky footer + keyboard stack: scroll must clear the footer height so the
+  // last inputs are never trapped under Save draft / Preview.
+  const composerFooterClearance = 120;
+
   return (
-    <KeyboardAvoider style={styles.flex}>
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <View style={styles.header}>
           <AppBackButton fallbackHref="/catalog" />
@@ -783,12 +787,11 @@ export default function CreateDesignComposerScreen() {
           </View>
         </View>
 
-        <ScrollView
+        <KeyboardAwareFormScroll
           style={styles.flex}
-          showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
+          bottomOffset={composerFooterClearance + tokens.spacing.lg}
+          extraKeyboardSpace={composerFooterClearance}
           automaticallyAdjustKeyboardInsets={false}
         >
           <View style={styles.mediaSection}>
@@ -1091,7 +1094,8 @@ export default function CreateDesignComposerScreen() {
               />
             </Card>
           ) : null}
-        </ScrollView>
+        </KeyboardAwareFormScroll>
+        <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }}>
         <View
           style={[
             styles.footerActions,
@@ -1153,6 +1157,7 @@ export default function CreateDesignComposerScreen() {
             </View>
           </View>
         </View>
+        </KeyboardStickyFooter>
 
       {renderSheets ? (
         <>
@@ -1729,7 +1734,6 @@ export default function CreateDesignComposerScreen() {
       </>
       ) : null}
     </SafeAreaView>
-    </KeyboardAvoider>
   );
 }
 

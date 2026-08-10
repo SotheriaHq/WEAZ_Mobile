@@ -45,22 +45,6 @@ export function isStudioIslandPath(pathname: string): boolean {
   return normalized === '/studio' || normalized.startsWith('/studio/');
 }
 
-/**
- * True on routes whose backdrop is the deep-black *stage* in BOTH themes.
- *
- * The Runway mattes letterboxed/square media against `tokens.themes.dark.colors.bg`,
- * so in light mode a normally-themed island floats over it as a bright white
- * slab. Chrome over these routes must resolve dark tokens instead of the
- * ambient scheme — see `DarkStageThemeScope`.
- *
- * Full-bleed viewers (`/market-viewer`, `/collection-viewer`, `/designs/[id]`)
- * are NOT listed: they live outside `(tabs)` and never render the island.
- */
-export function isDarkStageIslandPath(pathname: string): boolean {
-  const normalized = normalizePathname(pathname);
-  return normalized === '/' || normalized === '/runway';
-}
-
 export function isStudioIslandKey(key: string): key is StudioIslandKey {
   return Object.values(STUDIO_ISLAND_KEYS).includes(key as StudioIslandKey);
 }

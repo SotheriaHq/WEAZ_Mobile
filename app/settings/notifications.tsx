@@ -5,13 +5,12 @@ import {
   Linking,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
@@ -678,66 +677,63 @@ export default function NotificationSettingsScreen() {
         </View>
       </View>
 
-      <KeyboardAvoider style={styles.keyboardWrap}>
-        {loading ? (
-          <View style={styles.stateWrap}>
-            <ActivityIndicator size="small" color={theme.colors.primary} />
-            <AppText variant="body" tone="muted">
-              Loading notification settings...
-            </AppText>
-          </View>
-        ) : loadError || !settings ? (
-          <View style={styles.stateWrap}>
-            <AppText variant="bodyBold">Could not load settings</AppText>
-            <AppText variant="bodyRegular" tone="muted" style={styles.centerText}>
-              {loadError ?? 'Notification settings are unavailable right now.'}
-            </AppText>
-            <Button title="Retry" size="sm" onPress={() => void loadSettings()} />
-          </View>
-        ) : (
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={[
-              styles.content,
-              { paddingBottom: Math.max(insets.bottom, tokens.spacing.xl) },
-            ]}
-          >
-            <PermissionWarning visible={permissionWarningVisible} onOpenSettings={openDeviceSettings} />
-            <PatchErrorBanner
-              message={actionError}
-              retryDisabled={!failedPatch || saving}
-              onRetry={retryFailedPatch}
-            />
+      {loading ? (
+        <View style={styles.stateWrap}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <AppText variant="body" tone="muted">
+            Loading notification settings...
+          </AppText>
+        </View>
+      ) : loadError || !settings ? (
+        <View style={styles.stateWrap}>
+          <AppText variant="bodyBold">Could not load settings</AppText>
+          <AppText variant="bodyRegular" tone="muted" style={styles.centerText}>
+            {loadError ?? 'Notification settings are unavailable right now.'}
+          </AppText>
+          <Button title="Retry" size="sm" onPress={() => void loadSettings()} />
+        </View>
+      ) : (
+        <KeyboardAwareFormScroll
+          style={styles.keyboardWrap}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: Math.max(insets.bottom, tokens.spacing.xl) },
+          ]}
+        >
+          <PermissionWarning visible={permissionWarningVisible} onOpenSettings={openDeviceSettings} />
+          <PatchErrorBanner
+            message={actionError}
+            retryDisabled={!failedPatch || saving}
+            onRetry={retryFailedPatch}
+          />
 
+          <ToggleSectionBlock
+            section={DELIVERY_SECTION}
+            settings={settings}
+            pendingKey={pendingKey}
+            saving={saving}
+            onPatch={handlePatch}
+          />
+
+          <QuietHoursSection
+            settings={settings}
+            saving={saving}
+            pendingKey={pendingKey}
+            onPatch={handlePatch}
+          />
+
+          {TOGGLE_SECTIONS.map((section) => (
             <ToggleSectionBlock
-              section={DELIVERY_SECTION}
+              key={section.title}
+              section={section}
               settings={settings}
               pendingKey={pendingKey}
               saving={saving}
               onPatch={handlePatch}
             />
-
-            <QuietHoursSection
-              settings={settings}
-              saving={saving}
-              pendingKey={pendingKey}
-              onPatch={handlePatch}
-            />
-
-            {TOGGLE_SECTIONS.map((section) => (
-              <ToggleSectionBlock
-                key={section.title}
-                section={section}
-                settings={settings}
-                pendingKey={pendingKey}
-                saving={saving}
-                onPatch={handlePatch}
-              />
-            ))}
-          </ScrollView>
-        )}
-      </KeyboardAvoider>
+          ))}
+        </KeyboardAwareFormScroll>
+      )}
     </SafeAreaView>
   );
 }
