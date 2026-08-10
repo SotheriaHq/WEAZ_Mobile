@@ -72,6 +72,7 @@
     "expo-secure-store": "~56.0.4",
     "expo-splash-screen": "~56.0.10",
     "expo-status-bar": "~56.0.4",
+    "expo-system-ui": "^57.0.2",
     "expo-web-browser": "~56.0.5",
     "libphonenumber-js": "^1.13.9",
     "react": "19.2.3",
