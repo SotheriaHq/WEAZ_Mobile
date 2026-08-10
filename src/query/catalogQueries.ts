@@ -9,7 +9,10 @@ import {
   type CollectionScope,
 } from '@/src/api/BrandApi';
 import { getDesignDetail, type DesignDetail } from '@/src/api/DesignApi';
-import { WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import {
+  WIEZ_MEDIA_URL_GC_TIME_MS,
+  WIEZ_QUERY_STALE_TIME_MS,
+} from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 
 type EnabledOption = { enabled?: boolean };
@@ -257,7 +260,9 @@ export function useMediaSignedUrlQuery(fileId?: string | null, options?: Enabled
     queryFn: () => brandApi.getPrivateSignedFileUrl(String(fileId)),
     enabled: isEnabled(fileId, options?.enabled ?? true),
     staleTime: WIEZ_QUERY_STALE_TIME_MS,
-    gcTime: WIEZ_QUERY_STALE_TIME_MS,
+    // Not the stale time: evicting a signed URL the moment the screen unmounts
+    // forces a re-mint per image on return, which re-downloads the grid.
+    gcTime: WIEZ_MEDIA_URL_GC_TIME_MS,
   });
 }
 

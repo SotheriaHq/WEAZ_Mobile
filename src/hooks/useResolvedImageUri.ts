@@ -4,7 +4,10 @@ import { Platform } from 'react-native';
 
 import { brandApi, type SignedFileUrlDebugContext } from '@/src/api/BrandApi';
 import { mediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
-import { queryClient } from '@/src/query/queryClient';
+import {
+  queryClient,
+  WIEZ_MEDIA_URL_GC_TIME_MS,
+} from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 
 type UseResolvedImageUriArgs = {
@@ -281,7 +284,7 @@ export const resolveImageUri = async ({
               fileId: debugContext?.fileId ?? normalizedFileId,
             }),
           staleTime: SIGNED_URI_TTL_MS - SIGNED_URI_REFRESH_SKEW_MS,
-          gcTime: SIGNED_URI_TTL_MS,
+          gcTime: WIEZ_MEDIA_URL_GC_TIME_MS,
         });
         if (publicUrl) {
           setCachedUri(cacheKey, publicUrl);
@@ -314,7 +317,7 @@ export const resolveImageUri = async ({
               fileId: debugContext?.fileId ?? normalizedFileId,
             }),
           staleTime: SIGNED_URI_TTL_MS - SIGNED_URI_REFRESH_SKEW_MS,
-          gcTime: SIGNED_URI_TTL_MS,
+          gcTime: WIEZ_MEDIA_URL_GC_TIME_MS,
         });
         if (signedUrl) {
           setCachedUri(cacheKey, signedUrl);

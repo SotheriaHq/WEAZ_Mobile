@@ -9,6 +9,20 @@ export const WIEZ_SAVED_STATUS_STALE_TIME_MS = 60 * 1000;
 export const WIEZ_CATEGORY_FILTER_STALE_TIME_MS = 30 * 60 * 1000;
 export const WIEZ_QUERY_CACHE_MAX_ENTRIES = 200;
 
+/**
+ * How long a minted media URL survives with NO mounted observer.
+ *
+ * Garbage-collection window, not a freshness window — the two were confused.
+ * Media-URL queries were created with `gcTime` set to the *stale* time, so
+ * leaving a screen left them observer-less and a few minutes later every one was
+ * evicted. Returning re-minted a URL per image, which on native means a new
+ * cache key per file for expo-image and a real re-download of the whole grid.
+ * `staleTime` still governs revalidation; this only stops the eviction.
+ *
+ * Mirrors fthreadly/src/query/queryClient.ts.
+ */
+export const WIEZ_MEDIA_URL_GC_TIME_MS = 60 * 60 * 1000;
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

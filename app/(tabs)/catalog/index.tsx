@@ -1391,7 +1391,20 @@ export default function CatalogScreen() {
           return cached.collection;
         }
         const collection: CollectionDto = {
-          id: task.id,
+          // Prefer the DESIGN id the moment the server hands one back, and fall
+          // back to the local task id only before that.
+          //
+          // This is the card's list key. Keying it to the task id meant the key
+          // CHANGED when the task retired and the real row took over — same
+          // picture, new identity — so the list unmounted the card and mounted a
+          // fresh one, re-resolving the image. That is the flash owners see when
+          // an upload completes. Sharing the id makes the handoff a reconcile:
+          // the row updates in place and nothing remounts.
+          //
+          // Safe against double cards because the merge below filters server
+          // collections whose id matches a task's designId, so exactly one card
+          // for this design exists at any moment either way.
+          id: task.designId ?? task.id,
           entityType: 'DESIGN',
           title: task.title,
           description: task.error ?? task.message,
