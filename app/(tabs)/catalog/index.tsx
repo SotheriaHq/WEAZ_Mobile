@@ -477,6 +477,24 @@ export default function CatalogScreen() {
   const tabSwipeProgress = useSharedValue(TAB_ORDER.indexOf(visualActiveTab));
 
   const estimatedPagerHeight = Math.max(360, Math.round(windowHeight * 0.6));
+
+  /**
+   * Placeholder height for a tab page that has not been measured yet — and only
+   * until then.
+   *
+   * This used to be applied unconditionally as `minHeight` on every page, which
+   * meant `onLayout` could never report anything below 60% of the window: an
+   * empty catalogue measured as tall as a full one, the pager inherited that
+   * height, and the outer ScrollView always had more content than viewport. That
+   * is why an empty catalogue still scrolled. Dropping the floor once a real
+   * measurement exists lets the page size to its content; the outer ScrollView
+   * takes over on its own as soon as the content genuinely outgrows the screen,
+   * so nothing is clipped at the top end.
+   */
+  const unmeasuredPageMinHeight = useCallback(
+    (key: string) => (tabHeights[key] === undefined ? estimatedPagerHeight : undefined),
+    [estimatedPagerHeight, tabHeights],
+  );
   const visualTabKey = visualActiveTab === 'Collections' ? `Collections:${visibilityFilter}` : visualActiveTab;
   const dataTabKey = dataActiveTab === 'Collections' ? `Collections:${visibilityFilter}` : dataActiveTab;
   const targetHeight = tabHeights[visualTabKey];
@@ -2084,7 +2102,13 @@ export default function CatalogScreen() {
         >
           <View
             onLayout={(event) => handleTabPageLayout(`Collections:${visibilityFilter}`, event)}
-            style={[styles.tabPage, { width: Math.max(containerWidth, 1), minHeight: estimatedPagerHeight }]}
+            style={[
+              styles.tabPage,
+              {
+                width: Math.max(containerWidth, 1),
+                minHeight: unmeasuredPageMinHeight(`Collections:${visibilityFilter}`),
+              },
+            ]}
           >
               {isOwner ? (
                 <View style={styles.catalogControls}>
@@ -2165,7 +2189,10 @@ export default function CatalogScreen() {
 
           <View
             onLayout={(event) => handleTabPageLayout('Shop', event)}
-            style={[styles.tabPage, { width: Math.max(containerWidth, 1), minHeight: estimatedPagerHeight }]}
+            style={[
+              styles.tabPage,
+              { width: Math.max(containerWidth, 1), minHeight: unmeasuredPageMinHeight('Shop') },
+            ]}
           >
             {shouldMountShopTab && containerWidth > 0 && targetBrandId ? (
               <BrandShopTab
@@ -2180,7 +2207,10 @@ export default function CatalogScreen() {
 
           <View
             onLayout={(event) => handleTabPageLayout('Reviews', event)}
-            style={[styles.tabPage, { width: Math.max(containerWidth, 1), minHeight: estimatedPagerHeight }]}
+            style={[
+              styles.tabPage,
+              { width: Math.max(containerWidth, 1), minHeight: unmeasuredPageMinHeight('Reviews') },
+            ]}
           >
             {/* Reviews stays lazy until first activation to keep catalogue shell-first. */}
             {shouldMountReviewsTab && targetBrandId ? (

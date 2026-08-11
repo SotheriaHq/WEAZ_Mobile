@@ -164,9 +164,14 @@ export default function SignupScreen() {
   // its own skeleton immediately and the welcome toast lands over it — instead
   // of leaving the user on the signup form waiting for a status-driven effect.
   const navigateAfterAuth = useCallback(() => {
-    const target = userType === 'BRAND' ? '/catalog' : nextPath;
+    // A brand-new account always lands on its own home surface, never on
+    // `next`. `next` is a "return to what you were doing" hint carried in from
+    // an auth guard, and for a first-time signup there is nothing to return to
+    // — it dropped users onto transient screens like /notifications, which is
+    // an empty, contextless first impression of the app. Login still honours it.
+    const target = userType === 'BRAND' ? '/catalog' : '/(tabs)/me';
     router.replace(target as any);
-  }, [userType, nextPath]);
+  }, [userType]);
 
   const onSubmit = async () => {
     const newErrors: Record<string, string> = {};

@@ -4,7 +4,7 @@
  * Similar to 'sonner' on web but optimized for React Native
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -186,7 +186,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const info = useCallback((message: string, options?: ToastOptions) => addToast('info', message, options), [addToast]);
   const warning = useCallback((message: string, options?: ToastOptions) => addToast('warning', message, options), [addToast]);
 
-  const value: ToastContextValue = { success, error, info, warning };
+  // Memoized, and that is load-bearing rather than an optimisation.
+  //
+  // `ToastProvider` re-renders every time a toast appears or dismisses. A fresh
+  // object literal here handed every `useToast()` consumer in the app a new
+  // context value on each of those renders, which invalidated every
+  // `useCallback`/`useEffect` that lists `toast` in its deps. On the brand
+  // profile editor that meant `loadProfile` was rebuilt, its effect re-fired,
+  // the screen flipped to the full-page loader, and the refetch overwrote
+  // `form`/`baseline` — so uploading an avatar (which toasts on success) silently
+  // discarded every unsaved text field. The four handlers below are already
+  // stable, so this value never needs to change.
+  const value = useMemo<ToastContextValue>(
+    () => ({ success, error, info, warning }),
+    [success, error, info, warning],
+  );
 
   return (
     <ToastContext.Provider value={value}>

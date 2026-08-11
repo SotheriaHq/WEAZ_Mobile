@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -25,6 +25,8 @@ import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { tokens } from '@/src/styles/tokens';
 import { backOrNavigate } from '@/src/utils/mobileNavigation';
+import { queryClient } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
 import { BRAND_TAG_OPTIONS } from '@/src/data/brandTags';
 import { AppMultiSelectSheet, AppSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
 import { Chip } from '@/components/ui/Chip';
@@ -206,6 +208,14 @@ export default function BrandProfileEditScreen() {
   const latestFormRef = useRef<BrandFormState | null>(null);
   const pendingChangesRef = useRef(false);
   const isNavigatingAwayRef = useRef(false);
+  /**
+   * True once the user has typed anything. A refetch must not overwrite work in
+   * progress: `loadProfile` resets `form` AND `baseline`, so a reload mid-edit
+   * did not just revert the fields on screen, it made `hasPendingChanges` false
+   * and left `beforeRemove`/`handleBack` with nothing to save. `me-edit.tsx` has
+   * carried this guard; this screen did not.
+   */
+  const hasUserEditedRef = useRef(false);
 
   const hasPendingChanges = useMemo(() => {
     if (!form || !baseline) return false;
@@ -226,7 +236,10 @@ export default function BrandProfileEditScreen() {
       return;
     }
 
-    setLoading(true);
+    // Only the first load blocks the screen. A later refetch used to flip
+    // `loading` back on and replace the whole editor with the full-page loader —
+    // the "entire screen reloaded" on avatar upload.
+    setLoading((current) => current || !latestFormRef.current);
     try {
       const data = await brandApi.getProfileById(targetBrandId);
       if (!data) {
@@ -234,17 +247,22 @@ export default function BrandProfileEditScreen() {
         setLoading(false);
         return;
       }
-      const nextForm = toForm(data);
       setProfile(data);
-      setForm(nextForm);
-      setBaseline(nextForm);
-      setSaveState('idle');
+      if (!hasUserEditedRef.current) {
+        const nextForm = toForm(data);
+        setForm(nextForm);
+        setBaseline(nextForm);
+        setSaveState('idle');
+      }
     } catch {
       toast.error('Failed to load brand profile.');
     } finally {
       setLoading(false);
     }
-  }, [targetBrandId, toast]);
+    // `toast` is deliberately not a dependency. It is stable now, but listing it
+    // is what let a toast rebuild this callback and re-fire its effect mid-edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetBrandId]);
 
   useEffect(() => {
     void loadProfile();
@@ -334,6 +352,14 @@ export default function BrandProfileEditScreen() {
         if (updated) {
           setProfile(updated);
           setBaseline(resolvedDraft);
+          // The draft is now the server's truth, so a later refetch is free to
+          // refresh the form again.
+          hasUserEditedRef.current = false;
+          // Same reason as the avatar upload: the catalogue reads this profile
+          // from the query cache, so it has to be told the record moved.
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.brand.profile(targetBrandId),
+          });
           setSaveState('saved');
           setLastSavedAt(new Date());
           updateUser({
@@ -356,6 +382,16 @@ export default function BrandProfileEditScreen() {
     },
     [baseline, profile?.brandFullName, targetBrandId, toast, updateUser, user],
   );
+
+  /**
+   * Every write to `form` goes through here so `hasUserEditedRef` cannot drift
+   * out of sync with what is on screen — a background refetch that lands while
+   * a field is dirty must not be allowed to replace it.
+   */
+  const updateField = useCallback((patch: Partial<BrandFormState>) => {
+    hasUserEditedRef.current = true;
+    setForm((current) => (current ? { ...current, ...patch } : current));
+  }, []);
 
   const persistOnExit = useCallback(async () => {
     if (!pendingChangesRef.current || !latestFormRef.current) {
@@ -470,6 +506,28 @@ export default function BrandProfileEditScreen() {
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
       });
+      // The catalogue renders the brand avatar from the cached `brand.profile`
+      // query, not from auth state, so `updateUser` alone never reached it.
+      // Write through rather than only invalidating: the new image is already
+      // in hand, so the catalogue should be correct the instant we navigate
+      // back, not one refetch later.
+      if (targetBrandId) {
+        const profileKey = queryKeys.brand.profile(targetBrandId);
+        queryClient.setQueryData<BrandProfileDto>(profileKey, (current) =>
+          current
+            ? {
+                ...current,
+                profileImage: uploaded.url,
+                profileImageId: uploaded.id,
+                profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
+                logoImage: uploaded.url,
+                logoImageId: uploaded.id,
+                logoImageMeta: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url, fileId: uploaded.id },
+              }
+            : current,
+        );
+        void queryClient.invalidateQueries({ queryKey: profileKey });
+      }
       setSaveState('saved');
       setLastSavedAt(new Date());
       toast.success('Brand image updated.');
@@ -477,7 +535,7 @@ export default function BrandProfileEditScreen() {
       setSaveState('error');
       toast.error('Failed to update your brand image.');
     }
-  }, [toast, updateUser]);
+  }, [targetBrandId, toast, updateUser]);
 
   const avatar = resolveProfileImageSource(profile ?? user ?? null);
   const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: Boolean(profile || user) });
@@ -488,6 +546,16 @@ export default function BrandProfileEditScreen() {
   const statusTone =
     saveState === 'error' ? 'danger' : saveState === 'saving' ? 'warning' : 'muted';
   const currentStatusLabel = statusLabel(saveState, lastSavedAt);
+  /**
+   * A brand name is set once, at signup, and then fixed — it is how buyers and
+   * orders identify the brand, so it is not a field to re-type freely.
+   *
+   * This reads the name the SERVER returned, not the form, so typing cannot
+   * unlock it. Note this is a UI lock only: `updateProfile` still accepts
+   * `brandFullName`, so the rule is not enforced until the API rejects changes
+   * to it. Treat that as the real fix; this stops the accidental case.
+   */
+  const brandNameLocked = Boolean(profile?.brandFullName?.trim());
   const tagOptions: SelectSheetOption[] = useMemo(() => {
     const byValue = new Map<string, SelectSheetOption>();
     BRAND_TAG_OPTIONS.forEach((option) => byValue.set(option.value, option));
@@ -526,9 +594,18 @@ export default function BrandProfileEditScreen() {
         <View style={styles.headerTextWrap}>
           <AppText variant="bodyBold">Edit Brand Profile</AppText>
           {currentStatusLabel ? (
-            <AppText variant="caption" tone={statusTone} style={styles.status}>
-              {currentStatusLabel}
-            </AppText>
+            // A spinner beside the label. "Saving changes..." as static text
+            // gives no sign the app is working, so a save in flight looks
+            // identical to a frozen screen — which is exactly how it read when
+            // swiping back triggered the save-on-exit.
+            <View style={styles.statusRow}>
+              {saveState === 'saving' ? (
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+              ) : null}
+              <AppText variant="caption" tone={statusTone} style={styles.status}>
+                {currentStatusLabel}
+              </AppText>
+            </View>
           ) : null}
         </View>
       </View>
@@ -566,20 +643,28 @@ export default function BrandProfileEditScreen() {
             <Input
               label="Brand Name"
               value={form.brandFullName}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, brandFullName: value } : prev))}
+              onChangeText={(value) => updateField({ brandFullName: value })}
               placeholder="Your brand name"
               containerStyle={styles.group}
+              variant="underline"
+              editable={!brandNameLocked}
             />
+            {brandNameLocked ? (
+              <AppText variant="caption" tone="muted">
+                Your brand name is locked. Contact support if it needs to change.
+              </AppText>
+            ) : null}
           </View>
 
           <View style={styles.group}>
             <Input
-              label="Description"
+              label="Bio"
               value={form.brandDescription}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, brandDescription: value } : prev))}
-              placeholder="Describe your brand"
+              onChangeText={(value) => updateField({ brandDescription: value })}
+              placeholder="Tell shoppers what your brand is about"
               multiline
               containerStyle={styles.group}
+              variant="underline"
             />
           </View>
 
@@ -652,10 +737,11 @@ export default function BrandProfileEditScreen() {
             <Input
               label="Instagram"
               value={form.socialInstagram}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, socialInstagram: value } : prev))}
+              onChangeText={(value) => updateField({ socialInstagram: value })}
               placeholder="@brand or URL"
               autoCapitalize="none"
               containerStyle={styles.group}
+              variant="underline"
             />
           </View>
 
@@ -663,10 +749,11 @@ export default function BrandProfileEditScreen() {
             <Input
               label="Facebook"
               value={form.socialFacebook}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, socialFacebook: value } : prev))}
+              onChangeText={(value) => updateField({ socialFacebook: value })}
               placeholder="Profile URL"
               autoCapitalize="none"
               containerStyle={styles.group}
+              variant="underline"
             />
           </View>
 
@@ -674,10 +761,11 @@ export default function BrandProfileEditScreen() {
             <Input
               label="Twitter/X"
               value={form.socialTwitter}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, socialTwitter: value } : prev))}
+              onChangeText={(value) => updateField({ socialTwitter: value })}
               placeholder="@handle"
               autoCapitalize="none"
               containerStyle={styles.group}
+              variant="underline"
             />
           </View>
 
@@ -685,10 +773,11 @@ export default function BrandProfileEditScreen() {
             <Input
               label="Website"
               value={form.socialWebsite}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, socialWebsite: value } : prev))}
+              onChangeText={(value) => updateField({ socialWebsite: value })}
               placeholder="https://"
               autoCapitalize="none"
               containerStyle={styles.group}
+              variant="underline"
             />
           </View>
 
@@ -700,7 +789,7 @@ export default function BrandProfileEditScreen() {
         subtitle="Use the same business category shown on web."
         options={businessTypeOptions}
         value={form.businessType || null}
-        onChange={(value) => setForm((prev) => (prev ? { ...prev, businessType: value } : prev))}
+        onChange={(value) => updateField({ businessType: value })}
         onClose={() => setBusinessTypeSheetOpen(false)}
       />
 
@@ -713,11 +802,7 @@ export default function BrandProfileEditScreen() {
         loading={locationLoading && countries.length === 0}
         errorMessage={locationError}
         emptyMessage="No countries available."
-        onChange={(value) =>
-          setForm((prev) =>
-            prev ? { ...prev, brandCountry: value, brandState: '', brandCity: '' } : prev,
-          )
-        }
+        onChange={(value) => updateField({ brandCountry: value, brandState: '', brandCity: '' })}
         onClose={() => setLocationSheet(null)}
       />
 
@@ -729,11 +814,7 @@ export default function BrandProfileEditScreen() {
         value={form.brandState || null}
         loading={locationLoading && states.length === 0}
         emptyMessage="No states available for the selected country."
-        onChange={(value) =>
-          setForm((prev) =>
-            prev ? { ...prev, brandState: value, brandCity: '' } : prev,
-          )
-        }
+        onChange={(value) => updateField({ brandState: value, brandCity: '' })}
         onClose={() => setLocationSheet(null)}
       />
 
@@ -745,7 +826,7 @@ export default function BrandProfileEditScreen() {
         value={form.brandCity || null}
         loading={locationLoading && cities.length === 0}
         emptyMessage="No cities available for the selected state."
-        onChange={(value) => setForm((prev) => (prev ? { ...prev, brandCity: value } : prev))}
+        onChange={(value) => updateField({ brandCity: value })}
         onClose={() => setLocationSheet(null)}
       />
 
@@ -756,7 +837,7 @@ export default function BrandProfileEditScreen() {
         options={tagOptions}
         values={form.brandTags}
         maxSelected={10}
-        onChange={(values) => setForm((prev) => (prev ? { ...prev, brandTags: values } : prev))}
+        onChange={(values) => updateField({ brandTags: values })}
         onClose={() => setTagsSheetOpen(false)}
       />
     </SafeAreaView>
@@ -790,8 +871,14 @@ const styles = StyleSheet.create({
   headerTextWrap: {
     flex: 1,
   },
-  status: {
+  statusRow: {
     marginTop: tokens.spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  status: {
+    flexShrink: 1,
   },
   content: {
     paddingHorizontal: tokens.spacing.lg,

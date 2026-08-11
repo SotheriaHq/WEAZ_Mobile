@@ -1259,7 +1259,12 @@ export function BrandShopTab({
         <View style={styles.filterSection}>
           <AppText variant="bodyBold">Availability</AppText>
           <View style={styles.filterChipWrap}>
-            {FILTER_OPTIONS.map((option) => (
+            {/* "In bag" and "Wishlist" are buyer state. The owner of the shop
+                has neither, and offering them reads as a shopping affordance on
+                the seller's own store. */}
+            {FILTER_OPTIONS.filter(
+              (option) => !isOwner || (option.key !== 'bagged' && option.key !== 'saved'),
+            ).map((option) => (
               <Chip
                 key={option.key}
                 label={option.label}

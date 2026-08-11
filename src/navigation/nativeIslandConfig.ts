@@ -250,7 +250,12 @@ export function buildNativeIslandItems(args: {
     },
   ];
 
-  return baseItems;
+  // Brands do not shop. Bag is a buyer surface, and leaving it on the brand
+  // island gave sellers a route into their own checkout — and from there into
+  // the buyer orders screen, which is not their orders at all.
+  return args.isBrand
+    ? baseItems.filter((item) => item.key !== NATIVE_ISLAND_KEYS.bag)
+    : baseItems;
 }
 
 export function getNativeIslandRoute(key: string, isBrand: boolean) {

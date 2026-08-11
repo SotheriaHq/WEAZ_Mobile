@@ -12,6 +12,7 @@ import * as SecureStore from 'expo-secure-store';
 import { StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/src/auth/AuthContext';
+import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useToast } from '@/src/toast/ToastContext';
 import type { ProductBagStatus } from '@/src/api/StoreApi';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
@@ -60,7 +61,19 @@ const PENDING_BAG_ACTION_KEY = 'wiez.pendingBagAction.v1';
 
 export function BagFlowProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { status: authStatus } = useAuth();
+  const { status: authStatus, user } = useAuth();
+  /**
+   * Brands do not shop.
+   *
+   * Guarding here rather than at each button is deliberate: every bag surface in
+   * the app — the island Bag tab, "Bag it" on a product card, the custom-order
+   * flow, the fittings sheets — opens through this provider. One refusal here
+   * cannot be routed around by a screen that forgets to check, and a brand who
+   * reaches a bag by deep link or stale UI still cannot open it. A brand tapping
+   * Bag used to land in their own checkout and from there on the *buyer* orders
+   * screen, which is not their orders at all.
+   */
+  const isBrandAccount = hasActiveBrandMembership(user);
   const toast = useToast();
   const { refreshGlobalBagCount } = useBagCount();
 
@@ -193,7 +206,25 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [routeResolvedStatus]);
 
+  /**
+   * Closes every bag surface and refuses the request. Returns true when it
+   * handled things, so each opener can bail in one line.
+   */
+  const refuseForBrandAccount = useCallback(() => {
+    if (!isBrandAccount) return false;
+    setPendingAuth(null);
+    setSelectorTarget(null);
+    setCustomTarget(null);
+    setFittingsTarget(null);
+    setStaleTarget(null);
+    setSummaryTarget(null);
+    setMyBagVisible(false);
+    toast.info('Brand accounts sell on WIEZ — shopping is a personal account feature.');
+    return true;
+  }, [isBrandAccount, toast]);
+
   const openSelector = useCallback((product: BagProductInput, status: ProductBagStatus) => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setCustomTarget(null);
     setFittingsTarget(null);
@@ -201,9 +232,10 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSummaryTarget(null);
     setMyBagVisible(false);
     setSelectorTarget({ product, status });
-  }, []);
+  }, [refuseForBrandAccount]);
 
   const openCustomFlow = useCallback((product: BagProductInput, status: ProductBagStatus) => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setSelectorTarget(null);
     setFittingsTarget(null);
@@ -229,9 +261,10 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     }
 
     setCustomTarget({ product, status });
-  }, [toast]);
+  }, [refuseForBrandAccount, toast]);
 
   const openFittings = useCallback((product: BagProductInput, status: ProductBagStatus) => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setSelectorTarget(null);
     setCustomTarget(null);
@@ -239,9 +272,10 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSummaryTarget(null);
     setMyBagVisible(false);
     setFittingsTarget({ product, status });
-  }, []);
+  }, [refuseForBrandAccount]);
 
   const openStaleFittings = useCallback((product: BagProductInput, status: ProductBagStatus) => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setSelectorTarget(null);
     setCustomTarget(null);
@@ -249,7 +283,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSummaryTarget(null);
     setMyBagVisible(false);
     setStaleTarget({ product, status });
-  }, []);
+  }, [refuseForBrandAccount]);
 
   const openAuthPrompt = useCallback(
     (product: BagProductInput, action: BagDefaultAction, resume?: () => void | Promise<void>) => {
@@ -277,6 +311,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
   );
 
   const openExistingBag = useCallback((product: BagProductInput, status: ProductBagStatus) => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setSelectorTarget(null);
     setCustomTarget(null);
@@ -287,6 +322,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const openMyBag = useCallback(() => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setSelectorTarget(null);
     setCustomTarget(null);
@@ -295,7 +331,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSummaryTarget(null);
     setMyBagVisible(true);
     void refreshGlobalBagCount();
-  }, [refreshGlobalBagCount]);
+  }, [refreshGlobalBagCount, refuseForBrandAccount]);
 
   useEffect(() => {
     pendingResumeRef.current = pendingAuth;

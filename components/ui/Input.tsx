@@ -14,7 +14,14 @@ export type InputProps = Omit<TextInputProps, 'style'> & {
   leading?: React.ReactNode;
   trailing?: React.ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
-  variant?: 'default' | 'bare';
+  /**
+   * `default` — filled, rounded box.
+   * `bare` — no chrome at all; the parent draws the container.
+   * `underline` — a single rule under the field. Reads as a line of writing
+   *   rather than a stack of boxes, which is what a long profile form wants:
+   *   the placeholder carries the hint and the label sits above.
+   */
+  variant?: 'default' | 'bare' | 'underline';
 };
 
 export const Input = React.forwardRef<TextInput, InputProps>(function Input({
@@ -34,6 +41,9 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
   const keyboardForm = useKeyboardFormField();
   const hasError = Boolean(error);
   const isBare = variant === 'bare';
+  const isUnderline = variant === 'underline';
+  const isPlain = isBare || isUnderline;
+  const activeBorderColor = hasError ? theme.colors.danger : theme.colors.border;
 
   return (
     <View style={containerStyle}>
@@ -45,11 +55,13 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
       <View
         style={[
           styles.field,
+          isUnderline && styles.fieldUnderline,
           {
             minHeight: multiline ? 104 : 52,
-            backgroundColor: isBare ? 'transparent' : theme.colors.surface,
-            borderColor: isBare ? 'transparent' : hasError ? theme.colors.danger : theme.colors.border,
-            borderWidth: isBare ? 0 : 1,
+            backgroundColor: isPlain ? 'transparent' : theme.colors.surface,
+            borderColor: isBare ? 'transparent' : activeBorderColor,
+            borderWidth: isPlain ? 0 : 1,
+            ...(isUnderline ? { borderBottomWidth: 1, borderBottomColor: activeBorderColor } : null),
           },
         ]}
       >
@@ -67,8 +79,8 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
             styles.input,
             {
               color: theme.colors.text,
-              paddingLeft: isBare ? 0 : leading ? tokens.spacing.xl2 : tokens.spacing.lg,
-              paddingRight: isBare ? 0 : trailing ? 44 : tokens.spacing.lg,
+              paddingLeft: isPlain ? 0 : leading ? tokens.spacing.xl2 : tokens.spacing.lg,
+              paddingRight: isPlain ? 0 : trailing ? 44 : tokens.spacing.lg,
               paddingTop: multiline ? tokens.spacing.lg : 0,
               paddingBottom: multiline ? tokens.spacing.lg : 0,
               textAlignVertical: multiline ? 'top' : 'center',
@@ -106,6 +118,10 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.lg,
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  fieldUnderline: {
+    // Square, so the rule reads as a writing line and not a clipped box.
+    borderRadius: 0,
   },
   input: {
     minHeight: 52,

@@ -263,9 +263,6 @@ export default function NotificationsScreen() {
         <AppBackButton fallbackHref="/(tabs)" />
         <View style={styles.headerCopy}>
           <AppText variant="title">Notifications</AppText>
-          <AppText variant="captionRegular" tone="muted">
-            Activity grouped by time, not buried in one long stream.
-          </AppText>
         </View>
         <Button
           title="Mark all"

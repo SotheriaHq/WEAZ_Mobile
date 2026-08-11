@@ -192,13 +192,50 @@ export const replaceEqualDeepPreservingSignedUrls = <T>(
 
   if (isPlainObject(previous) && isPlainObject(next)) {
     const nextKeys = Object.keys(next);
-    let unchanged = Object.keys(previous).length === nextKeys.length;
+    const sameShape = Object.keys(previous).length === nextKeys.length;
     const merged: Record<string, unknown> = {};
+    // Keys we kept the OLD string for because only the signature moved.
+    const signatureOnlyKeys: string[] = [];
+    let unchanged = sameShape;
+    let substantiveChange = !sameShape;
+
     for (const key of nextKeys) {
-      const value = replaceEqualDeepPreservingSignedUrls(previous[key], next[key]);
+      const previousValue = previous[key];
+      const nextValue = next[key];
+
+      if (
+        typeof previousValue === 'string' &&
+        typeof nextValue === 'string' &&
+        previousValue !== nextValue &&
+        isEquivalentSignedUrl(previousValue, nextValue)
+      ) {
+        merged[key] = previousValue;
+        signatureOnlyKeys.push(key);
+        continue;
+      }
+
+      const value = replaceEqualDeepPreservingSignedUrls(previousValue, nextValue);
       merged[key] = value;
-      if (value !== previous[key]) unchanged = false;
+      if (value !== previousValue) {
+        unchanged = false;
+        substantiveChange = true;
+      }
     }
+
+    // "Same object, new signature" only holds while the rest of the record also
+    // held still. If a sibling field moved, the record genuinely changed — and
+    // the case that matters is media replaced at a STABLE storage key: a new
+    // avatar arrives with a new `profileImageId` but the same S3 path, so the
+    // URL looks re-signed when the bytes behind it are different. Preserving it
+    // there pinned the catalogue to the old image no matter how many times the
+    // query was invalidated and refetched.
+    if (substantiveChange) {
+      for (const key of signatureOnlyKeys) {
+        merged[key] = next[key];
+        unchanged = false;
+      }
+    }
+
     return (unchanged ? previous : merged) as T;
   }
 

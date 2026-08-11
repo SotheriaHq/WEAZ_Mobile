@@ -138,6 +138,38 @@ const grown = replaceEqualDeepPreservingSignedUrls(previous, {
 assert.equal(grown.items.length, 3, 'added rows must survive');
 assert.equal(grown.items[0], previous.items[0], 'existing rows must not be rebuilt');
 
+// ── Media REPLACED at a stable storage key ──────────────────────────────────
+// The avatar case. A new upload can land on the same S3 path, so the URL looks
+// merely re-signed while the bytes behind it are different. The sibling id is
+// what says otherwise: once any other field of the record moves, the record
+// genuinely changed and the cached URL must not be held. Without this the
+// catalogue showed the old profile image no matter how often the query was
+// invalidated and refetched.
+const avatarBefore = {
+  profileImageId: 'file_1',
+  profileImage: signed('20260808T090000Z', 'aaa'),
+};
+const avatarReplaced = {
+  profileImageId: 'file_2',
+  profileImage: signed('20260808T091500Z', 'bbb'),
+};
+const avatarMerged = replaceEqualDeepPreservingSignedUrls(avatarBefore, avatarReplaced);
+assert.equal(
+  avatarMerged.profileImage,
+  avatarReplaced.profileImage,
+  'a re-signed URL must NOT be preserved when a sibling field also changed',
+);
+assert.equal(avatarMerged.profileImageId, 'file_2');
+// And the flicker fix still holds when nothing but the signature moved.
+assert.equal(
+  replaceEqualDeepPreservingSignedUrls(avatarBefore, {
+    profileImageId: 'file_1',
+    profileImage: signed('20260808T091500Z', 'bbb'),
+  }),
+  avatarBefore,
+  'a signature-only refresh must still keep the cached URL and its reference',
+);
+
 // ── Wiring ──────────────────────────────────────────────────────────────────
 const queryClientSource = fs.readFileSync(queryClientPath, 'utf8');
 assert.match(
