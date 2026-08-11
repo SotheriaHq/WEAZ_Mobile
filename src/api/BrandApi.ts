@@ -1475,20 +1475,20 @@ export const brandApi = {
   },
 
   /**
-   * Get store status
+   * Get store status.
+   *
+   * Rethrows rather than answering `isSetupComplete: false` on failure. This
+   * result gates the Studio entry point, and a swallowed network error that
+   * reads as "not set up" would lock a live brand out of its own store. The
+   * caller decides what an unknown status means; it must not be told a lie.
    */
   async getStoreStatus(): Promise<{ hasStore: boolean; storeId: string | null; isSetupComplete: boolean }> {
-    try {
-      const response = await apiClient.get('/store/status');
-      const data = unwrapData<any>(response.data);
-      return {
-        hasStore: data?.hasStore ?? false,
-        storeId: data?.storeId ?? null,
-        isSetupComplete: data?.isSetupComplete ?? false,
-      };
-    } catch (error) {
-      console.error('Error getting store status:', error);
-      return { hasStore: false, storeId: null, isSetupComplete: false };
-    }
+    const response = await apiClient.get('/store/status');
+    const data = unwrapData<any>(response.data);
+    return {
+      hasStore: data?.hasStore ?? false,
+      storeId: data?.storeId ?? null,
+      isSetupComplete: data?.isSetupComplete ?? false,
+    };
   },
 };

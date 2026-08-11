@@ -27,7 +27,8 @@ import { tokens } from '@/src/styles/tokens';
 import { backOrNavigate } from '@/src/utils/mobileNavigation';
 import { queryClient } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
-import { BRAND_TAG_OPTIONS } from '@/src/data/brandTags';
+import { BRAND_TAG_OPTIONS, BRAND_TAG_SELECTION_LIMIT } from '@/src/data/brandTags';
+import { normalizeSocialLink } from '@/src/utils/socialLinks';
 import { AppMultiSelectSheet, AppSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
 import { Chip } from '@/components/ui/Chip';
 import { locationService, type CountryOption, type StateOption } from '@/src/services/locationService';
@@ -100,12 +101,35 @@ function toPayload(form: BrandFormState): UpdateBrandProfilePayload {
     brandCity: form.brandCity.trim() || undefined,
     brandState: form.brandState.trim() || undefined,
     brandCountry: form.brandCountry.trim() || undefined,
-    brandTags: form.brandTags.slice(0, 10),
-    socialInstagram: form.socialInstagram.trim() || undefined,
-    socialFacebook: form.socialFacebook.trim() || undefined,
-    socialTwitter: form.socialTwitter.trim() || undefined,
-    socialWebsite: form.socialWebsite.trim() || undefined,
+    brandTags: form.brandTags.slice(0, BRAND_TAG_SELECTION_LIMIT),
+    // The API validates every social field with `@IsUrl()`. Our placeholders ask
+    // for "@brand" and "@handle", so the raw values were guaranteed 400s.
+    socialInstagram: normalizeSocialLink('instagram', form.socialInstagram),
+    socialFacebook: normalizeSocialLink('facebook', form.socialFacebook),
+    socialTwitter: normalizeSocialLink('twitter', form.socialTwitter),
+    socialWebsite: normalizeSocialLink('website', form.socialWebsite),
   };
+}
+
+/**
+ * Nest's ValidationPipe answers a 400 with `message` as an ARRAY of per-field
+ * strings. Every generic error helper here reads `message` as a string, so the
+ * only thing that ever reached the user was "Failed to save your brand
+ * profile." — true, but it never said which field to fix.
+ */
+function getProfileSaveErrorMessage(error: unknown): string {
+  const fallback = 'Failed to save your brand profile.';
+  const response = (error as { response?: { data?: unknown } } | null)?.response;
+  const data = response?.data as Record<string, unknown> | undefined;
+  if (!data) return fallback;
+
+  const raw = data.message ?? (data.data as Record<string, unknown> | undefined)?.message;
+  if (Array.isArray(raw)) {
+    const first = raw.find((entry) => typeof entry === 'string' && entry.trim());
+    return typeof first === 'string' ? first.trim() : fallback;
+  }
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  return fallback;
 }
 
 function statusLabel(state: SaveState, savedAt: Date | null): string | null {
@@ -374,9 +398,9 @@ export default function BrandProfileEditScreen() {
           });
         }
         return true;
-      } catch {
+      } catch (error) {
         setSaveState('error');
-        toast.error('Failed to save your brand profile.');
+        toast.error(getProfileSaveErrorMessage(error));
         return false;
       }
     },
@@ -833,10 +857,9 @@ export default function BrandProfileEditScreen() {
       <AppMultiSelectSheet
         visible={tagsSheetOpen}
         title="Brand Tags"
-        subtitle="Pick the specialties that describe this brand."
         options={tagOptions}
         values={form.brandTags}
-        maxSelected={10}
+        maxSelected={BRAND_TAG_SELECTION_LIMIT}
         onChange={(values) => updateField({ brandTags: values })}
         onClose={() => setTagsSheetOpen(false)}
       />

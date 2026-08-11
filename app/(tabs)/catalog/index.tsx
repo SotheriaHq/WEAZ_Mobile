@@ -92,6 +92,7 @@ import { WIEZ_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { readWarmScreenUiState, writeWarmScreenUiState } from '@/src/state/screenWarmState';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
+import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Types
@@ -389,6 +390,7 @@ export default function CatalogScreen() {
   const isDark = scheme === 'dark';
   const activeBrandId = getActiveBrandId(user);
   const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
+  const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
   const targetBrandId = routeBrandId || activeBrandId || null;
   const catalogUiStateKey = targetBrandId ? buildCatalogUiStateKey(targetBrandId, isOwner) : null;
   const initialCatalogUiStateRef = useRef<CatalogUiLifetimeState | null>(
@@ -1918,9 +1920,29 @@ export default function CatalogScreen() {
       // Emoji + separators mirror the Studio profile menu so both menus read as
       // the same control (see `StudioProfileMenu` in app/(tabs)/studio/webview.tsx).
       if (isOwner) {
+        // A brand that has not finished the store wizard has no store to
+        // manage, so it must not be offered one. Showing "Store" here dropped
+        // the brand into a Studio dashboard for a store that does not exist,
+        // behind a verification notice — the entry point promised something the
+        // destination could not deliver. Offer the wizard instead, which is the
+        // action actually available to them.
+        //
+        // `null` means the status is still unknown; keep "Store" (a brand with
+        // a live store must never be locked out by a slow or failed request)
+        // and let the Studio screen itself re-check on entry.
+        const storeOption: FloatingMenuOption =
+          storeSetupComplete === false
+            ? {
+                key: 'store-setup',
+                icon: '🏗️',
+                title: 'Set up store',
+                onPress: () => drillDownPush({ pathname: '/studio', params: { routeKey: 'setup' } } as any),
+              }
+            : { key: 'store', icon: '🛍️', title: 'Store', onPress: () => drillDownPush('/studio' as any) };
+
         return [
           { key: 'settings', icon: '⚙️', title: 'Settings', onPress: () => drillDownPush('/settings' as any) },
-          { key: 'store', icon: '🛍️', title: 'Store', onPress: () => drillDownPush('/studio' as any) },
+          storeOption,
         ];
       }
 
@@ -1955,7 +1977,15 @@ export default function CatalogScreen() {
           ]
         : publicActions;
     },
-    [handleCopyProfileLink, handleNativeShareProfile, isOwner, profileQrTargetUrl, profileShareUrl, status],
+    [
+      handleCopyProfileLink,
+      handleNativeShareProfile,
+      isOwner,
+      profileQrTargetUrl,
+      profileShareUrl,
+      status,
+      storeSetupComplete,
+    ],
   );
 
   if (showInitialSkeleton) {

@@ -172,7 +172,10 @@ async function main() {
 
   const nativeIslandConfigSource = fs.readFileSync(nativeIslandConfigPath, 'utf8');
   assert.match(nativeIslandConfigSource, /market:\s*'market'/);
-  assert.match(nativeIslandConfigSource, /label:\s*'Shop'/);
+  // The island chip is labelled "Market" — the commerce discover surface's
+  // product name. This assertion still read 'Shop' from before the rename and
+  // had been failing on an unchanged config.
+  assert.match(nativeIslandConfigSource, /label:\s*'Market'/);
   assert.match(nativeIslandConfigSource, /return '\/\(tabs\)\/discover' as const/);
 
   console.log('Store API contract tests passed.');

@@ -5,6 +5,7 @@ import {
   StyleSheet,
   View,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -226,6 +227,20 @@ export function AppMultiSelectSheet({
   const [focusedInput, setFocusedInput] = useState<'search' | 'custom' | null>(
     null,
   );
+  const { height: windowHeight } = useWindowDimensions();
+  /**
+   * How much of the sheet the tag list may claim. This was a flat 280px, which
+   * on a normal phone shows about four rows of chips — the rest of a 20-tag
+   * catalogue sat below the fold with nothing to suggest it was there, so the
+   * list read as "these are all the tags". The sheet itself is capped at 88% of
+   * the screen, so scaling with the window hands the spare room to the tags
+   * while leaving the search field, selected chips and Add row on screen. The
+   * 280 floor keeps small devices behaving as before, and the list collapses
+   * again while an input is focused so the keyboard never buries the Add row.
+   */
+  const tagListMaxHeight = focusedInput
+    ? 200
+    : Math.max(280, Math.round(windowHeight * 0.42));
   // Tags the user just created via "Add" this session. They are usable on this
   // post immediately and are sent to admin for global approval when the design is
   // submitted (the backend creates them with status PENDING). Tracked only to show
@@ -484,7 +499,7 @@ export function AppMultiSelectSheet({
       ) : null}
 
       <ScrollView
-        style={styles.scrollArea}
+        style={[styles.scrollArea, { maxHeight: tagListMaxHeight }]}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator
         nestedScrollEnabled
@@ -640,8 +655,8 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     // Bounded height so the tag list always scrolls when tags overflow instead of
     // relying on flex propagation through the sheet (which left it unscrollable on
-    // Android). Caps the popular/suggested list; the parent sheet still owns layout.
-    maxHeight: 280,
+    // Android). The cap itself is computed per render from the window height —
+    // see `tagListMaxHeight`; the parent sheet still owns layout.
     marginTop: tokens.spacing.sm,
   },
   scrollContent: {

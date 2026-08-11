@@ -34,6 +34,7 @@ import {
   type StudioRouteKey,
 } from '@/src/features/studio/studioRoutes';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
 import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -69,6 +70,18 @@ const isStudioRouteKey = (value: string | undefined): value is StudioRouteKey =>
   Boolean(value && value in STUDIO_ROUTES);
 
 const READY_TIMEOUT_MS = 20_000;
+
+/**
+ * The only Studio routes a brand may open before store setup is finished.
+ *
+ * Everything else — the dashboard, products, orders, customers, analytics —
+ * describes a store that does not exist yet. Opening them showed a working
+ * Studio with live navigation behind a "verification needed" notice, so the
+ * setup requirement read as advisory. It is not: the routes are gated here, on
+ * entry, and the entry point in the catalog offers "Set up store" instead of
+ * "Store" for the same brand.
+ */
+const STORE_SETUP_EXEMPT_ROUTES = new Set<StudioRouteKey>(['setup', 'essentials']);
 
 /**
  * Waiting copy, in the order the work actually happens. The old single line
@@ -424,6 +437,10 @@ export default function StudioWebViewScreen() {
   const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
   const hasBrandWorkspace = hasActiveBrandMembership(user);
   const isStudioEligible = user?.type === 'BRAND' && hasBrandWorkspace;
+  const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
+  // One nudge per visit. The redirect below re-runs the effect, and without this
+  // the toast would stack on every pass.
+  const setupRedirectNotifiedRef = useRef(false);
 
   // Session is established once per Studio visit. Island hops must NOT mint a
   // new handoff or remount the WebView — that re-downloaded the whole web bundle
@@ -541,6 +558,20 @@ export default function StudioWebViewScreen() {
         return;
       }
 
+      // Store setup is unfinished: send every trading route to the wizard. This
+      // sits ahead of the warm-session shortcut so an island hop cannot slip a
+      // gated route through an already-booted WebView. `null` (status unknown)
+      // deliberately falls through — a slow or failed /store/status must never
+      // strand a brand whose store is live.
+      if (storeSetupComplete === false && !STORE_SETUP_EXEMPT_ROUTES.has(resolvedRouteKey)) {
+        if (!setupRedirectNotifiedRef.current) {
+          setupRedirectNotifiedRef.current = true;
+          toast.info('Finish setting up your store to open Studio.');
+        }
+        router.replace({ pathname: '/studio', params: { routeKey: 'setup' } } as any);
+        return;
+      }
+
       // Warm session: island tab switch → SPA navigate, zero handoff.
       if (sessionEstablishedRef.current && loadStateRef.current === 'ready' && webViewRef.current) {
         pendingRouteRef.current = null;
@@ -605,6 +636,8 @@ export default function StudioWebViewScreen() {
     resolvedRouteKey,
     retryKey,
     status,
+    storeSetupComplete,
+    toast,
   ]);
 
   useEffect(() => {

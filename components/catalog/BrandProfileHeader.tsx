@@ -400,13 +400,19 @@ function OverlayAvatar({
       ) : null}
 
       {isOwner && onEditAvatar ? (
+        // No filled chip. The solid purple disc read as a status badge stuck to
+        // the logo rather than a control, and it covered the corner of the image
+        // it was meant to let you change. It now sits in the bottom-left corner
+        // as a bare glyph, kept legible over any photo by a shadow instead of a
+        // background.
         <Pressable
           onPress={onEditAvatar}
-          style={[styles.avatarEditBadge, { backgroundColor: theme.colors.primary, borderColor: theme.colors.surface }]}
+          style={({ pressed }) => [styles.avatarEditBadge, pressed ? styles.pressedControl : null]}
+          hitSlop={tokens.spacing.sm}
           accessibilityRole="button"
           accessibilityLabel="Edit brand logo"
         >
-          <AppText variant="subtitle" tone="inverse">
+          <AppText variant="subtitle" tone="inverse" style={styles.avatarEditGlyph}>
             ✎
           </AppText>
         </Pressable>
@@ -658,9 +664,13 @@ function BrandContactItems({
           accessibilityLabel={`Open ${item.label} ${item.value}`}
         >
           <ContactIcon label={item.label} />
+          {/* Deep near-black, not brand purple. Every contact row was purple,
+              which made a plain email address look like a promoted link and
+              fought with the coloured platform icon next to it. The icon
+              already carries the affordance. */}
           <AppText
             variant="smallBold"
-            tone="primary"
+            tone="default"
             numberOfLines={1}
             style={styles.contactLine}
           >
@@ -676,7 +686,7 @@ function BrandContactItems({
           accessibilityLabel="Open brand profile QR code"
         >
           <FontAwesome5 name="qrcode" size={14} color={theme.colors.textSecondary} />
-          <AppText variant="smallBold" tone="primary" numberOfLines={1} style={styles.contactLine}>
+          <AppText variant="smallBold" tone="default" numberOfLines={1} style={styles.contactLine}>
             QR code
           </AppText>
         </Pressable>
@@ -1199,14 +1209,19 @@ const styles = StyleSheet.create({
   },
   avatarEditBadge: {
     position: 'absolute',
-    right: -tokens.spacing.xs,
-    bottom: -tokens.spacing.xs,
-    width: 34,
-    height: 34,
-    borderRadius: tokens.radius.full,
-    borderWidth: 0,
+    left: tokens.spacing.xs,
+    bottom: tokens.spacing.xs,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarEditGlyph: {
+    // Stands in for the removed background disc: enough separation to stay
+    // readable on a light logo without putting a coloured shape on the image.
+    textShadowColor: 'rgba(0, 0, 0, 0.62)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   metaBlock: {
     flex: 1,
