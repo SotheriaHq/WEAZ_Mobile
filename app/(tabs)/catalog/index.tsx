@@ -1085,11 +1085,25 @@ export default function CatalogScreen() {
     // shoppers means one place to fix, and a brand sees their piece exactly as a
     // shopper will.
     //
-    // Drafts stay on CollectionDetailViewer: the shop viewer is a commerce
-    // surface with no publish/retry/visibility tooling, and a draft has nothing
-    // for it to render.
-    if (collection.status === 'DRAFT') {
-      drillDownPush(routeForDesignTarget(collection.id, { legacyCollectionId: collection.id }) as any);
+    // Unfinished work opens the EDITOR, not a viewer — matching web.
+    //
+    // A draft, or anything a reviewer has handed back, exists precisely because
+    // it is not done. Opening a read-only stage for it offers the one thing the
+    // owner cannot use: a preview of something they came to finish. Tapping the
+    // card now lands where the work continues, and publishing/resubmitting is
+    // reachable from there.
+    const ownerStatus = String(collection.publicationStatus ?? collection.status ?? '').toUpperCase();
+    const opensInEditor =
+      ownerStatus === 'DRAFT' ||
+      ownerStatus === 'CHANGES_REQUESTED' ||
+      ownerStatus === 'REJECTED' ||
+      ownerStatus === 'FAILED';
+
+    if (isOwner && opensInEditor) {
+      drillDownPush({
+        pathname: '/designs/[designId]/edit',
+        params: { designId: collection.id },
+      } as any);
       return;
     }
 
@@ -1110,7 +1124,7 @@ export default function CatalogScreen() {
             },
           } as any),
     );
-  }, []);
+  }, [isOwner]);
 
   const handleEditCollection = useCallback((id: string) => {
     drillDownPush({

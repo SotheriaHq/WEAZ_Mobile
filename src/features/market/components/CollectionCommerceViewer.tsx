@@ -31,6 +31,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { useShopperOnlyAction } from '@/src/features/shopping/useShopperOnlyAction';
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { navPerf } from '@/src/utils/navPerf';
@@ -139,6 +140,7 @@ export function CollectionCommerceViewer({
   const { theme, scheme } = useTheme();
   const chrome = useScreenChrome();
   const toast = useToast();
+  const { refuseIfBrand } = useShopperOnlyAction();
   const { status: authStatus, user } = useAuth();
   const { refreshGlobalBagCount } = useBagCount();
   const { bagProduct } = useMobileBagging();
@@ -323,6 +325,7 @@ export function CollectionCommerceViewer({
   }, []);
 
   const handleSave = useCallback(async () => {
+    if (refuseIfBrand('saving collections')) return;
     if (!requireAuth('Sign in to save collections.')) return;
     setBusy('save');
     const previous = saved;

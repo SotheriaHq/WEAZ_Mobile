@@ -52,6 +52,7 @@ import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { useShopperOnlyAction } from '@/src/features/shopping/useShopperOnlyAction';
 import type { SizeRecommendationResponse } from '@/src/api/ProfileApi';
 import { CONFIDENCE_LABELS, SIZING_REGION_LABELS } from '@/src/utils/sizeRecommendation';
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
@@ -386,6 +387,7 @@ export function MarketCommerceViewer({
 }: MarketCommerceViewerProps) {
   const { theme } = useTheme();
   const toast = useToast();
+  const { refuseIfBrand } = useShopperOnlyAction();
   const { status: authStatus, user } = useAuth();
   const { width, height } = useWindowDimensions();
   const chrome = useScreenChrome();
@@ -815,6 +817,9 @@ export function MarketCommerceViewer({
   }, [bagDisabled, bagProduct, bagSource, bagStatus?.ui.defaultAction, brandId, disabledReason, normalizedSourceId, sourceType, title, toast]);
 
   const handleSavePress = useCallback(async () => {
+    // Brand accounts sell; they do not wishlist. Without this a brand tapping
+    // the heart got a success toast for an action their account cannot perform.
+    if (refuseIfBrand('saving items')) return;
     if (!requireAuth('Sign in to save market items.')) return;
     if (!normalizedSourceId || busyAction === ACTION_KIND_SAVE) return;
 

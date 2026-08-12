@@ -16,6 +16,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
+import { useShopperOnlyAction } from '@/src/features/shopping/useShopperOnlyAction';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
 import { useAppStateListener } from '@/src/hooks/useAppStateListener';
 import { Chip } from '@/components/ui/Chip';
@@ -728,6 +729,7 @@ export function RunwayFeedScreen() {
   const { scheme, theme } = useTheme();
   const { status, user } = useAuth();
   const toast = useToast();
+  const { refuseIfBrand } = useShopperOnlyAction();
   const requireAuth = useAuthAction();
   // Single shared notification source — same store the catalog/profile bell and
   // the island "Me" badge read from, so every 🔔 count stays in sync with web.
@@ -1882,6 +1884,8 @@ export function RunwayFeedScreen() {
   }, [status]);
 
   const handleSaveLook = useCallback((item: MarketItem) => {
+    // Brand accounts sell; they do not save looks.
+    if (refuseIfBrand('saving looks')) return;
     const collectionId = item.collectionId?.trim();
     if (!collectionId) return;
 

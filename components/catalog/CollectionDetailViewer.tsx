@@ -868,7 +868,11 @@ export function CollectionDetailViewer({
           </Pressable>
         </View>
 
-        <View style={[styles.rightRail, { bottom: insets.bottom + 24 }]} pointerEvents="box-none">          <ThreadRailAction
+        {/* `<View …>` and the first child MUST NOT share a line: JSX preserves
+            same-line whitespace between elements as a text node, and a bare
+            string inside a View is a hard render error in React Native. */}
+        <View style={[styles.rightRail, { bottom: insets.bottom + 24 }]} pointerEvents="box-none">
+          <ThreadRailAction
             threaded={isCurrentThreaded}
             count={String(currentThreadCount)}
             busy={isCurrentThreading}
