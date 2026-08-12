@@ -182,16 +182,20 @@ export const tokens = {
     profileName: { size: 22, weight: '700' as const, lineHeight: 26 },
     /** 22px / 700 — brand names (Instagram-dense) */
     brandName: { size: 22, weight: '700' as const, lineHeight: 26 },
-    /** 18px / 600 — section headers */
-    sectionTitle: { size: 18, weight: '600' as const, lineHeight: 22 },
-    /** 18px / 600 — section headers and strong subtitles */
-    subtitle: { size: 18, weight: '600' as const, lineHeight: 22 },
-    /** 16px / 600 — card titles */
-    cardTitle: { size: 16, weight: '600' as const, lineHeight: 20 },
+    /** 18px / 700 — section headers */
+    sectionTitle: { size: 18, weight: '700' as const, lineHeight: 22 },
+    /** 18px / 700 — section headers and strong subtitles */
+    subtitle: { size: 18, weight: '700' as const, lineHeight: 22 },
+    /** 17px / 700 — card titles. One step ABOVE body, not level with it: at the
+     *  old 16/600 a card title and its body copy shared a size and sat one
+     *  weight apart, which is not a hierarchy anyone can see. */
+    cardTitle: { size: 17, weight: '700' as const, lineHeight: 22 },
     /** 16px / 500 — main body content */
-    body: { size: 16, weight: '500' as const, lineHeight: 20 },
-    /** 14px / 500 — highly readable, Instagram-dense body text (bio/about) */
-    bodyReadable: { size: 13, weight: '500' as const, lineHeight: 20 },
+    body: { size: 16, weight: '500' as const, lineHeight: 22 },
+    /** 14px / 500 — highly readable, Instagram-dense body text (bio/about).
+     *  Was 13 despite the comment saying 14 — 13px reads as fine print, which
+     *  is exactly the "scanty" complaint. */
+    bodyReadable: { size: 14, weight: '500' as const, lineHeight: 20 },
     /** 16px / 700 — button labels */
     buttonLabel: { size: 16, weight: '700' as const, lineHeight: 20 },
     /** 16px / 700 — action labels */
@@ -202,20 +206,25 @@ export const tokens = {
     meta: { size: 13, weight: '600' as const, lineHeight: 16 },
     /** 12px / 700 — badge labels */
     badgeLabel: { size: 12, weight: '700' as const, lineHeight: 16 },
-    /** 11px / 600 — nav labels */
-    navLabel: { size: 11, weight: '600' as const, lineHeight: 14 },
-    /** 13px / 700 — stat numbers (compact, Instagram-dense) */
-    statValue: { size: 13, weight: '700' as const, lineHeight: 16 },
-    /** 11px / 600 — stat labels (compact, Instagram-dense) */
-    statLabel: { size: 11, weight: '600' as const, lineHeight: 14 },
+    /** 12px / 700 — nav + island labels. Was 11/600: below the 12px floor the
+     *  rules set for readable content, and too light to hold its own against
+     *  the icon above it — the "island links are not deep enough" report. */
+    navLabel: { size: 12, weight: '700' as const, lineHeight: 15 },
+    /** 14px / 700 — stat numbers. The number is the point of a stat; at 13px it
+     *  was smaller than body text. */
+    statValue: { size: 14, weight: '700' as const, lineHeight: 18 },
+    /** 11px / 700 — stat labels (compact, Instagram-dense) */
+    statLabel: { size: 11, weight: '700' as const, lineHeight: 14 },
 
     // Compatibility aliases for existing mobile code during migration.
     h1: { size: 24, weight: '700' as const, lineHeight: 30 },
-    h2: { size: 18, weight: '600' as const, lineHeight: 24 },
-    h3: { size: 18, weight: '600' as const, lineHeight: 24 },
-    bodyBold: { size: 16, weight: '600' as const, lineHeight: 24 },
-    small: { size: 12, weight: '500' as const, lineHeight: 16 },
-    smallBold: { size: 12, weight: '600' as const, lineHeight: 16 },
+    h2: { size: 20, weight: '700' as const, lineHeight: 26 },
+    h3: { size: 18, weight: '700' as const, lineHeight: 24 },
+    /** The single most-used "this is a heading" variant in the app. 600 next to
+     *  a 500 body is the flattest pairing in the scale; 700 makes it a heading. */
+    bodyBold: { size: 16, weight: '700' as const, lineHeight: 22 },
+    small: { size: 13, weight: '500' as const, lineHeight: 18 },
+    smallBold: { size: 13, weight: '700' as const, lineHeight: 18 },
 
     // ── Legacy flat values kept for backward-compat with existing screens ──
     // New code should use the tier objects above instead.

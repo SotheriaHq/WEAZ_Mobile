@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from 'expo-router';
 
@@ -25,13 +25,30 @@ import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
 import { tokens } from '@/src/styles/tokens';
 import { readWarmScreenState } from '@/src/state/screenWarmState';
-import { backOrNavigate } from '@/src/utils/mobileNavigation';
+import { backOrNavigate, topLevelNavigate } from '@/src/utils/mobileNavigation';
+
+/**
+ * Where "back" should land, stated by whoever opened this screen.
+ *
+ * Only same-app absolute paths are accepted — a `from` that arrives on a deep
+ * link is attacker-controlled, and navigating to an arbitrary string is how a
+ * back button becomes a redirect.
+ */
+const ALLOWED_RETURN_HREFS = new Set(['/settings', '/(tabs)/me']);
+
+function resolveReturnHref(value: string | string[] | undefined): string | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  const trimmed = String(candidate ?? '').trim();
+  return ALLOWED_RETURN_HREFS.has(trimmed) ? trimmed : null;
+}
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 type ProfileFormState = {
   firstName: string;
   lastName: string;
+  username: string;
+  phoneNumber: string;
   address: string;
 };
 
@@ -39,10 +56,22 @@ type WarmProfileState = {
   profile: UserProfile | null;
 };
 
+/**
+ * Seed every field from whatever is already in memory before the profile
+ * request lands.
+ *
+ * Location used to read from `profile` only, so on a cold entry (Settings, deep
+ * link) the name fields filled from the auth user instantly while location sat
+ * empty — indistinguishable from "you have not set a location". Each field now
+ * falls back through profile → auth user, and the screen shows an explicit
+ * loading state until the fetch settles so blank never has to be interpreted.
+ */
 function toForm(profile: UserProfile | null, user: AuthUser | null): ProfileFormState {
   return {
     firstName: profile?.firstName ?? user?.firstName ?? '',
     lastName: profile?.lastName ?? user?.lastName ?? '',
+    username: profile?.username ?? user?.username ?? '',
+    phoneNumber: user?.phoneNumber ?? '',
     address: profile?.location ?? profile?.address ?? '',
   };
 }
@@ -55,6 +84,8 @@ function formsEqual(a: ProfileFormState, b: ProfileFormState): boolean {
   return (
     normalized(a.firstName) === normalized(b.firstName) &&
     normalized(a.lastName) === normalized(b.lastName) &&
+    normalized(a.username) === normalized(b.username) &&
+    normalized(a.phoneNumber) === normalized(b.phoneNumber) &&
     normalized(a.address) === normalized(b.address)
   );
 }
@@ -75,6 +106,8 @@ export default function MeEditScreen() {
   const { theme } = useTheme();
   const toast = useToast();
   const navigation = useNavigation();
+  const params = useLocalSearchParams<{ from?: string | string[] }>();
+  const returnHref = useMemo(() => resolveReturnHref(params.from), [params.from]);
 
   const initialProfile = useMemo(
     () =>
@@ -92,6 +125,10 @@ export default function MeEditScreen() {
   // wrong instead of "Could not save changes."
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  // Distinguishes "we have not fetched yet" from "this field is genuinely
+  // empty". Without it a cold entry renders a complete-looking form with blank
+  // location and reads as data loss.
+  const [isHydrating, setIsHydrating] = useState(!initialProfile);
 
   const latestFormRef = useRef<ProfileFormState | null>(null);
   const pendingChangesRef = useRef(false);
@@ -123,6 +160,8 @@ export default function MeEditScreen() {
       }
     } catch {
       // Auth/warm data keeps the editor usable while the profile request degrades.
+    } finally {
+      setIsHydrating(false);
     }
   }, [user]);
 
@@ -136,7 +175,8 @@ export default function MeEditScreen() {
 
       const resolvedFirstName = draft.firstName.trim() || baseline.firstName.trim() || profile?.firstName.trim() || user?.firstName?.trim();
       const resolvedLastName = draft.lastName.trim() || baseline.lastName.trim() || profile?.lastName.trim() || user?.lastName?.trim();
-      const username = profile?.username.trim() || user?.username?.trim();
+      const username =
+        draft.username.trim() || profile?.username.trim() || user?.username?.trim();
 
       if (!resolvedFirstName || !resolvedLastName || !username) {
         setSaveState('error');
@@ -148,6 +188,7 @@ export default function MeEditScreen() {
         ...draft,
         firstName: resolvedFirstName,
         lastName: resolvedLastName,
+        username,
       };
 
       setSaveState('saving');
@@ -157,6 +198,7 @@ export default function MeEditScreen() {
           lastName: resolvedLastName,
           username,
           address: draft.address.trim() || undefined,
+          phoneNumber: draft.phoneNumber.trim() || undefined,
         });
         // A falsy response means nothing was persisted. Returning `true` here —
         // as this did — let `beforeRemove` navigate away on the strength of a
@@ -175,6 +217,7 @@ export default function MeEditScreen() {
           firstName: updated.firstName,
           lastName: updated.lastName,
           username: updated.username,
+          phoneNumber: draft.phoneNumber.trim() || null,
           profileImage: updated.profileImage,
           profileImageId: updated.profileImageId,
           profileImageFile: updated.profileImageFile,
@@ -207,7 +250,18 @@ export default function MeEditScreen() {
       if (isNavigatingAwayRef.current) {
         return;
       }
-      if (!pendingChangesRef.current || !latestFormRef.current) {
+
+      const isPop =
+        event.data.action.type === 'POP' || event.data.action.type === 'GO_BACK';
+      const hasPendingWork = Boolean(
+        pendingChangesRef.current && latestFormRef.current,
+      );
+      // A hardware/gesture back pops the same cross-group boundary the header
+      // button does, so it needs the same redirect — otherwise Android's back
+      // still drops the user on Runway however carefully the header behaves.
+      const mustRedirect = Boolean(returnHref && isPop);
+
+      if (!hasPendingWork && !mustRedirect) {
         return;
       }
 
@@ -215,16 +269,20 @@ export default function MeEditScreen() {
       isNavigatingAwayRef.current = true;
 
       void persistOnExit().then((didSave) => {
-        if (didSave) {
-          navigation.dispatch(event.data.action);
+        if (!didSave) {
+          isNavigatingAwayRef.current = false;
           return;
         }
-        isNavigatingAwayRef.current = false;
+        if (mustRedirect) {
+          topLevelNavigate(returnHref as never);
+          return;
+        }
+        navigation.dispatch(event.data.action);
       });
     });
 
     return unsubscribe;
-  }, [navigation, persistOnExit]);
+  }, [navigation, persistOnExit, returnHref]);
 
   const handleBack = useCallback(async () => {
     if (isNavigatingAwayRef.current) {
@@ -237,11 +295,18 @@ export default function MeEditScreen() {
       isNavigatingAwayRef.current = false;
       return;
     }
-    // Edit Info lives inside the (tabs) group; a bare router.back() with no
-    // history (e.g. entered from Settings or a deep link) drops to the default
-    // tab (Runway). backOrNavigate falls back to the Me profile instead.
+    // Edit Info lives inside the (tabs) group. Entering it from a ROOT screen
+    // (Settings) crosses navigator groups, and popping that crossing lands on
+    // the tab group's initial route — Runway — not on the screen the user came
+    // from. Settings has many entries and users move between them, so the
+    // caller states where back belongs and we honour it verbatim.
+    if (returnHref) {
+      topLevelNavigate(returnHref as never);
+      return;
+    }
+    // No stated origin: back out to the Me profile rather than the default tab.
     backOrNavigate('/(tabs)/me');
-  }, [persistOnExit]);
+  }, [persistOnExit, returnHref]);
 
   const handlePickAvatar = useCallback(async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -341,7 +406,7 @@ export default function MeEditScreen() {
       <View style={styles.header}>
         <AppBackButton onPress={handleBack} style={styles.backButton} />
         <View style={styles.headerTextWrap}>
-          <AppText variant="bodyBold">Edit Profile</AppText>
+          <AppText variant="title">Your bio</AppText>
           {currentStatusLabel ? (
             // A spinner alongside the label: "Saving changes" as static text
             // gives no sign the app is actually working, which is why a stalled
@@ -410,16 +475,52 @@ export default function MeEditScreen() {
             />
             </View>
 
+            <View style={[styles.fieldRow, { borderBottomColor: theme.colors.border }]}>
+            <Input
+              label="Username"
+              value={form.username}
+              onChangeText={(value) => updateField({ username: value })}
+              placeholder="username"
+              autoCapitalize="none"
+              autoCorrect={false}
+              containerStyle={styles.group}
+              variant="bare"
+            />
+            </View>
+
+            <View style={[styles.fieldRow, { borderBottomColor: theme.colors.border }]}>
+            <Input
+              label="Phone number"
+              value={form.phoneNumber}
+              onChangeText={(value) => updateField({ phoneNumber: value })}
+              placeholder="+234 800 000 0000"
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              autoCorrect={false}
+              containerStyle={styles.group}
+              variant="bare"
+            />
+            </View>
+
             <View style={styles.fieldRow}>
             <Input
               label="Location"
               value={form.address}
               onChangeText={(value) => updateField({ address: value })}
-              placeholder="City, State"
+              placeholder={isHydrating ? 'Loading…' : 'City, State'}
+              editable={!isHydrating}
               containerStyle={styles.group}
               variant="bare"
             />
             </View>
+          </View>
+
+          <View style={[styles.readOnlyPanel, { borderColor: theme.colors.border }]}>
+            <AppText variant="captionBold" tone="muted">EMAIL</AppText>
+            <AppText variant="body">{user?.email ?? '—'}</AppText>
+            <AppText variant="caption" tone="muted">
+              Change your email under Settings › Phone &amp; email.
+            </AppText>
           </View>
       </KeyboardAwareFormScroll>
     </SafeAreaView>
@@ -505,5 +606,10 @@ const styles = StyleSheet.create({
   group: {
     width: '100%',
     gap: tokens.spacing.sm,
+  },
+  readOnlyPanel: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: tokens.spacing.lg,
+    gap: tokens.spacing.xs,
   },
 });

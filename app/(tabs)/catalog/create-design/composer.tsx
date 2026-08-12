@@ -910,7 +910,6 @@ export default function CreateDesignComposerScreen() {
               leading="🏷️"
               title="What is it?"
               required
-              subtitle="Choose the garment or item family."
               value={categoryValue}
               valueTone={form.categoryId ? 'muted' : 'danger'}
               valueState={form.categoryId ? 'selected' : 'error'}
@@ -920,7 +919,6 @@ export default function CreateDesignComposerScreen() {
               leading="💸"
               title="Garment type"
               required
-              subtitle="Choose the specific garment type."
               value={garmentTypeValue}
               valueTone={form.subCategoryId ? 'muted' : 'danger'}
               valueState={form.subCategoryId ? 'selected' : 'error'}
@@ -930,7 +928,6 @@ export default function CreateDesignComposerScreen() {
               leading="⚙️"
               title="Hashtags"
               required
-              subtitle="Add searchable social tags."
               value={
                 selectedTags.length > 0
                   ? `${selectedTags.length} selected`
@@ -971,14 +968,12 @@ export default function CreateDesignComposerScreen() {
             </AppText>
             <OptionRow
               title="Who is it for?"
-              subtitle="Helps buyers discover styles that fit them."
               value={audienceLabel}
               valueState="selected"
               onPress={() => setAudienceOpen(true)}
             />
             <OptionRow
               title="Age group"
-              subtitle="Choose whether this is designed for adults or kids."
               value={targetAgeLabel}
               valueState="selected"
               onPress={() => setAgeGroupOpen(true)}
@@ -986,7 +981,6 @@ export default function CreateDesignComposerScreen() {
             <OptionRow
               title="Style details"
               required
-              subtitle="Style, fabric, color family, and fit."
               value={
                 styleDetailsCount > 0
                   ? `${styleDetailsCount} selected`
@@ -1002,7 +996,6 @@ export default function CreateDesignComposerScreen() {
             />
             <OptionRow
               title="Cultural vibe"
-              subtitle="Heritage signals like Ankara, Aso Ebi, or Adire."
               value={
                 heritageCount > 0 ? `${heritageCount} selected` : 'Optional'
               }
@@ -1011,7 +1004,6 @@ export default function CreateDesignComposerScreen() {
             />
             <OptionRow
               title="Where would you wear it?"
-              subtitle="Wedding, office, party, church, or everyday wear."
               value={
                 occasionCount > 0 ? `${occasionCount} selected` : 'Optional'
               }
@@ -1263,7 +1255,6 @@ export default function CreateDesignComposerScreen() {
       <AppBottomSheet
         visible={priceOpen}
         title="Price range"
-        subtitle="Set the indicative range buyers will see."
         onClose={() => setPriceOpen(false)}
         showCloseButton
         footer={
@@ -1311,7 +1302,6 @@ export default function CreateDesignComposerScreen() {
       <AppBottomSheet
         visible={availabilityOpen}
         title="Availability"
-        subtitle="Set sizing and fit expectations."
         onClose={() => setAvailabilityOpen(false)}
         showCloseButton
         keyboardBehavior="none"
@@ -1347,7 +1337,6 @@ export default function CreateDesignComposerScreen() {
       <AppBottomSheet
         visible={customOrdersOpen}
         title="Custom orders"
-        subtitle="Expose every required field buyers must provide."
         onClose={() => setCustomOrdersOpen(false)}
         showCloseButton
         scrollable
@@ -1618,7 +1607,6 @@ export default function CreateDesignComposerScreen() {
       <AppSelectSheet
         visible={ageGroupOpen}
         title="Age group"
-        subtitle="Choose whether this design is made for adults or kids."
         options={TARGET_AGE_OPTIONS}
         value={form.targetAgeGroup}
         onChange={(value) => updateField('targetAgeGroup', value as typeof form.targetAgeGroup)}
@@ -1628,7 +1616,6 @@ export default function CreateDesignComposerScreen() {
       <AppSelectSheet
         visible={revisionPolicyOpen}
         title="Revision Policy Presets"
-        subtitle="Select a standard policy to autofill."
         options={REVISION_POLICY_PRESETS}
         value={form.revisionPolicy}
         onChange={(value) => {
@@ -1641,7 +1628,6 @@ export default function CreateDesignComposerScreen() {
       <AppSelectSheet
         visible={returnPolicyOpen}
         title="Return Policy Presets"
-        subtitle="Select a standard policy to autofill."
         options={RETURN_POLICY_PRESETS}
         value={form.returnPolicy}
         onChange={(value) => {
@@ -1654,7 +1640,6 @@ export default function CreateDesignComposerScreen() {
       <AppSelectSheet
         visible={defectPolicyOpen}
         title="Defect Policy Presets"
-        subtitle="Select a standard policy to autofill."
         options={DEFECT_POLICY_PRESETS}
         value={form.defectPolicy}
         onChange={(value) => {

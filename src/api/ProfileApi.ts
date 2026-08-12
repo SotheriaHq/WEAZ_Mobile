@@ -394,6 +394,7 @@ export const ProfileApi = {
     lastName: string;
     username: string;
     address?: string;
+    phoneNumber?: string;
   }): Promise<UserProfile | null> {
     const res = await apiClient.patch('/users/me/profile', payload);
     return normalizeProfile(res.data);

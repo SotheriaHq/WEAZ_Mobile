@@ -171,7 +171,7 @@ function ProfileSelectField({
   const { theme } = useTheme();
   return (
     <View style={styles.group}>
-      <AppText variant="captionBold" tone="muted">
+      <AppText variant="smallBold" tone="secondary">
         {label}
       </AppText>
       <Pressable
@@ -193,8 +193,11 @@ function ProfileSelectField({
           <AppText variant="body" tone={value ? 'default' : 'muted'} style={styles.selectValue}>
             {value || placeholder}
           </AppText>
-          <AppText variant="captionBold" tone={disabled ? 'muted' : 'primary'} style={styles.selectChoose}>
-            Choose
+          {/* A chevron, not the word "Choose". Every platform picker uses a
+              disclosure marker here; spelling out the verb on every field is
+              noise the user has to read past on the way to the value. */}
+          <AppText variant="subtitle" tone={disabled ? 'muted' : 'secondary'} style={styles.selectChoose}>
+            ›
           </AppText>
         </View>
       </Pressable>
@@ -810,7 +813,6 @@ export default function BrandProfileEditScreen() {
       <AppSelectSheet
         visible={businessTypeSheetOpen}
         title="Business Type"
-        subtitle="Use the same business category shown on web."
         options={businessTypeOptions}
         value={form.businessType || null}
         onChange={(value) => updateField({ businessType: value })}
@@ -820,7 +822,6 @@ export default function BrandProfileEditScreen() {
       <AppSelectSheet
         visible={locationSheet === 'country'}
         title="Country"
-        subtitle="Choose the country shown on your public brand profile."
         options={countryOptions}
         value={form.brandCountry || null}
         loading={locationLoading && countries.length === 0}
@@ -833,7 +834,6 @@ export default function BrandProfileEditScreen() {
       <AppSelectSheet
         visible={locationSheet === 'state'}
         title="State / Province"
-        subtitle="Choose the state or province for this brand."
         options={stateOptions}
         value={form.brandState || null}
         loading={locationLoading && states.length === 0}
@@ -845,7 +845,6 @@ export default function BrandProfileEditScreen() {
       <AppSelectSheet
         visible={locationSheet === 'city'}
         title="City / LGA"
-        subtitle="Choose the city or LGA for this brand."
         options={cityOptions}
         value={form.brandCity || null}
         loading={locationLoading && cities.length === 0}

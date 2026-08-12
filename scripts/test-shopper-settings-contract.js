@@ -21,9 +21,12 @@ assert.doesNotMatch(
   /More settings are coming soon/,
   'profile settings action must not show the old placeholder toast',
 );
+// Verb-agnostic: the navigation refactor moved every call site onto the
+// intent helpers in `mobileNavigation`, so pinning the raw `router.push` here
+// asserted an implementation detail that no longer exists.
 assert.match(
   profile,
-  /router\.push\('\/settings' as any\)/,
+  /drillDownPush\('\/settings' as any\)|router\.push\('\/settings' as any\)/,
   'profile settings action must route to the Settings screen',
 );
 
@@ -39,7 +42,9 @@ assert.match(
 );
 assert.match(
   authContext,
-  /staleTime:\s*forceRefresh \? 0 : THREADLY_QUERY_STALE_TIME_MS/,
+  // Constant renamed THREADLY_→WIEZ_ with the brand; the behaviour asserted is
+  // the `forceRefresh ? 0 : <stale time>` bypass, not the identifier.
+  /staleTime:\s*forceRefresh \? 0 : WIEZ_QUERY_STALE_TIME_MS/,
   'AuthContext validateToken must support force-refreshing the backend profile',
 );
 
@@ -57,7 +62,6 @@ assert.doesNotMatch(
   'app/settings/payment.tsx',
   'app/settings/upload-preferences.tsx',
   'app/settings/support.tsx',
-  'app/settings/location.tsx',
   'app/settings/notifications.tsx',
   'app/settings/market-preferences.tsx',
   'app/settings/theme.tsx',
@@ -74,12 +78,22 @@ assert.doesNotMatch(
   '/settings/payment',
   '/settings/upload-preferences',
   '/settings/support',
-  '/settings/location',
 ].forEach((route) => {
   assert.match(settingsIndex, new RegExp(route.replace(/[/-]/g, (match) => `\\${match}`)), `${route} must be linked from Settings`);
 });
 
 assert.ok(!exists('app/settings/storage.tsx'), 'user-facing cache controls must be removed');
+// Location is a bio field, not a settings destination. It had its own screen
+// carrying one input plus a "Device access" card that only opened OS settings —
+// two taps of indirection for something that belongs beside the user's name.
+assert.ok(!exists('app/settings/location.tsx'), 'location must live in Your bio, not its own settings screen');
+assert.doesNotMatch(settingsIndex, /settings\/location|Device access/i, 'Settings must not link a standalone location screen');
+assert.match(settingsIndex, /title: 'Your bio'/, 'the profile editor row must read as Your bio');
+assert.match(
+  settingsIndex,
+  /pathname: '\/\(tabs\)\/me-edit',\s*\n\s*params: \{ from: '\/settings' \}/,
+  'Your bio must state its return route so back lands on Settings, not the default tab',
+);
 assert.doesNotMatch(settingsIndex, /FontAwesome|Media cache|settings\/storage/, 'Settings must use emoji markers and expose no cache controls');
 assert.match(settingsIndex, /emoji:\s*'👤'/, 'Settings must use the shared colored emoji vocabulary');
 assert.doesNotMatch(

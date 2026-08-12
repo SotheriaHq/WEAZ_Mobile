@@ -106,28 +106,40 @@ export default function SettingsScreen() {
         rows: [
           {
             emoji: '👤',
-            title: 'Profile information',
-            subtitle: 'Name, username, photo',
-            onPress: () => drillDownPush('/(tabs)/me-edit' as never),
-          },
-          {
-            emoji: '📍',
-            title: 'Location',
-            subtitle: 'Saved city, address, and device settings',
-            onPress: () => drillDownPush('/settings/location' as never),
+            title: 'Your bio',
+            subtitle: 'Photo, name, username, phone, location',
+            // `from` is what brings the user back HERE. Your bio lives in the
+            // (tabs) group, and popping that group boundary lands on Runway
+            // rather than on Settings — see the note in me-edit.tsx.
+            onPress: () =>
+              drillDownPush({
+                pathname: '/(tabs)/me-edit',
+                params: { from: '/settings' },
+              } as never),
           },
           {
             emoji: '📧',
             title: 'Phone & email',
             subtitle: 'Login and contact details',
             metadata: user?.email ? 'Email set' : undefined,
-            onPress: () => drillDownPush('/settings/account-security' as never),
+            // Both rows land on the same route, but `focus` decides which
+            // concern it renders — they used to open an identical screen under
+            // an identical heading, which read as one of them being broken.
+            onPress: () =>
+              drillDownPush({
+                pathname: '/settings/account-security',
+                params: { focus: 'email' },
+              } as never),
           },
           {
             emoji: '🔒',
             title: 'Password & security',
             subtitle: 'Password, sessions, passkeys',
-            onPress: () => drillDownPush('/settings/account-security' as never),
+            onPress: () =>
+              drillDownPush({
+                pathname: '/settings/account-security',
+                params: { focus: 'password' },
+              } as never),
           },
         ],
       },
@@ -139,12 +151,6 @@ export default function SettingsScreen() {
             title: 'Privacy controls',
             subtitle: 'Visibility, blocked users',
             onPress: () => drillDownPush('/settings/privacy' as never),
-          },
-          {
-            emoji: '📱',
-            title: 'Login sessions',
-            subtitle: 'Manage active devices',
-            onPress: () => drillDownPush('/settings/account-security' as never),
           },
           {
             emoji: '🔑',
@@ -169,29 +175,18 @@ export default function SettingsScreen() {
             subtitle: 'Orders and account updates',
             onPress: () => drillDownPush('/settings/email-preferences' as never),
           },
-          {
-            emoji: '💬',
-            title: 'Chat alerts',
-            subtitle: 'Message and thread alerts',
-            onPress: () => drillDownPush('/settings/notifications' as never),
-          },
         ],
       },
+      // Shopping — shopper-only, and settings ONLY.
+      //
+      // Two rows are gone. "Saved runway" and "Measurements / My fits" were not
+      // settings at all: they navigated to a tab on the profile screen, so a
+      // brand tapping "Saved runway" was handed a shopper profile rendered with
+      // brand data, and a shopper got a round trip out of Settings to a screen
+      // they reach in one tap from the nav bar. Settings rows open settings.
       {
         title: 'Shopping',
         rows: [
-          {
-            emoji: '🔖',
-            title: 'Saved runway',
-            subtitle: 'Runway looks you want to revisit',
-            onPress: () => topLevelNavigate({ pathname: '/(tabs)/me', params: { tab: 'saved' } } as never),
-          },
-          {
-            emoji: '📏',
-            title: 'Measurements / My fits',
-            subtitle: 'Saved fittings for custom orders',
-            onPress: () => topLevelNavigate('/(tabs)/me' as never),
-          },
           {
             emoji: '↔️',
             title: 'Sizing settings',
@@ -281,8 +276,15 @@ export default function SettingsScreen() {
 
     if (!isBrand) return base;
 
+    // A brand does not shop. Sizing, size charts, market preferences and
+    // checkout settings are all buyer surfaces, and leaving them in the brand's
+    // Settings is what put a brand on a shopper profile in the first place.
+    const brandSections = base.filter((section) => section.title !== 'Shopping');
+    const shoppingIndex = base.findIndex((section) => section.title === 'Shopping');
+    const insertAt = shoppingIndex === -1 ? brandSections.length : shoppingIndex;
+
     return [
-      ...base.slice(0, 4),
+      ...brandSections.slice(0, insertAt),
       {
         title: 'Studio / Brand',
         rows: [
@@ -292,7 +294,7 @@ export default function SettingsScreen() {
           { emoji: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => drillDownPush('/studio' as never) },
         ],
       },
-      ...base.slice(4),
+      ...brandSections.slice(insertAt),
     ];
   }, [isBrand, signOut, user?.email]);
 

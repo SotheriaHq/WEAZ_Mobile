@@ -229,18 +229,22 @@ export function AppMultiSelectSheet({
   );
   const { height: windowHeight } = useWindowDimensions();
   /**
-   * How much of the sheet the tag list may claim. This was a flat 280px, which
-   * on a normal phone shows about four rows of chips — the rest of a 20-tag
-   * catalogue sat below the fold with nothing to suggest it was there, so the
-   * list read as "these are all the tags". The sheet itself is capped at 88% of
-   * the screen, so scaling with the window hands the spare room to the tags
-   * while leaving the search field, selected chips and Add row on screen. The
-   * 280 floor keeps small devices behaving as before, and the list collapses
-   * again while an input is focused so the keyboard never buries the Add row.
+   * How much of the sheet the tag list may claim.
+   *
+   * The catalogue is 20 tags. The whole point of a fixed, curated list that
+   * short is that the user can see all of it and pick — so the cap has to be
+   * generous enough to render the full set on a normal phone (20 chips wrap to
+   * roughly seven rows) rather than showing four rows and leaving the rest
+   * below a fold with nothing to indicate it exists. That was the "user does
+   * not see all the available tags" report, and raising the flat 280 to a
+   * window-relative cap is the fix; the sheet itself is capped at 88% of the
+   * screen, so this claims spare room without pushing the search field,
+   * selected chips or Add row off screen. The list collapses again while an
+   * input is focused so the keyboard never buries the Add row.
    */
   const tagListMaxHeight = focusedInput
     ? 200
-    : Math.max(280, Math.round(windowHeight * 0.42));
+    : Math.max(360, Math.round(windowHeight * 0.5));
   // Tags the user just created via "Add" this session. They are usable on this
   // post immediately and are sent to admin for global approval when the design is
   // submitted (the backend creates them with status PENDING). Tracked only to show

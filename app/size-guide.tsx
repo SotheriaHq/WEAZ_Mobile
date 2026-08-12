@@ -1,172 +1,218 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import {
+  SIZE_CHARTS,
+  formatMeasurement,
+  type LengthUnitPreference,
+} from '@/src/data/sizeCharts';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
-type GuideSection = {
-  id: string;
-  label: string;
-  title: string;
-  body: string[];
-};
+/**
+ * Column widths. The size column is pinned outside the horizontal scroller so a
+ * row never loses its label while the user pans across the measurements — the
+ * single thing that makes a wide table usable on a phone.
+ */
+const SIZE_COL_WIDTH = 76;
+const DATA_COL_WIDTH = 66;
 
-const SECTIONS: GuideSection[] = [
-  {
-    id: 'overview',
-    label: 'Overview',
-    title: 'Size labels are guides',
-    body: [
-      'XL, XXL, 2XL, 3XL, and numeric labels vary across brands, regions, fabrics, and cuts.',
-      'WIEZ recommendations come from your saved measurements and approved structured chart data.',
-      'You can always change the recommended size before ordering.',
-    ],
-  },
-  {
-    id: 'ng',
-    label: 'Nigeria/West Africa',
-    title: 'No universal Nigerian chart',
-    body: [
-      'WIEZ does not use one universal Nigerian size chart.',
-      'Nigeria/West Africa support is body-measurement-first and can use product, brand, vendor, regional, UK, US, EU, or International mappings where appropriate.',
-      'African brands can define approved structured charts for their own garments.',
-    ],
-  },
-  {
-    id: 'international',
-    label: 'International',
-    title: 'Alpha labels vary',
-    body: [
-      'International alpha sizes such as XS, S, M, L, XL, XXL, 3XL, and 4XL are display labels, not universal measurements.',
-      'A relaxed XL and a slim XL can feel very different.',
-    ],
-  },
-  {
-    id: 'uk',
-    label: 'UK',
-    title: 'UK labels need chart context',
-    body: [
-      'UK sizing is common in Nigeria and West African retail contexts, but brand charts still matter.',
-      'WIEZ displays UK labels when selected, while backend recommendations compare normalized measurements with approved ranges.',
-    ],
-  },
-  {
-    id: 'us',
-    label: 'US',
-    title: 'US labels are not direct formulas',
-    body: [
-      'US labels can differ from UK and EU labels by category and brand.',
-      'WIEZ treats US as a chart and display preference, not a client-side formula.',
-    ],
-  },
-  {
-    id: 'eu',
-    label: 'EU',
-    title: 'EU labels are another chart family',
-    body: [
-      'EU numeric labels can be useful for global buyers.',
-      'They must come from approved structured chart rows before they are used operationally.',
-    ],
-  },
-  {
-    id: 'garments',
-    label: 'Garments',
-    title: 'Different garments need different measurements',
-    body: [
-      'Tops rely on chest or bust, shoulder, waist, sleeve length, and height.',
-      'Bottoms rely on waist, hip or seat, inseam, and height.',
-      'Gowns and dresses use bust, waist, hip, and length together. Formal shirts also need neck or collar.',
-    ],
-  },
-  {
-    id: 'measurements',
-    label: 'Measurements',
-    title: 'Accurate measurements improve confidence',
-    body: [
-      'Minimum baseline: height, chest or bust, waist, hip or seat, and shoulder.',
-      'Strongly recommended: sleeve length, inseam, and neck or collar.',
-      'Use a flexible tape, keep it level, and get help measuring if possible.',
-    ],
-  },
-  {
-    id: 'limitations',
-    label: 'Limitations',
-    title: 'Recommendations are estimates',
-    body: [
-      'Fit may vary because of brand grading, fabric stretch, garment cut, production tolerance, and personal preference.',
-      'Educational chart content is not operational chart data. Backend recommendations use structured, approved, versioned chart rows.',
-    ],
-  },
-];
+function TableHeaderCell({ label, width }: { label: string; width: number }) {
+  return (
+    <View style={[styles.cell, { width }]}>
+      <AppText variant="captionBold" tone="secondary" numberOfLines={1}>
+        {label}
+      </AppText>
+    </View>
+  );
+}
 
 export default function SizeGuideScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const [activeId, setActiveId] = useState(SECTIONS[0].id);
-  const active = useMemo(
-    () => SECTIONS.find((section) => section.id === activeId) ?? SECTIONS[0],
-    [activeId],
+  const [chartId, setChartId] = useState(SIZE_CHARTS[0].id);
+  const [unit, setUnit] = useState<LengthUnitPreference>('CM');
+
+  const chart = useMemo(
+    () => SIZE_CHARTS.find((entry) => entry.id === chartId) ?? SIZE_CHARTS[0],
+    [chartId],
   );
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <AppBackButton />
-        <View style={styles.headerCopy}>
-          <AppText variant="h2">Size Guide / Charts</AppText>
-          <AppText variant="body" tone="muted">
-            Sizing systems, measurements, and WIEZ recommendation limits.
-          </AppText>
-        </View>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
+        <AppBackButton fallbackHref="/settings" />
+        <AppText variant="title">Size charts</AppText>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing.xl }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-          {SECTIONS.map((section) => {
-            const selected = section.id === activeId;
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Garment family — the charts differ by body, not by region, so this is
+            the first choice a buyer has to make. */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {SIZE_CHARTS.map((entry) => {
+            const selected = entry.id === chart.id;
             return (
               <Pressable
-                key={section.id}
-                onPress={() => setActiveId(section.id)}
+                key={entry.id}
+                onPress={() => setChartId(entry.id)}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
                 style={({ pressed }) => [
-                  styles.tab,
+                  styles.chip,
                   {
-                    backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surfaceAlt,
+                    backgroundColor: selected ? theme.colors.primary : theme.colors.surfaceAlt,
                     borderColor: selected ? theme.colors.primary : theme.colors.border,
                   },
                   pressed && styles.pressed,
                 ]}
               >
-                <AppText variant="captionBold" tone={selected ? 'primary' : 'secondary'}>{section.label}</AppText>
+                <AppText variant="smallBold" tone={selected ? 'inverse' : 'secondary'}>
+                  {entry.label}
+                </AppText>
               </Pressable>
             );
           })}
         </ScrollView>
 
-        <Card padding="md" style={styles.card}>
-          <AppText variant="h2">{active.title}</AppText>
-          {active.body.map((paragraph) => (
-            <AppText key={paragraph} variant="body" tone="secondary">
-              {paragraph}
+        <View style={styles.unitRow}>
+          <AppText variant="captionBold" tone="secondary">
+            MEASUREMENTS IN
+          </AppText>
+          <View style={[styles.unitToggle, { borderColor: theme.colors.border }]}>
+            {(['CM', 'IN'] as LengthUnitPreference[]).map((option) => {
+              const selected = unit === option;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => setUnit(option)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected }}
+                  style={[
+                    styles.unitOption,
+                    selected ? { backgroundColor: theme.colors.primary } : null,
+                  ]}
+                >
+                  <AppText variant="smallBold" tone={selected ? 'inverse' : 'secondary'}>
+                    {option}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={[styles.table, { borderColor: theme.colors.border }]}>
+          <View style={styles.tableRowWrap}>
+            <View style={[styles.pinnedColumn, { borderRightColor: theme.colors.border }]}>
+              <View style={[styles.headerRow, { backgroundColor: theme.colors.surfaceAlt, borderBottomColor: theme.colors.border }]}>
+                <TableHeaderCell label="Size" width={SIZE_COL_WIDTH} />
+              </View>
+              {chart.rows.map((row, index) => (
+                <View
+                  key={`${row.alpha}-${row.uk}`}
+                  style={[
+                    styles.bodyRow,
+                    { borderBottomColor: theme.colors.border },
+                    index % 2 === 1 ? { backgroundColor: theme.colors.surfaceAlt } : null,
+                  ]}
+                >
+                  <View style={[styles.cell, { width: SIZE_COL_WIDTH }]}>
+                    <AppText variant="smallBold" numberOfLines={1}>
+                      {row.alpha}
+                    </AppText>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.scrollColumns}>
+              <View>
+                <View style={[styles.headerRow, { backgroundColor: theme.colors.surfaceAlt, borderBottomColor: theme.colors.border }]}>
+                  <TableHeaderCell label="UK" width={DATA_COL_WIDTH} />
+                  <TableHeaderCell label="US" width={DATA_COL_WIDTH} />
+                  <TableHeaderCell label="EU" width={DATA_COL_WIDTH} />
+                  {chart.measureLabels.map((label) => (
+                    <TableHeaderCell key={label} label={label} width={DATA_COL_WIDTH} />
+                  ))}
+                </View>
+                {chart.rows.map((row, index) => (
+                  <View
+                    key={`${row.alpha}-${row.uk}-data`}
+                    style={[
+                      styles.bodyRow,
+                      { borderBottomColor: theme.colors.border },
+                      index % 2 === 1 ? { backgroundColor: theme.colors.surfaceAlt } : null,
+                    ]}
+                  >
+                    <View style={[styles.cell, { width: DATA_COL_WIDTH }]}>
+                      <AppText variant="small" tone="secondary">{row.uk}</AppText>
+                    </View>
+                    <View style={[styles.cell, { width: DATA_COL_WIDTH }]}>
+                      <AppText variant="small" tone="secondary">{row.us}</AppText>
+                    </View>
+                    <View style={[styles.cell, { width: DATA_COL_WIDTH }]}>
+                      <AppText variant="small" tone="secondary">{row.eu}</AppText>
+                    </View>
+                    {row.measures.map((value, measureIndex) => (
+                      <View
+                        key={chart.measureLabels[measureIndex]}
+                        style={[styles.cell, { width: DATA_COL_WIDTH }]}
+                      >
+                        <AppText variant="small">{formatMeasurement(value, unit)}</AppText>
+                      </View>
+                    ))}
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+
+        <AppText variant="captionRegular" tone="muted">
+          Swipe the table sideways for UK, US, EU and body measurements. Values are
+          BODY measurements, not garment measurements.
+        </AppText>
+
+        <View style={[styles.section, { borderTopColor: theme.colors.border }]}>
+          <AppText variant="captionBold" tone="secondary">HOW TO MEASURE</AppText>
+          {chart.howToMeasure.map((line) => (
+            <AppText key={line} variant="bodyReadable" tone="secondary">
+              {line}
             </AppText>
           ))}
-          <View style={[styles.notice, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}>
-            <AppText variant="captionRegular" tone="muted">
-              This guide is educational. Product recommendations are computed by the backend from approved operational chart data, not this text.
-            </AppText>
-          </View>
-          <Button title="Update my measurements" onPress={() => drillDownPush('/(tabs)/me' as any)} />
-        </Card>
+          <AppText variant="bodyReadable" tone="secondary">
+            Use a flexible tape, keep it level, and measure over light clothing.
+          </AppText>
+        </View>
+
+        <View style={[styles.section, { borderTopColor: theme.colors.border }]}>
+          <AppText variant="captionBold" tone="secondary">WHY YOUR SIZE STILL VARIES</AppText>
+          <AppText variant="bodyReadable" tone="secondary">
+            A relaxed XL and a slim XL are different garments. Fit shifts with brand
+            grading, fabric stretch, cut and production tolerance, so treat the
+            label as a starting point and your measurements as the truth.
+          </AppText>
+          <AppText variant="bodyReadable" tone="secondary">
+            WIEZ does not use one universal Nigerian chart. Nigeria and West Africa
+            are measurement-first, and brands can publish approved charts for their
+            own garments — which is what a product page recommends from, not this
+            reference table.
+          </AppText>
+        </View>
+
+        <Button
+          title="Update my measurements"
+          onPress={() => drillDownPush('/(tabs)/me' as any)}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -179,35 +225,75 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.md,
+    gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-  },
-  headerCopy: {
-    flex: 1,
-    gap: tokens.spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   content: {
-    padding: tokens.spacing.lg,
-    gap: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.lg,
+    gap: tokens.spacing.lg,
   },
-  tabs: {
+  chips: {
     gap: tokens.spacing.sm,
     paddingRight: tokens.spacing.lg,
   },
-  tab: {
+  chip: {
     borderWidth: 1,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
   },
-  card: {
+  unitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: tokens.spacing.md,
   },
-  notice: {
+  unitToggle: {
+    flexDirection: 'row',
     borderWidth: 1,
+    borderRadius: tokens.radius.full,
+    overflow: 'hidden',
+  },
+  unitOption: {
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    minWidth: 48,
+    alignItems: 'center',
+  },
+  table: {
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: tokens.radius.md,
-    padding: tokens.spacing.md,
+    overflow: 'hidden',
+  },
+  tableRowWrap: {
+    flexDirection: 'row',
+  },
+  pinnedColumn: {
+    borderRightWidth: StyleSheet.hairlineWidth,
+  },
+  scrollColumns: {
+    flexGrow: 1,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  bodyRow: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  cell: {
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.md,
+    justifyContent: 'center',
+  },
+  section: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: tokens.spacing.lg,
+    gap: tokens.spacing.sm,
   },
   pressed: {
     opacity: 0.74,

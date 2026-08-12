@@ -402,7 +402,7 @@ function OverlayAvatar({
       {isOwner && onEditAvatar ? (
         // No filled chip. The solid purple disc read as a status badge stuck to
         // the logo rather than a control, and it covered the corner of the image
-        // it was meant to let you change. It now sits in the bottom-left corner
+        // it was meant to let you change. It now sits in the bottom-right corner
         // as a bare glyph, kept legible over any photo by a shadow instead of a
         // background.
         <Pressable
@@ -514,12 +514,16 @@ function SideBrandMetaBlock({
   stats,
   tags,
   badges,
+  isOwner,
+  onEditProfile,
 }: {
   username?: string | null;
   location?: string | null;
   stats: BrandHeaderStat[];
   tags: string[];
   badges: ProfileBadgeModel[];
+  isOwner?: boolean;
+  onEditProfile?: () => void;
 }) {
   const secondaryBadges = badges.filter((badge) => !badge.variant.startsWith('store_'));
   const handle = username?.trim().replace(/^@+/, '') || '';
@@ -536,6 +540,15 @@ function SideBrandMetaBlock({
         <AppText variant="smallBold" tone="secondary" numberOfLines={1} style={styles.locationText}>
           📍 {locationLabel}
         </AppText>
+      ) : isOwner && onEditProfile ? (
+        // An owner whose location is blank previously saw nothing at all here —
+        // no row, no hint, no way to tell whether the field was empty or the
+        // header had dropped it. Say which it is, and make it the fix.
+        <Pressable onPress={onEditProfile} accessibilityRole="button" accessibilityLabel="Add your location">
+          <AppText variant="smallBold" tone="primary" numberOfLines={1} style={styles.locationText}>
+            📍 Add your location
+          </AppText>
+        </Pressable>
       ) : null}
 
       <BrandBadgeRail badges={secondaryBadges} />
@@ -979,6 +992,8 @@ export function BrandProfileHeader({
           stats={useFullWidthStats ? [] : stats}
           tags={tags}
           badges={badges}
+          isOwner={isOwner}
+          onEditProfile={onEditProfile}
         />
       </View>
 
@@ -1209,7 +1224,7 @@ const styles = StyleSheet.create({
   },
   avatarEditBadge: {
     position: 'absolute',
-    left: tokens.spacing.xs,
+    right: tokens.spacing.xs,
     bottom: tokens.spacing.xs,
     width: 28,
     height: 28,

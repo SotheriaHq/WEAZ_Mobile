@@ -107,7 +107,16 @@ export default function PrivacySettingsScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  /**
+   * WHICH control is mid-request — not merely THAT one is.
+   *
+   * This was a single `busy` boolean handed to every row as `disabled`, so
+   * flipping "Show my location" greyed the username switch and both visibility
+   * radios at the same time: four controls visibly reacting to one tap, which
+   * reads as the settings being linked. Each control now disables only itself,
+   * and everything else stays live and untouched.
+   */
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const loadProfile = useCallback(async () => {
     if (!isAuthenticated) {
@@ -134,10 +143,10 @@ export default function PrivacySettingsScreen() {
 
   const updatePrivacyToggle = useCallback(
     async (key: 'showUsername' | 'showLocation', next: boolean) => {
-      if (!profile || busy) return;
+      if (!profile || pendingKey === key) return;
       const previous = profile[key];
       if (previous === next) return;
-      setBusy(true);
+      setPendingKey(key);
       setProfile({ ...profile, [key]: next });
       try {
         const updated = await ProfileApi.updateProfilePrivacy({ [key]: next });
@@ -155,17 +164,17 @@ export default function PrivacySettingsScreen() {
         setProfile((current) => (current ? { ...current, [key]: previous } : current));
         toast.error(extractErrorMessage(error, 'Unable to update that just now — try again.'));
       } finally {
-        setBusy(false);
+        setPendingKey((current) => (current === key ? null : current));
       }
     },
-    [busy, profile, toast],
+    [pendingKey, profile, toast],
   );
 
   const updateVisibility = useCallback(
     async (nextVisibility: UserProfile['profileVisibility']) => {
-      if (!profile || profile.profileVisibility === nextVisibility || busy) return;
+      if (!profile || profile.profileVisibility === nextVisibility || pendingKey === 'profileVisibility') return;
       const previousVisibility = profile.profileVisibility;
-      setBusy(true);
+      setPendingKey('profileVisibility');
       setProfile({ ...profile, profileVisibility: nextVisibility });
       try {
         const updated = await ProfileApi.updateProfileVisibility(nextVisibility);
@@ -179,10 +188,10 @@ export default function PrivacySettingsScreen() {
         );
         toast.error(extractErrorMessage(error, 'Unable to update profile visibility.'));
       } finally {
-        setBusy(false);
+        setPendingKey((current) => (current === 'profileVisibility' ? null : current));
       }
     },
-    [busy, profile, toast],
+    [pendingKey, profile, toast],
   );
 
   if (status === 'loading' || loading) {
@@ -242,14 +251,14 @@ export default function PrivacySettingsScreen() {
             emoji="🌐"
             label="Public profile"
             selected={profile.profileVisibility === 'UNLOCKED'}
-            disabled={busy}
+            disabled={pendingKey === 'profileVisibility'}
             onPress={() => void updateVisibility('UNLOCKED')}
           />
           <VisibilityRow
             emoji="🔒"
             label="Private profile"
             selected={profile.profileVisibility === 'LOCKED'}
-            disabled={busy}
+            disabled={pendingKey === 'profileVisibility'}
             onPress={() => void updateVisibility('LOCKED')}
           />
         </View>
@@ -261,7 +270,7 @@ export default function PrivacySettingsScreen() {
             label="Show my username"
             hint="Your @handle on your public profile"
             value={profile.showUsername}
-            disabled={busy}
+            disabled={pendingKey === 'showUsername'}
             onToggle={(next) => void updatePrivacyToggle('showUsername', next)}
           />
           <PrivacyToggleRow
@@ -269,7 +278,7 @@ export default function PrivacySettingsScreen() {
             label="Show my location"
             hint="Your location on your public profile"
             value={profile.showLocation}
-            disabled={busy}
+            disabled={pendingKey === 'showLocation'}
             onToggle={(next) => void updatePrivacyToggle('showLocation', next)}
           />
         </View>

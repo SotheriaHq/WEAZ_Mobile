@@ -43,12 +43,26 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
   const isBare = variant === 'bare';
   const isUnderline = variant === 'underline';
   const isPlain = isBare || isUnderline;
-  const activeBorderColor = hasError ? theme.colors.danger : theme.colors.border;
+  // A field that looks identical whether or not the caret is in it gives the
+  // user nothing to read the form by. Focus now moves the border to the brand
+  // colour and thickens it, which is the difference between "a box" and "the
+  // box I am typing in".
+  const [isFocused, setIsFocused] = React.useState(false);
+  const activeBorderColor = hasError
+    ? theme.colors.danger
+    : isFocused
+      ? theme.colors.primary
+      : theme.colors.border;
+  const activeBorderWidth = isFocused || hasError ? 1.5 : 1;
 
   return (
     <View style={containerStyle}>
       {!hideLabel ? (
-        <AppText variant="caption" tone="secondary" style={styles.label}>
+        <AppText
+          variant="smallBold"
+          tone={hasError ? 'danger' : isFocused ? 'primary' : 'secondary'}
+          style={styles.label}
+        >
           {label}
         </AppText>
       ) : null}
@@ -60,8 +74,10 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
             minHeight: multiline ? 104 : 52,
             backgroundColor: isPlain ? 'transparent' : theme.colors.surface,
             borderColor: isBare ? 'transparent' : activeBorderColor,
-            borderWidth: isPlain ? 0 : 1,
-            ...(isUnderline ? { borderBottomWidth: 1, borderBottomColor: activeBorderColor } : null),
+            borderWidth: isPlain ? 0 : activeBorderWidth,
+            ...(isUnderline
+              ? { borderBottomWidth: activeBorderWidth, borderBottomColor: activeBorderColor }
+              : null),
           },
         ]}
       >
@@ -70,7 +86,12 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
           ref={ref}
           {...rest}
           multiline={multiline}
+          onBlur={(event) => {
+            setIsFocused(false);
+            rest.onBlur?.(event);
+          }}
           onFocus={(event) => {
+            setIsFocused(true);
             onFocus?.(event);
             // Scroll the caret clear of the keyboard when nested in KeyboardAwareFormScroll.
             keyboardForm?.onFieldFocus();
@@ -84,7 +105,11 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
               paddingTop: multiline ? tokens.spacing.lg : 0,
               paddingBottom: multiline ? tokens.spacing.lg : 0,
               textAlignVertical: multiline ? 'top' : 'center',
-              fontFamily: tokens.fontFamily.regular,
+              // Medium, not regular. What the user types is the content of the
+              // screen and was rendering one weight lighter than the body text
+              // around it — the field read as a disabled preview of itself.
+              fontFamily: tokens.fontFamily.medium,
+              fontWeight: '500',
               fontSize: tokens.typography.body.size,
               lineHeight: tokens.typography.body.lineHeight,
             },

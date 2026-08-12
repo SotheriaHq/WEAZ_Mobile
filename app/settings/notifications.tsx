@@ -14,6 +14,7 @@ import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { AppTimePickerSheet } from '@/components/ui/AppTimePickerSheet';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { NotificationsApi } from '@/src/api/NotificationsApi';
@@ -36,7 +37,8 @@ type DevicePermissionStatus = 'granted' | 'denied' | 'undetermined' | 'unavailab
 type ToggleConfig = {
   id: string;
   label: string;
-  description: string;
+  /** Optional: a row whose label already says it needs no second sentence. */
+  description?: string;
   section: NotificationSettingsSection;
   key: string;
 };
@@ -334,18 +336,17 @@ function ToggleSectionBlock({
   const { theme } = useTheme();
 
   return (
-    <View style={styles.sectionWrap}>
+    // Same shape as the Privacy screen: an uppercase label separates the group
+    // and a single hairline closes it. The old treatment wrapped every group in
+    // a bordered, filled card INSIDE an already-labelled section, so the screen
+    // read as a stack of boxes and each group fought its neighbour for weight.
+    <View style={[styles.sectionWrap, { borderBottomColor: theme.colors.border }]}>
       <View style={styles.sectionHeading}>
-        <AppText variant="captionBold" tone="muted" style={styles.sectionTitle}>
+        <AppText variant="captionBold" tone="secondary" style={styles.sectionTitle}>
           {section.title.toUpperCase()}
         </AppText>
-        {section.description ? (
-          <AppText variant="captionRegular" tone="muted">
-            {section.description}
-          </AppText>
-        ) : null}
       </View>
-      <View style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+      <View>
         {section.items.map((item, index) => {
           const value = readBooleanSetting(settings, item);
           const patchKey = `${item.section}.${item.key}`;
@@ -354,7 +355,9 @@ function ToggleSectionBlock({
               <ToggleSettingRow
                 item={item}
                 value={value}
-                disabled={saving}
+                // Only the row being saved goes inert. `saving` disabled EVERY
+                // row on the screen, so one tap greyed the whole list.
+                disabled={pendingKey === patchKey}
                 pending={pendingKey === patchKey}
                 onToggle={(nextValue) =>
                   onPatch({
@@ -436,42 +439,30 @@ function QuietHoursSection({
   onPatch: (patch: NotificationSettingPatchDescriptor) => void;
 }) {
   const { theme } = useTheme();
-  const [draftStart, setDraftStart] = useState(settings.push.quietHoursStart ?? '');
-  const [draftEnd, setDraftEnd] = useState(settings.push.quietHoursEnd ?? '');
-  const [startError, setStartError] = useState<string | null>(null);
-  const [endError, setEndError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setDraftStart(settings.push.quietHoursStart ?? '');
-    setDraftEnd(settings.push.quietHoursEnd ?? '');
-    setStartError(null);
-    setEndError(null);
-  }, [settings.push.quietHoursStart, settings.push.quietHoursEnd]);
+  const [openPicker, setOpenPicker] = useState<'start' | 'end' | null>(null);
 
   const commitQuietHour = useCallback(
-    (field: 'quietHoursStart' | 'quietHoursEnd', value: string) => {
-      const normalized = normalizeQuietHourInput(value);
-      const setError = field === 'quietHoursStart' ? setStartError : setEndError;
-
-      if (normalized !== null && !isValidQuietHour(normalized)) {
-        setError('Use HH:mm, for example 22:30.');
-        return;
-      }
-
-      setError(null);
+    (field: 'quietHoursStart' | 'quietHoursEnd', value: string | null) => {
       onPatch({
         section: 'push',
         key: field,
-        value: normalized,
+        value,
       });
     },
     [onPatch],
   );
 
+  const startLabel = settings.push.quietHoursStart || 'Not set';
+  const endLabel = settings.push.quietHoursEnd || 'Not set';
+
   return (
-    <View style={styles.sectionWrap}>
+    // One description, not two. The section header said "Pause non-critical push
+    // delivery during a daily window" and the toggle under it said "Mute
+    // supported push notifications during your selected hours" — the same
+    // sentence twice, in two type sizes, about one switch.
+    <View style={[styles.sectionWrap, { borderBottomColor: theme.colors.border }]}>
       <View style={styles.sectionHeading}>
-        <AppText variant="captionBold" tone="muted" style={styles.sectionTitle}>
+        <AppText variant="captionBold" tone="secondary" style={styles.sectionTitle}>
           QUIET HOURS
         </AppText>
         <AppText variant="captionRegular" tone="muted">
@@ -479,17 +470,16 @@ function QuietHoursSection({
         </AppText>
       </View>
 
-      <View style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+      <View>
         <ToggleSettingRow
           item={{
             id: 'push.quietHoursEnabled',
             label: 'Enable quiet hours',
-            description: 'Mute supported push notifications during your selected hours.',
             section: 'push',
             key: 'quietHoursEnabled',
           }}
           value={settings.push.quietHoursEnabled}
-          disabled={saving}
+          disabled={pendingKey === 'push.quietHoursEnabled'}
           pending={pendingKey === 'push.quietHoursEnabled'}
           onToggle={(nextValue) =>
             onPatch({
@@ -499,36 +489,52 @@ function QuietHoursSection({
             })
           }
         />
-        <View style={styles.timeInputs}>
-          <Input
-            label="Start time"
-            value={draftStart}
-            onChangeText={setDraftStart}
-            onBlur={() => commitQuietHour('quietHoursStart', draftStart)}
-            onSubmitEditing={() => commitQuietHour('quietHoursStart', draftStart)}
-            placeholder="22:00"
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!saving}
-            error={startError ?? undefined}
-            helperText="HH:mm, 24-hour time"
-            containerStyle={styles.timeInput}
-          />
-          <Input
-            label="End time"
-            value={draftEnd}
-            onChangeText={setDraftEnd}
-            onBlur={() => commitQuietHour('quietHoursEnd', draftEnd)}
-            onSubmitEditing={() => commitQuietHour('quietHoursEnd', draftEnd)}
-            placeholder="07:00"
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!saving}
-            error={endError ?? undefined}
-            helperText="Clear to save no time"
-            containerStyle={styles.timeInput}
-          />
-        </View>
+
+        {/* A time is a choice, not free text. These open a picker instead of
+            asking the user to type HH:mm and find out on blur whether they got
+            the format right. */}
+        <Pressable
+          onPress={() => setOpenPicker('start')}
+          disabled={saving}
+          accessibilityRole="button"
+          accessibilityLabel="Quiet hours start time"
+          style={({ pressed }) => [
+            styles.timeRow,
+            { borderBottomColor: theme.colors.border },
+            pressed ? styles.timeRowPressed : null,
+          ]}
+        >
+          <AppText variant="body" style={styles.timeRowLabel}>Starts</AppText>
+          <AppText
+            variant="bodyBold"
+            tone={settings.push.quietHoursStart ? 'default' : 'muted'}
+          >
+            {startLabel}
+          </AppText>
+          <AppText variant="subtitle" tone="muted">›</AppText>
+        </Pressable>
+
+        <Pressable
+          onPress={() => setOpenPicker('end')}
+          disabled={saving}
+          accessibilityRole="button"
+          accessibilityLabel="Quiet hours end time"
+          style={({ pressed }) => [
+            styles.timeRow,
+            { borderBottomColor: theme.colors.border },
+            pressed ? styles.timeRowPressed : null,
+          ]}
+        >
+          <AppText variant="body" style={styles.timeRowLabel}>Ends</AppText>
+          <AppText
+            variant="bodyBold"
+            tone={settings.push.quietHoursEnd ? 'default' : 'muted'}
+          >
+            {endLabel}
+          </AppText>
+          <AppText variant="subtitle" tone="muted">›</AppText>
+        </Pressable>
+
         {(pendingKey === 'push.quietHoursStart' || pendingKey === 'push.quietHoursEnd') ? (
           <View style={styles.inlineSaving}>
             <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -538,6 +544,23 @@ function QuietHoursSection({
           </View>
         ) : null}
       </View>
+
+      <AppTimePickerSheet
+        visible={openPicker === 'start'}
+        title="Quiet hours start"
+        value={settings.push.quietHoursStart ?? null}
+        fallbackHour={22}
+        onChange={(next) => commitQuietHour('quietHoursStart', next)}
+        onClose={() => setOpenPicker(null)}
+      />
+      <AppTimePickerSheet
+        visible={openPicker === 'end'}
+        title="Quiet hours end"
+        value={settings.push.quietHoursEnd ?? null}
+        fallbackHour={7}
+        onChange={(next) => commitQuietHour('quietHoursEnd', next)}
+        onClose={() => setOpenPicker(null)}
+      />
     </View>
   );
 }
@@ -775,10 +798,11 @@ const styles = StyleSheet.create({
   },
   sectionWrap: {
     gap: tokens.spacing.sm,
+    paddingBottom: tokens.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   sectionHeading: {
     gap: tokens.spacing.xs,
-    paddingHorizontal: tokens.spacing.xs,
   },
   sectionTitle: {
     letterSpacing: 0,
@@ -836,16 +860,19 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: tokens.spacing.xs,
   },
-  timeInputs: {
+  timeRow: {
+    minHeight: 56,
     flexDirection: 'row',
+    alignItems: 'center',
     gap: tokens.spacing.md,
-    paddingHorizontal: tokens.spacing.md,
-    paddingTop: tokens.spacing.md,
-    paddingBottom: tokens.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  timeInput: {
+  timeRowLabel: {
     flex: 1,
     minWidth: 0,
+  },
+  timeRowPressed: {
+    opacity: 0.72,
   },
   inlineSaving: {
     flexDirection: 'row',

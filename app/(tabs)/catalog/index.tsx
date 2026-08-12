@@ -313,6 +313,36 @@ const EmptyCollections = ({ isOwner, onAdd }: { isOwner: boolean; onAdd?: () => 
   );
 };
 
+/**
+ * What the owner sees on the Shop tab before their store exists.
+ *
+ * Store setup is itself gated on a verified email, so this states which step is
+ * actually next instead of sending the brand to a screen that will turn them
+ * away.
+ */
+const StoreSetupRequiredNotice = ({
+  emailVerified,
+  onStartSetup,
+}: {
+  emailVerified: boolean;
+  onStartSetup: () => void;
+}) => (
+  <View style={styles.emptyState}>
+    <AppText variant="display" tone="muted">🛍️</AppText>
+    <AppText variant="subtitle" style={styles.emptyTitle}>
+      {emailVerified ? 'Your store is not set up yet' : 'Verify your email to open a store'}
+    </AppText>
+    <AppText variant="bodyRegular" tone="muted" style={styles.emptySubtitle}>
+      {emailVerified
+        ? 'Set up your store to list products, take orders, and get paid. Your Shop tab goes live the moment setup is complete.'
+        : 'Confirm the link we sent to your email address, then come back to set up your store.'}
+    </AppText>
+    {emailVerified ? (
+      <Button title="Set up my store" onPress={onStartSetup} size="md" style={styles.emptyButton} />
+    ) : null}
+  </View>
+);
+
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Main Component
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -2224,7 +2254,23 @@ export default function CatalogScreen() {
               { width: Math.max(containerWidth, 1), minHeight: unmeasuredPageMinHeight('Shop') },
             ]}
           >
-            {shouldMountShopTab && containerWidth > 0 && targetBrandId ? (
+            {/*
+              A brand that has not finished store setup has no store to show, so
+              the Shop tab rendered an empty product grid — indistinguishable
+              from "this brand sells nothing" and offering no way forward. The
+              owner gets the setup call to action instead; visitors keep the
+              normal (empty) shop. `storeSetupComplete` is tri-state and only
+              `false` gates: unknown must never lock an owner out of their own
+              shop because a status request failed.
+            */}
+            {isOwner && storeSetupComplete === false ? (
+              <StoreSetupRequiredNotice
+                emailVerified={userEmailVerified !== false}
+                onStartSetup={() =>
+                  drillDownPush({ pathname: '/studio', params: { routeKey: 'setup' } } as any)
+                }
+              />
+            ) : shouldMountShopTab && containerWidth > 0 && targetBrandId ? (
               <BrandShopTab
                 brandId={targetBrandId}
                 isOwner={isOwner}

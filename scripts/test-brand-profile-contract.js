@@ -279,13 +279,15 @@ async function main() {
   assert.match(brandHeaderSource, /See less/);
 
   // The avatar edit affordance is a bare glyph, not a filled purple disc, and it
-  // sits in the bottom-LEFT corner.
+  // sits in the bottom-RIGHT corner.
   assert.doesNotMatch(
     brandHeaderSource,
     /styles\.avatarEditBadge, \{ backgroundColor: theme\.colors\.primary/,
   );
-  assert.match(brandHeaderSource, /avatarEditBadge:[\s\S]*?left: tokens\.spacing\.xs/);
+  assert.match(brandHeaderSource, /avatarEditBadge:[\s\S]*?right: tokens\.spacing\.xs/);
   assert.match(brandHeaderSource, /avatarEditGlyph:[\s\S]*?textShadowColor/);
+  // An owner with no location gets an actionable hint, not a silently absent row.
+  assert.match(brandHeaderSource, /📍 Add your location/);
   // Contact rows (email, website, socials, QR code) read in the body colour.
   assert.doesNotMatch(brandHeaderSource, /QR code[\s\S]{0,80}tone="primary"/);
   assert.match(

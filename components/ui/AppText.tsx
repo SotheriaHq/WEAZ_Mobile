@@ -134,31 +134,66 @@ const VARIANT_MAP: Record<Variant, TypographyTokenKey> = {
   statLabel: 'statLabel',
 };
 
+/**
+ * Family per tier. Two deliberate changes from the original mapping:
+ *
+ * - Everything that is meant to read as a HEADING is `bold` (700), not
+ *   `semiBold` (600). At 16-18px, 600 against a 500 body is roughly one visual
+ *   step — enough to measure, not enough to see — which is why section headers
+ *   were landing as "as light and thin as main text".
+ * - Body stays `medium` (500). Making body heavier does not create hierarchy,
+ *   it just removes the contrast the headings need.
+ */
 const FONT_FAMILY_MAP: Record<TypographyTokenKey, string> = {
   display: tokens.fontFamily.bold,
   title: tokens.fontFamily.bold,
-  subtitle: tokens.fontFamily.semiBold,
+  subtitle: tokens.fontFamily.bold,
   body: tokens.fontFamily.medium,
   caption: tokens.fontFamily.medium,
   h1: tokens.fontFamily.bold,
-  h2: tokens.fontFamily.semiBold,
-  h3: tokens.fontFamily.semiBold,
-  bodyBold: tokens.fontFamily.semiBold,
+  h2: tokens.fontFamily.bold,
+  h3: tokens.fontFamily.bold,
+  bodyBold: tokens.fontFamily.bold,
   small: tokens.fontFamily.medium,
-  smallBold: tokens.fontFamily.semiBold,
+  smallBold: tokens.fontFamily.bold,
   screenTitle: tokens.fontFamily.bold,
   profileName: tokens.fontFamily.bold,
   brandName: tokens.fontFamily.bold,
-  sectionTitle: tokens.fontFamily.semiBold,
-  cardTitle: tokens.fontFamily.semiBold,
-  bodyReadable: tokens.fontFamily.semiBold,
-  actionLabel: tokens.fontFamily.semiBold,
-  buttonLabel: tokens.fontFamily.semiBold,
+  sectionTitle: tokens.fontFamily.bold,
+  cardTitle: tokens.fontFamily.bold,
+  bodyReadable: tokens.fontFamily.medium,
+  actionLabel: tokens.fontFamily.bold,
+  buttonLabel: tokens.fontFamily.bold,
   badgeLabel: tokens.fontFamily.bold,
-  navLabel: tokens.fontFamily.semiBold,
-  meta: tokens.fontFamily.medium,
+  navLabel: tokens.fontFamily.bold,
+  meta: tokens.fontFamily.semiBold,
   statValue: tokens.fontFamily.bold,
   statLabel: tokens.fontFamily.bold,
+};
+
+/**
+ * Numeric weight per family, emitted ALONGSIDE `fontFamily`.
+ *
+ * The tier tokens have always carried a `weight`, and this component has never
+ * applied it — every glyph's weight came from the family name alone. Two
+ * consequences, both of which are the reported symptom:
+ *
+ *   1. When the Inter load times out (`isFontFallbackMode`, which the splash
+ *      path can and does hit on a cold start), `fontFamily` is dropped and
+ *      nothing replaces it — so the ENTIRE app renders in the system regular
+ *      face. Titles, headers and body become literally the same weight. That is
+ *      "some headers are as light and basic and thin as main text".
+ *   2. On iOS, family-only weighting leaves the text renderer no numeric hint,
+ *      so synthetic weighting never kicks in for a face that fails to resolve.
+ *
+ * Emitting both is what every mature RN design system does: the family wins
+ * when the font is present, the weight carries the hierarchy when it is not.
+ */
+const FONT_WEIGHT_BY_FAMILY: Record<string, TextStyle['fontWeight']> = {
+  [tokens.fontFamily.regular]: '400',
+  [tokens.fontFamily.medium]: '500',
+  [tokens.fontFamily.semiBold]: '600',
+  [tokens.fontFamily.bold]: '700',
 };
 
 function getToneColor(tone: Tone, theme: ReturnType<typeof useTheme>['theme']) {
@@ -234,9 +269,11 @@ export function AppText({
   const tokenKey = VARIANT_MAP[variant];
   const tier = tokens.typography[tokenKey];
   const resolvedTone = muted && tone === 'default' ? 'muted' : tone;
-  const fontFamily = isFontFallbackMode
-    ? undefined
-    : variant === 'captionRegular'
+  // Resolve the family the variant WANTS first, independently of whether the
+  // font is available — the weight is derived from it either way, so fallback
+  // mode keeps the hierarchy instead of flattening to a single face.
+  const intendedFamily =
+    variant === 'captionRegular'
       ? tokens.fontFamily.regular
       : variant === 'captionBold'
         ? tokens.fontFamily.bold
@@ -245,6 +282,8 @@ export function AppText({
           : variant === 'bodyStrong'
             ? tokens.fontFamily.bold
             : FONT_FAMILY_MAP[tokenKey];
+  const fontFamily = isFontFallbackMode ? undefined : intendedFamily;
+  const fontWeight = FONT_WEIGHT_BY_FAMILY[intendedFamily] ?? tier.weight;
 
   let defaultMaxFontSizeMultiplier: number | undefined = undefined;
   if (['navLabel', 'badgeLabel', 'actionLabel', 'meta', 'caption', 'small', 'smallBold'].includes(variant)) {
@@ -266,6 +305,7 @@ export function AppText({
         {
           ...(fontFamily ? { fontFamily } : {}),
           fontSize: tier.size,
+          fontWeight,
           lineHeight: tier.lineHeight,
           color: getToneColor(resolvedTone, theme),
         },

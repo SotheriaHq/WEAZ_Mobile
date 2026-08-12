@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
 
@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/Input';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import {
   SettingsHeader,
+  SettingsPanel,
   SettingsSection,
   SettingsStateCard,
 } from '@/components/settings/SettingsPrimitives';
@@ -100,41 +101,35 @@ function SessionRow({
   const { theme } = useTheme();
 
   return (
-    <Card padding="md" style={styles.sessionCard}>
-      <View style={styles.sessionRow}>
-        <View style={styles.sessionCopy}>
-          <View style={styles.sessionTitleRow}>
-            <AppText variant="bodyBold" numberOfLines={1}>
-              {describeSessionDevice(session.userAgent)}
-            </AppText>
-            {session.isCurrentSession ? (
-              <View style={[styles.currentPill, { backgroundColor: theme.colors.primarySoft }]}>
-                <AppText variant="captionBold" tone="primary">
-                  Current
-                </AppText>
-              </View>
-            ) : null}
-          </View>
-          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-            {session.ipAddressMasked ?? 'IP unavailable'}
-            {session.location ? ` / ${session.location}` : ''}
-          </AppText>
-          <AppText variant="captionRegular" tone="muted">
-            Last used {formatDateTime(session.lastUsedAt)}
-          </AppText>
-        </View>
-        {!session.isCurrentSession ? (
-          <Button
-            title={busy ? 'Revoking...' : 'Revoke'}
-            size="sm"
-            variant="outline"
-            loading={busy}
-            disabled={busy}
-            onPress={() => onRevoke(session.id)}
-          />
-        ) : null}
+    // Device, time, status — one line each, no card. A session is a list entry;
+    // the three-line, bordered, IP-carrying block it used to be gave every row
+    // the visual weight of a section and told the user nothing they could act
+    // on. Masked IP and location are dropped: neither survives a `numberOfLines`
+    // budget, and neither helps anyone decide whether to revoke.
+    <View style={[styles.sessionCard, { borderBottomColor: theme.colors.border }]}>
+      <View style={styles.sessionCopy}>
+        <AppText variant="bodyBold" numberOfLines={1}>
+          {describeSessionDevice(session.userAgent)}
+        </AppText>
+        <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+          {formatDateTime(session.lastUsedAt)}
+        </AppText>
       </View>
-    </Card>
+      {session.isCurrentSession ? (
+        <AppText variant="captionBold" tone="primary">
+          Current
+        </AppText>
+      ) : (
+        <Button
+          title={busy ? 'Revoking...' : 'Revoke'}
+          size="xs"
+          variant="outline"
+          loading={busy}
+          disabled={busy}
+          onPress={() => onRevoke(session.id)}
+        />
+      )}
+    </View>
   );
 }
 
@@ -143,6 +138,33 @@ export default function AccountSecuritySettingsScreen() {
   const insets = useSafeAreaInsets();
   const toast = useToast();
   const { status, user, validateToken } = useAuth();
+  /**
+   * Which concern this screen was opened for.
+   *
+   * "Phone & email" and "Password & security" are different jobs, and both used
+   * to land here showing the same four sections under the same heading —
+   * identical destinations that made the two rows look like a bug. The screen
+   * now shows only what the caller asked for and titles itself accordingly;
+   * with no `focus` (deep link, back-stack) it still shows everything.
+   */
+  const { focus: focusParam } = useLocalSearchParams<{ focus?: string | string[] }>();
+  const focus = Array.isArray(focusParam) ? focusParam[0] : focusParam;
+  const showEmail = focus !== 'password';
+  const showPassword = focus !== 'email';
+  const showSessions = focus !== 'email';
+  const screenTitle =
+    focus === 'email'
+      ? 'Phone & email'
+      : focus === 'password'
+        ? 'Password & security'
+        : 'Account security';
+  const screenSubtitle =
+    focus === 'email'
+      ? 'Login and contact details'
+      : focus === 'password'
+        ? 'Password and active sessions'
+        : 'Email, password, and sessions';
+
   const [sessions, setSessions] = useState<SecuritySession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
@@ -298,7 +320,7 @@ export default function AccountSecuritySettingsScreen() {
   if (status === 'loading') {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <SettingsHeader title="Account security" subtitle="Email, password, and sessions" />
+        <SettingsHeader title={screenTitle} subtitle={screenSubtitle} />
         <View style={styles.loadingWrap}>
           <ActivityIndicator color={theme.colors.primary} />
         </View>
@@ -309,7 +331,7 @@ export default function AccountSecuritySettingsScreen() {
   if (status !== 'authenticated') {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <SettingsHeader title="Account security" subtitle="Sign in required" />
+        <SettingsHeader title={screenTitle} subtitle="Sign in required" />
         <View style={styles.content}>
           <SettingsStateCard
             title="Sign in required"
@@ -324,13 +346,14 @@ export default function AccountSecuritySettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <SettingsHeader title="Account security" subtitle="Email, password, and sessions" />
+      <SettingsHeader title={screenTitle} subtitle={screenSubtitle} />
 
       <KeyboardAwareFormScroll
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
       >
+        {showEmail ? (
         <SettingsSection title="Email">
-          <Card padding="lg" style={styles.card}>
+          <SettingsPanel>
             <View style={styles.inlineHeader}>
               <View style={styles.inlineCopy}>
                 <AppText variant="bodyBold">Current email</AppText>
@@ -381,11 +404,13 @@ export default function AccountSecuritySettingsScreen() {
               disabled={emailBusy}
               onPress={() => void submitEmailChange()}
             />
-          </Card>
+          </SettingsPanel>
         </SettingsSection>
+        ) : null}
 
+        {showPassword ? (
         <SettingsSection title="Password">
-          <Card padding="lg" style={styles.card}>
+          <SettingsPanel>
             <Input
               label="Current password"
               value={currentPassword}
@@ -425,18 +450,17 @@ export default function AccountSecuritySettingsScreen() {
               disabled={!passwordReady}
               onPress={() => void submitPasswordChange()}
             />
-          </Card>
+          </SettingsPanel>
         </SettingsSection>
+        ) : null}
 
+        {showSessions ? (
         <SettingsSection title="Login sessions">
-          <Card padding="lg" style={styles.card}>
+          <SettingsPanel divided={false}>
             <View style={styles.inlineHeader}>
-              <View style={styles.inlineCopy}>
-                <AppText variant="bodyBold">Active and recent sessions</AppText>
-                <AppText variant="captionRegular" tone="muted">
-                  Revoke sessions you do not recognize.
-                </AppText>
-              </View>
+              <AppText variant="captionRegular" tone="muted" style={styles.inlineCopy}>
+                Revoke anything you do not recognise.
+              </AppText>
               <Button
                 title={logoutOthersBusy ? 'Signing out...' : 'Sign out others'}
                 size="sm"
@@ -446,7 +470,7 @@ export default function AccountSecuritySettingsScreen() {
                 onPress={confirmLogoutOthers}
               />
             </View>
-          </Card>
+          </SettingsPanel>
           {sessionsLoading ? (
             <SettingsStateCard title="Loading sessions" loading />
           ) : sessionsError ? (
@@ -471,9 +495,11 @@ export default function AccountSecuritySettingsScreen() {
             </View>
           )}
         </SettingsSection>
+        ) : null}
 
+        {showSessions ? (
         <SettingsSection title="Two-factor authentication">
-          <Card padding="lg" style={styles.card}>
+          <SettingsPanel>
             <View style={styles.inlineHeader}>
               <View style={styles.inlineCopy}>
                 <AppText variant="bodyBold">2FA is not available yet</AppText>
@@ -487,8 +513,9 @@ export default function AccountSecuritySettingsScreen() {
                 </AppText>
               </View>
             </View>
-          </Card>
+          </SettingsPanel>
         </SettingsSection>
+        ) : null}
       </KeyboardAwareFormScroll>
     </SafeAreaView>
   );
@@ -519,7 +546,6 @@ const styles = StyleSheet.create({
   inlineCopy: {
     flex: 1,
     minWidth: 0,
-    gap: tokens.spacing.xs,
   },
   statusPill: {
     borderRadius: tokens.radius.full,
@@ -535,29 +561,18 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
   },
   sessionStack: {
-    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.xs,
   },
   sessionCard: {
-    gap: tokens.spacing.sm,
-  },
-  sessionRow: {
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   sessionCopy: {
     flex: 1,
     minWidth: 0,
-    gap: tokens.spacing.xs,
-  },
-  sessionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-  },
-  currentPill: {
-    borderRadius: tokens.radius.full,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
   },
 });

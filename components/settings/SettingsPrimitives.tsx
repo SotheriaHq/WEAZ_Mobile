@@ -196,9 +196,45 @@ export function SettingsSection({
 }) {
   return (
     <View style={[styles.section, style]}>
-      <AppText variant="captionBold" tone="muted">
+      <AppText variant="captionBold" tone="secondary">
         {title.toUpperCase()}
       </AppText>
+      {children}
+    </View>
+  );
+}
+
+/**
+ * A settings group with no chrome of its own.
+ *
+ * Each group used to be a `Card` — a full rounded border around content that
+ * already sat inside a labelled section, so a settings screen read as a stack
+ * of boxes inside boxes and every group competed with its neighbour for
+ * attention. The section LABEL is the separator; this adds at most a closing
+ * hairline. Same grouping, a fraction of the ink.
+ */
+export function SettingsPanel({
+  children,
+  divided = true,
+  style,
+}: {
+  children: React.ReactNode;
+  /** Draw the closing hairline. Off for the last group on a screen. */
+  divided?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { theme } = useTheme();
+
+  return (
+    <View
+      style={[
+        styles.panel,
+        divided
+          ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border }
+          : null,
+        style,
+      ]}
+    >
       {children}
     </View>
   );
@@ -226,6 +262,10 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: tokens.spacing.sm,
+  },
+  panel: {
+    gap: tokens.spacing.md,
+    paddingBottom: tokens.spacing.lg,
   },
   settingRow: {
     minHeight: 64,
