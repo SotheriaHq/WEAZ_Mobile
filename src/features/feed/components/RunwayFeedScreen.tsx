@@ -16,7 +16,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useToast } from '@/src/toast/ToastContext';
-import { useShopperOnlyAction } from '@/src/features/shopping/useShopperOnlyAction';
+import { useShopperOnlyAction } from '@/src/features/bagging/useShopperOnlyAction';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
 import { useAppStateListener } from '@/src/hooks/useAppStateListener';
 import { Chip } from '@/components/ui/Chip';

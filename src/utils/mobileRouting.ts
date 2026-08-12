@@ -235,6 +235,13 @@ export function routeForDesignTarget(
     legacyCollectionId?: string | null;
     openComments?: boolean;
     commentId?: string | null;
+    /**
+     * The cover already decoded on the calling screen. Handing it over lets the
+     * viewer paint on its FIRST frame instead of holding a loader for the
+     * detail request — measured at ~1.7s between screen_mounted and data_ready.
+     */
+    coverImage?: string | null;
+    coverFileId?: string | null;
   } = {},
 ): RouterTarget {
   return {
@@ -246,6 +253,8 @@ export function routeForDesignTarget(
         : null),
       ...(options.openComments ? { openComments: '1' } : null),
       ...(options.commentId ? { commentId: options.commentId } : null),
+      ...(options.coverImage ? { coverImage: options.coverImage } : null),
+      ...(options.coverFileId ? { coverFileId: options.coverFileId } : null),
     },
   } as unknown as Href;
 }

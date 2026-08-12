@@ -31,7 +31,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
-import { useShopperOnlyAction } from '@/src/features/shopping/useShopperOnlyAction';
+import { useShopperOnlyAction } from '@/src/features/bagging/useShopperOnlyAction';
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { navPerf } from '@/src/utils/navPerf';

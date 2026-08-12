@@ -7,6 +7,9 @@ import { useToast } from '@/src/toast/ToastContext';
 /**
  * One gate for every buyer-only action: bagging, saving, wishlisting.
  *
+ * Lives beside `BagFlowProvider` deliberately — it is the same rule, and the
+ * bug it fixes was the two living apart.
+ *
  * `BagFlowProvider` already refused bag flows for brand accounts, but SAVING
  * and WISHLISTING went straight to the API with no equivalent check — so a
  * brand could tap the heart on a product and receive a success toast for an

@@ -112,6 +112,31 @@ const getMediaString = (media: CollectionDetailMediaDto, keys: string[]): string
   return null;
 };
 
+/**
+ * The cover, full-bleed, while the detail request is still in flight.
+ *
+ * Its own component because the loading branch sits after every hook in the
+ * parent, and resolving an image URI needs one. Deliberately chrome-free: it is
+ * the same picture the real stage will show, so the swap to the live viewer has
+ * nothing visible to transition.
+ */
+function DetailPreviewFrame({ uri, fileId }: { uri: string | null; fileId: string | null }) {
+  const { theme } = useTheme();
+  const { uri: resolved } = useResolvedImageAsset({
+    src: uri,
+    fileId,
+    enabled: Boolean(uri || fileId),
+  });
+
+  return (
+    <View style={[styles.root, { backgroundColor: theme.colors.runwayStage }]}>
+      {resolved ? (
+        <Image source={{ uri: resolved }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+      ) : null}
+    </View>
+  );
+}
+
 function ViewerMediaSlide({ media, fallbackMedia }: { media: ViewerMedia | null; fallbackMedia?: ViewerMedia | null }) {
   const [imageFailed, setImageFailed] = useState(false);
   const primaryDebugContext = useMemo(
@@ -373,11 +398,16 @@ export function CollectionDetailViewer({
   scope,
   autoOpenComments = false,
   initialCommentId = null,
+  initialCoverImage = null,
+  initialCoverFileId = null,
 }: {
   collectionId: string;
   scope?: string;
   autoOpenComments?: boolean;
   initialCommentId?: string | null;
+  /** Cover already decoded by the calling screen — paints on the first frame. */
+  initialCoverImage?: string | null;
+  initialCoverFileId?: string | null;
 }) {
   const { theme } = useTheme();
   const { status } = useAuth();
@@ -736,6 +766,19 @@ export function CollectionDetailViewer({
   }, [currentMedia?.id, currentThreadCount, executeThreadIntent, isCurrentThreaded, status]);
 
   if (loading) {
+    /**
+     * Hold the artwork, not a spinner.
+     *
+     * The detail request takes ~1.7s between screen_mounted and data_ready, and
+     * this rendered a bare loader for all of it — a dark screen where a picture
+     * should be. When the caller hands over the cover it is already decoded and
+     * in cache, so it paints on the first frame and the rest of the detail
+     * fills in behind it. Without a cover (deep links, notifications) the loader
+     * is still the honest answer.
+     */
+    if (initialCoverImage || initialCoverFileId) {
+      return <DetailPreviewFrame uri={initialCoverImage} fileId={initialCoverFileId} />;
+    }
     return <AppLoaderScreen message="Loading design" />;
   }
 

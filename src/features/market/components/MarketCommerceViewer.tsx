@@ -52,7 +52,7 @@ import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
-import { useShopperOnlyAction } from '@/src/features/shopping/useShopperOnlyAction';
+import { useShopperOnlyAction } from '@/src/features/bagging/useShopperOnlyAction';
 import type { SizeRecommendationResponse } from '@/src/api/ProfileApi';
 import { CONFIDENCE_LABELS, SIZING_REGION_LABELS } from '@/src/utils/sizeRecommendation';
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
