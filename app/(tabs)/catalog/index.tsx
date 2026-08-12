@@ -1327,6 +1327,16 @@ export default function CatalogScreen() {
     [queryClient, targetBrandId],
   );
 
+  /**
+   * The user id that owns this profile photo.
+   *
+   * `targetBrandId` comes off the route and may be a Brand-table id;
+   * `GET /brands/:id` resolves either form, but `/users/:id/profile-photo-view`
+   * does not. The brand profile response always carries the owner's user id, so
+   * prefer it and keep the route param only as a fallback.
+   */
+  const profilePhotoOwnerId = effectiveProfile?.id ?? null;
+
   const handleViewOwnerAvatar = useCallback(() => {
     if (!ownerAvatarUri && !ownerAvatar.src) {
       return;
@@ -1338,7 +1348,11 @@ export default function CatalogScreen() {
       return;
     }
 
-    void ProfilePhotoViewApi.markViewed(targetBrandId)
+    // The route param may be a Brand-table id, but this endpoint keys on the
+    // OWNER's user id — /brands/:id accepts either, /users/:id does not, which
+    // is why this logged "User not found" 404s on every avatar open. The
+    // profile response's own id is always the owner.
+    void ProfilePhotoViewApi.markViewed(profilePhotoOwnerId ?? targetBrandId)
       .then(applyProfilePhotoViewState)
       .catch((error) => {
         console.error('Failed to mark profile photo viewed', error);
@@ -1346,6 +1360,7 @@ export default function CatalogScreen() {
   }, [
     applyProfilePhotoViewState,
     effectiveProfile?.profilePhotoViewState,
+    profilePhotoOwnerId,
     ownerAvatar.src,
     ownerAvatarUri,
     targetBrandId,
@@ -1358,7 +1373,11 @@ export default function CatalogScreen() {
     if (!targetBrandId || !effectiveProfile?.profilePhotoViewState?.canMarkViewed) {
       return;
     }
-    void ProfilePhotoViewApi.markViewed(targetBrandId)
+    // The route param may be a Brand-table id, but this endpoint keys on the
+    // OWNER's user id — /brands/:id accepts either, /users/:id does not, which
+    // is why this logged "User not found" 404s on every avatar open. The
+    // profile response's own id is always the owner.
+    void ProfilePhotoViewApi.markViewed(profilePhotoOwnerId ?? targetBrandId)
       .then(applyProfilePhotoViewState)
       .catch((error) => {
         console.error('Failed to mark profile photo viewed', error);
@@ -1366,6 +1385,7 @@ export default function CatalogScreen() {
   }, [
     applyProfilePhotoViewState,
     effectiveProfile?.profilePhotoViewState,
+    profilePhotoOwnerId,
     targetBrandId,
     visitorAvatar.src,
     visitorAvatarUri,

@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { MessagingApi, createMessageClientId } from '@/src/api/MessagingApi';
+import { brandApi } from '@/src/api/BrandApi';
 import { compressPickedImage } from '@/src/utils/imageCompression';
 import { getMobileUploadValidationMessage } from '@/src/utils/uploadValidation';
 import { useAuth } from '@/src/auth/AuthContext';
@@ -640,10 +641,60 @@ export default function ChatThreadScreen() {
     () => resolveParticipantFromMessages(messages, user?.id ?? null),
     [messages, user?.id],
   );
+
+  /**
+   * Identity for a brand conversation that has no messages yet.
+   *
+   * Fetched only when we have a `brandId` and nothing better — an existing
+   * thread supplies its own participant from the messages, so this never runs
+   * for the common case. `getProfileById` is cached and deduped.
+   */
+  const [brandParticipant, setBrandParticipant] = useState<ConversationParticipant | null>(null);
+  const headerBrandId = validId(activeContext?.brandId) ?? validId(routeContext.brandId);
+
+  useEffect(() => {
+    if (!headerBrandId) {
+      setBrandParticipant(null);
+      return;
+    }
+
+    let active = true;
+    void brandApi
+      .getProfileById(headerBrandId)
+      .then((profile) => {
+        if (!active || !profile) return;
+        const name = profile.brandFullName?.trim() || profile.username?.trim() || null;
+        if (!name) return;
+        setBrandParticipant({
+          id: profile.id ?? headerBrandId,
+          username: profile.username ?? null,
+          firstName: null,
+          lastName: null,
+          name,
+          avatarUrl: profile.logoImage ?? profile.profileImage ?? null,
+        });
+      })
+      .catch(() => {
+        // Leave the placeholder title rather than surfacing an error for a
+        // header decoration — the conversation itself still works.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [headerBrandId]);
   // Header identity priority: the actual message sender (most authoritative,
   // carries the real avatar) → the participant passed from the inbox row →
-  // null. This keeps empty/own-only threads from falling back to "Conversation".
-  const participant = messageParticipant ?? routeParticipant;
+  // the brand we were asked to message → null.
+  //
+  // That third source is why this screen looked "random". Opening a brand
+  // conversation that does not exist yet gives us a `brandId` and nothing
+  // else: there are no messages to derive a sender from, and no inbox row was
+  // involved, so the header fell through to the literal string "Message brand".
+  // The user could not tell WHICH brand they were about to write to — the one
+  // fact the screen exists to establish. The brand profile is already cached by
+  // `getProfileById`, so naming it costs nothing on the common path.
+  const participant = messageParticipant ?? routeParticipant ?? brandParticipant;
   const participantName = getParticipantName(participant);
   const firstOrder = orders[0] ?? null;
   const orderLabel = formatOrderLabel(firstOrder, {
@@ -651,6 +702,8 @@ export default function ChatThreadScreen() {
     ...resolvedRoute?.context,
     threadId: activeContext?.threadId ?? directThreadId,
   });
+  // "Message brand" survives only as the brief gap before the brand profile
+  // resolves — never as the resting state of an identified conversation.
   const title = participantName ?? (validId(activeContext?.brandId) && !activeThreadId ? 'Message brand' : 'Conversation');
   const subtitle =
     orderLabel ??
