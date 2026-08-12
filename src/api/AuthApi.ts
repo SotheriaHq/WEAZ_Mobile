@@ -186,6 +186,26 @@ export async function requestEmailChange(params: {
   return unwrapData<MessageResponse & { pendingEmail?: string }>(response.data);
 }
 
+/**
+ * Phone changes are authorised by a 6-digit code sent to the account's VERIFIED
+ * email — a number nobody has proven control of cannot authorise adding itself.
+ */
+export async function requestPhoneChange(phoneNumber: string) {
+  const response = await apiClient.post<MessageResponse & { expiresInSeconds?: number }>(
+    '/auth/change-phone/request',
+    { phoneNumber },
+  );
+  return unwrapData<MessageResponse & { expiresInSeconds?: number }>(response.data);
+}
+
+export async function confirmPhoneChange(code: string) {
+  const response = await apiClient.post<MessageResponse & { phoneNumber?: string }>(
+    '/auth/change-phone/confirm',
+    { code },
+  );
+  return unwrapData<MessageResponse & { phoneNumber?: string }>(response.data);
+}
+
 export async function listSecuritySessions() {
   const response = await apiClient.get<SecuritySession[]>('/auth/security/sessions');
   return unwrapData<SecuritySession[]>(response.data);

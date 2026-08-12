@@ -75,9 +75,13 @@ export const tokens = {
         surfaceAlt: '#E9EEF5',
         surfaceOverlay: '#FFFFFF',
         overlay: 'rgba(255,255,255,0.75)',
-        text: '#0B1220',
-        textSecondary: '#334155',
-        textMuted: '#475569',
+        // Deeper ink across all three tiers. The old ramp leaned on slate,
+        // which carries a blue cast that reads as washed-out next to a white
+        // surface — and `textMuted` (#475569) is the colour most captions and
+        // helper text use, so the app's most common text was also its faintest.
+        text: '#050914',
+        textSecondary: '#1E293B',
+        textMuted: '#334155',
         textInverse: '#ffffff',
         border: '#D4DCE8',
         primary: '#9333EA',
@@ -115,9 +119,10 @@ export const tokens = {
         surfaceAlt: '#1A2230',
         surfaceOverlay: '#202938',
         overlay: 'rgba(8,10,15,0.58)',
-        text: '#F8FAFC',
-        textSecondary: '#CBD5E1',
-        textMuted: '#94A3B8',
+        // On a near-black ground "deeper" means lighter — same intent, mirrored.
+        text: '#FFFFFF',
+        textSecondary: '#E2E8F0',
+        textMuted: '#B6C2D2',
         textInverse: '#ffffff',
         border: '#303B4D',
         primary: '#9333EA',

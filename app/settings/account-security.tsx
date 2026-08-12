@@ -7,9 +7,11 @@ import { drillDownPush } from '@/src/utils/mobileNavigation';
 
 import {
   changePassword,
+  confirmPhoneChange,
   listSecuritySessions,
   logoutOtherSecuritySessions,
   requestEmailChange,
+  requestPhoneChange,
   revokeSecuritySession,
   type SecuritySession,
 } from '@/src/api/AuthApi';
@@ -137,7 +139,7 @@ export default function AccountSecuritySettingsScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const toast = useToast();
-  const { status, user, validateToken } = useAuth();
+  const { status, user, validateToken, updateUser } = useAuth();
   /**
    * Which concern this screen was opened for.
    *
@@ -176,6 +178,13 @@ export default function AccountSecuritySettingsScreen() {
   const [emailPassword, setEmailPassword] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailPending, setEmailPending] = useState<string | null>(null);
+
+  // Phone change: request emails a 6-digit code, confirm applies it. Two-step,
+  // so the screen tracks which step it is on rather than two separate forms.
+  const [newPhone, setNewPhone] = useState('');
+  const [phoneCode, setPhoneCode] = useState('');
+  const [phoneBusy, setPhoneBusy] = useState(false);
+  const [phoneCodeSent, setPhoneCodeSent] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [nextPassword, setNextPassword] = useState('');
@@ -250,6 +259,48 @@ export default function AccountSecuritySettingsScreen() {
       setEmailBusy(false);
     }
   }, [confirmNewEmail, emailPassword, newEmail, toast]);
+
+  const submitPhoneRequest = useCallback(async () => {
+    const next = newPhone.trim();
+    if (!next) {
+      toast.error('Enter the new phone number.');
+      return;
+    }
+
+    setPhoneBusy(true);
+    try {
+      const response = await requestPhoneChange(next);
+      setPhoneCodeSent(true);
+      setPhoneCode('');
+      toast.success(response.message ?? 'We sent a 6-digit code to your email.');
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'Unable to start the phone change.'));
+    } finally {
+      setPhoneBusy(false);
+    }
+  }, [newPhone, toast]);
+
+  const submitPhoneConfirm = useCallback(async () => {
+    const code = phoneCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      toast.error('Enter the 6-digit code from your email.');
+      return;
+    }
+
+    setPhoneBusy(true);
+    try {
+      const response = await confirmPhoneChange(code);
+      updateUser({ phoneNumber: response.phoneNumber ?? newPhone.trim() });
+      setPhoneCodeSent(false);
+      setNewPhone('');
+      setPhoneCode('');
+      toast.success(response.message ?? 'Phone number updated.');
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'Unable to confirm the phone change.'));
+    } finally {
+      setPhoneBusy(false);
+    }
+  }, [newPhone, phoneCode, toast, updateUser]);
 
   const submitPasswordChange = useCallback(async () => {
     if (!passwordReady) {
@@ -404,6 +455,78 @@ export default function AccountSecuritySettingsScreen() {
               disabled={emailBusy}
               onPress={() => void submitEmailChange()}
             />
+          </SettingsPanel>
+        </SettingsSection>
+        ) : null}
+
+        {/* Phone lives with email: both are "how we reach you", and this screen
+            was reachable from a row labelled "Phone & email" that offered no
+            way to change a phone at all. */}
+        {showEmail ? (
+        <SettingsSection title="Phone">
+          <SettingsPanel>
+            <View style={styles.inlineHeader}>
+              <View style={styles.inlineCopy}>
+                <AppText variant="bodyBold">Current phone</AppText>
+                <AppText variant="captionRegular" tone="muted">
+                  {user?.phoneNumber ?? 'No phone number on file'}
+                </AppText>
+              </View>
+            </View>
+
+            {phoneCodeSent ? (
+              <>
+                <AppText variant="captionRegular" tone="muted">
+                  We emailed a 6-digit code to {user?.email ?? 'your address'}. Enter
+                  it to set {newPhone.trim()} as your number.
+                </AppText>
+                <Input
+                  label="6-digit code"
+                  value={phoneCode}
+                  onChangeText={(value) => setPhoneCode(value.replace(/\D/g, '').slice(0, 6))}
+                  keyboardType="number-pad"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="123456"
+                  maxLength={6}
+                />
+                <Button
+                  title={phoneBusy ? 'Confirming...' : 'Confirm new number'}
+                  loading={phoneBusy}
+                  disabled={phoneBusy || phoneCode.trim().length !== 6}
+                  onPress={() => void submitPhoneConfirm()}
+                />
+                <Button
+                  title="Use a different number"
+                  variant="ghost"
+                  size="sm"
+                  disabled={phoneBusy}
+                  onPress={() => {
+                    setPhoneCodeSent(false);
+                    setPhoneCode('');
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <Input
+                  label="New phone number"
+                  value={newPhone}
+                  onChangeText={setNewPhone}
+                  keyboardType="phone-pad"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="+234 800 000 0000"
+                  helperText="We email a 6-digit code to confirm it is really you."
+                />
+                <Button
+                  title={phoneBusy ? 'Sending...' : 'Send confirmation code'}
+                  loading={phoneBusy}
+                  disabled={phoneBusy || !newPhone.trim()}
+                  onPress={() => void submitPhoneRequest()}
+                />
+              </>
+            )}
           </SettingsPanel>
         </SettingsSection>
         ) : null}
