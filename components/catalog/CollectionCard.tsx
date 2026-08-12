@@ -31,6 +31,8 @@ export interface CollectionCardProps {
   saveBusy?: boolean;
   showActions?: boolean;
   isDraft?: boolean;
+  /** Status the surrounding list is already filtered to; matching cards drop the chip. */
+  impliedStatus?: string | null;
   isOwner?: boolean;
   cardWidth?: number;
   onClientRetry?: (collection: CollectionDto) => void;
@@ -88,6 +90,7 @@ export const CollectionCard = React.memo(function CollectionCard({
   saveBusy = false,
   showActions = true,
   isDraft = false,
+  impliedStatus = null,
   isOwner = false,
   cardWidth,
   onClientRetry,
@@ -137,6 +140,16 @@ export const CollectionCard = React.memo(function CollectionCard({
       : null;
   const needsReviewDecision =
     backendStatus === 'CHANGES_REQUESTED' || backendStatus === 'REJECTED';
+
+  /**
+   * True when the surrounding list is ALREADY filtered to this card's status —
+   * the Drafts tab, the In Review tab, and so on. The chip then says nothing
+   * the heading has not, so it is dropped and the artwork gets the corner back.
+   */
+  const statusIsImplied =
+    Boolean(impliedStatus) &&
+    String(impliedStatus).toUpperCase() ===
+      (isDraft && !backendStatus ? 'DRAFT' : backendStatus || 'DRAFT');
 
   const isMinimalCard = isDraft || Boolean(reviewStatusLabel);
 
@@ -358,13 +371,15 @@ export const CollectionCard = React.memo(function CollectionCard({
                     </>
                   )}
                 </View>
-              ) : isDraft ? (
+              ) : isDraft && !statusIsImplied ? (
+                // Suppressed on the Drafts tab: the heading has already said it,
+                // so the chip only restates where the user is standing.
                 <View style={[styles.statusPill, { backgroundColor: 'transparent' }]}>
                   <AppText variant="badgeLabel" tone="primary" numberOfLines={1}>
                     DRAFT
                   </AppText>
                 </View>
-              ) : isOwner && reviewStatusLabel ? (
+              ) : isOwner && reviewStatusLabel && !statusIsImplied ? (
                 <Pressable
                   onPress={needsReviewDecision ? () => setReviewDecisionOpen(true) : undefined}
                   style={[styles.statusPill, { backgroundColor: 'transparent' }]}

@@ -73,8 +73,16 @@ function TabItem({ tab, tabIndex, activeTab, swipeProgress, handlePress, handleT
     }
 
     return {
-      fontFamily: isActive ? tokens.fontFamily.bold : tokens.fontFamily.medium,
-      color: isActive ? theme.colors.primary : theme.colors.textMuted,
+      // Deeper and bolder on both sides of the state.
+      // Inactive was `medium` in `textMuted` — the lightest weight in the
+      // lightest tone, so the tabs a user has NOT selected barely registered as
+      // tappable at all. Inactive is now semiBold in `textSecondary`, and the
+      // active tab moves to bold, keeping the gap between them.
+      // `fontWeight` is emitted alongside the family because this is a raw
+      // `Animated.Text`, not `AppText`, so nothing else supplies it.
+      fontFamily: isActive ? tokens.fontFamily.bold : tokens.fontFamily.semiBold,
+      fontWeight: isActive ? '700' : '600',
+      color: isActive ? theme.colors.primary : theme.colors.textSecondary,
     };
   }, [activeTab, swipeProgress, tab.key, tabIndex, theme]);
 
@@ -97,7 +105,10 @@ function TabItem({ tab, tabIndex, activeTab, swipeProgress, handlePress, handleT
       <Animated.Text
         style={[
           styles.tabLabel,
-          { fontSize: tokens.typography.caption.size, lineHeight: tokens.typography.caption.lineHeight },
+          // `meta` (13px) rather than `caption` (12px): a tab is a primary
+          // navigation control, not supporting text, and 12px sat below
+          // everything it was navigating between.
+          { fontSize: tokens.typography.meta.size, lineHeight: tokens.typography.meta.lineHeight },
           animatedLabelStyle,
         ]}
       >

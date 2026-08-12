@@ -40,6 +40,8 @@ interface CollectionsGridProps {
   saveBusyById?: Record<string, boolean>;
   isOwner?: boolean;
   showDrafts?: boolean;
+  /** Status this grid is filtered to; cards matching it drop their status chip. */
+  impliedStatus?: string | null;
   emptyComponent?: React.ReactNode;
   numColumns?: number;
   initialRenderCount?: number;
@@ -77,6 +79,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   saveBusyById,
   isOwner = false,
   showDrafts = false,
+  impliedStatus = null,
   emptyComponent,
   numColumns,
   initialRenderCount = 6,
@@ -117,6 +120,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
             collection={item}
             cardWidth={cardWidth}
             isDraft={isDraft}
+            impliedStatus={impliedStatus}
             isOwner={isOwner}
             onPress={onCollectionPress}
             onEdit={onEdit}
@@ -133,7 +137,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
         </View>
       );
     },
-    [cardWidth, isOwner, onClientDismiss, onClientRetry, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts],
+    [cardWidth, isOwner, onClientDismiss, onClientRetry, onCollectionPress, onComment, onDelete, onEdit, onLike, onSave, onShare, saveBusyById, savedById, showDrafts, impliedStatus],
   );
 
   // Loading skeleton

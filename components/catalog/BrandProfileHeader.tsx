@@ -241,20 +241,15 @@ function BannerHeader({
       </View>
 
       <View style={[styles.bannerShade, { backgroundColor: theme.colors.backdrop }]} />
+      {/* A shimmer, not a status report.
+          This was a blurred overlay carrying a pill that said "Uploading" —
+          chrome announcing a background task the user already knows they
+          started, sitting on top of the image they are trying to see. A
+          skeleton says the same thing without words, and because it is the
+          shape of the thing being loaded it simply stops when the picture is
+          there. No transition to narrate, nothing to read. */}
       {bannerLoading ? (
-        <View style={styles.bannerLoadingOverlay} pointerEvents="none">
-          <BlurView
-            intensity={18}
-            tint={scheme === 'dark' ? 'dark' : 'light'}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={[styles.loadingPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
-            <ActivityIndicator size="small" color={theme.colors.primary} />
-            <AppText variant="captionBold" tone="default">
-              Uploading
-            </AppText>
-          </View>
-        </View>
+        <Skeleton style={styles.bannerLoadingOverlay} borderRadius={0} />
       ) : null}
 
       <View style={[styles.bannerControls, { top: insets.top }]}>
@@ -388,15 +383,9 @@ function OverlayAvatar({
         )}
       </View>
 
+      {/* Same treatment as the banner: the avatar's own shape, shimmering. */}
       {avatarLoading ? (
-        <View style={[styles.avatarLoading, { backgroundColor: theme.colors.overlay }]} pointerEvents="none">
-          <BlurView
-            intensity={16}
-            tint="dark"
-            style={StyleSheet.absoluteFill}
-          />
-          <ActivityIndicator size="small" color={theme.colors.primary} />
-        </View>
+        <Skeleton style={styles.avatarLoading} borderRadius={tokens.radius.xl - 3} />
       ) : null}
 
       {isOwner && onEditAvatar ? (

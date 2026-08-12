@@ -1928,12 +1928,9 @@ export default function CatalogScreen() {
         title: 'Photo library',
         onPress: () => launchComposer({ source: 'library', openPicker: true }),
       },
-      {
-        key: 'blank',
-        icon: '✏️',
-        title: 'Start blank',
-        onPress: () => launchComposer({ openPicker: false }),
-      },
+      // "Start blank" removed: a design cannot be published without media, so
+      // the option only ever led to a composer that immediately asked for the
+      // photo the other two options already collect.
     ],
     [launchComposer],
   );
@@ -2226,6 +2223,13 @@ export default function CatalogScreen() {
                 isLoading={false}
                 isOwner={isOwner}
                 showDrafts={visibilityFilter === 'Drafts'}
+                // The visibility filter already names the status, so its cards
+                // do not repeat it — "DRAFT" on every tile of the Drafts tab.
+                impliedStatus={
+                  visibilityFilter === 'Drafts'
+                    ? 'DRAFT'
+                    : REVIEW_VISIBILITY_STATUS[visibilityFilter] ?? null
+                }
                 onCollectionPress={handleCollectionPress}
                 onEdit={handleEditCollection}
                 onDelete={handleDeleteCollection}

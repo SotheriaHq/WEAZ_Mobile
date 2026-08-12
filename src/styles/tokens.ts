@@ -124,7 +124,12 @@ export const tokens = {
         textSecondary: '#E2E8F0',
         textMuted: '#B6C2D2',
         textInverse: '#ffffff',
-        border: '#303B4D',
+        // #303B4D against the #111620 surface was a hard, opaque rule that read
+        // louder than the content it framed. A dark-theme border should sit
+        // just clear of its surface — enough to divide, not enough to look
+        // drawn on. Focus states carry the brand colour, so nothing depends on
+        // the resting border being loud.
+        border: '#1F2733',
         primary: '#9333EA',
         primaryActive: '#7E22CE',
         primaryDark: '#7E22CE',
