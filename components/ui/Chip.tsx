@@ -35,7 +35,7 @@ type Props = {
   onDarkStage?: boolean;
 };
 
-export function Chip({
+function ChipComponent({
   label,
   selected,
   onPress,
@@ -173,6 +173,34 @@ export function Chip({
     </Animated.View>
   );
 }
+
+/**
+ * Memoized because chips are always rendered as a grid.
+ *
+ * Selecting one chip re-rendered every chip in the sheet — forty-odd components
+ * each re-resolving the theme and rebuilding a style array — before the tapped
+ * one could repaint. That is the lag between pressing a chip and seeing it fill.
+ * Only the chips whose props actually changed re-render now, which is the two
+ * involved in a selection change.
+ *
+ * `onPress` is deliberately NOT compared: call sites build it inline, so
+ * comparing it would defeat the memo entirely, and the handler is only read on
+ * press (never during render) so a stale-by-one-render reference cannot show
+ * the wrong state. Call sites that need identity stability should pass a
+ * `useCallback`.
+ */
+export const Chip = React.memo(
+  ChipComponent,
+  (previous, next) =>
+    previous.label === next.label &&
+    previous.selected === next.selected &&
+    previous.disabled === next.disabled &&
+    previous.pending === next.pending &&
+    previous.variant === next.variant &&
+    previous.swatchColor === next.swatchColor &&
+    previous.onDarkStage === next.onDarkStage &&
+    previous.style === next.style,
+);
 
 const styles = StyleSheet.create({
   touchTarget: {

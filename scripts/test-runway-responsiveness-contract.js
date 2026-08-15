@@ -58,11 +58,18 @@ expectNotMatches(
   'scroll event must not carry a JS listener on the per-frame path',
 );
 
-// The stage behind the pages is a deep-black matte in BOTH themes
-// (styles.feedListContainer). The scrim must dissolve pages toward that same
-// matte — scrimming toward theme.colors.bg makes the light theme brighten at the
-// midpoint of every swipe, which is the fatigue this work exists to remove.
-expectIncludes(feedScreen, 'scrimColor={tokens.themes.dark.colors.bg}', 'scrim must match the Runway stage matte in both themes');
+// The scrim must dissolve pages toward the STAGE matte — scrimming toward
+// theme.colors.bg makes the light theme brighten at the midpoint of every swipe,
+// which is the fatigue this work exists to remove.
+//
+// This asserted the literal `tokens.themes.dark.colors.bg`, from when the stage
+// was pinned deep-black in both themes. The stage has since become a themed
+// token of its own (`runwayStage`: #E9EEF5 light / #080A0F dark), so the literal
+// assertion had been failing permanently and therefore guarding nothing. The
+// invariant it was written to protect is unchanged and is what is checked now:
+// scrim to the stage, never to the page background.
+expectIncludes(feedScreen, 'scrimColor={theme.colors.runwayStage}', 'scrim must match the Runway stage matte in both themes');
+expectNotMatches(feedScreen, /scrimColor=\{theme\.colors\.bg\}/, 'scrim must not resolve to the page background');
 
 // Geometry itself is NOT asserted here. The curves live in a pure module and are
 // covered behaviourally by `npm run test:runway-transit-curves`, which evaluates

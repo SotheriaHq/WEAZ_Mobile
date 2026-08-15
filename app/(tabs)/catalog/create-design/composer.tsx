@@ -681,6 +681,24 @@ export default function CreateDesignComposerScreen() {
     updateField,
   ]);
 
+  /**
+   * Picking a garment type IS the decision — there is nothing left to confirm.
+   *
+   * The final step used to set the draft and wait for a Done press, which asks
+   * the user to state the same intent twice. Commits from the tapped value
+   * rather than from state, because the state write has not landed yet in this
+   * tick and reading `draftSubCategoryId` here would commit the previous choice.
+   */
+  const handleSubCategorySelect = useCallback(
+    (subCategoryId: string) => {
+      setDraftSubCategoryId(subCategoryId);
+      updateField('categoryId', draftCategoryId);
+      updateField('subCategoryId', subCategoryId);
+      closeCategorySheet();
+    },
+    [closeCategorySheet, draftCategoryId, updateField],
+  );
+
   useEffect(() => {
     if (assets.length > 0) {
       hasEverHadAssetsRef.current = true;
@@ -1197,7 +1215,7 @@ export default function CreateDesignComposerScreen() {
                     setCategoryStep('subcategory');
                     return;
                   }
-                  setDraftSubCategoryId(option.value);
+                  handleSubCategorySelect(option.value);
                 }}
                 style={({ pressed }) => [
                   styles.categoryOption,

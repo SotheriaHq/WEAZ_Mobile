@@ -349,22 +349,35 @@ export function AppBottomSheet({
                   ) : null}
                   {subtitle ? <AppText variant="body" tone="muted">{subtitle}</AppText> : null}
                 </View>
+                {/*
+                  One primary confirm, never a bare "X".
+
+                  The close control was an unstyled glyph and Done was a
+                  `secondary` button, so the sheet's only two exits both read as
+                  flat text — nothing in the header looked like the thing to
+                  press to commit. A sheet that has an `onDone` now shows a
+                  solid primary button and no X, because Done IS the close. A
+                  sheet with only `showCloseButton` gets a real Done-shaped
+                  button rather than a glyph, since dismissing these sheets
+                  keeps the selection anyway.
+                */}
                 <View style={styles.headerActions}>
                   {onDone ? (
                     <Button
                       title={doneLabel}
                       size="sm"
-                      variant="secondary"
                       onPress={onDone}
                       disabled={doneDisabled}
                       loading={loading}
                       style={styles.doneButton}
                     />
-                  ) : null}
-                  {showCloseButton ? (
-                    <Pressable onPress={onClose} style={({ pressed }) => [styles.closeButton, pressed ? styles.pressed : null]}>
-                      <AppText variant="subtitle" tone="muted">X</AppText>
-                    </Pressable>
+                  ) : showCloseButton ? (
+                    <Button
+                      title={doneLabel}
+                      size="sm"
+                      onPress={onClose}
+                      style={styles.doneButton}
+                    />
                   ) : null}
                 </View>
                 </View>

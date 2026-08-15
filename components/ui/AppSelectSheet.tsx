@@ -439,15 +439,22 @@ export function AppMultiSelectSheet({
       title={title}
       subtitle={subtitle}
       onClose={onClose}
+      /*
+        Closing SAVES, however the sheet was closed.
+
+        Committing only via Done meant a swipe-down — the natural way to put a
+        bottom sheet away — silently threw the selection out. Every tap in here
+        is already an explicit choice reflected in the UI; there is nothing for
+        a second confirmation to protect, and no Cancel affordance was ever
+        offered to imply otherwise. `onDismiss` fires after the close animation
+        and reads the live `draft` through a ref, so this is the same commit
+        Done performed, just no longer conditional on which exit was used.
+      */
       onDismiss={() => {
-        const nextValues = pendingValuesRef.current;
         pendingValuesRef.current = null;
-        if (nextValues) onChange(nextValues);
+        onChange(normalizeTagList(draft, maxSelected ?? 10));
       }}
-      onDone={() => {
-        pendingValuesRef.current = normalizeTagList(draft, maxSelected ?? 10);
-        onClose();
-      }}
+      onDone={onClose}
       scrollable={false}
       doneLabel={doneLabel}
       keyboardBehavior="auto"

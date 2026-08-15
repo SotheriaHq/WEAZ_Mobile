@@ -7,7 +7,6 @@ import { Animated, Easing, FlatList, InteractionManager, Platform, Pressable, Re
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
@@ -173,6 +172,41 @@ const isValidMediaItem = (item: MarketItem): boolean => {
   const media = fallback[0];
   const hasUri = normalizeStableUri(media.url) || normalizeStableUri(media.fileId);
   return Boolean(hasUri);
+};
+
+/**
+ * The feed's price line.
+ *
+ * Returns null rather than a placeholder when there is no price: a design that
+ * is not for sale is a normal case on the Runway, and "—" or "Price on request"
+ * would be inventing a commercial state the brand never set. Sale price wins
+ * when present, and a genuine range renders as a range instead of collapsing to
+ * a single number the buyer might not actually be able to pay.
+ */
+const formatFeedAmount = (amount: number, currency = 'NGN') => {
+  try {
+    return new Intl.NumberFormat('en-NG', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${currency} ${Math.round(amount).toLocaleString('en-NG')}`;
+  }
+};
+
+const formatFeedPrice = (item: MarketItem): string | null => {
+  const isAmount = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0;
+
+  const min = isAmount(item.saleMinPrice) ? item.saleMinPrice : item.minPrice;
+  const max = isAmount(item.saleMaxPrice) ? item.saleMaxPrice : item.maxPrice;
+
+  if (!isAmount(min)) return null;
+  if (isAmount(max) && max > min) {
+    return `${formatFeedAmount(min)} – ${formatFeedAmount(max)}`;
+  }
+  return formatFeedAmount(min);
 };
 
 const sortFeedItemsForDisplay = (feedItems: MarketItem[]) =>
@@ -537,52 +571,77 @@ type FeedMetaOverlayProps = {
   mediaId?: string | null;
   handle: string;
   title: string;
+  priceLabel: string | null;
   threadCount: number;
   feedPosition?: number;
-  overlaySurface: {
-    backgroundColor: string;
-    borderColor: string;
-    blurIntensity: number;
-  };
   bottomClearance: number;
   visible: boolean;
   onBrandPress: () => void;
 };
 
+/**
+ * The caption band.
+ *
+ * This was a bordered, blurred card floating over the media. Two problems: the
+ * hairline border drew a hard rectangle around the text — the "too compact"
+ * look — and a fixed-size card cannot guarantee contrast, because the media
+ * behind it is arbitrary.
+ *
+ * A full-width gradient wash solves both. It has no edge to read as a box, and
+ * because it darkens the media itself rather than covering it with a panel, the
+ * text stays legible over a white dress and a night shot alike. The band spans
+ * the full page width so the gradient has nowhere to terminate visibly; the
+ * text keeps its own inset (clear of the action rail) inside it.
+ */
 const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
   itemId,
   mediaId,
   handle,
   title,
+  priceLabel,
   threadCount,
   feedPosition,
-  overlaySurface,
   bottomClearance,
   visible,
   onBrandPress,
 }: FeedMetaOverlayProps) {
   return (
     <View
-      style={[styles.meta, { bottom: bottomClearance + tokens.spacing.sm, opacity: visible ? 1 : 0 }]}
-      pointerEvents={visible ? 'auto' : 'none'}
+      style={[styles.meta, { paddingBottom: bottomClearance + tokens.spacing.sm, opacity: visible ? 1 : 0 }]}
+      pointerEvents={visible ? 'box-none' : 'none'}
       accessibilityElementsHidden={!visible}
       importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}
     >
-      <BlurView
-        // Pinned dark to match `overlaySurface` — see its comment.
-        tint="dark"
-        intensity={overlaySurface.blurIntensity}
-        style={[
-          styles.metaCard,
-          {
-            backgroundColor: overlaySurface.backgroundColor,
-            borderColor: overlaySurface.borderColor,
-          },
+      <LinearGradient
+        pointerEvents="none"
+        // Eased ramp, not a two-stop linear one: a straight fade to black leaves
+        // a visible diagonal seam where it meets the media. The extra mid stops
+        // put the steep part of the curve behind the text and let the top of the
+        // band approach zero gently enough to have no discernible edge.
+        colors={[
+          'rgba(0,0,0,0)',
+          'rgba(0,0,0,0.18)',
+          'rgba(0,0,0,0.46)',
+          'rgba(0,0,0,0.72)',
         ]}
-      >
-        <AppText variant="subtitle" tone="inverse" numberOfLines={2} ellipsizeMode="tail">
+        locations={[0, 0.34, 0.68, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.metaContent} pointerEvents="box-none">
+        <AppText
+          variant="subtitle"
+          tone="inverse"
+          numberOfLines={2}
+          ellipsizeMode="tail"
+          style={styles.metaTextShadow}
+        >
           {title}
         </AppText>
+        {priceLabel ? (
+          <AppText variant="bodyBold" tone="inverse" numberOfLines={1} style={styles.metaTextShadow}>
+            {priceLabel}
+          </AppText>
+        ) : null}
         {handle ? (
           <Pressable
             onPress={onBrandPress}
@@ -591,7 +650,13 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
             accessibilityLabel={`Open ${handle} catalog`}
             style={({ pressed }) => pressed && styles.metaHandlePressed}
           >
-            <AppText variant="captionRegular" tone="secondary" numberOfLines={1} ellipsizeMode="tail">
+            <AppText
+              variant="captionRegular"
+              tone="inverse"
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={[styles.metaTextShadow, styles.metaHandle]}
+            >
               by {handle}
             </AppText>
           </Pressable>
@@ -604,7 +669,7 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
           feedPosition={feedPosition}
           visible={visible}
         />
-      </BlurView>
+      </View>
     </View>
   );
 });
@@ -994,18 +1059,10 @@ export function RunwayFeedScreen() {
   );
   const bottomClearance = immersiveOverlayBottomClearance;
   const overlayScrollPadding = bottomClearance;
-  // Dark glass in both themes: this card floats on the *photograph*, not on the
-  // stage, and its text is `tone="inverse"`. Resolving the ambient scheme gave
-  // the light theme a 92%-white pane under white text — the card was legible
-  // only in dark mode.
-  const overlaySurface = useMemo(
-    () => ({
-      backgroundColor: tokens.themes.dark.colors.glassSurfaceStrong,
-      borderColor: tokens.themes.dark.colors.glassBorder,
-      blurIntensity: tokens.themes.dark.colors.glassBlur as number,
-    }),
-    [],
-  );
+  // `overlaySurface` (pinned dark glass for the caption card) lived here. The
+  // caption is a gradient wash now — see FeedMetaOverlay — so there is no pane
+  // to colour. The concern it encoded still holds and is why the wash is a fixed
+  // dark ramp rather than a themed one: it sits on the photograph, not the stage.
 
   useEffect(() => {
     feedMountCount += 1;
@@ -2129,9 +2186,9 @@ export function RunwayFeedScreen() {
               mediaId={currentMediaId}
               handle={handle}
               title={item.collectionTitle}
+              priceLabel={formatFeedPrice(item)}
               threadCount={threadCountRaw}
               feedPosition={entry.realIndex}
-              overlaySurface={overlaySurface}
               bottomClearance={bottomClearance}
               visible={isMetaVisible}
               onBrandPress={() => handleOpenBrand(item.brandId)}
@@ -2153,7 +2210,6 @@ export function RunwayFeedScreen() {
       handleSaveLook,
       handleThreadPress,
       openCommentsSheet,
-      overlaySurface,
       pageHeight,
       pageScaleEnabled,
       patchedBrandIds,
@@ -2593,8 +2649,18 @@ export function RunwayFeedScreen() {
             getItemLayout={getFeedItemLayout}
             directionalLockEnabled
             nestedScrollEnabled={false}
-            bounces={false}
-            overScrollMode="never"
+            /* Pull-to-refresh needs overscroll to exist, and these two flags
+               removed it everywhere. The RefreshControl below was mounted and
+               correctly gated to the first page, but `bounces={false}` /
+               `overScrollMode="never"` meant the pull that arms it could never
+               happen — the control was unreachable, not broken.
+
+               They are still right for every OTHER page, where an overscroll at
+               a page boundary reads as a failed swipe. So overscroll is enabled
+               exactly where refresh lives (the first design) and nowhere else,
+               which leaves the paging feel documented above untouched. */
+            bounces={activePageIndex === 0}
+            overScrollMode={activePageIndex === 0 ? 'auto' : 'never'}
             removeClippedSubviews={false}
             initialNumToRender={2}
             maxToRenderPerBatch={3}
@@ -2953,19 +3019,30 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   meta: {
+    // Full-bleed so the gradient has no visible left/right termination. The
+    // text inset that used to live here moved to `metaContent`.
     position: 'absolute',
-    left: 16,
-    right: 96,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: 64,
+    justifyContent: 'flex-end',
   },
-  metaCard: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: tokens.radius.md,
+  metaContent: {
+    paddingLeft: 16,
+    // Clear of the action rail, as before.
+    paddingRight: 96,
     gap: 3,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
+  },
+  // Belt and braces with the gradient: on a blown-out highlight the wash alone
+  // can still leave white-on-white, and a shadow costs nothing on text this size.
+  metaTextShadow: {
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  metaHandle: {
+    opacity: 0.86,
   },
   metaHandlePressed: {
     opacity: 0.72,
