@@ -68,6 +68,19 @@ import type { FeedListEntry, FeedViewerMedia } from '@/src/features/feed/compone
 let feedScrollOffset = 0;
 let feedActiveIndex = 0;
 let feedMountCount = 0;
+
+/**
+ * Has the feed been revalidated against the network yet in THIS app session?
+ *
+ * Module scope on purpose: it survives screen remounts (tab hops must stay
+ * cheap) but resets when the process does, which is exactly the boundary we
+ * need. Opening the app is when a user expects a fresh feed, and without this
+ * the persisted cache was served whole for its 5-minute TTL — so every restart
+ * inside that window replayed the identical order, while a pull-to-refresh
+ * reshuffled correctly because it always hits the network. That is the
+ * "same content in the same stream" report.
+ */
+let feedRevalidatedThisSession = false;
 const carouselIndexMap = new Map<string, number>();
 
 const devLog = __DEV__ ? (prefix: string, ...args: any[]) => feedDevLog(prefix, { args }) : () => {};
@@ -1391,8 +1404,15 @@ export function RunwayFeedScreen() {
         fetchMs: 0,
         itemCount: sortedCachedItems.length,
       });
-      if (cached.isFresh) {
-        // Cache is fresh - no need to revalidate
+      if (cached.isFresh && feedRevalidatedThisSession) {
+        // Fresh cache AND we have already talked to the server this session —
+        // nothing to gain from another round trip.
+        //
+        // The session check is the important half. Skipping purely on freshness
+        // meant a cold start inside the 5-minute TTL replayed the previous
+        // session's exact order; the feed is a per-request reshuffle, so a
+        // restart must go and get a new one. The cached page is still painted
+        // first, so this costs nothing visible.
         setLoading(false);
         return;
       }
@@ -1440,9 +1460,23 @@ export function RunwayFeedScreen() {
         title: item.collectionTitle,
         isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
       })));
-      // Pin whatever is already on screen; the reshuffled page only supplies
-      // what comes below it. See `reconcileFeedItems`.
-      const nextItems = reconcileFeedItems(itemsRef.current, sortedItems, feedActiveIndex);
+      /**
+       * Pin whatever is already on screen; the reshuffled page only supplies
+       * what comes below it. See `reconcileFeedItems`.
+       *
+       * EXCEPT on the session's first revalidation. Pinning exists so the design
+       * a viewer is currently looking at cannot change identity mid-look — but
+       * on a cold start nobody has looked at anything yet, and pinning the
+       * restored cache's head meant the server's fresh order was applied to
+       * everything BELOW a first item that never changed. The feed opened on the
+       * same design every launch even once the revalidation above was fixed.
+       */
+      const isFirstRevalidationThisSession = !feedRevalidatedThisSession;
+      feedRevalidatedThisSession = true;
+      const nextItems =
+        isFirstRevalidationThisSession && feedActiveIndex === 0
+          ? sortedItems
+          : reconcileFeedItems(itemsRef.current, sortedItems, feedActiveIndex);
       setItems(nextItems);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
@@ -2395,6 +2429,8 @@ export function RunwayFeedScreen() {
     try {
       const res = await fetchMarketFeedPage({ cursor: null, tag: activeTag, counts: 'combined' });
       const sortedItems = sortFeedItemsForDisplay(res.items);
+      // An explicit pull IS a revalidation, so the next mount need not force one.
+      feedRevalidatedThisSession = true;
       setItems(sortedItems);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);
