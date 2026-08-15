@@ -1021,6 +1021,21 @@ export function DesignEditorProvider({
       setSaveMessage(action === 'publish' ? 'Preparing to go live...' : 'Preparing draft...');
       isSavingRef.current = true;
 
+      /**
+       * Let the button paint its spinner before the heavy work starts.
+       *
+       * Everything below — payload assembly, the recovery snapshot that copies
+       * every picked asset — runs synchronously in this same tick, so React
+       * batched the `setSaveAction` above into a render that never got a frame
+       * to commit. The button stayed idle and the screen sat still for what
+       * looked like a hang, with nothing to say the press had registered; users
+       * pressed Create a second time. One yield is enough to commit the loading
+       * state first, and it costs a frame.
+       */
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+
       try {
         const allowedFilterDimensionIds = new Set(filterDimensions.map((dimension) => dimension.id));
         const filterValueIds = selectedFilterValueIds.filter((valueId) =>
@@ -1143,20 +1158,32 @@ export function DesignEditorProvider({
           },
         } as any);
         const resolvePublishVisibility = (status?: string | null) => {
-          // After Go Live, route by the design's resolved publication status so
-          // the owner lands on the tab that actually contains the item. Newly
-          // submitted designs are typically IN_REVIEW (not Public).
+          /**
+           * Route by the design's RESOLVED status, and default to review.
+           *
+           * The default arm used to return Public/Private — the same as
+           * PUBLISHED — so any status this switch did not name (PROCESSING, or
+           * an absent field on a slow write) sent the owner to the Public tab
+           * for a design that had only just been submitted. The design was not
+           * there, because it was in review. Submission does not publish
+           * anything, so "unrecognized" must mean review, never live: the only
+           * way to land on Public is the server explicitly saying PUBLISHED.
+           */
           switch (String(status ?? '').toUpperCase()) {
             case 'IN_REVIEW':
               return 'In Review';
-            case 'CHANGES_REQUESTED':
-              return 'Changes Requested';
-            case 'REJECTED':
-              return 'Rejected';
             case 'PUBLISHED':
               return form.visibility === 'PRIVATE' ? 'Private' : 'Public';
+            case 'CHANGES_REQUESTED':
+            case 'REJECTED':
+            case 'FAILED':
+            case 'PROCESSING':
+              // All merged into the one bucket that means "this needs you".
+              return 'Needs Attention';
+            case 'DRAFT':
+              return 'Drafts';
             default:
-              return form.visibility === 'PRIVATE' ? 'Private' : 'Public';
+              return 'In Review';
           }
         };
 

@@ -33,6 +33,19 @@ export function useBrandProfileQuery(brandId?: string | null, options?: EnabledO
     queryKey,
     queryFn: () => brandApi.getProfileById(String(brandId)),
     enabled: isEnabled(brandId, options?.enabled ?? true),
+    /**
+     * Opts out of the global `refetchOnMount: false` perf default.
+     *
+     * The query cache is PERSISTED to storage, so without this a mount is
+     * served data from a previous app launch and nothing ever refetches it —
+     * the only escape was an explicit pull-to-refresh. For these queries that
+     * is a correctness bug, not an acceptable stale read: it is what made a
+     * brand's own email arrive blank on their profile, and what let catalog
+     * tab counts sit on last session's numbers. `true` (not 'always') still
+     * respects staleTime, so a remount inside the stale window is free and the
+     * tab-navigator thrash the default guards against does not return.
+     */
+    refetchOnMount: true,
   });
 }
 
@@ -108,6 +121,19 @@ export function useBrandDraftsQuery(
     // entry (the tab bar needs its count before the tab is opened), so re-entry
     // inside the stale window must not refetch.
     staleTime: WIEZ_QUERY_STALE_TIME_MS,
+    /**
+     * Opts out of the global `refetchOnMount: false` perf default.
+     *
+     * The query cache is PERSISTED to storage, so without this a mount is
+     * served data from a previous app launch and nothing ever refetches it —
+     * the only escape was an explicit pull-to-refresh. For these queries that
+     * is a correctness bug, not an acceptable stale read: it is what made a
+     * brand's own email arrive blank on their profile, and what let catalog
+     * tab counts sit on last session's numbers. `true` (not 'always') still
+     * respects staleTime, so a remount inside the stale window is free and the
+     * tab-navigator thrash the default guards against does not return.
+     */
+    refetchOnMount: true,
   });
 }
 
@@ -140,7 +166,20 @@ export function useBrandDraftsQuery(
         return result.items;
       },
       enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
-        staleTime: WIEZ_QUERY_STALE_TIME_MS,
+      staleTime: WIEZ_QUERY_STALE_TIME_MS,
+      /**
+       * Opts out of the global `refetchOnMount: false` perf default.
+       *
+       * The query cache is PERSISTED to storage, so without this a mount is
+       * served data from a previous app launch and nothing ever refetches it —
+       * the only escape was an explicit pull-to-refresh. For these queries that
+       * is a correctness bug, not an acceptable stale read: it is what made a
+       * brand's own email arrive blank on their profile, and what let catalog
+       * tab counts sit on last session's numbers. `true` (not 'always') still
+       * respects staleTime, so a remount inside the stale window is free and the
+       * tab-navigator thrash the default guards against does not return.
+       */
+      refetchOnMount: true,
     });
   }
 
@@ -166,7 +205,20 @@ export function useBrandDraftsQuery(
         return result.items;
       },
       enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
-        staleTime: WIEZ_QUERY_STALE_TIME_MS,
+      staleTime: WIEZ_QUERY_STALE_TIME_MS,
+      /**
+       * Opts out of the global `refetchOnMount: false` perf default.
+       *
+       * The query cache is PERSISTED to storage, so without this a mount is
+       * served data from a previous app launch and nothing ever refetches it —
+       * the only escape was an explicit pull-to-refresh. For these queries that
+       * is a correctness bug, not an acceptable stale read: it is what made a
+       * brand's own email arrive blank on their profile, and what let catalog
+       * tab counts sit on last session's numbers. `true` (not 'always') still
+       * respects staleTime, so a remount inside the stale window is free and the
+       * tab-navigator thrash the default guards against does not return.
+       */
+      refetchOnMount: true,
     });
   }
 
