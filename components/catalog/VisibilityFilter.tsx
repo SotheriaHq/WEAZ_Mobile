@@ -128,11 +128,10 @@ export function VisibilityFilter({
                 onPress={() => onChange('In Review')}
                 badge={inReviewCount}
               />
-              <VisibilitySegment
-                label="Changes Requested"
-                isActive={selected === 'Changes Requested'}
-                onPress={() => onChange('Changes Requested')}
-              />
+              {/* "Changes Requested" was its own chip here. It is now folded
+                  into Needs Attention — same demand on the owner, one place to
+                  answer it. 'Changes Requested' survives as a deep-link value
+                  and normalizes onto Needs Attention. */}
               <VisibilitySegment
                 label="Rejected"
                 isActive={selected === 'Rejected'}

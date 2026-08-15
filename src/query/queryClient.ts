@@ -29,20 +29,22 @@ export const queryClient = new QueryClient({
       staleTime: WIEZ_QUERY_STALE_TIME_MS,
       gcTime: WIEZ_QUERY_GC_TIME_MS,
       retry: 1,
-      // Perf policy: merely being STALE must not trigger a refetch on mount —
-      // staleTime governs, and screens remount constantly on a tab navigator.
+      // Refetch on mount when the data is INVALIDATED or genuinely STALE.
       //
-      // But a query that was explicitly INVALIDATED must refetch, or
-      // invalidateQueries means nothing. A plain `false` suppressed both cases,
-      // and that is what made freshly created content invisible: the default
-      // refetchType ('active') only refetches queries that have a mounted
-      // observer at the instant of the call, the owner catalog tabs are lazy so
-      // the destination tab usually had none, and then mounting that tab did not
-      // fetch either. Users had to pull-to-refresh to see their own upload.
+      // This was `(query) => query.state.isInvalidated ? 'always' : false`, on
+      // the reasoning that "merely being stale must not trigger a refetch —
+      // screens remount constantly on a tab navigator". But `staleTime` is
+      // already the control for that: at 3 minutes, a remount only refetches if
+      // the data really is 3+ minutes old, which is the whole point of having a
+      // staleTime. Suppressing stale refetches on top of it meant persisted
+      // data from a PREVIOUS APP LAUNCH was served indefinitely, and the only
+      // way out was an explicit pull-to-refresh. That is what made a brand's
+      // own email arrive blank on the profile until they manually refreshed,
+      // and what let catalog tab counts sit on last session's numbers.
       //
-      // The predicate form keeps the perf intent exactly and only changes the
-      // invalidated case — which is the contract invalidation already promised.
-      refetchOnMount: (query) => (query.state.isInvalidated ? 'always' : false),
+      // The invalidated case still forces a refetch — see the note below on why
+      // that mattered for freshly created content.
+      refetchOnMount: (query) => (query.state.isInvalidated ? 'always' : true),
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       // Stock structural sharing was defeated by re-signed S3 URLs, so every

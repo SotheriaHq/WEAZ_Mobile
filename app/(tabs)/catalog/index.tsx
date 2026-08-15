@@ -443,7 +443,20 @@ export default function CatalogScreen() {
     if (key === 'private') return 'Private';
     if (key === 'drafts' || key === 'draft') return 'Drafts';
     if (key === 'in review' || key === 'in_review' || key === 'in-review') return 'In Review';
-    if (key === 'changes requested' || key === 'changes_requested' || key === 'changes-requested') return 'Changes Requested';
+    // Changes Requested merged into Needs Attention. Existing deep links,
+    // notifications and persisted UI state still carry the old value, so it
+    // normalizes onto the surviving bucket rather than silently falling through
+    // to Public and stranding the owner on the wrong tab.
+    if (
+      key === 'changes requested' ||
+      key === 'changes_requested' ||
+      key === 'changes-requested' ||
+      key === 'needs attention' ||
+      key === 'needs_attention' ||
+      key === 'needs-attention'
+    ) {
+      return 'Needs Attention';
+    }
     if (key === 'rejected') return 'Rejected';
     return 'Public';
   };
@@ -619,21 +632,33 @@ export default function CatalogScreen() {
         visibilityFilter !== 'In Review',
     },
   );
-  // Only fetch the active visibility bucket. Preloading drafts / needs-attention
-  // / in-review on every catalog open doubled designs+store-collections fan-out
-  // (scope=all is already two HTTP calls per query) and lit up the network while
-  // the owner was still on Public content.
+  /**
+   * These CANNOT be gated on the active tab.
+   *
+   * They were, as a network economy — but the tab bar renders each bucket's
+   * COUNT from these very queries, so gating them on `visibilityFilter` meant a
+   * bucket's count was unknowable until you had already opened it. On first
+   * route every count read 0, and tapping Drafts fetched, re-laid-out, and
+   * popped a card into what had rendered as an empty tab a frame earlier. The
+   * counts exist precisely so you don't have to open a tab to see what's in it.
+   *
+   * The economy concern was real, so it is paid for differently: `staleTime`
+   * keeps re-entry inside the window free, which is the common case (the owner
+   * bouncing in and out of their own catalog) — rather than making the first
+   * load wrong.
+   */
+  const ownerBucketsEnabled = isOwner && Boolean(collectionOwnerId);
   const draftsQuery = useBrandDraftsQuery({
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'Drafts',
+    enabled: ownerBucketsEnabled,
   });
   const needsAttentionQuery = useBrandNeedsAttentionQuery({ isFocused,
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'Needs Attention',
+    enabled: ownerBucketsEnabled,
   });
   const inReviewQuery = useBrandInReviewQuery({ isFocused,
     ownerId: collectionOwnerId,
-    enabled: isOwner && Boolean(collectionOwnerId) && visibilityFilter === 'In Review',
+    enabled: ownerBucketsEnabled,
   });
   const effectiveProfile = profileQuery.data !== undefined ? profileQuery.data : profile;
   let effectiveCollections = collectionsQuery.data ?? EMPTY_COLLECTIONS;
@@ -822,7 +847,10 @@ export default function CatalogScreen() {
       setDataActiveTab(savedUiState.activeTab);
     }
     if (!routeVisibility && savedUiState?.visibilityFilter) {
-      setVisibilityFilter(savedUiState.visibilityFilter);
+      // Normalize on the way out of storage: state persisted before Changes
+      // Requested merged into Needs Attention would otherwise restore a tab
+      // that no longer has a chip to show it as selected.
+      setVisibilityFilter(normalizeVisibility(savedUiState.visibilityFilter));
     }
   }, [catalogUiStateKey, routeTab, routeVisibility]);
 
@@ -1093,7 +1121,16 @@ export default function CatalogScreen() {
     // card now lands where the work continues, and publishing/resubmitting is
     // reachable from there.
     const ownerStatus = String(collection.publicationStatus ?? collection.status ?? '').toUpperCase();
+    // The TAB is also evidence, and it is evidence the payload cannot contradict.
+    // Relying on the status alone meant one bad/absent field on a card sent
+    // unfinished work to a read-only viewer; the bucket the card was drawn in
+    // already tells us the owner came here to finish something.
+    const inUnfinishedBucket =
+      visibilityFilter === 'Drafts' ||
+      visibilityFilter === 'Needs Attention' ||
+      visibilityFilter === 'Changes Requested';
     const opensInEditor =
+      inUnfinishedBucket ||
       ownerStatus === 'DRAFT' ||
       ownerStatus === 'CHANGES_REQUESTED' ||
       ownerStatus === 'REJECTED' ||
@@ -1124,7 +1161,7 @@ export default function CatalogScreen() {
             },
           } as any),
     );
-  }, [isOwner]);
+  }, [isOwner, visibilityFilter]);
 
   const handleEditCollection = useCallback((id: string) => {
     drillDownPush({
@@ -2254,7 +2291,13 @@ export default function CatalogScreen() {
 
               <CollectionsGrid
                 collections={currentCollectionsWithBackgroundTasks}
-                isLoading={false}
+                /*
+                  Hardcoded `false` here is what made a loading tab render "No
+                  Content Yet" and then jolt as the first card arrived. The grid
+                  already draws a skeleton for this exact case; it was just
+                  never told the bucket was still loading.
+                */
+                isLoading={listInitialLoading}
                 isOwner={isOwner}
                 showDrafts={visibilityFilter === 'Drafts'}
                 // The visibility filter already names the status, so its cards

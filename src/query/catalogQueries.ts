@@ -28,13 +28,11 @@ type BrandCollectionsArgs = {
 const isEnabled = (value: unknown, enabled = true) => Boolean(value) && enabled;
 
 export function useBrandProfileQuery(brandId?: string | null, options?: EnabledOption) {
-  const queryClient = useQueryClient();
   const queryKey = queryKeys.brand.profile(brandId);
   return useQuery({
     queryKey,
     queryFn: () => brandApi.getProfileById(String(brandId)),
     enabled: isEnabled(brandId, options?.enabled ?? true),
-    initialData: () => queryClient.getQueryData(queryKey),
   });
 }
 
@@ -47,7 +45,6 @@ export async function refreshBrandProfileQuery(queryClient: QueryClient, brandId
 
 export function useBrandCollectionsQuery(args: BrandCollectionsArgs, options?: EnabledOption) {
   const { ownerId, scope = 'design', visibility, status, limit } = args;
-  const queryClient = useQueryClient();
   const queryKey = queryKeys.brand.collections(ownerId, { scope, visibility, status, limit });
   return useQuery({
     queryKey,
@@ -62,7 +59,6 @@ export function useBrandCollectionsQuery(args: BrandCollectionsArgs, options?: E
       return result.items;
     },
     enabled: isEnabled(ownerId, options?.enabled ?? true),
-    initialData: () => queryClient.getQueryData(queryKey),
   });
 }
 
@@ -95,7 +91,6 @@ export async function refreshBrandCollectionsQuery(
 export function useBrandDraftsQuery(
   options?: EnabledOption & { ownerId?: string | null },
 ) {
-  const queryClient = useQueryClient();
   const queryKey = queryKeys.brand.collections(options?.ownerId ?? 'me', {
     scope: 'all',
     status: 'DRAFT',
@@ -109,17 +104,26 @@ export function useBrandDraftsQuery(
       return brandApi.getDrafts({ ownerId: options?.ownerId });
     },
     enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
-    initialData: () => queryClient.getQueryData(queryKey),
+    // Matches the other two owner buckets. This query now runs on catalogue
+    // entry (the tab bar needs its count before the tab is opened), so re-entry
+    // inside the stale window must not refetch.
+    staleTime: WIEZ_QUERY_STALE_TIME_MS,
   });
 }
 
   export function useBrandNeedsAttentionQuery(
     options?: EnabledOption & { ownerId?: string | null; isFocused?: boolean },
   ) {
-    const queryClient = useQueryClient();
-    // Needs Attention = FAILED / PROCESSING only. CHANGES_REQUESTED keeps its own
-    // "Changes Requested" tab and must NOT be bucketed here.
-    const statusFilter: any = ['FAILED', 'PROCESSING'];
+    /**
+     * Needs Attention = everything the owner must act on before it can go live.
+     *
+     * CHANGES_REQUESTED used to sit in its own tab on the grounds that it is a
+     * different state from FAILED. It is — but not to the person holding the
+     * phone: both mean "this is handed back to you, open it and change
+     * something", and splitting them made the owner check two tabs to answer
+     * one question, with the work spread across both.
+     */
+    const statusFilter: any = ['FAILED', 'PROCESSING', 'CHANGES_REQUESTED'];
     const queryKey = queryKeys.brand.collections(options?.ownerId ?? 'me', {
       scope: 'all',
       status: statusFilter,
@@ -136,16 +140,14 @@ export function useBrandDraftsQuery(
         return result.items;
       },
       enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
-      initialData: () => queryClient.getQueryData(queryKey),
-      staleTime: WIEZ_QUERY_STALE_TIME_MS,
+        staleTime: WIEZ_QUERY_STALE_TIME_MS,
     });
   }
 
   export function useBrandInReviewQuery(
     options?: EnabledOption & { ownerId?: string | null; isFocused?: boolean },
   ) {
-    const queryClient = useQueryClient();
-    // Dedicated always-on query so the In Review count/content preloads on
+      // Dedicated always-on query so the In Review count/content preloads on
     // catalogue entry instead of waiting until the In Review tab is tapped.
     const statusFilter: any = 'IN_REVIEW';
     const queryKey = queryKeys.brand.collections(options?.ownerId ?? 'me', {
@@ -164,8 +166,7 @@ export function useBrandDraftsQuery(
         return result.items;
       },
       enabled: isEnabled(options?.ownerId, options?.enabled ?? true),
-      initialData: () => queryClient.getQueryData(queryKey),
-      staleTime: WIEZ_QUERY_STALE_TIME_MS,
+        staleTime: WIEZ_QUERY_STALE_TIME_MS,
     });
   }
 

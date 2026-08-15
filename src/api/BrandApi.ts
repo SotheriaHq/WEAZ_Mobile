@@ -1076,12 +1076,26 @@ export const brandApi = {
         storeDraftsRequest,
       ]);
 
+      /**
+       * Pin BOTH status fields.
+       *
+       * This used to set only `status`, leaving `publicationStatus` at whatever
+       * normalization produced — 'UNKNOWN' whenever the draft payload carries no
+       * explicit publication status. Every consumer that reads
+       * `publicationStatus ?? status` therefore saw 'UNKNOWN' for a draft, and
+       * `??` does not fall through for a present-but-wrong value. That is why
+       * tapping a draft opened the read-only viewer instead of the editor: the
+       * routing rule was correct, the status it read was not.
+       *
+       * These come from draft-only endpoints, so DRAFT is not an assumption.
+       */
       const designDrafts =
         designDraftsResult.status === 'fulfilled'
           ? normalizeCollectionListPayload(designDraftsResult.value.data).items.map(
               (item) => ({
                 ...item,
                 status: 'DRAFT' as const,
+                publicationStatus: 'DRAFT' as const,
               }),
             )
           : [];
@@ -1090,6 +1104,7 @@ export const brandApi = {
           ? storeDraftsResult.value.map((item) => ({
               ...item,
               status: 'DRAFT' as const,
+              publicationStatus: 'DRAFT' as const,
               isAvailableInStore: true,
             }))
           : [];
