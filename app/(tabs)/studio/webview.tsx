@@ -34,7 +34,9 @@ import {
   type StudioRouteKey,
 } from '@/src/features/studio/studioRoutes';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { useQueryClient } from '@tanstack/react-query';
 import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
+import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -437,6 +439,7 @@ export default function StudioWebViewScreen() {
   const originWhitelist = useMemo(() => getStudioOriginWhitelist(), []);
   const hasBrandWorkspace = hasActiveBrandMembership(user);
   const isStudioEligible = user?.type === 'BRAND' && hasBrandWorkspace;
+  const queryClient = useQueryClient();
   const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
   // One nudge per visit. The redirect below re-runs the effect, and without this
   // the toast would stack on every pass.
@@ -817,11 +820,37 @@ export default function StudioWebViewScreen() {
           closeStudio();
           break;
         case 'ACTION_COMPLETE':
+          /**
+           * The WebView finished something whose answer this shell caches.
+           *
+           * Store setup is the case that matters: the dock gates on the native
+           * `store.status` query, which is a different process from the web app
+           * that just published. No amount of cache work inside the WebView can
+           * reach it, so publishing left the brand on a live store with every
+           * dock chip still greyed out until they restarted the app.
+           *
+           * Written through before invalidating so the dock unlocks on this
+           * frame rather than after a round trip, then reconciled with the
+           * server. `refetchType: 'all'` because the dock's query may have no
+           * mounted observer at this instant.
+           */
+          if (message.action === 'STORE_SETUP_COMPLETE') {
+            queryClient.setQueryData(queryKeys.store.status(), (previous: any) =>
+              previous
+                ? { ...previous, isSetupComplete: true, isPublished: true, isStoreOpen: true }
+                : previous,
+            );
+            void queryClient.invalidateQueries({
+              queryKey: queryKeys.store.status(),
+              refetchType: 'all',
+            });
+          }
+          break;
         default:
           break;
       }
     },
-    [closeStudio, navigateStudioInPlace, openNavigationTarget, toast],
+    [closeStudio, navigateStudioInPlace, openNavigationTarget, queryClient, toast],
   );
 
   const openSearch = useCallback(() => {
