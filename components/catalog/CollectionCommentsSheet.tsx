@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, FlatList, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Animated, FlatList, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiClient } from '@/src/api/httpClient';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { AppText } from '@/components/ui/AppText';
+import { Input } from '@/components/ui/Input';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
+import { tokens } from '@/src/styles/tokens';
 
 type Comment = {
   id: string;
@@ -139,7 +141,7 @@ function CommentItem({
               backgroundColor: colors.surfaceAlt,
               borderWidth: 1,
               borderRadius: 16,
-              padding: 10,
+              padding: 12,
             }
           : null,
       ]}
@@ -288,7 +290,7 @@ export default function CollectionCommentsSheet({
           style={[
             styles.sheet,
             {
-              backgroundColor: isDark ? '#0f0b18' : '#ffffff',
+              backgroundColor: isDark ? tokens.viewer.surface : tokens.colors.light,
               borderTopColor: theme.colors.border,
               marginBottom: androidBottomGap,
               paddingBottom: Platform.OS === 'android' ? 0 : insets.bottom,
@@ -378,19 +380,16 @@ export default function CollectionCommentsSheet({
                 },
               ]}
             >
-              <TextInput
+              {/* Shared primitive, not a raw input. `hideLabel` keeps the
+                  accessible name without printing a label above a one-line
+                  composer; the surrounding row already draws the container. */}
+              <Input
+                label="Add a comment"
+                hideLabel
                 value={commentText}
                 onChangeText={setCommentText}
                 placeholder="Add a comment..."
-                placeholderTextColor={theme.colors.textMuted}
-                style={[
-                  styles.commentInputField,
-                  {
-                    backgroundColor: theme.colors.surfaceAlt,
-                    borderColor: theme.colors.border,
-                    color: theme.colors.text,
-                  },
-                ]}
+                containerStyle={styles.commentInputField}
                 returnKeyType="send"
                 onSubmitEditing={() => {
                   void sendComment();
@@ -409,7 +408,7 @@ export default function CollectionCommentsSheet({
                   },
                 ]}
               >
-                {sendingComment ? <ActivityIndicator size="small" color="#fff" /> : <AppText variant="h3" tone="inverse">↑</AppText>}
+                {sendingComment ? <ActivityIndicator size="small" color={tokens.colors.light} /> : <AppText variant="h3" tone="inverse">↑</AppText>}
               </Pressable>
             </View>
           </KeyboardAvoider>
@@ -422,7 +421,7 @@ export default function CollectionCommentsSheet({
 const styles = StyleSheet.create({
   scrim: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: tokens.colors.dark,
   },
   sheet: {
     position: 'absolute',
@@ -442,7 +441,7 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   panelHandleBar: {
-    padding: 6,
+    padding: 8,
   },
   panelHandleBarInner: {
     width: 38,
@@ -483,25 +482,21 @@ const styles = StyleSheet.create({
   commentsList: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    gap: 14,
+    gap: 12,
     flexGrow: 1,
   },
   commentsEmpty: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 40,
-    gap: 10,
-  },
-  commentsEmptyEmoji: {
-    fontSize: 30,
+    gap: 8,
   },
   commentsEmptyText: {
-    fontSize: 13,
     fontWeight: '500',
   },
   commentItem: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   commentAvatar: {
     width: 34,
@@ -510,11 +505,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-  },
-  commentAvatarText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#fff',
   },
   commentBody: {
     flex: 1,
@@ -525,33 +515,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  commentAuthor: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
   commentTime: {
     fontSize: 12,
     fontWeight: '500',
   },
   commentText: {
-    fontSize: 13,
     lineHeight: 18,
   },
   commentInput: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     borderTopWidth: 1,
     paddingHorizontal: 16,
     paddingTop: 12,
   },
   commentInputField: {
     flex: 1,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
   },
   commentSendBtn: {
     width: 44,
@@ -561,7 +541,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   commentSendText: {
-    color: '#fff',
+    color: tokens.colors.light,
     fontSize: 18,
     fontWeight: '900',
   },

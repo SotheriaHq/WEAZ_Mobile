@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.48)',
+    backgroundColor: tokens.scrim(0.48),
   },
   sheet: {
     borderTopLeftRadius: tokens.radius.xl,

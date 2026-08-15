@@ -65,17 +65,21 @@ const holdTypeLabel = (value?: string | null) => {
 
 const stageLabel = (stage?: string | null) => humanize(stage || 'PAYMENT');
 
-const statusTone = (
-  status: string,
-  theme: { colors: { success: string; danger: string; warning: string; primary: string; textSecondary: string } },
-) => {
+/**
+ * Returns an AppText TONE, not a colour.
+ *
+ * This used to hand back `theme.colors.*` and the call sites passed it as
+ * `style={{ color }}` — an AppText colour override, which the design system
+ * forbids precisely because it lets a screen decide something the text
+ * component owns. The tone union already has exactly the four states finance
+ * needs, so nothing is lost and the screen no longer touches the palette.
+ */
+const statusTone = (status: string): 'success' | 'danger' | 'warning' | 'secondary' => {
   const s = status.toUpperCase();
-  if (s === 'PAID' || s === 'RELEASED') return theme.colors.success;
-  if (s.includes('FAIL') || s === 'REJECTED' || s === 'FROZEN') return theme.colors.danger;
-  if (s.includes('PENDING') || s === 'HELD' || s.includes('PROCESSING')) {
-    return theme.colors.warning;
-  }
-  return theme.colors.textSecondary;
+  if (s === 'PAID' || s === 'RELEASED') return 'success';
+  if (s.includes('FAIL') || s === 'REJECTED' || s === 'FROZEN') return 'danger';
+  if (s.includes('PENDING') || s === 'HELD' || s.includes('PROCESSING')) return 'warning';
+  return 'secondary';
 };
 
 export default function StudioFinanceScreen() {
@@ -371,7 +375,7 @@ function HeldCard({
         <AppText variant="subtitle" style={styles.cardTitle}>
           {hold.title}
         </AppText>
-        <AppText variant="caption" style={{ color: statusTone(hold.status, theme) }}>
+        <AppText variant="caption" tone={statusTone(hold.status)}>
           {humanize(hold.status)}
         </AppText>
       </View>
@@ -433,7 +437,7 @@ function IncomingCard({
         <AppText variant="subtitle" style={styles.cardTitle}>
           {tx.title || 'Incoming credit'}
         </AppText>
-        <AppText variant="subtitle" style={{ color: theme.colors.primary }}>
+        <AppText variant="subtitle" tone="primary">
           {formatMoney(tx.netAmount ?? tx.amount, tx.currency)}
         </AppText>
       </View>
@@ -479,7 +483,7 @@ function PayoutCard({
         <AppText variant="subtitle" style={styles.cardTitle}>
           {formatMoney(payout.amount, payout.currency)}
         </AppText>
-        <AppText variant="caption" style={{ color: statusTone(payout.status, theme) }}>
+        <AppText variant="caption" tone={statusTone(payout.status)}>
           {humanize(payout.status)}
         </AppText>
       </View>
@@ -583,7 +587,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: tokens.radius.lg,
     padding: tokens.spacing.md,
-    gap: 6,
+    gap: 4,
   },
   cardTop: {
     flexDirection: 'row',

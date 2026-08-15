@@ -14,7 +14,31 @@ export type StudioWebNavigationClassification =
   | { type: 'external'; url: string }
   | { type: 'blocked'; reason: string; path?: string };
 
-const STUDIO_TAB_VALUES = new Set(['orders', 'customers', 'analytics']);
+/**
+ * Every `?tab=` value `StudioHome` (web) can render, MINUS `finance`, which is
+ * a native screen.
+ *
+ * This list is a contract with `fthreadly/src/pages/studio/StudioHome.tsx` — a
+ * tab missing here is not a small gap. `StudioHome` writes the tab with
+ * `setSearchParams(..., { replace: true })`, the injected history shim reports
+ * every replaceState as `ROUTE_CHANGED`, and anything that classified as
+ * `blocked` used to raise "Open this from the WIEZ app" at a user who was
+ * already inside the app and had gone nowhere. `overview` and `store` were both
+ * absent, so the Dashboard and Manage Store tabs — the two most-used screens in
+ * Studio — each fired that toast on arrival.
+ */
+const STUDIO_TAB_VALUES = new Set([
+  'overview',
+  'dashboard',
+  'store',
+  'shop',
+  'products',
+  'orders',
+  'customers',
+  'analytics',
+  'messages',
+  'reviews',
+]);
 const UUID_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STATIC_STUDIO_PATHS = new Set([
   '/studio',
@@ -26,6 +50,7 @@ const STATIC_STUDIO_PATHS = new Set([
   '/studio/verification/submitted',
   '/studio/custom-orders',
   '/studio/messages',
+  '/studio/staff',
   '/studio/store/setup',
   '/studio/store/essentials',
 ]);

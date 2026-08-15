@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, Linking, Text, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, Linking, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
@@ -151,17 +150,19 @@ function HeaderIconButton({
         styles.headerIconButton,
         bare && styles.headerIconButtonBare,
         {
-          backgroundColor: bare ? 'transparent' : 'rgba(0, 0, 0, 0.28)',
-          borderColor: bare ? 'transparent' : 'rgba(255, 255, 255, 0.15)',
+          backgroundColor: bare ? 'transparent' : tokens.scrim(0.28),
+          borderColor: bare ? 'transparent' : tokens.tintLight(0.15),
           opacity: disabled ? 0.55 : pressed ? 0.78 : 1,
         },
       ]}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Text style={[styles.headerIconText, { color: bare ? theme.colors.text : '#ffffff', fontWeight: 'bold' }]}>
+      {/* `tone`, not a colour override: AppText owns colour, and the glyph is
+          an emoji, which renders in its own palette regardless. */}
+      <AppText variant="bodyReadable" tone={bare ? 'default' : 'inverse'} style={styles.headerIconText}>
         {value}
-      </Text>
+      </AppText>
       {typeof badgeCount === 'number' && badgeCount > 0 ? (
         // Notification count: no background pill — the number renders in the
         // system/brand color and bold, matching the runway + island convention.
@@ -283,7 +284,7 @@ function BannerHeader({
           pointerEvents="none"
           style={[
             StyleSheet.absoluteFill,
-            { backgroundColor: scheme === 'dark' ? 'rgba(0,0,0,0.14)' : 'rgba(8,10,18,0.08)' },
+            { backgroundColor: scheme === 'dark' ? tokens.scrim(0.14) : tokens.colors.inkWash },
           ]}
         />
         <AppText variant="title" tone="inverse" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.bannerNameText}>
@@ -588,14 +589,14 @@ function BrandDescription({ description }: { description?: string | null }) {
       </AppText>
       {canExpand && !expanded ? (
         <Pressable onPress={() => setExpanded(true)} accessibilityRole="button" accessibilityLabel="Show full brand description">
-          <AppText tone="primary" style={{ fontSize: 10, fontStyle: 'italic', fontWeight: 'bold' }}>
+          <AppText variant="smallBold" tone="primary" style={styles.expandToggle}>
             See more
           </AppText>
         </Pressable>
       ) : null}
       {canExpand && expanded ? (
         <Pressable onPress={() => setExpanded(false)} accessibilityRole="button" accessibilityLabel="Collapse brand description">
-          <AppText tone="primary" style={{ fontSize: 10, fontStyle: 'italic', fontWeight: 'bold' }}>
+          <AppText variant="smallBold" tone="primary" style={styles.expandToggle}>
             See less
           </AppText>
         </Pressable>
@@ -604,19 +605,38 @@ function BrandDescription({ description }: { description?: string | null }) {
   );
 }
 
+/**
+ * Contact-row markers as emoji (Rule 5), not icon-library glyphs.
+ *
+ * A trade-off worth naming: 📸 and 📘 are weaker stand-ins for Instagram's and
+ * Meta's real marks than the vector glyphs were. Rule 5 is mandatory and
+ * explicitly prefers "a single emoji over a custom SVG icon", the rest of this
+ * app is emoji-forward throughout (the Studio menu, the island dock, every
+ * status chip), and each row carries the platform NAME beside the marker — so
+ * the emoji identifies rather than has to be recognised. ✖️ for X is the
+ * current brand, not the retired bird.
+ *
+ * The brand-colour tokens these used to be tinted with are gone: emoji render
+ * as colour glyphs and ignore `color` on both platforms, so keeping them would
+ * have been dead configuration.
+ */
+const CONTACT_MARKERS: Record<string, string> = {
+  instagram: '📸',
+  facebook: '📘',
+  x: '✖️',
+  twitter: '✖️',
+  email: '✉️',
+  phone: '📞',
+  website: '🌐',
+};
+
 function ContactIcon({ label }: { label: string }) {
   const normalized = label.trim().toLowerCase();
-  const { theme } = useTheme();
-  switch (normalized) {
-    case 'instagram': return <FontAwesome5 name="instagram" size={14} color="#E1306C" />;
-    case 'facebook': return <FontAwesome5 name="facebook" size={14} color="#1877F2" />;
-    case 'x':
-    case 'twitter': return <FontAwesome5 name="twitter" size={14} color="#1DA1F2" />;
-    case 'email': return <FontAwesome5 name="envelope" size={14} color={theme.colors.textSecondary} />;
-    case 'phone': return <FontAwesome5 name="phone" size={14} color={theme.colors.textSecondary} />;
-    case 'website': return <FontAwesome5 name="globe" size={14} color={theme.colors.textSecondary} />;
-    default: return <FontAwesome5 name="link" size={14} color={theme.colors.textSecondary} />;
-  }
+  return (
+    <AppText variant="bodyReadable" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      {CONTACT_MARKERS[normalized] ?? '🔗'}
+    </AppText>
+  );
 }
 
 function getContactUrl(label: string, value: string): string | null {
@@ -687,7 +707,9 @@ function BrandContactItems({
           accessibilityRole="button"
           accessibilityLabel="Open brand profile QR code"
         >
-          <FontAwesome5 name="qrcode" size={14} color={theme.colors.textSecondary} />
+          <AppText variant="bodyReadable" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            🔳
+          </AppText>
           <AppText variant="smallBold" tone="default" numberOfLines={1} style={styles.contactLine}>
             QR code
           </AppText>
@@ -1096,6 +1118,12 @@ const styles = StyleSheet.create({
   headerIconText: {
     textAlign: 'center',
   },
+  /* `fontStyle` is legal on AppText; size/weight/colour are not — those come
+     from the `smallBold` variant. The old inline 10px size was also below
+     the 12px floor in Rule 22, so this fixes a second violation. */
+  expandToggle: {
+    fontStyle: 'italic',
+  },
   headerIconBadge: {
     position: 'absolute',
     top: 4,
@@ -1223,7 +1251,7 @@ const styles = StyleSheet.create({
   avatarEditGlyph: {
     // Stands in for the removed background disc: enough separation to stay
     // readable on a light logo without putting a coloured shape on the image.
-    textShadowColor: 'rgba(0, 0, 0, 0.62)',
+    textShadowColor: tokens.scrim(0.62),
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },

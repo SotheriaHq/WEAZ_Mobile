@@ -466,7 +466,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     padding: tokens.spacing.sm,
     borderRadius: tokens.radius.lg,
-    backgroundColor: 'rgba(0,0,0,0.03)',
+    backgroundColor: tokens.scrim(0.03),
   },
   sectionCard: {
     gap: tokens.spacing.md,

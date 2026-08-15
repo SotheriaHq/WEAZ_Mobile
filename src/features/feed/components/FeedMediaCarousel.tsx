@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
     zIndex: 6,
   },
   dot: {

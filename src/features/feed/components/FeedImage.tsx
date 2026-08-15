@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   fallbackText: {
-    marginTop: 6,
+    marginTop: 4,
     textAlign: 'center',
   },
 });

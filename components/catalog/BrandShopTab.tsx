@@ -848,7 +848,7 @@ export function BrandShopTab({
     <View style={styles.emptyState}>
       <AppText variant="display">{args.marker}</AppText>
       <AppText variant="subtitle" style={styles.emptyTitle}>{args.title}</AppText>
-      <AppText variant="body" tone="muted" style={styles.emptyBody}>{args.body}</AppText>
+      <AppText variant="bodyReadable" tone="muted" style={styles.emptyBody}>{args.body}</AppText>
       {args.actionLabel && args.onAction ? (
         <Pressable
           onPress={args.onAction}
@@ -1073,7 +1073,7 @@ export function BrandShopTab({
                 </AppText>
 
                 {activeProduct.description ? (
-                  <AppText variant="body" tone="muted" style={styles.modalDescription}> 
+                  <AppText variant="small" tone="muted" style={styles.modalDescription}> 
                     {activeProduct.description}
                   </AppText>
                 ) : null}
@@ -1370,7 +1370,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 8,
     borderRadius: 16,
-    paddingVertical: 6,
+    paddingVertical: 8,
     gap: 8,
   },
   panelTitle: {
@@ -1384,7 +1384,7 @@ const styles = StyleSheet.create({
   searchBox: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1414,11 +1414,11 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   selectorTriggerLabel: {
     flex: 1,
@@ -1440,7 +1440,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   gridContainer: {
-    paddingTop: 14,
+    paddingTop: 16,
   },
   imageFallback: {
     flex: 1,
@@ -1459,11 +1459,7 @@ const styles = StyleSheet.create({
     paddingVertical: 80,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-  },
-  loadingText: {
-    fontSize: 13,
-    fontWeight: '600',
+    gap: 8,
   },
   emptyState: {
     paddingHorizontal: 28,
@@ -1474,15 +1470,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     textAlign: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   emptyBody: {
-    fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
   },
   retryBtn: {
-    marginTop: 18,
+    marginTop: 16,
     borderRadius: 12,
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -1512,11 +1507,11 @@ const styles = StyleSheet.create({
   modalLoadingWrap: {
     paddingVertical: 44,
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   modalContent: {
     paddingHorizontal: 16,
-    paddingBottom: 22,
+    paddingBottom: 24,
     gap: 12,
   },
   modalImageWrap: {
@@ -1538,7 +1533,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   modalDescription: {
-    fontSize: 13,
     lineHeight: 20,
   },
   modalMetaRow: {
@@ -1549,8 +1543,8 @@ const styles = StyleSheet.create({
   metaPill: {
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   metaPillText: {
     fontSize: 12,
@@ -1558,10 +1552,6 @@ const styles = StyleSheet.create({
   },
   selectorBlock: {
     gap: 8,
-  },
-  selectorTitle: {
-    fontSize: 13,
-    fontWeight: '700',
   },
   selectorWrap: {
     flexDirection: 'row',
@@ -1573,18 +1563,14 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    gap: 6,
-  },
-  ownerHintTitle: {
-    fontSize: 13,
-    fontWeight: '800',
+    gap: 4,
   },
   ownerHintBody: {
     fontSize: 12,
     lineHeight: 18,
   },
   actionStack: {
-    gap: 10,
+    gap: 8,
     marginTop: 2,
   },
   actionButton: {

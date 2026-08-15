@@ -28,6 +28,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { getAvatarFallback } from '@/src/utils/profileImage';
 import { AppText } from '@/components/ui/AppText';
 import { refreshCollectionDetailQuery, useCollectionDetailQuery } from '@/src/query/catalogQueries';
+import { tokens } from '@/src/styles/tokens';
 
 type ViewerMedia = {
   id: string;
@@ -885,8 +886,8 @@ export function CollectionDetailViewer({
             void handleThread();
           }}
         />
-        <LinearGradient colors={['#121826', '#0B0F17']} style={styles.topGradient} pointerEvents="none" />
-        <LinearGradient colors={['#0B0F17', '#000000']} style={styles.bottomGradient} pointerEvents="none" />
+        <LinearGradient colors={[tokens.viewer.plate, tokens.viewer.plateDeep]} style={styles.topGradient} pointerEvents="none" />
+        <LinearGradient colors={[tokens.viewer.plateDeep, tokens.colors.dark]} style={styles.bottomGradient} pointerEvents="none" />
 
         <View style={[styles.topLeft, { top: insets.top + 12 }]} pointerEvents="box-none">
           <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.glassButton, pressed && { opacity: 0.75 }]}>
@@ -1017,7 +1018,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-    gap: 10,
+    gap: 8,
   },
   errorEmoji: {},
   errorTitle: {},
@@ -1029,25 +1030,25 @@ const styles = StyleSheet.create({
   },
   errorActions: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 6,
+    gap: 8,
+    marginTop: 4,
   },
   mediaLoadingSlide: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#06060b',
+    backgroundColor: tokens.viewer.backdrop,
   },
   brokenSlide: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-    backgroundColor: '#0b0b12',
+    backgroundColor: tokens.viewer.surface,
   },
   videoSlide: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
-    backgroundColor: '#111',
+    backgroundColor: tokens.viewer.surfaceAlt,
   },
   videoEmoji: {
     marginBottom: 8,
@@ -1056,21 +1057,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   videoCaption: {
-    marginTop: 6,
+    marginTop: 4,
     textAlign: 'center',
   },
   emptySlide: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-    backgroundColor: '#111',
+    backgroundColor: tokens.viewer.surfaceAlt,
   },
   emptySlideEmoji: {
     marginBottom: 8,
   },
   emptySlideTitle: {},
   emptySlideText: {
-    marginTop: 6,
+    marginTop: 4,
     textAlign: 'center',
   },
   slideImage: {
@@ -1083,7 +1084,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 160,
-    backgroundColor: '#121826',
+    backgroundColor: tokens.viewer.plate,
   },
   bottomGradient: {
     position: 'absolute',
@@ -1091,7 +1092,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 300,
-    backgroundColor: '#0B0F17',
+    backgroundColor: tokens.viewer.plateDeep,
   },
   topLeft: {
     position: 'absolute',
@@ -1102,13 +1103,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
     zIndex: 10,
   },
   glassButton: {
-    backgroundColor: '#121826',
+    backgroundColor: tokens.viewer.plate,
     borderRadius: 999,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 8,
     minHeight: 44,
     alignItems: 'center',
@@ -1116,7 +1117,7 @@ const styles = StyleSheet.create({
   },
   glassButtonText: {},
   glassIconBtn: {
-    backgroundColor: '#121826',
+    backgroundColor: tokens.viewer.plate,
     borderRadius: 999,
     width: 44,
     height: 44,
@@ -1131,11 +1132,11 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: '#9333EA',
+    backgroundColor: tokens.viewer.accent,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#C084FC',
+    borderColor: tokens.viewer.accentEdge,
     overflow: 'hidden',
   },
   ownerAvatarImage: {
@@ -1148,7 +1149,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 14,
     flexDirection: 'column',
-    gap: 18,
+    gap: 16,
     alignItems: 'center',
     zIndex: 10,
   },
@@ -1160,7 +1161,7 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: '#121826',
+    backgroundColor: tokens.viewer.plate,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1173,14 +1174,14 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
     zIndex: 6,
   },
   dot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#64748B',
+    backgroundColor: tokens.viewer.muted,
   },
   dotActive: {
     width: 18,
@@ -1195,7 +1196,7 @@ const styles = StyleSheet.create({
   infoBrandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   infoAvatar: {
     width: 28,
@@ -1212,15 +1213,15 @@ const styles = StyleSheet.create({
   infoPillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 4,
   },
   infoPill: {
-    backgroundColor: '#121826',
+    backgroundColor: tokens.viewer.plate,
     borderRadius: 999,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: '#273244',
+    borderColor: tokens.viewer.hairline,
   },
   infoPillText: {},
 });

@@ -9,27 +9,26 @@ import {
 } from 'react-native';
 
 import { WiezLogo } from './WiezLogo';
-import { PRODUCT_NAME } from '@/src/config/productIdentity';
+import { tokens } from '@/src/styles/tokens';
 
+/**
+ * The animated WIEZ mark. This is the app's entire loading vocabulary.
+ *
+ * It used to carry an optional wordmark block — `showWordmark`, `title`,
+ * `message`, `titleColor`, `messageColor` — rendering raw `Animated.Text` with
+ * literal `fontSize`/`fontWeight`/`color`, which is exactly what Rules 22–24
+ * forbid. Every one of the six call sites left `showWordmark` at its `false`
+ * default, so none of it had ever painted a pixel. Removed rather than
+ * tokenised: a loader that narrates is the thing we just spent a session taking
+ * out of Studio, and dead code that violates the design system is the worst of
+ * both.
+ */
 type WiezLogoLoaderProps = {
   size?: number;
   style?: StyleProp<ViewStyle>;
-  showWordmark?: boolean;
-  title?: string;
-  message?: string;
-  titleColor?: string;
-  messageColor?: string;
 };
 
-export function WiezLogoLoader({
-  size = 72,
-  style,
-  showWordmark = false,
-  title = PRODUCT_NAME,
-  message = 'Loading your feed',
-  titleColor = '#ffffff',
-  messageColor = 'rgba(255,255,255,0.72)',
-}: WiezLogoLoaderProps) {
+export function WiezLogoLoader({ size = 72, style }: WiezLogoLoaderProps) {
   const pulse = useRef(new Animated.Value(0)).current;
   const drift = useRef(new Animated.Value(0)).current;
 
@@ -92,11 +91,6 @@ export function WiezLogoLoader({
     outputRange: [0.16, 0.34],
   });
 
-  const captionTranslateY = drift.interpolate({
-    inputRange: [0, 1],
-    outputRange: [2, -2],
-  });
-
   return (
     <Animated.View
       style={[
@@ -108,6 +102,8 @@ export function WiezLogoLoader({
           transform: [{ translateY }],
         },
       ]}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading"
     >
       <View style={styles.logoFrame}>
         <Animated.View
@@ -131,28 +127,6 @@ export function WiezLogoLoader({
           <WiezLogo size={size} />
         </Animated.View>
       </View>
-      {showWordmark ? (
-        <Animated.View
-          style={[
-            styles.wordmarkWrap,
-            {
-              transform: [{ translateY: captionTranslateY }],
-            },
-          ]}
-        >
-          <Animated.Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.84}
-            style={[styles.wordmarkTitle, { color: titleColor }]}
-          >
-            {title}
-          </Animated.Text>
-          <Animated.Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.9} style={[styles.wordmarkSubtitle, { color: messageColor }]}>
-            {message}
-          </Animated.Text>
-        </Animated.View>
-      ) : null}
     </Animated.View>
   );
 }
@@ -168,23 +142,7 @@ const styles = StyleSheet.create({
   },
   logoGlow: {
     position: 'absolute',
-    backgroundColor: 'rgba(212,175,55,0.22)',
-  },
-  wordmarkWrap: {
-    marginTop: 16,
-    alignItems: 'center',
-    gap: 4,
-    minWidth: 180,
-    maxWidth: 240,
-  },
-  wordmarkTitle: {
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: 0.3,
-  },
-  wordmarkSubtitle: {
-    fontSize: 13,
-    fontWeight: '600',
+    backgroundColor: tokens.colors.loaderGlow,
   },
 });
 

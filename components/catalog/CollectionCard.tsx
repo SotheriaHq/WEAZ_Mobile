@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Animated, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { FontAwesome5 } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 
 import { AppText } from '@/components/ui/AppText';
@@ -272,7 +271,12 @@ export const CollectionCard = React.memo(function CollectionCard({
               accessibilityRole="button"
               accessibilityLabel={copy.ownerActionsLabel}
             >
-              <FontAwesome5 name="ellipsis-h" size={20} color={theme.colors.textInverse} style={{ textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }} />
+              {/* Emoji marker per Rule 5. `textShadow*` is legal on AppText —
+                  only typography and colour are forbidden overrides — and the
+                  shadow is what keeps the glyph legible over any cover image. */}
+              <AppText variant="title" tone="inverse" style={styles.menuGlyph}>
+                ⋯
+              </AppText>
             </Pressable>
           ) : null}
 
@@ -320,7 +324,7 @@ export const CollectionCard = React.memo(function CollectionCard({
                         progress={clientProgress ?? 0.01}
                         size={42}
                         color={theme.colors.primary}
-                        trackColor="rgba(255,255,255,0.28)"
+                        trackColor={tokens.tintLight(0.28)}
                       />
                       <View style={styles.clientCookingCopy}>
                         <AppText variant="badgeLabel" tone="primary" numberOfLines={1}>
@@ -584,7 +588,7 @@ function SocialMetric({ emoji, value, label, onPress }: { emoji: string; value: 
 const styles = StyleSheet.create({
   card: {
     overflow: 'visible',
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.22,
     shadowRadius: 10,
@@ -655,6 +659,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.xs,
   },
+  menuGlyph: {
+    textShadowColor: tokens.scrim(0.5),
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
   menuButton: {
     position: 'absolute',
     top: tokens.spacing.sm,
@@ -716,7 +725,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.full,
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.xs,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: tokens.tintLight(0.12),
   },
   socialMetricContent: {
     flexDirection: 'row',
@@ -751,10 +760,10 @@ const styles = StyleSheet.create({
     minHeight: 28,
     borderRadius: tokens.radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.45)',
+    borderColor: tokens.tintLight(0.45),
     paddingHorizontal: tokens.spacing.sm,
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: tokens.tintLight(0.14),
   },
   clientActionPressed: {
     opacity: 0.72,
@@ -763,7 +772,7 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: tokens.radius.full,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: tokens.tintLight(0.28),
   },
   clientProgressFill: {
     height: '100%',

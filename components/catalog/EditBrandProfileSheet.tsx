@@ -646,7 +646,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: tokens.radius.xl,
     borderTopWidth: 1,
     maxHeight: '92%',
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.28,
     shadowRadius: 24,

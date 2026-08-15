@@ -1,4 +1,3 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -51,6 +50,7 @@ import { ScreenChromeProvider } from '@/src/system/ScreenChrome';
 import { QueryProvider } from '@/src/query/QueryProvider';
 import { useAndroidDoubleBackExit } from '@/src/hooks/useAndroidDoubleBackExit';
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { tokens } from '@/src/styles/tokens';
 
 // Phase 1: Force nav perf instrumentation + logs when running perf builds (--no-dev --minify).
 // This bypasses flaky EXPO_PUBLIC_DEBUG_NAV inlining in the project's env loader for perf mode.
@@ -83,7 +83,7 @@ const THEME_MODE_KEY = 'wiez.theme.mode';
 // fallback a pixel-identical continuation of the native splash, so the native→JS
 // handoff is a single continuous surface with no tiny→large logo jump and no
 // blank flash between the native splash and the first app shell.
-const BOOT_BACKGROUND = '#FFFFFF';
+const BOOT_BACKGROUND = tokens.colors.bootBackground;
 const SPLASH_LOGO_SIZE = 116; // matches app.json splash plugin `imageWidth: 116`
 
 function StartupFallback() {
@@ -377,7 +377,8 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    ...FontAwesome.font,
+    // (No icon-library font is preloaded: every marker in the app is an emoji
+    //  per Rule 5, so there are no glyphs left for it to serve.)
   });
   const [themeBootstrapReady, setThemeBootstrapReady] = useState(false);
   const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode>('system');

@@ -632,10 +632,10 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
         // put the steep part of the curve behind the text and let the top of the
         // band approach zero gently enough to have no discernible edge.
         colors={[
-          'rgba(0,0,0,0)',
-          'rgba(0,0,0,0.18)',
-          'rgba(0,0,0,0.46)',
-          'rgba(0,0,0,0.72)',
+          tokens.scrim(0),
+          tokens.scrim(0.18),
+          tokens.scrim(0.46),
+          tokens.scrim(0.72),
         ]}
         locations={[0, 0.34, 0.68, 1]}
         style={StyleSheet.absoluteFill}
@@ -2842,7 +2842,7 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   loadingWrap: {
     flex: 1,
@@ -2872,7 +2872,7 @@ const styles = StyleSheet.create({
   feedSkeletonHeaderActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   feedSkeletonLogoWrap: {
     width: 64,
@@ -2890,7 +2890,7 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 15,
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
     paddingHorizontal: 16,
   },
   headerScrim: {
@@ -2914,7 +2914,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 12,
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
   },
   newDropBadge: {
     position: 'absolute',
@@ -3020,7 +3020,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderBottomWidth: 1,
   },
   profileMenuItemLast: {
@@ -3041,7 +3041,7 @@ const styles = StyleSheet.create({
   railItem: {
     width: 88,
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   railBagButton: {
     borderRadius: tokens.radius.md,
@@ -3050,7 +3050,7 @@ const styles = StyleSheet.create({
   railCountLabel: {
     width: 88,
     textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.55)',
+    textShadowColor: tokens.scrim(0.55),
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
@@ -3073,7 +3073,7 @@ const styles = StyleSheet.create({
   // Belt and braces with the gradient: on a blown-out highlight the wash alone
   // can still leave white-on-white, and a shadow costs nothing on text this size.
   metaTextShadow: {
-    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowColor: tokens.scrim(0.55),
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
@@ -3086,7 +3086,7 @@ const styles = StyleSheet.create({
   brandLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   brandTextWrap: {
     flex: 1,
@@ -3094,7 +3094,7 @@ const styles = StyleSheet.create({
   brandNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   audioRow: {
     flexDirection: 'row',

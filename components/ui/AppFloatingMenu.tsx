@@ -185,7 +185,7 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
             opacity: fadeAnim,
             transform: [{ scale: scaleAnim }],
             // WhatsApp shadow style
-            shadowColor: '#000',
+            shadowColor: tokens.colors.shadow,
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.16,
             shadowRadius: 8,

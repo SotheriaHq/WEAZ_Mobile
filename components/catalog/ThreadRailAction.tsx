@@ -252,23 +252,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   threadEmoji: {
-    color: '#fff',
+    color: tokens.colors.light,
     textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.45)',
+    textShadowColor: tokens.scrim(0.45),
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
   threadEmojiActive: {
-    textShadowColor: 'rgba(126, 34, 206, 0.55)',
+    textShadowColor: tokens.colors.threadRailGlow,
   },
   count: {
     width: 88,
     textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.55)',
+    textShadowColor: tokens.scrim(0.55),
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
   countActive: {
-    color: '#F5D0FE',
+    color: tokens.colors.threadRailActive,
   },
 });

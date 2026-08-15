@@ -165,7 +165,7 @@ export function SkeletonCard() {
         {/* Header row */}
         <View style={styles.cardHeader}>
           <SkeletonAvatar size={36} />
-          <View style={{ flex: 1, gap: 6 }}>
+          <View style={{ flex: 1, gap: 4 }}>
             <Skeleton width="50%" height={14} borderRadius={6} />
             <Skeleton width="30%" height={10} borderRadius={4} />
           </View>
@@ -213,7 +213,7 @@ export function SkeletonPost() {
 
         {/* Bottom info */}
         <View style={styles.postInfo}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <SkeletonAvatar size={40} />
             <Skeleton width={120} height={16} borderRadius={6} />
           </View>
@@ -297,8 +297,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   cardContent: {
-    padding: 14,
-    gap: 10,
+    padding: 16,
+    gap: 8,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
   notificationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
     paddingVertical: 12,
     paddingHorizontal: 16,
   },

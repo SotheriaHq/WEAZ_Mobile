@@ -290,10 +290,13 @@ async function main() {
   assert.match(brandHeaderSource, /📍 Add your location/);
   // Contact rows (email, website, socials, QR code) read in the body colour.
   assert.doesNotMatch(brandHeaderSource, /QR code[\s\S]{0,80}tone="primary"/);
-  assert.match(
-    brandHeaderSource,
-    /<FontAwesome5 name="qrcode"[\s\S]{0,220}tone="default"/,
-  );
+  // The invariant is "a marker, then a body-toned label" — NOT which library
+  // draws the marker. This used to pin `<FontAwesome5 name="qrcode">`, so it
+  // failed the moment the contact rows moved to emoji markers under Rule 5
+  // even though the behaviour it exists to protect was unchanged.
+  assert.match(brandHeaderSource, /🔳[\s\S]{0,220}tone="default"/);
+  // Rule 5 applies to this file as a whole: no icon-library glyphs at all.
+  assert.doesNotMatch(brandHeaderSource, /<(FontAwesome5?|MaterialIcons)\b/);
 
   // --- Brand profile save: the payload the API will actually accept ---------
   //

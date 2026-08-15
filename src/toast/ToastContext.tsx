@@ -7,8 +7,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/AppText';
+import { tokens } from '@/src/styles/tokens';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -44,11 +44,13 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 // Toast Component
 // ─────────────────────────────────────────────────────────────
 
-const TOAST_COLORS: Record<ToastType, { bg: string; border: string; icon: string; iconName: keyof typeof MaterialIcons.glyphMap }> = {
-  success: { bg: 'rgba(16, 185, 129, 0.95)', border: '#10B981', icon: '#fff', iconName: 'check-circle' },
-  error: { bg: 'rgba(239, 68, 68, 0.95)', border: '#EF4444', icon: '#fff', iconName: 'error' },
-  info: { bg: 'rgba(59, 130, 246, 0.95)', border: '#3B82F6', icon: '#fff', iconName: 'info' },
-  warning: { bg: 'rgba(245, 158, 11, 0.95)', border: '#F59E0B', icon: '#fff', iconName: 'warning' },
+// Emoji markers, not icon-library glyphs (Rule 5). `icon` stays on the record
+// because the fill/edge pair is still colour-driven; the marker is not.
+const TOAST_COLORS: Record<ToastType, { bg: string; border: string; icon: string; marker: string }> = {
+  success: { bg: tokens.toast.successFill, border: tokens.toast.successEdge, icon: tokens.colors.light, marker: '✅' },
+  error: { bg: tokens.toast.errorFill, border: tokens.toast.errorEdge, icon: tokens.colors.light, marker: '⛔' },
+  info: { bg: tokens.toast.infoFill, border: tokens.toast.infoEdge, icon: tokens.colors.light, marker: 'ℹ️' },
+  warning: { bg: tokens.toast.warningFill, border: tokens.toast.warningEdge, icon: tokens.colors.light, marker: '⚠️' },
 };
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -122,7 +124,9 @@ function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: str
         style={styles.toastBody}
         accessibilityRole={toast.onPress ? 'button' : undefined}
       >
-        <MaterialIcons name={colors.iconName} size={20} color={colors.icon} />
+        <AppText variant="subtitle" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          {colors.marker}
+        </AppText>
         <AppText variant="bodyReadable" tone="inverse" numberOfLines={2} style={styles.toastText}>
           {toast.message}
         </AppText>
@@ -132,8 +136,8 @@ function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: str
           </AppText>
         ) : null}
       </Pressable>
-      <Pressable onPress={dismissToast} hitSlop={8}>
-        <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.8)" />
+      <Pressable onPress={dismissToast} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss">
+        <AppText variant="bodyBold" tone="inverse">✕</AppText>
       </Pressable>
     </Animated.View>
   );
@@ -260,12 +264,12 @@ const styles = StyleSheet.create({
   toast: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 14,
     borderWidth: 1,
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -278,6 +282,6 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
 });

@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   slideBody: {
-    marginTop: 6,
+    marginTop: 4,
     textAlign: 'center',
   },
 });

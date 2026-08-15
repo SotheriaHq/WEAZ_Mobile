@@ -368,7 +368,7 @@ const MessageBubble = memo(function MessageBubble({
         ]}
         pointerEvents="none"
       >
-        <AppText style={{ fontSize: 18 }}>↩️</AppText>
+        <AppText variant="subtitle">↩️</AppText>
       </Animated.View>
 
       <Animated.View
@@ -439,12 +439,15 @@ const MessageBubble = memo(function MessageBubble({
                 {timestamp}
               </AppText>
             ) : null}
+            {/* Read receipts ride on variant + tone, not a colour/weight
+                override. A read tick is bolder AND lighter than an unread one,
+                which is exactly the difference between `captionBold` on the
+                inverse tone and `captionRegular` on it — both already defined,
+                and both readable on the sent-bubble fill. */}
             {mine && item.deliveryStatus ? (
               <AppText
-                variant="captionRegular"
-                style={item.deliveryStatus === 'READ'
-                  ? { color: theme.colors.primarySoft, fontWeight: '700' }
-                  : { color: theme.colors.onPrimary }}
+                variant={item.deliveryStatus === 'READ' ? 'captionBold' : 'captionRegular'}
+                tone="inverse"
               >
                 {item.deliveryStatus === 'READ' ? '✓✓' : item.deliveryStatus === 'DELIVERED' ? '✓✓' : '✓'}
               </AppText>
@@ -1314,7 +1317,7 @@ export default function ChatThreadScreen() {
                     </AppText>
                   </View>
                   <TouchableOpacity onPress={() => setReplyToMessage(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <AppText style={{ fontSize: 16, color: theme.colors.textMuted }}>✕</AppText>
+                    <AppText variant="body" tone="muted">✕</AppText>
                   </TouchableOpacity>
                 </View>
               ) : null}
@@ -1346,7 +1349,7 @@ export default function ChatThreadScreen() {
                         accessibilityRole="button"
                         accessibilityLabel="Remove attachment"
                       >
-                        <AppText variant="captionBold" style={{ color: theme.colors.textInverse }}>✕</AppText>
+                        <AppText variant="captionBold" tone="inverse">✕</AppText>
                       </TouchableOpacity>
                     </View>
                   ))}
@@ -1534,7 +1537,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(128,128,128,0.15)',
+    backgroundColor: tokens.colors.neutralWash,
   },
   replyIndicatorMine: {
     left: 0,

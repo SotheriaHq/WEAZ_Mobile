@@ -165,6 +165,201 @@ export const tokens = {
     dark: '#000000',
     lightGray: '#f0f2f5',
     primary: '#9333EA',
+    /**
+     * Halo behind the animated WIEZ mark while the app is waiting.
+     *
+     * Scheme-independent on purpose: the loader paints its own backdrop, so the
+     * halo has to read against both, and it is the one place the brand gold
+     * appears as light rather than as ink.
+     */
+    loaderGlow: 'rgba(212,175,55,0.22)',
+    /**
+     * Loader backdrop and the two ambient orbs behind the mark.
+     *
+     * `loaderBackdropDark` is deliberately deeper than the dark theme's `bg`:
+     * the loader is a full-screen hold, and dropping a shade makes the mark the
+     * only lit thing on screen. The light scheme uses the ambient `bg` instead,
+     * so only the dark value needs a home here. The orbs differ per scheme only
+     * in opacity — same hues, softer on paper.
+     */
+    loaderBackdropDark: '#0b0710',
+    loaderOrbPrimaryDark: 'rgba(147,51,234,0.18)',
+    loaderOrbSecondaryDark: 'rgba(212,175,55,0.14)',
+    loaderOrbPrimaryLight: 'rgba(147,51,234,0.12)',
+    loaderOrbSecondaryLight: 'rgba(212,175,55,0.12)',
+    /**
+     * Elevation shadow colour. Eleven files had written `shadowColor: '#000'`
+     * independently; it is one concept and belongs in one place.
+     */
+    shadow: '#000000',
+    /** Neutral (not black) wash used for inline message/attachment surfaces. */
+    neutralWash: 'rgba(128,128,128,0.15)',
+    /** Paint behind the app before the theme resolves — matches light `bg`. */
+    bootBackground: '#FFFFFF',
+    /** Opaque white. Chrome over media, where the backdrop is unknown. */
+    light: '#FFFFFF',
+    /** Frosted plate for controls floating over a photograph. */
+    glassPlateDark: 'rgba(18, 18, 24, 0.78)',
+    /** Faint blue-black wash used behind light-theme header chrome. */
+    inkWash: 'rgba(8,10,18,0.08)',
+    /** QR modules and quiet zone. Fixed high contrast — scanners depend on it. */
+    qrForeground: '#6d28d9',
+    qrBackground: '#ffffff',
+    /**
+     * Thread / patch burst accents. Written as both `#0f766e` and `#0F766E` in
+     * the same file before this — one colour, two spellings, which is the drift
+     * in miniature.
+     */
+    threadBurstDeep: '#0F766E',
+    threadBurstSoft: '#CCFBF1',
+    /** Thread rail: purple glow behind an active glyph, and its lit state. */
+    threadRailGlow: 'rgba(126, 34, 206, 0.55)',
+    threadRailActive: '#F5D0FE',
+  },
+
+  /**
+   * Black scrim at an explicit opacity.
+   *
+   * A count across the mobile app found ~20 DIFFERENT black-scrim opacities
+   * written by hand — 0.03, 0.1, 0.12, 0.15, 0.16, 0.18, 0.4, 0.46, 0.48, 0.5,
+   * 0.55, 0.58, 0.7, 0.72, 0.75, 0.8 — several of them in the same visual role,
+   * differing only because whoever typed them could not see the others. A
+   * function rather than a fixed ladder of named steps: overlays genuinely need
+   * a continuum (a sheet backdrop and a photo veil are not the same weight),
+   * and inventing `scrimSoftish` names for sixteen values would move the guessing
+   * rather than remove it.
+   *
+   * `tokens.ts` is exempt from the hardcoded-colour rule, so this is the one
+   * place the literal may be written.
+   */
+  scrim: (opacity: number): string => `rgba(0,0,0,${opacity})`,
+
+  /**
+   * White veil at an explicit opacity — the counterpart to `scrim`.
+   *
+   * Used for chrome drawn ON TOP of photography (hairlines, control fills,
+   * pressed states on a card cover), where the surface underneath is unknown
+   * and only a translucent white reads reliably.
+   */
+  tintLight: (opacity: number): string => `rgba(255,255,255,${opacity})`,
+
+  /**
+   * Third-party brand colours.
+   *
+   * Same status as `GoogleMark`'s exemption: these belong to Instagram, Meta
+   * and X, are fixed by their brand guidelines, and must never follow our
+   * theme. They live here — named and in one place — rather than as loose hex
+   * in whichever component happened to render a social row.
+   */
+  socialBrand: {
+    instagram: '#E1306C',
+    facebook: '#1877F2',
+    twitter: '#1DA1F2',
+  },
+
+  /**
+   * Toast severities: a 95%-opaque fill over a solid edge of the same hue.
+   * Deliberately NOT the theme's semantic colours — a toast floats over
+   * arbitrary content and needs its own guaranteed contrast.
+   */
+  toast: {
+    successFill: 'rgba(16, 185, 129, 0.95)',
+    successEdge: '#10B981',
+    errorFill: 'rgba(239, 68, 68, 0.95)',
+    errorEdge: '#EF4444',
+    infoFill: 'rgba(59, 130, 246, 0.95)',
+    infoEdge: '#3B82F6',
+    warningFill: 'rgba(245, 158, 11, 0.95)',
+    warningEdge: '#F59E0B',
+  },
+
+  /**
+   * The floating island dock's own glass.
+   *
+   * Blur tints sit under a `BlurView`; the solid pair is the fallback when blur
+   * is unavailable. Both are near-neutral rather than themed `surface`, because
+   * the dock floats over whatever the screen is showing.
+   */
+  island: {
+    blurDark: 'rgba(10,12,20,0.58)',
+    blurLight: 'rgba(255,255,255,0.66)',
+    solidDark: 'rgba(14,16,24,0.92)',
+    solidLight: 'rgba(250,250,252,0.94)',
+    shadowLight: 'rgba(15, 23, 42, 0.9)',
+    glyphHaloDark: 'rgba(255,255,255,0.10)',
+    glyphHaloLight: 'rgba(147,51,234,0.14)',
+  },
+
+  /**
+   * `CollectionDetailViewer`'s chrome palette.
+   *
+   * A full-bleed viewer that is deep-dark in BOTH themes (same policy as the
+   * Runway stage — see the dark-stage notes in CODEMAP.md), so it cannot read
+   * ambient theme colours without turning into a bright slab in light mode.
+   * Naming the ladder is what stops the next edit inventing a fifth near-black.
+   */
+  viewer: {
+    backdrop: '#06060b',
+    surface: '#0b0b12',
+    surfaceAlt: '#111',
+    plate: '#121826',
+    plateDeep: '#0B0F17',
+    accent: '#9333EA',
+    accentEdge: '#C084FC',
+    muted: '#64748B',
+    hairline: '#273244',
+  },
+
+  /**
+   * The auth surface's own palette.
+   *
+   * Login, signup, forgot-password, reset-password and verify-email are a
+   * deliberately separate visual world from the rest of the app — a gradient
+   * backdrop with a gold accent, not the ambient theme. That is a legitimate
+   * design decision; duplicating the hex values in five screens was not. The
+   * three password/verify screens were byte-identical, and `login` and
+   * `AnimatedAuthBackground` each carried near-copies whose middle stops had
+   * quietly drifted apart (`#1a0a2e` vs `#1a1122`, `#ede8f5` vs `#ede9f5`).
+   *
+   * Those drifts are PRESERVED below rather than reconciled — the ambient
+   * background and the screen backdrop are separate layers and this pass is
+   * value-identical by design. Reconciling them is a visual decision for
+   * someone looking at a device, not a side effect of tokenising.
+   */
+  auth: {
+    /** Full-screen backdrop on the password / verify screens. */
+    screenGradientDark: ['#0f0a14', '#1a0a2e', '#0f0a14'] as const,
+    screenGradientLight: ['#f7f6f8', '#ede8f5', '#f0ecfa'] as const,
+    /** Accent panel behind the form card. */
+    cardGradientDark: ['#2B1742', '#1E293B', '#0F172A'] as const,
+    cardGradientLight: ['#EDE9FE', '#FEF3C7', '#F8FAFC'] as const,
+    /** `AnimatedAuthBackground`'s drifting ambient wash — see note above. */
+    ambientGradientDark: ['#0f0a14', '#1a1122', '#0f0a14'] as const,
+    ambientGradientLight: ['#f7f6f8', '#ede9f5', '#f7f6f8'] as const,
+    ambientOrbPrimaryDark: 'rgba(147, 51, 234, 0.25)',
+    ambientOrbPrimaryLight: 'rgba(147, 51, 234, 0.15)',
+    ambientOrbSecondaryDark: 'rgba(212, 175, 55, 0.20)',
+    ambientOrbSecondaryLight: 'rgba(212, 175, 55, 0.12)',
+    ambientOrbAccentDark: 'rgba(6, 182, 212, 0.15)',
+    ambientOrbAccentLight: 'rgba(6, 182, 212, 0.10)',
+    /** Gold accent — the auth surface's primary call to action. */
+    gold: '#D4AF37',
+    /** Deep plum plate behind the auth card on login. */
+    plate: '#2B1742',
+    /** Purple rule used for the focused/selected auth control. */
+    edge: '#9333EA',
+    /**
+     * Inline notice tints. Four states, each a border at 0.35 over a fill at
+     * 0.08 of the same hue — the pairing is the pattern, so keep them together.
+     */
+    noticeGoldBorder: 'rgba(212,175,55,0.35)',
+    noticeGoldFill: 'rgba(212,175,55,0.08)',
+    noticeInfoBorder: 'rgba(147,51,234,0.3)',
+    noticeInfoFill: 'rgba(147,51,234,0.08)',
+    noticeSuccessBorder: 'rgba(34,197,94,0.35)',
+    noticeSuccessFill: 'rgba(34,197,94,0.08)',
+    noticeDangerBorder: 'rgba(239,68,68,0.35)',
+    noticeDangerFill: 'rgba(239,68,68,0.08)',
   },
 
   // ─── Font family ────────────────────────────────────────────────────────────
@@ -296,8 +491,8 @@ export const tokens = {
   // Min height 44px per iOS HIG / Android Material Design 3
   button: {
     xs: { height: 32, paddingHorizontal: 12 },
-    sm: { height: 38, paddingHorizontal: 14 },
-    md: { height: 44, paddingHorizontal: 18 },
+    sm: { height: 38, paddingHorizontal: 16 },
+    md: { height: 44, paddingHorizontal: 20 },
     lg: { height: 52, paddingHorizontal: 24 },
   },
 } as const;

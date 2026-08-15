@@ -1,10 +1,12 @@
 import React from 'react';
-import { Image, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { AppText } from '@/components/ui/AppText';
+import { StableImage } from '@/components/ui/StableImage';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { navPerf } from '@/src/utils/navPerf';
+import { tokens } from '@/src/styles/tokens';
 import {
   getNativeIslandContentClearance,
   getNativeIslandLayout,
@@ -75,10 +77,11 @@ export function NativeIslandTabIcon({
           <View style={styles.tabGlyphStack}>
             <View style={styles.tabEmojiWrap}>
               {avatarUri ? (
-                <Image
-                  source={{ uri: avatarUri }}
-                  style={[styles.tabAvatar, { opacity: focused ? 1 : 0.82 }]}
+                <StableImage
+                  uri={avatarUri}
                   resizeMode="cover"
+                  containerStyle={[styles.tabAvatar, { opacity: focused ? 1 : 0.82 }]}
+                  imageStyle={styles.tabAvatarFill}
                 />
               ) : (
                 <AppText variant="title" style={[styles.tabEmoji, { opacity: focused ? 1 : 0.76 }]}>
@@ -139,11 +142,11 @@ const IslandGlass = React.memo(function IslandGlass({
   // solid frosted panel rather than a flat translucent sheet.
   const fillColor = USE_LIVE_BLUR
     ? scheme === 'dark'
-      ? 'rgba(10,12,20,0.58)'
-      : 'rgba(255,255,255,0.66)'
+      ? tokens.island.blurDark
+      : tokens.island.blurLight
     : scheme === 'dark'
-      ? 'rgba(14,16,24,0.92)'
-      : 'rgba(250,250,252,0.94)';
+      ? tokens.island.solidDark
+      : tokens.island.solidLight;
 
   return (
     <>
@@ -245,7 +248,7 @@ export function NativeIslandBottomNav({
             bottom: bottomOffset,
             height: NATIVE_ISLAND_NAV.height,
             borderRadius: NATIVE_ISLAND_NAV.radius,
-            shadowColor: scheme === 'dark' ? '#000000' : 'rgba(15, 23, 42, 0.9)',
+            shadowColor: scheme === 'dark' ? tokens.colors.dark : tokens.island.shadowLight,
             shadowOpacity: scheme === 'dark' ? 0.42 : 0.24,
             shadowRadius: 28,
             elevation: 16,
@@ -277,7 +280,7 @@ export function NativeIslandBottomNav({
                   onPressOut={clearPressedItem}
                   onPress={undefined}
                   android_ripple={{
-                    color: scheme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(147,51,234,0.14)',
+                    color: scheme === 'dark' ? tokens.island.glyphHaloDark : tokens.island.glyphHaloLight,
                     borderless: false,
                     foreground: true,
                   }}
@@ -316,7 +319,7 @@ export function NativeIslandBottomNav({
                   onPressOut={clearPressedItem}
                   onPress={undefined}
                   android_ripple={{
-                    color: scheme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(147,51,234,0.14)',
+                    color: scheme === 'dark' ? tokens.island.glyphHaloDark : tokens.island.glyphHaloLight,
                     borderless: false,
                     foreground: true,
                   }}
@@ -440,6 +443,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   // Rule 6: avatars are rounded-square, never circles.
+  tabAvatarFill: {
+    width: '100%',
+    height: '100%',
+  },
   tabAvatar: {
     width: 22,
     height: 22,

@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
   },
   handleContainer: {
     alignItems: 'center',
-    paddingTop: 14,
+    paddingTop: 16,
     paddingBottom: 8,
   },
   handle: {

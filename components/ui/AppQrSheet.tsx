@@ -23,8 +23,8 @@ type AppQrSheetProps = {
 };
 
 /** WIEZ purple — aligned with web BrandedQRCode eye/fg colors. */
-const WIEZ_QR_FG = '#6d28d9';
-const WIEZ_QR_BG = '#ffffff';
+const WIEZ_QR_FG = tokens.colors.qrForeground;
+const WIEZ_QR_BG = tokens.colors.qrBackground;
 
 export function AppQrSheet({
   visible,

@@ -40,12 +40,12 @@ export default function ForgotPasswordScreen() {
   }, [params.email]);
 
   const bgGradient = isDark
-    ? (['#0f0a14', '#1a0a2e', '#0f0a14'] as const)
-    : (['#f7f6f8', '#ede8f5', '#f0ecfa'] as const);
+    ? tokens.auth.screenGradientDark
+    : tokens.auth.screenGradientLight;
 
   const accentGradient = isDark
-    ? (['#2B1742', '#1E293B', '#0F172A'] as const)
-    : (['#EDE9FE', '#FEF3C7', '#F8FAFC'] as const);
+    ? tokens.auth.cardGradientDark
+    : tokens.auth.cardGradientLight;
 
   const formBg = theme.colors.surface;
   const formBorder = theme.colors.border;
@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   kicker: {
-    marginBottom: 10,
+    marginBottom: 8,
     letterSpacing: 3,
     textTransform: 'uppercase',
   },
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     marginTop: 4,
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.25,
     shadowRadius: 24,
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     right: 28,
     height: 1.5,
     borderRadius: 1,
-    backgroundColor: '#D4AF37',
+    backgroundColor: tokens.auth.gold,
     opacity: 0.7,
     zIndex: 2,
   },
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   primaryButton: {
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18,
     shadowRadius: 18,

@@ -1449,7 +1449,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     minHeight: 20,
   },
   paginationDot: {

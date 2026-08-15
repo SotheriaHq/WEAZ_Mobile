@@ -519,6 +519,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   authFooter: {
-    gap: 10,
+    gap: 8,
   },
 });

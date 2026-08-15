@@ -3,6 +3,7 @@ import { Animated, Dimensions, StyleSheet, View, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { tokens } from '@/src/styles/tokens';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -112,13 +113,13 @@ export function AnimatedAuthBackground({ children }: AnimatedAuthBackgroundProps
   const isDark = scheme === 'dark';
 
   const gradientColors = isDark
-    ? ['#0f0a14', '#1a1122', '#0f0a14'] as const
-    : ['#f7f6f8', '#ede9f5', '#f7f6f8'] as const;
+    ? tokens.auth.ambientGradientDark
+    : tokens.auth.ambientGradientLight;
 
   const orbColors = {
-    primary: isDark ? 'rgba(147, 51, 234, 0.25)' : 'rgba(147, 51, 234, 0.15)',
-    secondary: isDark ? 'rgba(212, 175, 55, 0.20)' : 'rgba(212, 175, 55, 0.12)',
-    accent: isDark ? 'rgba(6, 182, 212, 0.15)' : 'rgba(6, 182, 212, 0.10)',
+    primary: isDark ? tokens.auth.ambientOrbPrimaryDark : tokens.auth.ambientOrbPrimaryLight,
+    secondary: isDark ? tokens.auth.ambientOrbSecondaryDark : tokens.auth.ambientOrbSecondaryLight,
+    accent: isDark ? tokens.auth.ambientOrbAccentDark : tokens.auth.ambientOrbAccentLight,
   };
 
   return (

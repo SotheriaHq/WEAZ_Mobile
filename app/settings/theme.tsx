@@ -186,8 +186,8 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: tokens.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 6,
-    gap: 6,
+    padding: 8,
+    gap: 4,
     overflow: 'hidden',
   },
   previewBar: {
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 6,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 6,
+    padding: 8,
     gap: 5,
   },
   previewLine: {

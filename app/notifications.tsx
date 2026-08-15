@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    marginTop: 6,
+    marginTop: 4,
   },
   pressed: {
     opacity: 0.82,

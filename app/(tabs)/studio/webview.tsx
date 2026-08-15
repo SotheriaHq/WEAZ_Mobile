@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
 import { IconButton } from '@/components/ui/IconButton';
 import { StableImage } from '@/components/ui/StableImage';
+import { WiezLogoLoader } from '@/components/ui/WiezLogoLoader';
 import StudioApi from '@/src/api/StudioApi';
 import { env } from '@/src/config/env';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
@@ -86,18 +87,14 @@ const READY_TIMEOUT_MS = 20_000;
 const STORE_SETUP_EXEMPT_ROUTES = new Set<StudioRouteKey>(['setup', 'essentials']);
 
 /**
- * Waiting copy, in the order the work actually happens. The old single line
- * ("Preparing secure brand session") read like a bank security screen and,
- * because it never changed, made an already-slow boot feel stalled. These are
- * warm, first-person, and tied to real progress so the message is honest.
+ * Studio waits behind ONE mark and no words.
+ *
+ * There used to be a three-stage narration here ("Getting your keys" →
+ * "Opening your store" → "Almost there") stacked on a progress bar, and the web
+ * app then painted its own captioned spinner behind it. Two narrated loaders
+ * for one wait read as two separate stalls. The animated WIEZ mark is the whole
+ * loading state now; if the wait fails, the error overlay below says so.
  */
-type StudioWaitStage = 'session' | 'opening' | 'almost';
-
-const STUDIO_WAIT_COPY: Record<StudioWaitStage, { title: string; body: string }> = {
-  session: { title: 'Getting your keys 🔑', body: 'Unlocking your studio…' },
-  opening: { title: 'Opening your store 🛍️', body: 'Bringing in your products and orders…' },
-  almost: { title: 'Almost there ✨', body: 'Setting out the last few things…' },
-};
 
 type StudioWebViewEventName =
   | 'route-open'
@@ -421,7 +418,6 @@ export default function StudioWebViewScreen() {
   const webViewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>('booting');
-  const [loadProgress, setLoadProgress] = useState(0);
   const [webUrl, setWebUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('Studio could not load.');
   const [retryKey, setRetryKey] = useState(0);
@@ -472,7 +468,6 @@ export default function StudioWebViewScreen() {
     pendingRouteRef.current = null;
     setWebUrl(null);
     setLoadState('booting');
-    setLoadProgress(0);
     setRetryKey((current) => current + 1);
   }, []);
 
@@ -680,8 +675,26 @@ export default function StudioWebViewScreen() {
     setCanGoBack(Boolean(navState.canGoBack));
   }, []);
 
+  /**
+   * `source: 'route-report'` is a NOTIFICATION, not a request.
+   *
+   * `ROUTE_CHANGED` is emitted by the injected history shim (pushState /
+   * replaceState / popstate) and by the web `StudioHandoffGate` on every
+   * location change — it says "the SPA has already navigated here". Routing it
+   * through the same path as a tapped link meant that any path the classifier
+   * did not recognise raised "Open this from the WIEZ app" at a user who was
+   * inside the app and had not asked for anything. Pressing Back out of the
+   * drafts view was one of them.
+   *
+   * The native-route handoff still has to run on a report — an SPA pushState
+   * never reaches `onShouldStartLoadWithRequest`, so this is the only hook that
+   * can catch the web app walking onto a screen native owns. `external` and
+   * `blocked` are silent here: a same-origin route change is never something to
+   * hand to the system browser, and a route the WebView already rendered is not
+   * something the user can act on.
+   */
   const openNavigationTarget = useCallback(
-    (target: string, source: 'navigation' | 'message') => {
+    (target: string, source: 'navigation' | 'message' | 'route-report') => {
       const aliasTarget = getTrustedAliasPath(target);
       if (aliasTarget) {
         perfMark('studio-webview-tap');
@@ -712,6 +725,7 @@ export default function StudioWebViewScreen() {
       }
 
       if (classification.type === 'external') {
+        if (source === 'route-report') return false;
         trackStudioWebViewEvent('external-link-opened', {
           source,
           url: sanitizeUrlForTelemetry(classification.url),
@@ -726,7 +740,9 @@ export default function StudioWebViewScreen() {
         reason: classification.reason,
         path: sanitizePathForTelemetry(classification.path),
       });
-      toast.info('Open this from the WIEZ app');
+      if (source !== 'route-report') {
+        toast.info('Open this from the WIEZ app');
+      }
       return false;
     },
     [toast, trustedOrigins],
@@ -813,7 +829,7 @@ export default function StudioWebViewScreen() {
           break;
         case 'ROUTE_CHANGED':
           if (message.path) {
-            openNavigationTarget(message.path, 'message');
+            openNavigationTarget(message.path, 'route-report');
           }
           break;
         case 'CLOSE':
@@ -909,14 +925,6 @@ export default function StudioWebViewScreen() {
   }, [signOut]);
 
   const studioShellBackground = theme.colors.bg;
-
-  // Tie the waiting copy to the work actually in flight, so the screen never
-  // shows the same frozen sentence for the whole boot.
-  const waitStage: StudioWaitStage =
-    loadState === 'booting' ? 'session' : loadProgress >= 0.7 ? 'almost' : 'opening';
-  const waitCopy = STUDIO_WAIT_COPY[waitStage];
-  // Reserve a slice of the bar for the handoff so the meter never sits at 0.
-  const waitProgress = loadState === 'booting' ? 0.12 : 0.15 + loadProgress * 0.85;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: studioShellBackground }]}>
@@ -1039,7 +1047,6 @@ export default function StudioWebViewScreen() {
             // Android: prefer software layer so IME resize/pan composites cleanly.
             androidLayerType="hardware"
             onLoadStart={() => setLoadState((current) => (current === 'ready' ? current : 'loading'))}
-            onLoadProgress={({ nativeEvent }) => setLoadProgress(nativeEvent.progress ?? 0)}
             onError={() => {
               setErrorMessage('Studio could not load. Check your connection and try again.');
               trackStudioWebViewEvent('load-failed', { routeKey: resolvedRouteKey, reason: 'webview-error' });
@@ -1066,27 +1073,12 @@ export default function StudioWebViewScreen() {
         ) : null}
 
         {loadState === 'booting' || loadState === 'loading' ? (
-          <View style={[styles.loadingOverlay, { backgroundColor: studioShellBackground }]}>
-            <View style={styles.loadingContent}>
-              <ActivityIndicator size="large" color={theme.colors.primary} />
-              <AppText variant="h3" style={styles.centerText}>
-                {waitCopy.title}
-              </AppText>
-              <AppText variant="body" tone="muted" style={styles.centerText}>
-                {waitCopy.body}
-              </AppText>
-              <View style={[styles.progressTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      backgroundColor: theme.colors.primary,
-                      width: `${Math.round(Math.min(1, Math.max(0, waitProgress)) * 100)}%`,
-                    },
-                  ]}
-                />
-              </View>
-            </View>
+          <View
+            style={[styles.loadingOverlay, { backgroundColor: studioShellBackground }]}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Loading Studio"
+          >
+            <WiezLogoLoader size={84} />
           </View>
         ) : null}
 
@@ -1162,25 +1154,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.xl,
     paddingBottom: tokens.spacing.xl,
   },
-  loadingContent: {
-    width: '100%',
-    maxWidth: 300,
-    alignItems: 'center',
-    gap: tokens.spacing.md,
-  },
-  progressTrack: {
-    alignSelf: 'stretch',
-    height: 4,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
   menuBackdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.16)',
+    backgroundColor: tokens.scrim(0.16),
   },
   menuWrap: {
     position: 'absolute',

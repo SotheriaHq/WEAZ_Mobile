@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { tokens } from '@/src/styles/tokens';
 
 type ThreadTapBurstOverlayProps = {
   burstKey: number;
@@ -240,7 +241,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 2,
     borderRadius: 1,
-    backgroundColor: '#0f766e',
+    backgroundColor: tokens.colors.threadBurstDeep,
   },
   threadHeadWrap: {
     position: 'absolute',
@@ -251,8 +252,8 @@ const styles = StyleSheet.create({
     height: 9,
     borderRadius: 5,
     borderWidth: 1,
-    borderColor: '#0f766e',
-    backgroundColor: '#CCFBF1',
+    borderColor: tokens.colors.threadBurstDeep,
+    backgroundColor: tokens.colors.threadBurstSoft,
   },
   fabricPoint: {
     position: 'absolute',
@@ -260,7 +261,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#CCFBF1',
+    backgroundColor: tokens.colors.threadBurstSoft,
   },
   fabricPointStart: {
     left: 30,
@@ -272,9 +273,9 @@ const styles = StyleSheet.create({
     width: 42,
     height: 30,
     borderRadius: 9,
-    backgroundColor: '#CCFBF1',
+    backgroundColor: tokens.colors.threadBurstSoft,
     borderWidth: 1,
-    borderColor: '#0F766E',
+    borderColor: tokens.colors.threadBurstDeep,
     overflow: 'hidden',
     transform: [{ rotate: '-5deg' }],
   },
@@ -283,7 +284,7 @@ const styles = StyleSheet.create({
     width: 13,
     height: 3,
     borderRadius: 2,
-    backgroundColor: '#0F766E',
+    backgroundColor: tokens.colors.threadBurstDeep,
     transform: [{ rotate: '-18deg' }],
   },
   stitchDashOne: {

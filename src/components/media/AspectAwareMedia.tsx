@@ -71,8 +71,8 @@ const LAYOUT_NOISE_EPSILON_DP = 0.5;
 // deliberately DIFFERENT values so the two never read as the same treatment:
 //   • landscape (letter-blur): blur 16, image opacity 0.55  — stronger ambient
 //   • square    (letter-soft): blur 10, image opacity 0.32  — subtle ambient
-const BACKDROP_WASH_STRONG = 'rgba(0, 0, 0, 0.1)';
-const BACKDROP_WASH_SOFT = 'rgba(0, 0, 0, 0.12)';
+const BACKDROP_WASH_STRONG = tokens.scrim(0.1);
+const BACKDROP_WASH_SOFT = tokens.scrim(0.12);
 const BACKDROP_BLUR_STRONG = 16;
 const BACKDROP_BLUR_SOFT = 10;
 
