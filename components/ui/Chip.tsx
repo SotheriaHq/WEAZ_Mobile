@@ -102,10 +102,12 @@ function ChipComponent({
                   ? theme.colors.controlSurfaceActive
                   : 'transparent'
                 : isNav
-                  ? scheme === 'dark'
-                    ? selected
-                      ? theme.colors.primarySoft
-                      : theme.colors.controlSurface
+                  ? // Unselected nav chips carry NO fill in either scheme. Dark
+                    // mode used to give them a `controlSurface` plate, which is
+                    // the boxed-edge look on the Runway; the selected pill is
+                    // the only indicator these need.
+                    selected
+                    ? theme.colors.primarySoft
                     : 'transparent'
                   : usePendingTreatment
                     ? theme.colors.surfaceAlt
@@ -119,8 +121,8 @@ function ChipComponent({
                 : selected
                   ? theme.colors.primary
                   : theme.colors.border,
-            borderBottomColor:
-              isNav && selected && !isStageNav ? theme.colors.primary : 'transparent',
+            // The nav underline is gone — the pill is the indicator now.
+            borderBottomColor: 'transparent',
             opacity: disabled ? 0.48 : pressed ? 0.86 : 1,
           },
           style,
@@ -222,14 +224,24 @@ const styles = StyleSheet.create({
     width: 36,
     paddingHorizontal: 0,
   },
+  /**
+   * Runway filter chips. Rounded pill, no plate.
+   *
+   * This was `borderRadius: 0` with a 2px bottom underline — a tab treatment.
+   * On the Runway the chips float over photography, and in dark mode the
+   * unselected ones also carried a `controlSurface` fill, so the row read as a
+   * strip of square plates with hard edges pasted onto the image. Unselected is
+   * now pure text and only the selected chip carries a soft rounded pill, which
+   * is the same conclusion `stageNavBase` reached for the pinned-dark stage.
+   */
   navBase: {
     minHeight: 38,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingTop: tokens.spacing.xs,
-    paddingBottom: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.md,
+    paddingTop: 0,
+    paddingBottom: 0,
     borderWidth: 0,
-    borderBottomWidth: 2,
-    borderRadius: 0,
+    borderBottomWidth: 0,
+    borderRadius: tokens.radius.full,
     flexShrink: 0,
   },
   navSelected: {

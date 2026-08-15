@@ -346,11 +346,17 @@ async function main() {
 
   // --- Store setup gating ---------------------------------------------------
   //
-  // A brand mid-setup is offered the wizard, never a store it does not have,
-  // and the Studio re-checks on entry so a deep link cannot bypass the menu.
+  // A brand mid-setup is offered setup, never a store it does not have, and the
+  // Studio re-checks on entry so a deep link cannot bypass the menu.
   assert.match(catalogSource, /storeSetupComplete === false/);
   assert.match(catalogSource, /title: 'Set up store'/);
-  assert.match(catalogSource, /routeKey: 'setup'/);
+  // `essentials`, NOT `setup`. Store setup is two phases — Essentials, then the
+  // creation wizard — and `setup` is the wizard alone. Pointing there skipped
+  // phase one outright: every brand began setup on the Social step having never
+  // been asked for their essentials. Essentials forwards to the wizard itself
+  // when it is already complete, so it is the correct entry from any state.
+  assert.match(catalogSource, /routeKey: 'essentials'/);
+  assert.doesNotMatch(catalogSource, /routeKey: 'setup'/);
 
   const studioSource = fs.readFileSync(studioWebViewPath, 'utf8');
   assert.match(studioSource, /STORE_SETUP_EXEMPT_ROUTES = new Set<StudioRouteKey>\(\['setup', 'essentials'\]\)/);

@@ -44,6 +44,12 @@ export interface BrandProfileDto {
   brandCountry: string | null;
   brandState: string | null;
   brandCity: string | null;
+  /**
+   * Exact street address. Owner-only and additionally gated on the brand's
+   * show/hide-location setting, both enforced server-side — the API returns
+   * null for anyone else, so this is safe to render whenever it is present.
+   */
+  streetAddress?: string | null;
   country?: string | null;
   state?: string | null;
   city?: string | null;
@@ -225,6 +231,13 @@ export interface UpdateBrandProfilePayload {
   brandCountry?: string;
   brandState?: string;
   brandCity?: string;
+  /**
+   * WRITE key is `brandStreetAddress`; the READ key on the profile is
+   * `streetAddress`. They genuinely differ on the backend (see
+   * `UpdateBrandProfileDto` vs the brand profile response), so do not
+   * "tidy" these into one name — sending `streetAddress` is silently dropped.
+   */
+  brandStreetAddress?: string;
   brandTags?: string[];
   socialInstagram?: string;
   socialFacebook?: string;
@@ -474,6 +487,7 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
   const brandCity =
     asString(source.brandCity) ??
     asString(source.city);
+  const streetAddress = asString(source.streetAddress);
 
   const logoImage =
     asString(source.logoImage) ??
@@ -581,6 +595,7 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
     brandCountry,
     brandState,
     brandCity,
+    streetAddress,
     country: brandCountry,
     state: brandState,
     city: brandCity,

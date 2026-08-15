@@ -48,6 +48,7 @@ type BrandFormState = {
   brandDescription: string;
   businessType: string;
   brandCity: string;
+  streetAddress: string;
   brandState: string;
   brandCountry: string;
   brandTags: string[];
@@ -63,6 +64,7 @@ function toForm(profile: BrandProfileDto): BrandFormState {
     brandDescription: profile.brandDescription ?? '',
     businessType: profile.businessType ?? '',
     brandCity: profile.brandCity ?? '',
+    streetAddress: profile.streetAddress ?? '',
     brandState: profile.brandState ?? '',
     brandCountry: profile.brandCountry ?? '',
     brandTags: Array.isArray(profile.brandTags) ? profile.brandTags : [],
@@ -83,6 +85,7 @@ function formsEqual(a: BrandFormState, b: BrandFormState): boolean {
     normalizeField(a.brandDescription) === normalizeField(b.brandDescription) &&
     normalizeField(a.businessType) === normalizeField(b.businessType) &&
     normalizeField(a.brandCity) === normalizeField(b.brandCity) &&
+    normalizeField(a.streetAddress) === normalizeField(b.streetAddress) &&
     normalizeField(a.brandState) === normalizeField(b.brandState) &&
     normalizeField(a.brandCountry) === normalizeField(b.brandCountry) &&
     a.brandTags.join('|') === b.brandTags.join('|') &&
@@ -99,6 +102,8 @@ function toPayload(form: BrandFormState): UpdateBrandProfilePayload {
     brandDescription: form.brandDescription.trim() || undefined,
     businessType: form.businessType.trim() || undefined,
     brandCity: form.brandCity.trim() || undefined,
+    // Write key differs from the read key — see UpdateBrandProfilePayload.
+    brandStreetAddress: form.streetAddress.trim() || undefined,
     brandState: form.brandState.trim() || undefined,
     brandCountry: form.brandCountry.trim() || undefined,
     brandTags: form.brandTags.slice(0, BRAND_TAG_SELECTION_LIMIT),
@@ -739,6 +744,29 @@ export default function BrandProfileEditScreen() {
                 {locationError}
               </AppText>
             ) : null}
+          </View>
+
+          {/*
+            Exact street address. Optional, and it rides the SAME show/hide
+            location setting as city/state/country — the API returns it only to
+            the owner and only when that toggle is on, so hiding your location
+            hides the address with it rather than leaving the most precise field
+            exposed. The helper says so, because "address" on a profile form
+            otherwise reads as public by default.
+          */}
+          <View style={styles.group}>
+            <Input
+              label="Street address"
+              value={form.streetAddress}
+              onChangeText={(value) => updateField({ streetAddress: value })}
+              placeholder="Building, street, area"
+              containerStyle={styles.group}
+              variant="underline"
+            />
+            <AppText variant="caption" tone="muted">
+              Optional. Follows your “Show location” privacy setting — turn that off
+              and your address stays private.
+            </AppText>
           </View>
 
           <View style={styles.group}>

@@ -558,17 +558,23 @@ export default function StudioWebViewScreen() {
         return;
       }
 
-      // Store setup is unfinished: send every trading route to the wizard. This
-      // sits ahead of the warm-session shortcut so an island hop cannot slip a
-      // gated route through an already-booted WebView. `null` (status unknown)
-      // deliberately falls through — a slow or failed /store/status must never
-      // strand a brand whose store is live.
+      // Store setup is unfinished: send every trading route to the START of
+      // setup. This sits ahead of the warm-session shortcut so an island hop
+      // cannot slip a gated route through an already-booted WebView. `null`
+      // (status unknown) deliberately falls through — a slow or failed
+      // /store/status must never strand a brand whose store is live.
+      //
+      // `essentials`, not `setup`. Setup is two phases — Essentials, then the
+      // wizard — and pointing at the wizard skipped the first phase entirely:
+      // every brand began setup on the Social step having never been asked for
+      // their essentials. Essentials forwards to the wizard on its own when it
+      // is already done, so this is the correct entry from any state.
       if (storeSetupComplete === false && !STORE_SETUP_EXEMPT_ROUTES.has(resolvedRouteKey)) {
         if (!setupRedirectNotifiedRef.current) {
           setupRedirectNotifiedRef.current = true;
           toast.info('Finish setting up your store to open Studio.');
         }
-        router.replace({ pathname: '/studio', params: { routeKey: 'setup' } } as any);
+        router.replace({ pathname: '/studio', params: { routeKey: 'essentials' } } as any);
         return;
       }
 

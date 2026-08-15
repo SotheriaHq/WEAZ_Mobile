@@ -21,13 +21,25 @@ export function useSyncedThemePreference() {
 
       try {
         const updated = await UserPreferencesApi.updateThemePreference(themePreference);
-        updateUser({ themePreference: updated.themePreference });
+        /**
+         * Only write back when the server actually disagrees.
+         *
+         * `updateUser` replaces the auth user object, which re-renders every
+         * consumer in the app — the same full-tree pass the theme flip just
+         * did. Since the server echoes back the preference we sent, the common
+         * case was paying for that pass twice for no change at all, landing a
+         * second later when the request returned. That is the lag between
+         * pressing a theme and the screen settling.
+         */
+        if (updated.themePreference !== user.themePreference) {
+          updateUser({ themePreference: updated.themePreference });
+        }
       } catch (error) {
         console.warn('Theme preference sync failed; keeping local preference.', error);
         toast.warning('Theme saved on this device. Account sync will retry next time.');
       }
     },
-    [status, themeState, toast, updateUser, user?.id],
+    [status, themeState, toast, updateUser, user?.id, user?.themePreference],
   );
 
   return {

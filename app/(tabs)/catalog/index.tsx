@@ -1121,20 +1121,29 @@ export default function CatalogScreen() {
     // card now lands where the work continues, and publishing/resubmitting is
     // reachable from there.
     const ownerStatus = String(collection.publicationStatus ?? collection.status ?? '').toUpperCase();
-    // The TAB is also evidence, and it is evidence the payload cannot contradict.
-    // Relying on the status alone meant one bad/absent field on a card sent
-    // unfinished work to a read-only viewer; the bucket the card was drawn in
-    // already tells us the owner came here to finish something.
-    const inUnfinishedBucket =
-      visibilityFilter === 'Drafts' ||
-      visibilityFilter === 'Needs Attention' ||
-      visibilityFilter === 'Changes Requested';
-    const opensInEditor =
-      inUnfinishedBucket ||
-      ownerStatus === 'DRAFT' ||
-      ownerStatus === 'CHANGES_REQUESTED' ||
-      ownerStatus === 'REJECTED' ||
-      ownerStatus === 'FAILED';
+    /**
+     * The editor is for work the owner can still CHANGE.
+     *
+     * DRAFT, CHANGES_REQUESTED and REJECTED are handed back to the brand to
+     * edit; FAILED is a publish that has to be re-submitted, which also starts
+     * in the editor. Everything else — IN_REVIEW, PUBLISHED, PRIVATE, ARCHIVED
+     * — opens the viewer, because there is nothing to edit: a design under
+     * review must not be mutable mid-review, and opening the editor on it
+     * invites a change that would silently invalidate the submission.
+     *
+     * The tab is a FALLBACK only, for when the payload carries no usable
+     * status. It must not override a known one: Needs Attention holds
+     * PROCESSING alongside CHANGES_REQUESTED, and treating the bucket as
+     * authoritative would open the editor on a design that is still uploading.
+     */
+    const EDITABLE_STATUSES = ['DRAFT', 'CHANGES_REQUESTED', 'REJECTED', 'FAILED'];
+    const VIEWER_STATUSES = ['IN_REVIEW', 'PUBLISHED', 'PROCESSING', 'ARCHIVED', 'REMOVED'];
+    const opensInEditor = EDITABLE_STATUSES.includes(ownerStatus)
+      ? true
+      : VIEWER_STATUSES.includes(ownerStatus)
+        ? false
+        : // Status absent or unrecognized — fall back to what the tab implies.
+          visibilityFilter === 'Drafts';
 
     if (isOwner && opensInEditor) {
       drillDownPush({
@@ -2034,7 +2043,7 @@ export default function CatalogScreen() {
                 key: 'store-setup',
                 icon: '🏗️',
                 title: 'Set up store',
-                onPress: () => drillDownPush({ pathname: '/studio', params: { routeKey: 'setup' } } as any),
+                onPress: () => drillDownPush({ pathname: '/studio', params: { routeKey: 'essentials' } } as any),
               }
             : { key: 'store', icon: '🛍️', title: 'Store', onPress: () => drillDownPush('/studio' as any) };
 
@@ -2348,7 +2357,7 @@ export default function CatalogScreen() {
               <StoreSetupRequiredNotice
                 emailVerified={userEmailVerified !== false}
                 onStartSetup={() =>
-                  drillDownPush({ pathname: '/studio', params: { routeKey: 'setup' } } as any)
+                  drillDownPush({ pathname: '/studio', params: { routeKey: 'essentials' } } as any)
                 }
               />
             ) : shouldMountShopTab && containerWidth > 0 && targetBrandId ? (
