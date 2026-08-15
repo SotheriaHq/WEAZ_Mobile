@@ -12,6 +12,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
 import {
   refreshUnreadNotificationCount as refreshSharedUnreadNotificationCount,
   useNotificationRealtimeChannel,
@@ -120,6 +121,15 @@ export default function TabLayout() {
   const [notificationCountReady, setNotificationCountReady] = useState(false);
   const [messageCountReady, setMessageCountReady] = useState(false);
   const inStudioIsland = isStudioIslandPath(pathname);
+  const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
+  /**
+   * The Studio's setup routes. Being on one is proof setup is unfinished and
+   * needs no network to establish — `storeSetupComplete` is null for as long as
+   * /store/status is in flight, which is exactly the window a brand spends
+   * walking through setup with every dock chip live.
+   */
+  const inStoreSetupRoute =
+    studioRouteKeyParam === 'setup' || studioRouteKeyParam === 'essentials';
   const lastBackPressAtRef = useRef(0);
   const lastNotificationRefreshAttemptAtRef = useRef(0);
   const lastMessageRefreshAttemptAtRef = useRef(0);
@@ -420,6 +430,8 @@ export default function TabLayout() {
         activeKey: String(displayedActiveKey),
         messagesBadge:
           canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
+        storeSetupComplete,
+        isOnSetupRoute: inStoreSetupRoute,
       });
     }
 
@@ -444,9 +456,11 @@ export default function TabLayout() {
     bagCount.combinedCount,
     canOpenProfileMenu,
     displayedActiveKey,
+    inStoreSetupRoute,
     inStudioIsland,
     isBrand,
     messageCountReady,
+    storeSetupComplete,
     notificationCountReady,
     profileNavAvatarUri,
     profileNavEmoji,

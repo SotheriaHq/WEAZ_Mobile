@@ -797,11 +797,28 @@ const unwrapData = <T,>(payload: unknown): T | null => {
   return (unwrapped ?? null) as T | null;
 };
 
+/**
+ * The first paint of the chip row, and it MUST mirror the server taxonomy.
+ *
+ * These are what the Runway shows before `/feed/categories` resolves. They had
+ * drifted from the real `FeedCategory` rows, so the row visibly rewrote itself
+ * a moment after launch: "Discover for you" → "Discover", "African culture" →
+ * "African Style", "Casual" → "Casual Style".
+ *
+ * "Discover for you" was also wrong on its own terms — it welded together two
+ * categories the server has always kept apart. Discover is the ranked feed;
+ * For You is personalised. Collapsing them into one chip hid For You from the
+ * row entirely until the fetch landed.
+ *
+ * Keep in sync with the FeedCategory seed. Broad keys carry `tag: null` (see
+ * FEED_CATEGORY_BROAD_KEYS) because they filter nothing.
+ */
 export const DEFAULT_MARKET_FILTER_CHIPS: MarketFilterChip[] = [
-  { id: 'discover-for-you', label: 'Discover for you', tag: null },
+  { id: 'discover', label: 'Discover', tag: null },
   { id: 'explore', label: 'Explore', tag: null },
-  { id: 'african-culture', label: 'African culture', tag: 'african-fashion' },
-  { id: 'casual', label: 'Casual', tag: 'casual-style' },
+  { id: 'for-you', label: 'For You', tag: null },
+  { id: 'african-style', label: 'African Style', tag: 'african-style' },
+  { id: 'casual-style', label: 'Casual Style', tag: 'casual-style' },
 ];
 
 const MARKET_FILTER_PREFERENCES: MarketFilterPreference[] = [
@@ -855,13 +872,11 @@ const mapSeededFiltersToChips = (payload: RawCategoryFiltersPayload): MarketFilt
     };
   });
   const uniqueChips = Array.from(new Map(chips.map((chip) => [chip.id, chip])).values());
-  return uniqueChips.length > 0
-    ? [
-        DEFAULT_MARKET_FILTER_CHIPS[0],
-        DEFAULT_MARKET_FILTER_CHIPS[1],
-        ...uniqueChips,
-      ]
-    : DEFAULT_MARKET_FILTER_CHIPS;
+  // Lead with every BROAD chip, selected by its null tag rather than by index.
+  // The indexes were [0] and [1] back when exactly two broad chips existed;
+  // adding For You as its own category would silently have dropped it here.
+  const broadChips = DEFAULT_MARKET_FILTER_CHIPS.filter((chip) => chip.tag === null);
+  return uniqueChips.length > 0 ? [...broadChips, ...uniqueChips] : DEFAULT_MARKET_FILTER_CHIPS;
 };
 
 const FEED_CATEGORY_BROAD_KEYS = new Set(['discover', 'explore', 'for-you']);

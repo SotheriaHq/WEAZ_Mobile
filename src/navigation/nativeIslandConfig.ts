@@ -119,32 +119,65 @@ export function getStudioIslandTarget(key: string): StudioIslandTarget {
   return { pathname: '/studio', params: { routeKey: key } };
 }
 
-/** Same primary set as web `StudioSidebar` / mobile web IslandBottomNav. */
+/**
+ * Same primary set as web `StudioSidebar` / mobile web IslandBottomNav —
+ * INCLUDING its setup gating, which this had been missing entirely.
+ *
+ * Rule 1 of the Studio is that its links are inactive until store setup is
+ * complete. Web enforced that; this dock did not carry `requiresSetup` at all,
+ * so every chip rendered live. It went unnoticed because the two look
+ * interchangeable, but they are not interchangeable in the one place that
+ * matters: inside the native app `StudioScaffold` skips `StudioSidebar`
+ * (`!isEmbeddedMobile`), so the web gate is not merely bypassed — the entire
+ * component that owns it is never rendered. This dock IS the Studio nav on
+ * native, and it is the only thing that can gate it.
+ *
+ * `Store` is the one always-open destination: it is where setup lives, so
+ * locking it would lock the brand out of finishing.
+ */
 export function buildStudioIslandItems(args: {
   activeKey: string;
   messagesBadge?: number;
+  /**
+   * Tri-state, matching `useStoreSetupStatus`: false = incomplete, true =
+   * complete, null/undefined = not known yet. Only an explicit `false` locks.
+   * A slow or failed status check must never strand a brand whose store is
+   * live — the same stance the web guard takes.
+   */
+  storeSetupComplete?: boolean | null;
+  /**
+   * True while the brand is on a setup screen. Proof that setup is unfinished
+   * that costs no network, which matters because `storeSetupComplete` is null
+   * for as long as the status request is in flight — exactly the window the
+   * brand spends walking through setup.
+   */
+  isOnSetupRoute?: boolean;
 }): NativeIslandNavItem[] {
   const items: Array<{
     key: StudioIslandKey;
     label: string;
     emoji: string;
     badge?: number;
+    requiresSetup: boolean;
   }> = [
-    { key: STUDIO_ISLAND_KEYS.overview, label: 'Dashboard', emoji: '📊' },
-    { key: STUDIO_ISLAND_KEYS.store, label: 'Store', emoji: '🛍️' },
-    { key: STUDIO_ISLAND_KEYS.reviews, label: 'Reviews', emoji: '⭐' },
-    { key: STUDIO_ISLAND_KEYS.orders, label: 'Orders', emoji: '📦' },
+    { key: STUDIO_ISLAND_KEYS.overview, label: 'Dashboard', emoji: '📊', requiresSetup: true },
+    { key: STUDIO_ISLAND_KEYS.store, label: 'Store', emoji: '🛍️', requiresSetup: false },
+    { key: STUDIO_ISLAND_KEYS.reviews, label: 'Reviews', emoji: '⭐', requiresSetup: true },
+    { key: STUDIO_ISLAND_KEYS.orders, label: 'Orders', emoji: '📦', requiresSetup: true },
     {
       key: STUDIO_ISLAND_KEYS.messages,
       label: 'Messages',
       emoji: '💬',
       badge: args.messagesBadge,
+      requiresSetup: true,
     },
-    { key: STUDIO_ISLAND_KEYS.staff, label: 'Staff', emoji: '👥' },
-    { key: STUDIO_ISLAND_KEYS.customers, label: 'Customers', emoji: '👤' },
-    { key: STUDIO_ISLAND_KEYS.analytics, label: 'Analytics', emoji: '📈' },
-    { key: STUDIO_ISLAND_KEYS.finance, label: 'Finance', emoji: '💰' },
+    { key: STUDIO_ISLAND_KEYS.staff, label: 'Staff', emoji: '👥', requiresSetup: true },
+    { key: STUDIO_ISLAND_KEYS.customers, label: 'Customers', emoji: '👤', requiresSetup: true },
+    { key: STUDIO_ISLAND_KEYS.analytics, label: 'Analytics', emoji: '📈', requiresSetup: true },
+    { key: STUDIO_ISLAND_KEYS.finance, label: 'Finance', emoji: '💰', requiresSetup: true },
   ];
+
+  const setupLocked = args.storeSetupComplete === false || args.isOnSetupRoute === true;
 
   return items.map((item) => {
     const target = getStudioIslandTarget(item.key);
@@ -154,6 +187,7 @@ export function buildStudioIslandItems(args: {
       emoji: item.emoji,
       active: args.activeKey === item.key,
       badge: item.badge,
+      disabled: setupLocked && item.requiresSetup,
       navFlow: `studio→${item.key}`,
       targetRoute: target.pathname,
       targetParams: target.params,
