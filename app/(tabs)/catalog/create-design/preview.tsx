@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatMoney } from '@/src/utils/money';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,7 +45,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 function formatAmount(value: string) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || value.trim().length === 0) return null;
-  return `NGN ${Math.round(parsed).toLocaleString('en-NG')}`;
+  return formatMoney(parsed);
 }
 
 function formatPriceRange(minPrice: string, maxPrice: string) {

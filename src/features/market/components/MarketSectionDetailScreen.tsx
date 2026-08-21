@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 
+import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { ScreenState } from '@/components/ui/ScreenState';
 import { StableImage } from '@/components/ui/StableImage';
@@ -265,18 +266,17 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <Pressable
-        onPress={() => router.back()}
-        style={({ pressed }) => [
-          styles.backButton,
-          { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-          pressed && styles.pressed,
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-      >
-        <AppText variant="captionBold">Back</AppText>
-      </Pressable>
+      {/*
+        The same back control as every other screen.
+
+        This was the one place in the app that spelled the word "Back" in a
+        bordered pill instead of using `AppBackButton`, so the section detail
+        looked like it belonged to a different product — and it called
+        `router.back()` raw, with no fallback for the case where there is no
+        history to pop (a notification or deep link opening the section
+        directly would have left the user stuck).
+      */}
+      <AppBackButton fallbackHref="/(tabs)/discover" />
       <View style={styles.titleBlock}>
         <AppText variant="h2" numberOfLines={2}>
           {section?.title ?? 'Market section'}
@@ -380,15 +380,6 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
     paddingTop: tokens.spacing.sm,
     paddingBottom: tokens.spacing.lg,
-  },
-  backButton: {
-    alignSelf: 'flex-start',
-    minHeight: 38,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    paddingHorizontal: tokens.spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   titleBlock: {
     gap: tokens.spacing.xs,

@@ -35,6 +35,7 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { brandShopDevLog, brandShopDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
+import { DEFAULT_CURRENCY, formatMoneyOr } from '@/src/utils/money';
 
 type SortKey = 'newest' | 'price_low_high' | 'price_high_low';
 type FilterKey = 'all' | 'in_stock' | 'custom_only' | 'bagged' | 'saved';
@@ -108,17 +109,8 @@ const normalizeVariantPool = (
   });
 };
 
-const formatPrice = (amount: number, currency = 'NGN'): string => {
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${Number(amount || 0).toLocaleString()}`;
-  }
-};
+const formatPrice = (amount: number, currency = DEFAULT_CURRENCY): string =>
+  formatMoneyOr(amount, 'Price on request', currency);
 
 const getBagPulseStatus = (args: {
   busy?: boolean;

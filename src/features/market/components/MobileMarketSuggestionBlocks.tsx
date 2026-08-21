@@ -33,6 +33,7 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { formatMoney } from '@/src/utils/money';
 
 type Props = {
   context: MarketSuggestionContext;
@@ -76,15 +77,7 @@ const formatPrice = (item: MarketSectionItem) => {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     return item.category?.name ?? item.brand?.name ?? 'Market pick';
   }
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return `${currency} ${Math.round(value).toLocaleString('en-NG')}`;
-  }
+  return formatMoney(value, currency);
 };
 
 const navigateToSuggestion = (item: MarketSectionItem) => {

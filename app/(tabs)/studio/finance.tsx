@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { DEFAULT_CURRENCY, formatMoneyOr } from '@/src/utils/money';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -31,17 +32,10 @@ import { useToast } from '@/src/toast/ToastContext';
 
 const MIN_PAYOUT = 5000;
 
-const formatMoney = (amount: number, currency = 'NGN') => {
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: currency || 'NGN',
-      maximumFractionDigits: 2,
-    }).format(Number(amount || 0));
-  } catch {
-    return `${currency} ${Number(amount || 0).toFixed(2)}`;
-  }
-};
+// Finance is the one place that shows kobo — payouts reconcile to the exact
+// figure. Everywhere else rounds to whole Naira.
+const formatMoney = (amount: number, currency = DEFAULT_CURRENCY) =>
+  formatMoneyOr(Number(amount || 0), '₦0.00', currency, { withDecimals: true });
 
 const formatDate = (value?: string | null) => {
   if (!value) return '—';

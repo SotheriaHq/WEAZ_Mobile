@@ -306,6 +306,24 @@ function ToggleSettingRow({
         <AppText variant="captionRegular" tone="muted">
           {item.description}
         </AppText>
+        {/*
+          Show the receipt states in the colours the thread actually uses.
+
+          "Read receipts (colored ✓✓)" described a colour the reader had no way
+          to picture, and the descriptions for these three rows run to two dense
+          sentences each about what is and is not shared. A live sample of the
+          ticks answers "what will I see?" in the same glance, and it stays
+          honest because it uses the same tones the message bubbles do.
+        */}
+        {item.id === 'messaging.readReceipts' ? (
+          <View style={styles.receiptLegend}>
+            <AppText variant="captionRegular" tone="muted">✓ Sent</AppText>
+            <AppText variant="captionRegular" tone="muted">✓✓ Delivered</AppText>
+            <AppText variant="captionBold" tone={value ? 'success' : 'muted'}>
+              ✓✓ Read
+            </AppText>
+          </View>
+        ) : null}
       </View>
       <View style={styles.switchSlot}>
         {pending ? <ActivityIndicator size="small" color={theme.colors.primary} /> : null}
@@ -841,6 +859,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: tokens.spacing.xs,
+  },
+  receiptLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+    marginTop: tokens.spacing.xs,
   },
   switchSlot: {
     minWidth: 82,

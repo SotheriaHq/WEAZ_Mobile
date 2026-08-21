@@ -58,6 +58,7 @@ import { fetchMarketFilterChipsQuery } from '@/src/query/bootstrapQueries';
 import { RunwayFeedItem } from '@/src/features/feed/components/RunwayFeedItem';
 import { RunwayFeedList } from '@/src/features/feed/components/RunwayFeedList';
 import type { FeedListEntry, FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
+import { formatMoney } from '@/src/utils/money';
 
 /**
  * Module-level feed cache - stale-while-revalidate.
@@ -200,15 +201,7 @@ const isValidMediaItem = (item: MarketItem): boolean => {
  * a single number the buyer might not actually be able to pay.
  */
 const formatFeedAmount = (amount: number, currency = 'NGN') => {
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${Math.round(amount).toLocaleString('en-NG')}`;
-  }
+  return formatMoney(amount, currency);
 };
 
 const formatFeedPrice = (item: MarketItem): string | null => {

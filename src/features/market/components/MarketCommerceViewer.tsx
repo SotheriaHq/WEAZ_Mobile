@@ -58,6 +58,7 @@ import { CONFIDENCE_LABELS, SIZING_REGION_LABELS } from '@/src/utils/sizeRecomme
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
+import { formatMoney } from '@/src/utils/money';
 
 type CommerceSourceType = Extract<BagSourceType, 'PRODUCT' | 'DESIGN'>;
 
@@ -153,15 +154,7 @@ const asString = (value: unknown): string | null => {
 
 const formatPrice = (amount?: number | null, currency = 'NGN') => {
   if (typeof amount !== 'number' || !Number.isFinite(amount)) return null;
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${Math.round(amount).toLocaleString('en-NG')}`;
-  }
+  return formatMoney(amount, currency);
 };
 
 const getProductPrice = (product: StoreProduct) =>

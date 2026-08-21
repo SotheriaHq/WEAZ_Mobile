@@ -17,6 +17,7 @@ import {
 } from '@/components/settings/SettingsPrimitives';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { formatMoney } from '@/src/utils/money';
 
 function extractErrorMessage(error: unknown, fallback: string) {
   const data = (error as any)?.response?.data;
@@ -28,15 +29,7 @@ function extractErrorMessage(error: unknown, fallback: string) {
 }
 
 function formatCurrency(amount: number, currency = 'NGN') {
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${amount}`;
-  }
+  return formatMoney(amount, currency);
 }
 
 function formatDate(value: string) {

@@ -36,6 +36,7 @@ import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { navPerf } from '@/src/utils/navPerf';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
+import { formatMoney } from '@/src/utils/money';
 
 type CollectionCommerceViewerProps = {
   collectionId: string;
@@ -59,15 +60,7 @@ const statusBarContrast = (value: 'light' | 'dark') => (value === 'dark' ? 'ligh
 
 const formatPrice = (amount?: number | null, currency = 'NGN') => {
   if (typeof amount !== 'number' || !Number.isFinite(amount)) return null;
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${Math.round(amount).toLocaleString('en-NG')}`;
-  }
+  return formatMoney(amount, currency);
 };
 
 const formatPriceRange = (status: CollectionBagStatus | null) => {

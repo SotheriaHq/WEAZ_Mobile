@@ -866,8 +866,18 @@ function BrandProfileActions({
 
   return (
     <View style={[styles.actionRow, styles.visitorActionRow]}>
+      {/*
+        🧵 not 🪡.
+
+        The sewing-needle glyph renders as a thin diagonal sliver at button size
+        — on most Android font stacks it is nearly invisible and reads as a
+        stray mark rather than an action, which is why it was reported as "does
+        not look like patch at all". The spool is the mark this product already
+        uses for threading on the Runway rail, it is legible at 20pt, and using
+        it here ties patching a brand to the same idea.
+      */}
       <VisitorActionIconButton
-        icon="🪡"
+        icon="🧵"
         label={isPatched ? 'Unpatch brand' : 'Patch brand'}
         onPress={onPatch}
         disabled={!onPatch || patchLoading}

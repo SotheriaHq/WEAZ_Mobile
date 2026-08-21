@@ -43,6 +43,7 @@ import {
   getMobileUploadValidationMessage,
   assertValidPickedUploadAsset,
 } from '@/src/utils/uploadValidation';
+import { formatMoney } from '@/src/utils/money';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 
@@ -112,15 +113,7 @@ const getSavedLooksCountBucket = (count: number) => {
 const getProfileTabLabel = (tab: ProfileTab) => (tab === 'Saved' ? 'Saved Looks' : tab);
 
 function formatCurrency(amount: number, currency = 'NGN') {
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${amount}`;
-  }
+  return formatMoney(amount, currency);
 }
 
 function formatDate(value?: string | null) {

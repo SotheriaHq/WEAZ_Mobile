@@ -68,6 +68,7 @@ import {
 } from '@/src/services/marketSignals';
 import { navPerf } from '@/src/utils/navPerf';
 import { prefetchMedia } from '@/src/prefetch/navPrefetch';
+import { formatMoney } from '@/src/utils/money';
 
 const SIDE_PADDING = tokens.spacing.lg;
 const SECTION_GAP = tokens.spacing.xl;
@@ -392,15 +393,7 @@ function getCollectionPriceLabel(collection: StoreCollectionSummary) {
 
 function formatMarketPrice(value?: number | null, currency = 'NGN') {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return `${currency} ${Math.round(value).toLocaleString('en-NG')}`;
-  }
+  return formatMoney(value, currency);
 }
 
 function getGridColumnCount(width: number) {

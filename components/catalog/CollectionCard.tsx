@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatMoneyRange } from '@/src/utils/money';
 import { ActivityIndicator, Animated, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -38,23 +39,18 @@ export interface CollectionCardProps {
   onClientDismiss?: (collection: CollectionDto) => void;
 }
 
-const formatPrice = (price?: number | null): string | null => {
-  if (typeof price !== 'number' || price <= 0) return null;
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(price);
-};
-
+/**
+ * These were US DOLLARS.
+ *
+ * `Intl.NumberFormat('en-US', { currency: 'USD' })` rendered every catalog card
+ * price as `$40,000` — on a Naira storefront, on the first thing a shopper
+ * sees. WIEZ trades in Naira; the shared formatter owns the symbol so no screen
+ * can pick its own currency by accident again.
+ */
 const priceRange = (minPrice?: number | null, maxPrice?: number | null) => {
-  const min = formatPrice(minPrice);
-  const max = formatPrice(maxPrice);
-  if (min && max) return `${min} - ${max}`;
-  if (min) return `${min}+`;
-  if (max) return `Up to ${max}`;
-  return 'Price on request';
+  const positive = (value?: number | null) =>
+    typeof value === 'number' && value > 0 ? value : null;
+  return formatMoneyRange(positive(minPrice), positive(maxPrice)) ?? 'Price on request';
 };
 
 const compactCount = (value?: number | null): string => {

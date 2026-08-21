@@ -89,6 +89,8 @@ export interface BrandProfileDto {
   profilePhotoViewState?: ProfilePhotoViewState | null;
   username: string | null;
   email: string | null;
+  publicContactEmail?: string | null;
+  contactEmailPublic?: boolean | null;
   firstName?: string | null;
   lastName?: string | null;
 }
@@ -631,6 +633,20 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
     socialWebsite:
       asString(source.socialWebsite) ??
       asString(socialLinks.website),
+    /**
+     * The brand's PUBLISHED contact address, separate from `email` above.
+     *
+     * `email` is the account credential and the API returns it only to the
+     * owner. `publicContactEmail` is an address the brand chose to publish, and
+     * the API returns it to everyone once they switch it on — so a shopper
+     * finally has a way to reach a brand from their catalog.
+     */
+    publicContactEmail: asString(contactInfo.publicEmail),
+    /** Owner-only: whether the address above is currently published. */
+    contactEmailPublic:
+      typeof contactInfo.contactEmailPublic === 'boolean'
+        ? contactInfo.contactEmailPublic
+        : null,
     phoneNumber:
       asString(source.phoneNumber) ??
       asString(contactInfo.phone),

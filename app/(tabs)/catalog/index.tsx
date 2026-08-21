@@ -41,7 +41,7 @@ import { CollectionsGrid } from '@/components/catalog/CollectionsGrid';
 import { VisibilityFilter } from '@/components/catalog/VisibilityFilter';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/src/toast/ToastContext';
-import { useBrandPatchStatus } from '@/src/hooks/useBrandPatchStatus';
+import { BrandPatchUnavailableError, useBrandPatchStatus } from '@/src/hooks/useBrandPatchStatus';
 import { useUnreadNotificationCount } from '@/src/realtime/notifications';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { resolveBannerImageSource, resolveProfileImageSource } from '@/src/utils/profileImage';
@@ -1090,13 +1090,38 @@ export default function CatalogScreen() {
     });
   }, [activeTabPagerHeight, containerWidth]);
 
-  // Handle patch/unpatch
+  /**
+   * Say what actually went wrong.
+   *
+   * Every failure produced "Could not update patch status. Please try again." —
+   * including the ones retrying can never fix. A brand account or the store's
+   * own owner cannot patch at all (`patches/check` is `UserTypeGuard(REGULAR)`
+   * and 403s), and a signed-out or expired session 401s. Telling those users to
+   * try again sends them round a loop with no exit and no explanation.
+   */
   const handlePatch = async () => {
     if (!targetBrandId || patchLoading) return;
     try {
       const nextPatched = await togglePatchStatus();
       toast.success(nextPatched ? 'Brand patched.' : 'Unpatched brand.');
-    } catch {
+    } catch (error: any) {
+      if (error instanceof BrandPatchUnavailableError) {
+        toast.info(
+          isOwner
+            ? 'This is your own store.'
+            : 'Patching brands is for shopper accounts.',
+        );
+        return;
+      }
+      const statusCode = Number(error?.response?.status ?? 0);
+      if (statusCode === 401) {
+        toast.error('Your session expired. Sign in again to patch brands.');
+        return;
+      }
+      if (statusCode === 403) {
+        toast.info('Patching brands is for shopper accounts.');
+        return;
+      }
       toast.error('Could not update patch status. Please try again.');
     }
   };
@@ -1749,10 +1774,23 @@ export default function CatalogScreen() {
     effectiveProfile?.totalReviews,
   ]);
   const headerContactItems = useMemo<BrandHeaderContactItem[]>(() => {
-    // Account email is owner-only (public brand API redacts it for visitors).
-    // Never surface another account's email on a scanned/shared brand profile.
+    /**
+     * Two different emails, two different rules.
+     *
+     * The ACCOUNT email is a credential — owner-only, redacted by the API for
+     * anyone else, and never shown on a scanned or shared profile. The PUBLIC
+     * CONTACT email is an address the brand deliberately published from their
+     * store settings; the API only sends it once they have, so if it is here it
+     * is meant to be seen. A visitor previously had no way at all to reach a
+     * brand from their catalog, which is what this closes.
+     *
+     * The owner sees the published one too, so the header shows them exactly
+     * what a visitor sees.
+     */
+    const publicContactEmail = readContactValue(effectiveProfile?.publicContactEmail) ?? '';
     const candidates: BrandHeaderContactItem[] = [
-      ...(isOwner
+      ...(publicContactEmail ? [{ label: 'Email', value: publicContactEmail }] : []),
+      ...(isOwner && !publicContactEmail
         ? [{ label: 'Email', value: readContactValue(effectiveProfile?.email) ?? '' }]
         : []),
       { label: 'Phone', value: readContactValue(effectiveProfile?.phoneNumber) ?? '' },
@@ -1762,14 +1800,39 @@ export default function CatalogScreen() {
       { label: 'X', value: readContactValue(effectiveProfile?.socialTwitter) ?? '' },
     ];
 
-    return candidates.filter((item) => item.value.length > 0);
+    const present = candidates.filter((item) => item.value.length > 0);
+
+    /**
+     * Say "Pending", do not say nothing.
+     *
+     * A brand created through Google sign-up arrives with no location, no
+     * contact address and no socials — none of it required at signup — and the
+     * profile simply rendered those rows away. The owner saw a page that looked
+     * finished and had no idea anything was expected of them, which is the
+     * "my data was not populated" report: there was no data, and nothing said
+     * so. (Verification DOES require a full business address, so this only ever
+     * describes the pre-verification gap.)
+     *
+     * Owner-only: a visitor has no business seeing a brand's unfinished list.
+     */
+    if (!isOwner) return present;
+
+    const pending: BrandHeaderContactItem[] = [
+      ...(publicContactEmail ? [] : [{ label: 'Email', value: 'Pending' }]),
+      ...(readContactValue(effectiveProfile?.location) ? [] : [{ label: 'Location', value: 'Pending' }]),
+      ...(readContactValue(effectiveProfile?.phoneNumber) ? [] : [{ label: 'Phone', value: 'Pending' }]),
+    ];
+
+    return [...present, ...pending.filter((item) => !present.some((row) => row.label === item.label))];
   }, [
     effectiveProfile?.email,
+    effectiveProfile?.publicContactEmail,
     effectiveProfile?.phoneNumber,
     effectiveProfile?.socialFacebook,
     effectiveProfile?.socialInstagram,
     effectiveProfile?.socialTwitter,
     effectiveProfile?.socialWebsite,
+    effectiveProfile?.location,
     isOwner,
   ]);
   const headerBadges = useMemo(

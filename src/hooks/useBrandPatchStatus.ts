@@ -131,6 +131,18 @@ type UseBrandPatchStatusOptions = {
   enabled?: boolean;
 };
 
+/**
+ * Thrown when the viewer cannot patch at all — a brand account, the owner, or a
+ * signed-out visitor. Distinct from a network failure so the UI can say
+ * something true instead of "please try again".
+ */
+export class BrandPatchUnavailableError extends Error {
+  constructor() {
+    super('Patching is only available to shopper accounts.');
+    this.name = 'BrandPatchUnavailableError';
+  }
+}
+
 export function useBrandPatchStatus({ brandId, enabled = true }: UseBrandPatchStatusOptions) {
   const normalizedBrandId = useMemo(() => normalizeBrandId(brandId), [brandId]);
   const isEnabled = Boolean(enabled && normalizedBrandId);
@@ -166,7 +178,18 @@ export function useBrandPatchStatus({ brandId, enabled = true }: UseBrandPatchSt
   );
 
   const toggle = useCallback(async () => {
-    if (!normalizedBrandId || !isEnabled) return false;
+    /**
+     * Refuse loudly, not with a value that reads as success.
+     *
+     * This used to `return false` when patching was unavailable — and the
+     * caller treats `false` as "now unpatched", so it toasted "Unpatched
+     * brand." at someone who had just been silently refused and whose patch
+     * state had not changed at all. A disabled action must not report an
+     * outcome it did not produce.
+     */
+    if (!normalizedBrandId || !isEnabled) {
+      throw new BrandPatchUnavailableError();
+    }
 
     const previous = isPatched;
     const optimistic = !previous;

@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { formatMoneyRange } from '@/src/utils/money';
 import {
   InteractionManager,
   Platform,
@@ -122,10 +123,13 @@ const STYLE_DETAIL_DIMENSION_SLUGS = new Set([
 const STANDALONE_DISCOVERY_DIMENSION_SLUGS = new Set(['heritage', 'occasion']);
 
 function formatPriceSummary(minPrice: string, maxPrice: string) {
-  if (minPrice && maxPrice) return `NGN ${minPrice} - NGN ${maxPrice}`;
-  if (minPrice) return `From NGN ${minPrice}`;
-  if (maxPrice) return `Up to NGN ${maxPrice}`;
-  return 'Not set';
+  // Raw digits, unseparated, prefixed with the ISO code: "NGN 40000". The
+  // shared formatter gives the symbol and thousands grouping the brand's own
+  // storefront will show the buyer.
+  return formatMoneyRange(
+    minPrice.trim() ? Number(minPrice) : null,
+    maxPrice.trim() ? Number(maxPrice) : null,
+  ) ?? 'Not set';
 }
 
 export default function CreateDesignComposerScreen() {

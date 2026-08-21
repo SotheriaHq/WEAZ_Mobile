@@ -439,15 +439,32 @@ const MessageBubble = memo(function MessageBubble({
                 {timestamp}
               </AppText>
             ) : null}
-            {/* Read receipts ride on variant + tone, not a colour/weight
-                override. A read tick is bolder AND lighter than an unread one,
-                which is exactly the difference between `captionBold` on the
-                inverse tone and `captionRegular` on it — both already defined,
-                and both readable on the sent-bubble fill. */}
+            {/*
+              Read is a COLOUR change, which is what the setting promises.
+
+              The messaging preference is labelled "Read receipts (colored ✓✓)"
+              and these ticks were not coloured at all — read and delivered
+              differed only by font weight on the same inverse tone, a
+              distinction most people will never notice at caption size and one
+              that disappears entirely at a glance. The one state worth
+              signalling was the one state you could not see.
+
+              Sent (✓) and delivered (✓✓) stay in the bubble's own ink; read
+              flips to `success`, which is a tone the design system already
+              defines and which carries on the sent-bubble fill. Weight still
+              steps up with it, so the cue is not colour-only.
+            */}
             {mine && item.deliveryStatus ? (
               <AppText
                 variant={item.deliveryStatus === 'READ' ? 'captionBold' : 'captionRegular'}
-                tone="inverse"
+                tone={item.deliveryStatus === 'READ' ? 'success' : 'inverse'}
+                accessibilityLabel={
+                  item.deliveryStatus === 'READ'
+                    ? 'Read'
+                    : item.deliveryStatus === 'DELIVERED'
+                      ? 'Delivered'
+                      : 'Sent'
+                }
               >
                 {item.deliveryStatus === 'READ' ? '✓✓' : item.deliveryStatus === 'DELIVERED' ? '✓✓' : '✓'}
               </AppText>

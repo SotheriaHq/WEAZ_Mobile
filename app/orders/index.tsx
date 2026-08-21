@@ -24,6 +24,7 @@ import { prefetchDetailOnPress, prefetchQuery } from '@/src/prefetch/navPrefetch
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { formatMoney } from '@/src/utils/money';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'completed' | 'cancelled';
 
@@ -36,15 +37,7 @@ const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
 ];
 
 function formatCurrency(amount: number, currency = 'NGN') {
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${amount}`;
-  }
+  return formatMoney(amount, currency);
 }
 
 function formatDate(value: string) {
