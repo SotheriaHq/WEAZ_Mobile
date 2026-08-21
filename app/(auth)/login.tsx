@@ -130,6 +130,7 @@ export default function LoginScreen() {
         delay: STAGGER_LOGO,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(headlineOpacity, {
         toValue: 1,
@@ -137,6 +138,7 @@ export default function LoginScreen() {
         delay: STAGGER_HEADLINE,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(headlineSlide, {
         toValue: 0,
@@ -144,6 +146,7 @@ export default function LoginScreen() {
         delay: STAGGER_HEADLINE,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(formOpacity, {
         toValue: 1,
@@ -151,6 +154,7 @@ export default function LoginScreen() {
         delay: STAGGER_FORM,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(formSlide, {
         toValue: 0,
@@ -158,6 +162,7 @@ export default function LoginScreen() {
         delay: STAGGER_FORM,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
     ]).start();
   }, [formOpacity, formSlide, headlineOpacity, headlineSlide, logoOpacity]);

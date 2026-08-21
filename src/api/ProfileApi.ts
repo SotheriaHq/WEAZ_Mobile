@@ -1,4 +1,5 @@
 import { apiClient } from '@/src/api/httpClient';
+import { coalesceRequest, invalidateCoalesced } from '@/src/api/coalesceRequest';
 import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
 import type { ProfilePhotoViewState } from '@/src/types/profilePhoto';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
@@ -515,8 +516,17 @@ export const ProfileApi = {
     return normalizeSaved(res.data);
   },
 
+  /**
+   * Coalesced: three screens ask for this independently and simultaneously.
+   *
+   * `RunwayFeedScreen`, `me.tsx` and `profile/[id].tsx` each await this
+   * directly, so a cold start issued the identical query four times in one
+   * burst. None of them can see the others, so the dedupe belongs here.
+   */
   async getPatches(userId: string): Promise<PatchedBrand[]> {
-    const res = await apiClient.get(`/users/${userId}/patches`);
-    return normalizePatches(res.data);
+    return coalesceRequest(`patches:${userId}`, async () => {
+      const res = await apiClient.get(`/users/${userId}/patches`);
+      return normalizePatches(res.data);
+    });
   },
 };

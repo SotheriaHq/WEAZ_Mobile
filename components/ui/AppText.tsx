@@ -41,7 +41,7 @@ type Variant =
   | 'statValue'
   | 'statLabel';
 
-type Tone = 'default' | 'secondary' | 'muted' | 'inverse' | 'primary' | 'danger' | 'success' | 'warning';
+type Tone = 'default' | 'secondary' | 'muted' | 'inverse' | 'primary' | 'danger' | 'success' | 'warning' | 'disabled';
 type TypographyTokenKey =
   | 'display'
   | 'title'
@@ -212,6 +212,10 @@ function getToneColor(tone: Tone, theme: ReturnType<typeof useTheme>['theme']) {
       return theme.colors.success;
     case 'warning':
       return theme.colors.warning;
+    // Label of a control that cannot be pressed. Sits below `muted`, which is
+    // reading ink for captions and would make a dead button look live.
+    case 'disabled':
+      return theme.colors.textDisabled;
     case 'default':
     default:
       return theme.colors.text;

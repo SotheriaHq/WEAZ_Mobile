@@ -19,8 +19,11 @@ export const CATALOG_CARD_BRANCH_COPY: Record<
   design: {
     badgeLabel: 'Design',
     titleFallback: 'Untitled design',
-    countSingular: 'media',
-    countPlural: 'media',
+    // "3 media" describes the file type; "3 angles" describes what the buyer
+    // gets to see. A design is photographed from the front, back and sides —
+    // the count is telling them how much of the garment they can inspect.
+    countSingular: 'angle',
+    countPlural: 'angles',
     ownerActionsLabel: 'Design actions',
     editLabel: 'Edit design',
     deleteLabel: 'Delete design',

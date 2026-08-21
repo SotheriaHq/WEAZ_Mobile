@@ -625,6 +625,7 @@ export function CollectionDetailViewer({
       toValue: nextVisible ? 1 : 0,
       duration: 220,
       useNativeDriver: true,
+      isInteraction: false,
     }).start();
   }, [infoOpacity, infoVisible]);
 
@@ -635,6 +636,7 @@ export function CollectionDetailViewer({
       duration: 180,
       easing: Easing.in(Easing.quad),
       useNativeDriver: true,
+      isInteraction: false,
     }).start();
   }, [infoOpacity]);
 

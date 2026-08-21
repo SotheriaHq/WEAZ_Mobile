@@ -45,12 +45,14 @@ export function GlassBottomSheet({
         stiffness: 90,
         mass: 1,
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(opacityAnim, {
         toValue: 1,
         duration: 400,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
     ]).start();
   }, []);

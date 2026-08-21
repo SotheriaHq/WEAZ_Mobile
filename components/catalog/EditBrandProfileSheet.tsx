@@ -238,11 +238,13 @@ export function EditBrandProfileSheet({
           damping: 24,
           stiffness: 220,
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(backdropOpacity, {
           toValue: 1,
           duration: 240,
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]).start();
     } else {
@@ -252,11 +254,13 @@ export function EditBrandProfileSheet({
           duration: 260,
           easing: Easing.in(Easing.cubic),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(backdropOpacity, {
           toValue: 0,
           duration: 200,
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]).start();
     }

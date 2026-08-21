@@ -450,7 +450,68 @@ async function refreshAccessToken(): Promise<string | null> {
   return refreshPromise;
 }
 
+/**
+ * Cold-start auth gate.
+ *
+ * The access token lives in SecureStore, so restoring it is asynchronous — but
+ * every screen mounts and starts fetching immediately, and this interceptor
+ * attached whatever `currentAuthToken` happened to be at that instant, which
+ * on a cold start is `null`. The result was a burst of ~15 authenticated
+ * requests going out unauthenticated, all 401-ing, all retried after the token
+ * landed: the entire authenticated cold-start payload, twice, plus a round of
+ * server work spent rejecting requests. One `/bag/count` was measured at
+ * 10.1 seconds because of it.
+ *
+ * Requests now wait for the token state to be KNOWN (which includes knowing
+ * there isn't one). The wait is bounded so a failed restore degrades to the old
+ * behaviour rather than hanging the app, and the unauthenticated `/auth/*`
+ * endpoints are exempt — `/auth/refresh` is what OPENS the gate during a
+ * refresh-token-only restore, so gating it would deadlock.
+ */
+let authHydrated = false;
+let openAuthGate: (() => void) | null = null;
+const authHydrationPromise = new Promise<void>((resolve) => {
+  openAuthGate = resolve;
+});
+const AUTH_HYDRATION_TIMEOUT_MS = 4000;
+
+/** Paths that must never wait on the gate — they run before a token exists. */
+const AUTH_GATE_EXEMPT_PREFIXES = [
+  '/auth/refresh',
+  '/auth/login',
+  '/auth/register',
+  '/auth/google',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/verify-email',
+  '/auth/resend',
+];
+
+export function markApiAuthHydrated() {
+  if (authHydrated) return;
+  authHydrated = true;
+  openAuthGate?.();
+}
+
+function isAuthGateExempt(url?: string): boolean {
+  if (!url) return false;
+  return AUTH_GATE_EXEMPT_PREFIXES.some((prefix) => url.startsWith(prefix));
+}
+
+async function waitForAuthHydration(url?: string): Promise<void> {
+  if (authHydrated || isAuthGateExempt(url)) return;
+  await Promise.race([
+    authHydrationPromise,
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, AUTH_HYDRATION_TIMEOUT_MS);
+    }),
+  ]);
+}
+
 export function setApiAuthToken(token: string | null) {
+  // Any call here means the token state is now known — including `null`, which
+  // is a real answer ("signed out"), not an absence of one.
+  markApiAuthHydrated();
   currentAuthToken = token;
   if (token) {
     apiClient.defaults.headers.common.Authorization = `Bearer ${token}`;
@@ -471,8 +532,11 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler;
 }
 
-apiClient.interceptors.request.use((config) => {
+apiClient.interceptors.request.use(async (config) => {
   const retryableConfig = config as RetryableConfig;
+
+  // Hold until the restored token (or its confirmed absence) is known.
+  await waitForAuthHydration(retryableConfig.url);
 
   const requestBaseUrl =
     retryableConfig.baseURL ?? apiClient.defaults.baseURL ?? getActiveBaseUrl();

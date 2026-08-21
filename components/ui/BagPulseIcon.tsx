@@ -61,12 +61,14 @@ export function BagPulseIcon({
           duration: status === 'bagging' ? 360 : context === 'multi' || context === 'multi_card' ? 980 : 720,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(pulse, {
           toValue: 0,
           duration: status === 'bagging' ? 360 : context === 'multi' || context === 'multi_card' ? 1280 : 820,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
     );

@@ -88,12 +88,14 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
             toValue: 1,
             duration: 150,
             useNativeDriver: true,
+            isInteraction: false,
           }),
           Animated.spring(scaleAnim, {
             toValue: 1,
             speed: 20,
             bounciness: 2,
             useNativeDriver: true,
+            isInteraction: false,
           })
         ]).start();
       }
@@ -126,11 +128,13 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
         toValue: 0,
         duration: 140,
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(scaleAnim, {
         toValue: 0.95,
         duration: 140,
         useNativeDriver: true,
+        isInteraction: false,
       })
     ]).start(() => {
       setInternalVisible(false);

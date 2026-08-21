@@ -72,6 +72,7 @@ function ChipComponent({
         duration,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
+        isInteraction: false,
       }).start();
     },
     [scale],
@@ -113,17 +114,34 @@ function ChipComponent({
                     ? theme.colors.surfaceAlt
                     : selected
                       ? theme.colors.primary
-                      : theme.colors.surfaceAlt,
+                      : disabled
+                        ? theme.colors.disabledSurface
+                        : // Unselected is an OFFER, not a plate.
+                          //
+                          // It used to be the same `surfaceAlt` fill the
+                          // selected chip's neighbours, cards and inputs all
+                          // use, so a row of options read as a row of grey
+                          // blocks with one purple one — the unselected chips
+                          // looked like disabled chrome rather than choices.
+                          // Clear ground with a defined edge reads as
+                          // "available": the ring is the affordance, the fill
+                          // is the answer.
+                          'transparent',
             borderColor: isNav
               ? 'transparent'
               : usePendingTreatment
                 ? theme.colors.warning
                 : selected
                   ? theme.colors.primary
-                  : theme.colors.border,
+                  : disabled
+                    ? theme.colors.disabledBorder
+                    : theme.colors.border,
             // The nav underline is gone — the pill is the indicator now.
             borderBottomColor: 'transparent',
-            opacity: disabled ? 0.48 : pressed ? 0.86 : 1,
+            // Pressed tints the ring instead of fading the whole chip, so the
+            // label never dims out from under the finger that is choosing it.
+            // Disabled carries its own neutral pair above and needs no fade.
+            opacity: pressed && !disabled ? 0.86 : 1,
           },
           style,
         ]}
@@ -163,7 +181,13 @@ function ChipComponent({
                     ? 'warning'
                     : selected
                       ? 'inverse'
-                      : 'secondary'
+                      : disabled
+                        ? 'disabled'
+                        : // Full reading ink on an unselected chip. `secondary`
+                          // made every option a step quieter than the text
+                          // around it, which is what made the row read as
+                          // inactive.
+                          'default'
               }
               numberOfLines={1}
             >
@@ -212,7 +236,7 @@ const styles = StyleSheet.create({
   },
   base: {
     paddingHorizontal: tokens.spacing.md,
-    minHeight: 38,
+    minHeight: 40,
     maxWidth: 220,
     borderRadius: tokens.radius.full,
     borderWidth: 1,

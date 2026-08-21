@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Easing, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, LayoutAnimation, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -63,14 +63,44 @@ const PROFILE_TABS: ProfileTab[] = ['Saved', 'Patches', 'Orders'];
 const PROFILE_INITIAL_SECTION_ITEMS = 6;
 const PROFILE_SECTION_BATCH_ITEMS = 8;
 const PROFILE_ORDERS_PREVIEW_LIMIT = 6;
-const MEASUREMENT_FIELDS: Array<{ key: MeasurementKey; label: string }> = [
-  { key: 'CHEST', label: 'Chest' },
-  { key: 'WAIST', label: 'Waist' },
-  { key: 'HIPS', label: 'Hips' },
-  { key: 'SHOULDER', label: 'Shoulder' },
-  { key: 'INSEAM', label: 'Inseam' },
-  { key: 'HEIGHT', label: 'Height' },
+/**
+ * Every point carries a plain-language hint.
+ *
+ * "Inseam" is a tailoring word, not an everyday one, and a shopper who does not
+ * know it has two options with a bare label: guess, or give up. A wrong guess is
+ * worse than a blank — it produces a garment that does not fit and an order
+ * nobody can explain. The hint says WHERE to put the tape, in the words someone
+ * would use to describe it to a friend.
+ */
+const MEASUREMENT_FIELDS: Array<{ key: MeasurementKey; label: string; hint: string }> = [
+  { key: 'CHEST', label: 'Chest', hint: 'Around the fullest part, under the arms' },
+  { key: 'WAIST', label: 'Waist', hint: 'Around the narrowest part, above the belly button' },
+  { key: 'HIPS', label: 'Hips', hint: 'Around the fullest part of your seat' },
+  { key: 'SHOULDER', label: 'Shoulder', hint: 'Across the back, shoulder bone to shoulder bone' },
+  { key: 'INSEAM', label: 'Inseam', hint: 'Inside the leg, crotch down to the ankle' },
+  { key: 'HEIGHT', label: 'Height', hint: 'Standing, head to floor, no shoes' },
 ];
+
+/** Hints for baseline points the SERVER asks for that are not in the six above. */
+const EXTRA_MEASUREMENT_HINTS: Record<string, string> = {
+  CHEST_BUST: 'Around the fullest part, under the arms',
+  BUST: 'Around the fullest part of the bust',
+  HIP_SEAT: 'Around the fullest part of your seat',
+  NECK_COLLAR: 'Around the base of the neck, where a collar sits',
+  SLEEVE_LENGTH: 'Shoulder bone to wrist, arm slightly bent',
+  S_LENGTH: 'Shoulder bone to wrist, arm slightly bent',
+  ARM_HOLE: 'Around the armhole, through the armpit',
+  THIGH: 'Around the fullest part of the thigh',
+  WRIST: 'Around the wrist bone',
+  BACK_LENGTH: 'Base of the neck down to the waist',
+};
+
+function getMeasurementHint(key: string): string | null {
+  const known = MEASUREMENT_FIELDS.find((field) => field.key === key);
+  if (known) return known.hint;
+  const normalized = key.replace(/^(MEN|WOMEN|MENS|WOMENS|UNISEX)_/i, '').toUpperCase();
+  return EXTRA_MEASUREMENT_HINTS[normalized] ?? null;
+}
 
 const getSavedLooksCountBucket = (count: number) => {
   if (count <= 0) return '0';
@@ -257,11 +287,19 @@ function ProfileAction({
 }: {
   emoji: string;
   label: string;
-  accent: 'primary' | 'success' | 'warning' | 'textSecondary';
+  /**
+   * `neutral` exists because Settings used `textSecondary`, and
+   * `theme.colors.textSecondary` in the dark theme is a near-white plate — the
+   * grey gear glyph sat on it at almost no contrast and read as disabled. Text
+   * tokens are not surface tokens; `controlSurfaceActive` is the subtle
+   * overlay meant for exactly this, and it works in both schemes.
+   */
+  accent: 'primary' | 'success' | 'warning' | 'neutral';
   onPress: () => void;
 }) {
   const { theme } = useTheme();
-  const accentColor = theme.colors[accent];
+  const accentColor =
+    accent === 'neutral' ? theme.colors.controlSurfaceActive : theme.colors[accent];
   return (
     <Pressable
       onPress={onPress}
@@ -293,59 +331,116 @@ function formatMeasurementKeyLabel(key: string): string {
     .replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
-function FittingsMarqueeRow({
-  entries,
+/**
+ * Canonical order for the fittings table.
+ *
+ * `Object.entries(sizeFit.measurements)` yields whatever order the server
+ * happened to serialise, which changes between saves — so the same person's
+ * measurements appeared in a different order each visit and could not be
+ * compared against anything, including their own memory. Known points come
+ * first in `MEASUREMENT_FIELDS` order (the order a tailor takes them), then any
+ * extra points a brand asked for, alphabetically.
+ */
+function orderMeasurementEntries(
+  entries: Array<[string, unknown]>,
+): Array<[string, unknown]> {
+  const rank = (key: string) => {
+    const index = MEASUREMENT_FIELDS.findIndex((field) => field.key === key);
+    return index === -1 ? MEASUREMENT_FIELDS.length : index;
+  };
+  return [...entries].sort((a, b) => {
+    const delta = rank(a[0]) - rank(b[0]);
+    if (delta !== 0) return delta;
+    return formatMeasurementKeyLabel(a[0]).localeCompare(formatMeasurementKeyLabel(b[0]));
+  });
+}
+
+/**
+ * One measurement, as a row you can actually read.
+ *
+ * This replaces a pair of infinitely-looping marquees. The measurements used to
+ * slide horizontally in opposite directions at different speeds, forever — so
+ * the one thing the card exists to show could not be read without chasing it,
+ * two values could never be compared because they were never on screen
+ * together, and nothing lined up with anything. It also kept two
+ * `Animated.loop`s running for the entire life of the profile screen to
+ * decorate six static numbers.
+ *
+ * Label left, value right, one fixed column for the numbers so the digits stack
+ * vertically and a wrong entry is obvious at a glance.
+ */
+function MeasurementRow({
+  label,
+  value,
   unitLabel,
-  reverse = false,
+  showDivider,
 }: {
-  entries: Array<[string, unknown]>;
+  label: string;
+  /** `null` = not saved yet. Rendered as an em dash, not omitted. */
+  value: string | null;
   unitLabel: string;
-  reverse?: boolean;
+  showDivider: boolean;
 }) {
   const { theme } = useTheme();
-  const translateX = useRef(new Animated.Value(0)).current;
-  const [contentWidth, setContentWidth] = useState(0);
-
-  useEffect(() => {
-    if (contentWidth <= 0) return undefined;
-    // The row holds its chips twice, so translating by half the content width
-    // wraps seamlessly back to the start.
-    const distance = contentWidth / 2;
-    const duration = Math.max(9000, entries.length * (reverse ? 3400 : 2700));
-    translateX.setValue(0);
-    const animation = Animated.loop(
-      Animated.timing(translateX, {
-        toValue: -distance,
-        duration,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [contentWidth, entries.length, reverse, translateX]);
-
+  const isSet = Boolean(value);
   return (
-    <View style={styles.marqueeClip}>
-      <Animated.View
-        onLayout={(event) => setContentWidth(Math.round(event.nativeEvent.layout.width))}
-        style={[styles.marqueeRow, { transform: [{ translateX }] }]}
+    <View
+      style={[
+        styles.measurementRow,
+        showDivider ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border } : null,
+      ]}
+    >
+      <AppText
+        variant="body"
+        tone={isSet ? 'secondary' : 'muted'}
+        numberOfLines={1}
+        style={styles.measurementRowLabel}
       >
-        {[...entries, ...entries].map(([key, value], chipIndex) => (
-          <View
-            key={`${key}-${chipIndex}`}
-            style={[styles.measurementChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-          >
-            <AppText variant="captionBold">
-              {formatMeasurementKeyLabel(key)} · {String(value).trim()} {unitLabel}
+        {label}
+      </AppText>
+      <View style={styles.measurementRowValue}>
+        {isSet ? (
+          <>
+            <AppText variant="bodyBold" numberOfLines={1}>
+              {value}
             </AppText>
-          </View>
-        ))}
-      </Animated.View>
+            <AppText variant="captionRegular" tone="muted" style={styles.measurementRowUnit}>
+              {unitLabel}
+            </AppText>
+          </>
+        ) : (
+          <AppText variant="bodyBold" tone="muted" numberOfLines={1}>
+            —
+          </AppText>
+        )}
+      </View>
     </View>
   );
 }
 
+const CONFIDENCE_LABELS: Record<string, string> = {
+  VERY_HIGH: 'Very confident',
+  HIGH: 'Confident',
+  MODERATE: 'Fair confidence',
+  LOW: 'Low confidence',
+};
+
+/**
+ * The computed fit is the point of this card; the raw numbers are the workings.
+ *
+ * Two things were wrong. It rendered almost none of what
+ * `/users/me/size-fit/computed` actually returns — `estimatedSize`,
+ * `displayRange` and region only — while `confidenceLabel`, the per-garment
+ * `categoryBreakdown` and `staleMeasurementWarning` were fetched on every
+ * profile load and thrown away. And the measurement rows had a fixed,
+ * always-open position, so the card's least interesting content (numbers the
+ * user typed in themselves and already knows) took the most space and pushed
+ * the answer they came for down the screen.
+ *
+ * The computed size leads now, the per-garment sizes sit under it, and the
+ * points collapse behind a disclosure. It opens expanded only when there is no
+ * computed answer yet — at that point the empty rows ARE the instruction.
+ */
 function MeasurementCard({
   sizeFit,
   computed,
@@ -356,14 +451,66 @@ function MeasurementCard({
   onPress: () => void;
 }) {
   const { theme } = useTheme();
-  const measurements = Object.entries(sizeFit?.measurements ?? {}).filter(([, value]) => String(value).trim().length > 0);
+  const measurements = Object.entries(sizeFit?.measurements ?? {}).filter(
+    ([, value]) => String(value).trim().length > 0,
+  );
   const measurementCount = measurements.length;
   const unitLabel = (sizeFit?.preferredLengthUnit ?? 'CM').toLowerCase();
   const computedLabel = computed?.estimatedSize ?? computed?.displayRange ?? null;
   const computedRegion = computed?.preferredRegion ? computed.preferredRegion.replace(/_/g, ' ') : null;
+  const confidence = computed?.confidenceLabel ? CONFIDENCE_LABELS[computed.confidenceLabel] : null;
   const missingBaseline = computed?.missingBaselineMeasurements ?? [];
-  const marqueeTopRow = measurements.filter((_, index) => index % 2 === 0);
-  const marqueeBottomRow = measurements.filter((_, index) => index % 2 === 1);
+
+  /**
+   * Per-garment sizes. The server has always sent `categoryBreakdown` and
+   * nothing rendered it, so a shopper could not see that their dress size and
+   * their trouser size differ — which is most of what a size profile is for.
+   */
+  const categoryBreakdown = Object.entries(computed?.categoryBreakdown ?? {})
+    .map(([category, recommendation]) => ({
+      category,
+      size:
+        recommendation?.recommendedSize ??
+        recommendation?.estimatedSize ??
+        recommendation?.displayRange ??
+        null,
+    }))
+    .filter((entry) => Boolean(entry.size));
+
+  /**
+   * ONE list, whether the value is there or not.
+   *
+   * The empty state used to be three separate things saying the same thing
+   * twice: the subtitle ("Add your measurements once for faster custom
+   * orders"), a paragraph underneath repeating it almost verbatim ("Add your
+   * baseline measurements once and reuse them across custom orders"), and — in
+   * between — the server's missing-baseline list crammed into a single line
+   * beside the words "Computed fit". Eight point names separated by dots, wrapped
+   * mid-word and clipped at the screen edge: "Add Height · Chest Bust · Waist ·
+   * Hip Seat · Shoulder · S". Unreadable, and it told the user what was missing
+   * in a shape they could not act on.
+   *
+   * The rows below ARE the answer to "what do you need from me": every point
+   * this account is expected to have, in a tailor's order, values where they
+   * exist and an em dash where they do not. Nothing is described in prose that
+   * the table already shows.
+   */
+  const savedByKey = new Map(measurements.map(([key, value]) => [key, String(value).trim()]));
+  const requiredKeys =
+    missingBaseline.length > 0
+      ? missingBaseline
+      : MEASUREMENT_FIELDS.map((field) => field.key);
+  const rowKeys = orderMeasurementEntries(
+    Array.from(new Set([...savedByKey.keys(), ...requiredKeys])).map((key) => [key, null]),
+  ).map(([key]) => String(key));
+
+  // Expanded only while there is no computed answer to show in its place.
+  const [pointsExpanded, setPointsExpanded] = React.useState(!computedLabel);
+
+  const togglePoints = React.useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setPointsExpanded((current) => !current);
+  }, []);
 
   return (
     <Card padding="sm" style={[styles.fittingsCard, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -371,48 +518,107 @@ function MeasurementCard({
         <View style={styles.sectionHeaderCopy}>
           <AppText variant="bodyBold">My fittings</AppText>
           <AppText variant="captionRegular" tone="muted">
-            {measurementCount > 0
-              ? `${measurementCount} saved measurement${measurementCount === 1 ? '' : 's'} for custom orders.`
-              : 'Add your measurements once for faster custom orders.'}
+            {computedLabel
+              ? 'Worked out from your measurements — reused on every custom order.'
+              : 'Save these once and no brand has to ask you again.'}
           </AppText>
         </View>
-        <Button title={measurements.length > 0 ? 'Edit' : 'Add'} size="sm" variant="secondary" onPress={onPress} />
+        <Button
+          title={measurementCount > 0 ? 'Edit' : 'Add'}
+          size="sm"
+          variant="secondary"
+          onPress={onPress}
+        />
       </View>
 
       {computedLabel ? (
-        <View style={[styles.computedFitRow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-          <AppText variant="captionRegular" tone="muted">Computed fit</AppText>
-          <AppText variant="bodyBold">
-            📐 {computedLabel}
-            {computedRegion ? ` · ${computedRegion}` : ''}
+        <View
+          style={[
+            styles.computedFitHero,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+          ]}
+        >
+          <AppText variant="captionBold" tone="muted">Your size</AppText>
+          <AppText variant="display">{computedLabel}</AppText>
+          <AppText variant="captionRegular" tone="muted">
+            {[computedRegion, confidence].filter(Boolean).join(' · ') ||
+              'Based on your saved measurements'}
           </AppText>
         </View>
-      ) : missingBaseline.length > 0 ? (
+      ) : (
         <Pressable
           onPress={onPress}
           accessibilityRole="button"
-          accessibilityLabel="Add the missing baseline measurements to compute your size"
-          style={[styles.computedFitRow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+          accessibilityLabel="Add your measurements to see your computed size"
+          style={({ pressed }) => [
+            styles.computedFitHero,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            pressed ? styles.pressed : null,
+          ]}
         >
-          <AppText variant="captionRegular" tone="muted">Computed fit</AppText>
-          <AppText variant="captionBold" tone="secondary">
-            ⚠️ Add {missingBaseline.map((key) => formatMeasurementKeyLabel(key)).join(' · ')} to see your size
+          <AppText variant="captionBold" tone="muted">Your size</AppText>
+          <AppText variant="subtitle" tone="muted">Not worked out yet</AppText>
+          <AppText variant="captionRegular" tone="muted">
+            Fill in the points below and it appears here.
           </AppText>
         </Pressable>
+      )}
+
+      {categoryBreakdown.length > 0 ? (
+        <View style={styles.categorySizeWrap}>
+          {categoryBreakdown.map((entry) => (
+            <View
+              key={entry.category}
+              style={[
+                styles.categorySizePill,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              ]}
+            >
+              <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+                {formatMeasurementKeyLabel(entry.category)}
+              </AppText>
+              <AppText variant="captionBold" numberOfLines={1}>{entry.size}</AppText>
+            </View>
+          ))}
+        </View>
       ) : null}
 
-      {measurements.length === 0 ? (
-        <AppText variant="body" tone="muted" style={styles.measurementCopy}>
-          Add your baseline measurements once and reuse them across custom orders.
+      {computed?.staleMeasurementWarning ? (
+        <AppText variant="captionRegular" tone="warning">
+          These measurements are getting old — worth checking before your next order.
         </AppText>
-      ) : (
-        <View style={styles.marqueeGroup}>
-          <FittingsMarqueeRow entries={marqueeTopRow} unitLabel={unitLabel} />
-          {marqueeBottomRow.length > 0 ? (
-            <FittingsMarqueeRow entries={marqueeBottomRow} unitLabel={unitLabel} reverse />
-          ) : null}
+      ) : null}
+
+      <Pressable
+        onPress={togglePoints}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: pointsExpanded }}
+        accessibilityLabel={`${pointsExpanded ? 'Hide' : 'Show'} your measurement points`}
+        style={({ pressed }) => [
+          styles.pointsToggle,
+          { borderTopColor: theme.colors.border },
+          pressed ? styles.pressed : null,
+        ]}
+      >
+        <AppText variant="captionBold" tone="secondary">
+          Measurement points · {measurementCount}/{rowKeys.length}
+        </AppText>
+        <AppText variant="captionBold" tone="secondary">{pointsExpanded ? '▲' : '▼'}</AppText>
+      </Pressable>
+
+      {pointsExpanded ? (
+        <View style={styles.measurementTable}>
+          {rowKeys.map((key, index) => (
+            <MeasurementRow
+              key={key}
+              label={formatMeasurementKeyLabel(key)}
+              value={savedByKey.get(key) ?? null}
+              unitLabel={unitLabel}
+              showDivider={index > 0}
+            />
+          ))}
         </View>
-      )}
+      ) : null}
     </Card>
   );
 }
@@ -611,6 +817,26 @@ export default function BuyerProfileScreen() {
   }, [state, warmProfileStateKey]);
 
   const fallbackProfile = useMemo(() => buildFallbackProfile(user), [user]);
+  /**
+   * `load` reads the fallback through a ref, and depends only on primitives.
+   *
+   * This was the most expensive line in the app. `fallbackProfile` is a
+   * `useMemo` on the auth `user` OBJECT, so it got a new identity every time
+   * the auth context re-set the user — and `EmailVerificationNotice` calls
+   * `validateToken({ forceRefresh: true })` on a 15-second interval for every
+   * unverified account. So: poll → new `user` → new `fallbackProfile` → new
+   * `load` → the `[deferredWorkReady, load]` effect below re-fires → EIGHT
+   * requests (`/auth/profile`, `/users/me/profile`, `/users/me/size-fit`,
+   * `/users/me/size-fit/computed`, `/saved/me`, `/users/:id/patches`,
+   * `/store/orders`, `/custom-orders`).
+   *
+   * Every fifteen seconds. For as long as the app was open. On whatever tab
+   * the user happened to be looking at, because this screen is preloaded at
+   * launch and therefore mounted the whole time. That is ~32 requests a minute
+   * per idle unverified user, none of which anyone was waiting for.
+   */
+  const fallbackProfileRef = useRef(fallbackProfile);
+  fallbackProfileRef.current = fallbackProfile;
   const profileRecord = state.profile ?? fallbackProfile;
   const profileIdentity = useMemo(() => resolveIdentity(profileRecord), [profileRecord]);
   const profileCounts = useMemo(
@@ -733,7 +959,7 @@ export default function BuyerProfileScreen() {
       const nextProfile =
         profileResult.status === 'fulfilled' && profileResult.value
           ? profileResult.value
-          : previousState.profile ?? fallbackProfile;
+          : previousState.profile ?? fallbackProfileRef.current;
       const nextSizeFit = sizeFitResult.status === 'fulfilled' ? sizeFitResult.value : previousState.sizeFit;
       const nextComputedSizeFit =
         computedSizeFitResult.status === 'fulfilled' ? computedSizeFitResult.value : previousState.computedSizeFit;
@@ -788,7 +1014,7 @@ export default function BuyerProfileScreen() {
       if (requestId !== loadRequestIdRef.current) return;
       setState((current) => ({
         ...current,
-        profile: fallbackProfile,
+        profile: fallbackProfileRef.current,
       }));
       setHasWarmProfileSnapshot(true);
       setError(nextError instanceof Error ? nextError.message : 'Unable to load your profile.');
@@ -801,7 +1027,8 @@ export default function BuyerProfileScreen() {
         setRefreshing(false);
       }
     }
-  }, [fallbackProfile, status, user?.id]);
+    // Primitives only — see `fallbackProfileRef` above.
+  }, [status, user?.id]);
 
   useEffect(() => {
     if (!deferredWorkReady) return;
@@ -1152,16 +1379,22 @@ export default function BuyerProfileScreen() {
           emailVerified={user?.isEmailVerified}
         />
 
-        <View style={styles.actionGrid}>
-          <View style={styles.actionRow}>
-            <ProfileAction emoji="✏️" label="Edit info" accent="primary" onPress={() => drillDownPush('/(tabs)/me-edit' as any)} />
-            <ProfileAction emoji="📏" label="My fits" accent="success" onPress={() => setFittingsOpen(true)} />
-            <ProfileAction emoji="📦" label="Orders" accent="primary" onPress={() => setActiveTab('Orders')} />
-          </View>
-          <View style={styles.actionRow}>
-            <ProfileAction emoji="⭐" label="Reviews" accent="warning" onPress={() => drillDownPush('/reviews' as any)} />
-            <ProfileAction emoji="⚙️" label="Settings" accent="textSecondary" onPress={handleOpenSettings} />
-          </View>
+        {/*
+          All five on one row.
+          
+          They used to be 3 + 2, which left a ragged half-empty second row and
+          made the two orphans (Reviews, Settings) read as a different, lesser
+          group than the three above them. Five equal columns is one group of
+          five, which is what it is. Each tile is `flex: 1, minWidth: 0` so they
+          divide the width evenly at any screen size, and the label wraps to two
+          lines rather than truncating on the narrowest handsets.
+        */}
+        <View style={styles.actionRow}>
+          <ProfileAction emoji="✏️" label="Edit info" accent="primary" onPress={() => drillDownPush('/(tabs)/me-edit' as any)} />
+          <ProfileAction emoji="📏" label="My fittings" accent="success" onPress={() => setFittingsOpen(true)} />
+          <ProfileAction emoji="📦" label="Orders" accent="primary" onPress={() => setActiveTab('Orders')} />
+          <ProfileAction emoji="⭐" label="Reviews" accent="warning" onPress={() => drillDownPush('/reviews' as any)} />
+          <ProfileAction emoji="⚙️" label="Settings" accent="neutral" onPress={handleOpenSettings} />
         </View>
 
         <View style={styles.summaryRow}>
@@ -1284,38 +1517,88 @@ export default function BuyerProfileScreen() {
           </View>
         )}
       >
-        <View style={styles.unitRow}>
-          {(['CM', 'IN'] as const).map((unit) => {
-            const selected = unit === fitUnit;
-            return (
-              <Pressable
-                key={unit}
-                onPress={() => setFitUnit(unit)}
-                style={({ pressed }) => [
-                  styles.unitPill,
-                  {
-                    backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surfaceAlt,
-                    borderColor: selected ? theme.colors.primary : theme.colors.border,
-                  },
-                  pressed ? styles.pressed : null,
-                ]}
-              >
-                <AppText variant="bodyBold" tone={selected ? 'primary' : 'secondary'}>{unit}</AppText>
-              </Pressable>
-            );
-          })}
+        {/*
+          Units first, then the points in pairs.
+
+          This was a bare toggle over six identical full-width fields — an
+          undifferentiated stack the user had to scroll through with the
+          keyboard up, with nothing saying which unit they were typing in once
+          the toggle had scrolled off the top. Pairing the fields halves the
+          height so the whole body fits above the keyboard on a normal handset,
+          and every field now carries its unit as a suffix so the answer is
+          always next to the question.
+        */}
+        <View style={styles.unitBlock}>
+          <AppText variant="smallBold" tone="secondary">Units</AppText>
+          <View style={styles.unitRow}>
+            {(['CM', 'IN'] as const).map((unit) => {
+              const selected = unit === fitUnit;
+              return (
+                <Pressable
+                  key={unit}
+                  onPress={() => setFitUnit(unit)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  style={({ pressed }) => [
+                    styles.unitPill,
+                    {
+                      backgroundColor: selected ? theme.colors.primarySoft : 'transparent',
+                      borderColor: selected ? theme.colors.primary : theme.colors.border,
+                    },
+                    pressed ? styles.pressed : null,
+                  ]}
+                >
+                  <AppText variant="bodyBold" tone={selected ? 'primary' : 'secondary'}>
+                    {unit === 'CM' ? 'Centimetres' : 'Inches'}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
-        {MEASUREMENT_FIELDS.map((field) => (
-          <Input
-            key={field.key}
-            label={field.label}
-            value={fitValues[field.key]}
-            onChangeText={(value) => setFitValues((current) => ({ ...current, [field.key]: value.replace(/[^0-9.]/g, '') }))}
-            keyboardType="decimal-pad"
-            placeholder="0"
-          />
-        ))}
+        {/*
+          One field per row, each with a plain-language hint.
+
+          The two-column grid that was here saved vertical space, but there is
+          no room beside a 48%-wide field for "Inside the leg, crotch down to the
+          ankle" — and without that hint a shopper who does not know what an
+          inseam is has to guess. A wrong guess is worse than a blank: it makes a
+          garment that does not fit and an order nobody can explain. The extra
+          height is scrollable; the ambiguity was not fixable.
+        */}
+        <View style={styles.fitFieldList}>
+          {MEASUREMENT_FIELDS.map((field) => (
+            <Input
+              key={field.key}
+              label={field.label}
+              helperText={field.hint}
+              value={fitValues[field.key]}
+              onChangeText={(value) =>
+                setFitValues((current) => ({
+                  ...current,
+                  [field.key]: value.replace(/[^0-9.]/g, ''),
+                }))
+              }
+              keyboardType="decimal-pad"
+              placeholder="0"
+              trailing={
+                <AppText variant="captionRegular" tone="muted">
+                  {fitUnit.toLowerCase()}
+                </AppText>
+              }
+            />
+          ))}
+        </View>
+
+        <View style={[styles.fitFooterNote, { borderTopColor: theme.colors.border }]}>
+          <AppText variant="smallBold" tone="secondary">
+            Measure over light clothing, tape snug but not tight.
+          </AppText>
+          <AppText variant="captionRegular" tone="muted" style={styles.fitFooterNoteBody}>
+            Saved once and reused on every custom order, so a brand never has to ask again.
+          </AppText>
+        </View>
       </AppBottomSheet>
     </SafeAreaView>
   );
@@ -1406,11 +1689,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  actionGrid: {
-    gap: tokens.spacing.xs,
-  },
   actionRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: tokens.spacing.xs,
   },
   // Instagram-style soft action tile: solid tokenized fill, no outline —
@@ -1418,11 +1699,13 @@ const styles = StyleSheet.create({
   actionCard: {
     flex: 1,
     minWidth: 0,
-    minHeight: 68,
+    minHeight: 72,
     borderRadius: tokens.radius.lg,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     gap: tokens.spacing.xs,
+    // Two horizontal padding units, not three: at five across on a 360pt
+    // handset each tile is ~64pt wide, and the label needs every point of it.
     paddingHorizontal: tokens.spacing.xs,
     paddingVertical: tokens.spacing.sm,
   },
@@ -1449,33 +1732,66 @@ const styles = StyleSheet.create({
   fittingsCard: {
     gap: tokens.spacing.sm,
   },
-  computedFitRow: {
+  measurementTable: {
+    // No gap: the hairline dividers on each row do the separating, and a gap
+    // would break the continuous rule down the list.
+    marginTop: tokens.spacing.xs,
+  },
+  measurementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.md,
+    minHeight: 40,
+    paddingVertical: tokens.spacing.xs,
+  },
+  measurementRowLabel: {
+    flex: 1,
+    minWidth: 0,
+  },
+  measurementRowValue: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'flex-end',
+    gap: tokens.spacing.xs,
+    // Fixed column so every number ends on the same vertical line — the whole
+    // point of a table. Wide enough for "100" plus a two-letter unit.
+    width: 88,
+  },
+  measurementRowUnit: {
+    minWidth: 0,
+  },
+  computedFitHero: {
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+    borderRadius: tokens.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.lg,
+  },
+  categorySizeWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  categorySizePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+    minHeight: 32,
+    maxWidth: '100%',
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.md,
+  },
+  pointsToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: tokens.spacing.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
-  },
-  marqueeGroup: {
-    gap: tokens.spacing.sm,
-  },
-  marqueeClip: {
-    overflow: 'hidden',
-  },
-  marqueeRow: {
-    flexDirection: 'row',
-    alignSelf: 'flex-start',
-    gap: tokens.spacing.sm,
-    paddingRight: tokens.spacing.sm,
-  },
-  measurementChip: {
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
+    minHeight: 44,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: tokens.spacing.xs,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -1485,14 +1801,6 @@ const styles = StyleSheet.create({
   sectionHeaderCopy: {
     flex: 1,
     gap: tokens.spacing.xs,
-  },
-  measurementCopy: {
-    lineHeight: 18,
-  },
-  measurementEmpty: {
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
-    paddingVertical: tokens.spacing.sm,
   },
   errorCard: {
     gap: tokens.spacing.xs,
@@ -1604,9 +1912,25 @@ const styles = StyleSheet.create({
   sheetFooterButton: {
     flex: 1,
   },
+  unitBlock: {
+    gap: tokens.spacing.sm,
+    marginBottom: tokens.spacing.md,
+  },
   unitRow: {
     flexDirection: 'row',
     gap: tokens.spacing.sm,
+  },
+  fitFieldList: {
+    gap: tokens.spacing.md,
+  },
+  fitFooterNote: {
+    gap: tokens.spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
+  },
+  fitFooterNoteBody: {
+    lineHeight: 18,
   },
   unitPill: {
     flex: 1,

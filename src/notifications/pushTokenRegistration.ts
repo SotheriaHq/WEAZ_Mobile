@@ -279,6 +279,41 @@ export async function deactivateRegisteredPushTokenForLogout(): Promise<void> {
   }
 }
 
+/**
+ * Plain-English, actionable text for every reason registration can bail out.
+ *
+ * `registerAuthenticatedPushToken` has eight `skipped` paths and NONE of them
+ * used to be surfaced anywhere: the hook below only caught thrown errors, and a
+ * skip is a resolved promise. So a device that never registered a token looked
+ * exactly like a device that did — no token on the server, no push, and nothing
+ * on screen or in the logs saying which gate closed. "Push doesn't work" was
+ * unanswerable without reading the source.
+ *
+ * Note there is NO environment gate in this file or in the backend's
+ * `push-notifications.service.ts` — push is not disabled in dev. If it is not
+ * arriving, it is one of these.
+ */
+export const PUSH_SKIP_EXPLANATIONS: Record<string, string> = {
+  'expo-go-android-unsupported':
+    'Expo Go on Android cannot receive push notifications (removed in SDK 53+). Test on a development build or a real release build.',
+  'expo-project-id-missing':
+    'No EAS project ID. Set extra.eas.projectId in app.json or EXPO_PUBLIC_EAS_PROJECT_ID, then restart Metro.',
+  'notifications-unavailable':
+    'expo-notifications is not available in this runtime. A development build is required.',
+  'permission-denied':
+    'Notification permission was denied for this device. Enable it in system settings.',
+  'push-disabled': 'Push is turned off in this account’s notification settings.',
+  'push-settings-unavailable':
+    'Could not read notification settings from the API. Check the backend is reachable.',
+  'expo-token-missing': 'Expo returned no push token for this device.',
+  unauthenticated: 'Not signed in yet.',
+  'api-base-url-missing': 'No API base URL configured for this build.',
+};
+
+export function describePushSkipReason(reason: string): string {
+  return PUSH_SKIP_EXPLANATIONS[reason] ?? `Push registration skipped: ${reason}.`;
+}
+
 export function useAuthenticatedPushTokenRegistration(params: {
   authenticated: boolean;
   userId: string | null | undefined;
@@ -293,10 +328,21 @@ export function useAuthenticatedPushTokenRegistration(params: {
       userId,
       authToken,
       requirePushEnabled: true,
-    }).catch((error) => {
-      if (__DEV__) {
-        console.warn('Push token registration failed:', error);
-      }
-    });
+    })
+      .then((result) => {
+        if (__DEV__ && result.status === 'skipped') {
+          // The single most useful line in the log when push "doesn't work".
+          console.warn(
+            `[Push] Not registered (${result.reason}). ${describePushSkipReason(result.reason)}`,
+          );
+        } else if (__DEV__) {
+          console.log('[Push] Device token registered with the API.');
+        }
+      })
+      .catch((error) => {
+        if (__DEV__) {
+          console.warn('[Push] Token registration failed:', error);
+        }
+      });
   }, [authenticated, userId, authToken]);
 }

@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from './httpClient';
+import { invalidateCoalesced } from '@/src/api/coalesceRequest';
 import type { CatalogEntityType } from '@/src/features/catalog/catalogDomain';
 import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
 import {
@@ -933,10 +934,16 @@ export const brandApi = {
   /**
    * Patch a brand profile.
    */
+  /**
+   * Patching changes the user's patch list, so the coalesced read of
+   * `/users/:id/patches` must not be allowed to serve its short-TTL copy
+   * afterwards — the profile would show the old set for a few seconds.
+   */
   async patchBrand(brandId: string): Promise<boolean> {
     try {
       const response = await apiClient.post(`/brands/${brandId}/patches`);
       const data = unwrapData<any>(response.data);
+      invalidateCoalesced('patches');
       return Boolean(data?.isPatched ?? true);
     } catch (error) {
       console.error('Error patching brand:', error);
@@ -951,6 +958,7 @@ export const brandApi = {
     try {
       const response = await apiClient.delete(`/brands/${brandId}/patches`);
       const data = unwrapData<any>(response.data);
+      invalidateCoalesced('patches');
       return Boolean(data?.isPatched ?? false);
     } catch (error) {
       console.error('Error unpatching brand:', error);

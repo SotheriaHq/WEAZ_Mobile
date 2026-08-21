@@ -1582,10 +1582,27 @@ export default function CatalogScreen() {
         .filter((id): id is string => Boolean(id)),
     );
 
-    return [
-      ...backgroundTaskCollections,
-      ...currentCollections.filter((collection) => !taskDesignIds.has(collection.id)),
-    ];
+    /**
+     * Collapse by card id — two tasks can resolve to ONE card.
+     *
+     * `backgroundTaskCollections` keys each card on `task.designId ?? task.id`,
+     * and a design that failed and was retried has two tasks carrying the same
+     * `designId`. Both mapped to the same card id, so the grid got a list with
+     * a duplicated key and React logged on every render (the repeated
+     * `CollectionsGrid.tsx:183` errors). Later entries are the newer attempt,
+     * so they win: a stale "failed" card must not outrank the retry that
+     * succeeded.
+     */
+    const byId = new Map<string, CollectionDto>();
+    backgroundTaskCollections.forEach((collection) => {
+      byId.set(collection.id, collection);
+    });
+    currentCollections.forEach((collection) => {
+      if (taskDesignIds.has(collection.id)) return;
+      if (byId.has(collection.id)) return;
+      byId.set(collection.id, collection);
+    });
+    return Array.from(byId.values());
   }, [renderedDesignBackgroundTasks, backgroundTaskCollections, currentCollections]);
   const currentCollectionsRef = useRef(currentCollectionsWithBackgroundTasks);
   currentCollectionsRef.current = currentCollectionsWithBackgroundTasks;

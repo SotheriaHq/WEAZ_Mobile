@@ -436,7 +436,20 @@ function buildBlazingTrends(categoryOptions: string[], allItems: MarketContentIt
 
   if (trends.length > 0) return trends;
 
-  return filteredItems.slice(0, 8).map((item) => ({
+  /**
+   * Fallback themes come from ALL items, never the filtered set.
+   *
+   * They used to be built from `filteredItems`, which made this rail delete
+   * itself with the filter it had just applied: tapping "Bridal" narrowed the
+   * feed, the narrowed feed produced too few items to derive themes from, and
+   * the whole row vanished — along with the hero above it, for the same reason.
+   * Two sections disappearing at once reads as a screen change, which is
+   * exactly how it was reported ("it feels like I am routed to another
+   * screen"), and it left no way back to the other themes.
+   *
+   * The rail is chrome for choosing a theme. It has to survive choosing one.
+   */
+  return allItems.slice(0, 8).map((item) => ({
     id: item.key,
     label: getItemTypeLabel(item),
     count: Math.max(1, getPopularity(item)),
@@ -2239,6 +2252,30 @@ export function MarketScreen() {
   const horizontalCardWidth = Math.min(184, Math.max(150, Math.round(width * 0.42)));
   const heroHeight = Math.min(236, Math.max(176, Math.round(height * 0.24)));
 
+  /**
+   * Applying a theme scrolls back to the top.
+   *
+   * The rows above the tap point change when a filter lands, so leaving the
+   * list where it was meant the user's viewport jumped to a different section
+   * without moving — the second half of "it feels like I am routed to another
+   * screen". Returning to the top shows the change in context: the theme bar
+   * appears, the rail is still there, and the list below it is visibly the new
+   * one.
+   */
+  const feedListRef = useRef<FlatList<MarketRow> | null>(null);
+  const lastAppliedCategoryRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const next = filters.category ?? null;
+    if (lastAppliedCategoryRef.current === undefined) {
+      lastAppliedCategoryRef.current = next;
+      return;
+    }
+    if (lastAppliedCategoryRef.current === next) return;
+    lastAppliedCategoryRef.current = next;
+    feedListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, [filters.category]);
+
   const handleTrendSelect = useCallback((trend: BlazingTrend) => {
     if (trend.category) {
       setFilters((current) => ({ ...current, category: trend.category }));
@@ -2416,6 +2453,44 @@ export function MarketScreen() {
           );
         })}
       </ScrollView>
+
+      {/*
+        Say which theme is on, and give a way off it.
+
+        Live themes and the category chips are DIFFERENT taxonomies: the chips
+        come from `categoryOptions` ("Ankara Fashion", "Lacewear", …) while a
+        live theme falls back to an item's own category ("Bridal",
+        "Two-piece set"). Tapping a theme set `filters.category` to a value no
+        chip could match — so no chip highlighted, "All" un-highlighted too, and
+        the screen entered a filtered state that its own controls could neither
+        show nor clear. The user had no indication anything had been applied,
+        let alone how to undo it.
+
+        This bar is bound to the filter itself rather than to the chip list, so
+        it is correct whichever taxonomy set it.
+      */}
+      {filters.category ? (
+        <View style={styles.activeFilterRow}>
+          <View
+            style={[
+              styles.activeFilterPill,
+              { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.focusRing },
+            ]}
+          >
+            <AppText variant="captionBold" tone="primary" numberOfLines={1} style={styles.activeFilterLabel}>
+              Theme · {filters.category}
+            </AppText>
+            <Pressable
+              onPress={() => setFilters((current) => ({ ...current, category: null }))}
+              accessibilityRole="button"
+              accessibilityLabel={`Clear the ${filters.category} theme`}
+              hitSlop={10}
+            >
+              <AppText variant="captionBold" tone="primary">✕</AppText>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -2432,6 +2507,7 @@ export function MarketScreen() {
     <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.surface, paddingTop: insets.top }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <FlatList
+        ref={feedListRef}
         data={rowData}
         keyExtractor={(item) => item.id}
         renderItem={renderRow}
@@ -2508,6 +2584,24 @@ const styles = StyleSheet.create({
   categoryRow: {
     gap: tokens.spacing.sm,
     paddingRight: tokens.spacing.lg,
+  },
+  activeFilterRow: {
+    flexDirection: 'row',
+    paddingTop: tokens.spacing.sm,
+  },
+  activeFilterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    minHeight: 32,
+    maxWidth: '100%',
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    paddingHorizontal: tokens.spacing.md,
+  },
+  activeFilterLabel: {
+    flexShrink: 1,
+    minWidth: 0,
   },
   categoryChip: {
     minHeight: 36,

@@ -67,11 +67,13 @@ function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: str
         damping: 15,
         stiffness: 120,
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(opacity, {
         toValue: 1,
         duration: 200,
         useNativeDriver: true,
+        isInteraction: false,
       }),
     ]).start();
 
@@ -89,11 +91,13 @@ function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: str
         duration: 200,
         easing: Easing.in(Easing.ease),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(opacity, {
         toValue: 0,
         duration: 200,
         useNativeDriver: true,
+        isInteraction: false,
       }),
     ]).start(() => {
       onDismiss(toast.id);

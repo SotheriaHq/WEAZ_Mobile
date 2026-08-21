@@ -89,7 +89,7 @@ export function FloatingLabelInput({
               lineHeight: tokens.typography.body.lineHeight,
             },
           ]}
-          placeholderTextColor={theme.colors.textMuted}
+          placeholderTextColor={theme.colors.textPlaceholder}
         />
         {isPassword && (
           <Pressable

@@ -40,12 +40,14 @@ export function WiezLogoLoader({ size = 72, style }: WiezLogoLoaderProps) {
           duration: 980,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(pulse, {
           toValue: 0,
           duration: 980,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
     );
@@ -57,12 +59,14 @@ export function WiezLogoLoader({ size = 72, style }: WiezLogoLoaderProps) {
           duration: 1500,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(drift, {
           toValue: 0,
           duration: 1500,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
     );

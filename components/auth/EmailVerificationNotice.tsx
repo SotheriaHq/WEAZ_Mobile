@@ -33,14 +33,27 @@ type EmailVerificationNoticeProps = {
 };
 
 /**
- * How often to re-check while the notice is on screen.
+ * Backstop poll for the other-device case.
  *
- * Only ever runs for an UNVERIFIED user with this banner mounted, so the ceiling
- * is one lightweight profile read every 15s for the short window between
- * signing up and confirming — and it stops the moment the flag flips, because
- * the component unmounts itself.
+ * The 15s value this used to carry was written on the assumption that the
+ * banner is "on screen" — it is not. The profile tab is PRELOADED at launch, so
+ * this component mounts and starts polling whether or not the user ever opens
+ * it, for the whole life of the app.
+ *
+ * Worse, it did not stay lightweight. `validateToken` re-sets the auth user, and
+ * `me.tsx` derived its whole loader from that object's identity, so each poll
+ * cascaded into an eight-request profile fan-out — ~32 requests a minute for an
+ * idle unverified user. That cascade is fixed at the other end, but the poll
+ * itself was still far more frequent than the event it watches for: verification
+ * happens in a mail client, and the overwhelmingly common path back is the app
+ * returning to the foreground, which the AppState listener below catches
+ * immediately and for free.
+ *
+ * So this is now a slow backstop for the genuinely rare case — confirmed on a
+ * DIFFERENT device while this one stays open — and it only ticks while the app
+ * is actually in the foreground.
  */
-const VERIFICATION_POLL_MS = 15_000;
+const VERIFICATION_POLL_MS = 60_000;
 
 export function EmailVerificationNotice({
   userId,
@@ -88,14 +101,35 @@ export function EmailVerificationNotice({
 
     refresh();
 
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (interval) return;
+      interval = setInterval(refresh, VERIFICATION_POLL_MS);
+    };
+    const stopPolling = () => {
+      if (!interval) return;
+      clearInterval(interval);
+      interval = null;
+    };
+
+    if (AppState.currentState === 'active') startPolling();
+
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') refresh();
+      if (nextState === 'active') {
+        // Returning to the app IS the signal — this is the path a user takes
+        // after tapping the link, so check immediately and resume the backstop.
+        refresh();
+        startPolling();
+        return;
+      }
+      // Backgrounded: nothing can change on this device, and a timer that keeps
+      // firing there is pure cost.
+      stopPolling();
     });
-    const interval = setInterval(refresh, VERIFICATION_POLL_MS);
 
     return () => {
       subscription.remove();
-      clearInterval(interval);
+      stopPolling();
     };
   }, [shouldWatch, validateToken]);
 
@@ -128,58 +162,79 @@ export function EmailVerificationNotice({
       ? 'Verify email to publish and create'
       : 'Verify your email';
 
+  /**
+   * One row, not a paragraph.
+   *
+   * This was the loudest object on the profile: a full warning-coloured border
+   * around a stacked block, three lines of prose, and a solid brand button on
+   * its own row — roughly a fifth of the screen, above the user's own name and
+   * every control they came to use. It read as an error the account was in
+   * rather than a step in progress.
+   *
+   * The information is two facts (what to do, where it was sent) and one
+   * action. So: a marker, two tight lines, and a small button on the same row.
+   * The warning colour survives as a left edge rather than a full box, which
+   * is enough to read as "attention" without shouting, and the copy loses the
+   * sentence explaining that the notice will disappear — it disappears, which
+   * the user will observe without being told.
+   */
   return (
     <View
       style={[
         styles.root,
         {
           backgroundColor: theme.colors.surfaceAlt,
-          borderColor: theme.colors.warning,
+          borderColor: theme.colors.border,
+          borderLeftColor: theme.colors.warning,
         },
       ]}
       accessibilityRole="alert"
-      accessibilityLabel="Email verification required"
+      accessibilityLabel={`${title}. Sent to ${maskEmail(email)}.`}
     >
+      <AppText variant="subtitle" style={styles.marker}>
+        ✉️
+      </AppText>
       <View style={styles.copy}>
-        <AppText variant="bodyBold">{title}</AppText>
-        <AppText variant="captionRegular" tone="muted" style={styles.body}>
-          Open the verification link sent to {maskEmail(email)} — this notice
-          clears itself the moment you do. Resend it if the first message did
-          not arrive.
+        <AppText variant="captionBold" numberOfLines={1}>
+          {title}
+        </AppText>
+        <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+          Sent to {maskEmail(email)}
         </AppText>
       </View>
-      <View style={styles.actions}>
-        <Button
-          title={sending ? 'Sending...' : 'Resend email'}
-          size="sm"
-          onPress={handleResend}
-          loading={sending}
-          disabled={sending}
-        />
-      </View>
+      <Button
+        title={sending ? 'Sending' : 'Resend'}
+        size="sm"
+        variant="secondary"
+        onPress={handleResend}
+        loading={sending}
+        disabled={sending}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
-    borderWidth: 1,
-    borderRadius: tokens.radius.lg,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.md,
-    gap: tokens.spacing.md,
-  },
-  copy: {
-    gap: tokens.spacing.xs,
-  },
-  body: {
-    lineHeight: 18,
-  },
-  actions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.sm,
-    flexWrap: 'wrap',
+    borderWidth: StyleSheet.hairlineWidth,
+    // The warning reads as an edge, not a box.
+    borderLeftWidth: 3,
+    borderRadius: tokens.radius.md,
+    paddingLeft: tokens.spacing.md,
+    paddingRight: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.sm,
+  },
+  marker: {
+    // Optical: the envelope glyph sits high in its em box.
+    marginTop: 2,
+  },
+  copy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
 });
 

@@ -885,19 +885,38 @@ export default function StudioWebViewScreen() {
     void WebBrowser.openBrowserAsync(new URL('/help/verified-badge', env.webAppUrl).toString()).catch(() => undefined);
   }, []);
 
+  /*
+   * Push, never replace.
+   *
+   * These three used `router.replace`, which drops the Studio screen out of the
+   * stack entirely. Two consequences, both reported:
+   *
+   *   1. Back had nowhere to return to. `AppBackButton` falls through to its
+   *      `fallbackHref` when `canGoBack()` is false, and `/notifications` uses
+   *      `/(tabs)` — whose `initialRouteName` is `index`. So a brand who opened
+   *      Notifications from their own Store and pressed back landed on Runway.
+   *   2. It unmounted the WebView and with it the warm Studio session, so
+   *      coming back re-ran the whole handoff and reload. `handleMenuStaff`
+   *      right below already documents that exact cost as the reason it stays
+   *      in-place.
+   *
+   * `drillDownPush` is what every other caller of these routes uses
+   * (`catalog/index.tsx`, `me.tsx`, `RunwayFeedScreen`), so this also makes the
+   * Studio menu behave like the rest of the app.
+   */
   const handleMenuProfile = useCallback(() => {
     setProfileMenuVisible(false);
-    router.replace((hasBrandWorkspace ? '/catalog' : '/(tabs)/me') as any);
+    drillDownPush((hasBrandWorkspace ? '/catalog' : '/(tabs)/me') as any);
   }, [hasBrandWorkspace]);
 
   const handleMenuNotifications = useCallback(() => {
     setProfileMenuVisible(false);
-    router.replace('/notifications' as any);
+    drillDownPush('/notifications' as any);
   }, []);
 
   const handleMenuOrders = useCallback(() => {
     setProfileMenuVisible(false);
-    router.replace('/orders' as any);
+    drillDownPush('/orders' as any);
   }, []);
 
   const handleMenuFinance = useCallback(() => {
@@ -1007,44 +1026,93 @@ export default function StudioWebViewScreen() {
                   }));
                 });
 
-                // Store setup / Studio web forms: native WebView does not inherit
-                // React Native keyboard-aware scroll. When a field focuses, center
-                // it in the visible viewport so the soft keyboard never covers it.
+                // Store setup / Studio web forms: the WebView does not inherit
+                // React Native's keyboard-aware scroll, so the page has to reveal
+                // its own focused field when the IME covers it.
+                //
+                // The previous version fought the user for control of the scroll
+                // position. It re-centred the focused field on EVERY 'resize' and
+                // every visualViewport resize, unconditionally — and on Android
+                // the IME, the suggestion strip and the smooth scroll it had just
+                // started each fire more resize events. So while a variant field
+                // was focused, any attempt to scroll was undone 80ms later and the
+                // page snapped back; the screen "moved and could not be adjusted
+                // back". It also used block:'center', which travels the maximum
+                // possible distance even when the field was already perfectly
+                // visible.
+                //
+                // Three rules now: only move when the field is ACTUALLY obscured,
+                // move the shortest distance that reveals it, and never move while
+                // the user's own finger is driving the scroll.
                 function isEditable(el) {
                   if (!el || el === document.body) return false;
                   var tag = (el.tagName || '').toLowerCase();
                   if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
                   return !!el.isContentEditable;
                 }
-                function scrollFocusedFieldIntoView() {
+                var lastUserScrollAt = 0;
+                var USER_SCROLL_GRACE_MS = 1500;
+                function markUserScroll() { lastUserScrollAt = Date.now(); }
+                document.addEventListener('touchstart', markUserScroll, true);
+                document.addEventListener('touchmove', markUserScroll, true);
+                document.addEventListener('wheel', markUserScroll, true);
+
+                function visibleBottom() {
+                  return window.visualViewport
+                    ? window.visualViewport.height
+                    : window.innerHeight;
+                }
+                function isObscured(el) {
+                  var rect = el.getBoundingClientRect();
+                  // 16px of breathing room under the field so the caret is never
+                  // flush against the keyboard.
+                  return rect.bottom > visibleBottom() - 16 || rect.top < 0;
+                }
+                function revealFocusedField(ignoreUserScroll) {
                   var el = document.activeElement;
                   if (!isEditable(el)) return;
-                  var run = function() {
-                    try {
-                      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-                    } catch (e) {
-                      try { el.scrollIntoView(true); } catch (e2) {}
-                    }
-                  };
-                  // Wait for the OS keyboard animation before measuring.
-                  setTimeout(run, 80);
-                  setTimeout(run, 320);
+                  if (!ignoreUserScroll && Date.now() - lastUserScrollAt < USER_SCROLL_GRACE_MS) return;
+                  if (!isObscured(el)) return;
+                  try {
+                    // 'nearest', not 'center' — the shortest move that works.
+                    el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+                  } catch (e) {
+                    try { el.scrollIntoView(false); } catch (e2) {}
+                  }
                 }
-                document.addEventListener('focusin', scrollFocusedFieldIntoView, true);
-                window.addEventListener('resize', function() {
-                  if (isEditable(document.activeElement)) scrollFocusedFieldIntoView();
-                });
+                document.addEventListener('focusin', function() {
+                  // A fresh focus is the user asking for this field, so it wins
+                  // over the scroll grace period. Twice: once early, once after
+                  // the keyboard animation has actually resized the viewport.
+                  setTimeout(function() { revealFocusedField(true); }, 100);
+                  setTimeout(function() { revealFocusedField(true); }, 360);
+                }, true);
+
+                var lastVisibleBottom = visibleBottom();
+                function onViewportResize() {
+                  var next = visibleBottom();
+                  // Only react to the viewport SHRINKING by a meaningful amount,
+                  // i.e. a keyboard opening. Growing back, or the small jitter an
+                  // Android suggestion strip produces, must not re-grab the
+                  // scroll — that was the loop the user could not escape.
+                  var keyboardOpened = next < lastVisibleBottom - 80;
+                  lastVisibleBottom = next;
+                  if (keyboardOpened) {
+                    setTimeout(function() { revealFocusedField(true); }, 60);
+                  }
+                }
+                window.addEventListener('resize', onViewportResize);
                 if (window.visualViewport) {
-                  window.visualViewport.addEventListener('resize', function() {
-                    if (isEditable(document.activeElement)) scrollFocusedFieldIntoView();
-                  });
+                  window.visualViewport.addEventListener('resize', onViewportResize);
                 }
               })();
               true;
             `}
             // iOS: allow programmatic focus paths used by Studio multi-step forms.
             keyboardDisplayRequiresUserAction={false}
-            // Android: prefer software layer so IME resize/pan composites cleanly.
+            // Android: hardware layer. (The comment here used to say "prefer
+            // software layer" while setting "hardware" — the value is what ships,
+            // and hardware is what Studio has been tested on.)
             androidLayerType="hardware"
             onLoadStart={() => setLoadState((current) => (current === 'ready' ? current : 'loading'))}
             onError={() => {

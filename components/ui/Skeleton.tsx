@@ -42,6 +42,27 @@ export function Skeleton({
 
   const shimmerAnim = useRef(new Animated.Value(0)).current;
 
+  /**
+   * `isInteraction: false` is not cosmetic here — it was the app's worst
+   * latency bug.
+   *
+   * `Animated.timing` defaults to `isInteraction: true`, which registers an
+   * InteractionManager handle for the life of the animation. An
+   * `Animated.loop` never finishes, so that handle NEVER cleared — and
+   * `useDeferredScreenWork`, which gates almost every screen's data fetch,
+   * waits on `InteractionManager.runAfterInteractions`.
+   *
+   * The result was circular: a screen mounts → renders this skeleton → the
+   * skeleton's infinite loop holds InteractionManager open → the screen's
+   * deferred data load never runs → the skeleton keeps shimmering. It only
+   * broke when something else happened to unmount the loader. That is the
+   * "5 seconds before I see the next screen" report, and the same trap was set
+   * in six components including `WiezLogoLoader`, which is on screen during
+   * every single load in the app.
+   *
+   * Any looping or decorative animation MUST opt out. `NewDropBadge` already
+   * did, which is how the pattern was identified.
+   */
   useEffect(() => {
     const animation = Animated.loop(
       Animated.timing(shimmerAnim, {
@@ -49,6 +70,7 @@ export function Skeleton({
         duration: 1400,
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
+        isInteraction: false,
       })
     );
     animation.start();

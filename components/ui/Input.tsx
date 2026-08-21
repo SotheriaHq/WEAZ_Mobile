@@ -114,7 +114,7 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
               lineHeight: tokens.typography.body.lineHeight,
             },
           ]}
-          placeholderTextColor={theme.colors.textMuted}
+          placeholderTextColor={theme.colors.textPlaceholder}
         />
         {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
       </View>

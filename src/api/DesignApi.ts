@@ -1090,8 +1090,20 @@ export async function saveDesignEditor(
   onProgress?: (value: number, message: string) => void,
   onDesignCreated?: (designId: string) => void,
 ): Promise<{ id: string; detail: DesignDetail }> {
-  const trimmedTitle = payload.title.trim() || 'Untitled design';
-  
+  /**
+   * No silent "Untitled design" fallback.
+   *
+   * This substitution was how untitled drafts got saved at all: the editor let
+   * an empty title through and this line invented one, so the owner's Drafts
+   * list filled with identical "Untitled design" cards they could not tell
+   * apart. The title is now required before Save draft is pressable; this is
+   * the boundary guard that keeps any other caller from reintroducing it.
+   */
+  const trimmedTitle = payload.title.trim();
+  if (!trimmedTitle) {
+    throw new Error('Give this design a title before saving it.');
+  }
+
   onProgress?.(0.05, 'Preparing media...');
   const processedFilteredAssets = await Promise.all(
     payload.assets.slice(0, DESIGN_EDITOR_MAX_MEDIA).map(async (asset) => {
@@ -1230,11 +1242,31 @@ export async function saveDesignEditor(
   }
 
   onProgress?.(0.7, payload.action === 'publish' ? 'Finalizing design...' : 'Saving draft...');
+  /**
+   * Finalize carries NO `draftVersion`.
+   *
+   * `payload.draftVersion` is the version this editor read when it opened, and
+   * by the time we get here we have deliberately invalidated it ourselves: the
+   * `updateDesign` PATCH above increments it server-side, and so does every
+   * media delete. Sending the opening version to finalize therefore always
+   * described a draft that no longer existed, and the server correctly
+   * answered "Draft was modified by another session" — about this session, on
+   * this device, mid-save. The media had already uploaded, so the design was
+   * left half-saved with a Retry that repeated the same sequence and failed
+   * the same way.
+   *
+   * Concurrency is not lost by dropping it here. `draftSessionToken` goes with
+   * the request and the server still rejects a caller that does not hold the
+   * live editing session, which is the check that actually distinguishes
+   * another editor from this one. The version number cannot: it does not
+   * record WHO moved it.
+   */
   await finalizeExistingDesign(
     payload.designId,
     {
       ...payload,
       title: trimmedTitle,
+      draftVersion: undefined,
     },
     completions,
   );

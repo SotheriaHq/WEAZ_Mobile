@@ -133,7 +133,6 @@ export default function CreateDesignPreviewScreen() {
   const selectedPreviewSlotLabel = selectedPreviewAsset
     ? getMediaViewSlotLabel(selectedPreviewAsset.viewSlot)
     : '';
-  const saveProgressPercent = Math.max(0, Math.min(100, Math.round(saveState.progress * 100)));
 
   useAndroidOverlaySystemBars(deleteOpen, scheme, 'create-design-delete');
 
@@ -300,31 +299,21 @@ export default function CreateDesignPreviewScreen() {
           },
         ]}
       >
-        {saveState.action ? (
-          <View style={[styles.progressPanel, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
-            <View style={styles.progressCopyRow}>
-              <View style={styles.progressCopy}>
-                <AppText variant="bodyBold">Current save progress</AppText>
-                <AppText variant="captionRegular" tone="muted">{saveState.message}</AppText>
-              </View>
-              <AppText variant="subtitle">{saveProgressPercent}%</AppText>
-            </View>
-            <View style={[styles.progressTrack, { backgroundColor: theme.colors.surface }]}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    backgroundColor: theme.colors.primary,
-                    width: `${saveProgressPercent}%`,
-                  },
-                ]}
-              />
-            </View>
-          </View>
-        ) : null}
+        {/*
+          No progress panel here.
+
+          Pressing Save/Create hands the upload to a background task and
+          `router.replace`s to the catalog almost immediately, so this slab —
+          "Current save progress", a message line, a percentage and a bar —
+          only ever existed for the fraction of a second before the screen was
+          replaced. It flashed, competing with the spinner already running
+          inside the button that was just pressed, and then vanished. The real
+          progress lives on the catalog card the reroute lands on, which is
+          where it can be watched for as long as the upload takes.
+        */}
         {!canSaveDraft ? (
           <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
-            Add at least one field or one media item to save a draft.
+            Add a title to save this as a draft.
           </AppText>
         ) : (
           <AppText variant="captionRegular" tone="muted" style={styles.draftHelper}>
@@ -499,31 +488,6 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: tokens.spacing.md,
-  },
-  progressPanel: {
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    gap: tokens.spacing.sm,
-    padding: tokens.spacing.md,
-  },
-  progressCopyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.md,
-  },
-  progressCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: tokens.spacing.xs,
-  },
-  progressTrack: {
-    height: 6,
-    overflow: 'hidden',
-    borderRadius: tokens.radius.full,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: tokens.radius.full,
   },
   actionRow: {
     flexDirection: 'row',

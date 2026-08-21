@@ -56,6 +56,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
             duration: 90,
             easing: Easing.out(Easing.quad),
             useNativeDriver: true,
+            isInteraction: false,
           }),
           Animated.timing(opacity, {
             toValue: 0,
@@ -63,6 +64,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
             delay: 110,
             easing: Easing.in(Easing.quad),
             useNativeDriver: true,
+            isInteraction: false,
           }),
         ]),
         Animated.timing(scale, {
@@ -70,6 +72,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 140,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]).start();
       return;
@@ -82,6 +85,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 120,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(opacity, {
           toValue: 0,
@@ -89,6 +93,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           delay: 220,
           easing: Easing.in(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
       Animated.sequence([
@@ -97,12 +102,14 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 170,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(scale, {
           toValue: 1,
           duration: 220,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
       Animated.sequence([
@@ -112,6 +119,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 240,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
       Animated.sequence([
@@ -121,6 +129,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 90,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(stitchOpacity, {
           toValue: 0,
@@ -128,6 +137,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           delay: 110,
           easing: Easing.in(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
       Animated.sequence([
@@ -137,6 +147,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 240,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
       Animated.sequence([
@@ -146,6 +157,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 100,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(trailOpacity, {
           toValue: 0,
@@ -153,6 +165,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           delay: 120,
           easing: Easing.in(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
     ]).start();

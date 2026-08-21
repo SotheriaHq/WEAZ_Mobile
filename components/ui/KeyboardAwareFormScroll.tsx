@@ -21,10 +21,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
 } from 'react-native-reanimated';
 
 import { tokens } from '@/src/styles/tokens';
@@ -53,20 +51,32 @@ export type KeyboardAwareFormScrollHandle = {
   scrollTo: Animated.ScrollView['scrollTo'];
 };
 
-const easeOut = Easing.out(Easing.cubic);
-
-function keyboardDuration(event?: KeyboardEvent, fallback = 250) {
-  const d = event?.duration ?? 0;
-  // Android often reports 0; a short ease still feels native.
-  return d > 0 ? d : fallback;
+function currentKeyboardHeight(): number {
+  const metrics = Keyboard.metrics?.();
+  return Math.max(0, metrics?.height ?? 0);
 }
 
 /**
  * Keyboard-aware form scroller — pure JS + Reanimated (no native rebuild).
  *
- * Smoothness rules (avoid the “shake”):
- * - One animated bottom spacer (Reanimated), not React state padding jumps
- * - One scroll-to-focused pass after the keyboard settles (no multi-retry spam)
+ * Smoothness rules, learned the hard way:
+ *
+ * - The clearance spacer is resized in ONE step, never animated. `height` is a
+ *   layout property: easing it over 250ms asked Yoga to re-lay-out the entire
+ *   form — and these forms are big — on every frame of the keyboard
+ *   transition. That per-frame layout is the “cracked” feel; it is also
+ *   exactly what the React Native animation guidance says not to do (animate
+ *   transform and opacity, never layout). Setting it once costs one layout
+ *   pass, and the keyboard's own motion is what the eye actually tracks.
+ * - The scroll-to-focused runs WITH the keyboard, not after it. It used to be
+ *   deferred by a setTimeout tuned to land once the keyboard had settled,
+ *   which by construction made two sequential movements out of one gesture:
+ *   keyboard up, pause, content jumps. Issuing an animated `scrollTo` in the
+ *   same event lets the two glide together.
+ * - Both the spacer and the caret position are seeded from
+ *   `Keyboard.metrics()` at mount, so a form that opens under an already-raised
+ *   keyboard is correct on its first frame instead of waiting for an event that
+ *   has already been and gone.
  * - No Keyboard.scheduleLayoutAnimation (fights Reanimated)
  */
 export const KeyboardAwareFormScroll = forwardRef<
@@ -89,16 +99,14 @@ export const KeyboardAwareFormScroll = forwardRef<
 ) {
   const scrollRef = useRef<Animated.ScrollView>(null);
   const scrollOffsetY = useRef(0);
-  const keyboardHeightRef = useRef(0);
-  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const bottomSpacer = useSharedValue(extraKeyboardSpace);
-
-  const clearScrollTimer = useCallback(() => {
-    if (scrollTimerRef.current != null) {
-      clearTimeout(scrollTimerRef.current);
-      scrollTimerRef.current = null;
-    }
-  }, []);
+  // Seeded from the live keyboard so a form mounted under an open keyboard is
+  // right on frame one, rather than waiting for a show event that already fired.
+  const keyboardHeightRef = useRef(currentKeyboardHeight());
+  const bottomSpacer = useSharedValue(
+    keyboardHeightRef.current > 0
+      ? keyboardHeightRef.current + bottomOffset + extraKeyboardSpace
+      : extraKeyboardSpace,
+  );
 
   const scrollToFocused = useCallback(() => {
     const kb = keyboardHeightRef.current;
@@ -134,78 +142,56 @@ export const KeyboardAwareFormScroll = forwardRef<
     });
   }, [bottomOffset]);
 
-  /** One deferred scroll — never multi-fire (multi-fire = shake). */
-  const scheduleScrollToFocused = useCallback(
-    (delayMs: number) => {
-      clearScrollTimer();
-      scrollTimerRef.current = setTimeout(() => {
-        scrollTimerRef.current = null;
-        scrollToFocused();
-      }, delayMs);
-    },
-    [clearScrollTimer, scrollToFocused],
-  );
-
   const onFieldFocus = useCallback(() => {
-    // Keyboard already open: one short settle, then a single scroll.
+    // Keyboard already open: the layout is settled, so scroll straight away.
+    // The old 48/64ms settle timer existed only to outlast the animated spacer
+    // that no longer animates.
     if (keyboardHeightRef.current > 0) {
-      scheduleScrollToFocused(Platform.OS === 'ios' ? 48 : 64);
+      scrollToFocused();
     }
-  }, [scheduleScrollToFocused]);
+  }, [scrollToFocused]);
 
   useEffect(() => {
-    // Keep spacer floor in sync when sticky-footer clearance changes.
+    // Keep the spacer floor in sync when sticky-footer clearance changes.
     if (keyboardHeightRef.current <= 0) {
-      bottomSpacer.value = withTiming(extraKeyboardSpace, {
-        duration: 180,
-        easing: easeOut,
-      });
+      bottomSpacer.value = extraKeyboardSpace;
     }
   }, [bottomSpacer, extraKeyboardSpace]);
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const isIOS = Platform.OS === 'ios';
+
+    const applyKeyboardHeight = (height: number) => {
+      keyboardHeightRef.current = height;
+      // One layout pass, not one per frame. See the component doc block.
+      bottomSpacer.value =
+        height > 0 ? height + bottomOffset + extraKeyboardSpace : extraKeyboardSpace;
+    };
 
     const onShow = (event: KeyboardEvent) => {
-      const height = Math.max(0, event.endCoordinates?.height ?? 0);
-      const prev = keyboardHeightRef.current;
-      keyboardHeightRef.current = height;
-
-      const duration = keyboardDuration(event, Platform.OS === 'ios' ? 250 : 220);
-      const targetPad = height + bottomOffset + extraKeyboardSpace;
-
-      // Only animate when height actually changes (skip repeat events).
-      if (Math.abs(prev - height) > 1 || prev === 0) {
-        bottomSpacer.value = withTiming(targetPad, { duration, easing: easeOut });
-      }
-
-      // Scroll once near the end of the keyboard curve — not on every frame.
-      scheduleScrollToFocused(Math.max(duration - 40, Platform.OS === 'ios' ? 120 : 160));
+      applyKeyboardHeight(Math.max(0, event.endCoordinates?.height ?? 0));
+      // Same tick as the keyboard, so the caret travels WITH it. On iOS this
+      // rides `keyboardWillShow`, which fires before the IME moves at all.
+      scrollToFocused();
     };
 
-    const onHide = (event: KeyboardEvent) => {
-      clearScrollTimer();
-      keyboardHeightRef.current = 0;
-      const duration = keyboardDuration(event, Platform.OS === 'ios' ? 220 : 180);
-      bottomSpacer.value = withTiming(extraKeyboardSpace, { duration, easing: easeOut });
+    const onHide = () => {
+      applyKeyboardHeight(0);
     };
 
-    const showSub = Keyboard.addListener(showEvent, onShow);
-    const hideSub = Keyboard.addListener(hideEvent, onHide);
+    const subs = [
+      Keyboard.addListener(isIOS ? 'keyboardWillShow' : 'keyboardDidShow', onShow),
+      Keyboard.addListener(isIOS ? 'keyboardWillHide' : 'keyboardDidHide', onHide),
+      // iOS reports a resize of an already-open keyboard (emoji panel, hardware
+      // keyboard attach, split/floating, rotation) only through this event.
+      // Android re-emits `keyboardDidShow` with the new height instead.
+      ...(isIOS ? [Keyboard.addListener('keyboardWillChangeFrame', onShow)] : []),
+    ];
 
     return () => {
-      showSub.remove();
-      hideSub.remove();
-      clearScrollTimer();
+      subs.forEach((sub) => sub.remove());
     };
-  }, [
-    bottomOffset,
-    bottomSpacer,
-    clearScrollTimer,
-    extraKeyboardSpace,
-    scheduleScrollToFocused,
-  ]);
+  }, [bottomOffset, bottomSpacer, extraKeyboardSpace, scrollToFocused]);
 
   useImperativeHandle(
     ref,

@@ -101,44 +101,109 @@ export function AppBottomSheet({
     onDismissRef.current?.();
   }, []);
 
+  /**
+   * How far the body has scrolled, so a downward drag that STARTS at the top of
+   * the content can close the sheet instead of doing nothing.
+   *
+   * The drag responder used to live only on `dragArea` — the handle and header
+   * strip, roughly 60pt tall. Every sheet with a scrollable body (the bag
+   * fittings measurements, custom bag, filters) therefore ignored a swipe-down
+   * anywhere on the content, which is the entire surface the user's thumb is
+   * actually on. They swiped the fields and the sheet did not move.
+   */
+  const bodyScrollYRef = React.useRef(0);
+
+  React.useEffect(() => {
+    if (!mounted) bodyScrollYRef.current = 0;
+  }, [mounted]);
+
+  const dragHandlers = React.useMemo(
+    () => ({
+      onPanResponderMove: (_: unknown, gestureState: { dy: number }) => {
+        const nextY = Math.max(0, gestureState.dy);
+        translateY.value = nextY;
+        opacity.value = Math.max(0.62, 1 - nextY / 420);
+      },
+      onPanResponderRelease: (
+        _: unknown,
+        gestureState: { dy: number; vy: number },
+      ) => {
+        if (gestureState.dy > 48 || gestureState.vy > 0.8) {
+          Keyboard.dismiss();
+          onClose();
+          return;
+        }
+        translateY.value = withTiming(0, {
+          duration: 140,
+          easing: Easing.out(Easing.cubic),
+        });
+        opacity.value = withTiming(1, {
+          duration: 120,
+          easing: Easing.out(Easing.cubic),
+        });
+      },
+      onPanResponderTerminate: () => {
+        translateY.value = withTiming(0, {
+          duration: 140,
+          easing: Easing.out(Easing.cubic),
+        });
+        opacity.value = withTiming(1, {
+          duration: 120,
+          easing: Easing.out(Easing.cubic),
+        });
+      },
+    }),
+    [onClose, opacity, translateY],
+  );
+
+  /** Handle + header. Always draggable, whatever the body is doing. */
   const dragCloseResponder = React.useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) =>
           gestureState.dy > 8 &&
           Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
-        onPanResponderMove: (_, gestureState) => {
-          const nextY = Math.max(0, gestureState.dy);
-          translateY.value = nextY;
-          opacity.value = Math.max(0.62, 1 - nextY / 420);
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dy > 48 || gestureState.vy > 0.8) {
-            Keyboard.dismiss();
-            onClose();
-            return;
-          }
-          translateY.value = withTiming(0, {
-            duration: 140,
-            easing: Easing.out(Easing.cubic),
-          });
-          opacity.value = withTiming(1, {
-            duration: 120,
-            easing: Easing.out(Easing.cubic),
-          });
-        },
-        onPanResponderTerminate: () => {
-          translateY.value = withTiming(0, {
-            duration: 140,
-            easing: Easing.out(Easing.cubic),
-          });
-          opacity.value = withTiming(1, {
-            duration: 120,
-            easing: Easing.out(Easing.cubic),
-          });
-        },
+        ...dragHandlers,
       }),
-    [onClose, opacity, translateY],
+    [dragHandlers],
+  );
+
+  /**
+   * Whole-sheet drag, claimed in the CAPTURE phase.
+   *
+   * Bubble-phase would be too late: the body is a ScrollView and a ScrollView
+   * claims every vertical drag it is offered, so a swipe-down on the content
+   * became a (no-op) scroll-up-past-the-top and the sheet never moved. Capture
+   * runs parent-before-child, which lets the sheet take the gesture first —
+   * but ONLY when the body is already scrolled to the top and the pull is
+   * clearly downward. Anywhere else, the ScrollView keeps it and scrolling
+   * behaves exactly as before.
+   */
+  const sheetDragResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        /**
+         * The threshold has to be tiny, and that is not sloppiness.
+         *
+         * React Native only re-runs capture negotiation while NO view owns the
+         * responder, and a ScrollView claims it on the very first move event.
+         * A `dy > 12` threshold therefore never got a second chance — by the
+         * time the finger had travelled twelve points the ScrollView was
+         * already the responder and the sheet was never asked again. That is
+         * why swipe-to-dismiss still did nothing on the bagging measurement
+         * sheet after the first fix.
+         *
+         * Stealing this early is safe precisely because of the scroll check:
+         * at offset 0 a downward drag has nothing to scroll to, so the
+         * ScrollView would have consumed it and done nothing anyway.
+         */
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          bodyScrollYRef.current <= 0 &&
+          gestureState.dy > 3 &&
+          gestureState.dy > Math.abs(gestureState.dx),
+        ...dragHandlers,
+      }),
+    [dragHandlers],
   );
 
   useEffect(() => {
@@ -274,6 +339,26 @@ export function AppBottomSheet({
         keyboardShouldPersistTaps: 'handled' as const,
         keyboardDismissMode: 'interactive' as const,
         automaticallyAdjustKeyboardInsets: false,
+        /**
+         * `flexShrink: 1` keeps the footer on screen.
+         *
+         * The sheet is capped at `maxHeight: '88%'` and lays its children out in
+         * a column: body, then footer. A ScrollView with no flex rule takes its
+         * CONTENT height, so once the body outgrew the cap it pushed the footer
+         * past the bottom edge and Cancel/Done simply were not there. The
+         * non-scrollable branch below has always set this; the scrollable one
+         * never did, and only showed the fault once a sheet body got tall
+         * enough — which the paired fittings grid did.
+         */
+        style: { flexShrink: 1 },
+        scrollEventThrottle: 16,
+        // Feeds `sheetDragResponder`: a swipe-down only becomes a dismiss when
+        // there is nothing left to scroll up to.
+        onScroll: (event: {
+          nativeEvent: { contentOffset: { y: number } };
+        }) => {
+          bodyScrollYRef.current = event.nativeEvent.contentOffset.y;
+        },
         contentContainerStyle: [
           styles.bodyContent,
           keyboardBehavior === 'auto' ? styles.bodyContentKeyboard : null,
@@ -310,8 +395,23 @@ export function AppBottomSheet({
             ]}
           />
         </Pressable>
-        <Animated.View style={[styles.keyboardWrap, keyboardWrapStyle]}>
+        {/*
+          `box-none` is load-bearing.
+
+          This wrapper is `flex: 1` so it can pad the sheet up over the
+          keyboard, which means it covers the whole screen — including the empty
+          area above the sheet that the user reads as "outside". With the
+          default `pointerEvents="auto"` it was the hit-test winner there and
+          the backdrop `Pressable` behind it never received the tap, so tapping
+          off the sheet did nothing at all. `box-none` makes the wrapper itself
+          transparent to touches while its children stay interactive.
+        */}
+        <Animated.View
+          pointerEvents="box-none"
+          style={[styles.keyboardWrap, keyboardWrapStyle]}
+        >
           <Animated.View
+            {...sheetDragResponder.panHandlers}
             style={[
               styles.sheet,
               {
@@ -360,6 +460,13 @@ export function AppBottomSheet({
                   sheet with only `showCloseButton` gets a real Done-shaped
                   button rather than a glyph, since dismissing these sheets
                   keeps the selection anyway.
+
+                  ...but NOT when the sheet draws its own `footer`. A footer is
+                  always the sheet's real actions (Cancel / Save / Remove), so
+                  synthesizing a header confirm on top of it gave five sheets
+                  two "Done" buttons that did different things — the header one
+                  dismissed, the footer one committed — with nothing to tell
+                  them apart. The footer wins: it is the one the author wrote.
                 */}
                 <View style={styles.headerActions}>
                   {onDone ? (
@@ -371,7 +478,7 @@ export function AppBottomSheet({
                       loading={loading}
                       style={styles.doneButton}
                     />
-                  ) : showCloseButton ? (
+                  ) : showCloseButton && !footer ? (
                     <Button
                       title={doneLabel}
                       size="sm"

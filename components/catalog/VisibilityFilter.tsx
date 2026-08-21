@@ -34,6 +34,7 @@ function VisibilitySegment({ label, isActive, onPress, badge }: SegmentProps) {
         duration,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
+        isInteraction: false,
       }).start();
     },
     [scale],

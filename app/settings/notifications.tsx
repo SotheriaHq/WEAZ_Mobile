@@ -28,7 +28,10 @@ import {
   type NotificationSettings,
   type NotificationSettingsSection,
 } from '@/src/notifications/notificationSettings';
-import { registerAuthenticatedPushToken } from '@/src/notifications/pushTokenRegistration';
+import {
+  describePushSkipReason,
+  registerAuthenticatedPushToken,
+} from '@/src/notifications/pushTokenRegistration';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
@@ -622,8 +625,15 @@ export default function NotificationSettingsScreen() {
       authToken: token,
     })
       .then((result) => {
-        if (result.status === 'skipped' && result.reason === 'permission-denied') {
-          setDevicePermissionStatus('denied');
+        if (result.status === 'skipped') {
+          if (result.reason === 'permission-denied') {
+            setDevicePermissionStatus('denied');
+            return;
+          }
+          // Every other skip used to fall through to the success branch, so the
+          // toggle read as "on" while this device had registered no token at
+          // all and would never receive anything. Say which gate closed.
+          setActionError(describePushSkipReason(result.reason));
           return;
         }
         void refreshDevicePermissionStatus();

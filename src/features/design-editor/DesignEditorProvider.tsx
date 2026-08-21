@@ -42,6 +42,7 @@ import {
   isLegacyDiscoveryDimensionSlug,
   mapCreatorMetadataError,
 } from '@/src/utils/creatorMetadata';
+import { getRangeError } from '@/src/utils/rangeValidation';
 import {
   consumeDesignEditorAssetBundle,
   DESIGN_EDITOR_MAX_MEDIA,
@@ -65,6 +66,10 @@ import {
   updateDesignEditorBackgroundTask,
   type DesignEditorRecoverySnapshot,
 } from './designEditorBackgroundTasks';
+import {
+  readDraftSessionToken,
+  writeDraftSessionToken,
+} from './designDraftSessionStore';
 
 type Visibility = 'PUBLIC' | 'PRIVATE';
 type Audience = 'MALE' | 'FEMALE' | 'EVERYBODY';
@@ -151,6 +156,32 @@ type ContextValue = {
   takeOverDraftConflict: () => Promise<void>;
 };
 
+/**
+ * Custom-order values the platform falls back to.
+ *
+ * These are DEFAULTS, not initial values, and the difference is the whole bug.
+ * Every one of them used to be seeded straight into `FormState`, so the field
+ * opened already holding the value — while ALSO declaring the same string as
+ * its `placeholder`. Delivery min literally rendered `value="2"` under
+ * `placeholder="2"`, and the value wins, so what looked like a hint was real
+ * text with the caret parked after it: typing 3 gave you 23, and the only way
+ * out was backspacing first. That is the placeholder complaint, exactly.
+ *
+ * The fields now open EMPTY and show these as placeholders, which is what a
+ * placeholder is for — it disappears the moment you type. Nothing about what
+ * gets saved changes: every consumer below substitutes the same value for a
+ * blank field, so a brand who leaves them alone publishes identical terms.
+ */
+export const DESIGN_CUSTOM_ORDER_DEFAULTS = {
+  deliveryMinDays: '2',
+  deliveryMaxDays: '5',
+  fallbackOutputYards: '4',
+  deliveryScope: 'Nigeria',
+  revisionPolicy: 'One revision after delivery confirmation.',
+  returnPolicy: 'Custom orders are not returnable except where required by policy.',
+  defectPolicy: 'Defects and material faults are reviewed through support.',
+} as const;
+
 const INITIAL_FORM: FormState = {
   title: '',
   description: '',
@@ -167,14 +198,14 @@ const INITIAL_FORM: FormState = {
   buyerInstructionText: '',
   baseProductionCharge: '',
   fabricCostPerYard: '',
-  deliveryMinDays: '2',
-  deliveryMaxDays: '5',
-  deliveryScope: 'Nigeria',
-  revisionPolicy: 'One revision after delivery confirmation.',
-  returnPolicy: 'Custom orders are not returnable except where required by policy.',
-  defectPolicy: 'Defects and material faults are reviewed through support.',
+  deliveryMinDays: '',
+  deliveryMaxDays: '',
+  deliveryScope: '',
+  revisionPolicy: '',
+  returnPolicy: '',
+  defectPolicy: '',
   fabricSourcingMode: 'BRAND_SOURCED',
-  fallbackOutputYards: '4',
+  fallbackOutputYards: '',
   averageBaseYards: '',
   fitPreference: 'REGULAR',
   targetAgeGroup: 'ADULT',
@@ -225,14 +256,14 @@ function syncFormFromDetail(detail: DesignDetail): FormState {
     buyerInstructionText: '',
     baseProductionCharge: '',
     fabricCostPerYard: '',
-    deliveryMinDays: '2',
-    deliveryMaxDays: '5',
-    deliveryScope: 'Nigeria',
-    revisionPolicy: 'One revision after delivery confirmation.',
-    returnPolicy: 'Custom orders are not returnable except where required by policy.',
-    defectPolicy: 'Defects and material faults are reviewed through support.',
+    deliveryMinDays: '',
+    deliveryMaxDays: '',
+    deliveryScope: '',
+    revisionPolicy: '',
+    returnPolicy: '',
+    defectPolicy: '',
     fabricSourcingMode: 'BRAND_SOURCED',
-    fallbackOutputYards: '4',
+    fallbackOutputYards: '',
     averageBaseYards: '',
     fitPreference: detail.fitPreference ?? 'REGULAR',
     targetAgeGroup: detail.targetAgeGroup ?? 'ADULT',
@@ -341,34 +372,30 @@ function getCustomOrderRushValidationMessage(form: FormState): string | null {
 function getCustomOrderDeliveryValidationMessage(form: FormState): string | null {
   if (!form.customOrderEnabled) return null;
 
-  const min = Number(form.deliveryMinDays);
-  const max = Number(form.deliveryMaxDays);
+  // Blank means "use the default", not "invalid" — the fields show the default
+  // as their placeholder now, so leaving one alone is a deliberate choice.
+  const min = Number(
+    form.deliveryMinDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMinDays,
+  );
+  const max = Number(
+    form.deliveryMaxDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMaxDays,
+  );
   const isValidDay = (value: number) =>
     Number.isInteger(value) && value >= 1 && value <= 7;
 
-  if (!form.deliveryMinDays.trim() || !isValidDay(min)) {
+  if (!isValidDay(min)) {
     return 'Set the minimum delivery time between 1 and 7 days.';
   }
-  if (!form.deliveryMaxDays.trim() || !isValidDay(max)) {
+  if (!isValidDay(max)) {
     return 'Set the maximum delivery time between 1 and 7 days.';
   }
-  if (min > max) {
-    return 'Minimum delivery days cannot exceed maximum delivery days.';
-  }
-  return null;
+  return getRangeError(min, max, { label: 'delivery time', unit: 'days' }).summary;
 }
 
 // Phase 2B: enforce minPrice <= maxPrice before Preview so the creator never
 // hits a backend PRICE_RANGE_INVALID at submit time.
 function getPriceRangeValidationMessage(form: FormState): string | null {
-  if (!form.minPrice.trim() || !form.maxPrice.trim()) return null;
-  const min = Number(form.minPrice);
-  const max = Number(form.maxPrice);
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-  if (min > max) {
-    return 'Maximum price must be greater than or equal to minimum price.';
-  }
-  return null;
+  return getRangeError(form.minPrice, form.maxPrice, { label: 'price' }).summary;
 }
 
 function getPublishValidationMessage({
@@ -407,7 +434,9 @@ function getPublishValidationMessage({
   if (form.customOrderEnabled && customMeasurementKeys.length === 0) return 'Choose required custom-order fields.';
   if (
     form.customOrderEnabled &&
-    (!form.baseProductionCharge.trim() || !form.fabricCostPerYard.trim() || !form.fallbackOutputYards.trim())
+    // `fallbackOutputYards` is intentionally absent: it has a platform default
+    // and shows it as a placeholder, so blank is a valid answer.
+    (!form.baseProductionCharge.trim() || !form.fabricCostPerYard.trim())
   ) {
     return 'Add custom-order pricing before previewing.';
   }
@@ -708,7 +737,9 @@ export function DesignEditorProvider({
                 activeCustomConfiguration.fabricSourcingMode === 'EITHER'
                   ? activeCustomConfiguration.fabricSourcingMode
                   : 'BRAND_SOURCED',
-              fallbackOutputYards: activeCustomConfiguration.rules.find((rule) => rule.isFallback)?.outputYards ?? '4',
+              fallbackOutputYards:
+                activeCustomConfiguration.rules.find((rule) => rule.isFallback)?.outputYards ??
+                DESIGN_CUSTOM_ORDER_DEFAULTS.fallbackOutputYards,
               averageBaseYards: activeCustomConfiguration.yardProfile?.averageBaseYards != null
                 ? String(activeCustomConfiguration.yardProfile.averageBaseYards)
                 : '',
@@ -725,17 +756,44 @@ export function DesignEditorProvider({
           }
 
           if (detail.status === 'DRAFT') {
-            const session = await startDesignDraftSession(activeDesignId, {
+            /**
+             * Resume this device's own session, and take over rather than block.
+             *
+             * Two things used to go wrong here. The token lived only in this
+             * provider's state, so any reroute that unmounted the editor lost
+             * it and the next mount asked for a session as if it were a
+             * stranger — the server then found the session this same phone had
+             * opened moments earlier and reported a conflict. And a conflict
+             * was a dead end: it set `draftConflict`, which `save()` refuses to
+             * write through, but mobile renders no take-over UI at all, so the
+             * owner got "Another device still owns this draft" with nothing on
+             * screen able to release it.
+             *
+             * The token now persists per owner+design, so ordinary
+             * back-and-forth reuses the session it already holds. Anything
+             * still reported as a conflict is the same account genuinely open
+             * elsewhere — the owner, with the same rights to the same draft —
+             * so we take the draft over and say so, instead of locking them out
+             * of their own work.
+             */
+            const resumeToken =
+              draftSessionToken ??
+              (await readDraftSessionToken(user?.id, activeDesignId));
+            let session = await startDesignDraftSession(activeDesignId, {
               forceNew: forceTakeOver,
-              existingToken: draftSessionToken,
+              existingToken: resumeToken,
               deviceName: 'WIEZ mobile',
             });
             if (session.hasConflict) {
-              setDraftConflict(session);
-            } else {
-              setDraftConflict(null);
-              setDraftSessionToken(session.sessionToken);
+              session = await startDesignDraftSession(activeDesignId, {
+                forceNew: true,
+                deviceName: 'WIEZ mobile',
+              });
+              toast.info('This draft was open in another session. You are editing it here now.');
             }
+            setDraftConflict(null);
+            setDraftSessionToken(session.sessionToken);
+            void writeDraftSessionToken(user?.id, activeDesignId, session.sessionToken);
           }
 
           await loadMeasurementPoints(detail.type);
@@ -805,8 +863,21 @@ export function DesignEditorProvider({
       }),
     [assets, customMeasurementKeys, form, selectedFilterValueIds, tags],
   );
+  /**
+   * A title is the one thing a draft cannot be saved without.
+   *
+   * Everything else on this form can be filled in later — that is what a draft
+   * is for — but the title is how the draft is identified afterwards, in the
+   * Drafts list, in the expiry warnings and in the publish-failure
+   * notifications. Untitled drafts came back to their owner as a row of
+   * indistinguishable "Untitled draft" cards with no way to tell which was
+   * which, and `saveDesignEditor` was quietly substituting that string rather
+   * than refusing. The title can still be changed right up to publish.
+   */
+  const draftTitle = form.title.trim();
   const canSaveDraft =
-    assets.length > 0 || hasMeaningfulDraftContent(form, tags, filterSelection);
+    draftTitle.length > 0 &&
+    (assets.length > 0 || hasMeaningfulDraftContent(form, tags, filterSelection));
   const canPublish = publishValidationMessage === null;
 
   useEffect(() => {
@@ -965,10 +1036,12 @@ export function DesignEditorProvider({
       if (saveAction || isSavingRef.current) {
         return;
       }
-      if (draftConflict?.hasConflict) {
-        toast.error('Another device still owns this draft. Take over the draft before saving.');
-        return;
-      }
+      // No draft-conflict gate here any more. Bootstrap resolves ownership
+      // before the editor is usable — it resumes this device's own session, or
+      // takes the draft over from the same account elsewhere and says so. There
+      // is nothing left for a save to refuse: this branch could only ever fire
+      // against the owner, and it told them to "take over the draft" through a
+      // control mobile does not have.
       if (!user?.id) {
         toast.error('Sign in with a brand account before saving designs.');
         return;
@@ -986,7 +1059,11 @@ export function DesignEditorProvider({
         return;
       }
       if (!canSaveDraft) {
-        toast.error('Add at least one change before saving.');
+        toast.error(
+          draftTitle.length === 0
+            ? 'Give this design a title before saving it as a draft.'
+            : 'Add at least one change before saving.',
+        );
         return;
       }
       // Rush config is sent for both draft and publish when custom orders are on,
@@ -1049,7 +1126,9 @@ export function DesignEditorProvider({
           {
             priority: 1,
             conditionsJson: {},
-            outputYards: form.fallbackOutputYards,
+            outputYards:
+              form.fallbackOutputYards.trim() ||
+              DESIGN_CUSTOM_ORDER_DEFAULTS.fallbackOutputYards,
             isFallback: true,
           },
         ];
@@ -1058,7 +1137,9 @@ export function DesignEditorProvider({
             if (rule.isFallback) {
               return {
                 ...rule,
-                outputYards: form.fallbackOutputYards,
+                outputYards:
+              form.fallbackOutputYards.trim() ||
+              DESIGN_CUSTOM_ORDER_DEFAULTS.fallbackOutputYards,
               };
             }
             return rule;
@@ -1078,12 +1159,20 @@ export function DesignEditorProvider({
               rushProductionLeadDays: form.rushProductionLeadDays ? Number(form.rushProductionLeadDays) : undefined,
               notes: form.notes || undefined,
               productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : DEFAULT_PRODUCTION_LEAD_DAYS,
-              deliveryMinDays: form.deliveryMinDays ? Number(form.deliveryMinDays) : 2,
-              deliveryMaxDays: form.deliveryMaxDays ? Number(form.deliveryMaxDays) : 5,
-              deliveryScope: form.deliveryScope.trim() || 'Nigeria',
-              revisionPolicy: form.revisionPolicy.trim() || 'One revision after delivery confirmation.',
-              returnPolicy: form.returnPolicy.trim() || 'Custom orders are not returnable except where required by policy.',
-              defectPolicy: form.defectPolicy.trim() || 'Defects and material faults are reviewed through support.',
+              deliveryMinDays: Number(
+                form.deliveryMinDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMinDays,
+              ),
+              deliveryMaxDays: Number(
+                form.deliveryMaxDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMaxDays,
+              ),
+              deliveryScope:
+                form.deliveryScope.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryScope,
+              revisionPolicy:
+                form.revisionPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.revisionPolicy,
+              returnPolicy:
+                form.returnPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.returnPolicy,
+              defectPolicy:
+                form.defectPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.defectPolicy,
               fabricSourcingMode: form.fabricSourcingMode,
               averageBaseYards: form.averageBaseYards.trim() ? Number(form.averageBaseYards) : undefined,
               sizeExtraYards: loadedSizeExtraYards || undefined,
@@ -1309,8 +1398,8 @@ export function DesignEditorProvider({
       assets,
       canSaveDraft,
       customMeasurementKeys,
-      draftConflict,
       draftSessionToken,
+      draftTitle,
       draftVersion,
       filterDimensions,
       filterSelection,

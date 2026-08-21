@@ -68,12 +68,14 @@ function FeedImagePlaceholder({
           duration: 650,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(shimmer, {
           toValue: 0.18,
           duration: 650,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
     );

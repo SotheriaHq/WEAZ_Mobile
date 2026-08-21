@@ -104,6 +104,9 @@ const toCompactCount = (value: number | null | undefined) => {
   return `${(n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1)}m`;
 };
 
+/** How long chrome stays up after a tap before it bows out on its own. */
+const META_OVERLAY_AUTO_HIDE_MS = 6000;
+
 const formatMetricCountLabel = (
   value: number | null | undefined,
   singular: string,
@@ -220,6 +223,44 @@ const formatFeedPrice = (item: MarketItem): string | null => {
     return `${formatFeedAmount(min)} – ${formatFeedAmount(max)}`;
   }
   return formatFeedAmount(min);
+};
+
+/**
+ * Fresh every app launch, stable within it.
+ *
+ * The persisted feed cache exists so the Runway paints instantly instead of
+ * showing a skeleton — but it stores the PREVIOUS session's order, so the very
+ * first design a user saw on every restart was the same one they were shown
+ * last time. Revalidation swaps in a freshly-shuffled server order a moment
+ * later, which is why it is "95%, not 100%": what they are reporting is the
+ * first paint, and the first paint was always the old head.
+ *
+ * The cache's job is a fast first frame. Nothing about that requires the same
+ * ORDER, so the cached page is re-shuffled once per launch before it is
+ * painted. Instant paint is kept, the server still has the last word, and the
+ * feed stops opening on the same design.
+ */
+const FEED_COLD_START_SEED = `${Date.now().toString(36)}${Math.floor(
+  Math.random() * 0xffffffff,
+).toString(36)}`;
+
+/** FNV-1a of seed+id mapped to (0,1) — mirrors the server's `seededUnit`. */
+const coldStartUnit = (id: string): number => {
+  const input = `${FEED_COLD_START_SEED}:${id}`;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return ((hash >>> 0) + 0.5) / 4294967296.5;
+};
+
+const rotateCachedFeedForColdStart = (feedItems: MarketItem[]): MarketItem[] => {
+  if (feedItems.length < 2) return feedItems;
+  return [...feedItems]
+    .map((item) => ({ item, key: coldStartUnit(item.id) }))
+    .sort((a, b) => b.key - a.key)
+    .map((entry) => entry.item);
 };
 
 const sortFeedItemsForDisplay = (feedItems: MarketItem[]) =>
@@ -618,6 +659,11 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
   visible,
   onBrandPress,
 }: FeedMetaOverlayProps) {
+  // The stage matte is themed; the meta's legibility depends on which one is
+  // behind it whenever the media is letterboxed rather than full-bleed.
+  const { scheme } = useTheme();
+  const isLightStage = scheme !== 'dark';
+
   return (
     <View
       style={[styles.meta, { paddingBottom: bottomClearance + tokens.spacing.sm, opacity: visible ? 1 : 0 }]}
@@ -627,17 +673,36 @@ const FeedMetaOverlay = React.memo(function FeedMetaOverlay({
     >
       <LinearGradient
         pointerEvents="none"
-        // Eased ramp, not a two-stop linear one: a straight fade to black leaves
-        // a visible diagonal seam where it meets the media. The extra mid stops
-        // put the steep part of the curve behind the text and let the top of the
-        // band approach zero gently enough to have no discernible edge.
-        colors={[
-          tokens.scrim(0),
-          tokens.scrim(0.18),
-          tokens.scrim(0.46),
-          tokens.scrim(0.72),
-        ]}
-        locations={[0, 0.34, 0.68, 1]}
+        /*
+         * Ramp fast, then hold — and hold harder on a light stage.
+         *
+         * Two things were wrong. First, the ramp's steep section was in the
+         * WRONG PLACE: the band is bottom-anchored with
+         * `paddingBottom: bottomClearance + sm` (~110pt of island clearance),
+         * so the text actually sits between roughly 25% and 55% down the band
+         * while the gradient did not pass 0.46 until 68%. The darkest part of
+         * the wash was spent on empty padding below the text.
+         *
+         * Second, the premise in the screen-level comment above — "chrome that
+         * sits on the media stays light-on-dark, because a photograph is dark
+         * in either theme" — does not hold for LETTERBOXED media. A portrait
+         * that does not fill the page leaves `runwayStage` matte top and
+         * bottom, and in the light theme that matte is a pale neutral. The meta
+         * then sits on near-white, and at 0.18 scrim white text on white is
+         * exactly the reported "you can't see anything".
+         *
+         * So: reach full strength by the top of the text and stay flat through
+         * it (a constant tail has no edge to read as a panel, which is what the
+         * full-width wash was chosen to avoid), and take the light theme to
+         * 0.86 because it has to survive a white ground. The dark theme keeps a
+         * lighter tail since its matte is already near-black.
+         */
+        colors={
+          isLightStage
+            ? [tokens.scrim(0), tokens.scrim(0.5), tokens.scrim(0.86), tokens.scrim(0.86)]
+            : [tokens.scrim(0), tokens.scrim(0.34), tokens.scrim(0.72), tokens.scrim(0.72)]
+        }
+        locations={[0, 0.16, 0.3, 1]}
         style={StyleSheet.absoluteFill}
       />
       <View style={styles.metaContent} pointerEvents="box-none">
@@ -852,6 +917,22 @@ export function RunwayFeedScreen() {
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [measuredFeedViewportHeight, setFeedViewportHeight] = useState(0);
   const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
+  /**
+   * The Runway page scales down into the band above the comment sheet.
+   *
+   * Opening comments used to paint an opaque black scrim over the whole screen,
+   * so the design you were commenting on simply vanished. The model users
+   * expect (Reels, IG) keeps it visible: the sheet takes the bottom, and the
+   * page SCALES — uniformly, nothing cropped — until the whole frame fits the
+   * remaining strip, then scales back as the sheet goes down.
+   *
+   * `commentsProgress` is handed to the sheet, which drives it and interpolates
+   * its own slide from it. One value, so the two motions cannot drift: the page
+   * is exactly as small as the sheet is tall, on every frame, including a drag
+   * released half way.
+   */
+  const commentsProgress = useRef(new Animated.Value(0)).current;
+  const [commentsSheetHeight, setCommentsSheetHeight] = useState(0);
   const pendingCollectionIdsRef = useRef(new Set<string>());
   const hydratedCollectionIdsRef = useRef(new Set<string>());
   const feedTeleportingRef = useRef(false);
@@ -871,7 +952,9 @@ export function RunwayFeedScreen() {
   const [visibleMetaCollectionId, setVisibleMetaCollectionId] = useState<string | null>(null);
 
   const [items, setItems] = useState<MarketItem[]>(() =>
-    initialFeedSnapshot ? sortFeedItemsForDisplay(initialFeedSnapshot.items) : [],
+    initialFeedSnapshot
+      ? sortFeedItemsForDisplay(rotateCachedFeedForColdStart(initialFeedSnapshot.items))
+      : [],
   );
   /**
    * What is currently painted, readable synchronously from async callbacks.
@@ -944,6 +1027,7 @@ export function RunwayFeedScreen() {
         duration: 350,
         easing: Easing.out(Easing.ease),
         useNativeDriver: true,
+        isInteraction: false,
       }).start(() => {
         setIsSkeletonFadingOut(false);
       });
@@ -1071,6 +1155,45 @@ export function RunwayFeedScreen() {
     [activeTag, items.length, pageHeight],
   );
   const bottomClearance = immersiveOverlayBottomClearance;
+
+  /**
+   * Scale so the WHOLE page fits the strip left above the sheet, then lift it
+   * so the shrink happens toward the top edge rather than about the centre.
+   *
+   * A `scale` transform contracts around the view's midpoint, which would leave
+   * the page floating in the middle of the strip with dead space above it. The
+   * compensating translate is half the height the page just lost, minus the
+   * safe-area top so it sits under the status bar rather than behind it.
+   *
+   * Guarded on a measured sheet height: before the sheet has laid out there is
+   * no honest number to scale to, and a guessed one would jump on the next
+   * frame.
+   */
+  const commentsStageStyle = useMemo(() => {
+    if (commentsSheetHeight <= 0 || pageHeight <= 0) {
+      return null;
+    }
+    const visibleBand = Math.max(0, pageHeight - commentsSheetHeight);
+    const targetScale = Math.max(0.35, Math.min(1, visibleBand / pageHeight));
+    const liftedBy = (pageHeight * (1 - targetScale)) / 2;
+
+    return {
+      transform: [
+        {
+          translateY: commentsProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, -(liftedBy - insets.top / 2)],
+          }),
+        },
+        {
+          scale: commentsProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, targetScale],
+          }),
+        },
+      ],
+    };
+  }, [commentsProgress, commentsSheetHeight, insets.top, pageHeight]);
   const overlayScrollPadding = bottomClearance;
   // `overlaySurface` (pinned dark glass for the caption card) lived here. The
   // caption is a gradient wash now — see FeedMetaOverlay — so there is no pane
@@ -1376,7 +1499,14 @@ export function RunwayFeedScreen() {
     let didStartBackgroundRefresh = false;
     if (cached) {
       navPerf.mark('cache_hit', 'tabs→runway');
-      const sortedCachedItems = sortFeedItemsForDisplay(cached.snapshot.items);
+      // Only the session's FIRST hydration is re-shuffled. Later cache reads
+      // (tag switches, returning to the tab) must keep the order already on
+      // screen, or the feed would reorder under a viewer mid-session.
+      const sortedCachedItems = sortFeedItemsForDisplay(
+        feedRevalidatedThisSession
+          ? cached.snapshot.items
+          : rotateCachedFeedForColdStart(cached.snapshot.items),
+      );
       devLog('HomeFeed', 'Cache applied', sortedCachedItems.slice(0, 5).map((item, idx) => ({
         index: idx,
         id: item.id,
@@ -2066,15 +2196,40 @@ export function RunwayFeedScreen() {
     setVisibleMetaCollectionId((current) => (current == null ? current : null));
   }, []);
 
-  const showMetaOverlay = useCallback((collectionId: string) => {
+  /**
+   * Tap toggles. It does not "show, then dissolve on a timer".
+   *
+   * A tap used to call this unconditionally, which set the overlay visible and
+   * armed a 4-second self-dismiss. So tapping again while it was up just reset
+   * that timer — the overlay stayed, then vanished on its own a moment later,
+   * and the user's second tap appeared to do nothing. What they were seeing
+   * dismiss it was the timeout, not their finger.
+   *
+   * Toggling makes the control honest: tap on, tap off, and the same tap
+   * target either way. The timer survives only as a courtesy for the show
+   * direction — chrome should not sit on a photograph forever if the viewer
+   * walks away — and is cancelled the moment a tap dismisses it, so the two
+   * can never race.
+   *
+   * This is a Pressable's `onPress`, so scroll and horizontal swipe are
+   * unaffected: a gesture that moves is a scroll and never becomes a press.
+   */
+  const toggleMetaOverlay = useCallback((collectionId: string) => {
     if (metaOverlayHideTimerRef.current) {
       clearTimeout(metaOverlayHideTimerRef.current);
-    }
-    setVisibleMetaCollectionId(collectionId);
-    metaOverlayHideTimerRef.current = setTimeout(() => {
-      setVisibleMetaCollectionId((current) => (current === collectionId ? null : current));
       metaOverlayHideTimerRef.current = null;
-    }, 4000);
+    }
+
+    setVisibleMetaCollectionId((current) => {
+      if (current === collectionId) return null;
+
+      metaOverlayHideTimerRef.current = setTimeout(() => {
+        setVisibleMetaCollectionId((latest) => (latest === collectionId ? null : latest));
+        metaOverlayHideTimerRef.current = null;
+      }, META_OVERLAY_AUTO_HIDE_MS);
+
+      return collectionId;
+    });
   }, []);
 
   useEffect(() => {
@@ -2179,7 +2334,7 @@ export function RunwayFeedScreen() {
           isActive={isActiveFeedItem}
           renderVersion={rowRenderVersion}
           onCarouselIndexChange={handleCarouselIndexChange}
-          onContentPress={showMetaOverlay}
+          onContentPress={toggleMetaOverlay}
           badgeOverlay={
             <NewDropBadge
               itemId={item.collectionId}
@@ -2251,7 +2406,7 @@ export function RunwayFeedScreen() {
       savedLookByCollectionId,
       savingLookByCollectionId,
       scheme,
-      showMetaOverlay,
+      toggleMetaOverlay,
       status,
       threadStateByMedia,
       threadingMediaById,
@@ -2642,8 +2797,12 @@ export function RunwayFeedScreen() {
           <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? DEFAULT_MARKET_FILTER_CHIPS[0].id)} />
         </ScrollView>
       ) : (
-        <View
-          style={[styles.feedListContainer, { backgroundColor: theme.colors.runwayStage }]}
+        <Animated.View
+          style={[
+            styles.feedListContainer,
+            { backgroundColor: theme.colors.runwayStage },
+            commentsStageStyle,
+          ]}
           onLayout={handleFeedViewportLayout}
         >
           {!feedViewportReady ? (
@@ -2733,10 +2892,12 @@ export function RunwayFeedScreen() {
             renderItem={renderFeedItem}
           />
           )}
-        </View>
+        </Animated.View>
       )}
 
       <CollectionCommentsSheet
+        progress={commentsProgress}
+        onSheetHeight={setCommentsSheetHeight}
         visible={Boolean(commentsTarget)}
         collectionId={commentsTarget?.collectionId ?? null}
         collectionTitle={commentsTarget?.title ?? null}
@@ -2910,9 +3071,20 @@ const styles = StyleSheet.create({
   feedList: {
     backgroundColor: 'transparent',
   },
+  /**
+   * Action rail inset.
+   *
+   * The visible gap was never `right` — it was the 88pt item boxes. Each rail
+   * control is a 44pt circle centred in an 88pt column, so 22pt of empty
+   * column sat between every glyph and the screen edge on top of the 12pt
+   * inset: the glyphs floated ~34pt in from the edge while the caption widths
+   * they were sized for needed nothing like that. The column is now sized to
+   * the control it holds plus room for a short count, and the rail sits closer
+   * to the edge, which is what pushes the content out.
+   */
   rail: {
     position: 'absolute',
-    right: 12,
+    right: 8,
     alignItems: 'center',
     gap: 12,
   },
@@ -3039,7 +3211,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   railItem: {
-    width: 88,
+    width: 56,
     alignItems: 'center',
     gap: 4,
   },
@@ -3048,7 +3220,7 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   railCountLabel: {
-    width: 88,
+    width: 56,
     textAlign: 'center',
     textShadowColor: tokens.scrim(0.55),
     textShadowOffset: { width: 0, height: 1 },
@@ -3066,8 +3238,9 @@ const styles = StyleSheet.create({
   },
   metaContent: {
     paddingLeft: 16,
-    // Clear of the action rail, as before.
-    paddingRight: 96,
+    // Clear of the action rail: rail inset (8) + column width (56), rounded up
+    // to the grid. Narrowing the rail hands this text 24pt it did not have.
+    paddingRight: 72,
     gap: 3,
   },
   // Belt and braces with the gradient: on a blown-out highlight the wash alone

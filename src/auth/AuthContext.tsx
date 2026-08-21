@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 
 import {
   apiClient,
+  markApiAuthHydrated,
   setApiAuthToken,
   setApiRefreshToken,
   setUnauthorizedHandler,
@@ -466,7 +467,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signOut = useCallback(async (options?: { notifyServer?: boolean }) => {
+  const signOutImpl = useCallback(async (options?: { notifyServer?: boolean }) => {
     const notifyServer = options?.notifyServer ?? true;
     const refreshToken = refreshTokenState ?? (await getRefreshToken());
 
@@ -490,6 +491,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus('unauthenticated');
     await clearMobilePrivateSessionState({ client: queryClient });
   }, [refreshTokenState]);
+
+  /**
+   * Stable `signOut`, for the same reason as `validateToken` below.
+   *
+   * The implementation depends on `refreshTokenState`, and the session-restore
+   * effect both DEPENDS on `signOut` and CALLS `setRefreshTokenState`. So
+   * restoring a session gave `signOut` a new identity, which re-ran the whole
+   * restore — re-reading SecureStore, re-setting the API token and firing
+   * `validateToken` again. Combined with the unstable `validateToken` it
+   * compounded into the repeated bootstrap visible in the device logs, and is
+   * a large part of why authenticated requests were going out before the token
+   * had settled and coming back 401.
+   */
+  const signOutImplRef = useRef(signOutImpl);
+  signOutImplRef.current = signOutImpl;
+  const signOut = useCallback(
+    (options?: { notifyServer?: boolean }): Promise<void> => signOutImplRef.current(options),
+    [],
+  );
 
   const updateUser = useCallback((patch: Partial<AuthUser>) => {
     setUser((current) => {
@@ -530,7 +550,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, [cacheAuthenticatedUser, token]);
 
-  const validateToken = useCallback(async (options?: { forceRefresh?: boolean }): Promise<boolean> => {
+  const validateTokenImpl = useCallback(async (options?: { forceRefresh?: boolean }): Promise<boolean> => {
     const currentToken = token ?? (await getAccessToken());
     const forceRefresh = options?.forceRefresh ?? false;
     const startedAt = Date.now();
@@ -589,6 +609,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
   }, [applyActiveBrandSelection, cacheAuthenticatedUser, signOut, token]);
+
+  /**
+   * A STABLE `validateToken`. This closed an infinite request loop.
+   *
+   * The implementation above legitimately depends on `token` and on callbacks
+   * derived from `user` — and it CALLS `setToken`/`setUser`. So every
+   * successful run gave itself a new identity. Any `useEffect` listing
+   * `validateToken` in its dependencies therefore re-ran, called it again, got
+   * another new identity, and re-ran again: `EmailVerificationNotice` and
+   * `verify-email.tsx` both do exactly that, which is the wall of back-to-back
+   * `GET /auth/profile` calls in the device logs — dozens per second, each one
+   * `forceRefresh` so nothing could be served from cache.
+   *
+   * Consumers get this wrapper, whose identity never changes, while the ref
+   * always points at the current implementation. Nothing else about the
+   * behaviour moves; the callback simply stops being a dependency that
+   * mutates itself.
+   */
+  const validateTokenImplRef = useRef(validateTokenImpl);
+  validateTokenImplRef.current = validateTokenImpl;
+  const validateToken = useCallback(
+    (options?: { forceRefresh?: boolean }): Promise<boolean> =>
+      validateTokenImplRef.current(options),
+    [],
+  );
 
   const applyAuthResponse = useCallback(async (rawData: unknown) => {
     const data = unwrapData<any>(rawData);
@@ -901,6 +946,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Validate against protected endpoint; on failure, sign out.
         await validateToken();
       } finally {
+        // Backstop for the API auth gate: `setApiAuthToken` opens it on every
+        // normal path, but a restore that threw before reaching one would
+        // otherwise leave every request waiting out the timeout.
+        markApiAuthHydrated();
         if (mounted) {
           setLocalSessionReady(true);
           // validateToken sets status; ensure loading doesn't persist.

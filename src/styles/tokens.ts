@@ -34,6 +34,29 @@ type Theme = {
     text: string;
     textSecondary: string;
     textMuted: string;
+    /**
+     * Placeholder ink — the ONLY correct value for `placeholderTextColor`.
+     *
+     * `textMuted` was doing this job, and `textMuted` is deliberately dark
+     * (#334155 on light) because captions and helper text are read, not
+     * skimmed. A hint rendered in reading ink is indistinguishable from a
+     * typed value: users reported tapping into empty fields and pressing
+     * backspace to "clear" text that was never there. A placeholder has to sit
+     * clearly below the body ramp — present enough to read on purpose, faint
+     * enough that an empty field never looks filled.
+     */
+    textPlaceholder: string;
+    /**
+     * Disabled control surface/ink. Never the brand colour.
+     *
+     * A disabled primary button used to be full purple at 55% opacity, which
+     * on white still reads as a lit, pressable brand button — the control
+     * announced "press me" and then refused. Disabled is an absence of
+     * affordance, so it drops to neutral chrome in both themes.
+     */
+    disabledSurface: string;
+    disabledBorder: string;
+    textDisabled: string;
     textInverse: string;
     border: string;
     primary: string;
@@ -82,6 +105,10 @@ export const tokens = {
         text: '#050914',
         textSecondary: '#1E293B',
         textMuted: '#334155',
+        textPlaceholder: '#98A4B8',
+        disabledSurface: '#EDF0F5',
+        disabledBorder: '#DCE2EC',
+        textDisabled: '#9AA5B5',
         textInverse: '#ffffff',
         border: '#D4DCE8',
         primary: '#9333EA',
@@ -123,6 +150,10 @@ export const tokens = {
         text: '#FFFFFF',
         textSecondary: '#E2E8F0',
         textMuted: '#B6C2D2',
+        textPlaceholder: '#69758A',
+        disabledSurface: '#171E29',
+        disabledBorder: '#232C3A',
+        textDisabled: '#6B7789',
         textInverse: '#ffffff',
         // #303B4D against the #111620 surface was a hard, opaque rule that read
         // louder than the content it framed. A dark-theme border should sit
@@ -214,7 +245,6 @@ export const tokens = {
     threadBurstSoft: '#CCFBF1',
     /** Thread rail: purple glow behind an active glyph, and its lit state. */
     threadRailGlow: 'rgba(126, 34, 206, 0.55)',
-    threadRailActive: '#F5D0FE',
   },
 
   /**

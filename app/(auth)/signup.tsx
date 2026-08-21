@@ -102,6 +102,7 @@ export default function SignupScreen() {
         delay: 0,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(headlineOpacity, {
         toValue: 1,
@@ -109,6 +110,7 @@ export default function SignupScreen() {
         delay: 80,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(headlineSlide, {
         toValue: 0,
@@ -116,6 +118,7 @@ export default function SignupScreen() {
         delay: 80,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(formOpacity, {
         toValue: 1,
@@ -123,6 +126,7 @@ export default function SignupScreen() {
         delay: 200,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(formSlide, {
         toValue: 0,
@@ -130,6 +134,7 @@ export default function SignupScreen() {
         delay: 200,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
     ]).start();
   }, []);
@@ -151,6 +156,7 @@ export default function SignupScreen() {
       duration: 280,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
+      isInteraction: false,
     }).start();
   }, [userType]);
 

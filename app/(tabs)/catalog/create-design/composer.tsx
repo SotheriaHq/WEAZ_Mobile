@@ -52,7 +52,10 @@ import { StableImage } from '@/components/ui/StableImage';
 import { ThemedSwitch } from '@/components/ui/ThemedSwitch';
 import type { FilterDimensionOption } from '@/src/api/DesignApi';
 import TagsApi from '@/src/api/TagsApi';
-import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
+import {
+  DESIGN_CUSTOM_ORDER_DEFAULTS,
+  useDesignEditor,
+} from '@/src/features/design-editor/DesignEditorProvider';
 import {
   DESIGN_EDITOR_MAX_MEDIA,
   DESIGN_CREATION_SIZING_OPTIONS,
@@ -65,6 +68,7 @@ import {
   getMissingRequiredMediaSlots,
 } from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
+import { getRangeError } from '@/src/utils/rangeValidation';
 import { queryKeys } from '@/src/query/queryKeys';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import type { DesignEditorMediaSource } from '@/src/features/design-editor/designEditorMediaFlow';
@@ -333,15 +337,21 @@ export default function CreateDesignComposerScreen() {
       })),
     [tagSuggestions],
   );
-  const priceError = useMemo(() => {
-    if (!form.minPrice || !form.maxPrice) return null;
-    const min = Number(form.minPrice);
-    const max = Number(form.maxPrice);
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-    return max < min
-      ? 'Maximum price must be greater than or equal to minimum price.'
-      : null;
-  }, [form.maxPrice, form.minPrice]);
+  // Shared rule, so the price sheet, the delivery fields and the Market filter
+  // all reject an inverted range with the same words at the same moment.
+  const priceRangeError = useMemo(
+    () => getRangeError(form.minPrice, form.maxPrice, { label: 'price' }),
+    [form.maxPrice, form.minPrice],
+  );
+  const priceError = priceRangeError.summary;
+  const deliveryRangeError = useMemo(
+    () =>
+      getRangeError(form.deliveryMinDays, form.deliveryMaxDays, {
+        label: 'delivery time',
+        unit: 'days',
+      }),
+    [form.deliveryMaxDays, form.deliveryMinDays],
+  );
   const missingRequiredMediaSlots = useMemo(
     () => getMissingRequiredMediaSlots(assets),
     [assets],
@@ -883,7 +893,7 @@ export default function CreateDesignComposerScreen() {
             padding="lg"
             style={[styles.formCard, { borderColor: theme.colors.border }]}
           >
-            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>
+            <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
               Basic details
             </AppText>
             <View style={styles.copyBlock}>
@@ -921,7 +931,7 @@ export default function CreateDesignComposerScreen() {
             padding="lg"
             style={[styles.formCard, { borderColor: theme.colors.border }]}
           >
-            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>
+            <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
               Categorization
             </AppText>
             <OptionRow
@@ -981,7 +991,7 @@ export default function CreateDesignComposerScreen() {
             padding="lg"
             style={[styles.formCard, { borderColor: theme.colors.border }]}
           >
-            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>
+            <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
               Audience & Style
             </AppText>
             <OptionRow
@@ -1035,7 +1045,7 @@ export default function CreateDesignComposerScreen() {
             padding="lg"
             style={[styles.formCard, { borderColor: theme.colors.border }]}
           >
-            <AppText variant="bodyBold" style={styles.sectionHeaderTitle}>
+            <AppText variant="bodyBold" tone="primary" style={styles.sectionHeaderTitle}>
               Availability & Pricing
             </AppText>
             <OptionRow
@@ -1126,7 +1136,7 @@ export default function CreateDesignComposerScreen() {
               tone="muted"
               style={styles.draftHelper}
             >
-              Add at least one field or one media item to save a draft.
+              Add a title to save this as a draft.
             </AppText>
           ) : !canPreview ? (
             <AppText
@@ -1281,7 +1291,7 @@ export default function CreateDesignComposerScreen() {
               <Button title="Cancel" variant="outline" onPress={() => setPriceOpen(false)} fullWidth />
             </View>
             <View style={styles.actionButton}>
-              <Button title="Done" disabled={Boolean(priceError)} onPress={() => setPriceOpen(false)} fullWidth />
+              <Button title="Save" disabled={Boolean(priceError)} onPress={() => setPriceOpen(false)} fullWidth />
             </View>
           </View>
         }
@@ -1298,6 +1308,7 @@ export default function CreateDesignComposerScreen() {
             keyboardType="decimal-pad"
             placeholder="0"
             containerStyle={styles.priceInput}
+            error={priceRangeError.min ?? undefined}
           />
           <Input
             label="Maximum"
@@ -1306,6 +1317,7 @@ export default function CreateDesignComposerScreen() {
             keyboardType="decimal-pad"
             placeholder="0"
             containerStyle={styles.priceInput}
+            error={priceRangeError.max ?? undefined}
           />
         </View>
         {priceError ? (
@@ -1488,9 +1500,10 @@ export default function CreateDesignComposerScreen() {
                 placeholder="2"
                 containerStyle={styles.priceInput}
                 error={
-                  customOrderFieldErrors.delivery?.includes('min')
+                  deliveryRangeError.min ??
+                  (customOrderFieldErrors.delivery?.includes('min')
                     ? customOrderFieldErrors.delivery
-                    : undefined
+                    : undefined)
                 }
               />
               <Input
@@ -1501,10 +1514,11 @@ export default function CreateDesignComposerScreen() {
                 placeholder="5"
                 containerStyle={styles.priceInput}
                 error={
-                  customOrderFieldErrors.delivery &&
+                  deliveryRangeError.max ??
+                  (customOrderFieldErrors.delivery &&
                   !customOrderFieldErrors.delivery.includes('min')
                     ? customOrderFieldErrors.delivery
-                    : undefined
+                    : undefined)
                 }
               />
             </View>
@@ -1547,7 +1561,7 @@ export default function CreateDesignComposerScreen() {
               label="Delivery scope"
               value={form.deliveryScope}
               onChangeText={(value) => updateField('deliveryScope', value)}
-              placeholder="Nigeria"
+              placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryScope}
             />
             <Input
               label="Additional instructions"
@@ -1576,6 +1590,7 @@ export default function CreateDesignComposerScreen() {
               value={form.revisionPolicy}
               onChangeText={(value) => updateField('revisionPolicy', value)}
               multiline
+              placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.revisionPolicy}
               containerStyle={{ marginTop: 4 }}
             />
 
@@ -1591,6 +1606,7 @@ export default function CreateDesignComposerScreen() {
               value={form.returnPolicy}
               onChangeText={(value) => updateField('returnPolicy', value)}
               multiline
+              placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.returnPolicy}
               containerStyle={{ marginTop: 4 }}
             />
 
@@ -1606,6 +1622,7 @@ export default function CreateDesignComposerScreen() {
               value={form.defectPolicy}
               onChangeText={(value) => updateField('defectPolicy', value)}
               multiline
+              placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.defectPolicy}
               containerStyle={{ marginTop: 4 }}
             />
           </Reanimated.View>
@@ -1815,8 +1832,11 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.xs,
   },
   sectionHeaderTitle: {
+    // Colour comes from `tone="primary"` on the call sites. It used to be a
+    // `color` here, which AppText strips by design — so the header rendered in
+    // default ink and every mount of this screen logged "Ignored forbidden
+    // style override".
     marginBottom: tokens.spacing.md,
-    color: tokens.colors.primary,
   },
   copyField: {
     paddingVertical: tokens.spacing.xs,

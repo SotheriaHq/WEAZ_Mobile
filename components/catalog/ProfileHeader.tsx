@@ -491,12 +491,14 @@ export const ProfileHeader = React.memo(function ProfileHeader({
           duration: 800,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
           duration: 800,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
     );

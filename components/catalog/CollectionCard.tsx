@@ -169,6 +169,7 @@ export const CollectionCard = React.memo(function CollectionCard({
         toValue: next,
         friction: 8,
         useNativeDriver: true,
+        isInteraction: false,
       }).start();
     },
     [scale],
@@ -231,14 +232,15 @@ export const CollectionCard = React.memo(function CollectionCard({
             <View pointerEvents="none" style={[styles.clientStatusScrim, { backgroundColor: theme.colors.backdropStrong }]} />
           ) : null}
 
-          {!isMinimalCard ? (
-            <View style={[styles.storeBadge, { backgroundColor: 'transparent' }]}>
-              <AppText variant="captionBold" tone="primary">
-                {copy.badgeLabel}
-              </AppText>
-            </View>
-          ) : null}
+          {/*
+            No type badge on the face.
 
+            "Design" / "Collection" labelled every card in a grid where all the
+            cards are the same type — it told the viewer nothing they could act
+            on and spent the top-left corner, the most valuable spot on the
+            image, saying it. `copy.badgeLabel` is still used for the
+            accessibility label, where naming the type IS useful.
+          */}
           {!isMinimalCard ? (
             <NewDropBadge
               itemId={collection.id}
@@ -249,19 +251,19 @@ export const CollectionCard = React.memo(function CollectionCard({
             />
           ) : null}
 
-          {showActions && !isMinimalCard ? (
-            <View style={styles.actionRail}>
-              {!isOwner && onSave ? (
-                <RailButton
-                  label={isSaved ? 'Saved' : 'Save'}
-                  emoji={isSaved ? '♥' : '♡'}
-                  busy={saveBusy}
-                  onPress={() => onSave(collection)}
-                />
-              ) : null}
-              {onShare ? <RailButton emoji="↗" onPress={() => onShare(collection.id)} /> : null}
-            </View>
-          ) : null}
+          {/*
+            Save and Share live in the content view, not on the card.
+
+            A grid tile's job is to make you want to open it. Hanging two
+            secondary actions over the artwork asked for a decision the viewer
+            has no basis for yet — they have not seen the design properly — and
+            put two more tap targets in the way of the one that matters. Both
+            actions still exist, one level in, where the content is actually on
+            screen to judge.
+
+            `onSave`/`onShare` remain in the props so callers do not all have to
+            change at once; they are simply not rendered here.
+          */}
 
           {isOwner && !collection.clientStatus ? (
             <Pressable
@@ -403,18 +405,26 @@ export const CollectionCard = React.memo(function CollectionCard({
               <AppText variant="smallBold" tone="inverse" numberOfLines={2}>
                 {displayTitle}
               </AppText>
-              {!isMinimalCard ? (
-                <AppText variant="caption" tone="inverse" numberOfLines={1}>
-                  {brandName}
-                </AppText>
-              ) : null}
+              {/*
+                No brand name here. Every card in this grid belongs to the brand
+                whose catalog the viewer is already inside, so repeating it once
+                per tile is noise in the one place where space is tightest.
+              */}
+              {/*
+                Price leads, angle count trails.
+
+                Price is the decision; the angle count is reassurance about how
+                much of the garment you get to inspect. Reading order should
+                match that, and it puts the count in the bottom-right corner
+                where it reads as a quiet stamp rather than a headline.
+              */}
               {!isMinimalCard ? (
                 <View style={styles.cardMetaRow}>
                   <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
-                    {pieceCount} {countLabel}
+                    {priceLabel}
                   </AppText>
                   <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.priceText}>
-                    {priceLabel}
+                    {pieceCount} {countLabel}
                   </AppText>
                 </View>
               ) : null}

@@ -40,6 +40,16 @@ type CollectionCommentsSheetProps = {
   collectionTitle?: string | null;
   initialCommentId?: string | null;
   onClose: () => void;
+  /**
+   * 0 = closed, 1 = fully open. Supply one to couple something else to this
+   * sheet's motion — the Runway scales its page down into the band above the
+   * sheet, and it has to move on exactly the same frames, not merely for the
+   * same duration. When omitted the sheet drives an internal value and behaves
+   * as before.
+   */
+  progress?: Animated.Value;
+  /** Measured sheet height, so a caller can compute how much room is left. */
+  onSheetHeight?: (height: number) => void;
 };
 const normalizeDisplayName = (user?: BackendCommentUser | null) => {
   if (!user) return 'User';
@@ -177,13 +187,26 @@ export default function CollectionCommentsSheet({
   collectionTitle,
   initialCommentId = null,
   onClose,
+  progress: progressProp,
+  onSheetHeight,
 }: CollectionCommentsSheetProps) {
   const { theme, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const isDark = scheme === 'dark';
   const androidBottomGap = Platform.OS === 'android' ? Math.max(0, insets.bottom) : 0;
-  const translateY = useRef(new Animated.Value(480)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
+  /**
+   * ONE value drives everything: the sheet's slide, the scrim's fade, and any
+   * coupled motion the caller asked for. Two separate animations of the same
+   * duration drift; one interpolated value cannot.
+   */
+  const internalProgress = useRef(new Animated.Value(0)).current;
+  const progress = progressProp ?? internalProgress;
+  const [sheetHeight, setSheetHeight] = useState(0);
+  const translateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [sheetHeight > 0 ? sheetHeight : 480, 0],
+  });
+  const opacity = progress;
   const [mounted, setMounted] = useState(visible);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -205,18 +228,13 @@ export default function CollectionCommentsSheet({
 
   useEffect(() => {
     if (!visible || !collectionId) {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 180,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateY, {
-          toValue: 480,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
+      Animated.timing(progress, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+        isInteraction: false,
+      }).start(({ finished }) => {
+        if (!finished) return;
         setMounted(false);
         setCommentText('');
       });
@@ -225,20 +243,14 @@ export default function CollectionCommentsSheet({
 
     setMounted(true);
     void loadComments(collectionId);
-    Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        damping: 24,
-        stiffness: 220,
-      }),
-    ]).start();
-  }, [collectionId, loadComments, opacity, translateY, visible]);
+    Animated.spring(progress, {
+      toValue: 1,
+      useNativeDriver: true,
+      isInteraction: false,
+      damping: 24,
+      stiffness: 220,
+    }).start();
+  }, [collectionId, loadComments, progress, visible]);
 
   useEffect(() => {
     if (!initialCommentId || comments.length === 0) return;
@@ -297,6 +309,12 @@ export default function CollectionCommentsSheet({
               transform: [{ translateY }],
             },
           ]}
+          onLayout={(event) => {
+            const next = Math.round(event.nativeEvent.layout.height);
+            if (next <= 0 || next === sheetHeight) return;
+            setSheetHeight(next);
+            onSheetHeight?.(next);
+          }}
         >
           <View style={styles.panelHandle}>
             <Pressable onPress={onClose} style={styles.panelHandleBar}>
@@ -419,9 +437,18 @@ export default function CollectionCommentsSheet({
 }
 
 const styles = StyleSheet.create({
+  /**
+   * A dim, not a blackout.
+   *
+   * This was `tokens.colors.dark` — fully opaque black — animated to full opacity
+   * across the entire screen, so opening comments did not "cover" the design,
+   * it ERASED it: everything above the sheet went pure black. The whole point
+   * of a comment sheet on a feed is to keep looking at the thing you are
+   * commenting on. A scrim exists to push the content back, not to delete it.
+   */
   scrim: {
     flex: 1,
-    backgroundColor: tokens.colors.dark,
+    backgroundColor: tokens.scrim(0.55),
   },
   sheet: {
     position: 'absolute',

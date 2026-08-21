@@ -104,10 +104,27 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
     const availableWidth = screenWidth - screenPadding * 2 - totalColumnGap;
     return Math.floor(availableWidth / resolvedNumColumns);
   }, [columnGap, resolvedNumColumns, screenPadding, screenWidth]);
-  const visibleCollections = useFrameBatchedItems(collections, {
+  /**
+   * A grid cannot draw the same card twice, and duplicate ids are how it tried.
+   *
+   * Callers merge several sources — server buckets plus in-flight upload tasks
+   * — and a design that failed and was retried arrives from two of them at
+   * once. That produced a duplicate React key on every render. Callers dedupe
+   * at their own source too; this is the invariant the grid itself owns, so a
+   * new caller cannot reintroduce it.
+   */
+  const uniqueCollections = useMemo(() => {
+    const seen = new Set<string>();
+    return collections.filter((item) => {
+      if (!item?.id || seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  }, [collections]);
+  const visibleCollections = useFrameBatchedItems(uniqueCollections, {
     initialCount: initialRenderCount,
     batchCount: batchRenderCount,
-    resetKey: renderKey ?? `${resolvedNumColumns}:${collections.length}`,
+    resetKey: renderKey ?? `${resolvedNumColumns}:${uniqueCollections.length}`,
   });
 
   const renderItem = useCallback(
@@ -141,7 +158,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   );
 
   // Loading skeleton
-  if (isLoading && collections.length === 0) {
+  if (isLoading && uniqueCollections.length === 0) {
     return (
       <View
         style={[
@@ -161,7 +178,7 @@ export const CollectionsGrid = React.memo(function CollectionsGrid({
   }
 
   // Empty state
-  if (!isLoading && collections.length === 0 && emptyComponent) {
+  if (!isLoading && uniqueCollections.length === 0 && emptyComponent) {
     return <>{emptyComponent}</>;
   }
 

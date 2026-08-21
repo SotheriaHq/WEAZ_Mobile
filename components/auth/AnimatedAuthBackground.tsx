@@ -29,6 +29,7 @@ function FloatingOrb({ size, color, initialX, initialY, delay = 0, duration = 80
       duration: 800,
       delay,
       useNativeDriver: true,
+      isInteraction: false,
     }).start();
 
     // Float animation Y
@@ -39,12 +40,14 @@ function FloatingOrb({ size, color, initialX, initialY, delay = 0, duration = 80
           duration: duration,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(translateY, {
           toValue: 0,
           duration: duration,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ])
     ).start();
@@ -57,12 +60,14 @@ function FloatingOrb({ size, color, initialX, initialY, delay = 0, duration = 80
           duration: duration * 1.3,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(translateX, {
           toValue: -15,
           duration: duration * 1.3,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ])
     ).start();
@@ -75,12 +80,14 @@ function FloatingOrb({ size, color, initialX, initialY, delay = 0, duration = 80
           duration: duration * 0.7,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(scale, {
           toValue: 1,
           duration: duration * 0.7,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ])
     ).start();

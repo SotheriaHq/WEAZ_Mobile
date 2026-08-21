@@ -5,12 +5,14 @@ import * as SecureStore from 'expo-secure-store';
 import { clearBrandApiSessionCaches } from '@/src/api/BrandApi';
 import { env } from '@/src/config/env';
 import { setApiAuthToken, setApiRefreshToken } from '@/src/api/httpClient';
+import { clearCoalescedRequests } from '@/src/api/coalesceRequest';
 import { clearCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { MOBILE_PENDING_CHECKOUT_STORAGE_KEY } from '@/src/features/checkout/mobileCheckoutPending';
 import {
   clearDesignEditorBackgroundTasks,
   DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY,
 } from '@/src/features/design-editor/designEditorBackgroundTasks';
+import { DESIGN_DRAFT_SESSION_STORAGE_PREFIX } from '@/src/features/design-editor/designDraftSessionStore';
 import { PERSISTED_FEED_CACHE_PREFIX } from '@/src/features/feed/utils/feedKeys';
 import { clearResolvedImageUriCache } from '@/src/hooks/useResolvedImageUri';
 import { clearAppBadge } from '@/src/notifications/appBadge';
@@ -54,6 +56,7 @@ export async function clearMobilePrivateAsyncStorage() {
         key === WIEZ_QUERY_CACHE_STORAGE_KEY ||
         key === DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY ||
         key.startsWith(PERSISTED_FEED_CACHE_PREFIX) ||
+        key.startsWith(DESIGN_DRAFT_SESSION_STORAGE_PREFIX) ||
         key === env.userStorageKey,
     );
 
@@ -76,6 +79,8 @@ export async function clearMobilePrivateSessionState({
     await deactivateRegisteredPushTokenForLogout().catch(() => undefined);
   }
 
+  // Coalesced reads are per-account; none may survive into the next user.
+  clearCoalescedRequests();
   setApiAuthToken(null);
   setApiRefreshToken(null);
   clearMobilePrivateQueryCache(client);

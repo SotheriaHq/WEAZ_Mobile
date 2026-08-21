@@ -114,6 +114,7 @@ export function Button({
         duration,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
+        isInteraction: false,
       }).start();
     },
     [scale],
@@ -129,6 +130,22 @@ export function Button({
     animatePress(1, 140);
   }, [animatePress]);
 
+  /**
+   * Disabled is a state of its own, not the enabled state turned down.
+   *
+   * Every variant used to keep its own fill and lean on `opacity: 0.55`, so a
+   * disabled primary was brand purple at 55% — still the loudest, most
+   * obviously pressable thing on the screen, and then it refused the press.
+   * The Continue and Save buttons on the create flows spend most of their life
+   * disabled, so that was the app's most common button reading as its most
+   * inviting one. Disabled now drops to neutral chrome in both themes and the
+   * brand colour is reserved for controls that will actually do something.
+   *
+   * `loading` is deliberately NOT this. A busy button is working on the press
+   * it was given, so it keeps its colour and shows a spinner.
+   */
+  const isInert = Boolean(disabled) && !isBusy;
+
   // ── Container style per variant (fully theme-adaptive) ──────────────────────
   const variantContainer: ViewStyle = (() => {
     const base: ViewStyle = {
@@ -139,6 +156,14 @@ export function Button({
       gap: tokens.spacing.sm,
       borderWidth: 1,
     };
+
+    if (isInert) {
+      return {
+        ...base,
+        backgroundColor: variant === 'outline' ? 'transparent' : theme.colors.disabledSurface,
+        borderColor: theme.colors.disabledBorder,
+      };
+    }
 
     switch (variant) {
       case 'primary':
@@ -158,6 +183,7 @@ export function Button({
 
   // ── Text color per variant ───────────────────────────────────────────────────
   const variantTone = (() => {
+    if (isInert) return 'disabled' as const;
     switch (variant) {
       case 'secondary':
       case 'outline':
@@ -186,7 +212,9 @@ export function Button({
             height: sz.height,
             paddingHorizontal: sz.paddingHorizontal,
             width: fullWidth ? '100%' : undefined,
-            opacity: isDisabled ? 0.55 : 1,
+            // Inert buttons carry their own neutral palette, so the blanket
+            // fade is only for the busy state now.
+            opacity: isInert ? 1 : isBusy ? 0.75 : 1,
           },
           style,
         ]}
