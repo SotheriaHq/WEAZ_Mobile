@@ -20,6 +20,7 @@ export type StudioRouteKey =
   | 'orders'
   | 'customers'
   | 'analytics'
+  | 'reviews'
   | 'finance';
 
 export type StudioRouteParams = {
@@ -49,7 +50,9 @@ export const STUDIO_ROUTES: Record<StudioRouteKey, StudioRouteConfig> = {
     title: 'Manage Store',
     subtitle: 'Products, collections, stock, and settings',
     emoji: '🛍️',
-    path: '/studio/store',
+    // Stay on StudioHome (`?tab=`) so an island hop does not unmount the
+    // dashboard shell and lazy-load `/studio/store` as a new document tree.
+    path: '/studio?tab=store',
   },
   createProduct: {
     key: 'createProduct',
@@ -166,6 +169,13 @@ export const STUDIO_ROUTES: Record<StudioRouteKey, StudioRouteConfig> = {
     emoji: '📈',
     path: '/studio?tab=analytics',
   },
+  reviews: {
+    key: 'reviews',
+    title: 'Reviews',
+    subtitle: 'Ratings and customer feedback',
+    emoji: '⭐',
+    path: '/studio?tab=reviews',
+  },
   finance: {
     key: 'finance',
     title: 'Finance',
@@ -174,6 +184,10 @@ export const STUDIO_ROUTES: Record<StudioRouteKey, StudioRouteConfig> = {
     path: '/studio/finance',
   },
 };
+
+export function isStudioRouteKey(value: string | undefined): value is StudioRouteKey {
+  return Boolean(value && value in STUDIO_ROUTES);
+}
 
 export function buildStudioPath(routeKey: StudioRouteKey, params?: StudioRouteParams): string {
   const route = STUDIO_ROUTES[routeKey];

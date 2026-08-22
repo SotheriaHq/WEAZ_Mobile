@@ -56,4 +56,27 @@ for (const source of [market, runway, profile, inbox, catalog]) {
   assert.match(source, /cache_hit|cache_miss/, 'Every scoped data screen must expose cache nav-perf evidence.');
 }
 
+assert.match(
+  tabLayout,
+  /detachInactiveScreens=\{false\}/,
+  'Visited island tabs must stay attached. Detaching rebuilt Market/Inbox/Me/Studio on every return.',
+);
+assert.match(
+  tabLayout,
+  /freezeOnBlur:\s*true/,
+  'Hidden island tabs must freeze JS without detaching their native views.',
+);
+
+const deferredWork = read('src/hooks/useDeferredScreenWork.ts');
+assert.doesNotMatch(
+  deferredWork,
+  /InteractionManager\./,
+  'Deferred screen work must not wait on InteractionManager — decorative animations can hold that queue open for seconds.',
+);
+assert.match(
+  deferredWork,
+  /requestAnimationFrame/,
+  'Deferred screen work must yield one frame, then run.',
+);
+
 console.log('Latency Phase 3 cache-first contract checks passed.');

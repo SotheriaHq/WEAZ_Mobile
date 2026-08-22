@@ -76,7 +76,15 @@ export function NewDropBadge({
           useNativeDriver: true,
           isInteraction: false,
         }),
-        Animated.delay(2000), // pulse every 2.8 seconds
+        // `Animated.delay` defaults to `isInteraction: true` and has no
+        // opt-out. Hold the pose with a no-op timing instead so this loop
+        // cannot stall `useDeferredScreenWork`.
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
       ])
     ).start();
   }, [info.isNewDrop, pulseAnim, dismissed]);

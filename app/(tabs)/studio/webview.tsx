@@ -31,11 +31,15 @@ import {
 } from '@/src/auth/brandAccess';
 import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
 import {
+  registerStudioInPlaceHandler,
+} from '@/src/features/studio/studioNavController';
+import {
   buildStudioPath,
   buildStudioWebUrl,
   getStudioOriginWhitelist,
   getTrustedStudioOrigins,
   STUDIO_ROUTES,
+  isStudioRouteKey,
   type StudioRouteKey,
 } from '@/src/features/studio/studioRoutes';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
@@ -73,10 +77,34 @@ type NativeMessage =
 const asString = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value;
 
-const isStudioRouteKey = (value: string | undefined): value is StudioRouteKey =>
-  Boolean(value && value in STUDIO_ROUTES);
-
 const READY_TIMEOUT_MS = 20_000;
+
+/**
+ * Install a durable in-place navigator before the web app hydrates.
+ *
+ * Island hops inject `window.__WIEZ_STUDIO_NAV_GO__(path)`. That function
+ * prefers the React Router bridge (`__WIEZ_STUDIO_NAV__`) and otherwise
+ * QUEUES the path until the bridge registers. It must never full-reload
+ * the document (bundle + React + every query) — that was the 3–5s dead-tap
+ * on every Studio chip.
+ */
+const STUDIO_NAV_BOOT_SCRIPT = `
+  (function() {
+    if (window.__WIEZ_STUDIO_NAV_BOOT__) return true;
+    window.__WIEZ_STUDIO_NAV_BOOT__ = true;
+    window.__WIEZ_STUDIO_NAV_PENDING__ = window.__WIEZ_STUDIO_NAV_PENDING__ || null;
+    window.__WIEZ_STUDIO_NAV_GO__ = function(path) {
+      if (typeof path !== 'string' || path.charAt(0) !== '/') return;
+      if (typeof window.__WIEZ_STUDIO_NAV__ === 'function') {
+        window.__WIEZ_STUDIO_NAV_PENDING__ = null;
+        window.__WIEZ_STUDIO_NAV__(path);
+        return;
+      }
+      window.__WIEZ_STUDIO_NAV_PENDING__ = path;
+    };
+    true;
+  })();
+`;
 
 /**
  * The only Studio routes a brand may open before store setup is finished.
@@ -248,27 +276,19 @@ export default function StudioWebViewScreen() {
       if (!webViewRef.current) return false;
       try {
         const path = buildStudioPath(route, params);
-        const nextUrl = buildStudioWebUrl({
-          routeKey: route,
-          params,
-          // No handoff — cookies from the first boot keep the session.
-          handoffCode: null,
-          theme: schemeRef.current,
-        });
         const signature = `${route}:${params?.productId ?? ''}:${params?.orderId ?? ''}`;
         if (lastInjectedRouteRef.current === signature) return true;
         lastInjectedRouteRef.current = signature;
-        // Prefer SPA history when the web app listens; fall back to assign so
-        // we still land on the right path without a native remount.
         const script = `
           (function() {
             try {
-              var target = ${JSON.stringify(nextUrl)};
               var path = ${JSON.stringify(path)};
-              if (typeof window.__WIEZ_STUDIO_NAV__ === 'function') {
+              if (typeof window.__WIEZ_STUDIO_NAV_GO__ === 'function') {
+                window.__WIEZ_STUDIO_NAV_GO__(path);
+              } else if (typeof window.__WIEZ_STUDIO_NAV__ === 'function') {
                 window.__WIEZ_STUDIO_NAV__(path);
-              } else if (window.location.href !== target) {
-                window.location.assign(target);
+              } else {
+                window.__WIEZ_STUDIO_NAV_PENDING__ = path;
               }
             } catch (e) {}
             true;
@@ -283,6 +303,13 @@ export default function StudioWebViewScreen() {
     },
     [],
   );
+
+  useEffect(() => {
+    registerStudioInPlaceHandler(navigateStudioInPlace);
+    return () => {
+      registerStudioInPlaceHandler(null);
+    };
+  }, [navigateStudioInPlace]);
 
   useEffect(() => {
     let mounted = true;
@@ -755,14 +782,16 @@ export default function StudioWebViewScreen() {
         {webUrl ? (
           <WebView
             ref={webViewRef}
-            key={`${webUrl}:${retryKey}`}
+            key={String(retryKey)}
             source={{ uri: webUrl }}
             originWhitelist={originWhitelist}
             onNavigationStateChange={handleNavigationStateChange}
             onShouldStartLoadWithRequest={handleShouldStartLoad}
             onMessage={handleMessage}
+            injectedJavaScriptBeforeContentLoaded={STUDIO_NAV_BOOT_SCRIPT}
             injectedJavaScript={`
               (function() {
+                ${STUDIO_NAV_BOOT_SCRIPT}
                 if (window.__WIEZ_STUDIO_KEYBOARD_BOOTSTRAPPED__) {
                   return true;
                 }
@@ -897,6 +926,7 @@ export default function StudioWebViewScreen() {
             }}
             sharedCookiesEnabled
             thirdPartyCookiesEnabled
+            cacheEnabled
             javaScriptEnabled
             domStorageEnabled
             allowsBackForwardNavigationGestures

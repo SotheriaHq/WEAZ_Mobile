@@ -47,6 +47,8 @@ import {
   type NativeIslandKey,
 } from '@/src/navigation/nativeIslandConfig';
 import { withNavigationLock, releaseNavigationLock } from '@/src/utils/mobileNavigation';
+import { requestStudioInPlaceNav } from '@/src/features/studio/studioNavController';
+import { isStudioRouteKey } from '@/src/features/studio/studioRoutes';
 
 // Keep Runway (`index`) as the tab shell's anchor route now that Catalogue is
 // also a (hidden) tab — without this, adding sibling screens can shift Expo
@@ -518,7 +520,9 @@ export default function TabLayout() {
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
-      // Studio dock: every chip is a studio destination (or native finance/staff).
+      // Studio dock: WebView sections switch in-place; Finance/Messages leave
+      // the WebView. Going through `router.navigate` for a WebView chip waited
+      // a React commit before the injector ran, and mashed taps stacked reloads.
       if (isStudioIslandKey(item.key) || inStudioIsland) {
         const nextPath = item.targetRoute;
         if (!nextPath) return;
@@ -537,15 +541,47 @@ export default function TabLayout() {
         }
         const navFlow = item.navFlow ?? `studio→${item.key}`;
         navPerf.setContext(pathname, lockKey, pathname);
+
+        const webviewRouteKey = item.targetParams?.routeKey
+          ?? (item.key === 'overview' ? 'overview' : undefined);
+        const onStudioWebView =
+          pathname === '/studio' ||
+          pathname === '/studio/webview' ||
+          (pathname.startsWith('/studio') &&
+            !pathname.startsWith('/studio/finance') &&
+            !pathname.startsWith('/studio/staff') &&
+            !pathname.startsWith('/studio/resolve-alias'));
+        const canInjectWebView =
+          Boolean(webviewRouteKey && isStudioRouteKey(webviewRouteKey)) &&
+          item.key !== 'finance' &&
+          item.key !== 'messages';
+
         const locked = withNavigationLock(lockKey as Href, () => {
-          scheduleRouteAfterFrame(navFlow, () => {
-            navPerf.navigationCalled(navFlow);
-            navPerf.routeCallStart(navFlow, { target: lockKey });
-            // Prefer navigate so the studio tab stack reuses the WebView shell
-            // and only swaps routeKey / native sub-screens.
-            router.navigate(nextHref as any);
-            navPerf.routeCallEnd(navFlow, { target: lockKey });
-          });
+          navPerf.navigationCalled(navFlow);
+          navPerf.routeCallStart(navFlow, { target: lockKey });
+
+          if (canInjectWebView && isStudioRouteKey(webviewRouteKey)) {
+            const injected = requestStudioInPlaceNav(webviewRouteKey);
+            if (injected && onStudioWebView) {
+              router.setParams({
+                routeKey: webviewRouteKey === 'overview' ? '' : webviewRouteKey,
+              } as any);
+              releaseNavigationLock('studio_in_place');
+              navPerf.routeCallEnd(navFlow, { target: lockKey });
+              return true;
+            }
+            if (injected) {
+              // WebView already received the hop. Focus the Studio tab / pop
+              // Finance without minting a second WebView (singular index).
+              router.navigate(nextHref as any);
+              releaseNavigationLock('studio_in_place_focus');
+              navPerf.routeCallEnd(navFlow, { target: lockKey });
+              return true;
+            }
+          }
+
+          router.navigate(nextHref as any);
+          navPerf.routeCallEnd(navFlow, { target: lockKey });
           return true;
         }, { force: false });
         if (!locked) {
@@ -589,6 +625,7 @@ export default function TabLayout() {
             navPerf.routeCallStart(navFlow, { target: nextRoute });
             if (tabRouteName) {
               jumpToIslandTab(tabRouteName, nextRoute);
+              releaseNavigationLock('tab_jump');
               navPerf.routeCallEnd(navFlow, { target: nextRoute });
               return;
             }
@@ -714,9 +751,16 @@ export default function TabLayout() {
         // uses this hidden tabbar's navigation object for direct JUMP_TO/PRELOAD
         // actions.
         tabBar={renderHiddenTabBar}
+        // Keep visited tabs attached. The default (`true` on iOS and Android)
+        // detaches the native view on blur, so a return to Market/Inbox/Me/Studio
+        // rebuilt the scene — including destroying the Studio WebView and
+        // forcing a cold handoff. freezeOnBlur still pauses JS on hidden tabs.
+        detachInactiveScreens={false}
         screenOptions={{
           headerShown: false,
           lazy: true,
+          freezeOnBlur: true,
+          animation: 'none',
           tabBarStyle: {
             display: 'none',
           },

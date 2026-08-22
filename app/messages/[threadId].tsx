@@ -327,11 +327,11 @@ const MessageBubble = memo(function MessageBubble({
     },
     onPanResponderRelease: () => {
       triggeredRef.current = false;
-      Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4 }).start();
+      Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4, isInteraction: false }).start();
     },
     onPanResponderTerminate: () => {
       triggeredRef.current = false;
-      Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4 }).start();
+      Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4, isInteraction: false }).start();
     },
   }), [item, onReply, swipeAnim]);
 
