@@ -70,9 +70,9 @@ export default function LegalDocumentScreen() {
                 bullet_list: { marginVertical: tokens.spacing.xs },
                 ordered_list: { marginVertical: tokens.spacing.xs },
                 hr: { backgroundColor: theme.colors.border, height: StyleSheet.hairlineWidth, marginVertical: tokens.spacing.md },
-                code_inline: { backgroundColor: theme.colors.surfaceMuted, color: theme.colors.primary, paddingHorizontal: tokens.spacing.xs, borderRadius: tokens.radius.sm },
+                code_inline: { backgroundColor: theme.colors.surfaceAlt, color: theme.colors.primary, paddingHorizontal: tokens.spacing.xs, borderRadius: tokens.radius.sm },
                 table: { borderColor: theme.colors.border, borderWidth: StyleSheet.hairlineWidth, marginVertical: tokens.spacing.sm },
-                th: { backgroundColor: theme.colors.surfaceMuted, padding: tokens.spacing.sm },
+                th: { backgroundColor: theme.colors.surfaceAlt, padding: tokens.spacing.sm },
                 td: { borderColor: theme.colors.border, borderWidth: StyleSheet.hairlineWidth, padding: tokens.spacing.sm },
               }}
             >
