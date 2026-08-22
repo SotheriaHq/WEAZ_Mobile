@@ -113,9 +113,29 @@ export function AppBottomSheet({
    */
   const bodyScrollYRef = React.useRef(0);
 
+  /**
+   * How far the sheet has to move to be gone.
+   *
+   * The close animation used to travel to a fixed `28` — a 28pt nudge that
+   * worked only because the opacity fade did the real hiding. That is fine from
+   * rest, and wrong from a DRAG: release at 200pt down and the sheet animates
+   * from 200 back UP to 28 while fading, so it visibly stalls, reverses, and
+   * only then disappears. That reversal is the "hangs mid-collapse" report.
+   *
+   * Measured from layout so a short sheet does not travel a whole screen.
+   * `EXIT_TRAVEL_FALLBACK` covers the first frame before layout lands.
+   */
+  const sheetHeightRef = React.useRef(EXIT_TRAVEL_FALLBACK);
+
   React.useEffect(() => {
     if (!mounted) bodyScrollYRef.current = 0;
   }, [mounted]);
+
+  /** Distance that puts the sheet fully below the screen edge. */
+  const getExitTranslate = React.useCallback(
+    () => Math.max(EXIT_TRAVEL_FALLBACK, sheetHeightRef.current + insets.bottom),
+    [insets.bottom],
+  );
 
   const dragHandlers = React.useMemo(
     () => ({
@@ -130,6 +150,35 @@ export function AppBottomSheet({
       ) => {
         if (gestureState.dy > 48 || gestureState.vy > 0.8) {
           Keyboard.dismiss();
+          /*
+            Carry the throw through, then tell the parent.
+
+            This used to call `onClose()` and return, leaving `translateY`
+            frozen wherever the finger let go until the `visible` prop made its
+            way back down and the close effect picked it up — a beat of dead
+            sheet, and then a jump. Starting the outward motion here means the
+            gesture and the animation are one continuous movement, and the
+            effect that follows re-issues the same target, so it changes
+            nothing.
+
+            Duration scales with what is left to travel and with how fast the
+            finger was going, so a flick exits quickly and a slow drag does not
+            snap.
+          */
+          const exitTranslate = getExitTranslate();
+          const remaining = Math.max(0, exitTranslate - Math.max(0, gestureState.dy));
+          const flickSpeed = Math.max(0.9, Math.min(gestureState.vy, 3));
+          const duration = Math.round(
+            Math.max(130, Math.min(260, remaining / flickSpeed)),
+          );
+          translateY.value = withTiming(exitTranslate, {
+            duration,
+            easing: Easing.out(Easing.cubic),
+          });
+          opacity.value = withTiming(0, {
+            duration: Math.round(duration * 0.85),
+            easing: Easing.out(Easing.cubic),
+          });
           onClose();
           return;
         }
@@ -153,7 +202,7 @@ export function AppBottomSheet({
         });
       },
     }),
-    [onClose, opacity, translateY],
+    [getExitTranslate, onClose, opacity, translateY],
   );
 
   /** Handle + header. Always draggable, whatever the body is doing. */
@@ -298,7 +347,12 @@ export function AppBottomSheet({
       return;
     }
 
-    translateY.value = withTiming(28, { duration: 180, easing: Easing.in(Easing.cubic) });
+    // Same outward target as the drag path, so a close that starts from a
+    // dragged position never animates backwards up the screen.
+    translateY.value = withTiming(getExitTranslate(), {
+      duration: 200,
+      easing: Easing.in(Easing.cubic),
+    });
     opacity.value = withTiming(0, { duration: 160, easing: Easing.in(Easing.cubic) }, (finished) => {
       // Always unmount. Reanimated can report finished=false when a new timing
       // interrupts the close (rapid re-open/close, same-value reselect) and the
@@ -314,7 +368,7 @@ export function AppBottomSheet({
       finishDismiss();
     }, 320);
     return () => clearTimeout(forceUnmount);
-  }, [finishDismiss, mounted, opacity, translateY, visible]);
+  }, [finishDismiss, getExitTranslate, mounted, opacity, translateY, visible]);
 
   const sheetStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -412,6 +466,10 @@ export function AppBottomSheet({
         >
           <Animated.View
             {...sheetDragResponder.panHandlers}
+            onLayout={(event) => {
+              const height = event.nativeEvent.layout.height;
+              if (height > 0) sheetHeightRef.current = height;
+            }}
             style={[
               styles.sheet,
               {
@@ -502,6 +560,12 @@ export function AppBottomSheet({
     </Modal>
   );
 }
+
+/**
+ * Fallback exit distance, used for the frame before the sheet has been laid out.
+ * Comfortably past the bottom edge for any sheet we render.
+ */
+const EXIT_TRAVEL_FALLBACK = 420;
 
 const styles = StyleSheet.create({
   root: {

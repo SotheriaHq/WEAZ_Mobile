@@ -44,6 +44,12 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { buildMoodboardSuggestionSection } from '@/src/recommendations/recommendationScoring';
 import { MarketFilterSheet } from '@/src/features/market/components/MarketFilterSheet';
+import {
+  buildAdireBatch,
+  createAdireBatchState,
+  filterAdireItems,
+  type AdireBatchState,
+} from '@/src/features/market/adire';
 import { MarketEmptyState, MarketErrorState } from '@/src/features/market/components/MarketStates';
 import { MarketSkeleton } from '@/src/features/market/components/MarketSkeleton';
 import {
@@ -74,6 +80,9 @@ const SIDE_PADDING = tokens.spacing.lg;
 const SECTION_GAP = tokens.spacing.xl;
 const CARD_GAP = tokens.spacing.md;
 const HERO_INTERVAL_MS = 3000;
+/** Level sliders — the filter/adjust glyph, not the settings cog. */
+const MARKET_FILTER_EMOJI = String.fromCodePoint(0x1f39a, 0xfe0f);
+
 const PREFERRED_CATEGORIES = ['Ankara Fashion', 'Lacewear', 'Ready to Wear', 'Custom', 'Bridal'];
 const MARKET_SEARCH_DEBOUNCE_MS = 350;
 const MARKET_HOME_CACHE_TTL_MS = 3 * 60 * 1000;
@@ -81,7 +90,6 @@ const MARKET_HOME_CACHE_MAX_ENTRIES = 12;
 
 type MarketRow =
   | { id: 'hero'; type: 'HERO_CAROUSEL'; items: MarketContentItem[] }
-  | { id: 'blazing'; type: 'BLAZING_ROW'; trends: BlazingTrend[] }
   | {
       id: string;
       type: 'HORIZONTAL_CARD_ROW';
@@ -98,6 +106,14 @@ type MarketRow =
       onSeeAll?: () => void;
     }
   | {
+      id: 'adire';
+      type: 'ADIRE_ROW';
+      title: string;
+      subtitle: string;
+      items: MarketContentItem[];
+      onSeeAll: () => void;
+    }
+  | {
       id: 'latest-collections';
       type: 'COLLECTION_ROW';
       title: string;
@@ -111,13 +127,6 @@ type MarketRow =
   | { id: 'empty'; type: 'EMPTY_STATE' }
   | { id: 'error'; type: 'ERROR_STATE'; message: string };
 
-type BlazingTrend = {
-  id: string;
-  label: string;
-  count: number;
-  category: string | null;
-  item: MarketContentItem | null;
-};
 
 type ProductMarketItem = Extract<MarketContentItem, { entityType: 'PRODUCT' }>;
 type DesignMarketItem = Extract<MarketContentItem, { entityType: 'DESIGN' }>;
@@ -146,11 +155,11 @@ let marketSectionsCache: MarketSection[] | null = null;
 
 const toErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to load market right now.';
 
-function getItemTitle(item: MarketContentItem) {
+export function getItemTitle(item: MarketContentItem) {
   return item.kind === 'product' ? item.product.name : item.design.collectionTitle;
 }
 
-function getItemBrand(item: MarketContentItem) {
+export function getItemBrand(item: MarketContentItem) {
   if (item.kind === 'product') return normalizeOption(item.product.brandName);
   return normalizeOption(item.design.brandName ?? item.design.username);
 }
@@ -310,7 +319,7 @@ function fetchMarketBatch(params: {
   return request;
 }
 
-function buildContentItems(products: StoreProduct[], designs: MarketItem[]): MarketContentItem[] {
+export function buildContentItems(products: StoreProduct[], designs: MarketItem[]): MarketContentItem[] {
   return [
     ...products.map((product) => ({
       key: `product:${product.id}`,
@@ -327,7 +336,7 @@ function buildContentItems(products: StoreProduct[], designs: MarketItem[]): Mar
   ];
 }
 
-function getItemMedia(item: MarketContentItem) {
+export function getItemMedia(item: MarketContentItem) {
   if (item.kind === 'product') {
     return {
       mediaSrc: item.product.coverImage,
@@ -359,11 +368,11 @@ function getItemTypeLabel(item: MarketContentItem) {
   return 'Catalog item';
 }
 
-function isCustomReady(item: MarketContentItem) {
+export function isCustomReady(item: MarketContentItem) {
   return item.kind === 'product' ? item.product.customOrderEnabled : Boolean(item.design.viewerState?.canBag);
 }
 
-function getItemPriceLabel(item: MarketContentItem) {
+export function getItemPriceLabel(item: MarketContentItem) {
   if (item.kind === 'product') {
     const price = item.product.effectivePrice ?? item.product.salePrice ?? item.product.price;
     return formatMarketPrice(price, item.product.currency) ?? 'Price on request';
@@ -410,46 +419,6 @@ function chunkItems<T>(items: T[], size: number) {
   return chunks;
 }
 
-function buildBlazingTrends(categoryOptions: string[], allItems: MarketContentItem[], filteredItems: MarketContentItem[]) {
-  const trends = categoryOptions
-    .map((category) => {
-      const matching = allItems.filter((item) =>
-        getItemCategories(item).some((entry) => entry.toLowerCase() === category.toLowerCase()),
-      );
-      return {
-        id: category,
-        label: category,
-        count: matching.length,
-        category,
-        item: matching.find(hasDisplayMedia) ?? matching[0] ?? null,
-      };
-    })
-    .filter((trend) => trend.count > 0)
-    .slice(0, 10);
-
-  if (trends.length > 0) return trends;
-
-  /**
-   * Fallback themes come from ALL items, never the filtered set.
-   *
-   * They used to be built from `filteredItems`, which made this rail delete
-   * itself with the filter it had just applied: tapping "Bridal" narrowed the
-   * feed, the narrowed feed produced too few items to derive themes from, and
-   * the whole row vanished — along with the hero above it, for the same reason.
-   * Two sections disappearing at once reads as a screen change, which is
-   * exactly how it was reported ("it feels like I am routed to another
-   * screen"), and it left no way back to the other themes.
-   *
-   * The rail is chrome for choosing a theme. It has to survive choosing one.
-   */
-  return allItems.slice(0, 8).map((item) => ({
-    id: item.key,
-    label: getItemTypeLabel(item),
-    count: Math.max(1, getPopularity(item)),
-    category: getItemCategories(item)[0] ?? null,
-    item,
-  }));
-}
 
 function buildRows(args: {
   allItems: MarketContentItem[];
@@ -459,6 +428,11 @@ function buildRows(args: {
   collections: StoreCollectionSummary[];
   collectionError: string | null;
   categoryOptions: string[];
+  /** Last snapshot taken with no theme filter — see `chromePool` below. */
+  chromeItems: MarketContentItem[];
+  adirePool: MarketContentItem[];
+  adireBatchState: AdireBatchState;
+  openAdireAll: () => void;
   loadingMore: boolean;
   setNewestView: () => void;
   setCustomReadyView: () => void;
@@ -472,21 +446,61 @@ function buildRows(args: {
     collections,
     collectionError,
     categoryOptions,
+    chromeItems,
+    adirePool,
+    adireBatchState,
+    openAdireAll,
     loadingMore,
     setNewestView,
     setCustomReadyView,
     openApiSection,
   } = args;
-  const heroItems = filteredItems.filter(hasDisplayMedia).slice(0, 3);
+  /**
+   * Hero and the theme rail are CHROME, and chrome is built from the unfiltered
+   * pool — never from the results the chrome itself filters.
+   *
+   * Tapping a live-theme card writes `filters.category`, which is part of
+   * `marketQueryKey`, so the whole market list REFETCHES scoped to that theme.
+   * While that request is in flight `allItems`/`filteredItems` are empty, and
+   * afterwards they hold only that one category. Both of these rows were
+   * derived from those arrays, so both vanished the instant you used one of
+   * them — the theme rail deleting the control you had just pressed, and the
+   * hero above it going with it. Two sections disappearing at once is why it
+   * reads as the screen being destroyed.
+   *
+   * `chromeItems` is the last snapshot taken with no theme applied, so it
+   * survives both the refetch and the narrowing. An earlier fix made
+   * `buildBlazingTrends`' FALLBACK use `allItems` instead of `filteredItems`,
+   * which was the right idea one level too shallow: `allItems` is itself
+   * refetched per theme, so it empties too.
+   */
+  const chromePool = chromeItems.length > 0 ? chromeItems : allItems;
+  const heroItems = chromePool.filter(hasDisplayMedia).slice(0, 3);
   const rows: MarketRow[] = [];
 
   if (heroItems.length > 0) {
     rows.push({ id: 'hero', type: 'HERO_CAROUSEL', items: heroItems });
   }
 
-  const trends = buildBlazingTrends(categoryOptions, allItems, filteredItems);
-  if (trends.length > 0) {
-    rows.push({ id: 'blazing', type: 'BLAZING_ROW', trends });
+  /**
+   * Adire Casual — its own section, built from whatever the market already has.
+   *
+   * The pool is every item that mentions adire anywhere a brand might write it
+   * (tags, title, description, category, style details), and one BATCH of that
+   * pool is shown here. `buildAdireBatch` owns the rotation rules — an item
+   * appears at most twice, more if it sells — so this only has to decide where
+   * the row sits and what it links to.
+   */
+  const adireItems = buildAdireBatch(adirePool, (entry) => entry.key, adireBatchState);
+  if (adireItems.length > 0) {
+    rows.push({
+      id: 'adire',
+      type: 'ADIRE_ROW',
+      title: 'Adire Casual',
+      subtitle: 'Indigo-dyed pieces, everyday cuts',
+      items: adireItems,
+      onSeeAll: openAdireAll,
+    });
   }
 
   apiSections
@@ -606,6 +620,7 @@ function MarketProductCard({
       title={getItemTitle(item)}
       brandName={getItemBrand(item) ?? 'WIEZ brand'}
       priceLabel={getItemPriceLabel(item)}
+      customOrder={Boolean(item.product.customOrderEnabled)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
       newDropItemId={item.product.id}
@@ -647,6 +662,7 @@ function MarketDesignCard({
       title={getItemTitle(item)}
       brandName={getItemBrand(item) ?? 'WIEZ brand'}
       priceLabel={getItemPriceLabel(item)}
+      customOrder={canRequestCustomOrder}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
       newDropItemId={item.design.collectionId}
@@ -799,77 +815,6 @@ function MarketHeroCarousel({
   );
 }
 
-function BlazingChip({
-  trend,
-  onPress,
-}: {
-  trend: BlazingTrend;
-  onPress: (trend: BlazingTrend) => void;
-}) {
-  const { theme } = useTheme();
-  const media = trend.item ? getItemMedia(trend.item) : { mediaSrc: null, mediaFileId: null };
-  const imageUri = useResolvedImageUri({
-    src: media.mediaSrc,
-    fileId: media.mediaFileId,
-    enabled: Boolean(media.mediaSrc || media.mediaFileId),
-  });
-
-  return (
-    <Pressable
-      onPress={() => onPress(trend)}
-      style={({ pressed }) => [
-        styles.blazingChip,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-        pressed && styles.pressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${trend.label}`}
-    >
-      {imageUri ? (
-        <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.blazingFullImage} imageStyle={styles.blazingFullImage} />
-      ) : (
-        <View style={[styles.blazingFullImage, { backgroundColor: theme.colors.primarySoft, alignItems: 'center', justifyContent: 'center' }]}>
-          <AppText variant="title" tone="primary">{String.fromCodePoint(0x1f525)}</AppText>
-        </View>
-      )}
-      <LinearGradient
-        colors={['transparent', theme.colors.backdropStrong] as [string, string]}
-        style={StyleSheet.absoluteFill}
-      />
-      <BlurView tint="dark" intensity={22} style={styles.blazingCopy}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdrop }]} />
-        <AppText variant="captionBold" tone="inverse" numberOfLines={1}>{trend.label}</AppText>
-        <AppText variant="caption" tone="inverse" numberOfLines={1}>
-          {trend.count} live picks
-        </AppText>
-      </BlurView>
-    </Pressable>
-  );
-}
-
-function BlazingRow({
-  trends,
-  onSelectTrend,
-}: {
-  trends: BlazingTrend[];
-  onSelectTrend: (trend: BlazingTrend) => void;
-}) {
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <AppText variant="subtitle">{String.fromCodePoint(0x1f525)} Live themes</AppText>
-      </View>
-      <FlatList
-        data={trends}
-        horizontal
-        keyExtractor={(item) => item.id}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.blazingContent}
-        renderItem={({ item }) => <BlazingChip trend={item} onPress={onSelectTrend} />}
-      />
-    </View>
-  );
-}
 
 function CollectionCard({
   collection,
@@ -1112,6 +1057,28 @@ function formatSectionItemPrice(item: MarketSectionItem) {
   return 'View';
 }
 
+/**
+ * Every API-driven section renders the SAME card as the rest of the market.
+ *
+ * This used to be its own layout: image on top, then a solid card body with an
+ * entity-type pill ("PRODUCT"), title, brand and price stacked underneath. So
+ * "Hot right now", "Fresh Drops", "Picked for you", "New designers to watch",
+ * "Shop by style", "Loved near you", "Still thinking about these", "More from
+ * brands you like" and "Style picks of the week" — every section the API
+ * drives, which is most of the screen — looked nothing like "Fresh on WIEZ" or
+ * "For your moodboard" directly above and below them.
+ *
+ * `UnifiedProductCard` is the agreed design (full-bleed image, frosted copy
+ * panel over it) and it is now the only product card on this screen. The
+ * entity-type pill is gone with it: "PRODUCT" told a shopper nothing they could
+ * not see, and labels like that were removed from the catalog cards for the
+ * same reason.
+ *
+ * Bag and favourite are not wired here because section items are not
+ * `MarketContentItem`s — a section can carry a BRAND or a CATEGORY, which
+ * neither action means anything for. The card handles their absence by
+ * rendering neither control, so the SHAPE stays identical either way.
+ */
 function ApiSectionCard({
   item,
   width,
@@ -1121,58 +1088,21 @@ function ApiSectionCard({
   width: number;
   onOpen: (item: MarketSectionItem) => void;
 }) {
-  const { theme } = useTheme();
-  const rawImageUri = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
-  const imageUri = useResolvedImageUri({
-    src: rawImageUri,
-    fileId: item.media?.fileId ?? null,
-    enabled: Boolean(rawImageUri || item.media?.fileId),
-  });
+  const mediaSrc = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
 
   return (
-    <Pressable
+    <UnifiedProductCard
+      width={width}
+      height={Math.round(width * 1.5)}
+      title={item.title}
+      brandName={item.brand?.name ?? 'WIEZ brand'}
+      priceLabel={formatSectionItemPrice(item)}
+      customOrder={Boolean(item.availability?.customOrderEnabled)}
+      mediaSrc={mediaSrc}
+      mediaFileId={item.media?.fileId ?? null}
+      analyticsSourceScreen="market"
       onPress={() => onOpen(item)}
-      style={({ pressed }) => [
-        styles.apiSectionCard,
-        { width, backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-        pressed && styles.pressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${item.title}`}
-    >
-      {imageUri ? (
-        <StableImage
-          uri={imageUri}
-          resizeMode="cover"
-          containerStyle={styles.apiSectionImage}
-          imageStyle={styles.apiSectionImage}
-        />
-      ) : (
-        <View style={[styles.apiSectionImage, { backgroundColor: theme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }]}>
-          <AppText variant="title" tone="muted">
-            {item.entityType === 'CATEGORY' ? String.fromCodePoint(0x25A6) : item.title.slice(0, 1).toUpperCase()}
-          </AppText>
-        </View>
-      )}
-      <View style={styles.apiSectionCardBody}>
-        <View style={[styles.apiTypePill, { backgroundColor: theme.colors.primarySoft }]}>
-          <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-            {item.entityType}
-          </AppText>
-        </View>
-        <AppText variant="bodyBold" numberOfLines={2}>
-          {item.title}
-        </AppText>
-        {item.subtitle ? (
-          <AppText variant="caption" tone="muted" numberOfLines={1}>
-            {item.subtitle}
-          </AppText>
-        ) : null}
-        <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-          {formatSectionItemPrice(item)}
-        </AppText>
-      </View>
-    </Pressable>
+    />
   );
 }
 
@@ -1479,6 +1409,50 @@ export function MarketScreen() {
       // Keep the last visible sections on transient refresh failures.
     }
   }, []);
+
+  /**
+   * The market as it looks with NO theme applied.
+   *
+   * Captured whenever `filters.category` is null and results are in, then held
+   * across theme changes so the hero and the theme rail have something stable
+   * to be built from. Without it those two rows are derived from a list that
+   * the act of choosing a theme empties and re-scopes — so they delete
+   * themselves the moment they are used.
+   */
+  const [chromeItems, setChromeItems] = useState<MarketContentItem[]>([]);
+
+  /**
+   * Adire Casual draws from the UNFILTERED pool, like the other chrome.
+   *
+   * A themed section that empties when someone filters the market by something
+   * else is a section that disappears at random, so it reads from the same
+   * snapshot the hero does rather than from the current result set.
+   */
+  const adirePool = useMemo(
+    () => filterAdireItems(chromeItems.length > 0 ? chromeItems : allItems),
+    [allItems, chromeItems],
+  );
+
+  /*
+   * The exposure tally lives in a ref: it is bookkeeping for the rotation, not
+   * something the screen renders, and putting it in state would re-run the
+   * batch on every tick that reads it. Reset when the pool identity changes so
+   * a fresh set of items starts from a clean count.
+   */
+  const adireBatchStateRef = useRef<AdireBatchState>(createAdireBatchState());
+  useEffect(() => {
+    adireBatchStateRef.current = createAdireBatchState();
+  }, [adirePool]);
+
+  const openAdireAll = useCallback(() => {
+    drillDownPush('/adire' as any);
+  }, []);
+
+  useEffect(() => {
+    if (filters.category) return;
+    if (allItems.length === 0) return;
+    setChromeItems(allItems);
+  }, [allItems, filters.category]);
 
   const categoryOptions = useMemo(() => {
     const values = new Set<string>();
@@ -2114,11 +2088,49 @@ export function MarketScreen() {
 
   const rowData = useMemo<MarketRow[]>(() => {
     if (error) return [{ id: 'error', type: 'ERROR_STATE', message: error }];
-    if (filteredItems.length === 0 && collections.length === 0 && apiSections.length === 0) {
+    /**
+     * "No results" replaces the RESULTS, not the whole screen.
+     *
+     * This returned a bare empty state, which on a theme change meant the hero
+     * and the theme rail were unmounted along with the items — and a theme
+     * refetch passes through exactly this branch, because `filteredItems` is
+     * empty for as long as the request is in flight. Once there is a chrome
+     * snapshot to draw from, the empty state is appended BELOW the chrome so
+     * the rail that applied the filter is still there to clear it.
+     */
+    const noContent =
+      filteredItems.length === 0 && collections.length === 0 && apiSections.length === 0;
+    if (noContent && chromeItems.length === 0) {
       return [{ id: 'empty', type: 'EMPTY_STATE' }];
+    }
+    if (noContent) {
+      return [
+        ...buildRows({
+          allItems,
+          chromeItems,
+          adirePool,
+          adireBatchState: adireBatchStateRef.current,
+          openAdireAll,
+          filteredItems,
+          moodboardItems,
+          apiSections,
+          collections,
+          collectionError,
+          categoryOptions,
+          loadingMore,
+          setNewestView,
+          setCustomReadyView,
+          openApiSection,
+        }).filter((row) => row.type === 'HERO_CAROUSEL'),
+        { id: 'empty', type: 'EMPTY_STATE' },
+      ];
     }
     return buildRows({
       allItems,
+      chromeItems,
+      adirePool,
+      adireBatchState: adireBatchStateRef.current,
+      openAdireAll,
       filteredItems,
       moodboardItems,
       apiSections,
@@ -2131,10 +2143,13 @@ export function MarketScreen() {
       openApiSection,
     });
   }, [
+    adirePool,
     allItems,
     apiSections,
     categoryOptions,
+    chromeItems,
     collectionError,
+    openAdireAll,
     collections,
     error,
     filteredItems,
@@ -2186,7 +2201,11 @@ export function MarketScreen() {
       if (row.type === 'HERO_CAROUSEL') {
         row.items.forEach((entry, index) => trackItemImpression(entry, sectionKey, index));
       }
-      if (row.type === 'HORIZONTAL_CARD_ROW' || row.type === 'PRODUCT_GRID') {
+      if (
+        row.type === 'HORIZONTAL_CARD_ROW' ||
+        row.type === 'ADIRE_ROW' ||
+        row.type === 'PRODUCT_GRID'
+      ) {
         row.items.forEach((entry, index) => trackItemImpression(entry, sectionKey, index));
       }
       if (row.type === 'API_SECTION_ROW') {
@@ -2269,21 +2288,12 @@ export function MarketScreen() {
     feedListRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, [filters.category]);
 
-  const handleTrendSelect = useCallback((trend: BlazingTrend) => {
-    if (trend.category) {
-      setFilters((current) => ({ ...current, category: trend.category }));
-    } else if (trend.item) {
-      openItem(trend.item);
-    }
-  }, [openItem]);
 
   const renderRow = useCallback(
     ({ item }: { item: MarketRow }) => {
       switch (item.type) {
         case 'HERO_CAROUSEL':
           return <MarketHeroCarousel items={item.items} width={width} height={heroHeight} onOpen={openItem} />;
-        case 'BLAZING_ROW':
-          return <BlazingRow trends={item.trends} onSelectTrend={handleTrendSelect} />;
         case 'HORIZONTAL_CARD_ROW':
           return (
             <HorizontalCardRow
@@ -2299,6 +2309,24 @@ export function MarketScreen() {
               onFavorite={handleFavorite}
               onSeeAll={item.onSeeAll}
               source={item.source}
+            />
+          );
+        case 'ADIRE_ROW':
+          /* Same row component as every other curated strip, so Adire Casual
+             is a section of the market rather than a special case in it. */
+          return (
+            <HorizontalCardRow
+              title={item.title}
+              subtitle={item.subtitle}
+              items={item.items}
+              cardWidth={horizontalCardWidth}
+              favoriteByKey={favoriteByKey}
+              busyByKey={busyByKey}
+              favoriteBusyByKey={favoriteBusyByKey}
+              onOpen={openItem}
+              onBag={handleBag}
+              onFavorite={handleFavorite}
+              onSeeAll={item.onSeeAll}
             />
           );
         case 'API_SECTION_ROW':
@@ -2358,7 +2386,6 @@ export function MarketScreen() {
       favoriteByKey,
       handleBag,
       handleFavorite,
-      handleTrendSelect,
       heroHeight,
       horizontalCardWidth,
       loadMarket,
@@ -2390,9 +2417,19 @@ export function MarketScreen() {
             pressed && styles.pressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Open filters"
+          accessibilityLabel="Sort and filter the market"
         >
-          <AppText variant="subtitle">{String.fromCodePoint(0x2699, 0xfe0f)}</AppText>
+          {/*
+            Sliders, not a gear.
+
+            A cog means "settings" — app preferences, account, configuration —
+            everywhere else a person uses a phone, so putting one here promised
+            the wrong screen. The slider control is the one glyph that reads as
+            "adjust what I am looking at", and it is what filter controls use
+            across the apps this audience already knows. The label goes under it
+            because an icon alone in a header is a guess either way.
+          */}
+          <AppText variant="subtitle">{MARKET_FILTER_EMOJI}</AppText>
         </Pressable>
       </View>
 
@@ -2463,26 +2500,36 @@ export function MarketScreen() {
         it is correct whichever taxonomy set it.
       */}
       {filters.category ? (
-        <View style={styles.activeFilterRow}>
+        /*
+          One control, and it is a way OUT.
+
+          Choosing a theme re-scopes the whole market, which is a place you have
+          gone rather than a chip you have ticked — so the thing that undoes it
+          has to read like leaving. It was a pill with a small ✕ on the end: two
+          targets, the useful one the size of a full stop, and nothing saying
+          where pressing it would put you.
+
+          The whole bar is now the exit, it leads with a back arrow, and it says
+          where it goes.
+        */
+        <Pressable
+          onPress={() => setFilters((current) => ({ ...current, category: null }))}
+          accessibilityRole="button"
+          accessibilityLabel={`Leave the ${filters.category} theme and return to the full market`}
+          style={({ pressed }) => [styles.activeFilterRow, pressed && styles.pressed]}
+        >
           <View
             style={[
               styles.activeFilterPill,
               { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.focusRing },
             ]}
           >
+            <AppText variant="captionBold" tone="primary">←</AppText>
             <AppText variant="captionBold" tone="primary" numberOfLines={1} style={styles.activeFilterLabel}>
-              Theme · {filters.category}
+              Showing “{filters.category}” · Back to all
             </AppText>
-            <Pressable
-              onPress={() => setFilters((current) => ({ ...current, category: null }))}
-              accessibilityRole="button"
-              accessibilityLabel={`Clear the ${filters.category} theme`}
-              hitSlop={10}
-            >
-              <AppText variant="captionBold" tone="primary">✕</AppText>
-            </Pressable>
           </View>
-        </View>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -2679,30 +2726,6 @@ const styles = StyleSheet.create({
   heroDotActive: {
     width: 18,
   },
-  blazingContent: {
-    paddingHorizontal: SIDE_PADDING,
-    gap: tokens.spacing.sm,
-  },
-  blazingChip: {
-    width: 176,
-    height: 132,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  blazingFullImage: {
-    ...StyleSheet.absoluteFill,
-  },
-  blazingCopy: {
-    position: 'absolute',
-    left: tokens.spacing.sm,
-    right: tokens.spacing.sm,
-    bottom: tokens.spacing.sm,
-    borderRadius: tokens.radius.md,
-    overflow: 'hidden',
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
-  },
   horizontalCardsContent: {
     paddingHorizontal: SIDE_PADDING,
     gap: CARD_GAP,
@@ -2752,27 +2775,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.xs,
-    justifyContent: 'center',
-  },
-  apiSectionCard: {
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  apiSectionImage: {
-    width: '100%',
-    aspectRatio: 4 / 5,
-  },
-  apiSectionCardBody: {
-    padding: tokens.spacing.md,
-    gap: tokens.spacing.xs,
-  },
-  apiTypePill: {
-    alignSelf: 'flex-start',
-    minHeight: 24,
-    borderRadius: tokens.radius.full,
-    paddingHorizontal: tokens.spacing.sm,
-    alignItems: 'center',
     justifyContent: 'center',
   },
   gridStack: {

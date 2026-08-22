@@ -21,6 +21,15 @@ type Props = {
   mode?: 'standard' | 'custom';
   size?: number;
   style?: StyleProp<ViewStyle>;
+  /**
+   * `bare` drops the plate behind the glyph and keeps the heartbeat.
+   *
+   * On a card the icon sits directly on the photograph, where a filled chip
+   * reads as a button pasted onto the image. The motion is what says "this is
+   * live and tappable"; the plate only added a second rectangle to look at. The
+   * glyph carries a shadow instead, so it stays legible over any photo.
+   */
+  surface?: 'filled' | 'bare';
 };
 
 const resolveScale = (status: BagPulseStatus, context: BagPulseContext) => {
@@ -41,6 +50,7 @@ export function BagPulseIcon({
   context = 'single',
   size = 42,
   style,
+  surface = 'filled',
 }: Props) {
   const { theme } = useTheme();
   const pulse = useRef(new Animated.Value(0)).current;
@@ -92,6 +102,7 @@ export function BagPulseIcon({
 
   const active = status === 'currently_bagged' || status === 'bagging';
   const previouslyBagged = status === 'previously_bagged';
+  const bare = surface === 'bare';
 
   return (
     <View style={[styles.wrap, { width: size, height: size }, style]} pointerEvents="none">
@@ -113,17 +124,24 @@ export function BagPulseIcon({
             width: size,
             height: size,
             borderRadius: shapeRadius,
-            backgroundColor: active
-              ? theme.colors.primary
-              : previouslyBagged
-                ? theme.colors.primarySoft
-                : theme.colors.surfaceOverlay,
+            backgroundColor: bare
+              ? 'transparent'
+              : active
+                ? theme.colors.primary
+                : previouslyBagged
+                  ? theme.colors.primarySoft
+                  : theme.colors.surfaceOverlay,
             opacity: status === 'disabled' ? 0.52 : 1,
             transform: [{ scale }],
           },
+          bare && styles.iconWrapBare,
         ]}
       >
-        <AppText variant="subtitle" tone={active ? 'inverse' : 'default'}>
+        <AppText
+          variant="subtitle"
+          tone={bare ? 'inverse' : active ? 'inverse' : 'default'}
+          style={bare ? styles.bareGlyph : undefined}
+        >
           {icon}
         </AppText>
       </Animated.View>
@@ -147,6 +165,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.14,
     shadowRadius: 8,
     elevation: 3,
+  },
+  iconWrapBare: {
+    // No plate means no plate shadow — the glyph carries its own below.
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  bareGlyph: {
+    textShadowColor: tokens.scrim(0.9),
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
 });
 

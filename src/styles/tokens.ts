@@ -63,6 +63,17 @@ type Theme = {
     primaryActive: string;
     primaryDark: string;
     primarySoft: string;
+    /**
+     * Fill behind the ACTIVE island tab.
+     *
+     * Its own token rather than `primarySoft`, because the two want different
+     * things: `primarySoft` is a background tint used behind text all over the
+     * app and has to stay light, while this one sits on frosted white chrome
+     * and has to be legible AS a selection. One step deeper than the tint —
+     * same hue, enough separation from the chrome to read at a glance without
+     * turning the navigation into a block of colour.
+     */
+    navActiveSurface: string;
     focusRing: string;
     onPrimary: string;
     danger: string;
@@ -115,6 +126,9 @@ export const tokens = {
         primaryActive: '#7E22CE',
         primaryDark: '#7E22CE',
         primarySoft: '#F3E8FF',
+        // One shade deeper than `primarySoft` (#F3E8FF), which disappeared into
+        // the island's frosted white. Same family, enough weight to register.
+        navActiveSurface: '#E4D2FA',
         focusRing: '#C084FC',
         onPrimary: '#ffffff',
         danger: '#ef4444',
@@ -165,6 +179,9 @@ export const tokens = {
         primaryActive: '#7E22CE',
         primaryDark: '#7E22CE',
         primarySoft: '#2B1742',
+        // Same one-step-deeper treatment applied to the dark tint (#2B1742),
+        // which had the same "is that selected?" problem on dark chrome.
+        navActiveSurface: '#3B2260',
         focusRing: '#C084FC',
         onPrimary: '#ffffff',
         danger: '#ef4444',

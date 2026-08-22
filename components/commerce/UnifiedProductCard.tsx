@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
-import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
+import { BAG_IT_LABEL, CUSTOM_ORDER_EMOJI } from '@/src/constants/bagging';
+import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
 import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,14 @@ type UnifiedProductCardProps = {
   title: string;
   brandName?: string | null;
   priceLabel?: string | null;
+  /**
+   * Custom-order item — shown as a scissors mark, not the words "Custom quote".
+   *
+   * Passed explicitly rather than sniffed out of `priceLabel`, because the
+   * label is display copy and can change; whether an item takes custom orders
+   * is a fact about the item.
+   */
+  customOrder?: boolean;
   mediaSrc?: string | null;
   mediaFileId?: string | null;
   typeLabel?: string | null;
@@ -51,6 +60,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   height,
   title,
   priceLabel,
+  customOrder = false,
   mediaSrc,
   mediaFileId,
   unavailable = false,
@@ -82,6 +92,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   const cardHeight = height ?? Math.round(width * 1.58);
   const canPressAction = Boolean(onActionPress) && !actionBusy && !actionDisabled && !unavailable;
   const displayPrice = priceLabel?.trim() || 'Price on request';
+  const isBagAction = actionLabel === BAG_IT_LABEL;
 
   return (
     <Pressable
@@ -140,12 +151,13 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
         />
       ) : null}
 
-      <View style={[styles.priceChip, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
-        <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.priceChipText}>
-          {displayPrice}
-        </AppText>
-      </View>
-
+      {/*
+        The price used to be a floating chip pinned over the artwork here, and
+        the custom-order state was folded into it as the words "Custom quote" —
+        which, in a chip that narrow, rendered as "Custo...". Both are card COPY
+        and belong in the copy panel with the title, where there is room for
+        them and only one text surface on the card. See `metaRow` below.
+      */}
       {topRightSlot ? (
         <View style={styles.topRightSlot}>{topRightSlot}</View>
       ) : onFavoritePress ? (
@@ -203,7 +215,26 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
           </View>
 
           <View style={styles.actionRow}>
-            <View style={styles.actionSpacer} />
+            <View style={styles.metaBlock}>
+              {customOrder ? (
+                <AppText
+                  variant="captionBold"
+                  tone="inverse"
+                  style={styles.customMark}
+                  accessibilityLabel="Custom order available"
+                >
+                  {CUSTOM_ORDER_EMOJI}
+                </AppText>
+              ) : null}
+              <AppText
+                variant="captionBold"
+                tone="inverse"
+                numberOfLines={1}
+                style={styles.priceText}
+              >
+                {displayPrice}
+              </AppText>
+            </View>
             {actionLabel ? (
               <Pressable
                 onPress={(event) => {
@@ -211,13 +242,18 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
                   onActionPress?.();
                 }}
                 disabled={!canPressAction}
+                hitSlop={tokens.spacing.sm}
                 style={({ pressed }) => [
-                  styles.actionButton,
-                  {
-                    backgroundColor: canPressAction ? theme.colors.primary : theme.colors.controlSurfaceActive,
-                    borderColor: canPressAction ? theme.colors.primary : theme.colors.glassBorder,
-                    opacity: canPressAction ? 1 : 0.72,
-                  },
+                  isBagAction ? styles.bagAction : styles.actionButton,
+                  isBagAction
+                    ? null
+                    : {
+                        backgroundColor: canPressAction
+                          ? theme.colors.primary
+                          : theme.colors.controlSurfaceActive,
+                        borderColor: canPressAction ? theme.colors.primary : theme.colors.glassBorder,
+                        opacity: canPressAction ? 1 : 0.72,
+                      },
                   pressed && canPressAction && styles.inlinePressed,
                 ]}
                 accessibilityRole="button"
@@ -233,11 +269,31 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
                   established mark. The full label stays on
                   `accessibilityLabel`, so nothing is lost to a screen reader.
                 */}
-                {actionBusy ? (
+                {actionBusy && !isBagAction ? (
                   <ActivityIndicator size="small" color={theme.colors.onPrimary} />
+                ) : isBagAction ? (
+                  /*
+                    The mark and its heartbeat, with nothing behind it.
+
+                    This was the bag glyph on a solid purple pill — a filled
+                    button dropped onto the photograph, which is the loudest
+                    element on a card whose subject is the garment. `bare` keeps
+                    the pulse (that is what says the control is live) and drops
+                    the plate. Busy state rides the same icon rather than
+                    swapping in a spinner, so the glyph never disappears
+                    mid-tap.
+                  */
+                  <BagPulseIcon
+                    status={
+                      actionBusy ? 'bagging' : canPressAction ? 'not_bagged' : 'disabled'
+                    }
+                    context="multi_card"
+                    surface="bare"
+                    size={30}
+                  />
                 ) : (
                   <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
-                    {actionLabel === BAG_IT_LABEL ? BAG_IT_EMOJI : actionLabel}
+                    {actionLabel}
                   </AppText>
                 )}
               </Pressable>
@@ -282,21 +338,6 @@ const styles = StyleSheet.create({
     top: tokens.spacing.sm,
     maxWidth: '18%',
     opacity: 0.9,
-  },
-  priceChip: {
-    position: 'absolute',
-    right: tokens.spacing.sm,
-    bottom: 86,
-    maxWidth: '30%',
-    minHeight: 26,
-    borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.xs,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  priceChipText: {
-    textAlign: 'center',
   },
   topRightSlot: {
     position: 'absolute',
@@ -345,9 +386,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.sm,
   },
-  actionSpacer: {
+  metaBlock: {
     flex: 1,
     minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  customMark: {
+    textShadowColor: tokens.scrim(0.9),
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  priceText: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  bagAction: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionButton: {
     minWidth: 50,

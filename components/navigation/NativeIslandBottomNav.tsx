@@ -65,8 +65,8 @@ export function NativeIslandTabIcon({
     styles.tabChip,
     compact && styles.tabChipCompact,
     {
-      backgroundColor: focused ? theme.colors.primarySoft : 'transparent',
-      borderColor: focused ? theme.colors.primarySoft : 'transparent',
+      backgroundColor: focused ? theme.colors.navActiveSurface : 'transparent',
+      borderColor: focused ? theme.colors.navActiveSurface : 'transparent',
     },
   ];
 
