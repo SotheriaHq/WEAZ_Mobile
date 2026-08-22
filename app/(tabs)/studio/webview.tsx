@@ -10,6 +10,10 @@ import { WebView } from 'react-native-webview';
 import type { WebViewMessageEvent, WebViewNavigation } from 'react-native-webview';
 
 import { AppText } from '@/components/ui/AppText';
+import {
+  StudioHeaderActions,
+  StudioProfileMenu,
+} from '@/components/studio/StudioHeaderProfile';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
@@ -133,254 +137,6 @@ function trackStudioWebViewEvent(
 ) {
   if (!__DEV__) return;
   console.info('[studio-webview]', name, properties);
-}
-
-function getDisplayName(user: AuthUser | null) {
-  if (!user) return 'Profile';
-
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-  return (
-    (user.type === 'BRAND' ? user.brandFullName?.trim() : fullName) ||
-    (user.type === 'BRAND' ? fullName : user.brandFullName?.trim()) ||
-    user.username?.trim() ||
-    user.email?.split('@')[0]?.trim() ||
-    'Profile'
-  );
-}
-
-function StudioHeaderActions({
-  user,
-  onSearchPress,
-  onProfilePress,
-}: {
-  user: AuthUser | null;
-  onSearchPress: () => void;
-  onProfilePress: () => void;
-}) {
-  const { theme } = useTheme();
-  const displayName = getDisplayName(user);
-  const avatar = resolveProfileImageSource(user);
-  const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: Boolean(user) });
-  const initials = getAvatarFallback(displayName, user?.username);
-
-  return (
-    <View style={styles.headerActions}>
-      <IconButton size={44} onPress={onSearchPress} variant="ghost" testID="studio-header-search">
-        <AppText variant="subtitle" accessibilityLabel="Open search">
-          🔎
-        </AppText>
-      </IconButton>
-      <Pressable
-        onPress={onProfilePress}
-        accessibilityRole="button"
-        accessibilityLabel="Open profile menu"
-        style={({ pressed }) => [
-          styles.headerAvatarButton,
-          { backgroundColor: theme.colors.primarySoft },
-          pressed ? styles.pressed : null,
-        ]}
-        testID="studio-header-profile"
-      >
-        <StableImage
-          uri={avatarUri ?? undefined}
-          containerStyle={styles.headerAvatarFill}
-          imageStyle={styles.headerAvatarFill}
-          fallback={
-            <View style={[StyleSheet.absoluteFill, styles.avatarInitialsBg, { backgroundColor: theme.colors.primarySoft }]}>
-              <AppText variant="captionBold" tone="primary">{initials}</AppText>
-            </View>
-          }
-        />
-      </Pressable>
-    </View>
-  );
-}
-
-type StudioMenuItem = {
-  key: string;
-  emoji: string;
-  label: string;
-  tone?: 'default' | 'danger';
-  onPress: () => void;
-};
-
-function StudioProfileMenu({
-  visible,
-  user,
-  topOffset,
-  onClose,
-  onOpenProfile,
-  onOpenNotifications,
-  onOpenOrders,
-  onOpenFinance,
-  onOpenStaff,
-  onOpenHelp,
-  onSignOut,
-}: {
-  visible: boolean;
-  user: AuthUser | null;
-  topOffset: number;
-  onClose: () => void;
-  onOpenProfile: () => void;
-  onOpenNotifications: () => void;
-  onOpenOrders: () => void;
-  onOpenFinance: () => void;
-  onOpenStaff: () => void;
-  onOpenHelp: () => void;
-  onSignOut: () => void;
-}) {
-  const { scheme, theme } = useTheme();
-  useAndroidOverlaySystemBars(visible, scheme, 'studio-profile-menu');
-  const { height, width } = useWindowDimensions();
-  const displayName = getDisplayName(user);
-  const handle = user?.username ? `@${user.username}` : null;
-  const avatar = resolveProfileImageSource(user);
-  const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: visible && Boolean(user) });
-  const initials = getAvatarFallback(displayName, user?.username);
-  const availableMenuWidth = Math.max(180, width - tokens.spacing.lg * 2);
-  const menuWidth = Math.min(Math.max(180, Math.round(width * 0.46)), Math.min(196, availableMenuWidth));
-  const maxHeight = Math.max(260, height - topOffset - tokens.spacing.lg);
-  const activeBrandId = getActiveBrandId(user);
-  const owner = isBrandOwner(user, activeBrandId);
-  const payoutsReadable = canReadPayouts(user, activeBrandId);
-
-  const items: StudioMenuItem[] = [
-    {
-      key: 'profile',
-      emoji: '👤',
-      label: 'Profile',
-      onPress: onOpenProfile,
-    },
-    {
-      key: 'notifications',
-      emoji: '🔔',
-      label: 'Notifications',
-      onPress: onOpenNotifications,
-    },
-    {
-      key: 'orders',
-      emoji: '📦',
-      label: 'My Orders',
-      onPress: onOpenOrders,
-    },
-    ...(payoutsReadable
-      ? [
-          {
-            key: 'finance',
-            emoji: '💰',
-            label: 'Finance',
-            onPress: onOpenFinance,
-          },
-        ]
-      : []),
-    ...(owner
-      ? [
-          {
-            key: 'staff',
-            emoji: '👥',
-            label: 'Staff',
-            onPress: onOpenStaff,
-          },
-        ]
-      : []),
-    {
-      key: 'help',
-      emoji: '🆘',
-      label: 'Help',
-      onPress: onOpenHelp,
-    },
-    {
-      key: 'sign-out',
-      emoji: '↩️',
-      label: 'Sign out',
-      tone: 'danger' as const,
-      onPress: onSignOut,
-    },
-  ];
-
-  return (
-    <Modal
-      transparent
-      visible={visible}
-      animationType="fade"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={onClose}
-    >
-      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-          <View style={styles.menuBackdrop} />
-        </Pressable>
-        <View style={[styles.menuWrap, { top: topOffset, width: menuWidth }]} pointerEvents="box-none">
-          <View style={[styles.menuPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <View style={[styles.menuIdentity, { borderBottomColor: theme.colors.border }]}>
-              <View style={[styles.menuAvatar, { backgroundColor: theme.colors.primarySoft }]}>
-                <StableImage
-                  uri={avatarUri ?? undefined}
-                  containerStyle={styles.menuAvatarFill}
-                  imageStyle={styles.menuAvatarFill}
-                  fallback={
-                    <View style={[StyleSheet.absoluteFill, styles.avatarInitialsBg]}>
-                      <AppText variant="subtitle" tone="primary">{initials}</AppText>
-                    </View>
-                  }
-                />
-              </View>
-              <View style={styles.menuIdentityText}>
-                <AppText variant="bodyBold" numberOfLines={2} ellipsizeMode="tail">
-                  {displayName}
-                </AppText>
-                {handle ? (
-                  <AppText variant="caption" tone="muted" numberOfLines={1} ellipsizeMode="tail">
-                    {handle}
-                  </AppText>
-                ) : null}
-              </View>
-            </View>
-            <ScrollView
-              style={{ maxHeight }}
-              bounces={false}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.menuContent}
-            >
-              {items.map((item) => (
-                <Pressable
-                  key={item.key}
-                  onPress={() => {
-                    item.onPress();
-                    onClose();
-                  }}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.menuItem,
-                    { borderBottomColor: theme.colors.border },
-                    pressed ? styles.pressed : null,
-                  ]}
-                >
-                  <AppText variant="subtitle">{item.emoji}</AppText>
-                  <View style={styles.menuItemText}>
-                    <AppText
-                      variant="bodyBold"
-                      tone={item.tone === 'danger' ? 'danger' : 'default'}
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                    >
-                      {item.label}
-                    </AppText>
-                  </View>
-                  {item.key !== 'sign-out' ? (
-                    <AppText variant="subtitle" tone="muted">
-                      ›
-                    </AppText>
-                  ) : null}
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
 }
 
 function getTrustedAliasPath(target: string): { type: 'profile' | 'brand'; value: string } | null {
@@ -968,13 +724,22 @@ export default function StudioWebViewScreen() {
           />
         }
         right={
-          loadState === 'ready' ? (
-            <StudioHeaderActions
-              user={user}
-              onSearchPress={openSearch}
-              onProfilePress={() => setProfileMenuVisible(true)}
-            />
-          ) : undefined
+          /*
+           * Native chrome, so it does not wait on remote content.
+           *
+           * This was gated on `loadState === 'ready'`, which meant the avatar
+           * and the profile menu behind it were absent for the whole load — and
+           * absent for good on any Studio tab that never reports ready (a tab
+           * reached through a web-side redirect re-enters `loading` and can
+           * settle there). The menu is the only route to Notifications, My
+           * Orders, Staff and sign-out, and none of those depend on the WebView
+           * having painted. There is nothing to withhold.
+           */
+          <StudioHeaderActions
+            user={user}
+            onSearchPress={openSearch}
+            onProfilePress={() => setProfileMenuVisible(true)}
+          />
         }
       />
 
@@ -1194,90 +959,12 @@ const styles = StyleSheet.create({
   webView: {
     flex: 1,
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
-  },
-  headerAvatarButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  headerAvatarFill: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarInitialsBg: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   loadingOverlay: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.xl,
     paddingBottom: tokens.spacing.xl,
-  },
-  menuBackdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: tokens.scrim(0.16),
-  },
-  menuWrap: {
-    position: 'absolute',
-    right: tokens.spacing.lg,
-    alignItems: 'stretch',
-  },
-  menuPanel: {
-    borderRadius: tokens.radius.xl,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: tokens.colors.dark,
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    elevation: 16,
-  },
-  menuIdentity: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.md,
-    padding: tokens.spacing.md,
-    borderBottomWidth: 1,
-  },
-  menuAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  menuAvatarFill: {
-    width: '100%',
-    height: '100%',
-  },
-  menuIdentityText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  menuContent: {
-    paddingVertical: tokens.spacing.xs,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.md,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  menuItemText: {
-    flex: 1,
-    minWidth: 0,
   },
   pressed: {
     opacity: 0.78,

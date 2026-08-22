@@ -29,6 +29,30 @@ type Props = {
   width?: number;
 };
 
+/**
+ * The one width every profile dropdown in the app uses.
+ *
+ * Studio's menu sized itself from the viewport (`round(width * 0.46)`, clamped
+ * to 180–196) while the catalog header's used this component's flat 190 — so on
+ * a 390pt phone the same menu was 180pt in Studio and 190pt in the catalog, and
+ * the two screens visibly disagreed about how wide a profile menu is. The
+ * viewport-relative rule is the better of the two (it holds its proportion on a
+ * small phone and on a tablet), so it moves here and both callers read it.
+ */
+export const PROFILE_MENU_MIN_WIDTH = 180;
+export const PROFILE_MENU_MAX_WIDTH = 196;
+
+export function getProfileMenuWidth(windowWidth: number): number {
+  const available = Math.max(
+    PROFILE_MENU_MIN_WIDTH,
+    windowWidth - tokens.spacing.lg * 2,
+  );
+  return Math.min(
+    Math.max(PROFILE_MENU_MIN_WIDTH, Math.round(windowWidth * 0.46)),
+    Math.min(PROFILE_MENU_MAX_WIDTH, available),
+  );
+}
+
 function resolveMenuPosition({
   pageX,
   pageY,

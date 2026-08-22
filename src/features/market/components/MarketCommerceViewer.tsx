@@ -194,6 +194,39 @@ const getCollectionMediaFileId = (media: CollectionDetailMediaDto) =>
   asString(media.file?.id) ??
   asString(media.id);
 
+/**
+ * One entry per image, where "same image" means same file OR same URL path.
+ *
+ * The previous key was `${url}:${fileId}`, which cannot collapse duplicates of
+ * a pre-signed asset: every read of the same S3 object carries a fresh
+ * signature, so two entries for one photo differ in the one part of the string
+ * that has nothing to do with which image it is. Comparing the URL WITHOUT its
+ * query fixes that, and matching on either field (rather than a single
+ * composite key) also catches the case where one copy knows the file id and the
+ * other only knows the URL. That pair is how a product with five photos paged
+ * through ten dots.
+ */
+const viewerMediaUrlPath = (url: string | null): string | null => {
+  if (!url) return null;
+  const queryStart = url.indexOf('?');
+  return queryStart >= 0 ? url.slice(0, queryStart) : url;
+};
+
+const dedupeViewerMedia = (entries: ViewerMediaEntry[]): ViewerMediaEntry[] => {
+  const kept: ViewerMediaEntry[] = [];
+  for (const entry of entries) {
+    if (!entry.url && !entry.fileId) continue;
+    const path = viewerMediaUrlPath(entry.url);
+    const duplicate = kept.some(
+      (candidate) =>
+        (entry.fileId && candidate.fileId === entry.fileId) ||
+        (path !== null && viewerMediaUrlPath(candidate.url) === path),
+    );
+    if (!duplicate) kept.push(entry);
+  }
+  return kept;
+};
+
 const buildProductMedia = (product: StoreProduct): ViewerMediaEntry[] => {
   const fromImages = product.images.map((image, index) => ({
     id: `${product.id}:image:${image.fileId ?? image.url ?? index}`,
@@ -213,13 +246,7 @@ const buildProductMedia = (product: StoreProduct): ViewerMediaEntry[] => {
           },
         ];
 
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    const key = `${entry.url ?? ''}:${entry.fileId ?? ''}`;
-    if ((!entry.url && !entry.fileId) || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return dedupeViewerMedia(entries);
 };
 
 const readPositiveNumber = (value: unknown): number | undefined => {
@@ -284,13 +311,7 @@ const buildDesignMedia = (detail: CollectionDetailDto): ViewerMediaEntry[] => {
           },
         ];
 
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    const key = `${entry.url ?? ''}:${entry.fileId ?? ''}`;
-    if ((!entry.url && !entry.fileId) || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return dedupeViewerMedia(entries);
 };
 
 function MediaSlide({

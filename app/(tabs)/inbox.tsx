@@ -9,8 +9,12 @@ import {
   View,
   type ListRenderItemInfo,
 } from 'react-native';
+import {
+  STUDIO_SURFACE_PARAM,
+  STUDIO_SURFACE_PARAM_VALUE,
+} from '@/src/navigation/nativeIslandConfig';
 import { useFocusEffect } from 'expo-router';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -324,6 +328,23 @@ export default function InboxScreen() {
   }, []);
 
   const { theme } = useTheme();
+  /**
+   * `surface=studio` means the brand arrived here from the Studio dock's
+   * Messages chip, and the island is showing the Studio dock rather than the
+   * shopper one. Opening a conversation has to carry that forward or the dock
+   * changes under the brand mid-flow — see `isStudioIslandPath`.
+   */
+  const localParams = useLocalSearchParams<{ surface?: string | string[] }>();
+  const surfaceParam = Array.isArray(localParams.surface)
+    ? localParams.surface[0]
+    : localParams.surface;
+  const studioSurfaceParams = useMemo(
+    () =>
+      surfaceParam === STUDIO_SURFACE_PARAM_VALUE
+        ? { [STUDIO_SURFACE_PARAM]: STUDIO_SURFACE_PARAM_VALUE }
+        : {},
+    [surfaceParam],
+  );
   const { standardScreenBottomPadding } = useScreenChrome();
   const { status, token, user } = useAuth();
   const deferredWorkReady = useDeferredScreenWork();
@@ -613,6 +634,7 @@ export default function InboxScreen() {
             ...(params.messageId ? { messageId: params.messageId } : {}),
             ...(params.orderId ? { orderId: params.orderId } : {}),
             ...(params.customOrderId ? { customOrderId: params.customOrderId } : {}),
+            ...studioSurfaceParams,
           },
         } as any);
       }
@@ -632,14 +654,17 @@ export default function InboxScreen() {
     void loadConversations('more');
   }, [hasNextPage, loadConversations, loading, loadingMore, refreshing]);
 
-  const handlePressConversation = useCallback((item: ConversationSummary) => {
-    navPerf.tap('inbox→thread');
-    navPerf.navigationCalled();
-    drillDownPush({
-      pathname: '/messages/[threadId]',
-      params: buildThreadParams(item),
-    } as any);
-  }, []);
+  const handlePressConversation = useCallback(
+    (item: ConversationSummary) => {
+      navPerf.tap('inbox→thread');
+      navPerf.navigationCalled();
+      drillDownPush({
+        pathname: '/messages/[threadId]',
+        params: { ...buildThreadParams(item), ...studioSurfaceParams },
+      } as any);
+    },
+    [studioSurfaceParams],
+  );
 
   const handleFilterChange = useCallback((key: string) => {
     if (key === 'all' || key === 'unread' || key === 'orders') {

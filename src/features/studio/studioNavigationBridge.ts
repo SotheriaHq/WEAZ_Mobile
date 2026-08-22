@@ -3,6 +3,10 @@ import type { Href } from 'expo-router';
 import { env } from '@/src/config/env';
 import { getTrustedStudioOrigins } from '@/src/features/studio/studioRoutes';
 import {
+  STUDIO_SURFACE_PARAM,
+  STUDIO_SURFACE_PARAM_VALUE,
+} from '@/src/navigation/nativeIslandConfig';
+import {
   getMessageNotificationTarget,
   routeForDesignTarget,
   routeForStoreCollectionTarget,
@@ -370,11 +374,27 @@ function classifyMessagePath(url: URL): StudioWebNavigationClassification | null
     }
   }
 
+  /**
+   * A messaging link that came from inside Studio is still Studio.
+   *
+   * The native inbox doubles as the shopper's inbox, so the island picks its
+   * dock from this flag rather than from the pathname (which cannot tell the
+   * two apart). Without it, following "Messages" out of Studio silently swapped
+   * the Studio dock for the shopper one.
+   */
+  const fromStudio = pathname === '/studio' || pathname.startsWith('/studio/');
+  const surfaceParams = fromStudio
+    ? { [STUDIO_SURFACE_PARAM]: STUDIO_SURFACE_PARAM_VALUE }
+    : {};
+  const inboxRoute = (
+    fromStudio ? { pathname: '/(tabs)/inbox', params: surfaceParams } : '/(tabs)/inbox'
+  ) as Href;
+
   // If it's a message list path or has params, intercept
   if (messageListPaths.has(pathname) || Object.keys(params).length > 0) {
     const target = getMessageNotificationTarget(params);
     if (!target) {
-      return { type: 'native', path, nativeRoute: '/(tabs)/inbox' as Href };
+      return { type: 'native', path, nativeRoute: inboxRoute };
     }
 
     if (target.type === 'thread') {
@@ -391,12 +411,15 @@ function classifyMessagePath(url: URL): StudioWebNavigationClassification | null
       return {
         type: 'native',
         path,
-        nativeRoute: { pathname: '/messages/[threadId]', params: routeParams } as Href,
+        nativeRoute: {
+          pathname: '/messages/[threadId]',
+          params: { ...routeParams, ...surfaceParams },
+        } as Href,
       };
     }
 
     if (target.type === 'inbox' || target.type === 'unsupported') {
-      return { type: 'native', path, nativeRoute: '/(tabs)/inbox' as Href };
+      return { type: 'native', path, nativeRoute: inboxRoute };
     }
   }
 

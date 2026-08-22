@@ -111,16 +111,27 @@ export default function TabLayout() {
   const bagFlow = useBagFlow();
   const { count: bagCount } = useBagCount();
   const pathname = usePathname();
-  const globalParams = useGlobalSearchParams<{ routeKey?: string | string[] }>();
+  const globalParams = useGlobalSearchParams<{
+    routeKey?: string | string[];
+    surface?: string | string[];
+  }>();
   const studioRouteKeyParam = Array.isArray(globalParams.routeKey)
     ? globalParams.routeKey[0]
     : globalParams.routeKey;
+  /**
+   * Set by `getStudioIslandTarget` when a Studio chip leads to a native screen
+   * that does not live under `/studio/...` — currently Messages. It is what
+   * keeps the Studio dock on screen instead of the shopper one.
+   */
+  const studioSurfaceParam = Array.isArray(globalParams.surface)
+    ? globalParams.surface[0]
+    : globalParams.surface;
   const { windowWidth, islandLayout } = useScreenChrome();
   const unreadNotificationCount = useUnreadNotificationCount();
   const unreadMessageCount = useUnreadMessageCount();
   const [notificationCountReady, setNotificationCountReady] = useState(false);
   const [messageCountReady, setMessageCountReady] = useState(false);
-  const inStudioIsland = isStudioIslandPath(pathname);
+  const inStudioIsland = isStudioIslandPath(pathname, studioSurfaceParam);
   const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
   /**
    * The Studio's setup routes. Being on one is proof setup is unfinished and

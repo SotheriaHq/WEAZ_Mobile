@@ -28,24 +28,20 @@ const SPIN_TURN_DURATION_MS = 760;
 const SPIN_SETTLE_DURATION_MS = 320;
 
 /**
- * Two lines, because one line truncated and described the wrong thing.
+ * "30" over "threads" — one phrase, stacked so it fits.
  *
- * The label arrived pre-formatted as "30 threads" and was squeezed into a 56pt
- * column at `numberOfLines={1}`, so anything past a single digit clipped to
- * "30 thre...". It also named the OBJECT ("threads") rather than the act, which
- * is backwards for this feature: a thread is something people DO to a design,
- * and the number is proof that they did.
- *
- * Number and unit on the first line, verb underneath. "30 people" / "threaded"
- * fits the column at any count, never ellipsises, and reads as a statement
- * about people rather than a tally of objects.
+ * The label arrives pre-formatted ("30", "30 threads", "1.2k threads"), and a
+ * single line of it was squeezed into a 56pt column at `numberOfLines={1}`, so
+ * anything past a single digit clipped to "30 thre...". Splitting the number
+ * from its noun fits the column at any count and never ellipsises, and the two
+ * lines still read as the one thing they are.
  */
 function splitThreadCountLabel(count: string): { value: string; caption: string } {
   // Callers may pass "30", "30 threads" or "1.2k threads" - take the leading token.
   const leading = count.trim().split(/\s+/)[0] || '0';
   return {
-    value: `${leading} ${leading === '1' ? 'person' : 'people'}`,
-    caption: 'threaded',
+    value: leading,
+    caption: leading === '1' ? 'thread' : 'threads',
   };
 }
 
@@ -198,26 +194,26 @@ export default function ThreadRailAction({
         the server response lands — which is what "real time" has to mean here.
       */}
       {/*
-        A colour alone cannot be "obvious" on arbitrary photography — the same
-        purple that pops on a dark jacket disappears on a lilac dress. What
-        makes a number readable over any image is a CONSISTENT GROUND, so the
-        count sits on its own scrim and the colour finally has something stable
-        to be legible against. The number is also a full step larger than the
-        verb under it: the figure is the social proof, the word is the label.
+        White text and a shadow, not a plate and not a tint.
+
+        The plate this replaces was a rounded scrim behind the count. It made
+        the number legible, but it also drew a small grey tile onto the artwork
+        that never belonged there, and it read as a chip on bright stages. The
+        threaded state additionally switched the text to brand purple, which is
+        the least reliable colour available for this job: it pops on a dark
+        jacket and vanishes on a lilac dress, and it changed the count colour
+        for a state the emoji above already reports.
+
+        The rail sits over arbitrary photography, so the count now carries its
+        own contrast the way rail glyphs do everywhere else — white, with a
+        shadow dark and wide enough to hold an edge against a white background.
+        One colour in both states, nothing painted onto the image.
       */}
-      <View style={[styles.countBlock, { backgroundColor: tokens.scrim(0.42) }]}>
-        <AppText
-          variant="bodyBold"
-          tone={threaded ? 'primary' : 'inverse'}
-          style={styles.count}
-        >
+      <View style={styles.countBlock}>
+        <AppText variant="bodyBold" tone="inverse" style={styles.count}>
           {countLabel.value}
         </AppText>
-        <AppText
-          variant="navLabel"
-          tone={threaded ? 'primary' : 'inverse'}
-          style={styles.count}
-        >
+        <AppText variant="navLabel" tone="inverse" style={styles.count}>
           {countLabel.caption}
         </AppText>
       </View>
@@ -273,17 +269,19 @@ const styles = StyleSheet.create({
   countBlock: {
     alignItems: 'center',
     width: 56,
-    borderRadius: tokens.radius.md,
-    paddingVertical: 2,
-    paddingHorizontal: tokens.spacing.xs,
-    overflow: 'hidden',
   },
   count: {
     width: 56,
     textAlign: 'center',
-    textShadowColor: tokens.scrim(0.55),
+    /*
+     * Opaque and wide, because this shadow is the only thing between white
+     * text and a white photograph. The old value (0.55 alpha, 3pt radius) was
+     * tuned to sit on top of the scrim plate that used to be behind it; with
+     * the plate gone it has to do the whole job on its own.
+     */
+    textShadowColor: tokens.scrim(0.92),
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    textShadowRadius: 6,
   },
   /*
    * `countActive` is gone. It set `color` on an AppText, which is stripped, so

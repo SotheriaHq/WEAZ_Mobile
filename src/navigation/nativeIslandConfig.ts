@@ -39,8 +39,20 @@ export const NATIVE_ISLAND_ICONS: Record<NativeIslandKey | 'signIn', string> = {
 
 const normalizePathname = (pathname: string) => pathname.replace(/^\/\(tabs\)/, '') || '/';
 
+/**
+ * Marks a native screen as being entered from — and still part of — the Studio.
+ *
+ * Most Studio destinations live under `/studio/...`, so the pathname is enough.
+ * Messaging does not: the native inbox is the Studio's messages screen AND the
+ * shopper's inbox, and the two need different docks. The pathname cannot tell
+ * them apart, so the navigation that got you there says which one it is.
+ */
+export const STUDIO_SURFACE_PARAM = 'surface';
+export const STUDIO_SURFACE_PARAM_VALUE = 'studio';
+
 /** True while the brand is inside the Studio surface (should show studio dock). */
-export function isStudioIslandPath(pathname: string): boolean {
+export function isStudioIslandPath(pathname: string, surfaceParam?: string | null): boolean {
+  if (surfaceParam === STUDIO_SURFACE_PARAM_VALUE) return true;
   const normalized = normalizePathname(pathname);
   return normalized === '/studio' || normalized.startsWith('/studio/');
 }
@@ -82,6 +94,15 @@ export function mapPathnameToStudioIslandKey(
 ): StudioIslandKey {
   const normalized = normalizePathname(pathname);
 
+  // Reached through the Studio dock's Messages chip (see `isStudioIslandPath`).
+  if (
+    normalized === '/inbox' ||
+    normalized === '/messages' ||
+    normalized.startsWith('/messages/')
+  ) {
+    return STUDIO_ISLAND_KEYS.messages;
+  }
+
   if (normalized === '/studio/finance' || normalized.startsWith('/studio/finance/')) {
     return STUDIO_ISLAND_KEYS.finance;
   }
@@ -113,6 +134,26 @@ export function getStudioIslandTarget(key: string): StudioIslandTarget {
   if (key === STUDIO_ISLAND_KEYS.finance) {
     return { pathname: '/studio/finance' };
   }
+
+  /**
+   * Messages is native, so go there directly instead of via the web route.
+   *
+   * This chip used to load `/studio/messages` in the WebView — a URL the
+   * navigation bridge is guaranteed to reject, because `classifyMessagePath`
+   * runs before the allowed-Studio-routes check and hands every messaging path
+   * to the native inbox. So the tap painted the web messages screen, then threw
+   * it away and pushed the native one: the flicker, and a wasted page load
+   * every time.
+   *
+   * `surface: 'studio'` is what tells the island this is still Studio. Without
+   * it the dock reads the pathname, sees `/inbox`, and swaps the Studio dock for
+   * the shopper one — so a brand who tapped a Studio chip ends up looking at the
+   * buyer island with no way back to the rest of Studio.
+   */
+  if (key === STUDIO_ISLAND_KEYS.messages) {
+    return { pathname: '/(tabs)/inbox', params: { surface: STUDIO_SURFACE_PARAM_VALUE } };
+  }
+
   if (key === STUDIO_ISLAND_KEYS.overview) {
     return { pathname: '/studio' };
   }

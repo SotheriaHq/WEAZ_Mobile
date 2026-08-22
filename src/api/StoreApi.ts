@@ -364,6 +364,76 @@ const logBagTiming = (label: string, startedAt: number, context: Record<string, 
   });
 };
 
+/**
+ * Picks the first alias that is actually present, instead of merging them.
+ *
+ * `images`, `media`, `mediaItems` and `productMedia` are four names the API has
+ * used for THE SAME LIST across shapes and versions; they were being
+ * concatenated, so a payload carrying two of them — `images` as plain URL
+ * strings and `media` as objects, which the product detail does — produced
+ * every photo twice. That is the "over 9" pager dots on a product with five
+ * images, and it survived the de-dupe downstream because a signed S3 URL and a
+ * raw one are different strings for the same object.
+ *
+ * These are aliases, not additive sources. First non-empty wins.
+ */
+type MediaEntry = { url: string | null; fileId: string | null };
+
+/**
+ * The part of a URL that identifies the image, with the signature stripped.
+ *
+ * Display URLs are S3 pre-signed, so the same object comes back with a fresh
+ * `X-Amz-Signature` and `X-Amz-Date` on every read. Compare whole URLs and two
+ * reads of one photo look like two photos.
+ */
+const mediaUrlPath = (url: string | null): string | null => {
+  if (!url) return null;
+  const queryStart = url.indexOf('?');
+  return queryStart >= 0 ? url.slice(0, queryStart) : url;
+};
+
+/**
+ * Folds the API's several names for the product's images into one list.
+ *
+ * `images`, `media`, `mediaItems` and `productMedia` are names the API has used
+ * for THE SAME PHOTOS across shapes and versions, and a single payload can
+ * carry more than one of them — the product detail sends `images` as plain URL
+ * strings and `media` as objects. They were being concatenated, so every photo
+ * appeared twice: that is the "over 9" pager dots on a product with five
+ * images.
+ *
+ * Picking one array and ignoring the rest is not the fix either, because the
+ * aliases carry DIFFERENT FIELDS for the same photo — the URL strings have no
+ * file id, and the file id is what lets the app re-sign an expired URL. So this
+ * merges instead: entries that resolve to the same image (same file id, or same
+ * URL once the signature is off) collapse into one, and the merged entry keeps
+ * whichever alias supplied each field.
+ */
+const mergeMediaEntries = (entries: MediaEntry[]): MediaEntry[] => {
+  const merged: MediaEntry[] = [];
+
+  for (const entry of entries) {
+    const path = mediaUrlPath(entry.url);
+    const existing = merged.find(
+      (candidate) =>
+        (entry.fileId !== null && candidate.fileId === entry.fileId) ||
+        (path !== null && mediaUrlPath(candidate.url) === path),
+    );
+
+    if (!existing) {
+      merged.push({ ...entry });
+      continue;
+    }
+
+    // Fill the gaps rather than overwrite: an alias that only knows the URL
+    // must not erase the file id a richer alias already supplied.
+    if (!existing.fileId && entry.fileId) existing.fileId = entry.fileId;
+    if (!existing.url && entry.url) existing.url = entry.url;
+  }
+
+  return merged;
+};
+
 const appendArray = (target: unknown[], value: unknown) => {
   if (Array.isArray(value)) {
     target.push(...value);
@@ -430,7 +500,7 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
   appendArray(rawImages, item.mediaItems);
   appendArray(rawImages, item.productMedia);
 
-  const images = rawImages
+  const rawImageEntries = rawImages
     .map((entry) => {
       if (typeof entry === 'string') {
         const url = asString(entry);
@@ -464,7 +534,9 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
       if (!url && !fileId) return null;
       return { url, fileId };
     })
-    .filter((entry): entry is { url: string | null; fileId: string | null } => Boolean(entry));
+    .filter((entry): entry is MediaEntry => Boolean(entry));
+
+  const images = mergeMediaEntries(rawImageEntries);
 
   const imageUrls = images.map((entry) => entry.url).filter((url): url is string => Boolean(url));
   const preferredCoverUrl =

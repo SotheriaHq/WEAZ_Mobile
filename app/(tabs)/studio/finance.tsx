@@ -15,6 +15,11 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
 import {
+  StudioHeaderActions,
+  StudioProfileMenu,
+  useStudioProfileMenu,
+} from '@/components/studio/StudioHeaderProfile';
+import {
   brandFinanceApi,
   type BrandFinanceBundle,
   type BrandHeldFund,
@@ -134,18 +139,48 @@ export default function StudioFinanceScreen() {
     }
   }, [available, brandId, currency, financeQuery, toast]);
 
+  /**
+   * Finance is a Studio screen, so it carries the Studio's header.
+   *
+   * It is native rather than WebView-rendered, and the avatar and profile menu
+   * used to be declared inside the WebView screen — so arriving here dropped
+   * them and left a brand with no way back to Notifications, My Orders or Staff
+   * without first navigating out of Finance.
+   */
+  const profileMenu = useStudioProfileMenu();
+  const studioHeaderRight = (
+    <StudioHeaderActions
+      user={profileMenu.user}
+      onSearchPress={profileMenu.openSearch}
+      onProfilePress={profileMenu.open}
+    />
+  );
+
   if (!brandId) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <Header
           title="Finance"
           left={<AppBackButton onPress={() => router.back()} />}
+          right={studioHeaderRight}
         />
         <View style={styles.centered}>
           <AppText variant="body" tone="secondary">
             No active brand workspace found.
           </AppText>
         </View>
+      <StudioProfileMenu
+        visible={profileMenu.visible}
+        user={profileMenu.user}
+        onClose={profileMenu.close}
+        onOpenProfile={profileMenu.openProfile}
+        onOpenNotifications={profileMenu.openNotifications}
+        onOpenOrders={profileMenu.openOrders}
+        onOpenFinance={profileMenu.openFinance}
+        onOpenStaff={profileMenu.openStaff}
+        onOpenHelp={profileMenu.openHelp}
+        onSignOut={profileMenu.handleSignOut}
+      />
       </SafeAreaView>
     );
   }
@@ -156,12 +191,25 @@ export default function StudioFinanceScreen() {
         <Header
           title="Finance"
           left={<AppBackButton onPress={() => router.back()} />}
+          right={studioHeaderRight}
         />
         <View style={styles.centered}>
           <AppText variant="body" tone="secondary" style={styles.centerText}>
             You do not have permission to view brand payouts. Ask the brand owner for access.
           </AppText>
         </View>
+      <StudioProfileMenu
+        visible={profileMenu.visible}
+        user={profileMenu.user}
+        onClose={profileMenu.close}
+        onOpenProfile={profileMenu.openProfile}
+        onOpenNotifications={profileMenu.openNotifications}
+        onOpenOrders={profileMenu.openOrders}
+        onOpenFinance={profileMenu.openFinance}
+        onOpenStaff={profileMenu.openStaff}
+        onOpenHelp={profileMenu.openHelp}
+        onSignOut={profileMenu.handleSignOut}
+      />
       </SafeAreaView>
     );
   }
@@ -172,6 +220,7 @@ export default function StudioFinanceScreen() {
         title="Finance"
         subtitle="Balances, held funds, and payouts"
         left={<AppBackButton onPress={() => router.back()} />}
+        right={studioHeaderRight}
       />
 
       {loading && !data ? (
@@ -295,6 +344,18 @@ export default function StudioFinanceScreen() {
           )}
         </ScrollView>
       )}
+      <StudioProfileMenu
+        visible={profileMenu.visible}
+        user={profileMenu.user}
+        onClose={profileMenu.close}
+        onOpenProfile={profileMenu.openProfile}
+        onOpenNotifications={profileMenu.openNotifications}
+        onOpenOrders={profileMenu.openOrders}
+        onOpenFinance={profileMenu.openFinance}
+        onOpenStaff={profileMenu.openStaff}
+        onOpenHelp={profileMenu.openHelp}
+        onSignOut={profileMenu.handleSignOut}
+      />
     </SafeAreaView>
   );
 }

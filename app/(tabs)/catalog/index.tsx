@@ -54,7 +54,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AppConfirmDialog } from '@/components/ui/AppConfirmDialog';
 import { AppActionSheet, type AppActionSheetOption } from '@/components/ui/AppActionSheet';
-import { AppFloatingMenu, type FloatingMenuOption } from '@/components/ui/AppFloatingMenu';
+import { AppFloatingMenu, getProfileMenuWidth, type FloatingMenuOption } from '@/components/ui/AppFloatingMenu';
 import { AppQrSheet } from '@/components/ui/AppQrSheet';
 import { BrandSwitcherSheet } from '@/components/brand/BrandSwitcherSheet';
 import {
@@ -1788,10 +1788,38 @@ export default function CatalogScreen() {
      * what a visitor sees.
      */
     const publicContactEmail = readContactValue(effectiveProfile?.publicContactEmail) ?? '';
+    /**
+     * The account email falls back to the session ONLY for the account itself.
+     *
+     * `contactInfo.email` is populated only when the API recognises the caller
+     * as the brand owner, so anything that costs us that recognition — a
+     * profile read that raced token hydration, a cache entry written while
+     * signed out — returns `null` and the owner saw no email on their own
+     * catalog. The signed-in user's address is the same address and is already
+     * in memory, so it is the right fallback.
+     *
+     * But `isOwner` is the WRONG gate for it. `isOwner` is a permission
+     * (`canManageCatalog`, a role check), and staff with catalog-write pass it;
+     * the API's `isOwnerViewer` is an identity (`viewerId === brand.id`) and
+     * staff do not. Gating on the permission would have shown a staff member
+     * THEIR OWN personal address rendered as the brand's contact email.
+     *
+     * So this compares identities, which is the same test the server makes,
+     * evaluated on the data the server already sent. No profile, no fallback —
+     * an empty row is correct, a wrong one is not.
+     */
+    const viewerIsBrandAccount = Boolean(
+      user?.id && effectiveProfile?.id && user.id === effectiveProfile.id,
+    );
+    const ownerAccountEmail = isOwner
+      ? readContactValue(effectiveProfile?.email) ??
+        (viewerIsBrandAccount ? readContactValue(user?.email) : null) ??
+        ''
+      : '';
     const candidates: BrandHeaderContactItem[] = [
       ...(publicContactEmail ? [{ label: 'Email', value: publicContactEmail }] : []),
       ...(isOwner && !publicContactEmail
-        ? [{ label: 'Email', value: readContactValue(effectiveProfile?.email) ?? '' }]
+        ? [{ label: 'Email', value: ownerAccountEmail }]
         : []),
       { label: 'Phone', value: readContactValue(effectiveProfile?.phoneNumber) ?? '' },
       { label: 'Website', value: readContactValue(effectiveProfile?.socialWebsite) ?? '' },
@@ -1800,30 +1828,18 @@ export default function CatalogScreen() {
       { label: 'X', value: readContactValue(effectiveProfile?.socialTwitter) ?? '' },
     ];
 
-    const present = candidates.filter((item) => item.value.length > 0);
-
     /**
-     * Say "Pending", do not say nothing.
+     * A row exists only when there is something in it. No placeholders.
      *
-     * A brand created through Google sign-up arrives with no location, no
-     * contact address and no socials — none of it required at signup — and the
-     * profile simply rendered those rows away. The owner saw a page that looked
-     * finished and had no idea anything was expected of them, which is the
-     * "my data was not populated" report: there was no data, and nothing said
-     * so. (Verification DOES require a full business address, so this only ever
-     * describes the pre-verification gap.)
-     *
-     * Owner-only: a visitor has no business seeing a brand's unfinished list.
+     * "Pending" rows were here to tell an owner which fields were still unset.
+     * They were the wrong instrument: each one rendered as a real contact row —
+     * icon, tappable, `mailto:Pending` — so the page grew entries that looked
+     * like data and did nothing when pressed. An empty field says "empty"
+     * perfectly well by not being drawn, and the place to demand these fields
+     * is the verification submit, where they are now required rather than
+     * merely labelled.
      */
-    if (!isOwner) return present;
-
-    const pending: BrandHeaderContactItem[] = [
-      ...(publicContactEmail ? [] : [{ label: 'Email', value: 'Pending' }]),
-      ...(readContactValue(effectiveProfile?.location) ? [] : [{ label: 'Location', value: 'Pending' }]),
-      ...(readContactValue(effectiveProfile?.phoneNumber) ? [] : [{ label: 'Phone', value: 'Pending' }]),
-    ];
-
-    return [...present, ...pending.filter((item) => !present.some((row) => row.label === item.label))];
+    return candidates.filter((item) => item.value.length > 0);
   }, [
     effectiveProfile?.email,
     effectiveProfile?.publicContactEmail,
@@ -1832,8 +1848,10 @@ export default function CatalogScreen() {
     effectiveProfile?.socialInstagram,
     effectiveProfile?.socialTwitter,
     effectiveProfile?.socialWebsite,
-    effectiveProfile?.location,
+    effectiveProfile?.id,
     isOwner,
+    user?.email,
+    user?.id,
   ]);
   const headerBadges = useMemo(
     () =>
@@ -2099,6 +2117,7 @@ export default function CatalogScreen() {
   // signed-in shopper settings plus public sharing, or public sharing only.
   const profileMenuAnchorRef = useRef<View | null>(null);
   const profileMenuRef = useRef<{ open: (e?: any) => void } | null>(null);
+  const profileMenuWidth = getProfileMenuWidth(windowWidth);
   const handleOpenProfileMenu = useCallback((e?: any) => {
     profileMenuRef.current?.open(e);
   }, []);
@@ -2484,7 +2503,13 @@ export default function CatalogScreen() {
 
       <CreateMenuWrapper ref={createMenuRef} anchorRef={createAnchorRef} options={createDesignOptions} />
 
-      <CreateMenuWrapper ref={profileMenuRef} anchorRef={profileMenuAnchorRef} options={profileMenuOptions} />
+      {/* Same width as Studio's profile menu — see `getProfileMenuWidth`. */}
+      <CreateMenuWrapper
+        ref={profileMenuRef}
+        anchorRef={profileMenuAnchorRef}
+        options={profileMenuOptions}
+        width={profileMenuWidth}
+      />
 
       <AppQrSheet
         visible={brandQrOpen}
