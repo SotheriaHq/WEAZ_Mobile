@@ -203,7 +203,17 @@ export function buildStudioIslandItems(args: {
   }> = [
     { key: STUDIO_ISLAND_KEYS.overview, label: 'Dashboard', emoji: '📊', requiresSetup: true },
     { key: STUDIO_ISLAND_KEYS.store, label: 'Store', emoji: '🛍️', requiresSetup: false },
-    { key: STUDIO_ISLAND_KEYS.reviews, label: 'Reviews', emoji: '⭐', requiresSetup: true },
+    /*
+      Reviews and Staff are desktop-sidebar sections, not dock chips.
+
+      Same reasoning as the web dock in `StudioSidebar.tsx`: this strip is
+      phone-width and every chip added takes width from Store, Orders and
+      Messages — the three a brand actually works out of. Both remain in
+      STUDIO_ISLAND_KEYS and keep their `mapStudioPathnameToIslandKey` entries
+      so an existing deep link still resolves through
+      `mapPathnameToStudioIslandKey` to a known key instead of
+      falling through to a wrong chip.
+    */
     { key: STUDIO_ISLAND_KEYS.orders, label: 'Orders', emoji: '📦', requiresSetup: true },
     {
       key: STUDIO_ISLAND_KEYS.messages,
@@ -212,7 +222,6 @@ export function buildStudioIslandItems(args: {
       badge: args.messagesBadge,
       requiresSetup: true,
     },
-    { key: STUDIO_ISLAND_KEYS.staff, label: 'Staff', emoji: '👥', requiresSetup: true },
     { key: STUDIO_ISLAND_KEYS.customers, label: 'Customers', emoji: '👤', requiresSetup: true },
     { key: STUDIO_ISLAND_KEYS.analytics, label: 'Analytics', emoji: '📈', requiresSetup: true },
     { key: STUDIO_ISLAND_KEYS.finance, label: 'Finance', emoji: '💰', requiresSetup: true },
