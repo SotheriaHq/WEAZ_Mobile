@@ -5,7 +5,11 @@ import { router } from 'expo-router';
 
 import { ProfileApi, type SizeFitProfile } from '@/src/api/ProfileApi';
 import { useAuth } from '@/src/auth/AuthContext';
-import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
+import {
+  CORE_MEASUREMENT_SLOTS,
+  collapseMeasurements,
+} from '@/src/features/sizing/measurementCatalog';
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -86,8 +90,20 @@ function extractErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-function getMeasurementCount(sizeFit: SizeFitProfile | null) {
-  return Object.values(sizeFit?.measurements ?? {}).filter((value) => String(value ?? '').trim()).length;
+/**
+ * Summarise MEASUREMENTS, not stored keys.
+ *
+ * The server writes one measurement under its canonical key and its gendered
+ * registry key, and keeps whatever key the client originally sent — so a raw
+ * `Object.values(...).length` reported eight measurements as nineteen. See
+ * `measurementCatalog.collapseMeasurements`.
+ */
+function describeSavedMeasurements(sizeFit: SizeFitProfile | null) {
+  const { coreSavedCount, extras } = collapseMeasurements(sizeFit?.measurements);
+  const core = `${coreSavedCount}/${CORE_MEASUREMENT_SLOTS.length} sizing points saved`;
+  return extras.length > 0
+    ? `${core}, plus ${extras.length} asked for by brands.`
+    : `${core}.`;
 }
 
 export default function SizingSettingsScreen() {
@@ -240,14 +256,20 @@ export default function SizingSettingsScreen() {
             <View style={styles.summaryCopy}>
               <AppText variant="bodyBold">Saved measurements</AppText>
               <AppText variant="captionRegular" tone="muted">
-                {getMeasurementCount(sizeFit)} measurement{getMeasurementCount(sizeFit) === 1 ? '' : 's'} saved.
+                {describeSavedMeasurements(sizeFit)}
               </AppText>
             </View>
+            {/*
+              Straight to the form. This used to hand the user back to the
+              profile tab and leave them to find the fittings entry point
+              themselves — a settings row that navigates somewhere other than
+              the thing it names.
+            */}
             <Button
               title="Edit fits"
               size="sm"
               variant="secondary"
-              onPress={() => topLevelNavigate('/(tabs)/me' as never)}
+              onPress={() => drillDownPush('/fittings' as never)}
             />
           </View>
         </Card>

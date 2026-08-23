@@ -772,6 +772,7 @@ export const parseStrictMarketFeedItem = (raw: RawMarketItem): MarketItem | null
     tags,
     isLiked: asBoolean(viewerState.isLiked),
     isThreaded: asBoolean(viewerState.isThreaded),
+    isPatched: asBoolean(viewerState.isPatched),
     media: mapStrictAssetToLegacyMedia(primaryResult.asset),
   };
 };

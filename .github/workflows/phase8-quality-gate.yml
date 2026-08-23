@@ -40,6 +40,14 @@ jobs:
       - name: Runway transit curves
         run: npm run test:runway-transit-curves
 
+      # Pure-logic too, and guarding a failure nobody can see: the server stores
+      # one measurement under several keys on purpose, so a missing alias here
+      # renders a shopper's body twice on their own profile and drops a point
+      # out of the "6/8 sizing points" total. Also checks the alias table
+      # against the backend's, which is where the two actually drift.
+      - name: Measurement catalog contract
+        run: npm run test:measurement-catalog-contract
+
       - name: Aspect-aware media contract
         run: npm run test:aspect-aware-media
 

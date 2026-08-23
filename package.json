@@ -40,12 +40,13 @@
     "test:mobile-checkout-gate-contract": "node scripts/test-mobile-checkout-contract.js",
     "test:mobile-checkout-contract": "node scripts/test-mobile-checkout-contract.js",
     "test:measurement-bagging-contract": "node scripts/test-measurement-bagging-contract.js",
+    "test:measurement-catalog-contract": "node scripts/test-measurement-catalog-contract.js",
     "test:upload-validation-contract": "node scripts/test-upload-validation-contract.js",
     "ci:design-system": "npm exec tsc -- --noEmit && node ../scripts/audit-mobile-design-system.js",
     "audit:theme": "node scripts/audit-theme-system.js",
     "check:perf-regressions": "node scripts/check-perf-regressions.cjs",
     "test:adire-rotation": "node scripts/test-adire-rotation.js",
-    "ci:phase8": "npm exec tsc -- --noEmit && npm run test:adire-rotation && npm run test:aspect-aware-media && npm run test:brand-profile-contract && npm run test:design-editor-contract && npm run test:store-api-contract && npm run test:runway-responsiveness-contract && npm run test:runway-transit-curves && npm run test:latency-phase3-contract && npm run test:studio-nav-latency-contract && npm run check:perf-regressions"
+    "ci:phase8": "npm exec tsc -- --noEmit && npm run test:adire-rotation && npm run test:aspect-aware-media && npm run test:brand-profile-contract && npm run test:design-editor-contract && npm run test:store-api-contract && npm run test:runway-responsiveness-contract && npm run test:runway-transit-curves && npm run test:measurement-catalog-contract && npm run test:latency-phase3-contract && npm run test:studio-nav-latency-contract && npm run check:perf-regressions"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

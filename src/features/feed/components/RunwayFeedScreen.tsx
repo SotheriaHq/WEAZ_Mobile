@@ -42,6 +42,10 @@ import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
 import { ScreenState } from '@/components/ui/ScreenState';
 import { isUsableImageHttpUrl, prefetchResolvedImageAsset, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
+import {
+  setBrandPatchStatus,
+  subscribeAllBrandPatchStatus,
+} from '@/src/hooks/useBrandPatchStatus';
 import { useReduceMotion } from '@/src/hooks/useReduceMotion';
 import { RUNWAY_PAGE_SCALE_MIN } from '@/src/features/feed/utils/runwayTransitCurves';
 import { getAvatarFallback } from '@/src/utils/profileImage';
@@ -97,6 +101,25 @@ const SCROLL_DIAGNOSTICS_ENABLED = isWiezDebugEnabled('scroll');
 
 /** How many pages from the end the next page request fires. */
 const FEED_PREFETCH_LEAD_PAGES = 4;
+
+/**
+ * The server's message, when it has one.
+ *
+ * Patch failures are specific and actionable — "Only end users can patch
+ * brands", "Cannot patch yourself", "Patch connection not found" — and the feed
+ * replaced all of them with "Failed to patch brand", which tells the shopper
+ * nothing and tells us nothing when they report it.
+ */
+function resolvePatchErrorMessage(error: unknown, fallback: string): string {
+  const data = (error as any)?.response?.data;
+  for (const candidate of [data?.message, data?.data?.message, data?.error]) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+    if (Array.isArray(candidate) && typeof candidate[0] === 'string' && candidate[0].trim()) {
+      return candidate[0].trim();
+    }
+  }
+  return fallback;
+}
 
 const toCompactCount = (value: number | null | undefined) => {
   const n = typeof value === 'number' ? value : 0;
@@ -931,6 +954,18 @@ export function RunwayFeedScreen() {
   const feedTeleportingRef = useRef(false);
   const loadingMoreInFlightRef = useRef(false);
   const patchedBrandIdsRef = useRef<Set<string>>(new Set());
+  // Read inside the patch handler, which is stable and must not re-create on
+  // every busy-state change.
+  const patchingBrandIdsRef = useRef<Record<string, boolean>>({});
+  /**
+   * Brands the SHOPPER has toggled during this session.
+   *
+   * The feed payload and the patch list both seed the pill state, and both can
+   * land after a tap. Without a record of what the user actually decided, a
+   * page of feed items carrying a now-stale `viewerState.isPatched` would undo
+   * their tap a moment later — the pill flipping back on its own.
+   */
+  const patchDecisionsRef = useRef<Map<string, boolean>>(new Map());
   const lastLoggedPageHeightRef = useRef<number | null>(null);
   const hasLoggedInitialPageHeightRef = useRef(false);
   const previousActivePageIndexRef = useRef(0);
@@ -1037,11 +1072,29 @@ export function RunwayFeedScreen() {
 
     try {
       const items = await ProfileApi.getPatches(user.id);
-      setPatchedBrandIds(new Set(items.map((brand) => brand.id).filter(Boolean)));
+      /*
+        MERGE, do not replace.
+
+        This lands after the feed has painted, and by then the shopper may
+        already have patched something — replacing the set wholesale reverted
+        their own tap a second later. `/users/:id/patches` and the feed's
+        `viewerState.isPatched` are both keyed on the brand owner's user id, so
+        the two sets are directly unionable.
+      */
+      const fetched = items.map((brand) => brand.id).filter(Boolean);
+      setPatchedBrandIds(() => {
+        const next = new Set(fetched);
+        for (const [brandId, patched] of patchDecisionsRef.current) {
+          if (patched) next.add(brandId);
+          else next.delete(brandId);
+        }
+        return next;
+      });
       lastPatchFetchRef.current = Date.now();
     } catch (error) {
+      // Keep whatever the feed's own viewerState already told us rather than
+      // blanking every pill because one background read failed.
       console.warn('Failed to load patched brands', error);
-      setPatchedBrandIds(new Set());
     }
   }, [status, user?.id, user?.type]);
 
@@ -1322,6 +1375,56 @@ export function RunwayFeedScreen() {
   useEffect(() => {
     patchedBrandIdsRef.current = patchedBrandIds;
   }, [patchedBrandIds]);
+
+  useEffect(() => {
+    patchingBrandIdsRef.current = patchingBrandIds;
+  }, [patchingBrandIds]);
+
+  /**
+   * Seed the pill from the feed payload itself.
+   *
+   * `viewerState.isPatched` is hydrated server-side with the page, so the first
+   * paint of a brand the shopper already patched is already correct — no
+   * waiting for `/users/:id/patches` and no visible correction afterwards. Only
+   * brands the shopper has not decided on this session are seeded.
+   */
+  useEffect(() => {
+    if (status !== 'authenticated' || items.length === 0) return;
+    setPatchedBrandIds((prev) => {
+      let next: Set<string> | null = null;
+      for (const item of items) {
+        const brandId = item.brandId;
+        if (!brandId || patchDecisionsRef.current.has(brandId)) continue;
+        const patched = Boolean(item.viewerState?.isPatched ?? item.isPatched);
+        if (patched === prev.has(brandId)) continue;
+        next = next ?? new Set(prev);
+        if (patched) next.add(brandId);
+        else next.delete(brandId);
+      }
+      return next ?? prev;
+    });
+  }, [items, status]);
+
+  /**
+   * Follow patches toggled on other screens.
+   *
+   * Without this the feed only learned about a patch made in the catalog header
+   * or design viewer on its next full reload, so walking back into the Runway
+   * showed the old pill and then corrected itself. The shared cache already
+   * broadcasts; the feed just never listened.
+   */
+  useEffect(() => {
+    if (status !== 'authenticated') return undefined;
+    return subscribeAllBrandPatchStatus((brandId, patched) => {
+      setPatchedBrandIds((prev) => {
+        if (prev.has(brandId) === patched) return prev;
+        const next = new Set(prev);
+        if (patched) next.add(brandId);
+        else next.delete(brandId);
+        return next;
+      });
+    });
+  }, [status]);
 
   useEffect(() => {
     threadStateByMediaRef.current = threadStateByMedia;
@@ -2023,6 +2126,20 @@ export function RunwayFeedScreen() {
     [activePageIndex, executeThreadIntent, status],
   );
 
+  /**
+   * Patch/unpatch, applied OPTIMISTICALLY.
+   *
+   * The button used to wait for the round trip before it changed, so a tap on
+   * a feed that had just settled did nothing visible for a beat and then
+   * flipped — a state change arriving late on a still screen, which is what
+   * reads as the feed shaking. The pill now flips on the tap and reverts only
+   * if the server refuses, so the common path has exactly one visual change and
+   * it happens under the finger.
+   *
+   * `setBrandPatchStatus` publishes into the shared patch cache, so the catalog
+   * header and design viewer follow without refetching (and the effect below
+   * subscribes, so this feed follows them).
+   */
   const handlePatchBrand = useCallback(
     (brandId?: string | null, brandName?: string | null) => {
       const normalizedBrandId = typeof brandId === 'string' ? brandId.trim() : '';
@@ -2030,31 +2147,48 @@ export function RunwayFeedScreen() {
 
       requireAuth(
         async () => {
-          const isPatched = patchedBrandIdsRef.current.has(normalizedBrandId);
+          if (patchingBrandIdsRef.current[normalizedBrandId]) return;
+
+          const wasPatched = patchedBrandIdsRef.current.has(normalizedBrandId);
+          const nextPatched = !wasPatched;
+
+          const applyPatched = (patched: boolean) => {
+            setPatchedBrandIds((prev) => {
+              if (prev.has(normalizedBrandId) === patched) return prev;
+              const next = new Set(prev);
+              if (patched) next.add(normalizedBrandId);
+              else next.delete(normalizedBrandId);
+              return next;
+            });
+          };
+
+          patchDecisionsRef.current.set(normalizedBrandId, nextPatched);
+          applyPatched(nextPatched);
           setPatchingBrandIds((prev) => ({ ...prev, [normalizedBrandId]: true }));
 
           try {
-            if (isPatched) {
+            if (wasPatched) {
               await brandApi.unpatchBrand(normalizedBrandId);
-              setPatchedBrandIds((prev) => {
-                const next = new Set(prev);
-                next.delete(normalizedBrandId);
-                return next;
-              });
               toast.success(`Unpatched ${brandName ?? 'brand'}`);
             } else {
               await brandApi.patchBrand(normalizedBrandId);
-              setPatchedBrandIds((prev) => {
-                const next = new Set(prev);
-                next.add(normalizedBrandId);
-                return next;
-              });
               toast.success(`Patched ${brandName ?? 'brand'}`);
             }
+            setBrandPatchStatus(normalizedBrandId, nextPatched);
           } catch (error) {
-            toast.error(`Failed to ${isPatched ? 'unpatch' : 'patch'} ${brandName ?? 'brand'}`);
+            patchDecisionsRef.current.set(normalizedBrandId, wasPatched);
+            applyPatched(wasPatched);
+            // The server's message is the only actionable one — a brand account
+            // cannot patch, an unpatch can race a patch removed elsewhere.
+            toast.error(
+              resolvePatchErrorMessage(
+                error,
+                `Could not ${wasPatched ? 'unpatch' : 'patch'} ${brandName ?? 'this brand'}.`,
+              ),
+            );
           } finally {
             setPatchingBrandIds((prev) => {
+              if (!prev[normalizedBrandId]) return prev;
               const next = { ...prev };
               delete next[normalizedBrandId];
               return next;

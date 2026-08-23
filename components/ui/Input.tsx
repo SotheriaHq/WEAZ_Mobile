@@ -9,6 +9,16 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 export type InputProps = Omit<TextInputProps, 'style'> & {
   label: string;
   hideLabel?: boolean;
+  /**
+   * Marks the field itself, with the `*` beside its label.
+   *
+   * Required-ness belongs ON the field. The alternative — a roll-call of field
+   * names in a banner or footer — asks the reader to match names against fields
+   * they cannot see, which is how a form ends up reporting a problem the user
+   * cannot find. The mark is state-aware: brand colour at rest, danger once the
+   * field is actually blocking.
+   */
+  required?: boolean;
   error?: string;
   helperText?: string;
   leading?: React.ReactNode;
@@ -27,6 +37,7 @@ export type InputProps = Omit<TextInputProps, 'style'> & {
 export const Input = React.forwardRef<TextInput, InputProps>(function Input({
   label,
   hideLabel = false,
+  required = false,
   error,
   helperText,
   leading,
@@ -58,13 +69,20 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
   return (
     <View style={containerStyle}>
       {!hideLabel ? (
-        <AppText
-          variant="smallBold"
-          tone={hasError ? 'danger' : isFocused ? 'primary' : 'secondary'}
-          style={styles.label}
-        >
-          {label}
-        </AppText>
+        <View style={styles.labelRow}>
+          <AppText
+            variant="smallBold"
+            tone={hasError ? 'danger' : isFocused ? 'primary' : 'secondary'}
+            style={styles.label}
+          >
+            {label}
+          </AppText>
+          {required ? (
+            <AppText variant="smallBold" tone={hasError ? 'danger' : 'primary'}>
+              *
+            </AppText>
+          ) : null}
+        </View>
       ) : null}
       <View
         style={[
@@ -134,8 +152,16 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
 Input.displayName = 'Input';
 
 const styles = StyleSheet.create({
-  label: {
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
     marginBottom: tokens.spacing.sm,
+  },
+  label: {
+    // Vertical rhythm moved to `labelRow`, which now owns the row the label and
+    // the required mark share.
+    flexShrink: 1,
     letterSpacing: 0,
     textTransform: 'none',
   },

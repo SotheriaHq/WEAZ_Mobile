@@ -103,7 +103,39 @@ assert.doesNotMatch(
 );
 assert.match(profile, /useUnreadNotificationCount\(\)/, 'shopper profile must render the shared unread notification count');
 assert.match(profile, /refreshUnreadNotificationCount/, 'shopper profile must refresh unread notifications from the backend');
-assert.match(bottomSheet, /onPressIn=\{\(\) => \{[\s\S]*Keyboard\.dismiss\(\);[\s\S]*onClose\(\);/, 'sheet backdrop touch must close even with the keyboard open');
+/*
+  The backdrop's two jobs run at two different moments, and both are load-bearing.
+
+  Dismissing the keyboard on touch-DOWN is why this was ever `onPressIn`: the
+  backdrop has to answer the first touch rather than swallow it while the IME is
+  up. Closing the sheet on touch-down, though, makes dismissal uncancellable —
+  a thumb that clips the sheet edge, or lands just outside one the keyboard has
+  pushed to an unfamiliar height, discards whatever the user had typed with no
+  warning and no undo. That is the "I entered my fittings, closed the form, and
+  nothing was saved" report.
+
+  So: keyboard on `onPressIn`, close on `onPress` (which completes on lift and
+  cancels if the finger leaves the bounds). Asserted separately, because
+  collapsing them back into one handler silently reintroduces whichever half is
+  dropped.
+*/
+assert.match(
+  bottomSheet,
+  /onPressIn=\{\(\) => \{\s*Keyboard\.dismiss\(\);\s*\}\}/,
+  'sheet backdrop must dismiss the keyboard on touch-down, so the first touch is not swallowed',
+);
+assert.match(
+  bottomSheet,
+  /onPress=\{\(\) => \{\s*onClose\(\);\s*\}\}/,
+  'sheet backdrop must close on RELEASE, so a stray touch on a form sheet can be taken back',
+);
+const backdropPressIn = bottomSheet.match(/onPressIn=\{\(\) => \{([\s\S]*?)\}\}/);
+assert.ok(backdropPressIn, 'sheet backdrop must keep an onPressIn handler');
+assert.doesNotMatch(
+  backdropPressIn[1],
+  /onClose\(\)/,
+  'closing on touch-down makes backdrop dismissal uncancellable and loses typed input',
+);
 assert.match(bottomSheet, /onPanResponderMove/, 'selector sheets must support interactive swipe-down dismissal');
 assert.match(selectSheet, /onDismiss=\{\(\) => \{/, 'selector values must commit after the close animation');
 assert.doesNotMatch(selectSheet, /requestAnimationFrame\(\(\) => onChange/, 'selector values must not relayout the form during close');

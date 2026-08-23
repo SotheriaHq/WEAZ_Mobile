@@ -85,6 +85,8 @@ export type MarketItem = {
   media: MarketMedia;
   isLiked?: boolean;
   isThreaded?: boolean;
+  /** Flat mirror of `viewerState.isPatched`, alongside the two above. */
+  isPatched?: boolean;
 };
 
 export type MarketFeedResponse = {

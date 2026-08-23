@@ -4,7 +4,11 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
 import { Input } from '@/components/ui/Input';
-import { ProfileApi, type SizeFitProfile } from '@/src/api/ProfileApi';
+import { ProfileApi, type LengthUnit, type SizeFitProfile } from '@/src/api/ProfileApi';
+import {
+  formatMeasurementLabel,
+  getMeasurementHint,
+} from '@/src/features/sizing/measurementCatalog';
 import { baggingService } from '@/src/services/bagging';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -26,15 +30,6 @@ type Props = {
   onResolved?: (nextStatus: ProductBagStatus) => void;
 };
 
-const toTitleCase = (value: string) =>
-  value
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .map((part) => (part ? `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}` : part))
-    .join(' ');
-
 const extractMeasurements = (sizeFit: SizeFitProfile | null | undefined) => {
   const source = sizeFit?.measurements ?? {};
   return Object.entries(source).reduce<Record<string, string>>((acc, [key, value]) => {
@@ -54,6 +49,16 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
   const { theme } = useTheme();
   const toast = useToast();
   const [values, setValues] = useState<Record<string, string>>({});
+  /**
+   * The shopper's own unit, not a hardcoded one.
+   *
+   * Every field here was labelled "(cm)" while the value was written into a
+   * profile whose `preferredLengthUnit` might be `IN` — so an inches user was
+   * told to type centimetres, typed them, and the server then read the number
+   * back as inches and multiplied it by 2.54. Scalars carry no unit marker;
+   * `preferredLengthUnit` is the only thing that says what they mean.
+   */
+  const [unit, setUnit] = useState<LengthUnit>('CM');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +100,7 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
       .then((sizeFit) => {
         if (!active) return;
         const currentMeasurements = extractMeasurements(sizeFit);
+        setUnit(sizeFit?.preferredLengthUnit ?? 'CM');
         setValues(
           measurementsToEdit.reduce<Record<string, string>>((acc, key) => {
             acc[key] = currentMeasurements[key] ?? '';
@@ -144,7 +150,7 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
 
       await ProfileApi.updateSizeFit({
         measurements: nextMeasurements,
-        preferredLengthUnit: current?.preferredLengthUnit ?? 'CM',
+        preferredLengthUnit: current?.preferredLengthUnit ?? unit,
         notes: current?.notes ?? undefined,
       });
 
@@ -194,13 +200,23 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
             measurementsToEdit.map((measurement) => (
               <Input
                 key={measurement}
-                label={`${toTitleCase(measurement)} (cm)`}
+                label={formatMeasurementLabel(measurement)}
+                required
+                helperText={getMeasurementHint(measurement) ?? undefined}
                 value={values[measurement] ?? ''}
                 onChangeText={(value) => {
-                  setValues((current) => ({ ...current, [measurement]: value }));
+                  setValues((current) => ({
+                    ...current,
+                    [measurement]: value.replace(/[^0-9.]/g, ''),
+                  }));
                 }}
                 keyboardType="decimal-pad"
                 placeholder="0"
+                trailing={
+                  <AppText variant="captionRegular" tone="muted">
+                    {unit.toLowerCase()}
+                  </AppText>
+                }
                 error={unresolvedKeys.includes(measurement) ? 'Required' : undefined}
               />
             ))
@@ -215,7 +231,8 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
           <AppText variant="caption" tone="danger">{error}</AppText>
         ) : (
           <AppText variant="caption" tone="muted">
-            Only the missing fields for this product are shown here.
+            Only the points this design needs are asked for here — the rest of your fittings stay
+            as they are.
           </AppText>
         )}
       </View>

@@ -432,10 +432,34 @@ export function AppBottomSheet({
       onRequestClose={onClose}
     >
       <View style={styles.root}>
+        {/*
+          The keyboard goes on touch-down; the sheet goes on RELEASE.
+
+          These were one `onPressIn` handler doing both, and each half wants a
+          different moment.
+
+          Dismissing the keyboard early is why `onPressIn` was used: it makes the
+          backdrop respond on the first touch rather than swallowing it, and the
+          shopper-settings contract pins that behaviour.
+
+          Closing the sheet early is a data-loss bug. `onPressIn` fires the
+          instant a finger lands, so the backdrop becomes an uncancellable
+          dismiss — a thumb that catches the edge of the sheet, or lands just
+          outside one the keyboard has pushed to an unfamiliar height, closes it
+          before the user can slide off to abort. On a sheet holding typed input
+          (the bag fittings measurements) that discards the values with no
+          warning and no undo: "I entered my fittings, closed the form, and
+          nothing was saved."
+
+          Split, both hold. `onPress` completes on lift and is cancelled if the
+          finger leaves the bounds, so the tap can be taken back.
+        */}
         <Pressable
           style={StyleSheet.absoluteFill}
           onPressIn={() => {
             Keyboard.dismiss();
+          }}
+          onPress={() => {
             onClose();
           }}
           accessibilityRole="button"
@@ -650,6 +674,10 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.spacing.lg,
   },
   footer: {
+    // The body is the only shrinkable child (`flexShrink: 1` in `bodyProps`).
+    // Stating this here means the sheet's commit controls cannot be the thing
+    // that gets squeezed off the bottom edge when the body outgrows the 88% cap.
+    flexShrink: 0,
     paddingTop: tokens.spacing.sm,
   },
 });
