@@ -262,6 +262,70 @@ export const apiClient: AxiosInstance = axios.create({
   },
 });
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Transport-level GET coalescing.
+
+   `coalesceRequest` already exists, but it only helps a call site that opts in
+   — so every screen written since, and every screen that forgot, still issues
+   its own duplicate. A cold start as a brand showed the result plainly:
+
+     GET /collections/market                          x2
+     GET /designs/user/:id?limit=50                   x2
+     GET /store-collections/user/:id?limit=50         x2
+
+   Three redundant round trips that no single call site could see, because the
+   duplication is BETWEEN independent screens warming at the same moment.
+
+   Moving the dedupe into the adapter fixes the whole class at once: any two GETs
+   with the same URL and params, issued while the first is still in flight, share
+   one response. A short settle window also collapses the remount bursts that a
+   tab preloader produces, without behaving like a cache — nobody should see data
+   older than a few seconds from this.
+
+   Scope is deliberately narrow:
+   - GET only. Anything that mutates is never shared.
+   - Requests carrying an AbortSignal opt out, because one caller aborting must
+     not cancel another caller's work.
+   - Failures are never retained; the next caller retries for real.
+   ══════════════════════════════════════════════════════════════════════════ */
+const GET_DEDUPE_WINDOW_MS = 4_000;
+
+type DedupeEntry = {
+  inFlight: Promise<any> | null;
+  response?: any;
+  settledAt?: number;
+};
+
+const getDedupeEntries = new Map<string, DedupeEntry>();
+
+function buildDedupeKey(config: InternalAxiosRequestConfig): string | null {
+  const method = String(config.method ?? 'get').toUpperCase();
+  if (method !== 'GET') return null;
+  if (config.signal) return null;
+  if (config.headers?.['x-no-dedupe']) return null;
+
+  let params = '';
+  try {
+    params = config.params ? JSON.stringify(config.params) : '';
+  } catch {
+    // Unserializable params (a Map, a circular object) mean we cannot prove two
+    // requests are the same, so we do not claim they are.
+    return null;
+  }
+  return `${config.baseURL ?? ''}|${config.url ?? ''}|${params}`;
+}
+
+/** Drop coalesced GETs so the next read goes to the network. */
+export function invalidateGetDedupe(urlFragment?: string) {
+  if (!urlFragment) {
+    getDedupeEntries.clear();
+    return;
+  }
+  for (const key of Array.from(getDedupeEntries.keys())) {
+    if (key.includes(urlFragment)) getDedupeEntries.delete(key);
+  }
+}
+
 const refreshClient: AxiosInstance = axios.create({
   baseURL,
   timeout: 15000,
@@ -530,6 +594,69 @@ export function setApiRefreshToken(token: string | null) {
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler;
+}
+
+/*
+  Installed as an adapter rather than an interceptor because an interceptor
+  cannot stop a request from being sent — it can only observe it. The adapter IS
+  the send step, so returning a shared promise here means the second request
+  never touches the network.
+
+  `defaults.adapter` is NOT a function. Since Axios v1 it holds an adapter NAME
+  or a list of them — `["xhr","http","fetch"]` — which Axios resolves at send
+  time. Calling it directly throws `TypeError: Object is not a function` on
+  EVERY request, which is precisely what it did: the whole app lost its API.
+  `axios.getAdapter` turns that list into the real function.
+
+  Resolution is guarded. If Axios ever changes this shape again, the dedupe
+  silently switches itself off rather than taking the transport down with it —
+  losing an optimization is survivable, losing every request is not.
+*/
+let resolvedBaseAdapter: ((config: any) => Promise<any>) | null = null;
+try {
+  const candidate = (axios as any).getAdapter?.(
+    apiClient.defaults.adapter ?? axios.defaults.adapter,
+  );
+  resolvedBaseAdapter = typeof candidate === 'function' ? candidate : null;
+} catch {
+  resolvedBaseAdapter = null;
+}
+
+if (resolvedBaseAdapter) {
+  const send = resolvedBaseAdapter;
+
+  apiClient.defaults.adapter = async function dedupingAdapter(config: any) {
+    const key = buildDedupeKey(config as InternalAxiosRequestConfig);
+    if (!key) return send(config);
+
+    const entry = getDedupeEntries.get(key);
+    if (entry?.inFlight) return entry.inFlight;
+    if (
+      entry?.settledAt != null &&
+      entry.response !== undefined &&
+      Date.now() - entry.settledAt < GET_DEDUPE_WINDOW_MS
+    ) {
+      return entry.response;
+    }
+
+    const promise = send(config)
+      .then((response: any) => {
+        getDedupeEntries.set(key, {
+          inFlight: null,
+          response,
+          settledAt: Date.now(),
+        });
+        return response;
+      })
+      .catch((error: unknown) => {
+        // Never retain a failure — the next caller must be free to retry.
+        getDedupeEntries.delete(key);
+        throw error;
+      });
+
+    getDedupeEntries.set(key, { inFlight: promise });
+    return promise;
+  };
 }
 
 apiClient.interceptors.request.use(async (config) => {

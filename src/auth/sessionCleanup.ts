@@ -6,6 +6,7 @@ import { clearBrandApiSessionCaches } from '@/src/api/BrandApi';
 import { env } from '@/src/config/env';
 import { setApiAuthToken, setApiRefreshToken } from '@/src/api/httpClient';
 import { clearCoalescedRequests } from '@/src/api/coalesceRequest';
+import { invalidateGetDedupe } from '@/src/api/httpClient';
 import { clearCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { MOBILE_PENDING_CHECKOUT_STORAGE_KEY } from '@/src/features/checkout/mobileCheckoutPending';
 import {
@@ -81,6 +82,13 @@ export async function clearMobilePrivateSessionState({
 
   // Coalesced reads are per-account; none may survive into the next user.
   clearCoalescedRequests();
+  /*
+    The transport-level GET dedupe is keyed on URL and params only, which is
+    right within one identity and wrong across two — `/messaging/inbox` is the
+    same URL for everybody. Signing out must drop it, or the next account can be
+    served the previous one's reads from the settle window.
+  */
+  invalidateGetDedupe();
   setApiAuthToken(null);
   setApiRefreshToken(null);
   clearMobilePrivateQueryCache(client);
