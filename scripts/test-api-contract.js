@@ -67,7 +67,12 @@ assertIncludes(notificationsApi, "'/notifications/unread-count'", 'notification 
 assertIncludes(notificationsApi, "'/notifications/push-tokens'", 'push token registration');
 
 const mobileMe = read('app/(tabs)/me.tsx');
-assertIncludes(mobileMe, "endpoint: '/store/orders'", 'profile order diagnostic endpoint');
+// The orders section reports both order kinds now, so the diagnostic names both.
+assertIncludes(
+  mobileMe,
+  "endpoint: '/store/orders + /custom-orders'",
+  'profile order diagnostic endpoint',
+);
 
 const checkoutGate = read('src/features/checkout/mobileCheckoutGate.ts');
 assertIncludes(checkoutGate, 'MOBILE_CHECKOUT_ENABLED = env.mobileCheckout.enabled', 'mobile checkout flag');

@@ -86,8 +86,10 @@ async function main() {
   const pushRowIndex = settingsHomeSource.indexOf("title: 'Push notifications'");
   assert.notEqual(pushRowIndex, -1, 'Settings home must keep a Push notifications row.');
   const pushRowBlock = settingsHomeSource.slice(pushRowIndex, pushRowIndex + 260);
-  assert.match(pushRowBlock, /router\.push\('\/settings\/notifications'/);
-  assert.doesNotMatch(pushRowBlock, /router\.push\('\/notifications'/);
+  // Destination pinned, helper not: `drillDownPush` replaced `router.push` to add
+  // the navigation lock. The negative assertion still guards the wrong route.
+  assert.match(pushRowBlock, /(?:router\.push|drillDownPush)\('\/settings\/notifications'/);
+  assert.doesNotMatch(pushRowBlock, /(?:router\.push|drillDownPush)\('\/notifications'/);
 
   const typesSource = fs.readFileSync(settingsTypesPath, 'utf8');
   for (const section of [

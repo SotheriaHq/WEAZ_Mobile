@@ -98,17 +98,32 @@ assert.equal(
   'a cached URL close to expiry must be replaced, never held',
 );
 
+/*
+  Tree fixtures are issued RELATIVE TO NOW.
+
+  `replaceEqualDeepPreservingSignedUrls` reads the real clock -- it has no `now`
+  parameter, because in the app the comparison always happens against the real
+  clock. A hardcoded signing date therefore gives the fixtures a shelf life: the
+  previous `20260808T090000Z` plus the default 7-day expiry meant that from
+  2026-08-15 every fixture below looked expired, the implementation correctly
+  declined to preserve the cached URL, and the suite blamed the code.
+*/
+const amzDate = (ms) =>
+  new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+const ISSUED_AT = amzDate(Date.now() - 60_000);
+const RESIGNED_AT = amzDate(Date.now() - 30_000);
+
 // ── The behaviour the shake depended on ─────────────────────────────────────
 const previous = {
   items: [
-    { id: 'c1', title: 'Resort', coverImage: signed('20260808T090000Z', 'aaa') },
-    { id: 'c2', title: 'Bridal', coverImage: signed('20260808T090000Z', 'ccc') },
+    { id: 'c1', title: 'Resort', coverImage: signed(ISSUED_AT, 'aaa') },
+    { id: 'c2', title: 'Bridal', coverImage: signed(ISSUED_AT, 'ccc') },
   ],
 };
 const resigned = {
   items: [
-    { id: 'c1', title: 'Resort', coverImage: signed('20260808T091500Z', 'bbb') },
-    { id: 'c2', title: 'Bridal', coverImage: signed('20260808T091500Z', 'ddd') },
+    { id: 'c1', title: 'Resort', coverImage: signed(RESIGNED_AT, 'bbb') },
+    { id: 'c2', title: 'Bridal', coverImage: signed(RESIGNED_AT, 'ddd') },
   ],
 };
 assert.equal(
@@ -119,8 +134,8 @@ assert.equal(
 
 const edited = {
   items: [
-    { id: 'c1', title: 'Resort 2026', coverImage: signed('20260808T091500Z', 'bbb') },
-    { id: 'c2', title: 'Bridal', coverImage: signed('20260808T091500Z', 'ddd') },
+    { id: 'c1', title: 'Resort 2026', coverImage: signed(RESIGNED_AT, 'bbb') },
+    { id: 'c2', title: 'Bridal', coverImage: signed(RESIGNED_AT, 'ddd') },
   ],
 };
 const mergedEdit = replaceEqualDeepPreservingSignedUrls(previous, edited);
@@ -147,11 +162,11 @@ assert.equal(grown.items[0], previous.items[0], 'existing rows must not be rebui
 // invalidated and refetched.
 const avatarBefore = {
   profileImageId: 'file_1',
-  profileImage: signed('20260808T090000Z', 'aaa'),
+  profileImage: signed(ISSUED_AT, 'aaa'),
 };
 const avatarReplaced = {
   profileImageId: 'file_2',
-  profileImage: signed('20260808T091500Z', 'bbb'),
+  profileImage: signed(RESIGNED_AT, 'bbb'),
 };
 const avatarMerged = replaceEqualDeepPreservingSignedUrls(avatarBefore, avatarReplaced);
 assert.equal(
@@ -164,7 +179,7 @@ assert.equal(avatarMerged.profileImageId, 'file_2');
 assert.equal(
   replaceEqualDeepPreservingSignedUrls(avatarBefore, {
     profileImageId: 'file_1',
-    profileImage: signed('20260808T091500Z', 'bbb'),
+    profileImage: signed(RESIGNED_AT, 'bbb'),
   }),
   avatarBefore,
   'a signature-only refresh must still keep the cached URL and its reference',

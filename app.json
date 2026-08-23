@@ -57,7 +57,8 @@
           "enforceContrast": false
         }
       ],
-      "./plugins/with-android-system-bars"
+      "./plugins/with-android-system-bars",
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true

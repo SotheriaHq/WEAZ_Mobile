@@ -26,6 +26,8 @@ function compile(filePath) {
   }).outputText;
 }
 
+const DESIGN_DRAFT_SESSION_PREFIX = 'wiez.private.designDraftSession.';
+
 function loadSessionCleanup(options = {}) {
   const calls = {
     setAuthToken: [],
@@ -40,6 +42,8 @@ function loadSessionCleanup(options = {}) {
     clearImageUri: 0,
     clearMessagingRealtime: 0,
     clearNotificationRealtime: 0,
+    clearCoalescedRequests: 0,
+    invalidateGetDedupe: 0,
     clearMarketSignalQueue: 0,
     clearDesignEditorBackgroundTasks: 0,
     clearWarmScreenStateCache: 0,
@@ -97,7 +101,17 @@ function loadSessionCleanup(options = {}) {
         return {
           setApiAuthToken: (value) => calls.setAuthToken.push(value),
           setApiRefreshToken: (value) => calls.setRefreshToken.push(value),
+          invalidateGetDedupe: () => calls.invalidateGetDedupe++,
         };
+      }
+      if (request === '@/src/api/coalesceRequest') {
+        return { clearCoalescedRequests: () => calls.clearCoalescedRequests++ };
+      }
+      if (request === '@/src/features/design-editor/designDraftSessionStore') {
+        // Real prefix, not a placeholder: cleanup matches AsyncStorage keys by
+        // it, so a rename on either side must fail here rather than quietly
+        // leave the previous account's in-progress drafts on the device.
+        return { DESIGN_DRAFT_SESSION_STORAGE_PREFIX: DESIGN_DRAFT_SESSION_PREFIX };
       }
       if (request === '@/src/config/env') {
         return {
@@ -236,6 +250,16 @@ async function main() {
   assert.equal(calls.clearFeedCache, 1, 'logout should clear feed cache');
   assert.equal(calls.clearBrandApi, 1, 'logout should clear signed URL/brand API caches');
   assert.equal(calls.clearImageUri, 1, 'logout should clear resolved image URI cache');
+  assert.equal(
+    calls.clearCoalescedRequests,
+    1,
+    'logout should drop in-flight coalesced reads (they are per-account)',
+  );
+  assert.equal(
+    calls.invalidateGetDedupe,
+    1,
+    'logout should flush the GET dedupe window; it is keyed on URL+params, not identity',
+  );
   assert.equal(calls.clearMessagingRealtime, 1, 'logout should disconnect messaging realtime');
   assert.equal(calls.clearNotificationRealtime, 1, 'logout should disconnect notification realtime');
   assert.equal(calls.clearMarketSignalQueue, 1, 'logout should clear persisted market signal queue');
