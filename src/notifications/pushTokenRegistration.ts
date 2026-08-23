@@ -20,6 +20,7 @@ export type PushRegistrationRecord = {
   platform: PushPlatform;
   appVersion?: string | null;
   expoProjectId?: string | null;
+  registeredAt?: number | null;
 };
 
 type PushRegistrationResult =
@@ -27,10 +28,12 @@ type PushRegistrationResult =
   | { status: 'skipped'; reason: string };
 
 const PUSH_REGISTRATION_STORAGE_KEY = 'wiez.pushTokenRegistration.v1';
+const PUSH_REGISTRATION_REVALIDATION_MS = 24 * 60 * 60 * 1000;
 
 let inFlightRegistrationKey: string | null = null;
 let inFlightRegistrationPromise: Promise<PushRegistrationResult> | null = null;
 let lastSuccessfulRegistrationKey: string | null = null;
+let lastSuccessfulRegistrationAt = 0;
 let registrationEpoch = 0;
 
 export function mapPlatformToPushPlatform(os: string | null | undefined): PushPlatform {
@@ -135,6 +138,14 @@ export function shouldRegisterPushToken(
   return !previous || buildPushRegistrationKey(previous) !== buildPushRegistrationKey(next);
 }
 
+export function shouldRevalidatePushRegistration(
+  record: PushRegistrationRecord | null | undefined,
+  now = Date.now(),
+): boolean {
+  const registeredAt = Number(record?.registeredAt);
+  return !Number.isFinite(registeredAt) || now - registeredAt >= PUSH_REGISTRATION_REVALIDATION_MS;
+}
+
 async function readStoredPushRegistration(): Promise<PushRegistrationRecord | null> {
   try {
     const raw = await SecureStore.getItemAsync(PUSH_REGISTRATION_STORAGE_KEY);
@@ -147,6 +158,10 @@ async function readStoredPushRegistration(): Promise<PushRegistrationRecord | nu
       platform: parsed.platform,
       appVersion: parsed.appVersion ?? null,
       expoProjectId: parsed.expoProjectId ?? null,
+      registeredAt:
+        typeof parsed.registeredAt === 'number' && Number.isFinite(parsed.registeredAt)
+          ? parsed.registeredAt
+          : null,
     };
   } catch {
     return null;
@@ -160,6 +175,7 @@ async function writeStoredPushRegistration(record: PushRegistrationRecord) {
 export async function clearStoredPushRegistration() {
   registrationEpoch += 1;
   lastSuccessfulRegistrationKey = null;
+  lastSuccessfulRegistrationAt = 0;
   await SecureStore.deleteItemAsync(PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined);
 }
 
@@ -217,16 +233,24 @@ export async function registerAuthenticatedPushToken(params: {
     platform,
     appVersion,
     expoProjectId,
+    registeredAt: Date.now(),
   };
   const nextKey = buildPushRegistrationKey(nextRecord);
 
-  if (lastSuccessfulRegistrationKey === nextKey) {
+  if (
+    lastSuccessfulRegistrationKey === nextKey &&
+    Date.now() - lastSuccessfulRegistrationAt < PUSH_REGISTRATION_REVALIDATION_MS
+  ) {
     return { status: 'skipped', reason: 'already-registered' };
   }
 
   const previousRecord = await readStoredPushRegistration();
-  if (!shouldRegisterPushToken(previousRecord, nextRecord)) {
+  if (
+    !shouldRegisterPushToken(previousRecord, nextRecord) &&
+    !shouldRevalidatePushRegistration(previousRecord)
+  ) {
     lastSuccessfulRegistrationKey = nextKey;
+    lastSuccessfulRegistrationAt = Number(previousRecord?.registeredAt) || Date.now();
     return { status: 'skipped', reason: 'already-registered' };
   }
 
@@ -253,6 +277,7 @@ export async function registerAuthenticatedPushToken(params: {
 
       await writeStoredPushRegistration(nextRecord);
       lastSuccessfulRegistrationKey = nextKey;
+      lastSuccessfulRegistrationAt = nextRecord.registeredAt ?? Date.now();
       return { status: 'registered', token } as const;
     })
     .finally(() => {

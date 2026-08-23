@@ -1,14 +1,33 @@
 type CompressionProfile = 'profileImage' | 'bannerImage' | 'designMedia' | 'messageImage';
 
+const MB = 1024 * 1024;
+
 // Max dimension is applied to the LONGEST side only.
 // Aspect ratio is always preserved — we never crop or stretch.
 // Only images larger than maxLongSide are resized; smaller images are only quality-compressed.
-const PROFILES: Record<CompressionProfile, { maxLongSide: number; quality: number }> = {
-  profileImage: { maxLongSide: 800,  quality: 0.78 },
-  bannerImage:  { maxLongSide: 1200, quality: 0.75 },
-  designMedia:  { maxLongSide: 1600, quality: 0.72 },
-  messageImage: { maxLongSide: 1024, quality: 0.75 },
+const PROFILES: Record<
+  CompressionProfile,
+  { maxLongSide: number; minLongSide: number; maxBytes: number }
+> = {
+  profileImage: { maxLongSide: 1080, minLongSide: 512, maxBytes: 2 * MB },
+  bannerImage: { maxLongSide: 1920, minLongSide: 720, maxBytes: 2 * MB },
+  designMedia: { maxLongSide: 1600, minLongSide: 720, maxBytes: 2 * MB },
+  messageImage: { maxLongSide: 1280, minLongSide: 512, maxBytes: 2 * MB },
 };
+
+const INITIAL_QUALITY = 0.99;
+const MIN_QUALITY = 0.9;
+const MAX_COMPRESSION_ATTEMPTS = 6;
+
+async function getLocalUriSize(uri: string): Promise<number | null> {
+  try {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    return Number.isFinite(blob.size) && blob.size > 0 ? blob.size : null;
+  } catch {
+    return null;
+  }
+}
 
 export type CompressedImage = {
   uri: string;
@@ -95,9 +114,10 @@ function originalImage(
   };
 }
 
-// Never throws. Compresses with expo-image-manipulator when available, and
-// otherwise (or on any failure) returns the original image unchanged so image
-// selection cannot crash. Compression is therefore best-effort/optional.
+// Never throws. Each supported native image starts with a 99%-quality JPEG
+// encode and is adaptively resized only when needed. A 90% byte reduction is a
+// best-effort target, not a destructive guarantee: we retain the smallest
+// high-quality result and never trade a valid picker interaction for a crash.
 export async function compressPickedImage(
   uri: string,
   originalWidth: number,
@@ -114,23 +134,56 @@ export async function compressPickedImage(
     const { manipulateAsync, SaveFormat } = manipulator;
     const cfg = PROFILES[profile];
     const longSide = Math.max(originalWidth, originalHeight);
+    const originalSize = await getLocalUriSize(uri);
+    const targetBytes = Math.max(
+      64 * 1024,
+      Math.min(
+        cfg.maxBytes,
+        originalSize ? Math.floor(originalSize * 0.1) : cfg.maxBytes,
+      ),
+    );
 
-    const actions: Parameters<typeof manipulateAsync>[1] = [];
+    let maxLongSide = Math.min(Math.max(longSide, 1), cfg.maxLongSide);
+    let quality = INITIAL_QUALITY;
+    let result: Awaited<ReturnType<typeof manipulateAsync>> | null = null;
+    let resultSize: number | null = null;
 
-    if (longSide > cfg.maxLongSide && longSide > 0) {
-      const scale = cfg.maxLongSide / longSide;
-      actions.push({
-        resize: {
-          width: Math.round(originalWidth * scale),
-          height: Math.round(originalHeight * scale),
-        },
+    for (let attempt = 0; attempt < MAX_COMPRESSION_ATTEMPTS; attempt += 1) {
+      const actions: Parameters<typeof manipulateAsync>[1] = [];
+      if (longSide > maxLongSide && longSide > 0) {
+        const scale = maxLongSide / longSide;
+        actions.push({
+          resize: {
+            width: Math.max(1, Math.round(originalWidth * scale)),
+            height: Math.max(1, Math.round(originalHeight * scale)),
+          },
+        });
+      }
+
+      const candidate = await manipulateAsync(uri, actions, {
+        compress: quality,
+        format: SaveFormat.JPEG,
       });
+      const candidateSize = await getLocalUriSize(candidate.uri);
+      if (resultSize === null || (candidateSize !== null && candidateSize < resultSize)) {
+        result = candidate;
+        resultSize = candidateSize;
+      }
+      if (candidateSize === null || candidateSize <= targetBytes) break;
+
+      const nextLongSide = Math.round(maxLongSide * 0.82);
+      if (nextLongSide >= cfg.minLongSide && nextLongSide < maxLongSide) {
+        maxLongSide = nextLongSide;
+        continue;
+      }
+      if (quality > MIN_QUALITY) {
+        quality = Math.max(MIN_QUALITY, quality - 0.02);
+        continue;
+      }
+      break;
     }
 
-    const result = await manipulateAsync(uri, actions, {
-      compress: cfg.quality,
-      format: SaveFormat.JPEG,
-    });
+    if (!result) return originalImage(uri, originalWidth, originalHeight, originalFileName);
 
     const baseName = (originalFileName ?? 'image').replace(/\.[^.]+$/, '');
 

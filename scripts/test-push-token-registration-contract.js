@@ -163,6 +163,18 @@ async function main() {
     pushRegistration.shouldRegisterPushToken(previous, { ...previous, appVersion: '1.0.1' }),
     true,
   );
+  assert.equal(
+    pushRegistration.shouldRevalidatePushRegistration(previous, 2_000_000_000_000),
+    true,
+    'Legacy records without a registration timestamp must be renewed once.',
+  );
+  assert.equal(
+    pushRegistration.shouldRevalidatePushRegistration(
+      { ...previous, registeredAt: 2_000_000_000_000 - 60_000 },
+      2_000_000_000_000,
+    ),
+    false,
+  );
 
   const previousEnvProjectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
   try {
@@ -220,11 +232,11 @@ async function main() {
     },
   };
   const { exports: logoutExports, deletedKeys } = loadPushRegistration({
-    store: { 'threadly.pushTokenRegistration.v1': storedRecord },
+    store: { 'wiez.pushTokenRegistration.v1': storedRecord },
     notificationsApi: failingApi,
   });
   await assert.doesNotReject(() => logoutExports.deactivateRegisteredPushTokenForLogout());
-  assert.deepEqual(deletedKeys, ['threadly.pushTokenRegistration.v1']);
+  assert.deepEqual(deletedKeys, ['wiez.pushTokenRegistration.v1']);
 
   console.log('Push token registration contract tests passed.');
 }
