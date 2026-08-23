@@ -141,6 +141,17 @@ export type MessageReadRealtimeEvent = MessageRealtimeBaseEvent & {
   readByUserId?: string | null;
 };
 
+/**
+ * The recipient's device now holds these messages.
+ *
+ * Sent to the SENDER only, carrying the ids so their bubbles can go from one
+ * tick to two without re-fetching the thread to find out what changed.
+ */
+export type MessageDeliveredRealtimeEvent = MessageRealtimeBaseEvent & {
+  messageIds?: string[] | null;
+  deliveredToUserIds?: string[] | null;
+};
+
 export type ConversationThread = {
   threadId: string;
   conversationId: string;

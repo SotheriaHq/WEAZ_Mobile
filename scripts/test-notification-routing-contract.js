@@ -214,7 +214,11 @@ function main() {
   const notificationRoutingSource = fs.readFileSync(notificationRoutingPath, 'utf8');
   assert.match(notificationRoutingSource, /pendingNotificationRef\.current = notification/);
   assert.match(notificationRoutingSource, /pendingNotificationRef\.current = null;\s*navigateToNotification\(pending\)/s);
-  assert.match(notificationRoutingSource, /routeForNotification\(notification\)/);
+  // Taps route through the SAME resolver the in-app list uses. The viewer is
+  // passed alongside the notification because account-lifecycle types resolve to
+  // the viewer's own home, which differs for a brand and a shopper — so this
+  // asserts the resolver is used, not the exact arity it is called with.
+  assert.match(notificationRoutingSource, /routeForNotification\(\s*notification\s*(?:,[^)]*)?\)/);
   assert.match(notificationRoutingSource, /buildNotificationFromPushData\(\{ targetUrl: url \}\)/);
 
   console.log('Notification routing contract tests passed.');

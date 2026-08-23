@@ -7,6 +7,7 @@ import { queryClient, WIEZ_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import type {
   MessageCreatedRealtimeEvent,
+  MessageDeliveredRealtimeEvent,
   MessageReadRealtimeEvent,
   ThreadUpdatedRealtimeEvent,
 } from '@/src/types/messaging';
@@ -15,6 +16,7 @@ type MessagingRealtimeListeners = {
   onMessageCreated?: (payload: MessageCreatedRealtimeEvent) => void;
   onThreadUpdated?: (payload: ThreadUpdatedRealtimeEvent) => void;
   onMessageRead?: (payload: MessageReadRealtimeEvent) => void;
+  onMessageDelivered?: (payload: MessageDeliveredRealtimeEvent) => void;
 };
 
 const UNREAD_REFRESH_DEBOUNCE_MS = 300;
@@ -30,6 +32,7 @@ let activeMessageThreadId: string | null = null;
 const messageCreatedListeners = new Set<(payload: MessageCreatedRealtimeEvent) => void>();
 const threadUpdatedListeners = new Set<(payload: ThreadUpdatedRealtimeEvent) => void>();
 const messageReadListeners = new Set<(payload: MessageReadRealtimeEvent) => void>();
+const messageDeliveredListeners = new Set<(payload: MessageDeliveredRealtimeEvent) => void>();
 const foregroundAlertKeys = new Map<string, number>();
 
 let unreadCount = 0;
@@ -214,6 +217,17 @@ function ensureSocket(token: string, userId: string) {
     messageReadListeners.forEach((listener) => listener(normalizedPayload));
   });
 
+  /*
+    Delivery is a tick change on the SENDER's own bubbles — it changes nothing
+    about what they have left to read, so unlike the events above it must not
+    schedule an unread-count refresh. Doing so would spend a request per message
+    sent for a number that cannot have moved.
+  */
+  socket.on('message.delivered', (payload: unknown) => {
+    const normalizedPayload = normalizeRealtimePayload<MessageDeliveredRealtimeEvent>(payload);
+    messageDeliveredListeners.forEach((listener) => listener(normalizedPayload));
+  });
+
   socket.on('disconnect', () => {
     if (__DEV__) {
       console.log('[messaging] realtime socket disconnected');
@@ -299,6 +313,7 @@ export function useMessagingRealtimeChannel({
   onMessageCreated,
   onThreadUpdated,
   onMessageRead,
+  onMessageDelivered,
 }: {
   enabled?: boolean;
   token: string | null;
@@ -330,6 +345,15 @@ export function useMessagingRealtimeChannel({
       if (onMessageRead) messageReadListeners.delete(onMessageRead);
     };
   }, [enabled, onMessageRead]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (onMessageDelivered) messageDeliveredListeners.add(onMessageDelivered);
+
+    return () => {
+      if (onMessageDelivered) messageDeliveredListeners.delete(onMessageDelivered);
+    };
+  }, [enabled, onMessageDelivered]);
 
   useEffect(() => {
     if (!enabled || !token || !userId) {

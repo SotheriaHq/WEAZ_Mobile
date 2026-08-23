@@ -46,6 +46,7 @@ import type {
   ConversationThread,
   MessageAttachment,
   MessageContextParams,
+  MessageDeliveredRealtimeEvent,
   MessageReadRealtimeEvent,
   MessageItem,
   QuotedMessage,
@@ -222,6 +223,46 @@ function applyReadReceipt(
 
     changed = true;
     return { ...message, deliveryStatus: 'READ' as const };
+  });
+
+  return changed ? nextMessages : current;
+}
+
+/**
+ * One tick → two, the moment the recipient's device has the message.
+ *
+ * Delivery used to be inferred only when the recipient opened the thread and
+ * fetched it, and the sender only found out on their next refetch — so a
+ * message sat on a single tick long after it had arrived, then jumped to two
+ * and to read almost together. The server now reports arrival directly, and
+ * this applies it to the bubbles it names.
+ *
+ * READ is further along than DELIVERED, so a delivery event that arrives late
+ * (or out of order) is ignored rather than being allowed to walk a read tick
+ * backwards.
+ */
+function applyDeliveryReceipt(
+  current: MessageItem[],
+  payload: MessageDeliveredRealtimeEvent,
+  currentUserId: string | null,
+) {
+  if (!currentUserId) return current;
+  const deliveredIds = new Set(
+    (Array.isArray(payload.messageIds) ? payload.messageIds : [])
+      .map((id) => validId(id))
+      .filter((id): id is string => Boolean(id)),
+  );
+  if (deliveredIds.size === 0) return current;
+
+  let changed = false;
+  const nextMessages = current.map((message) => {
+    if (!deliveredIds.has(message.id)) return message;
+    if (message.senderUserId !== currentUserId) return message;
+    if (message.deliveryStatus === 'READ' || message.deliveryStatus === 'DELIVERED') {
+      return message;
+    }
+    changed = true;
+    return { ...message, deliveryStatus: 'DELIVERED' as const };
   });
 
   return changed ? nextMessages : current;
@@ -901,6 +942,16 @@ export default function ChatThreadScreen() {
     [isRealtimeEventForActiveThread, status, user?.id],
   );
 
+  const handleRealtimeMessageDelivered = useCallback(
+    (payload: MessageDeliveredRealtimeEvent) => {
+      if (!isRealtimeEventForActiveThread(payload.threadId)) return;
+      setMessages((current) => applyDeliveryReceipt(current, payload, user?.id ?? null));
+      // Deliberately no unread-count refresh: this is a tick on our OWN
+      // outgoing message, and nothing about what we have left to read moved.
+    },
+    [isRealtimeEventForActiveThread, user?.id],
+  );
+
   useEffect(() => {
     requestIdRef.current += 1;
     const requestId = requestIdRef.current;
@@ -1040,6 +1091,7 @@ export default function ChatThreadScreen() {
     onMessageCreated: handleRealtimeMessageCreated,
     onThreadUpdated: handleRealtimeThreadUpdated,
     onMessageRead: handleRealtimeMessageRead,
+    onMessageDelivered: handleRealtimeMessageDelivered,
   });
 
   const handleRefresh = useCallback(() => {
