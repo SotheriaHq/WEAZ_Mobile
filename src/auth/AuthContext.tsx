@@ -114,6 +114,7 @@ type SignUpParams = {
 type AuthContextValue = {
   status: AuthStatus;
   localSessionReady: boolean;
+  sessionSettled: boolean;
   isAuthenticated: boolean;
   token: string | null;
   user: AuthUser | null;
@@ -129,6 +130,7 @@ type AuthContextValue = {
 type AuthSessionContextValue = {
   status: AuthStatus;
   localSessionReady: boolean;
+  sessionSettled: boolean;
   isAuthenticated: boolean;
   token: string | null;
   userId: string | null;
@@ -444,6 +446,28 @@ function normalizeAuthErrorMessage(error: unknown, fallbackMessage: string): str
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [localSessionReady, setLocalSessionReady] = useState(false);
+  /**
+   * Has the session been through a server round-trip yet?
+   *
+   * Cold start restores a CACHED user and reports `authenticated` immediately,
+   * on purpose: the Runway must paint at once rather than block on the network.
+   * But that means `status === 'authenticated'` can be a guess, and for 3-5s
+   * (a request timing out against a dead or unreachable API) a screen full of
+   * private data renders off a session that is about to be rejected — then
+   * swaps to the guest state under the reader.
+   *
+   * `localSessionReady` cannot answer this: it means "local storage was read",
+   * which is true precisely when the guess is made.
+   *
+   * SETTLED, not "verified", is deliberate. A non-401 failure keeps the cached
+   * session on purpose (see `validateTokenImpl`'s catch) so the app works
+   * offline — so a flag meaning "the server confirmed this" would never turn
+   * true offline, and anything waiting on it would hang forever. This turns
+   * true when the validation attempt FINISHES, whatever the outcome, so a
+   * screen holding private data can wait for the answer without risking a
+   * permanent spinner.
+   */
+  const [sessionSettled, setSessionSettled] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [refreshTokenState, setRefreshTokenState] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -489,6 +513,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSelectedActiveBrandId(null);
     selectedActiveBrandIdRef.current = null;
     setStatus('unauthenticated');
+    // Signed out is a settled answer — nothing private left to wait on.
+    setSessionSettled(true);
     await clearMobilePrivateSessionState({ client: queryClient });
   }, [refreshTokenState]);
 
@@ -588,6 +614,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(selectedUser);
       setToken(currentToken);
       setStatus('authenticated');
+      setSessionSettled(true);
       cacheAuthenticatedUser(currentToken, selectedUser);
       devAuthLog('validation-end', { outcome: 'authenticated', durationMs: Date.now() - startedAt });
       return true;
@@ -661,6 +688,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
       setUser(selectedUser);
       setStatus('authenticated');
+      // This user came back IN the sign-in response — already server-proven.
+      setSessionSettled(true);
       cacheAuthenticatedUser(accessToken, selectedUser);
     } else {
       setStatus('loading');
@@ -954,6 +983,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLocalSessionReady(true);
           // validateToken sets status; ensure loading doesn't persist.
           setStatus((prev) => (prev === 'loading' ? 'unauthenticated' : prev));
+          /*
+            The bootstrap has now had its one chance at the server. Whatever it
+            concluded — authenticated, signed out, or offline-so-keep-the-cache —
+            the question is answered, and screens waiting on it must be released
+            here. This is the only place that guarantees it, which is why it
+            lives in the `finally` and not on any success path.
+          */
+          setSessionSettled(true);
           authBootstrapCompletionCount += 1;
           devAuthLog('complete', {
             authBootstrapCompletionCount,
@@ -985,6 +1022,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       status,
       localSessionReady,
+      sessionSettled,
       isAuthenticated: status === 'authenticated',
       token,
       user,
@@ -996,13 +1034,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithGoogle,
       signOut,
     }),
-    [status, localSessionReady, token, user, updateUser, setActiveBrandId, validateToken, signIn, signUp, signInWithGoogle, signOut],
+    [status, localSessionReady, sessionSettled, token, user, updateUser, setActiveBrandId, validateToken, signIn, signUp, signInWithGoogle, signOut],
   );
 
   const sessionValue = useMemo<AuthSessionContextValue>(
     () => ({
       status,
       localSessionReady,
+      sessionSettled,
       isAuthenticated: status === 'authenticated',
       token,
       userId: user?.id ?? null,
@@ -1022,7 +1061,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithGoogle,
       signOut,
     }),
-    [status, localSessionReady, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, selectedActiveBrandId, setActiveBrandId, updateUser, validateToken, signIn, signUp, signInWithGoogle, signOut],
+    [status, localSessionReady, sessionSettled, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, selectedActiveBrandId, setActiveBrandId, updateUser, validateToken, signIn, signUp, signInWithGoogle, signOut],
   );
 
   return (

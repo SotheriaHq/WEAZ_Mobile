@@ -6,6 +6,7 @@ import {
   FlatList,
   PanResponder,
   Platform,
+  Pressable,
   RefreshControl,
   StyleSheet,
   TouchableOpacity,
@@ -41,6 +42,14 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { navPerf } from '@/src/utils/navPerf';
+import {
+  contentReferenceFromMetadata,
+  contentReferenceFromParams,
+  contentReferenceLabel,
+  contentReferenceRoute,
+  contentReferenceToSendFields,
+  type MessageContentReference,
+} from '@/src/features/messaging/contentReference';
 import type {
   ConversationParticipant,
   ConversationThread,
@@ -176,6 +185,77 @@ function classifyError(error: unknown, context: MessageContextParams) {
     phase: 'error' as const,
     title: 'Could not load conversation',
     body: message,
+  };
+}
+
+/**
+ * Everything needed to send a message, and to send it AGAIN if it fails.
+ *
+ * Held whole rather than rebuilt from the rendered bubble: attachments resolve
+ * to file ids the bubble does not carry, and the content reference is not
+ * visible in the text at all, so a retry assembled from the UI would silently
+ * drop both.
+ */
+type OutgoingDraft = {
+  clientMessageId: string;
+  bodyText: string;
+  attachmentFileIds: string[];
+  replyToMessageId: string | null;
+  contentFields: Record<string, string>;
+  targetThreadId: string | null;
+  targetBrandId: string | null;
+};
+
+/**
+ * The bubble shown while a message is in flight.
+ *
+ * Keyed by `clientMessageId` so the server's row can replace it exactly, and
+ * shaped as a full `MessageItem` so every renderer — sorting, ticks, the
+ * reference card — treats it like any other message with no special cases.
+ */
+function buildOptimisticMessage(input: {
+  draft: OutgoingDraft;
+  currentUserId: string | null;
+  /* A brand account writing from the native app is not a BUYER. */
+  senderRole: MessageItem['senderRole'];
+  threadId: string;
+  reference: MessageContentReference | null;
+  attachments: PendingAttachment[];
+  quoted: QuotedMessage | null;
+}): MessageItem {
+  const { draft, currentUserId, senderRole, threadId, reference, attachments, quoted } = input;
+
+  return {
+    id: draft.clientMessageId,
+    threadId,
+    conversationId: threadId,
+    senderUserId: currentUserId,
+    senderRole,
+    kind: 'USER',
+    visibilityState: 'VISIBLE',
+    bodyText: draft.bodyText || null,
+    createdAt: new Date().toISOString(),
+    deliveryStatus: 'SENDING',
+    sender: null,
+    attachments: attachments
+      .filter((entry) => entry.status === 'ready' && entry.fileId)
+      .map((entry) => ({
+        id: entry.fileId as string,
+        kind: entry.mimeType?.startsWith('image/') ? 'IMAGE' : 'DOCUMENT',
+        file: {
+          id: entry.fileId ?? null,
+          // The LOCAL uri, so the picture the sender chose is on screen
+          // immediately instead of waiting on a signed remote URL.
+          url: entry.uri ?? null,
+          originalName: entry.name ?? null,
+          mimeType: entry.mimeType ?? null,
+          size: null,
+        },
+      })),
+    metadataJson: reference
+      ? (contentReferenceToSendFields(reference) as MessageItem['metadataJson'])
+      : null,
+    quotedMessage: quoted,
   };
 }
 
@@ -339,14 +419,46 @@ function AttachmentPreview({ attachment, mine }: { attachment: MessageAttachment
 
 const SWIPE_REPLY_THRESHOLD = 56;
 
+/*
+  One tick means the server has it; two means the other device has it; two in
+  the success tone means it was read. Sending shows a clock rather than a
+  premature tick — claiming "sent" before the request resolves is the one thing
+  a delivery indicator must never do.
+*/
+const DELIVERY_STATUS_GLYPH: Record<
+  NonNullable<MessageItem['deliveryStatus']>,
+  string
+> = {
+  SENDING: '🕘',
+  SENT: '✓',
+  DELIVERED: '✓✓',
+  READ: '✓✓',
+  FAILED: '!',
+};
+
+const DELIVERY_STATUS_LABEL: Record<
+  NonNullable<MessageItem['deliveryStatus']>,
+  string
+> = {
+  SENDING: 'Sending',
+  SENT: 'Sent',
+  DELIVERED: 'Delivered',
+  READ: 'Read',
+  FAILED: 'Not sent',
+};
+
 const MessageBubble = memo(function MessageBubble({
   item,
   currentUserId,
   onReply,
+  onRetry,
+  onDiscard,
 }: {
   item: MessageItem;
   currentUserId: string | null;
   onReply?: (msg: MessageItem) => void;
+  onRetry?: (messageId: string) => void;
+  onDiscard?: (messageId: string) => void;
 }) {
   const { theme } = useTheme();
   const mine = Boolean(item.senderUserId && item.senderUserId === currentUserId);
@@ -376,9 +488,19 @@ const MessageBubble = memo(function MessageBubble({
     },
   }), [item, onReply, swipeAnim]);
 
-  const designTitle = item.metadataJson?.contextDesignTitle;
-  const designCoverUrl = item.metadataJson?.contextDesignCoverUrl as string | undefined;
-  const hasDesignCard = Boolean(designTitle);
+  const contentReference = useMemo(
+    () => contentReferenceFromMetadata(item.metadataJson),
+    [item.metadataJson],
+  );
+  const contentRoute = useMemo(
+    () => contentReferenceRoute(contentReference),
+    [contentReference],
+  );
+  const contentCoverUrl = contentReference?.coverUrl ?? null;
+  const onOpenContent = useCallback(() => {
+    if (!contentRoute) return;
+    drillDownPush(contentRoute as any);
+  }, [contentRoute]);
   const replyIconOpacity = swipeAnim.interpolate({ inputRange: [0, SWIPE_REPLY_THRESHOLD], outputRange: [0, 1] });
 
   if (system) {
@@ -416,12 +538,33 @@ const MessageBubble = memo(function MessageBubble({
         style={[styles.bubbleColumn, mine ? styles.bubbleColumnMine : styles.bubbleColumnOther, { transform: [{ translateX: swipeAnim }] }]}
         {...panResponder.panHandlers}
       >
-        {/* Design context card — sits above the bubble, no fill */}
-        {hasDesignCard && (
-          <View style={[styles.designCard, { borderColor: theme.colors.border }]}>
-            {designCoverUrl ? (
+        {/*
+          The content this message is about — design or product — above the
+          bubble, and PRESSABLE.
+
+          It used to be a flat label, which named the piece but still left the
+          reader to go and find it. The whole reason to reference content is so
+          the other party can look at the thing being discussed, so the card
+          opens the content itself — not the brand's tab of contents, where
+          finding it again is the reader's problem all over again.
+        */}
+        {contentReference ? (
+          <Pressable
+            onPress={contentRoute ? onOpenContent : undefined}
+            disabled={!contentRoute}
+            accessibilityRole={contentRoute ? 'link' : undefined}
+            accessibilityLabel={
+              contentRoute ? `Open ${contentReferenceLabel(contentReference)}` : undefined
+            }
+            style={({ pressed }) => [
+              styles.designCard,
+              { borderColor: theme.colors.border },
+              pressed && contentRoute ? styles.designCardPressed : null,
+            ]}
+          >
+            {contentCoverUrl ? (
               <StableImage
-                uri={designCoverUrl}
+                uri={contentCoverUrl}
                 containerStyle={styles.designCoverImage}
                 imageStyle={styles.designCoverImage}
                 resizeMode="cover"
@@ -430,11 +573,13 @@ const MessageBubble = memo(function MessageBubble({
             ) : null}
             <View style={[styles.designCardTitle, { backgroundColor: theme.colors.surface }]}>
               <AppText variant="captionBold" tone="default" numberOfLines={1}>
-                🎨 {String(designTitle)}
+                {contentReference.kind === 'PRODUCT' ? '🛍️' : '🎨'}{' '}
+                {contentReferenceLabel(contentReference)}
+                {contentRoute ? ' ›' : ''}
               </AppText>
             </View>
-          </View>
-        )}
+          </Pressable>
+        ) : null}
 
         {/* Quoted reply reference */}
         {item.quotedMessage ? (
@@ -498,19 +643,53 @@ const MessageBubble = memo(function MessageBubble({
             {mine && item.deliveryStatus ? (
               <AppText
                 variant={item.deliveryStatus === 'READ' ? 'captionBold' : 'captionRegular'}
-                tone={item.deliveryStatus === 'READ' ? 'success' : 'inverse'}
-                accessibilityLabel={
+                tone={
                   item.deliveryStatus === 'READ'
-                    ? 'Read'
-                    : item.deliveryStatus === 'DELIVERED'
-                      ? 'Delivered'
-                      : 'Sent'
+                    ? 'success'
+                    : item.deliveryStatus === 'FAILED'
+                      ? 'danger'
+                      : 'inverse'
                 }
+                accessibilityLabel={DELIVERY_STATUS_LABEL[item.deliveryStatus]}
               >
-                {item.deliveryStatus === 'READ' ? '✓✓' : item.deliveryStatus === 'DELIVERED' ? '✓✓' : '✓'}
+                {DELIVERY_STATUS_GLYPH[item.deliveryStatus]}
               </AppText>
             ) : null}
           </View>
+
+          {/*
+            A failed message stays put and offers the two things worth doing.
+
+            Nothing about a send failure is the writer's fault, and silently
+            dropping the bubble would take the text with it — so the message
+            remains, visibly not sent, with the choice to try again or let it
+            go.
+          */}
+          {mine && item.deliveryStatus === 'FAILED' ? (
+            <View style={styles.failedActions}>
+              <AppText variant="captionRegular" tone="danger">
+                Not sent
+              </AppText>
+              <Pressable
+                onPress={() => onRetry?.(item.id)}
+                accessibilityRole="button"
+                hitSlop={8}
+              >
+                <AppText variant="captionBold" tone="inverse">
+                  Resend
+                </AppText>
+              </Pressable>
+              <Pressable
+                onPress={() => onDiscard?.(item.id)}
+                accessibilityRole="button"
+                hitSlop={8}
+              >
+                <AppText variant="captionBold" tone="danger">
+                  Delete
+                </AppText>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </Animated.View>
     </View>
@@ -662,6 +841,14 @@ export default function ChatThreadScreen() {
   const [stateTitle, setStateTitle] = useState('Loading conversation');
   const [stateBody, setStateBody] = useState('Preparing the thread.');
   const [activeContext, setActiveContext] = useState<MessageContextParams | null>(null);
+  /*
+    Read by `dispatchSend`, which a retry can invoke long after the send that
+    captured it — reading the ref means a retry uses the context the thread is
+    in NOW (it may have gained a real threadId in between) rather than a stale
+    copy closed over at first attempt.
+  */
+  const activeContextRef = useRef<MessageContextParams | null>(null);
+  activeContextRef.current = activeContext;
   const [resolvedRoute, setResolvedRoute] = useState<ResolvedConversationRoute | null>(null);
   const [thread, setThread] = useState<ConversationThread | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
@@ -676,6 +863,19 @@ export default function ChatThreadScreen() {
   const [replyToMessage, setReplyToMessage] = useState<QuotedMessage | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  /*
+    The content this screen was opened from, waiting to be attached to the next
+    message. Seeded once from the route params — arriving here from a design or
+    a product IS the statement that the message is about it — and cleared when
+    that message is sent, so the second message in the thread is not silently
+    tagged with the first one's subject.
+  */
+  const [pendingContentReference, setPendingContentReference] =
+    useState<MessageContentReference | null>(() =>
+      contentReferenceFromParams(params as Record<string, string | string[]>),
+    );
+  /** Payloads for messages that failed, keyed by `clientMessageId`. */
+  const failedDraftsRef = useRef<Map<string, OutgoingDraft>>(new Map());
 
   // Dev-only nav timing for inbox→thread. Shell (header + skeleton) renders at
   // mount; primary data is ready when the load phase settles to 'ready'.
@@ -836,7 +1036,28 @@ export default function ChatThreadScreen() {
       hasNextPageRef.current = response.hasNextPage;
       setHasNextPage(response.hasNextPage);
       setThread(response);
-      setMessages((current) => (isReset ? response.messages : mergeMessages(current, response.messages)));
+      /*
+        A reset replaces the server's messages but must KEEP the local ones.
+
+        Sending triggers a refresh, and a refresh is a reset — so sending a
+        second message while the first was still settling used to wipe the
+        second one's bubble off the screen mid-flight. Its request carried on
+        and the message arrived seconds later out of nowhere.
+
+        Messages still in flight, or failed and waiting to be retried, exist
+        only on this device: nothing the server sends can contain them, so they
+        are carried across every reset until they resolve.
+      */
+      setMessages((current) => {
+        if (!isReset) return mergeMessages(current, response.messages);
+        const localOnly = current.filter(
+          (message) =>
+            message.deliveryStatus === 'SENDING' || message.deliveryStatus === 'FAILED',
+        );
+        return localOnly.length > 0
+          ? mergeMessages(localOnly, response.messages)
+          : response.messages;
+      });
       setPhase('ready');
 
       if (isReset) {
@@ -1116,6 +1337,117 @@ export default function ChatThreadScreen() {
     });
   }, []);
 
+  /**
+   * Put the message in the thread, THEN send it.
+   *
+   * The composer used to clear only after the round trip resolved, so pressing
+   * send did nothing visible for as long as the network took — on a slow
+   * connection people press again, and the text sits in the box looking unsent.
+   * Every app people already use does the opposite: the bubble appears at once
+   * and its state is reported from inside the thread.
+   *
+   * The optimistic bubble is a real `MessageItem` carrying the `clientMessageId`
+   * as its id, so it sorts, renders and keys like any other. When the server
+   * answers, `reconcileSentMessage` swaps it for the persisted row; when the
+   * send fails it flips to `FAILED` and offers Resend / Delete rather than
+   * vanishing, because a message that disappears takes the writing with it.
+   */
+  const dispatchSend = useCallback(
+    async (draft: OutgoingDraft) => {
+      const {
+        clientMessageId,
+        bodyText,
+        attachmentFileIds,
+        replyToMessageId,
+        contentFields,
+        targetThreadId,
+        targetBrandId,
+      } = draft;
+
+      setSendError(null);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === clientMessageId
+            ? { ...message, deliveryStatus: 'SENDING' as const }
+            : message,
+        ),
+      );
+
+      try {
+        const response = targetThreadId
+          ? await MessagingApi.sendMessage(
+              { threadId: targetThreadId },
+              {
+                ...(bodyText ? { bodyText } : {}),
+                clientMessageId,
+                ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),
+                ...(replyToMessageId ? { replyToMessageId } : {}),
+                ...contentFields,
+              },
+            )
+          : await MessagingApi.startConversation({
+              brandId: targetBrandId,
+              ...(bodyText ? { bodyText } : {}),
+              clientMessageId,
+              ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),
+              ...contentFields,
+            });
+
+        const nextThreadId = validId(response.threadId) ?? targetThreadId ?? null;
+
+        /*
+          Replace the placeholder rather than merging alongside it — they are
+          the same message under two ids, and merging shows it twice.
+        */
+        setMessages((current) => {
+          const withoutDraft = current.filter(
+            (message) => message.id !== clientMessageId,
+          );
+          return response.message
+            ? mergeMessages([response.message as MessageItem], withoutDraft)
+            : withoutDraft;
+        });
+
+        if (nextThreadId) {
+          setThread((current) =>
+            current
+              ? { ...current, threadId: nextThreadId, conversationId: nextThreadId }
+              : current,
+          );
+          const nextContext = {
+            ...activeContextRef.current,
+            threadId: nextThreadId,
+            conversationId: nextThreadId,
+          };
+          setActiveContext(nextContext);
+          await loadThread(nextContext, 'refresh');
+        } else {
+          await loadThread(
+            { ...activeContextRef.current, threadId: targetThreadId },
+            'refresh',
+          );
+        }
+      } catch (error) {
+        const message = getErrorMessage(error);
+        setSendError(message);
+        /*
+          The draft is KEPT and marked failed. Retry needs the payload — the
+          attachments and the content reference included — and re-deriving it
+          from the bubble would lose both.
+        */
+        failedDraftsRef.current.set(clientMessageId, draft);
+        setMessages((current) =>
+          current.map((entry) =>
+            entry.id === clientMessageId
+              ? { ...entry, deliveryStatus: 'FAILED' as const }
+              : entry,
+          ),
+        );
+      }
+    },
+    [loadThread],
+  );
+
   const handleSend = useCallback(async () => {
     const targetThreadId = validId(activeContext?.threadId) ?? validId(activeContext?.conversationId);
     const targetBrandId = validId(activeContext?.brandId);
@@ -1127,61 +1459,79 @@ export default function ChatThreadScreen() {
     // least one successfully-uploaded attachment.
     if (
       (!targetThreadId && !targetBrandId) ||
-      sending ||
       pendingAttachments.some((entry) => entry.status === 'uploading') ||
       (!bodyText && attachmentFileIds.length === 0)
     ) {
       return;
     }
 
-    setSending(true);
-    setSendError(null);
+    const clientMessageId = createMessageClientId();
+    const draft: OutgoingDraft = {
+      clientMessageId,
+      bodyText,
+      attachmentFileIds,
+      replyToMessageId: replyToMessage?.id ?? null,
+      /*
+        The content this thread was opened from rides along with the FIRST
+        message that follows, which is the one actually remarking on it.
+      */
+      contentFields: contentReferenceToSendFields(pendingContentReference),
+      targetThreadId,
+      targetBrandId,
+    };
 
-    try {
-      const clientMessageId = createMessageClientId();
-      const response = targetThreadId
-        ? await MessagingApi.sendMessage(
-            { threadId: targetThreadId },
-            {
-              ...(bodyText ? { bodyText } : {}),
-              clientMessageId,
-              ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),
-              ...(replyToMessage ? { replyToMessageId: replyToMessage.id } : {}),
-            },
-          )
-        : await MessagingApi.startConversation({
-            brandId: targetBrandId,
-            ...(bodyText ? { bodyText } : {}),
-            clientMessageId,
-            ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),
-          });
+    setMessages((current) =>
+      mergeMessages(
+        [
+          buildOptimisticMessage({
+            draft,
+            currentUserId: user?.id ?? null,
+            senderRole: user?.type === 'BRAND' ? 'BRAND_OWNER' : 'BUYER',
+            threadId: targetThreadId ?? '',
+            reference: pendingContentReference,
+            attachments: pendingAttachments,
+            quoted: replyToMessage,
+          }),
+        ],
+        current,
+      ),
+    );
 
-      setComposerText('');
-      setReplyToMessage(null);
-      setPendingAttachments([]);
-      setEmojiOpen(false);
-      const nextThreadId = validId(response.threadId) ?? targetThreadId ?? null;
-      if (response.message) {
-        setMessages((current) => mergeMessages([response.message as MessageItem], current));
-        if (nextThreadId) {
-          setThread((current) => current ? { ...current, threadId: nextThreadId, conversationId: nextThreadId } : current);
-        }
-      }
-      if (nextThreadId) {
-        const nextContext = { ...activeContext, threadId: nextThreadId, conversationId: nextThreadId };
-        setActiveContext(nextContext);
-        await loadThread(nextContext, 'refresh');
-      } else {
-        await loadThread({ ...activeContext, threadId: targetThreadId }, 'refresh');
-      }
-    } catch (error) {
-      const message = getErrorMessage(error);
-      setSendError(message);
-      toast.error(message);
-    } finally {
-      setSending(false);
-    }
-  }, [activeContext, composerText, loadThread, pendingAttachments, replyToMessage, sending, toast]);
+    // Cleared on dispatch, not on success: the writing is now in the thread,
+    // and a failed send keeps it there rather than in the box.
+    setComposerText('');
+    setReplyToMessage(null);
+    setPendingAttachments([]);
+    setEmojiOpen(false);
+    setPendingContentReference(null);
+
+    await dispatchSend(draft);
+  }, [
+    activeContext,
+    composerText,
+    dispatchSend,
+    pendingAttachments,
+    pendingContentReference,
+    replyToMessage,
+    user?.id,
+  ]);
+
+  /** Try a failed message again, from the bubble it failed in. */
+  const handleRetryMessage = useCallback(
+    (messageId: string) => {
+      const draft = failedDraftsRef.current.get(messageId);
+      if (!draft) return;
+      failedDraftsRef.current.delete(messageId);
+      void dispatchSend(draft);
+    },
+    [dispatchSend],
+  );
+
+  /** Discard a failed message. Only ever reachable on a message that never sent. */
+  const handleDiscardMessage = useCallback((messageId: string) => {
+    failedDraftsRef.current.delete(messageId);
+    setMessages((current) => current.filter((entry) => entry.id !== messageId));
+  }, []);
 
   const handleInsertEmoji = useCallback((emoji: string) => {
     setComposerText((current) => `${current}${emoji}`);
@@ -1248,9 +1598,15 @@ export default function ChatThreadScreen() {
 
   const renderMessage = useCallback(
     ({ item }: ListRenderItemInfo<MessageItem>) => (
-      <MessageBubble item={item} currentUserId={user?.id ?? null} onReply={handleReply} />
+      <MessageBubble
+        item={item}
+        currentUserId={user?.id ?? null}
+        onReply={handleReply}
+        onRetry={handleRetryMessage}
+        onDiscard={handleDiscardMessage}
+      />
     ),
-    [handleReply, user?.id],
+    [handleDiscardMessage, handleReply, handleRetryMessage, user?.id],
   );
 
   const keyExtractor = useCallback((item: MessageItem) => item.id, []);
@@ -1373,6 +1729,41 @@ export default function ChatThreadScreen() {
                 <AppText variant="captionRegular" tone="danger" numberOfLines={2}>
                   {sendError}
                 </AppText>
+              ) : null}
+              {/*
+                What this message will be about.
+
+                Shown before sending so the reference is never a surprise — the
+                sender can see the piece is attached, and drop it if they meant
+                to change the subject.
+              */}
+              {pendingContentReference ? (
+                <View
+                  style={[
+                    styles.composerReference,
+                    { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt },
+                  ]}
+                >
+                  <AppText variant="captionBold" tone="primary">
+                    {pendingContentReference.kind === 'PRODUCT' ? '🛍️' : '🎨'}
+                  </AppText>
+                  <View style={styles.composerReferenceLabel}>
+                    <AppText variant="captionBold" tone="default" numberOfLines={1}>
+                      {contentReferenceLabel(pendingContentReference)}
+                    </AppText>
+                    <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+                      Your message will link to this
+                    </AppText>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setPendingContentReference(null)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove content reference"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <AppText variant="body" tone="muted">✕</AppText>
+                  </TouchableOpacity>
+                </View>
               ) : null}
               {/* Reply preview */}
               {replyToMessage ? (
@@ -1621,9 +2012,33 @@ const styles = StyleSheet.create({
     marginBottom: tokens.spacing.xs,
     maxWidth: 240,
   },
+  designCardPressed: {
+    opacity: 0.72,
+  },
   designCoverImage: {
     width: '100%',
     height: 120,
+  },
+  failedActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+    marginTop: tokens.spacing.xs,
+  },
+  /* The "about this piece" chip the composer shows before the message is sent. */
+  composerReference: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    marginBottom: tokens.spacing.sm,
+  },
+  composerReferenceLabel: {
+    flex: 1,
+    minWidth: 0,
   },
   designCardTitle: {
     paddingHorizontal: tokens.spacing.md,

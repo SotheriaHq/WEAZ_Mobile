@@ -150,6 +150,26 @@ export default function TabLayout() {
   const tabNavigationRef = useRef<HiddenTabNavigation | null>(null);
   const preloadedTabNamesRef = useRef<Set<string>>(new Set());
   const [optimisticActiveKey, setOptimisticActiveKey] = useState<AnyIslandKey | null>(null);
+  // Pathname the current prediction was made from — see `predictActiveKey`.
+  const optimisticFromPathnameRef = useRef<string | null>(null);
+  const optimisticExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest pathname, readable from stable callbacks without making them churn.
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+
+  /**
+   * Record WHERE the prediction was made from, alongside the prediction.
+   *
+   * `optimisticActiveKey` outranks the pathname-derived key so a tapped chip
+   * lights up before its screen mounts. That is only safe while the prediction
+   * is still pending, and "pending" is exactly "the route has not moved yet" —
+   * which needs the origin pathname to detect. Without it, a prediction that
+   * turns out WRONG is indistinguishable from one still in flight.
+   */
+  const predictActiveKey = useCallback((key: AnyIslandKey) => {
+    optimisticFromPathnameRef.current = pathnameRef.current;
+    setOptimisticActiveKey(key);
+  }, []);
 
   const isBrand = hasActiveBrandMembership(user);
   const canOpenProfileMenu = status === 'authenticated';
@@ -379,7 +399,7 @@ export default function TabLayout() {
       return;
     }
 
-    setOptimisticActiveKey(NATIVE_ISLAND_KEYS.profile);
+    predictActiveKey(NATIVE_ISLAND_KEYS.profile);
     // navigate (not push) so an already-mounted Catalogue/Me instance is reused
     // instead of mounting a fresh copy on every visit.
     const navFlow = isBrand ? 'tabs→catalog' : 'tabs→me';
@@ -396,7 +416,7 @@ export default function TabLayout() {
     if (!locked) {
       navPerf.mark?.('navigation_ignored_duplicate', target);
     }
-  }, [isBrand, jumpToIslandTab, pathname, scheduleRouteAfterFrame]);
+  }, [isBrand, jumpToIslandTab, pathname, predictActiveKey, scheduleRouteAfterFrame]);
 
   const handleProfilePress = useCallback(
     () => {
@@ -417,12 +437,13 @@ export default function TabLayout() {
   );
 
   const clearSelectionState = useCallback(() => {
+    optimisticFromPathnameRef.current = null;
     setOptimisticActiveKey(null);
   }, []);
 
   const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
     if (item.disabled) return;
-    setOptimisticActiveKey(item.key);
+    predictActiveKey(item.key);
     // Warm the destination tab on press-in so JUMP_TO hits a preloaded scene
     // instead of a cold lazy mount (main multi-second stall on first visit).
     // Studio chips stay inside the studio tab — no main-app tab preload.
@@ -431,7 +452,7 @@ export default function TabLayout() {
     if (tabName) {
       preloadIslandTab(tabName);
     }
-  }, [isBrand, preloadIslandTab]);
+  }, [isBrand, predictActiveKey, preloadIslandTab]);
 
   const islandItems = useMemo<NativeIslandNavItem[]>(() => {
     // Inside Studio the dock must show Studio destinations (Dashboard, Store,
@@ -654,6 +675,22 @@ export default function TabLayout() {
     ],
   );
 
+  /*
+    Retire the prediction once the route has actually moved.
+
+    This used to clear ONLY on `resolved === optimisticActiveKey` — i.e. only
+    when the guess came true. A guess that came out wrong was never retired, so
+    the stale chip kept outranking the real one for the rest of the session.
+
+    That is not a corner case. Tap Me with an expired session: the prediction
+    says `profile`, the screen resolves to the guest state, and its "Back to
+    Runway" lands on `designs`. Runway is on screen with Me still lit, and
+    every later navigation stays wrong too, because nothing clears it.
+
+    A prediction is pending only while the route has not moved. Once `pathname`
+    differs from where the guess was made, the answer is in — whether or not it
+    is the answer we predicted.
+  */
   useEffect(() => {
     if (!optimisticActiveKey) return;
     const resolved = inStudioIsland
@@ -661,8 +698,33 @@ export default function TabLayout() {
       : mapPathnameToIslandKey(pathname);
     if (resolved === optimisticActiveKey) {
       clearSelectionState();
+      return;
+    }
+    const predictedFrom = optimisticFromPathnameRef.current;
+    if (predictedFrom !== null && pathname !== predictedFrom) {
+      clearSelectionState();
     }
   }, [clearSelectionState, inStudioIsland, optimisticActiveKey, pathname, studioRouteKeyParam]);
+
+  /*
+    Backstop for a navigation that never happens at all — bounced by a guard,
+    swallowed by the navigation lock, or landing back on the route it started
+    from. Those leave the route unmoved, so the check above cannot fire, and
+    the chip would stay wrong indefinitely.
+
+    The window is deliberately far longer than any real tab mount (a cold lazy
+    scene can take seconds) so this never cuts a legitimate prediction short.
+    It only exists so that "wrong forever" is not reachable.
+  */
+  useEffect(() => {
+    if (!optimisticActiveKey) return undefined;
+    optimisticExpiryRef.current = setTimeout(clearSelectionState, 5000);
+    return () => {
+      if (optimisticExpiryRef.current === null) return;
+      clearTimeout(optimisticExpiryRef.current);
+      optimisticExpiryRef.current = null;
+    };
+  }, [clearSelectionState, optimisticActiveKey]);
 
   useEffect(() => {
     if (optimisticActiveKey === NATIVE_ISLAND_KEYS.bag && bagFlow?.isMyBagOpen === false) {

@@ -47,6 +47,7 @@ import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { queryClient, WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { navPerf } from '@/src/utils/navPerf';
+import { contentReferenceToParams } from '@/src/features/messaging/contentReference';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
@@ -895,8 +896,37 @@ export function MarketCommerceViewer({
       return;
     }
 
-    drillDownPush({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId } } as any);
-  }, [brandId, canMessageBrand, isOwnBrand, requireAuth, toast]);
+    /*
+      The item travels with the tap. This screen is reached for both kinds of
+      content — a Market product and a Runway design — and `sourceType` already
+      says which, so one call covers both.
+    */
+    drillDownPush({
+      pathname: '/messages/[threadId]',
+      params: {
+        threadId: 'resolve',
+        brandId,
+        ...contentReferenceToParams({
+          kind: sourceType === 'PRODUCT' ? 'PRODUCT' : 'DESIGN',
+          id: normalizedSourceId,
+          title,
+          // First frame of the gallery — the image the shopper is looking at.
+          coverUrl: media[0]?.url ?? null,
+          coverFileId: media[0]?.fileId ?? null,
+        }),
+      },
+    } as any);
+  }, [
+    brandId,
+    canMessageBrand,
+    isOwnBrand,
+    media,
+    normalizedSourceId,
+    requireAuth,
+    sourceType,
+    title,
+    toast,
+  ]);
 
   const handleSharePress = useCallback(async () => {
     setBusyAction(ACTION_KIND_SHARE);

@@ -37,6 +37,7 @@ import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { navPerf } from '@/src/utils/navPerf';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
 import { formatMoney } from '@/src/utils/money';
+import { contentReferenceToParams } from '@/src/features/messaging/contentReference';
 
 type CollectionCommerceViewerProps = {
   collectionId: string;
@@ -364,8 +365,35 @@ export function CollectionCommerceViewer({
       toast.info('Messaging is disabled for your own brand.');
       return;
     }
-    drillDownPush({ pathname: '/messages/[threadId]', params: { threadId: 'resolve', brandId: status.collection.brandId } } as any);
-  }, [isOwnBrand, requireAuth, status?.collection.brandId, toast]);
+    /*
+      Carry the collection with the tap. Messaging a brand FROM a piece of
+      content is a remark about that content — sending it bare left the brand
+      reading a sentence with no subject.
+    */
+    drillDownPush({
+      pathname: '/messages/[threadId]',
+      params: {
+        threadId: 'resolve',
+        brandId: status.collection.brandId,
+        ...contentReferenceToParams({
+          kind: 'DESIGN',
+          id: status.collection.id,
+          title: status.collection.title,
+          coverUrl: status.collection.coverImage,
+          coverFileId: status.collection.coverImageId,
+        }),
+      },
+    } as any);
+  }, [
+    isOwnBrand,
+    requireAuth,
+    status?.collection.brandId,
+    status?.collection.coverImage,
+    status?.collection.coverImageId,
+    status?.collection.id,
+    status?.collection.title,
+    toast,
+  ]);
 
   const renderProduct = ({ item }: { item: CollectionBagProductStatus }) => {
     const selected = selectedIds.has(item.productId);

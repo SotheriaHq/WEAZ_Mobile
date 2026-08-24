@@ -258,6 +258,17 @@ const styles = StyleSheet.create({
   },
   container: {
     minWidth: 44,
+    /*
+      The busy spinner is an absolute overlay sized by the platform, not by us,
+      and it sits over a label slot only as big as the (hidden) title. On a
+      short title or a small size that intrinsic spinner is wider and taller
+      than the slot it covers, so it painted past the button's rounded edge.
+
+      The button has no shadow, so clipping here costs nothing and makes
+      "loading escapes the button" structurally impossible rather than
+      dependent on how large a given platform draws its indicator.
+    */
+    overflow: 'hidden',
   },
   content: {
     flexDirection: 'row',
@@ -271,7 +282,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 1,
-    minWidth: 0,
+    // Room for the spinner that replaces the title. Without a floor the slot
+    // collapses to the width of a short label and the overlay has nowhere to
+    // sit; with it, the indicator is centred in space that actually exists.
+    minWidth: 20,
   },
   loaderOverlay: {
     ...StyleSheet.absoluteFill,

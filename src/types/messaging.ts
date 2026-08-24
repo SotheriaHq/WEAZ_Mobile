@@ -8,7 +8,20 @@ export type MessageKind = 'USER' | 'SYSTEM' | 'MODERATION_NOTICE';
 
 export type MessageVisibilityState = 'VISIBLE' | 'HIDDEN' | 'REDACTED';
 
-export type MessageDeliveryStatus = 'SENT' | 'DELIVERED' | 'READ';
+/**
+ * `SENDING` and `FAILED` are CLIENT-ONLY and never arrive from the server.
+ *
+ * A message now appears in the thread the instant you press send, the way it
+ * does in every messaging app people already use — so the thread has to be able
+ * to say "this is on its way" and "this did not go", states that did not exist
+ * while the bubble was only created from a server response.
+ */
+export type MessageDeliveryStatus =
+  | 'SENDING'
+  | 'SENT'
+  | 'DELIVERED'
+  | 'READ'
+  | 'FAILED';
 
 export type MessageAttachmentKind = 'IMAGE' | 'DOCUMENT';
 
@@ -53,7 +66,29 @@ export type MessageMetadata = {
   contextDesignTitle?: string;
   contextDesignCoverFileId?: string;
   contextDesignCoverUrl?: string;
+  /* A message composed from a Market product references it the same way. */
+  contextProductId?: string;
+  contextProductTitle?: string;
+  contextProductCoverFileId?: string;
+  contextProductCoverUrl?: string;
   [key: string]: unknown;
+};
+
+/**
+ * The content a message is about, as the send endpoints accept it.
+ *
+ * Build these with `contentReferenceToSendFields` rather than by hand — see
+ * `src/features/messaging/contentReference.ts` for why the reference exists.
+ */
+export type MessageContentContextFields = {
+  contextDesignId?: string;
+  contextDesignTitle?: string;
+  contextDesignCoverFileId?: string;
+  contextDesignCoverUrl?: string;
+  contextProductId?: string;
+  contextProductTitle?: string;
+  contextProductCoverFileId?: string;
+  contextProductCoverUrl?: string;
 };
 
 export type QuotedMessage = {
@@ -161,14 +196,14 @@ export type ConversationThread = {
   endCursor: MessagingCursor | null;
 };
 
-export type SendMessagePayload = {
+export type SendMessagePayload = MessageContentContextFields & {
   bodyText?: string;
   clientMessageId: string;
   attachmentFileIds?: string[];
   replyToMessageId?: string;
 };
 
-export type StartConversationPayload = {
+export type StartConversationPayload = MessageContentContextFields & {
   brandId?: string | null;
   orderId?: string | null;
   customOrderId?: string | null;

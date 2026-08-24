@@ -500,6 +500,13 @@ export default function CatalogScreen() {
   // across visibilities left a stale/taller value behind, which is what created
   // the blank scroll space below the last card after switching to Drafts.
   const [tabHeights, setTabHeights] = useState<Record<string, number>>({});
+  /*
+    Read by `unmeasuredPageMinHeight`, which runs in the JSX far below the
+    point where `listInitialLoading` is computed. A ref rather than the value
+    itself only because of that ordering — it is assigned during the same
+    render, before any call site reads it.
+  */
+  const listInitialLoadingRef = useRef(false);
   const tabPagerRef = useRef<Animated.ScrollView>(null);
   const outerScrollRef = useRef<ScrollView>(null);
   const scrollYRef = useRef<number>(initialCatalogUiStateRef.current?.scrollY ?? 0);
@@ -537,9 +544,35 @@ export default function CatalogScreen() {
    * so nothing is clipped at the top end.
    */
   const unmeasuredPageMinHeight = useCallback(
-    (key: string) => (tabHeights[key] === undefined ? estimatedPagerHeight : undefined),
+    (key: string) =>
+      tabHeights[key] === undefined || listInitialLoadingRef.current
+        ? estimatedPagerHeight
+        : undefined,
     [estimatedPagerHeight, tabHeights],
   );
+
+  /*
+    A measured height belongs to ONE brand's content.
+
+    This screen is deliberately reused across brands — the island navigates
+    rather than pushes, so tapping a second brand from the Runway re-renders
+    the mounted instance with a new `brandId`. `tabHeights` did not take part
+    in that: it kept the previous brand's measurements under identical keys
+    ("Collections:Public", "Shop", "Reviews").
+
+    So arriving at a brand with more content than the last one sized the pager
+    to the PREVIOUS brand's shorter page. The outer ScrollView then had no more
+    content than viewport and refused to scroll at all — the reported "page is
+    stuck until I pull to refresh", which worked because refreshing re-rendered
+    the grid and finally produced a corrected `onLayout`.
+
+    Clearing on brand change makes every page unmeasured again, which restores
+    the `estimatedPagerHeight` floor for the first frames and lets the real
+    measurement arrive against the right content.
+  */
+  useEffect(() => {
+    setTabHeights({});
+  }, [targetBrandId]);
   const visualTabKey = visualActiveTab === 'Collections' ? `Collections:${visibilityFilter}` : visualActiveTab;
   const dataTabKey = dataActiveTab === 'Collections' ? `Collections:${visibilityFilter}` : dataActiveTab;
   const targetHeight = tabHeights[visualTabKey];
@@ -1878,6 +1911,17 @@ export default function CatalogScreen() {
       : visibilityFilter === 'In Review'
         ? inReviewQuery.isLoading && effectiveCollections.length === 0
         : collectionsQuery.isLoading && effectiveCollections.length === 0;
+  /*
+    Hold the pager's height floor open while the active grid is still loading.
+
+    The floor used to be dropped the moment ANY measurement existed for a page
+    — including one taken off a skeleton or an empty state. That measurement is
+    real but premature: it describes the loading placeholder, not the content,
+    and once recorded it sized the pager to the placeholder.
+    An already-settled empty catalogue still gets no floor, which is what keeps
+    the blank-scroll-space fix intact.
+  */
+  listInitialLoadingRef.current = listInitialLoading;
   const activeListFetching = visibilityFilter === 'Drafts'
     ? draftsQuery.isFetching
     : visibilityFilter === 'Needs Attention'

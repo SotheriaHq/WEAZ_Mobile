@@ -546,7 +546,7 @@ export default function BuyerProfileScreen() {
   const { standardScreenBottomPadding } = useScreenChrome();
   const deferredWorkReady = useDeferredScreenWork();
   const contentBottomPadding = standardScreenBottomPadding;
-  const { status, user, updateUser, validateToken, signOut } = useAuth();
+  const { status, sessionSettled, user, updateUser, validateToken, signOut } = useAuth();
   const toast = useToast();
   const params = useLocalSearchParams<{ tab?: string | string[] }>();
   const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
@@ -1030,7 +1030,21 @@ export default function BuyerProfileScreen() {
     ]);
   }, [signOut]);
 
-  if (status === 'loading') {
+  /*
+    Wait for the session to settle before showing anyone their profile.
+
+    A cold start restores a CACHED user and reports `authenticated` before the
+    server has been asked — great for the Runway, wrong here. This screen is
+    nothing but private data, so rendering on the guess meant a stale session
+    displayed a full profile for the 3-5s the validation request took, then
+    replaced it with the guest state. The reader saw their own account appear
+    and then be taken away.
+
+    `sessionSettled` is not the same as "verified": an offline start keeps the
+    cached session on purpose, settles, and renders it. So this waits for an
+    ANSWER, never for a guarantee — which is why it cannot hang.
+  */
+  if (status === 'loading' || (status === 'authenticated' && !sessionSettled)) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
         <BrandHeader />
