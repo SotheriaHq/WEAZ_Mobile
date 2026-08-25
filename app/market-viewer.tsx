@@ -22,6 +22,8 @@ export default function MarketViewerRoute() {
     priceLabel?: string | string[];
     coverImage?: string | string[];
     coverFileId?: string | string[];
+    openComments?: string | string[];
+    commentId?: string | string[];
   }>();
   const sourceType = firstParam(params.sourceType) === 'PRODUCT' ? 'PRODUCT' : 'DESIGN';
 
@@ -35,6 +37,8 @@ export default function MarketViewerRoute() {
       initialPriceLabel={firstParam(params.priceLabel) ?? null}
       initialMediaUrl={optionalParam(params.coverImage)}
       initialMediaFileId={optionalParam(params.coverFileId)}
+      openComments={firstParam(params.openComments) === '1'}
+      initialCommentId={optionalParam(params.commentId)}
       fallbackHref="/(tabs)/discover"
     />
   );

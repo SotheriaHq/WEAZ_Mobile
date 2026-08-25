@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { StableImage } from '@/components/ui/StableImage';
+import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
 import {
   MobileStoreApi,
   type CollectionBagProductStatus,
@@ -42,6 +43,10 @@ import { contentReferenceToParams } from '@/src/features/messaging/contentRefere
 type CollectionCommerceViewerProps = {
   collectionId: string;
   fallbackHref?: string;
+  /** Open the comments sheet on arrival — see the sheet at the end of render. */
+  openComments?: boolean;
+  /** Scroll to and highlight one comment (a reply notification's target). */
+  initialCommentId?: string | null;
 };
 
 const shouldLogCollectionTiming = () =>
@@ -130,6 +135,8 @@ function ProductThumb({ product }: { product: CollectionBagProductStatus }) {
 export function CollectionCommerceViewer({
   collectionId,
   fallbackHref = '/(tabs)/discover',
+  openComments = false,
+  initialCommentId = null,
 }: CollectionCommerceViewerProps) {
   const { theme, scheme } = useTheme();
   const chrome = useScreenChrome();
@@ -141,6 +148,7 @@ export function CollectionCommerceViewer({
   const [status, setStatus] = useState<CollectionBagStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [commentsOpen, setCommentsOpen] = useState(openComments);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selections, setSelections] = useState<Record<string, CollectionBagSelection>>({});
   const [staleAccepted, setStaleAccepted] = useState(false);
@@ -653,6 +661,19 @@ export function CollectionCommerceViewer({
           <Button title="Bag all" size="sm" onPress={handleBagAll} disabled={Boolean(busy) || isOwnBrand} loading={busy === 'bag-all'} />
         </View>
       </View>
+
+      {/* Comment notifications targeting a store collection used to open the
+          retired `CollectionDetailViewer`, which is where the comments lived.
+          Consolidating onto this viewer means the comments come with it —
+          otherwise those notifications would open a screen with no comments on
+          it and no sign that any exist. */}
+      <CollectionCommentsSheet
+        visible={commentsOpen}
+        collectionId={collectionId}
+        collectionTitle={status.collection.title ?? null}
+        initialCommentId={initialCommentId}
+        onClose={() => setCommentsOpen(false)}
+      />
     </SafeAreaView>
   );
 }

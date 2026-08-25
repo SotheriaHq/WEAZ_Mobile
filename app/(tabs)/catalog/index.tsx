@@ -1849,6 +1849,22 @@ export default function CatalogScreen() {
         (viewerIsBrandAccount ? readContactValue(user?.email) : null) ??
         ''
       : '';
+    /**
+     * The catalogue publishes ways to reach the BRAND, not the brand's presence
+     * on other platforms.
+     *
+     * `socialInstagram` / `socialFacebook` / `socialTwitter` are still collected
+     * and still stored — they are simply not contact rows. They were, and the
+     * result was a catalogue whose only tappable "contact" sent a shopper OFF
+     * WIEZ to Instagram: a brand that had filled in a handle but not published a
+     * contact email showed a social link where the email belonged, so the one
+     * row a buyer would press to ask a question left the product behind.
+     *
+     * Reaching a brand happens in the app — the message action in the header is
+     * the route, and it keeps the conversation (and any content reference) on
+     * platform. Email/phone/website stay because they are the brand's own
+     * business contacts rather than a third-party profile.
+     */
     const candidates: BrandHeaderContactItem[] = [
       ...(publicContactEmail ? [{ label: 'Email', value: publicContactEmail }] : []),
       ...(isOwner && !publicContactEmail
@@ -1856,9 +1872,6 @@ export default function CatalogScreen() {
         : []),
       { label: 'Phone', value: readContactValue(effectiveProfile?.phoneNumber) ?? '' },
       { label: 'Website', value: readContactValue(effectiveProfile?.socialWebsite) ?? '' },
-      { label: 'Instagram', value: readContactValue(effectiveProfile?.socialInstagram) ?? '' },
-      { label: 'Facebook', value: readContactValue(effectiveProfile?.socialFacebook) ?? '' },
-      { label: 'X', value: readContactValue(effectiveProfile?.socialTwitter) ?? '' },
     ];
 
     /**
@@ -1877,9 +1890,6 @@ export default function CatalogScreen() {
     effectiveProfile?.email,
     effectiveProfile?.publicContactEmail,
     effectiveProfile?.phoneNumber,
-    effectiveProfile?.socialFacebook,
-    effectiveProfile?.socialInstagram,
-    effectiveProfile?.socialTwitter,
     effectiveProfile?.socialWebsite,
     effectiveProfile?.id,
     isOwner,

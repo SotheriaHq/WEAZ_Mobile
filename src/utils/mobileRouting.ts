@@ -216,7 +216,7 @@ export function routeForSearchItem(item: SearchItem): RouterTarget {
     case 'collection':
       return routeForStoreCollectionTarget(item.id);
     case 'design':
-      return routeForDesignTarget(item.id, { legacyCollectionId: item.id });
+      return routeForDesignTarget(item.id);
     case 'tag':
       return {
         pathname: '/search',
@@ -232,7 +232,6 @@ export function routeForSearchItem(item: SearchItem): RouterTarget {
 export function routeForDesignTarget(
   designId: string,
   options: {
-    legacyCollectionId?: string | null;
     openComments?: boolean;
     commentId?: string | null;
     /**
@@ -244,13 +243,27 @@ export function routeForDesignTarget(
     coverFileId?: string | null;
   } = {},
 ): RouterTarget {
+  /*
+    THE content viewer is `/market-viewer`. There is no second one.
+
+    This used to return `/designs/[designId]`, which rendered
+    `CollectionDetailViewer` — a completely different screen: a left-hand action
+    rail, its own back pill, its own share sheet, no metadata sheet. Which of
+    the two designs a shopper saw depended entirely on how they arrived. Tapping
+    a design in a brand's catalogue gave the modern viewer; opening the SAME
+    design from a comment notification, a search result, saved items, or a
+    Studio link gave the old one. Same content, same account, two apps.
+
+    Nothing about that was a decision — the catalogue was migrated to
+    `/market-viewer` and these builders were not, so the old screen survived on
+    the routes nobody re-tested. `legacyCollectionId` went with it: the viewer
+    resolves designs by id directly and never needed the collection alias.
+  */
   return {
-    pathname: '/designs/[designId]',
+    pathname: '/market-viewer',
     params: {
-      designId,
-      ...(options.legacyCollectionId && options.legacyCollectionId !== designId
-        ? { legacyCollectionId: options.legacyCollectionId }
-        : null),
+      sourceType: 'DESIGN',
+      sourceId: designId,
       ...(options.openComments ? { openComments: '1' } : null),
       ...(options.commentId ? { commentId: options.commentId } : null),
       ...(options.coverImage ? { coverImage: options.coverImage } : null),
@@ -266,8 +279,10 @@ export function routeForStoreCollectionTarget(
     commentId?: string | null;
   } = {},
 ): RouterTarget {
+  // Store collections have their own viewer (`/collection-viewer`); same
+  // consolidation as `routeForDesignTarget` above.
   return {
-    pathname: '/collections/[collectionId]',
+    pathname: '/collection-viewer',
     params: {
       collectionId,
       ...(options.openComments ? { openComments: '1' } : null),
@@ -282,7 +297,6 @@ function routeForLegacyCollectionBackedDesignTarget(
   commentId?: string | null,
 ): RouterTarget {
   return routeForDesignTarget(legacyCollectionId, {
-    legacyCollectionId,
     openComments,
     commentId,
   });
@@ -375,7 +389,6 @@ export function routeForNotification(
 
   if (targetType === 'DESIGN' && targetId) {
     return routeForDesignTarget(targetId, {
-      legacyCollectionId: typeof payload.legacyCollectionId === 'string' ? payload.legacyCollectionId : null,
       openComments: Boolean(commentId),
       commentId,
     });
@@ -511,7 +524,6 @@ export function routeForNotification(
 
     if (designId) {
       return routeForDesignTarget(designId, {
-        legacyCollectionId: typeof payload.legacyCollectionId === 'string' ? payload.legacyCollectionId : null,
         openComments: Boolean(commentId),
         commentId,
       });

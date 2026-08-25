@@ -146,7 +146,6 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
           createdAt={newDropCreatedAt}
           sourceScreen={analyticsSourceScreen}
           feedPosition={feedPosition}
-          compact
           style={styles.newDropBadge}
         />
       ) : null}
@@ -336,8 +335,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: tokens.spacing.sm,
     top: tokens.spacing.sm,
-    maxWidth: '18%',
-    opacity: 0.9,
+    // No width cap and no dimming. The cap was ~30pt on a two-up grid and
+    // clipped the label to nothing; the badge is now bare text, so it takes
+    // only the room the word needs and cannot collide with anything.
   },
   topRightSlot: {
     position: 'absolute',

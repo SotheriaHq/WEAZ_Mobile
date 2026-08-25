@@ -229,7 +229,6 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
       type: 'native',
       path,
       nativeRoute: routeForDesignTarget(designId, {
-        legacyCollectionId: url.searchParams.get('legacyCollectionId'),
         openComments: Boolean(url.searchParams.get('commentId') || url.searchParams.get('openComments')),
         commentId: url.searchParams.get('commentId'),
       }),

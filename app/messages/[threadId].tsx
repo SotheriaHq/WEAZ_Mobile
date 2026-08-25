@@ -4,6 +4,7 @@ import {
   Animated,
   AppState,
   FlatList,
+  Keyboard,
   PanResponder,
   Platform,
   Pressable,
@@ -11,6 +12,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   View,
+  useWindowDimensions,
   type ListRenderItemInfo,
 } from 'react-native';
 import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
@@ -27,6 +29,9 @@ import { Header } from '@/components/ui/Header';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
+import { AppFloatingMenu, type FloatingMenuOption } from '@/components/ui/AppFloatingMenu';
+import EmojiPickerPanel from '@/components/messaging/EmojiPickerPanel';
+import { MessageReceiptTicks } from '@/components/messaging/MessageReceiptTicks';
 import { MessagingApi, createMessageClientId } from '@/src/api/MessagingApi';
 import { brandApi } from '@/src/api/BrandApi';
 import { compressPickedImage } from '@/src/utils/imageCompression';
@@ -73,7 +78,6 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const MAX_PENDING_ATTACHMENTS = 4;
 // Lightweight curated emoji set inserted into the composer — no extra dependency
 // and no heavy picker. Opens an inline row the user can tap to append an emoji.
-const COMPOSER_EMOJIS = ['😀', '😂', '😍', '👍', '🙏', '🔥', '🎉', '✨', '😎', '😅', '❤️', '👀', '🙌', '💯', '🥳', '😢'];
 
 // A locally-picked attachment in the composer. `fileId` is set once the upload
 // to the existing /uploads/message-image contract succeeds; only uploaded
@@ -424,18 +428,11 @@ const SWIPE_REPLY_THRESHOLD = 56;
   the success tone means it was read. Sending shows a clock rather than a
   premature tick — claiming "sent" before the request resolves is the one thing
   a delivery indicator must never do.
-*/
-const DELIVERY_STATUS_GLYPH: Record<
-  NonNullable<MessageItem['deliveryStatus']>,
-  string
-> = {
-  SENDING: '🕘',
-  SENT: '✓',
-  DELIVERED: '✓✓',
-  READ: '✓✓',
-  FAILED: '!',
-};
 
+  The glyphs themselves live in `MessageReceiptTicks`, which draws the pair
+  STACKED rather than side by side; the labels stay here because they are also
+  the accessibility strings used elsewhere in this screen.
+*/
 const DELIVERY_STATUS_LABEL: Record<
   NonNullable<MessageItem['deliveryStatus']>,
   string
@@ -641,19 +638,11 @@ const MessageBubble = memo(function MessageBubble({
               steps up with it, so the cue is not colour-only.
             */}
             {mine && item.deliveryStatus ? (
-              <AppText
-                variant={item.deliveryStatus === 'READ' ? 'captionBold' : 'captionRegular'}
-                tone={
-                  item.deliveryStatus === 'READ'
-                    ? 'success'
-                    : item.deliveryStatus === 'FAILED'
-                      ? 'danger'
-                      : 'inverse'
-                }
-                accessibilityLabel={DELIVERY_STATUS_LABEL[item.deliveryStatus]}
-              >
-                {DELIVERY_STATUS_GLYPH[item.deliveryStatus]}
-              </AppText>
+              <MessageReceiptTicks
+                state={item.deliveryStatus}
+                color={theme.colors.textInverse}
+                readColor={theme.colors.success}
+              />
             ) : null}
           </View>
 
@@ -696,8 +685,30 @@ const MessageBubble = memo(function MessageBubble({
   );
 });
 
-function ThreadAvatar({ participant }: { participant: ConversationParticipant | null }) {
+/**
+ * The header avatar, and the menu behind it.
+ *
+ * The avatar used to be decoration: it showed you who you were talking to and
+ * did nothing when pressed, so a shopper mid-conversation about a piece had no
+ * way back to the brand's catalogue except leaving the thread, going to
+ * Runway/Market and finding them again. The one control that already identifies
+ * the other party is the obvious place to put "go to them".
+ *
+ * A menu rather than a direct tap, for two reasons: an avatar that navigates on
+ * a single tap is easy to hit by accident while reaching for the header, and
+ * this is the natural home for the next per-conversation action (mute, report,
+ * view shared content) rather than a second control appearing beside it.
+ */
+function ThreadAvatar({
+  participant,
+  onViewProfile,
+}: {
+  participant: ConversationParticipant | null;
+  onViewProfile: (participantId: string) => void;
+}) {
   const { theme } = useTheme();
+  const anchorRef = useRef<View | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const avatarUri = useResolvedImageUri({
     src: participant?.avatarUrl,
     debugContext: { sourceField: 'messaging.thread.participant.avatarUrl' },
@@ -724,15 +735,56 @@ function ThreadAvatar({ participant }: { participant: ConversationParticipant | 
     </View>
   );
 
-  if (!avatarUri) return fallback;
+  const participantId = participant?.id ?? null;
+  const menuOptions: FloatingMenuOption[] = participantId
+    ? [
+        {
+          key: 'view-profile',
+          icon: '🏬',
+          title: 'View profile',
+          onPress: () => {
+            setMenuOpen(false);
+            onViewProfile(participantId);
+          },
+        },
+      ]
+    : [];
 
-  return (
+  const avatar = avatarUri ? (
     <StableImage
       uri={avatarUri}
       containerStyle={styles.headerAvatar}
       imageStyle={styles.headerAvatar}
       fallback={fallback}
     />
+  ) : (
+    fallback
+  );
+
+  // With no id there is nowhere to go, so the avatar stays inert rather than
+  // opening a menu with nothing in it.
+  if (menuOptions.length === 0) return avatar;
+
+  return (
+    <>
+      <View ref={anchorRef} collapsable={false}>
+        <Pressable
+          onPress={() => setMenuOpen(true)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: menuOpen }}
+          accessibilityLabel={`Options for ${label ?? 'this conversation'}`}
+        >
+          {avatar}
+        </Pressable>
+      </View>
+      <AppFloatingMenu
+        visible={menuOpen}
+        anchorRef={anchorRef}
+        options={menuOptions}
+        onClose={() => setMenuOpen(false)}
+      />
+    </>
   );
 }
 
@@ -863,6 +915,28 @@ export default function ChatThreadScreen() {
   const [replyToMessage, setReplyToMessage] = useState<QuotedMessage | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const { width: windowWidth } = useWindowDimensions();
+  /*
+    The emoji panel opens at the KEYBOARD's height, so the two swap without the
+    transcript moving.
+
+    Seeded from `Keyboard.metrics()` because listeners only report future
+    transitions: opening the panel from an already-raised keyboard would
+    otherwise use the fallback height on the very first toggle, which is the one
+    toggle where the difference is visible as a jump. Same rule the keyboard
+    primitives in `components/ui/` follow.
+  */
+  const [lastKeyboardHeight, setLastKeyboardHeight] = useState<number>(
+    () => Keyboard.metrics()?.height ?? 0,
+  );
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+    const subscription = Keyboard.addListener(showEvent as 'keyboardDidShow', (event) => {
+      const height = event?.endCoordinates?.height ?? 0;
+      if (height > 0) setLastKeyboardHeight(height);
+    });
+    return () => subscription.remove();
+  }, []);
   /*
     The content this screen was opened from, waiting to be attached to the next
     message. Seeded once from the route params — arriving here from a design or
@@ -1638,7 +1712,17 @@ export default function ChatThreadScreen() {
           title={title}
           subtitle={subtitle}
           left={<AppBackButton fallbackHref="/(tabs)/inbox" />}
-          right={<ThreadAvatar participant={participant} />}
+          right={
+            <ThreadAvatar
+              participant={participant}
+              onViewProfile={(participantId) =>
+                drillDownPush({
+                  pathname: '/catalog/[brandId]',
+                  params: { brandId: participantId },
+                } as any)
+              }
+            />
+          }
         />
 
         {phase === 'loading' || phase === 'resolving' ? (
@@ -1816,22 +1900,12 @@ export default function ChatThreadScreen() {
                 </View>
               ) : null}
 
-              {/* Lightweight emoji row (no extra dependency) */}
-              {emojiOpen ? (
-                <View style={[styles.emojiRow, { borderColor: theme.colors.border }]}>
-                  {COMPOSER_EMOJIS.map((emoji) => (
-                    <TouchableOpacity
-                      key={emoji}
-                      onPress={() => handleInsertEmoji(emoji)}
-                      style={styles.emojiButton}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Insert ${emoji}`}
-                    >
-                      <AppText style={styles.emojiGlyph}>{emoji}</AppText>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ) : null}
+              <EmojiPickerPanel
+                visible={emojiOpen}
+                keyboardHeight={lastKeyboardHeight}
+                width={windowWidth}
+                onSelect={handleInsertEmoji}
+              />
 
               <View style={styles.composerRow}>
                 <TouchableOpacity
@@ -2167,22 +2241,5 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  emojiRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.spacing.xs,
-    paddingVertical: tokens.spacing.xs,
-  },
-  emojiButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emojiGlyph: {
-    fontSize: 22,
   },
 });

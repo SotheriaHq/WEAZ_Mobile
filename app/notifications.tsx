@@ -7,6 +7,11 @@ import { drillDownPush } from '@/src/utils/mobileNavigation';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import {
+  describeNotificationSegments,
+  describeNotificationText,
+  type NotificationCopySource,
+} from '@/src/features/notifications/notificationCopy';
 import { Button } from '@/components/ui/Button';
 import { StableImage } from '@/components/ui/StableImage';
 import { NotificationsApi, type MobileNotification } from '@/src/api/NotificationsApi';
@@ -58,21 +63,77 @@ function compactTime(value: string) {
   return `${Math.floor(delta / day)}d`;
 }
 
-function describeNotification(item: MobileNotification) {
-  const type = item.type.toUpperCase();
-  const name = actorName(item);
-  const excerpt = typeof item.payload?.excerpt === 'string' ? item.payload.excerpt : null;
+function notificationCopySource(item: MobileNotification): NotificationCopySource {
+  const payload = item.payload as Record<string, unknown> | undefined;
+  const readString = (value: unknown) =>
+    typeof value === 'string' && value.trim() ? value.trim() : null;
 
-  if (type.includes('FOLLOW')) return `${name} patched you.`;
-  if (type.includes('COMMENT')) return `${name} commented on your design${excerpt ? `: "${excerpt}"` : '.'}`;
-  if (type.includes('THREAD')) return `${name} threaded your design.`;
-  if (type.includes('TAG_MENTION')) return `${name} mentioned you in new activity.`;
-  if (type.includes('PATCH')) return item.message || `${name} updated a patch request.`;
-  if (type.startsWith('ORDER_')) return item.message || 'Your order has new activity.';
-  if (type.startsWith('CUSTOM_ORDER_')) return item.message || 'Your custom order has new activity.';
-  if (type.includes('MESSAGE')) return item.message || `${name} sent you a message.`;
-  if (type.includes('SIZE_FIT')) return item.message || `${name} updated size-fit activity.`;
-  return item.message || `${name} sent you a notification.`;
+  return {
+    type: item.type,
+    message: item.message ?? null,
+    actorName: actorName(item),
+    // The title arrives under whichever name the emitting service used; a
+    // notification is not worth failing over because one of them is missing.
+    contentTitle:
+      readString(payload?.contentTitle) ??
+      readString(payload?.title) ??
+      readString(payload?.designTitle) ??
+      readString(payload?.collectionTitle) ??
+      null,
+    excerpt: readString(payload?.excerpt),
+  };
+}
+
+/**
+ * One notification sentence, with the actor and the content set apart.
+ *
+ * Nested `AppText` inherits the parent's typography and overrides only what the
+ * child sets, which is what lets a single wrapped paragraph carry mixed
+ * emphasis without the segments becoming separate blocks that wrap
+ * independently. The whole sentence is still one accessible string on the
+ * wrapper, so a screen reader hears a sentence rather than four fragments.
+ */
+function NotificationCopy({ item }: { item: MobileNotification }) {
+  const source = notificationCopySource(item);
+  const segments = describeNotificationSegments(source);
+
+  return (
+    <AppText variant="body" numberOfLines={3} accessibilityLabel={describeNotificationText(source)}>
+      {segments.map((segment, index) => {
+        const key = `${segment.kind}-${index}`;
+        if (segment.kind === 'actor') {
+          // Bold and in the app's own ink: the actor is the primary scan target
+          // and must win against everything else in the row.
+          return (
+            <AppText key={key} variant="bodyBold">
+              {segment.text}
+            </AppText>
+          );
+        }
+        if (segment.kind === 'content') {
+          // Brand-toned, because the content title is the part that is also a
+          // destination — pressing the row opens it.
+          return (
+            <AppText key={key} variant="bodyBold" tone="primary">
+              {segment.text}
+            </AppText>
+          );
+        }
+        if (segment.kind === 'quote') {
+          return (
+            <AppText key={key} variant="body" tone="secondary">
+              {segment.text}
+            </AppText>
+          );
+        }
+        return (
+          <AppText key={key} variant="body" tone="secondary">
+            {segment.text}
+          </AppText>
+        );
+      })}
+    </AppText>
+  );
 }
 
 function NotificationAvatar({ item }: { item: MobileNotification }) {
@@ -133,9 +194,7 @@ function NotificationRow({
               {compactTime(item.createdAt)}
             </AppText>
           </View>
-          <AppText variant="body" numberOfLines={3}>
-            {describeNotification(item)}
-          </AppText>
+          <NotificationCopy item={item} />
         </View>
         {previewUri ? (
           <StableImage uri={previewUri} containerStyle={styles.previewThumb} imageStyle={styles.previewThumb} />

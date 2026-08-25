@@ -12,7 +12,6 @@ type NewDropBadgeProps = {
   createdAt?: string | null;
   sourceScreen: string;
   feedPosition?: number;
-  compact?: boolean;
   isActive?: boolean;
   style?: StyleProp<ViewStyle>;
 };
@@ -24,7 +23,6 @@ export function NewDropBadge({
   createdAt,
   sourceScreen,
   feedPosition,
-  compact = false,
   isActive = false,
   style,
 }: NewDropBadgeProps) {
@@ -91,22 +89,38 @@ export function NewDropBadge({
 
   if (!info.isNewDrop || dismissed) return null;
 
+  /*
+    A word, not a plate.
+
+    The badge was a bordered pill with horizontal padding, and on a market card
+    it was ALSO constrained to `maxWidth: '18%'` of the card. On a two-up grid
+    that is roughly 30pt, of which the padding took most — so the pill rendered
+    at full opacity with its label squeezed to nothing. The reported symptom was
+    exactly that: cards carrying the new-drop marker with no text in it.
+
+    Widening the cap would have fixed the clipping and left a chip pasted over
+    the artwork, competing with the price panel and the bag action for the same
+    corner of a photograph the card exists to show. The plate was never carrying
+    meaning — "NEW!" is the whole message, and set bold over the image it reads
+    at a glance without taking a rectangle out of the picture.
+
+    Legibility over an arbitrary photo comes from a text shadow rather than a
+    fill. `textShadow*` is one of the sanctioned `AppText` style overrides (only
+    typography and colour are forbidden), and it is the same technique the
+    content viewer's bare dock glyphs use.
+  */
   return (
     <Animated.View
       pointerEvents="none"
-      style={[
-        styles.badge,
-        compact && styles.compactBadge,
-        {
-          backgroundColor: theme.colors.primarySoft,
-          borderColor: theme.colors.primary,
-          transform: [{ scale: pulseAnim }],
-        },
-        style,
-      ]}
+      style={[styles.badge, { transform: [{ scale: pulseAnim }] }, style]}
     >
-      <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-        {compact ? 'New' : '✦ New drop'}
+      <AppText
+        variant="captionBold"
+        tone="inverse"
+        numberOfLines={1}
+        style={styles.label}
+      >
+        NEW!
       </AppText>
     </Animated.View>
   );
@@ -114,24 +128,14 @@ export function NewDropBadge({
 
 const styles = StyleSheet.create({
   badge: {
-    minHeight: 24,
-    borderTopLeftRadius: tokens.radius.full,
-    borderTopRightRadius: tokens.radius.md,
-    borderBottomRightRadius: tokens.radius.full,
-    borderBottomLeftRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.md,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
-    shadowColor: tokens.colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 2,
-    elevation: 2,
   },
-  compactBadge: {
-    minHeight: 20,
-    paddingHorizontal: tokens.spacing.sm,
+  label: {
+    letterSpacing: 0.6,
+    textShadowColor: tokens.colors.shadow,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 });
 

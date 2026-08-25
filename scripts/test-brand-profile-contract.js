@@ -260,6 +260,48 @@ async function main() {
   assert.match(badgeSource, /accessibilityLabel=\{badge\.accessibilityLabel\}/);
   assert.doesNotMatch(badgeSource, /rotate:\s*'45deg'/);
 
+  /*
+    Verification renders as the SEAL, not as a chip.
+
+    Native used to draw a bordered "✦ Verified" pill while web drew the
+    scalloped seal, so the same brand made two different-looking claims
+    depending on which app you opened. These pin the split: verification
+    variants go to `VerifiedSeal`, email verification collapses to a bare tick,
+    and everything else is still a chip.
+  */
+  assert.match(badgeSource, /VerifiedSeal/);
+  assert.match(badgeSource, /EmailVerifiedTick/);
+  assert.match(badgeSource, /const SEAL_VARIANTS[\s\S]*brand_verified: 'brand'/);
+  assert.doesNotMatch(
+    badgeSource,
+    /const SEAL_VARIANTS[\s\S]*store_open_verified:/,
+    'open/closed variants carry a word ("Open"/"Closed") and must stay chips — a wordless seal would delete it',
+  );
+
+  const sealPath = path.join(repoRoot, 'components', 'ui', 'VerifiedSeal.tsx');
+  const sealSource = fs.readFileSync(sealPath, 'utf8');
+  const webSealPath = path.join(repoRoot, '..', 'fthreadly', 'src', 'components', 'brand', 'VerifiedBrandBadge.tsx');
+  assert.match(sealSource, /MIN_LEGIBLE_SIZE = 20/);
+  if (fs.existsSync(webSealPath)) {
+    /*
+      The seal is a deliberate cross-repo duplicate — separate repos, no shared
+      package — so the only thing that can notice them drifting is this. Both
+      must draw the same silhouette and the same needle.
+    */
+    const webSealSource = fs.readFileSync(webSealPath, 'utf8');
+    const needle = 'M15.9 7.4 9.6 13.7l-1.3 3.1 3.1-1.3 6.3-6.3z';
+    assert.ok(
+      sealSource.includes(needle) && webSealSource.includes(needle),
+      'web and native seals must carry the identical needle path',
+    );
+    assert.ok(
+      sealSource.includes('M22.5 12.5c0-1.58') && webSealSource.includes('M22.5 12.5c0-1.58'),
+      'web and native seals must carry the identical scalloped outline',
+    );
+  } else {
+    console.log('  (skipped web seal parity — fthreadly is not checked out beside this repo)');
+  }
+
   const appBadgeSource = fs.readFileSync(appBadgePath, 'utf8');
   assert.match(appBadgeSource, /export type AppBadgeTone = 'primary' \| 'success' \| 'warning' \| 'muted' \| 'verified' \| 'neutral'/);
   assert.match(appBadgeSource, /export function getStoreBadgeModel/);
@@ -270,8 +312,21 @@ async function main() {
 
   const brandHeaderSource = fs.readFileSync(brandHeaderPath, 'utf8');
   assert.match(brandHeaderSource, /function StoreStatusBadge/);
-  assert.match(brandHeaderSource, /Color-only wavy square/);
-  assert.match(brandHeaderSource, /storeStatusBadge:[\s\S]*transform:\s*\[\{\s*rotate:\s*'45deg'\s*\}\]/);
+  /*
+    The store-status indicator must carry its own WORD.
+
+    It used to be a colour-only square sitting beside the brand's name, with the
+    legend hidden behind a tap — unreadable at a glance, and unreadable at all
+    to anyone with a red/green deficiency. These assertions pin the label and
+    fail if the badge ever regresses to colour alone.
+  */
+  assert.match(brandHeaderSource, /storeStatusDot:/);
+  assert.match(brandHeaderSource, /const label = isOpen \? 'Open' : isClosed \? 'Closed' : 'Limited'/);
+  assert.doesNotMatch(
+    brandHeaderSource,
+    /storeStatusCorner/,
+    'the colour-only wavy square must not come back — status needs a word, not just a hue',
+  );
   assert.match(brandHeaderSource, /BRAND_DESCRIPTION_PREVIEW_LINES\s*=\s*2/);
   assert.match(brandHeaderSource, /BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH/);
   assert.match(brandHeaderSource, /descriptionMeasureText/);

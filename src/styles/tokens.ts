@@ -338,7 +338,7 @@ export const tokens = {
   },
 
   /**
-   * `CollectionDetailViewer`'s chrome palette.
+   * Full-bleed content-viewer chrome palette.
    *
    * A full-bleed viewer that is deep-dark in BOTH themes (same policy as the
    * Runway stage — see the dark-stage notes in CODEMAP.md), so it cannot read

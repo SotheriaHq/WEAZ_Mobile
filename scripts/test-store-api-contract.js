@@ -178,6 +178,99 @@ async function main() {
   assert.match(nativeIslandConfigSource, /label:\s*'Market'/);
   assert.match(nativeIslandConfigSource, /return '\/\(tabs\)\/discover' as const/);
 
+  /*
+    The pager-dot regression, reproduced against the REAL payload shape.
+
+    `store.service.ts` builds `media` as `images.map(...)` where each object's
+    `url` has been swapped for a resolved display URL. So the same photograph
+    appears twice under two different hosts and paths, and the string alias
+    carries no file id — nothing links the two by identity, which is why five
+    photos rendered ten dots on a product whose server-side cap is six.
+
+    This is a behavioural test on purpose: the failure is silent (no error, no
+    type change, just a wrong count in a row of dots) and a source-text
+    assertion would not have caught it.
+  */
+  const RAW = (n) => `https://bucket.s3.eu-west-1.amazonaws.com/products/p${n}.webp`;
+  const DISPLAY = (n) => `https://cdn.test/media/file-${n}?X-Amz-Signature=abc${n}`;
+  const photoCount = 5;
+
+  const dualAliasProduct = {
+    ...rawProduct,
+    id: 'product-dual-alias',
+    images: Array.from({ length: photoCount }, (_, i) => RAW(i)),
+    media: Array.from({ length: photoCount }, (_, i) => ({
+      id: `file-${i}`,
+      fileUploadId: `file-${i}`,
+      url: DISPLAY(i),
+      sourceUrl: RAW(i),
+    })),
+  };
+
+  const loadOne = async (product) => {
+    calls.length = 0;
+    nextPayload = { data: { items: [product], hasNextPage: false, total: 1 } };
+    const [normalized] = await MobileStoreApi.getBrandProducts('brand-1', 25);
+    return normalized;
+  };
+
+  const dualAliasItem = await loadOne(dualAliasProduct);
+  assert.equal(
+    dualAliasItem.images.length,
+    photoCount,
+    `raw + display aliases for the same ${photoCount} photos must collapse to ${photoCount} entries, not ${photoCount * 2}`,
+  );
+  // Joined rather than deep-equal: the module runs in a `vm` realm, so arrays
+  // it returns have that realm's Array prototype and `deepStrictEqual` fails on
+  // prototype identity even when every element matches.
+  assert.equal(
+    dualAliasItem.images.map((entry) => entry.fileId).join(','),
+    Array.from({ length: photoCount }, (_, i) => `file-${i}`).join(','),
+    'the file id must survive the merge — it is what re-signs an expired URL',
+  );
+  assert.ok(
+    dualAliasItem.images.every((entry) => !String(entry.url).includes('amazonaws.com')),
+    'the RESOLVED url must win over the raw storage url; the raw one is not fetchable by the client',
+  );
+
+  // `sourceUrl` joins the aliases by identity, so it must work when the lengths
+  // DISAGREE too — one resolved entry plus two raw ones is two photographs, not
+  // three. Position-alignment cannot help here; only the identity can.
+  const unevenProduct = {
+    ...rawProduct,
+    id: 'product-uneven',
+    images: [RAW(0), RAW(1)],
+    media: [{ id: 'file-0', fileUploadId: 'file-0', url: DISPLAY(0), sourceUrl: RAW(0) }],
+  };
+  const unevenItem = await loadOne(unevenProduct);
+  assert.equal(
+    unevenItem.images.length,
+    2,
+    'a raw entry with no resolved twin is still its own photo, and the twinned pair collapses',
+  );
+
+  /*
+    An older API that predates `sourceUrl` must still page correctly — installed
+    builds talk to whatever server they are pointed at. Equal alias lengths are
+    the evidence there, since `media` is `images.map(...)`.
+  */
+  const legacyServerProduct = {
+    ...rawProduct,
+    id: 'product-legacy-server',
+    images: Array.from({ length: photoCount }, (_, i) => RAW(i)),
+    media: Array.from({ length: photoCount }, (_, i) => ({
+      id: `file-${i}`,
+      fileUploadId: `file-${i}`,
+      url: DISPLAY(i),
+    })),
+  };
+  const legacyItem = await loadOne(legacyServerProduct);
+  assert.equal(
+    legacyItem.images.length,
+    photoCount,
+    'without sourceUrl, equal alias lengths must still collapse raw-vs-display by position',
+  );
+
   console.log('Store API contract tests passed.');
 }
 

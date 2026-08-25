@@ -435,7 +435,6 @@ function SavedDesignCard({ item }: { item: SavedItem }) {
     }
     drillDownPush(
       routeForDesignTarget(destinationId, {
-        legacyCollectionId: item.legacyCollectionId ?? item.collectionId ?? destinationId,
         // This card's thumbnail is already decoded and in cache — handing it
         // over lets the viewer paint immediately instead of showing a loader
         // for the ~1.7s the detail request takes.

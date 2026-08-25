@@ -70,12 +70,53 @@ assert.doesNotMatch(
   'Catalog thumbnails must not apply a full-image dark tone overlay.',
 );
 
+/*
+  There is ONE content viewer per kind, and these builders must point at it.
+
+  `routeForDesignTarget` used to return `/designs/[designId]`, which rendered a
+  completely different screen from the one the catalogue opens — so a design
+  reached from a notification, a search result or saved items looked nothing
+  like the same design reached by tapping its card. The old screen and its two
+  alias routes are deleted; these assertions stop them being reintroduced by a
+  builder quietly pointing back at a path that no longer has a viewer.
+*/
 assert.match(mobileRoutingSource, /export function routeForDesignTarget/);
-assert.match(mobileRoutingSource, /pathname:\s*'\/designs\/\[designId\]'/);
+assert.match(mobileRoutingSource, /pathname:\s*'\/market-viewer'/);
+assert.match(mobileRoutingSource, /sourceType:\s*'DESIGN'/);
 assert.match(mobileRoutingSource, /export function routeForStoreCollectionTarget/);
-assert.match(mobileRoutingSource, /pathname:\s*'\/collections\/\[collectionId\]'/);
+assert.match(mobileRoutingSource, /pathname:\s*'\/collection-viewer'/);
+assert.doesNotMatch(
+  mobileRoutingSource,
+  /pathname:\s*'\/designs\/\[designId\]'/,
+  'the retired second design viewer must not come back',
+);
+assert.doesNotMatch(
+  mobileRoutingSource,
+  /pathname:\s*'\/collections\/\[collectionId\]'/,
+  'the retired second collection viewer must not come back',
+);
 assert.match(mobileRoutingSource, /routeForLegacyCollectionBackedDesignTarget/);
 assert.match(mobileRoutingSource, /targetType === 'DESIGN'/);
+
+// The route files themselves are gone. A stale alias would render a viewer
+// nobody maintains, which is exactly how the split survived unnoticed.
+for (const retired of [
+  path.join('app', 'designs', '[designId].tsx'),
+  path.join('app', 'collections', '[collectionId].tsx'),
+  path.join('components', 'catalog', 'CollectionDetailViewer.tsx'),
+]) {
+  assert.equal(
+    fs.existsSync(path.join(root, retired)),
+    false,
+    `${retired} was retired when the content viewers were consolidated; do not recreate it`,
+  );
+}
+
+// Comments moved with the viewers — the retired screen was the only one that
+// had them, so a comment notification must still land somewhere that shows one.
+const marketViewerSource = read('src/features/market/components/MarketCommerceViewer.tsx');
+assert.match(marketViewerSource, /CollectionCommentsSheet/);
+assert.match(marketViewerSource, /openComments/);
 assert.match(studioNavigationBridgeSource, /pathname === '\/designs\/create'/);
 assert.match(studioNavigationBridgeSource, /pathname:\s*'\/designs\/\[designId\]\/edit'/);
 assert.match(studioNavigationBridgeSource, /routeForStoreCollectionTarget\(collectionId\)/);

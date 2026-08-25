@@ -58,7 +58,6 @@ const COLOR_ALLOWLIST = [
   path.join('app', '(auth)'),                                      // Brand identity/auth visuals
   path.join('components', 'catalog', 'CollectionCard.tsx'),        // Image fallback gradient overlay
   path.join('components', 'catalog', 'CollectionCommentsSheet.tsx'), // Media overlay on dark backdrop
-  path.join('components', 'catalog', 'CollectionDetailViewer.tsx'),  // Full-screen media overlay
   path.join('components', 'catalog', 'EditBrandProfileSheet.tsx'),   // Avatar placeholder fill
   path.join('components', 'catalog', 'ProfileHeader.tsx'),           // Media/banner overlay
   path.join('components', 'catalog', 'ThreadRailAction.tsx'),        // Video overlay contrast

@@ -89,7 +89,6 @@ module.exports = {
         'components/ui/Input.tsx',
         'components/ui/StableImage.tsx',
         'components/ui/WiezLogo.tsx',
-        'components/catalog/CollectionDetailViewer.tsx',
         'app/(tabs)/index.tsx',
       ],
       rules: {

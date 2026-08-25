@@ -8,6 +8,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
+import { ContactMarker } from '@/components/ui/PlatformMark';
 import { BrandBadgeRail, type ProfileBadgeModel } from '@/components/catalog/ProfileBadge';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
@@ -102,23 +103,38 @@ function StoreStatusBadge({ badge }: { badge: ProfileBadgeModel | null }) {
   const isOpen = badge.variant.includes('open');
   const isClosed = badge.variant.includes('closed');
   const color = isOpen ? theme.colors.success : isClosed ? theme.colors.textMuted : theme.colors.warning;
-  const label = isOpen ? 'Open' : isClosed ? 'Closed' : 'Limited or custom-only';
+  const label = isOpen ? 'Open' : isClosed ? 'Closed' : 'Limited';
+  const fullLabel = isOpen ? 'Open' : isClosed ? 'Closed' : 'Limited or custom-only';
 
+  /*
+    This used to be a colour-only square with no text — green, grey or yellow,
+    and nothing else. Nobody can read it. It sat directly beside the brand's
+    name, so the first question every viewer had about a brand header was "what
+    is that green thing", which is the exact opposite of what a status indicator
+    is for; the legend was hidden behind a tap most people will never make, and
+    a colour-only cue is unreadable to anyone with a red/green deficiency
+    regardless.
+
+    The dot survives as the colour cue and now carries its own word. The tap
+    still explains the full vocabulary, because "Limited" is genuinely worth a
+    sentence.
+  */
   return (
     <Pressable
-      onPress={() => toast.info('Store status: green means Open, gray means Closed, yellow means Limited or custom-only.')}
+      onPress={() =>
+        toast.info(
+          'Store status — Open: taking orders. Closed: not taking orders right now. Limited: custom-only or partly available.',
+        )
+      }
       hitSlop={tokens.spacing.sm}
       accessibilityRole="button"
-      accessibilityLabel={`${label}. Tap for store status legend.`}
+      accessibilityLabel={`Store ${fullLabel}. Tap for store status legend.`}
       style={styles.storeStatusButton}
     >
-      {/* Color-only wavy square: green=open, gray=closed, yellow=limited/custom-only. */}
-      <View style={[styles.storeStatusBadge, { backgroundColor: color }]}>
-        <View style={[styles.storeStatusCorner, styles.storeStatusCornerTopLeft, { backgroundColor: color }]} />
-        <View style={[styles.storeStatusCorner, styles.storeStatusCornerTopRight, { backgroundColor: color }]} />
-        <View style={[styles.storeStatusCorner, styles.storeStatusCornerBottomLeft, { backgroundColor: color }]} />
-        <View style={[styles.storeStatusCorner, styles.storeStatusCornerBottomRight, { backgroundColor: color }]} />
-      </View>
+      <View style={[styles.storeStatusDot, { backgroundColor: color }]} />
+      <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+        {label}
+      </AppText>
     </Pressable>
   );
 }
@@ -606,37 +622,15 @@ function BrandDescription({ description }: { description?: string | null }) {
 }
 
 /**
- * Contact-row markers as emoji (Rule 5), not icon-library glyphs.
+ * Contact-row markers.
  *
- * A trade-off worth naming: 📸 and 📘 are weaker stand-ins for Instagram's and
- * Meta's real marks than the vector glyphs were. Rule 5 is mandatory and
- * explicitly prefers "a single emoji over a custom SVG icon", the rest of this
- * app is emoji-forward throughout (the Studio menu, the island dock, every
- * status chip), and each row carries the platform NAME beside the marker — so
- * the emoji identifies rather than has to be recognised. ✖️ for X is the
- * current brand, not the retired bird.
- *
- * The brand-colour tokens these used to be tinted with are gone: emoji render
- * as colour glyphs and ignore `color` on both platforms, so keeping them would
- * have been dead configuration.
+ * Ours stay emoji (Rule 5). A third-party platform gets that platform's real
+ * mark — see `components/ui/PlatformMark.tsx` for why the emoji stand-ins that
+ * used to live here (📸 for Instagram, 📘 for Facebook) were not a weaker
+ * version of the right glyph but a different symbol pointing somewhere else.
  */
-const CONTACT_MARKERS: Record<string, string> = {
-  instagram: '📸',
-  facebook: '📘',
-  x: '✖️',
-  twitter: '✖️',
-  email: '✉️',
-  phone: '📞',
-  website: '🌐',
-};
-
-function ContactIcon({ label }: { label: string }) {
-  const normalized = label.trim().toLowerCase();
-  return (
-    <AppText variant="bodyReadable" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {CONTACT_MARKERS[normalized] ?? '🔗'}
-    </AppText>
-  );
+function ContactIcon({ label, color }: { label: string; color: string }) {
+  return <ContactMarker label={label} color={color} />;
 }
 
 function getContactUrl(label: string, value: string): string | null {
@@ -685,7 +679,7 @@ function BrandContactItems({
           accessibilityRole="link"
           accessibilityLabel={`Open ${item.label} ${item.value}`}
         >
-          <ContactIcon label={item.label} />
+          <ContactIcon label={item.label} color={theme.colors.text} />
           {/* Deep near-black, not brand purple. Every contact row was purple,
               which made a plain email address look like a promoted link and
               fought with the coloured platform icon next to it. The icon
@@ -1183,38 +1177,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   storeStatusButton: {
-    width: 28,
-    height: 28,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: tokens.spacing.xs,
+    paddingLeft: tokens.spacing.xs,
   },
-  storeStatusBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: tokens.radius.sm,
-    transform: [{ rotate: '45deg' }],
-  },
-  storeStatusCorner: {
-    position: 'absolute',
+  storeStatusDot: {
     width: 8,
     height: 8,
     borderRadius: tokens.radius.full,
-  },
-  storeStatusCornerTopLeft: {
-    top: -3,
-    left: 5,
-  },
-  storeStatusCornerTopRight: {
-    right: -3,
-    top: 5,
-  },
-  storeStatusCornerBottomLeft: {
-    left: -3,
-    bottom: 5,
-  },
-  storeStatusCornerBottomRight: {
-    bottom: -3,
-    right: 5,
   },
   identityRow: {
     flexDirection: 'row',

@@ -19,12 +19,15 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
+import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
+import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
 import ReviewsTab from '@/components/reviews/ReviewsTab';
 import { StableImage } from '@/components/ui/StableImage';
 import { AspectAwareMedia } from '@/src/components/media/AspectAwareMedia';
@@ -91,6 +94,17 @@ type MarketCommerceViewerProps = {
   initialMediaUrl?: string | null;
   initialMediaFileId?: string | null;
   fallbackHref?: string;
+  /**
+   * Open the comments sheet on arrival.
+   *
+   * Set by comment notifications and by deep links that used to land on the
+   * retired `CollectionDetailViewer` — that screen was the only one with a
+   * comments affordance, so folding it into this viewer meant bringing the
+   * comments with it rather than dropping them.
+   */
+  openComments?: boolean;
+  /** Scroll to and highlight one comment (a reply notification's target). */
+  initialCommentId?: string | null;
 };
 
 const EMPTY_MEDIA_ID = 'empty-media';
@@ -111,7 +125,14 @@ const COLLAPSED_SHEET_HEIGHT = 40;
 /** dp/ms past which a release counts as a fling rather than a position. */
 const SHEET_FLING_VELOCITY = 0.4;
 /** Emoji-only dock actions — the sheet is chrome over media, not a toolbar. */
-const MESSAGE_EMOJI = '💬';
+/*
+  Direct messages take the envelope, which is already the Inbox tab's own mark.
+
+  This was 💬 while the Runway action rail used 💬 for COMMENTS — the same glyph
+  opening a private thread on one screen and a public comment list on the next.
+  Splitting them is what lets both actions live on this viewer at once.
+*/
+const MESSAGE_EMOJI = '✉️';
 const WISHLIST_EMOJI_ON = '💖';
 const WISHLIST_EMOJI_OFF = '🤍';
 /** Rule: navigation affordances are emoji, never icon glyphs. Matches `AppBackButton`. */
@@ -399,8 +420,10 @@ export function MarketCommerceViewer({
   initialMediaUrl,
   initialMediaFileId,
   fallbackHref = '/(tabs)/discover',
+  openComments = false,
+  initialCommentId = null,
 }: MarketCommerceViewerProps) {
-  const { theme } = useTheme();
+  const { theme, scheme } = useTheme();
   const toast = useToast();
   const { refuseIfBrand } = useShopperOnlyAction();
   const { status: authStatus, user } = useAuth();
@@ -438,6 +461,16 @@ export function MarketCommerceViewer({
   const [loading, setLoading] = useState(!(cachedProduct || cachedDesign));
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  /*
+    Comments are a DESIGN affordance, not a product one.
+
+    A design is a post — it is threaded, commented on and shared, and the
+    notification "X commented on your design" has to land somewhere that can
+    show the comment. A product is a listing: it collects reviews (already in
+    this sheet) rather than comments, and there is no backend comment thread on
+    one to open.
+  */
+  const [commentsOpen, setCommentsOpen] = useState(openComments && sourceType === 'DESIGN');
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [sizeRecommendation, setSizeRecommendation] = useState<SizeRecommendationResponse | null>(null);
   const [sizeRecommendationLoading, setSizeRecommendationLoading] = useState(false);
@@ -728,8 +761,23 @@ export function MarketCommerceViewer({
       (bagStatus && bagStatus.ui.defaultAction === 'DISABLED') ||
       isOwnBrand,
   );
-  const actionPriceLabel = priceLabel ? ` - ${priceLabel}` : '';
-  const bagLabel = `${BAG_IT_EMOJI} ${BAG_IT_LABEL}${actionPriceLabel}`;
+  /*
+    The price is NOT on the bag button.
+
+    It was — the button read "🛍️ Bag It - ₦50,000" on one line with
+    `numberOfLines={1}`, so on a phone it rendered as "🛍️ Bag It - ₦50,0…".
+    A truncated price is worse than no price: the digits that survive look like
+    a complete number, and a shopper reading "₦50,0" has been told something
+    false rather than nothing. Naira amounts on this platform routinely run to
+    six figures, so this was the normal case, not an edge one.
+
+    Bagging and pricing are also two different questions. The button answers
+    "put this in my bag"; the price belongs where the other facts about the item
+    are, in the sheet's own price pill beside the title, at a size that can hold
+    it. The accessibility label still carries both, because a screen-reader user
+    gets no equivalent of glancing at the pill next to the button.
+  */
+  const bagAccessibilityLabel = priceLabel ? `${BAG_IT_LABEL}, ${priceLabel}` : BAG_IT_LABEL;
 
   const productOptions = useMemo(() => {
     if (!product) return [];
@@ -976,22 +1024,68 @@ export function MarketCommerceViewer({
         pressed && styles.pressed,
       ]}
       accessibilityRole="button"
-      accessibilityLabel={bagLabel}
+      accessibilityLabel={bagAccessibilityLabel}
     >
-      {bagBusy ? (
-        <ActivityIndicator color={variant === 'dock' ? theme.colors.textInverse : bagDisabled ? theme.colors.primary : theme.colors.onPrimary} />
-      ) : (
+      {/*
+        The heartbeat is a global rule, so it beats in the sheet too.
+
+        The dock glyph and the sheet button used to be two different things: the
+        dock drew a bare 🛍️ and the sheet drew text, and neither pulsed. The
+        heartbeat is how bagging identifies itself everywhere else in the app —
+        `UnifiedProductCard` and the Runway rail both use `BagPulseIcon` — and
+        an expanded sheet is exactly when the shopper is deciding, which is when
+        it should be alive rather than when it should go still.
+      */}
+      <BagPulseIcon
+        status={bagBusy ? 'bagging' : bagDisabled ? 'disabled' : 'not_bagged'}
+        context="single"
+        surface="bare"
+        size={variant === 'dock' ? 40 : 26}
+      />
+      {variant === 'sheet' ? (
         <AppText
-          variant={variant === 'dock' ? 'title' : 'captionBold'}
-          tone={variant === 'dock' ? 'inverse' : bagDisabled ? 'muted' : 'inverse'}
+          variant="captionBold"
+          tone={bagDisabled ? 'muted' : 'inverse'}
+          numberOfLines={1}
+        >
+          {BAG_IT_LABEL}
+        </AppText>
+      ) : null}
+    </Pressable>
+  );
+
+  /*
+    Comments — designs only, and the reason 💬 now means comments here.
+
+    It used to mean "message the brand" on this screen while meaning "comments"
+    on the Runway rail and in the retired detail viewer. One speech bubble, two
+    destinations, on adjacent surfaces. Direct messages now take ✉️, which is
+    already the Inbox tab's mark, so each glyph points at exactly one place.
+  */
+  const renderCommentsAction = (variant: 'dock' | 'sheet') =>
+    sourceType !== 'DESIGN' ? null : (
+      <Pressable
+        onPress={() => setCommentsOpen(true)}
+        style={({ pressed }) => [
+          variant === 'dock' ? styles.dockGlyphAction : styles.sheetInlineAction,
+          variant === 'dock'
+            ? null
+            : { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+          pressed && styles.pressed,
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Comments"
+      >
+        <AppText
+          variant={variant === 'dock' ? 'title' : 'bodyBold'}
+          tone={variant === 'dock' ? 'inverse' : 'default'}
           numberOfLines={1}
           style={variant === 'dock' ? styles.dockGlyphText : undefined}
         >
-          {variant === 'dock' ? BAG_IT_EMOJI : bagLabel}
+          💬
         </AppText>
-      )}
-    </Pressable>
-  );
+      </Pressable>
+    );
 
   const renderWishlistAction = (variant: 'dock' | 'sheet') => (
     <Pressable
@@ -1069,19 +1163,50 @@ export function MarketCommerceViewer({
       pointerEvents="box-none"
     >
       <Animated.View style={[styles.metadataSheet, sheetAnimatedStyle]}>
-        {/* Surface layer — invisible while collapsed, so the handle reads as a
-            bare grabber on the media rather than a plate. */}
+        {/*
+          Surface layer — invisible while collapsed, so the handle reads as a
+          bare grabber on the media rather than a plate.
+
+          Expanded, it is FROSTED, not solid. A solid panel over a full-bleed
+          photograph deletes the bottom half of the garment the moment a shopper
+          asks for its details — they open the panel precisely because they are
+          looking at the piece, and the panel took the piece away. Frosting keeps
+          the shape, colour and drape legible underneath while still carrying
+          text at full contrast.
+
+          Two layers, and both are needed: the blur alone has no opinion about
+          luminance, so text over a bright photo sits on a bright frost and over
+          a dark one on a dark frost. The tint above it is what fixes the ground
+          the type is set on. It is the same construction as the banner name chip
+          in `BrandProfileHeader` — blur, then a token wash — so the two frosted
+          surfaces in the app agree.
+
+          `sheetSurfaceAnimatedStyle` drives OPACITY only. Do not move the paint
+          onto `metadataSheet`: that view is the clipping container, and a blur
+          rendered outside it escapes the rounded corners.
+        */}
         <Animated.View
           pointerEvents="none"
           style={[
             styles.sheetSurface,
             sheetSurfaceAnimatedStyle,
-            {
-              backgroundColor: theme.colors.bottomSheetSurface,
-              borderColor: theme.colors.border,
-            },
+            { borderColor: theme.colors.glassBorder },
           ]}
-        />
+        >
+          <BlurView
+            intensity={Math.max(28, Math.round(theme.colors.glassBlur))}
+            tint={scheme === 'dark' ? 'dark' : 'light'}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: theme.colors.glassSurfaceStrong },
+            ]}
+          />
+        </Animated.View>
 
         {/* The drag lives on the grab strip, NOT the whole panel. Claiming
             vertical gestures across the panel would steal every scroll from the
@@ -1118,6 +1243,7 @@ export function MarketCommerceViewer({
           <Animated.View style={[styles.sheetBody, sheetBodyAnimatedStyle]}>
             <View style={styles.sheetActionRow}>
               {renderWishlistAction('sheet')}
+              {renderCommentsAction('sheet')}
               {renderMessageAction('sheet')}
               {renderBagAction('sheet')}
             </View>
@@ -1131,6 +1257,7 @@ export function MarketCommerceViewer({
         style={[styles.dockFlankLeft, dockFlankAnimatedStyle]}
         pointerEvents={sheetExpanded ? 'none' : 'box-none'}
       >
+        {renderCommentsAction('dock')}
         {renderMessageAction('dock')}
         {renderWishlistAction('dock')}
       </Animated.View>
@@ -1408,6 +1535,18 @@ export function MarketCommerceViewer({
 
       {renderMetadataDock()}
 
+      {/* Designs only — see `renderCommentsAction`. Kept outside the dock so it
+          is not clipped by the metadata sheet's rounded container. */}
+      {sourceType === 'DESIGN' ? (
+        <CollectionCommentsSheet
+          visible={commentsOpen}
+          collectionId={normalizedSourceId}
+          collectionTitle={title}
+          initialCommentId={initialCommentId}
+          onClose={() => setCommentsOpen(false)}
+        />
+      ) : null}
+
       {/* The blocking loader is only for a cold open with nothing to show. When
           the caller handed down the tapped card's cover, that image IS the
           screen while the detail request finishes — covering it with a spinner
@@ -1578,6 +1717,9 @@ const styles = StyleSheet.create({
   // handle and body (see `sheetSurfaceAnimatedStyle`).
   sheetSurface: {
     ...StyleSheet.absoluteFill,
+    // The blur is a child, so the surface has to clip it or it paints square
+    // corners over the rounded sheet.
+    overflow: 'hidden',
     borderTopLeftRadius: tokens.radius.xl,
     borderTopRightRadius: tokens.radius.xl,
     borderBottomLeftRadius: tokens.radius.lg,
@@ -1623,8 +1765,10 @@ const styles = StyleSheet.create({
     minHeight: 40,
     borderRadius: tokens.radius.full,
     borderWidth: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.sm,
   },
   sheetContent: {

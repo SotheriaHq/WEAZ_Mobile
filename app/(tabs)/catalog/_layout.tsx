@@ -10,9 +10,11 @@
  * catalogue sub-flows (create-design, view, create-collection, edit-profile) to
  * preserve the previous full-screen, island-free behaviour.
  *
- * There is no `view/[collectionId]` screen: collection viewing happens inline
- * via `CollectionDetailViewer`. Declaring it here made expo-router warn about a
- * route with no matching file.
+ * There is no `view/[collectionId]` screen. Viewing a design or a store
+ * collection leaves the catalogue for the shared content viewers
+ * (`/market-viewer`, `/collection-viewer`), which are top-level routes.
+ * Declaring a view screen here made expo-router warn about a route with no
+ * matching file.
  */
 
 import { Stack } from 'expo-router';

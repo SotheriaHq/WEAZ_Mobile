@@ -364,20 +364,16 @@ const logBagTiming = (label: string, startedAt: number, context: Record<string, 
   });
 };
 
-/**
- * Picks the first alias that is actually present, instead of merging them.
- *
- * `images`, `media`, `mediaItems` and `productMedia` are four names the API has
- * used for THE SAME LIST across shapes and versions; they were being
- * concatenated, so a payload carrying two of them — `images` as plain URL
- * strings and `media` as objects, which the product detail does — produced
- * every photo twice. That is the "over 9" pager dots on a product with five
- * images, and it survived the de-dupe downstream because a signed S3 URL and a
- * raw one are different strings for the same object.
- *
- * These are aliases, not additive sources. First non-empty wins.
- */
 type MediaEntry = { url: string | null; fileId: string | null };
+
+/**
+ * A media entry mid-merge, carrying the identity fields the payload supplied.
+ *
+ * `sourceUrl` is the raw storage URL a resolved display URL was built from —
+ * see `mergeMediaAliases`. It is an identity, never something to render, so it
+ * is dropped before the entry leaves this module.
+ */
+type MergeableMediaEntry = MediaEntry & { sourceUrl: string | null };
 
 /**
  * The part of a URL that identifies the image, with the signature stripped.
@@ -404,40 +400,94 @@ const mediaUrlPath = (url: string | null): string | null => {
  *
  * Picking one array and ignoring the rest is not the fix either, because the
  * aliases carry DIFFERENT FIELDS for the same photo — the URL strings have no
- * file id, and the file id is what lets the app re-sign an expired URL. So this
- * merges instead: entries that resolve to the same image (same file id, or same
- * URL once the signature is off) collapse into one, and the merged entry keeps
- * whichever alias supplied each field.
+ * file id, and the file id is what lets the app re-sign an expired URL.
+ *
+ * ## Why matching on identity alone was not enough
+ *
+ * Identity here means "same file id, or same URL once the signature is off",
+ * and against the real payload it matches NEITHER field. `store.service.ts`
+ * builds the product response like this:
+ *
+ *     images: base.images                                  // raw S3 URLs, strings
+ *     media:  images.map(url => ({ fileUploadId, url: displayUrlByRawUrl.get(url) ?? url, … }))
+ *
+ * So for one photograph, `images[i]` is the RAW url with no file id, and
+ * `media[i].url` is the RESOLVED display url — a different host and a different
+ * path, not merely a different signature. Nothing links them: the string alias
+ * has no id to match on and its path does not equal the resolved one. Five
+ * photos therefore survived as ten entries, which is the ten pager dots on a
+ * product whose server-side cap is six images.
+ *
+ * ## The rule
+ *
+ * Fold ALIAS BY ALIAS rather than over one flat concatenation, and give each
+ * alias three chances to land on an existing entry:
+ *
+ *   1. file id — the strongest link when both aliases carry one.
+ *   2. URL identity, comparing each side's `url` AND its `sourceUrl` (the raw
+ *      storage URL a display URL was built from, which `store.service.ts` now
+ *      emits beside it). `sourceUrl` is what actually joins the raw-string alias
+ *      to the resolved-object alias, and it works regardless of order or length.
+ *   3. POSITION, when an alias is exactly as long as the list built so far. This
+ *      is the fallback for an API that predates `sourceUrl`: `media` is
+ *      `images.map(...)`, so an equal length is not a coincidence, it is the
+ *      relationship. Installed app builds keep working against either server.
+ *
+ * Anything that matches none of the three is appended — an alias that genuinely
+ * carries extra photos still contributes them.
+ *
+ * Merging fills gaps and never overwrites, except that a resolved URL beats a
+ * raw one: the raw S3 url is not fetchable by the client, so where both exist
+ * the one that renders wins.
  */
-const mergeMediaEntries = (entries: MediaEntry[]): MediaEntry[] => {
-  const merged: MediaEntry[] = [];
-
-  for (const entry of entries) {
-    const path = mediaUrlPath(entry.url);
-    const existing = merged.find(
-      (candidate) =>
-        (entry.fileId !== null && candidate.fileId === entry.fileId) ||
-        (path !== null && mediaUrlPath(candidate.url) === path),
-    );
-
-    if (!existing) {
-      merged.push({ ...entry });
-      continue;
-    }
-
-    // Fill the gaps rather than overwrite: an alias that only knows the URL
-    // must not erase the file id a richer alias already supplied.
-    if (!existing.fileId && entry.fileId) existing.fileId = entry.fileId;
-    if (!existing.url && entry.url) existing.url = entry.url;
-  }
-
-  return merged;
+const isRawStorageUrl = (url: string | null): boolean => {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return lower.includes('.s3.') || lower.includes('amazonaws.com');
 };
 
-const appendArray = (target: unknown[], value: unknown) => {
-  if (Array.isArray(value)) {
-    target.push(...value);
+/** Every path this entry is known by, for identity comparison. */
+const mediaIdentityPaths = (entry: MergeableMediaEntry): string[] =>
+  [mediaUrlPath(entry.url), mediaUrlPath(entry.sourceUrl)].filter(
+    (value): value is string => Boolean(value),
+  );
+
+const mergeIntoEntry = (existing: MergeableMediaEntry, incoming: MergeableMediaEntry) => {
+  if (!existing.fileId && incoming.fileId) existing.fileId = incoming.fileId;
+  if (!existing.sourceUrl && incoming.sourceUrl) existing.sourceUrl = incoming.sourceUrl;
+  if (!existing.url && incoming.url) existing.url = incoming.url;
+  else if (incoming.url && isRawStorageUrl(existing.url) && !isRawStorageUrl(incoming.url)) {
+    existing.url = incoming.url;
   }
+};
+
+const mergeMediaAliases = (aliases: MergeableMediaEntry[][]): MediaEntry[] => {
+  const merged: MergeableMediaEntry[] = [];
+
+  for (const alias of aliases) {
+    if (alias.length === 0) continue;
+    const alignsByPosition = merged.length > 0 && alias.length === merged.length;
+
+    alias.forEach((entry, index) => {
+      const paths = mediaIdentityPaths(entry);
+      const byIdentity = merged.find(
+        (candidate) =>
+          (entry.fileId !== null && candidate.fileId === entry.fileId) ||
+          mediaIdentityPaths(candidate).some((candidatePath) => paths.includes(candidatePath)),
+      );
+
+      const target = byIdentity ?? (alignsByPosition ? merged[index] : undefined);
+      if (target) {
+        mergeIntoEntry(target, entry);
+        return;
+      }
+      merged.push({ ...entry });
+    });
+  }
+
+  // `sourceUrl` is an identity, not an address — nothing downstream should be
+  // able to render it by mistake.
+  return merged.map(({ url, fileId }) => ({ url, fileId }));
 };
 
 const unwrapProductListPayload = (payload: unknown): {
@@ -494,18 +544,23 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
   const rawBrand = asRecord(item.brand);
   const rawBrandLogoFile = asRecord(item.brandLogoFile ?? rawBrand.logoFile ?? rawBrand.logoImageFile);
 
-  const rawImages: unknown[] = [];
-  appendArray(rawImages, item.images);
-  appendArray(rawImages, item.media);
-  appendArray(rawImages, item.mediaItems);
-  appendArray(rawImages, item.productMedia);
+  /*
+    Each alias stays its OWN list. Concatenating them first destroys the one
+    piece of evidence that lets raw-vs-display duplicates be collapsed: which
+    entry came from which alias, and at what index. See `mergeMediaAliases`.
 
-  const rawImageEntries = rawImages
+    `media` is listed before `images` deliberately — it is the richest alias
+    (URL plus file id), so it becomes the base list the others align against.
+  */
+  const toMediaEntries = (value: unknown): MergeableMediaEntry[] =>
+    (Array.isArray(value) ? value : [])
     .map((entry) => {
       if (typeof entry === 'string') {
+        // A plain string is a raw storage URL under the `images` alias, so it is
+        // both the address and the identity.
         const url = asString(entry);
         if (!url) return null;
-        return { url, fileId: null };
+        return { url, fileId: null, sourceUrl: url };
       }
 
       const media = asRecord(entry);
@@ -531,12 +586,19 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
         asString(file.id) ??
         (isFileLikeRecord(media) ? asString(media.id) : null) ??
         null;
+      const sourceUrl =
+        asString(media.sourceUrl) ?? asString(media.rawUrl) ?? asString(file.s3Url) ?? null;
       if (!url && !fileId) return null;
-      return { url, fileId };
+      return { url, fileId, sourceUrl };
     })
-    .filter((entry): entry is MediaEntry => Boolean(entry));
+    .filter((entry): entry is MergeableMediaEntry => Boolean(entry));
 
-  const images = mergeMediaEntries(rawImageEntries);
+  const images = mergeMediaAliases([
+    toMediaEntries(item.media),
+    toMediaEntries(item.images),
+    toMediaEntries(item.mediaItems),
+    toMediaEntries(item.productMedia),
+  ]);
 
   const imageUrls = images.map((entry) => entry.url).filter((url): url is string => Boolean(url));
   const preferredCoverUrl =

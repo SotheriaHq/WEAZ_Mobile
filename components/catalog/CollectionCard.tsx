@@ -242,7 +242,6 @@ export const CollectionCard = React.memo(function CollectionCard({
               itemId={collection.id}
               createdAt={collection.createdAt}
               sourceScreen="profile-catalog"
-              compact
               style={styles.newDropBadge}
             />
           ) : null}
@@ -642,7 +641,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 42,
     left: tokens.spacing.sm,
-    maxWidth: '22%',
+    // Width cap removed with the badge's plate — see `NewDropBadge`. At ~22% of
+    // a grid card it clipped the label away entirely.
   },
   actionRail: {
     position: 'absolute',
