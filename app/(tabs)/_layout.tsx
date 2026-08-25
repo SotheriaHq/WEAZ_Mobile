@@ -732,13 +732,40 @@ export default function TabLayout() {
     }
   }, [bagFlow?.isMyBagOpen, clearSelectionState, optimisticActiveKey]);
 
+  /*
+    A count is blanked only when it belongs to somebody else.
+
+    Both of these used to call `setXCountReady(false)` on every run, and the
+    badges render as `ready ? count : undefined` — so the badge VANISHED and
+    stayed gone until the refresh resolved. The effects re-run whenever their
+    refresh callback's identity changes (it depends on `status`), which happens
+    around auth settling and tab transitions, so the counts blinked out exactly
+    when the screen was busiest and came back once it settled.
+
+    Nothing about the number was uncertain during that window. The shared count
+    is module-scoped and still held the last known value; only the flag saying
+    "we know it" was being thrown away. Revalidation is not ignorance — the badge
+    keeps showing what it knows and moves when a real number arrives.
+
+    The one case that IS ignorance is a different account, so the flag resets on
+    an actual `user.id` change and nowhere else. `undefined` (signed out, id
+    unchanged at null) does not count as a change.
+  */
+  const countsOwnerRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    setNotificationCountReady(false);
+    const owner = user?.id ?? null;
+    if (countsOwnerRef.current !== owner) {
+      countsOwnerRef.current = owner;
+      setNotificationCountReady(false);
+      setMessageCountReady(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
     void refreshUnreadNotificationCount();
   }, [refreshUnreadNotificationCount, user?.id]);
 
   useEffect(() => {
-    setMessageCountReady(false);
     void refreshUnreadMessageCount();
   }, [refreshUnreadMessageCount, user?.id]);
 

@@ -9,6 +9,11 @@ import {
   StyleSheet,
   View,
   useWindowDimensions,
+  // The metadata sheet is Reanimated; the comments sheet is the RN Animated API
+  // and drives an `Animated.Value` the caller can read. The stage transform has
+  // to be on the SAME system as the value driving it, so this is imported under
+  // its own name rather than shadowed by the Reanimated default import below.
+  Animated as RNAnimated,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
@@ -471,6 +476,23 @@ export function MarketCommerceViewer({
     one to open.
   */
   const [commentsOpen, setCommentsOpen] = useState(openComments && sourceType === 'DESIGN');
+  /**
+   * The viewer page scales down into the band above the comment sheet.
+   *
+   * Mounting the sheet was not enough: a sheet over an unchanged full-bleed
+   * photograph covers the bottom half of the piece being discussed, which is the
+   * one thing a comment thread needs to stay next to. The Runway has done this
+   * correctly since the comments work landed (`commentsStageStyle` in
+   * `RunwayFeedScreen`) and the viewer did not, so the same design behaved
+   * differently depending on which screen you opened its comments from.
+   *
+   * `commentsProgress` is handed to the SHEET, which drives it and interpolates
+   * its own slide from it. One value, so the two motions cannot drift: the page
+   * is exactly as small as the sheet is tall on every frame, including a drag
+   * released half way. Nothing is cropped — the scale is uniform.
+   */
+  const commentsProgress = useRef(new RNAnimated.Value(0)).current;
+  const [commentsSheetHeight, setCommentsSheetHeight] = useState(0);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [sizeRecommendation, setSizeRecommendation] = useState<SizeRecommendationResponse | null>(null);
   const [sizeRecommendationLoading, setSizeRecommendationLoading] = useState(false);
@@ -489,6 +511,44 @@ export function MarketCommerceViewer({
   // insets.bottom`); this screen was the one full-bleed surface still using the
   // bare window height.
   const mediaHeight = height + chrome.insets.top + chrome.insets.bottom;
+
+  /*
+    Scale the stage until the whole frame fits the strip the sheet leaves, then
+    lift it so it sits AT the top of that strip rather than floating in the
+    middle of it.
+
+    A uniform scale about the view's centre moves the top edge down by half the
+    height lost, so the compensating translate is exactly that — minus half the
+    safe-area top, which tucks it under the status bar instead of behind it.
+    Identical maths to the Runway; the two have to agree or the same design
+    settles at a different size depending on where its comments were opened.
+
+    Guarded on a MEASURED sheet height: before the sheet has laid out there is no
+    honest number to scale to, and a guessed one would jump on the next frame.
+  */
+  const commentsStageStyle = useMemo(() => {
+    if (commentsSheetHeight <= 0 || mediaHeight <= 0) return null;
+    const visibleBand = Math.max(0, mediaHeight - commentsSheetHeight);
+    const targetScale = Math.max(0.35, Math.min(1, visibleBand / mediaHeight));
+    const liftedBy = (mediaHeight * (1 - targetScale)) / 2;
+
+    return {
+      transform: [
+        {
+          translateY: commentsProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, -(liftedBy - chrome.insets.top / 2)],
+          }),
+        },
+        {
+          scale: commentsProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, targetScale],
+          }),
+        },
+      ],
+    };
+  }, [chrome.insets.top, commentsProgress, commentsSheetHeight, mediaHeight]);
   // Top-of-media chrome (pagination, in-bag confirmation) now that bag/wishlist/
   // message have moved down to the dock and freed this band.
   const topChromeBaseline = chrome.insets.top + tokens.spacing['3xl'] + tokens.spacing.md;
@@ -1428,6 +1488,11 @@ export function MarketCommerceViewer({
     <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: VIEWER_STAGE_MATTE }]}>
       <StatusBar style="light" />
 
+      {/* Everything except the comment sheet lives on the STAGE, so opening
+          comments scales the media AND its chrome together as one page. The
+          sheet is deliberately outside it — it must not scale with what it is
+          scaling. */}
+      <RNAnimated.View style={[styles.stage, commentsStageStyle]}>
       <FlatList
         ref={mediaRef}
         data={media}
@@ -1534,15 +1599,24 @@ export function MarketCommerceViewer({
       ) : null}
 
       {renderMetadataDock()}
+      </RNAnimated.View>
 
-      {/* Designs only — see `renderCommentsAction`. Kept outside the dock so it
-          is not clipped by the metadata sheet's rounded container. */}
+      {/* Designs only — see `renderCommentsAction`. Outside the stage, because
+          the sheet is what the stage is making room for; and outside the dock,
+          so it is not clipped by the metadata sheet's rounded container.
+
+          `progress` and `onSheetHeight` are what make this the Reels/Facebook
+          presentation rather than a panel dropped on top of the design: the
+          sheet reports its measured height, the page scales to the strip that
+          leaves, and both move on the same frames. */}
       {sourceType === 'DESIGN' ? (
         <CollectionCommentsSheet
           visible={commentsOpen}
           collectionId={normalizedSourceId}
           collectionTitle={title}
           initialCommentId={initialCommentId}
+          progress={commentsProgress}
+          onSheetHeight={setCommentsSheetHeight}
           onClose={() => setCommentsOpen(false)}
         />
       ) : null}
@@ -1578,6 +1652,15 @@ export function MarketCommerceViewer({
 
 const styles = StyleSheet.create({
   root: {
+    flex: 1,
+  },
+  /*
+    The scalable page. Fills the root exactly, so every absolutely-positioned
+    child inside it resolves against the same box it did when they were direct
+    children of the SafeAreaView — the wrapper changes what transforms them, not
+    where they sit.
+  */
+  stage: {
     flex: 1,
   },
   mediaPage: {

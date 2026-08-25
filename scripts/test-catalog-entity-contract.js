@@ -117,6 +117,27 @@ for (const retired of [
 const marketViewerSource = read('src/features/market/components/MarketCommerceViewer.tsx');
 assert.match(marketViewerSource, /CollectionCommentsSheet/);
 assert.match(marketViewerSource, /openComments/);
+
+/*
+  Comments must SCALE the page, not cover it.
+
+  Mounting the sheet without `progress`/`onSheetHeight` typechecks, renders, and
+  looks correct right up until someone opens it — at which point a panel drops
+  over the bottom half of the design being discussed. The Runway has coupled the
+  two since the comments work landed; the viewer shipped without it, so the same
+  design behaved differently depending on which screen its comments were opened
+  from. Both halves are asserted because either one alone is inert.
+*/
+assert.match(marketViewerSource, /progress=\{commentsProgress\}/);
+assert.match(marketViewerSource, /onSheetHeight=\{setCommentsSheetHeight\}/);
+assert.match(marketViewerSource, /commentsStageStyle/);
+
+const runwayFeedSource = read('src/features/feed/components/RunwayFeedScreen.tsx');
+for (const surface of [marketViewerSource, runwayFeedSource]) {
+  // The two stages must agree on the geometry, or one design settles at a
+  // different size than the other for the same sheet height.
+  assert.match(surface, /Math\.max\(0\.35, Math\.min\(1, visibleBand \/ \w+\)\)/);
+}
 assert.match(studioNavigationBridgeSource, /pathname === '\/designs\/create'/);
 assert.match(studioNavigationBridgeSource, /pathname:\s*'\/designs\/\[designId\]\/edit'/);
 assert.match(studioNavigationBridgeSource, /routeForStoreCollectionTarget\(collectionId\)/);
