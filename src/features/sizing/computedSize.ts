@@ -22,7 +22,11 @@
  *     measurements", which the shopper believes they already did.
  */
 
-import type { ComputedSizeFitProfile, SizingRegion } from '@/src/api/ProfileApi';
+import type {
+  ComputedSizeFitProfile,
+  MeasurementProblem,
+  SizingRegion,
+} from '@/src/api/ProfileApi';
 
 import {
   formatMeasurementLabel,
@@ -63,10 +67,44 @@ export type ComputedSizeState =
       message: string;
     }
   | {
+      /**
+       * Measurements were given, and at least one of them cannot describe a
+       * body — so the engine withheld it and declined to guess. Separate from
+       * `needs-measurements` because the instruction is the opposite one: not
+       * "add this", but "the number in this field is wrong".
+       */
+      kind: 'bad-measurements';
+      problems: MeasurementProblem[];
+      /** Canonical keys, for highlighting the offending fields. */
+      problemKeys: string[];
+    }
+  | {
       kind: 'needs-measurements';
       missingKeys: CoreMeasurementKey[];
       missingLabels: string[];
     };
+
+/**
+ * Every rejected measurement across the response, deduped by key.
+ *
+ * The audit runs per measurement, so the envelope and all five categories carry
+ * the same problem list. Reading only one of them would miss the case where an
+ * older server sends problems per category and not on the envelope; reading all
+ * of them without deduping tells the shopper about one bad chest six times.
+ */
+export function collectMeasurementProblems(
+  computed: ComputedSizeFitProfile | null | undefined,
+): MeasurementProblem[] {
+  const all = [
+    ...(computed?.measurementProblems ?? []),
+    ...Object.values(computed?.categoryBreakdown ?? {}).flatMap(
+      (entry) => entry?.measurementProblems ?? [],
+    ),
+  ];
+  return Array.from(
+    new Map(all.map((problem) => [problem.key.toUpperCase(), problem])).values(),
+  );
+}
 
 export function formatSizingRegion(region: SizingRegion | null | undefined): string | null {
   if (!region) return null;
@@ -110,6 +148,22 @@ export function resolveComputedSizeState(
       kind: 'charts-unavailable',
       regionLabel,
       message: chartlessEntry.warnings?.[0]?.trim() || CHART_UNAVAILABLE_FALLBACK,
+    };
+  }
+
+  /*
+    Bad measurements before missing ones, for the same reason charts come before
+    both: `missingBaselineMeasurements` counts a withheld measurement as absent,
+    so a shopper whose chest reads 45 cm would be told to "add Chest" — pointing
+    them at a field that already looks filled in, which reads as the app being
+    broken rather than as the number being wrong.
+  */
+  const problems = collectMeasurementProblems(computed);
+  if (problems.length > 0) {
+    return {
+      kind: 'bad-measurements',
+      problems,
+      problemKeys: problems.map((problem) => problem.key.toUpperCase()),
     };
   }
 

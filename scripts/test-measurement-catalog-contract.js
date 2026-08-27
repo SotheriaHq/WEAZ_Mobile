@@ -56,6 +56,7 @@ const {
   formatMeasurementLabel,
   resolveCoreMeasurementKey,
   readMeasurementScalar,
+  compactMeasurementLabel,
 } = catalog;
 
 // ── The eight are the eight ────────────────────────────────────────────────
@@ -223,6 +224,114 @@ assert.strictEqual(
   only its own repo), because a test that fails on a missing sibling is a test
   people learn to ignore.
 */
+/*
+  ── Compact chip labels ──
+
+  The profile header renders measurement VALUES beside the avatar, in a column
+  about 190pt wide. Every core point must have a short label or one chip fills a
+  row and eight fittings become eight rows — which is what pushed the values off
+  that screen in the first place.
+*/
+for (const key of CORE_MEASUREMENT_KEYS) {
+  const compact = compactMeasurementLabel(key);
+  assert.ok(
+    compact && compact.length > 0,
+    `${key} has no compact chip label`,
+  );
+  assert.ok(
+    compact.length <= 14,
+    `compact label for ${key} is "${compact}" (${compact.length} chars) — too long for the header chip column`,
+  );
+}
+assert.strictEqual(compactMeasurementLabel('CHEST_BUST'), 'Chest');
+assert.strictEqual(compactMeasurementLabel('MEN_CHEST'), 'Chest');
+assert.strictEqual(compactMeasurementLabel('HIP_SEAT'), 'Hip');
+// Anything the registry does not know keeps its full label rather than vanishing.
+assert.strictEqual(compactMeasurementLabel('EXTRA_AGBADA_DROP'), 'Extra Agbada Drop');
+
+/*
+  ── The header shows values, not just a progress bar ──
+
+  `me.tsx` had been reduced to "6 of 8", which answers whether the set is
+  finished and never what is in it, so a shopper could not check their own
+  numbers without leaving the screen. Guarded because the failure is silent: the
+  screen still renders, still typechecks, and still looks deliberate.
+*/
+const meScreen = fs.readFileSync(
+  path.join(projectRoot, 'app', '(tabs)', 'me.tsx'),
+  'utf8',
+);
+assert.ok(
+  /<FittingsChips[\s\S]{0,400}?collapsed=\{heroFittings\}/.test(meScreen),
+  'the profile hero no longer renders FittingsChips — measurement values are off the screen again',
+);
+assert.ok(
+  meScreen.includes('compactMeasurementLabel'),
+  'the header chips must label through the shared catalog, not a local map',
+);
+assert.ok(
+  /fittingProblemKeys/.test(meScreen),
+  'the header chips must mark measurements the server rejected',
+);
+
+/*
+  ── MeasurementProblem is a cross-repo contract ──
+
+  The backend audit withholds a measurement that cannot describe a body and
+  reports a code with it. A code the client does not know renders as an unhandled
+  branch, so the two unions have to agree.
+*/
+const backendIntegrity = path.join(
+  projectRoot,
+  '..',
+  'bthreadly',
+  'src',
+  'sizing',
+  'measurement-integrity.ts',
+);
+if (fs.existsSync(backendIntegrity)) {
+  const integritySource = fs.readFileSync(backendIntegrity, 'utf8');
+  const codeBlock = integritySource.match(
+    /export type MeasurementProblemCode =([\s\S]*?);/,
+  );
+  assert.ok(codeBlock, 'could not read MeasurementProblemCode from the backend');
+  const backendCodes = [...codeBlock[1].matchAll(/'([A-Z_]+)'/g)]
+    .map((match) => match[1])
+    .sort();
+
+  const profileApi = fs.readFileSync(
+    path.join(projectRoot, 'src', 'api', 'ProfileApi.ts'),
+    'utf8',
+  );
+  const clientBlock = profileApi.match(/code:\s*((?:'[A-Z_]+'\s*\|?\s*)+);/);
+  assert.ok(clientBlock, 'MeasurementProblem.code is missing from ProfileApi');
+  const clientCodes = [...clientBlock[1].matchAll(/'([A-Z_]+)'/g)]
+    .map((match) => match[1])
+    .sort();
+
+  assert.strictEqual(
+    clientCodes.join(','),
+    backendCodes.join(','),
+    'MeasurementProblem codes have drifted between bthreadly and threadly-mobile',
+  );
+
+  /*
+    Every canonical key must have a plausibility range on the server, or a
+    measurement is scored with no defence at all — which is the whole defect
+    this file's sibling test suite exists to pin.
+  */
+  const rangeBlock = integritySource.match(
+    /export const PLAUSIBLE_RANGE_CM[\s\S]*?\{([\s\S]*?)\n\};/,
+  );
+  assert.ok(rangeBlock, 'could not read PLAUSIBLE_RANGE_CM from the backend');
+  for (const key of CORE_MEASUREMENT_KEYS) {
+    assert.ok(
+      new RegExp(`\\b${key}:\\s*\\{`).test(rangeBlock[1]),
+      `${key} has no plausibility range on the server — it can be saved as any number`,
+    );
+  }
+}
+
 const backendNormalizer = path.join(
   projectRoot,
   '..',

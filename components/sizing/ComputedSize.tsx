@@ -36,6 +36,40 @@ export function ComputedSizeChip({
   onPress: () => void;
 }) {
   const { theme } = useTheme();
+
+  /*
+    The one non-ready state the header does speak to.
+
+    The rule below — no empty-state slab beside the avatar — holds for the
+    states whose cause is somewhere else: an unpublished chart is WIEZ's setup
+    step, and a list of missing points is a job for the fittings screen. This one
+    is different. Its cause is visible on this screen, in the measurement chips
+    right beside it, and those chips are already marked; leaving the header
+    silent would put a ⚠ on a shopper's own number with nothing to explain it.
+  */
+  if (state.kind === 'bad-measurements') {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${state.problems.length} measurement${state.problems.length === 1 ? '' : 's'} need checking. Open my fittings.`}
+        style={({ pressed }) => [
+          styles.chip,
+          { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.warning },
+          pressed ? styles.pressed : null,
+        ]}
+      >
+        <AppText variant="captionBold" tone="muted" numberOfLines={1}>
+          {SIZE_EMOJI} Your size
+        </AppText>
+        <AppText variant="captionBold" tone="warning" numberOfLines={2}>
+          Check {state.problems.length} measurement
+          {state.problems.length === 1 ? '' : 's'}
+        </AppText>
+      </Pressable>
+    );
+  }
+
   if (state.kind !== 'ready') return null;
 
   return (
@@ -135,6 +169,38 @@ export function ComputedSizePanel({ state }: { state: ComputedSizeState }) {
         <AppText variant="captionRegular" tone="muted">
           Your measurements are saved and brands can still use them for custom orders.
         </AppText>
+      </View>
+    );
+  }
+
+  /*
+    A measurement was given and it is wrong.
+
+    This branch exists because the other one is actively misleading here: the
+    engine counts a withheld measurement as missing, so a shopper whose chest
+    reads 45 cm would be told to "Add Chest / bust below" — pointing them at a
+    field that already holds a number. The server's own sentence names the value
+    and the likely mistake ("45 cm is about half a real chest/bust … did you mean
+    90 cm?"), which is the only wording that leads anywhere.
+  */
+  if (state.kind === 'bad-measurements') {
+    return (
+      <View style={frame}>
+        <AppText variant="captionBold" tone="muted">
+          {SIZE_EMOJI} Your size
+        </AppText>
+        <AppText variant="subtitle" tone="warning">
+          Check your measurements
+        </AppText>
+        <AppText variant="captionRegular" tone="muted">
+          {state.problems[0].message}
+        </AppText>
+        {state.problems.length > 1 ? (
+          <AppText variant="captionRegular" tone="muted">
+            {state.problems.length - 1} other measurement
+            {state.problems.length - 1 === 1 ? '' : 's'} need checking too.
+          </AppText>
+        ) : null}
       </View>
     );
   }

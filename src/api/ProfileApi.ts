@@ -91,10 +91,27 @@ export interface SizeRecommendationResponse {
   fallbackUsed: boolean;
   staleMeasurementWarning?: boolean;
   sizeChartUnavailable?: boolean;
+  measurementProblems?: MeasurementProblem[];
+  primaryMeasurementUnavailable?: boolean;
   userFitPreference?: FitPreference | string | null;
   productFitType?: string | null;
   fabricStretch?: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN' | null;
 }
+
+/**
+ * One saved measurement the backend audit rejected, and why.
+ *
+ * Mirrors `bthreadly/src/sizing/measurement-integrity.ts`. `key` is canonical,
+ * so a screen can point at the field that needs correcting.
+ */
+export type MeasurementProblem = {
+  key: string;
+  code: 'IMPLAUSIBLE' | 'INCONSISTENT' | 'LIKELY_HALF_GIRTH' | 'LIKELY_INCHES';
+  value: number;
+  message: string;
+  conflictsWith?: string;
+  suggestedValue?: number;
+};
 
 export interface SavedDeliveryAddress {
   id: string;
@@ -122,6 +139,14 @@ export interface ComputedSizeFitProfile {
   fitPreference: FitPreference | null;
   categoryBreakdown: Record<string, SizeRecommendationResponse>;
   missingBaselineMeasurements: string[];
+  /**
+   * Measurements the engine refused to size against, each with a shopper-facing
+   * reason. Distinct from `missingBaselineMeasurements`: those were never
+   * entered, these were entered wrongly. A value that cannot describe a body is
+   * withheld rather than scored, because scored, it stopped ranking sizes and
+   * let the remaining measurements elect one on their own.
+   */
+  measurementProblems?: MeasurementProblem[];
   staleMeasurementWarning?: boolean;
   measurementUpdatePrompt?: {
     requiredMeasurements: string[];

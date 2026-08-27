@@ -64,7 +64,7 @@ export type MeasurementSlot = {
 
 /** The eight points the recommendation engine weighs, in the order a tailor takes them. */
 export const CORE_MEASUREMENT_SLOTS: readonly MeasurementSlot[] = [
-  { key: 'HEIGHT', label: 'Height', hint: 'Standing, head to floor, no shoes' },
+  { key: 'HEIGHT', label: 'Height', hint: 'Crown of head straight to floor (barefoot)' },
   { key: 'CHEST_BUST', label: 'Chest / bust', hint: 'Around the fullest part, under the arms' },
   { key: 'WAIST', label: 'Waist', hint: 'Around the narrowest part, above the belly button' },
   { key: 'HIP_SEAT', label: 'Hips / seat', hint: 'Around the fullest part of your seat' },
@@ -76,6 +76,32 @@ export const CORE_MEASUREMENT_SLOTS: readonly MeasurementSlot[] = [
 
 export const CORE_MEASUREMENT_KEYS: readonly CoreMeasurementKey[] =
   CORE_MEASUREMENT_SLOTS.map((slot) => slot.key);
+
+/**
+ * One-word names, for chips that sit in a column beside the avatar.
+ *
+ * `CORE_MEASUREMENT_SLOTS.label` is the form used on the fittings FORM, where a
+ * full line is available and "Shoulder width — across the back, shoulder bone to
+ * shoulder bone" is exactly right. In a 190pt column one such label fills a row
+ * on its own and eight fittings become eight rows. These are what a tape measure
+ * and a tailor call the same points, so nothing is lost.
+ */
+const COMPACT_CORE_LABELS: Record<CoreMeasurementKey, string> = {
+  HEIGHT: 'Height',
+  CHEST_BUST: 'Chest',
+  WAIST: 'Waist',
+  HIP_SEAT: 'Hip',
+  SHOULDER: 'Shoulder',
+  SLEEVE_LENGTH: 'Sleeve',
+  INSEAM: 'Inseam',
+  NECK_COLLAR: 'Neck',
+};
+
+export function compactMeasurementLabel(key: string): string {
+  const coreKey = resolveCoreMeasurementKey(key);
+  if (coreKey) return COMPACT_CORE_LABELS[coreKey];
+  return formatMeasurementLabel(key);
+}
 
 const CORE_SLOT_BY_KEY = new Map<string, MeasurementSlot>(
   CORE_MEASUREMENT_SLOTS.map((slot) => [slot.key, slot]),
