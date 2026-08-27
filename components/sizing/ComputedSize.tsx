@@ -52,7 +52,11 @@ export function ComputedSizeChip({
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${state.problems.length} measurement${state.problems.length === 1 ? '' : 's'} need checking. Open my fittings.`}
+        accessibilityLabel={
+          state.problems.length > 0
+            ? `${state.problems.length} measurement${state.problems.length === 1 ? '' : 's'} need checking. Open my fittings.`
+            : 'Your measurements disagree about your size. Open my fittings.'
+        }
         style={({ pressed }) => [
           styles.chip,
           { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.warning },
@@ -63,8 +67,9 @@ export function ComputedSizeChip({
           {SIZE_EMOJI} Your size
         </AppText>
         <AppText variant="captionBold" tone="warning" numberOfLines={2}>
-          Check {state.problems.length} measurement
-          {state.problems.length === 1 ? '' : 's'}
+          {state.problems.length > 0
+            ? `Check ${state.problems.length} measurement${state.problems.length === 1 ? '' : 's'}`
+            : 'Measurements disagree'}
         </AppText>
       </Pressable>
     );
@@ -193,7 +198,7 @@ export function ComputedSizePanel({ state }: { state: ComputedSizeState }) {
           Check your measurements
         </AppText>
         <AppText variant="captionRegular" tone="muted">
-          {state.problems[0].message}
+          {state.disagreementMessage ?? state.problems[0].message}
         </AppText>
         {state.problems.length > 1 ? (
           <AppText variant="captionRegular" tone="muted">

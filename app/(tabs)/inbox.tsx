@@ -238,15 +238,39 @@ const ConversationRow = memo(function ConversationRow({
   }, [item, onPress]);
 
   return (
+    /*
+      Unread has to LOOK unread.
+
+      Read and unread rows used to share a surface and differ only by the TONE
+      of the timestamp and the preview — so finding what still needed answering
+      meant reading the whole list. Messenger, Instagram DMs and WhatsApp all
+      separate the two with a filled surface plus a solid marker, and they carry
+      the signal on three channels at once (surface, weight, dot) so it survives
+      colour-blindness and a dimmed screen outdoors.
+
+      `primarySoft` rather than a hand-mixed alpha, so the wash tracks the theme
+      in both schemes.
+    */
     <Pressable
       onPress={handlePress}
       style={({ pressed }) => [
         styles.rowPressable,
+        unread ? { backgroundColor: theme.colors.primarySoft } : null,
         pressed ? { backgroundColor: theme.colors.surfaceAlt } : null,
       ]}
       accessibilityRole="button"
-      accessibilityLabel={`Open conversation with ${name}`}
+      accessibilityLabel={
+        unread
+          ? `Open unread conversation with ${name}`
+          : `Open conversation with ${name}`
+      }
     >
+      {unread ? (
+        <View
+          style={[styles.unreadEdge, { backgroundColor: theme.colors.primary }]}
+          pointerEvents="none"
+        />
+      ) : null}
       <View style={styles.row}>
         <ConversationAvatar item={item} />
         <View style={[styles.rowBody, { borderBottomColor: theme.colors.border }]}>
@@ -268,7 +292,16 @@ const ConversationRow = memo(function ConversationRow({
 
           <View style={styles.rowBottom}>
             <View style={styles.previewWrap}>
-              <AppText variant="small" tone={unread ? 'secondary' : 'muted'} numberOfLines={1}>
+              {/*
+                An unread preview is the line that says whether this needs
+                answering now, so it gets the emphatic variant rather than a
+                slightly less grey tone.
+              */}
+              <AppText
+                variant={unread ? 'captionBold' : 'small'}
+                tone={unread ? 'default' : 'muted'}
+                numberOfLines={1}
+              >
                 {getConversationPreview(item)}
               </AppText>
               {contextLabel ? (
@@ -284,6 +317,10 @@ const ConversationRow = memo(function ConversationRow({
                   {item.unreadCount > 99 ? '99+' : String(item.unreadCount)}
                 </AppText>
               </View>
+            ) : unread ? (
+              /* Unread with no count from the server — the dot is the honest
+                 form of "there is something here". */
+              <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} />
             ) : null}
           </View>
         </View>
@@ -830,6 +867,24 @@ const styles = StyleSheet.create({
   },
   rowPressable: {
     minHeight: 76,
+    position: 'relative',
+  },
+  /**
+   * The accent edge on an unread row. Absolutely positioned so switching a row
+   * between read and unread never changes its width — a list that reflows as
+   * read receipts land is worse than one with a weak indicator.
+   */
+  unreadEdge: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+  },
+  unreadDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   row: {
     flexDirection: 'row',

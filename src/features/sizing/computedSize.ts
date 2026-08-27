@@ -77,6 +77,12 @@ export type ComputedSizeState =
       problems: MeasurementProblem[];
       /** Canonical keys, for highlighting the offending fields. */
       problemKeys: string[];
+      /**
+       * Set instead of `problems` when every value passed the audit on its own
+       * but they vote for sizes several steps apart. Nothing is individually
+       * wrong, so there is no field to mark — only a sentence to show.
+       */
+      disagreementMessage?: string;
     }
   | {
       kind: 'needs-measurements';
@@ -164,6 +170,24 @@ export function resolveComputedSizeState(
       kind: 'bad-measurements',
       problems,
       problemKeys: problems.map((problem) => problem.key.toUpperCase()),
+    };
+  }
+
+  /*
+    Every saved value is individually believable, and together they describe two
+    different people — a 90cm chest beside a 59cm shoulder. The server refuses to
+    pick one, and the warning it sends names the two that disagree, so it is
+    passed through rather than rewritten here.
+  */
+  const disagreeing = breakdown.find((entry) => entry?.measurementsDisagree);
+  if (disagreeing) {
+    return {
+      kind: 'bad-measurements',
+      problems: [],
+      problemKeys: [],
+      disagreementMessage:
+        disagreeing.warnings?.[0]?.trim() ||
+        'Your saved measurements point at very different sizes. Re-take them with the measuring guide and your size will settle.',
     };
   }
 
