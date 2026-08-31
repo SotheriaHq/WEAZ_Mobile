@@ -6,6 +6,10 @@ import { router } from 'expo-router';
 import { ProfileApi, type SizeFitProfile } from '@/src/api/ProfileApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import {
+  PROFILE_GENDER_OPTIONS,
+  type ProfileGender,
+} from '@/src/lib/profileGender';
+import {
   CORE_MEASUREMENT_SLOTS,
   collapseMeasurements,
 } from '@/src/features/sizing/measurementCatalog';
@@ -110,7 +114,7 @@ export default function SizingSettingsScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const toast = useToast();
-  const { status, isAuthenticated } = useAuth();
+  const { status, isAuthenticated, user, updateUser } = useAuth();
   const [sizeFit, setSizeFit] = useState<SizeFitProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -273,6 +277,42 @@ export default function SizingSettingsScreen() {
             />
           </View>
         </Card>
+
+        <SettingsSection title="How we size clothes for you">
+          <AppText variant="captionRegular" tone="muted">
+            Are you a man, a woman, non-binary, or would you rather not say? This picks the right size chart.
+          </AppText>
+          <View style={[styles.rowGroup, { backgroundColor: theme.colors.surface }]}>
+            {PROFILE_GENDER_OPTIONS.map((option) => (
+              <SettingsOptionRow
+                key={option.value}
+                title={option.label}
+                selected={user?.gender === option.value}
+                disabled={Boolean(busyKey)}
+                onPress={() => {
+                  void (async () => {
+                    if (busyKey) return;
+                    setBusyKey(`gender:${option.value}`);
+                    try {
+                      const updated = await ProfileApi.updateProfile({
+                        firstName: user?.firstName ?? '',
+                        lastName: user?.lastName ?? '',
+                        username: user?.username ?? '',
+                        gender: option.value as ProfileGender,
+                      });
+                      updateUser({ gender: updated?.gender ?? option.value });
+                      toast.success('Saved.');
+                    } catch (error) {
+                      toast.error(extractErrorMessage(error, 'Unable to save that just now.'));
+                    } finally {
+                      setBusyKey(null);
+                    }
+                  })();
+                }}
+              />
+            ))}
+          </View>
+        </SettingsSection>
 
         {renderOptions({
           title: 'Visibility',

@@ -59,6 +59,7 @@ export type AuthUser = {
   type?: 'BRAND' | 'REGULAR' | string;
   firstName?: string | null;
   lastName?: string | null;
+  gender?: 'MALE' | 'FEMALE' | 'NON_BINARY' | 'UNSPECIFIED' | null;
   username?: string | null;
   brandFullName?: string | null;
   brandDescription?: string | null;
@@ -304,6 +305,7 @@ function normalizeAuthUser(raw: unknown): AuthUser | null {
     type: source.type ?? nestedUser?.type ?? null,
     firstName: source.firstName ?? nestedUser?.firstName ?? null,
     lastName: source.lastName ?? nestedUser?.lastName ?? null,
+    gender: source.gender ?? nestedUser?.gender ?? null,
     username: source.username ?? nestedUser?.username ?? null,
     brandFullName: source.brandFullName ?? nestedUser?.brandFullName ?? null,
     brandDescription:

@@ -18,6 +18,7 @@ import { ThemeProvider, useTheme, type ThemeMode } from '@/src/theme/ThemeProvid
 import { ThemeBackendSync } from '@/src/theme/ThemeBackendSync';
 import { normalizeThemePreference } from '@/src/types/theme';
 import { AuthProvider } from '@/src/auth/AuthContext';
+import { GenderPromptSheet } from '@/components/profile/GenderPromptSheet';
 import { setNetworkTraceScreen } from '@/src/api/networkTrace';
 import { setFontFallbackMode } from '@/src/styles/FontMode';
 
@@ -477,6 +478,7 @@ function RootLayoutNav({
         <ToastProvider>
           <AuthProvider>
             <ThemeBackendSync />
+            <GenderPromptSheet />
             <BagCountProvider>
               <BagFlowProvider>
                 <ScreenChromeProvider>

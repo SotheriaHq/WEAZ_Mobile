@@ -11,6 +11,7 @@ export interface UserProfile {
   username: string;
   firstName: string;
   lastName: string;
+  gender?: 'MALE' | 'FEMALE' | 'NON_BINARY' | 'UNSPECIFIED' | null;
   email?: string | null;
   themePreference: ThemePreference;
   profileImage?: string | null;
@@ -261,6 +262,7 @@ function normalizeProfile(raw: unknown): UserProfile | null {
     username: s.username ?? '',
     firstName: s.firstName ?? '',
     lastName: s.lastName ?? '',
+    gender: s.gender ?? null,
     email: s.email ?? null,
     themePreference: normalizeThemePreference(s.themePreference),
     profileImage: image.src,
@@ -423,6 +425,7 @@ export const ProfileApi = {
     username: string;
     address?: string;
     phoneNumber?: string;
+    gender?: 'MALE' | 'FEMALE' | 'NON_BINARY' | 'UNSPECIFIED';
   }): Promise<UserProfile | null> {
     const res = await apiClient.patch('/users/me/profile', payload);
     return normalizeProfile(res.data);
