@@ -15,7 +15,29 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 
-const SKIP_PATH_PARTS = ['/login', '/signup', '/forgot-password'];
+/**
+ * Screens the prompt must never cover.
+ *
+ * All mid-flow: the person is proving who they are, not shopping, and a sheet
+ * asking how to size their clothes lands on top of the thing they were doing.
+ * `/verify-email` and `/reset-password` are both real routes under
+ * `app/(auth)/` and were both missing — the web twin had the same gap and it
+ * reached SIT, where the modal opened over "your email is verified".
+ *
+ * Deliberate twin of `SKIP_PATH_PREFIXES` in
+ * `fthreadly/src/components/profile/GenderPrompt.tsx`. Separate repos, so
+ * change both or the two surfaces drift.
+ */
+const SKIP_PATH_PARTS = [
+  '/login',
+  '/signup',
+  '/forgot-password',
+  '/reset-password',
+  '/verify',
+  '/legal',
+  '/accept-invite',
+  '/account-reactivation',
+];
 
 export function GenderPromptSheet() {
   const { theme } = useTheme();
