@@ -28,7 +28,7 @@ export function GenderPromptSheet() {
   const open =
     status === 'authenticated' &&
     Boolean(user?.id) &&
-    needsGenderPrompt(user?.gender) &&
+    needsGenderPrompt(user) &&
     !onAuthRoute;
 
   const handleSelect = useCallback(

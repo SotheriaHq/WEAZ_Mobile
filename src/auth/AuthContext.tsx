@@ -57,6 +57,12 @@ export type AuthUser = {
   isEmailVerified?: boolean | null;
   themePreference: ThemePreference;
   type?: 'BRAND' | 'REGULAR' | string;
+  /**
+   * `Role` from the backend — SuperAdmin | Admin | User. Distinct from `type`,
+   * which is the account KIND (brand or shopper). Surfaces here so shopper-only
+   * prompts can skip console operators.
+   */
+  role?: 'SuperAdmin' | 'Admin' | 'User' | string | null;
   firstName?: string | null;
   lastName?: string | null;
   gender?: 'MALE' | 'FEMALE' | 'NON_BINARY' | 'UNSPECIFIED' | null;
@@ -303,6 +309,7 @@ function normalizeAuthUser(raw: unknown): AuthUser | null {
         : null,
     themePreference: normalizeThemePreference(source.themePreference ?? nestedUser?.themePreference),
     type: source.type ?? nestedUser?.type ?? null,
+    role: source.role ?? nestedUser?.role ?? null,
     firstName: source.firstName ?? nestedUser?.firstName ?? null,
     lastName: source.lastName ?? nestedUser?.lastName ?? null,
     gender: source.gender ?? nestedUser?.gender ?? null,

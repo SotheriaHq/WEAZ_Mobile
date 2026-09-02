@@ -35,8 +35,29 @@ export function isProfileGender(value: unknown): value is ProfileGender {
   );
 }
 
-export function needsGenderPrompt(gender: ProfileGender | null | undefined): boolean {
-  return gender == null;
+/**
+ * Console operators are not shoppers. An Admin/SuperAdmin cannot bag an item,
+ * place an order or hold measurements, so a sizing question has nothing to act
+ * on — and asking it puts a blocking sheet over the first screen they open.
+ * Gender stays null on those accounts, which is correct: we never asked.
+ *
+ * Brand accounts are deliberately NOT excluded. A brand owner shops like anyone
+ * else, and their own size is what the fittings flow reads.
+ *
+ * Deliberate twin of `fthreadly/src/lib/profileGender.ts` — separate repos,
+ * so change both or they drift.
+ */
+const CONSOLE_ONLY_ROLES = new Set(['Admin', 'SuperAdmin']);
+
+export function needsGenderPrompt(
+  account:
+    | { gender?: ProfileGender | null; role?: string | null }
+    | null
+    | undefined,
+): boolean {
+  if (!account) return false;
+  if (account.role && CONSOLE_ONLY_ROLES.has(account.role)) return false;
+  return account.gender == null;
 }
 
 export function profileGenderLabel(
