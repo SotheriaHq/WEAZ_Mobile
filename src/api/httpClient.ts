@@ -6,6 +6,11 @@ import { env } from '@/src/config/env';
 import { apiHostDevLog, apiHostDevWarn, isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { finishNetworkTrace, startNetworkTrace } from './networkTrace';
 import { createRequestId } from '@/src/utils/requestId';
+import {
+  getCachedDeviceId,
+  getDeviceId,
+  WIEZ_DEVICE_ID_HEADER,
+} from '@/src/utils/deviceId';
 
 const DEFAULT_PORT = 3040;
 const MOBILE_PLATFORM_HEADER = 'x-client-platform';
@@ -689,6 +694,14 @@ apiClient.interceptors.request.use(async (config) => {
   }
   if (!headers.get('x-request-id')) {
     headers.set('x-request-id', createRequestId());
+  }
+  // Durable install id. The server uses it for exactly one thing — suppressing
+  // a duplicate view count — so it never carries authority. It is what keeps a
+  // view from being counted twice when the same person views something signed
+  // out, signs in, and views it again.
+  if (!headers.get(WIEZ_DEVICE_ID_HEADER)) {
+    const deviceId = getCachedDeviceId() ?? (await getDeviceId());
+    if (deviceId) headers.set(WIEZ_DEVICE_ID_HEADER, deviceId);
   }
   headers.set(MOBILE_PLATFORM_HEADER, MOBILE_PLATFORM_VALUE);
   retryableConfig.headers = headers;

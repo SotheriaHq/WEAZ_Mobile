@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { getCachedDeviceId, getDeviceId } from '@/src/utils/deviceId';
+
 import {
   sendMarketSignalBatch,
   type MarketSignalEvent,
@@ -199,8 +201,22 @@ function compactQueue() {
   }
 }
 
+/**
+ * Prefers the shared device id so signal batches and the `x-wiez-device-id`
+ * request header carry the SAME value. View dedupe spans both paths, and two
+ * different ids would count the same person twice.
+ */
 export function getMarketSignalAnonymousSessionId() {
   void hydrateMarketSignalState();
+  void getDeviceId();
+  const shared = getCachedDeviceId();
+  if (shared) {
+    if (anonymousSessionId !== shared) {
+      anonymousSessionId = shared;
+      persistMarketSignalState();
+    }
+    return shared;
+  }
   if (!anonymousSessionId) {
     anonymousSessionId = createClientId('anon');
     persistMarketSignalState();
