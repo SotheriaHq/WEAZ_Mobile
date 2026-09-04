@@ -66,6 +66,36 @@ export function hasActiveBrandMembership(user?: AuthUser | null): boolean {
   return Boolean(getActiveBrandMembership(user));
 }
 
+/**
+ * Is this account a BRAND — regardless of how far through setup it is?
+ *
+ * Two different questions were being answered by `hasActiveBrandMembership`,
+ * and only one of them is about identity:
+ *
+ *   CAPABILITY — "can this account manage a store right now?" False for a brand
+ *   that has not created one is correct, and the bagging guards rely on it.
+ *
+ *   IDENTITY — "whose UI is this?" A brand that signed up an hour ago is still
+ *   a brand and must never be shown shopper UI.
+ *
+ * `getActiveBrandMembership` synthesizes a membership for a BRAND account only
+ * when `activeBrandId` is set, so a freshly verified brand reads as a shopper.
+ * The island's Profile chip picks its destination from this, which is how a
+ * brand ended up on `/me` — the shopper screen — right after verifying its
+ * email, where it then requested buyer-only endpoints and the API answered
+ * `400 Endpoint requires user type REGULAR`.
+ *
+ * Use THIS for identity and `hasActiveBrandMembership` for capability. Never
+ * substitute one for the other.
+ *
+ * Deliberate twin of `fthreadly/src/lib/brandAccess.ts` — separate repos, so
+ * change both or web and native disagree about who a brand is.
+ */
+export function isBrandAccount(user?: AuthUser | null): boolean {
+  if (!user) return false;
+  return user.type === 'BRAND' || hasActiveBrandMembership(user);
+}
+
 export function isBrandOwner(user?: AuthUser | null, brandId?: string | null): boolean {
   const membership = brandId
     ? getActiveMemberships(user).find((entry) => entry.brandId === brandId)

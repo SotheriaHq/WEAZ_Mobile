@@ -665,9 +665,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    */
   const validateTokenImplRef = useRef(validateTokenImpl);
   validateTokenImplRef.current = validateTokenImpl;
+
+  /**
+   * Concurrent validations share ONE round trip.
+   *
+   * The stable identity above stopped the self-retriggering loop, but not
+   * genuine pile-ups: `EmailVerificationNotice` mounts on both the catalog and
+   * me tabs and both stay attached, `me.tsx` validates on its own refresh, and
+   * `verify-email.tsx` validates on open — so several callers routinely ask at
+   * the same moment. Each passes `forceRefresh: true`, which sets `staleTime:
+   * 0` and so deliberately defeats the React Query cache, and the axios
+   * dedupe window is far shorter than the poll interval. Every caller became
+   * its own `GET /auth/profile`.
+   *
+   * Sharing is safe because they all want the same thing: the current profile.
+   * A `forceRefresh` arriving while a NON-forced validation is in flight is
+   * deliberately NOT shared — it asked to bypass the cache and would otherwise
+   * be answered by the very read it was trying to skip.
+   */
+  const inFlightValidationRef = useRef<{
+    promise: Promise<boolean>;
+    forceRefresh: boolean;
+  } | null>(null);
+
   const validateToken = useCallback(
-    (options?: { forceRefresh?: boolean }): Promise<boolean> =>
-      validateTokenImplRef.current(options),
+    (options?: { forceRefresh?: boolean }): Promise<boolean> => {
+      const forceRefresh = Boolean(options?.forceRefresh);
+      const inFlight = inFlightValidationRef.current;
+      if (inFlight && (!forceRefresh || inFlight.forceRefresh)) {
+        return inFlight.promise;
+      }
+
+      const promise = validateTokenImplRef.current(options).finally(() => {
+        if (inFlightValidationRef.current?.promise === promise) {
+          inFlightValidationRef.current = null;
+        }
+      });
+
+      inFlightValidationRef.current = { promise, forceRefresh };
+      return promise;
+    },
     [],
   );
 

@@ -56,6 +56,13 @@ jobs:
       - name: Profile gender prompt contract
         run: npm run test:profile-gender-contract
 
+      # Whose UI is this? Identity (isBrandAccount) versus capability
+      # (hasActiveBrandMembership). Collapsing the two sent a freshly verified
+      # brand to the shopper profile on BOTH surfaces, so this also asserts
+      # they stay distinct for a brand that has not finished store setup.
+      - name: Brand identity contract
+        run: npm run test:brand-identity-contract
+
       - name: Aspect-aware media contract
         run: npm run test:aspect-aware-media
 

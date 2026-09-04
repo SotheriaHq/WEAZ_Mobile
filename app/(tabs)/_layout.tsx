@@ -7,7 +7,7 @@ import {
   type NativeIslandNavItem,
 } from '@/components/navigation/NativeIslandBottomNav';
 import { useAuth } from '@/src/auth/AuthContext';
-import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { isBrandAccount } from '@/src/auth/brandAccess';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
@@ -178,7 +178,14 @@ export default function TabLayout() {
     setOptimisticActiveKey(key);
   }, []);
 
-  const isBrand = hasActiveBrandMembership(user);
+  /*
+    Identity, not capability. The Profile chip picks between `/catalog` and
+    `/(tabs)/me` from this, and `hasActiveBrandMembership` is false until a
+    store exists — so a brand that had just verified its email was sent to the
+    shopper screen, which then requested buyer-only endpoints and got
+    `400 Endpoint requires user type REGULAR`.
+  */
+  const isBrand = isBrandAccount(user);
   const canOpenProfileMenu = status === 'authenticated';
   const profileNavLabel = status === 'loading' || canOpenProfileMenu ? 'Me' : 'Sign In';
   const profileNavEmoji = status === 'loading' || canOpenProfileMenu

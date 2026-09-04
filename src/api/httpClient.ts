@@ -643,13 +643,32 @@ if (resolvedBaseAdapter) {
     if (!key) return send(config);
 
     const entry = getDedupeEntries.get(key);
-    if (entry?.inFlight) return entry.inFlight;
+    if (entry?.inFlight) {
+      if (isWiezDebugEnabled('network')) {
+        console.log(`[api] ⇄ coalesced (in-flight) ${config.url}`);
+      }
+      return entry.inFlight;
+    }
     if (
       entry?.settledAt != null &&
       entry.response !== undefined &&
       Date.now() - entry.settledAt < GET_DEDUPE_WINDOW_MS
     ) {
+      if (isWiezDebugEnabled('network')) {
+        console.log(`[api] ⇄ coalesced (settled) ${config.url}`);
+      }
       return entry.response;
+    }
+
+    if (isWiezDebugEnabled('network')) {
+      // Without this the network log is misleading in the one way that
+      // matters: `[api] GET ...` is printed by the REQUEST INTERCEPTOR, which
+      // runs before this adapter, so a coalesced call still logs a line. Two
+      // identical lines therefore prove two call SITES, not two round trips —
+      // and reading them as round trips sends you optimising a duplicate that
+      // was already being shared. Only lines without a matching `coalesced`
+      // are real network traffic.
+      console.log(`[api] → SEND ${config.method?.toUpperCase()} ${config.url}`);
     }
 
     const promise = send(config)

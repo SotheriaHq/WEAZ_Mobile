@@ -55,6 +55,75 @@ type EmailVerificationNoticeProps = {
  */
 const VERIFICATION_POLL_MS = 60_000;
 
+/**
+ * ONE watcher for the whole app, however many notices are on screen.
+ *
+ * This banner renders on the catalog tab AND the me tab, and `(tabs)/_layout`
+ * sets `detachInactiveScreens={false}` so both stay mounted — the tab
+ * preloader warms them deliberately. Each mounted copy used to own a timer, an
+ * AppState listener and its own in-flight guard, and because the guard was per
+ * instance the copies could not see each other: every foreground return and
+ * every poll produced one `GET /auth/profile` PER MOUNTED BANNER, each with
+ * `forceRefresh` so nothing could be served from cache.
+ *
+ * Refcounted at module scope instead. The timer and the listener exist while at
+ * least one banner is watching and are torn down with the last one.
+ */
+let watcherCount = 0;
+let watcherInterval: ReturnType<typeof setInterval> | null = null;
+let watcherSubscription: { remove: () => void } | null = null;
+let watcherRefresh: (() => void) | null = null;
+
+function subscribeToVerificationWatch(
+  validateToken: (options?: { forceRefresh?: boolean }) => Promise<boolean>,
+): () => void {
+  watcherCount += 1;
+
+  if (watcherCount === 1) {
+    // AuthContext coalesces concurrent validations, so a refresh that overlaps
+    // an in-flight one costs nothing extra.
+    watcherRefresh = () => {
+      void validateToken({ forceRefresh: true }).catch(() => false);
+    };
+
+    const startPolling = () => {
+      if (watcherInterval) return;
+      watcherInterval = setInterval(() => watcherRefresh?.(), VERIFICATION_POLL_MS);
+    };
+    const stopPolling = () => {
+      if (!watcherInterval) return;
+      clearInterval(watcherInterval);
+      watcherInterval = null;
+    };
+
+    watcherRefresh();
+    if (AppState.currentState === 'active') startPolling();
+
+    watcherSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        // Returning to the app IS the signal — this is the path a user takes
+        // after tapping the link, so check immediately and resume the backstop.
+        watcherRefresh?.();
+        startPolling();
+        return;
+      }
+      // Backgrounded: nothing can change on this device, and a timer that keeps
+      // firing there is pure cost.
+      stopPolling();
+    });
+  }
+
+  return () => {
+    watcherCount -= 1;
+    if (watcherCount > 0) return;
+    watcherSubscription?.remove();
+    watcherSubscription = null;
+    if (watcherInterval) clearInterval(watcherInterval);
+    watcherInterval = null;
+    watcherRefresh = null;
+  };
+}
+
 export function EmailVerificationNotice({
   userId,
   email,
@@ -83,54 +152,11 @@ export function EmailVerificationNotice({
    * "check status" button, because the user should never have to tell the app
    * to notice something it can see for itself.
    */
-  const refreshingRef = useRef(false);
   const shouldWatch = Boolean(userId) && emailVerified === false;
 
   useEffect(() => {
     if (!shouldWatch) return;
-
-    const refresh = () => {
-      if (refreshingRef.current) return;
-      refreshingRef.current = true;
-      void validateToken({ forceRefresh: true })
-        .catch(() => false)
-        .finally(() => {
-          refreshingRef.current = false;
-        });
-    };
-
-    refresh();
-
-    let interval: ReturnType<typeof setInterval> | null = null;
-    const startPolling = () => {
-      if (interval) return;
-      interval = setInterval(refresh, VERIFICATION_POLL_MS);
-    };
-    const stopPolling = () => {
-      if (!interval) return;
-      clearInterval(interval);
-      interval = null;
-    };
-
-    if (AppState.currentState === 'active') startPolling();
-
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
-        // Returning to the app IS the signal — this is the path a user takes
-        // after tapping the link, so check immediately and resume the backstop.
-        refresh();
-        startPolling();
-        return;
-      }
-      // Backgrounded: nothing can change on this device, and a timer that keeps
-      // firing there is pure cost.
-      stopPolling();
-    });
-
-    return () => {
-      subscription.remove();
-      stopPolling();
-    };
+    return subscribeToVerificationWatch(validateToken);
   }, [shouldWatch, validateToken]);
 
   const handleResend = useCallback(async () => {
