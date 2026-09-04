@@ -48,6 +48,14 @@ jobs:
       - name: Measurement catalog contract
         run: npm run test:measurement-catalog-contract
 
+      # Who gets asked how to size their clothes. The web and native copies of
+      # this rule have drifted twice already — console operators were excluded
+      # on one surface before the other, and the auth-route skip lists diverged
+      # so the prompt opened over /verify-email after being fixed elsewhere.
+      # Runs the real function from both repos over the same accounts.
+      - name: Profile gender prompt contract
+        run: npm run test:profile-gender-contract
+
       - name: Aspect-aware media contract
         run: npm run test:aspect-aware-media
 

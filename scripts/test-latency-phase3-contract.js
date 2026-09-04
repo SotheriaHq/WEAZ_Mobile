@@ -14,14 +14,19 @@ const profile = read('app/(tabs)/me.tsx');
 const inbox = read('app/(tabs)/inbox.tsx');
 const catalog = read('app/(tabs)/catalog/index.tsx');
 
-// The 1500ms 'first-media-timeout' fallback was replaced by the much earlier
-// 'early-warm' timer: Runway carousels keep interactions busy, so the old gating
-// left Market/Catalog/Me cold for seconds (the "tap and wait ~3s" complaint).
-// This assertion was never updated and had been failing ever since.
+// Automatic route warm must wait until Runway is usable. A route preload mounts
+// a hidden screen and starts its data work, so an immediate fallback competes
+// with first paint on constrained phones. The fallback remains bounded for an
+// empty/offline feed; explicit destinations still warm at press-in.
 assert.match(
   tabLayout,
-  /setTimeout\(\(\) => \{\s*schedulePreloads\('early-warm'\);\s*\},\s*firstMedia \? 0 : \d+\);/,
-  'Tab warming must have a bounded fallback when first Runway media is slow or absent.',
+  /const TAB_PRELOAD_FALLBACK_DELAY_MS = 8_000;/,
+  'Automatic route warming must reserve a meaningful first-paint window.',
+);
+assert.match(
+  tabLayout,
+  /setTimeout\(\(\) => \{\s*schedulePreloads\('early-warm'\);\s*\},\s*TAB_PRELOAD_FALLBACK_DELAY_MS\);/,
+  'Tab warming must retain a bounded fallback when first Runway media is slow or absent.',
 );
 assert.match(
   market,

@@ -83,4 +83,12 @@ assertIncludes(paymentApi, "'/payment/verify'", 'mobile payment verification');
 assertIncludes(paymentApi, '`/payment/attempts/${encodeURIComponent(reference)}`', 'mobile payment attempt status');
 assertIncludes(paymentApi, "'Idempotency-Key': idempotencyKey", 'mobile payment idempotency');
 
+const httpClient = read('src/api/httpClient.ts');
+assertIncludes(httpClient, 'const expoHost = getExpoHostHint();', 'physical-device Expo host lookup');
+assertIncludes(
+  httpClient,
+  'return `http://${expoHost}:${DEFAULT_PORT}`;',
+  'physical Android must use Metro\'s LAN host before any emulator fallback',
+);
+
 console.log('Mobile API contract parity checks passed.');

@@ -67,6 +67,13 @@ type ExpoTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>[
 type HiddenTabNavigation = ExpoTabBarProps['navigation'];
 type TabNavigationActionType = 'JUMP_TO' | 'PRELOAD';
 
+// Route preload mounts an entire hidden screen and begins its own queries. On a
+// constrained phone, doing that while the first Runway image is decoding turns
+// startup into a CPU, memory, and network contention storm. The Market is the
+// only automatic warm target, and only after the reader has seen Runway; all
+// other destinations retain their tap-time preload path below.
+const TAB_PRELOAD_FALLBACK_DELAY_MS = 8_000;
+
 function createTabNavigationAction(type: TabNavigationActionType, name: string) {
   return {
     type,
@@ -318,22 +325,10 @@ export default function TabLayout() {
   useEffect(() => cancelPendingRouteFrame, [cancelPendingRouteFrame]);
 
   useEffect(() => {
-    if (status === 'loading') {
-      navDevLog('tab-preload-deferred', {
-        deferredAt: Date.now(),
-        reason: 'auth-loading',
-      });
-      return;
-    }
-
-    // Warm primary destinations early. Waiting on first Runway media left Market /
-    // Catalog / Me cold for 1.5s+ on slow networks — the exact "tap and wait ~3s"
-    // class of complaint when combined with a cold lazy mount.
+    // Preserve the first-paint budget. Only Market is warmed automatically,
+    // and that happens after the first Runway image is visible or the bounded
+    // fallback window has elapsed.
     const nextTabsToWarm = ['discover'];
-    if (status === 'authenticated') {
-      nextTabsToWarm.push('inbox');
-      nextTabsToWarm.push(isBrand ? 'catalog' : 'me');
-    }
 
     let cancelled = false;
     let preloadTimers: Array<ReturnType<typeof setTimeout>> = [];
@@ -372,10 +367,10 @@ export default function TabLayout() {
           schedulePreloads('first-media-visible', event.timestamp);
         });
 
-    // Start warming almost immediately even if Runway media is slow/empty.
+    // An empty or offline Runway still receives a bounded, delayed warm.
     earlyTimer = setTimeout(() => {
       schedulePreloads('early-warm');
-    }, firstMedia ? 0 : 250);
+    }, TAB_PRELOAD_FALLBACK_DELAY_MS);
 
     return () => {
       cancelled = true;
@@ -383,7 +378,7 @@ export default function TabLayout() {
       if (earlyTimer) clearTimeout(earlyTimer);
       preloadTimers.forEach((timer) => clearTimeout(timer));
     };
-  }, [isBrand, preloadIslandTab, status]);
+  }, [preloadIslandTab]);
 
   const navigateToProfile = useCallback(() => {
     const target = isBrand ? '/catalog' : '/(tabs)/me';

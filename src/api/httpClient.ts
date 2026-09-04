@@ -155,11 +155,19 @@ function getDefaultBaseUrl() {
     );
   }
 
-  // Physical devices cannot use localhost/10.0.2.2 to reach the dev machine.
+  // Physical devices cannot use localhost or 10.0.2.2 to reach the dev machine.
+  // `10.0.2.2` is an Android-emulator-only alias. Starting a real phone there
+  // makes every initial request wait for the full Axios timeout before host
+  // failover can try the LAN address Metro already supplied.
   if (isPhysicalDevice()) {
+    const expoHost = getExpoHostHint();
+    if (expoHost) {
+      return `http://${expoHost}:${DEFAULT_PORT}`;
+    }
+
     if (__DEV__) {
       console.warn(
-        '[api] Running on physical device without EXPO_PUBLIC_API_URL set.\n' +
+        '[api] Running on a physical device without an Expo host or EXPO_PUBLIC_API_URL set.\n' +
         'Set it to your machine\'s local IP, e.g.:\n' +
         'EXPO_PUBLIC_API_URL=http://192.168.x.x:3040 npx expo start'
       );
