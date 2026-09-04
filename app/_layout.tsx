@@ -14,7 +14,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import 'react-native-reanimated';
 
-import { installPrefetchAppStateBridge } from '@/src/prefetch/tabWarming';
+import { installPrefetchAppStateBridge } from '@/src/prefetch/prefetchAppState';
 import { ThemeProvider, useTheme, type ThemeMode } from '@/src/theme/ThemeProvider';
 import { ThemeBackendSync } from '@/src/theme/ThemeBackendSync';
 import { normalizeThemePreference } from '@/src/types/theme';
