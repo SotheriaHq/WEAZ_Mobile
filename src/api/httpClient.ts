@@ -768,6 +768,26 @@ apiClient.interceptors.request.use(async (config) => {
 apiClient.interceptors.response.use(
   (res) => {
     finishNetworkTrace(res.config, res);
+
+    /*
+      A successful write invalidates the read cache. All of it.
+
+      `invalidateGetDedupe` was exported and never called from anywhere, so the
+      4-second settle window could answer a read that happened AFTER a write
+      with pre-write data. That is how a shopper types their measurements into
+      the bag fittings sheet, has them saved, and is then asked for the same
+      measurements again by the custom-order composer, whose fields seed from a
+      profile fetched moments earlier.
+
+      Clearing everything rather than guessing which reads a write affects: a
+      resource-scoped guess is wrong the first time a write changes something
+      under a different path — an order that changes a bag count, a save that
+      changes a saved-items list. The window is seconds, so the cost is a
+      handful of redundant reads right after a mutation.
+    */
+    const method = String(res.config?.method ?? 'get').toUpperCase();
+    if (method !== 'GET') invalidateGetDedupe();
+
     const successfulIndex = findCandidateIndex(res.config?.baseURL);
     if (successfulIndex >= 0) {
       promoteActiveHostTo(successfulIndex, `HTTP ${res.status}`);
