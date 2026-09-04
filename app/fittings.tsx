@@ -404,9 +404,9 @@ export default function FittingsScreen() {
 
         The sheet this screen replaced put its footer below a scrolling body, so
         the keyboard could bury Done and there was no way to commit the form.
-        `KeyboardStickyFooter` seeds from `Keyboard.metrics()` at mount, so Save
-        is on screen in the first frame even when this screen opens with a
-        keyboard already up.
+        `KeyboardStickyFooter` follows the platform keyboard inset, so Save is
+        on screen in the first frame even when this screen opens with a keyboard
+        already up.
       */}
       <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }}>
         <View

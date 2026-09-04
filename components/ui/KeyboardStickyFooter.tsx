@@ -1,63 +1,52 @@
-import React, { useEffect } from 'react';
-import {
-  Keyboard,
-  Platform,
-  type KeyboardEvent,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import React from 'react';
+import type { StyleProp, ViewStyle } from 'react-native';
 import Animated, {
-  Easing,
+  useAnimatedKeyboard,
   useAnimatedStyle,
-  useSharedValue,
-  withTiming,
 } from 'react-native-reanimated';
 
 /**
  * Footer that rides the keyboard.
  *
- * Two things this has to get right, and neither is the animation:
+ * Driven by the platform's own keyboard inset (`useAnimatedKeyboard`), not by
+ * JS `Keyboard` events.
  *
- * 1. It must know the keyboard height it is ALREADY sitting under. The
- *    listeners below only report future transitions, so a footer that mounted
- *    while a keyboard was up — every reroute that keeps focus alive, returning
- *    from a sheet, opening the composer from a screen with a live search field
- *    — sat at translateY 0, which on an edge-to-edge Android window is behind
- *    the IME. The buttons were simply not on screen, and nothing would bring
- *    them back until the user dismissed and re-raised the keyboard themselves.
- *    That is the "the bottom buttons don't render until I refresh" report.
- *    `Keyboard.metrics()` gives the current height at mount, so the first
- *    frame is already correct.
+ * The event-based version could get STUCK, and did: it moved the footer up on
+ * `keyboardDidShow` and only ever brought it back down on `keyboardDidHide`.
+ * Under Android edge-to-edge the window no longer resizes for the IME, and that
+ * hide event is not dependable — OEM skins, gesture dismissal and the collapse
+ * key can all close the keyboard without one arriving. When it went missing the
+ * footer stayed translated up by the last keyboard height it saw, which parks
+ * a bottom action bar somewhere around the middle of the screen with no way to
+ * recover. That is the reported "expanded the keyboard, collapsed it, and the
+ * buttons stuck mid-screen" on the design composer.
  *
- * 2. It must track height CHANGES, not just show/hide. Swapping to an emoji
- *    keyboard, a suggestion strip appearing, a Samsung toolbar, one-handed or
- *    floating keyboards, and rotation all resize a keyboard that is already
- *    open. iOS reports that as `keyboardWillChangeFrame` and nothing else, so
- *    without a listener for it the footer stayed pinned to the first height it
- *    ever saw. Android re-emits `keyboardDidShow` with the new height instead,
- *    which the show handler already covers.
+ * The inset cannot go stale in that way: it is the real keyboard height,
+ * published from the platform on the UI thread, so a closed keyboard is
+ * always 0 whether or not any JS event fired.
+ *
+ * It also subsumes, for free, the two things the old implementation had to
+ * handle by hand:
+ *
+ * 1. A footer that MOUNTS under an already-open keyboard starts at the right
+ *    place. Events only report future transitions, so that case needed a
+ *    `Keyboard.metrics()` seed — the "bottom buttons don't render until I
+ *    refresh" report.
+ *
+ * 2. RESIZES of an open keyboard — emoji panel, suggestion strip, Samsung
+ *    toolbar, one-handed/floating keyboards, hardware keyboard, rotation —
+ *    which on iOS surface only as `keyboardWillChangeFrame`.
+ *
+ * The animation curve comes from the keyboard itself, so the footer moves in
+ * lockstep with it instead of chasing it with a timing function. That also
+ * retires the Android catch-up ease that existed only because `keyboardDidShow`
+ * arrives after the keyboard has already finished moving.
  */
 export type KeyboardStickyFooterProps = {
   offset?: { closed?: number; opened?: number };
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 };
-
-const easeOut = Easing.out(Easing.cubic);
-
-/**
- * iOS emits `keyboardWillShow` before the IME moves and hands us its real
- * duration, so we can ride the same curve. Android only emits `did*`, after the
- * keyboard has finished — animating a full 220ms from there is a visibly late
- * second movement, which is most of what "the transition feels cracked" is. A
- * short catch-up ease is the closest honest approximation.
- */
-const ANDROID_CATCH_UP_MS = 120;
-
-function currentKeyboardHeight(): number {
-  const metrics = Keyboard.metrics?.();
-  return Math.max(0, metrics?.height ?? 0);
-}
 
 export function KeyboardStickyFooter({
   children,
@@ -66,62 +55,16 @@ export function KeyboardStickyFooter({
 }: KeyboardStickyFooterProps) {
   const closedOffset = offset.closed ?? 0;
   const openedOffset = offset.opened ?? 0;
+  const keyboard = useAnimatedKeyboard();
 
-  // Seeded, not zeroed — see (1) above. A lazy initializer so the metrics read
-  // happens once during mount rather than on every render.
-  const translateY = useSharedValue(
-    (() => {
-      const height = currentKeyboardHeight();
-      return height > 0 ? -(height + openedOffset) : -closedOffset;
-    })(),
-  );
-
-  useEffect(() => {
-    const isIOS = Platform.OS === 'ios';
-
-    const applyHeight = (height: number, duration: number) => {
-      const target = height > 0 ? -(height + openedOffset) : -closedOffset;
-      if (duration <= 0) {
-        translateY.value = target;
-        return;
-      }
-      translateY.value = withTiming(target, { duration, easing: easeOut });
+  const animatedStyle = useAnimatedStyle(() => {
+    const height = Math.max(0, keyboard.height.value);
+    return {
+      transform: [
+        { translateY: height > 0 ? -(height + openedOffset) : -closedOffset },
+      ],
     };
-
-    const onShow = (event: KeyboardEvent) => {
-      const height = Math.max(0, event.endCoordinates?.height ?? 0);
-      const duration =
-        isIOS && event.duration > 0 ? event.duration : isIOS ? 250 : ANDROID_CATCH_UP_MS;
-      applyHeight(height, duration);
-    };
-
-    const onHide = (event: KeyboardEvent) => {
-      const duration =
-        isIOS && event?.duration > 0 ? event.duration : isIOS ? 220 : ANDROID_CATCH_UP_MS;
-      applyHeight(0, duration);
-    };
-
-    // Re-read metrics on mount as well as seeding above: a keyboard raised
-    // between the render and the effect would otherwise be missed entirely.
-    applyHeight(currentKeyboardHeight(), 0);
-
-    const subs = [
-      Keyboard.addListener(isIOS ? 'keyboardWillShow' : 'keyboardDidShow', onShow),
-      Keyboard.addListener(isIOS ? 'keyboardWillHide' : 'keyboardDidHide', onHide),
-      // iOS-only: resizes of an already-open keyboard — see (2) above.
-      ...(isIOS
-        ? [Keyboard.addListener('keyboardWillChangeFrame', onShow)]
-        : []),
-    ];
-
-    return () => {
-      subs.forEach((sub) => sub.remove());
-    };
-  }, [closedOffset, openedOffset, translateY]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
+  });
 
   return (
     <Animated.View style={[style, animatedStyle]}>

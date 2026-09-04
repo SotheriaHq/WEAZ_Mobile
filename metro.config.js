@@ -39,4 +39,64 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   );
 };
 
+/**
+ * Defer `require()` to first use instead of evaluating every module at startup.
+ *
+ * This is the difference between an app that opens and one that does not on a
+ * low-RAM phone. Expo SDK 56 ships `inlineRequires: false`, and Expo Router
+ * builds its route table with `require.context` over `app/` — so all 70 route
+ * files, their entire transitive import graphs, and ~3.4MB of our own source
+ * are pulled into the initial bundle AND executed before the first frame.
+ * A fast laptop absorbs that; an Infinix or an LG V60 spends minutes on it,
+ * which is the reported "bundling reaches 100%, then Reloading… forever" —
+ * the bundle had already arrived and the device was still evaluating it.
+ *
+ * With inlining, a screen's module cost is paid when the user opens that
+ * screen, not when the app boots.
+ *
+ * `nonInlinedRequires` is the safety valve: inlining moves a require to its
+ * first *use*, so a module imported purely for its SIDE EFFECT — a polyfill, a
+ * runtime that must install itself before anything touches it — would never
+ * run at all, or would run too late. Everything below is imported for effect,
+ * not for a value. Metro's own defaults are repeated here because supplying
+ * this key replaces the default list rather than extending it.
+ */
+const baseGetTransformOptions = config.transformer.getTransformOptions;
+
+config.transformer.getTransformOptions = async (
+  entryPoints,
+  options,
+  getDependenciesOf,
+) => {
+  const base = await baseGetTransformOptions(
+    entryPoints,
+    options,
+    getDependenciesOf,
+  );
+
+  return {
+    ...base,
+    transform: {
+      ...base.transform,
+      inlineRequires: true,
+      nonInlinedRequires: [
+        // Metro/Expo defaults.
+        'React',
+        'react',
+        'react-compiler-runtime',
+        'react/jsx-dev-runtime',
+        'react/jsx-runtime',
+        'react-native',
+        // Must install their runtimes before any component renders.
+        'react-native-reanimated',
+        'react-native-gesture-handler',
+        'react-native-safe-area-context',
+        // Registers the root component; inlining it means nothing mounts.
+        'expo-router/entry',
+        'expo',
+      ],
+    },
+  };
+};
+
 module.exports = config;
