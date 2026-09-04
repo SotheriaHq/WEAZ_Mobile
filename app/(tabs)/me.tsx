@@ -25,7 +25,12 @@ import {
   collectMeasurementProblems,
   resolveComputedSizeState,
   resolveCategorySizes,
+
 } from '@/src/features/sizing/computedSize';
+import {
+  resolveDisplayCategory,
+  useProfileSizeCategory,
+} from '@/src/features/sizing/profileSizePreference';
 import {
   CORE_MEASUREMENT_SLOTS,
   collapseMeasurements,
@@ -422,6 +427,11 @@ function FittingsSummaryCard({
     [sizeFit?.measurements],
   );
   const categorySizes = React.useMemo(() => resolveCategorySizes(computed), [computed]);
+  const { category: preferredCategory } = useProfileSizeCategory();
+  const displaySize = React.useMemo(() => {
+    const resolved = resolveDisplayCategory(preferredCategory, categorySizes);
+    return categorySizes.find((entry) => entry.category === resolved) ?? null;
+  }, [categorySizes, preferredCategory]);
   const measurementProblems = React.useMemo(
     () => collectMeasurementProblems(computed),
     [computed],
@@ -500,25 +510,34 @@ function FittingsSummaryCard({
         </AppText>
       </Pressable>
 
-      {categorySizes.length > 0 ? (
-        <View style={styles.categorySizeWrap}>
-          {categorySizes.map((entry) => (
-            <View
-              key={entry.category}
-              style={[
-                styles.categorySizePill,
-                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-              ]}
-            >
-              <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-                {entry.label}
-              </AppText>
-              <AppText variant="captionBold" numberOfLines={1}>
-                {entry.size}
-              </AppText>
-            </View>
-          ))}
-        </View>
+      {/*
+        ONE size, not five.
+
+        This used to render a pill for every category the engine could compute
+        — Tops, Bottoms, Dresses, Shirts, Jackets — next to a progress bar and
+        a completeness sentence. Five answers to a question with one answer, on
+        a screen that is not the sizing screen. The full breakdown, the region
+        switcher and the measurements all live on the fittings screen now; the
+        profile shows the one the shopper chose there.
+      */}
+      {displaySize ? (
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Your ${displaySize.label} size is ${displaySize.size}. Open my fittings.`}
+          style={({ pressed }) => [
+            styles.categorySizePill,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            pressed ? styles.pressed : null,
+          ]}
+        >
+          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+            {displaySize.label}
+          </AppText>
+          <AppText variant="captionBold" numberOfLines={1}>
+            {displaySize.size}
+          </AppText>
+        </Pressable>
       ) : null}
 
       {computed?.staleMeasurementWarning ? (

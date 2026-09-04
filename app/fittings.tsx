@@ -46,9 +46,16 @@ import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll
 import { KeyboardStickyFooter } from '@/components/ui/KeyboardStickyFooter';
 import { SettingsStateCard } from '@/components/settings/SettingsPrimitives';
 import { ComputedSizePanel } from '@/components/sizing/ComputedSize';
-import { ProfileApi, type ComputedSizeFitProfile, type SizeFitProfile } from '@/src/api/ProfileApi';
+import {
+  ProfileApi,
+  type ComputedSizeFitProfile,
+  type SizeFitProfile,
+  type SizingRegion,
+} from '@/src/api/ProfileApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { resolveComputedSizeState } from '@/src/features/sizing/computedSize';
+import { Tabs } from '@/components/catalog/Tabs';
+import { FittingsSizesTab } from '@/components/sizing/FittingsSizesTab';
 import {
   CORE_MEASUREMENT_SLOTS,
   MEASUREMENT_UNIT_LABELS,
@@ -66,6 +73,14 @@ type LengthUnit = 'CM' | 'IN';
 type CoreValues = Record<CoreMeasurementKey, string>;
 
 const FOOTER_CLEARANCE = 132;
+
+type FittingsTab = 'measurements' | 'sizes';
+
+/** Measurements are a form you fill in; sizes are a result you read. */
+const FITTINGS_TABS = [
+  { key: 'measurements', label: 'Measurements' },
+  { key: 'sizes', label: 'Sizes' },
+];
 
 const emptyCoreValues = (): CoreValues =>
   Object.fromEntries(CORE_MEASUREMENT_SLOTS.map((slot) => [slot.key, ''])) as CoreValues;
@@ -145,6 +160,40 @@ export default function FittingsScreen() {
   }, [load, status]);
 
   const computedState = useMemo(() => resolveComputedSizeState(computed), [computed]);
+  const [activeTab, setActiveTab] = useState<FittingsTab>('measurements');
+  const [regionSaving, setRegionSaving] = useState(false);
+
+  /**
+   * Switch the chart the shopper is sized against.
+   *
+   * The saved measurements do not change — only what they are compared to — so
+   * the computed profile has to be re-read afterwards or every size on screen
+   * still reflects the previous chart. The optimistic local write is what keeps
+   * the chip selection immediate over a slow connection; it is reverted if the
+   * server rejects it.
+   */
+  const handleChangeRegion = useCallback(
+    async (region: SizingRegion) => {
+      if (regionSaving) return;
+      const previous = sizeFit?.preferredSizingRegion ?? null;
+      setRegionSaving(true);
+      setSizeFit((current) =>
+        current ? { ...current, preferredSizingRegion: region } : current,
+      );
+      try {
+        await ProfileApi.updateSizeFitSettings({ preferredSizingRegion: region });
+        setComputed(await ProfileApi.getComputedSizeFit().catch(() => computed));
+      } catch {
+        setSizeFit((current) =>
+          current ? { ...current, preferredSizingRegion: previous ?? undefined } : current,
+        );
+        toast.error('Could not change your sizing chart. Try again.');
+      } finally {
+        setRegionSaving(false);
+      }
+    },
+    [computed, regionSaving, sizeFit?.preferredSizingRegion, toast],
+  );
 
   const savedCoreCount = useMemo(
     () =>
@@ -263,6 +312,20 @@ export default function FittingsScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <FittingsHeader />
 
+      {/*
+        Two jobs, two tabs.
+
+        Measurements are a form you fill in once; sizes are a result you read
+        and configure. Stacking them made one long screen where the thing a
+        returning shopper wants — "what size am I, and against which chart?" —
+        sat below eight numeric inputs they had already filled in.
+      */}
+      <Tabs
+        tabs={FITTINGS_TABS}
+        activeTab={activeTab}
+        onTabChange={(key) => setActiveTab(key as FittingsTab)}
+      />
+
       <KeyboardAwareFormScroll
         style={styles.flex}
         contentContainerStyle={styles.content}
@@ -270,6 +333,15 @@ export default function FittingsScreen() {
         extraKeyboardSpace={FOOTER_CLEARANCE}
         automaticallyAdjustKeyboardInsets={false}
       >
+        {activeTab === 'sizes' ? (
+          <FittingsSizesTab
+            computed={computed}
+            preferredRegion={sizeFit?.preferredSizingRegion ?? null}
+            onChangeRegion={(region) => void handleChangeRegion(region)}
+            regionSaving={regionSaving}
+          />
+        ) : (
+          <>
         <ComputedSizePanel state={computedState} />
 
         <View style={styles.section}>
@@ -397,6 +469,8 @@ export default function FittingsScreen() {
             A brand only ever sees the points its design needs, and only when you place an order.
           </AppText>
         </View>
+          </>
+        )}
       </KeyboardAwareFormScroll>
 
       {/*
