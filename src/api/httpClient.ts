@@ -206,7 +206,20 @@ function getBaseUrlCandidates(): string[] {
         pushUniqueCandidate(candidates, buildBaseUrlWithHost(configuredUrl, expoHost));
       }
 
-      if (!runningOnPhysicalDevice) {
+      /*
+        Loopback fallbacks are for reaching a LOCAL dev server, so they only
+        make sense when the configured URL is itself local.
+
+        Without the `privateOrLoopback` guard, pointing the app at
+        `https://api.weaz.me` on an emulator produced the candidate list
+        [api.weaz.me, https://10.0.2.2, https://127.0.0.1, https://localhost] —
+        three hosts that cannot possibly serve this API. One transient failure
+        on the real host then walked the client down that list, and with a 15s
+        timeout each, a single request could burn 45 seconds before giving up.
+        That is the 23s `/bag/count` in the device log, and it gets worse the
+        flakier the network is: exactly when the app can least afford it.
+      */
+      if (!runningOnPhysicalDevice && privateOrLoopback) {
         pushUniqueCandidate(
           candidates,
           buildBaseUrlWithHost(configuredUrl, '10.0.2.2'),
@@ -227,7 +240,11 @@ function getBaseUrlCandidates(): string[] {
       if (expoHost && expoHost !== primaryHost && privateOrLoopback) {
         pushUniqueCandidate(candidates, buildBaseUrlWithHost(configuredUrl, expoHost));
       }
-      pushUniqueCandidate(candidates, buildBaseUrlWithHost(configuredUrl, 'localhost'));
+      // Same reasoning as the Android branch: never rewrite a remote host to
+      // localhost.
+      if (privateOrLoopback) {
+        pushUniqueCandidate(candidates, buildBaseUrlWithHost(configuredUrl, 'localhost'));
+      }
     }
   } catch {
     // Keep the configured URL only.
