@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { verifyEmail } from '@/src/api/AuthApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { isBrandAccount } from '@/src/auth/brandAccess';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -15,6 +16,8 @@ import { Button } from '@/components/ui/Button';
 import { WiezLogo } from '@/components/ui/WiezLogo';
 
 type VerifyEmailState = 'verifying' | 'success' | 'error';
+
+const SUCCESS_REDIRECT_DELAY_MS = 1_200;
 
 const firstParamValue = (value: string | string[] | undefined): string => {
   if (Array.isArray(value)) return value[0] ?? '';
@@ -45,7 +48,7 @@ export default function VerifyEmailScreen() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ token?: string | string[] }>();
-  const { isAuthenticated, updateUser, validateToken } = useAuth();
+  const { isAuthenticated, updateUser, user, validateToken } = useAuth();
   const verificationStartedRef = useRef(false);
 
   const token = useMemo(() => firstParamValue(params.token).trim(), [params.token]);
@@ -65,9 +68,23 @@ export default function VerifyEmailScreen() {
     router.replace('/login' as any);
   };
 
-  const goToProfileOrLogin = () => {
-    router.replace((isAuthenticated ? '/(tabs)/me' : '/login') as any);
-  };
+  /**
+   * Where a verified account belongs.
+   *
+   * `isBrandAccount` and not `hasActiveBrandMembership`: this screen is reached
+   * moments after signup, when a brand has no store yet, and the capability
+   * predicate is false for exactly that window. Using it sent a brand that had
+   * just verified its email to the shopper profile.
+   */
+  const destinationAfterVerification = useMemo(
+    () =>
+      (!isAuthenticated
+        ? '/login'
+        : isBrandAccount(user)
+          ? '/catalog'
+          : '/(tabs)/me') as Href,
+    [isAuthenticated, user],
+  );
 
   useEffect(() => {
     if (!token) {
@@ -134,6 +151,25 @@ export default function VerifyEmailScreen() {
     </View>
   );
 
+  /**
+   * Verification is the last step, not a checkpoint.
+   *
+   * The screen used to end on a "Go to profile" button, which asks the person
+   * to confirm something they already confirmed by tapping the link in their
+   * email. There is no decision to make here and no other destination, so the
+   * app takes them there itself.
+   *
+   * The short pause is deliberate: the confirmation has to be readable, or the
+   * screen flashes and the user cannot tell whether it worked.
+   */
+  useEffect(() => {
+    if (state !== 'success') return;
+    const timer = setTimeout(() => {
+      router.replace(destinationAfterVerification);
+    }, SUCCESS_REDIRECT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [state, destinationAfterVerification]);
+
   const renderSuccess = () => (
     <View style={[styles.formInner, { backgroundColor: theme.colors.surface }]}>
       <View style={styles.stateBlock}>
@@ -141,15 +177,12 @@ export default function VerifyEmailScreen() {
         <AppText variant="body" tone="muted">
           {message}
         </AppText>
-        <Button
-          title={isAuthenticated ? 'Go to profile' : 'Go to login'}
-          onPress={goToProfileOrLogin}
-          size="lg"
-          fullWidth
-          style={styles.primaryButton}
-          textStyle={styles.primaryButtonText}
-          testID="verify-email-next"
-        />
+        <View style={styles.successHandoff}>
+          <ActivityIndicator color={theme.colors.primary} />
+          <AppText variant="caption" tone="muted">
+            Taking you to your profile…
+          </AppText>
+        </View>
       </View>
     </View>
   );
@@ -244,6 +277,11 @@ export default function VerifyEmailScreen() {
 }
 
 const styles = StyleSheet.create({
+  successHandoff: {
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
   root: {
     flex: 1,
   },

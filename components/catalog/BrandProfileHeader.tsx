@@ -29,6 +29,16 @@ export type BrandHeaderContactItem = {
   value: string;
 };
 
+/**
+ * Horizontal space the banner's edit control occupies, plus breathing room.
+ *
+ * Derived from `bannerEditControl` (right: spacing.lg) and `bannerEditButton`
+ * (width 34). Keep this in step with those two, or the brand name starts
+ * sliding under the button again on narrow screens.
+ */
+const BANNER_EDIT_CONTROL_CLEARANCE =
+  tokens.spacing.lg + 34 + tokens.spacing.sm;
+
 export type BrandProfileHeaderProps = {
   brandName: string;
   username?: string;
@@ -289,7 +299,21 @@ function BannerHeader({
 
 
 
-      <View style={[styles.bannerNameChip, { backgroundColor: 'transparent', borderColor: theme.colors.glassBorder }]}>
+      <View
+        style={[
+          styles.bannerNameChip,
+          {
+            backgroundColor: 'transparent',
+            borderColor: theme.colors.glassBorder,
+            // Leave room for the edit control when it is actually rendered,
+            // and reclaim that room for the name when it is not.
+            right:
+              isOwner && onEditBanner
+                ? BANNER_EDIT_CONTROL_CLEARANCE
+                : tokens.spacing.lg,
+          },
+        ]}
+      >
         <BlurView
           intensity={Math.max(14, Math.round(theme.colors.glassBlur * 0.5))}
           tint={scheme === 'dark' ? 'dark' : 'light'}
@@ -1139,12 +1163,22 @@ const styles = StyleSheet.create({
   headerIconBadgeText: {
     textAlign: 'center',
   },
+  /*
+    Bounded by `right`, never by a percentage.
+
+    This chip and `bannerEditControl` are absolutely positioned siblings. The
+    chip was `left: 132` with `maxWidth: '62%'` and the control is `right: 24`
+    — two independent measurements of the same row, which only stay apart on a
+    wide enough screen. On a 360dp phone the chip's right edge lands around
+    355dp while the control starts near 302dp, so the brand name ran underneath
+    the edit button. A percentage cannot express "stop before that control";
+    `right` can, and it holds at every width.
+  */
   bannerNameChip: {
     position: 'absolute',
     left: 132,
     bottom: 0,
     alignSelf: 'flex-start',
-    maxWidth: '62%',
     minHeight: 38,
     borderTopLeftRadius: tokens.radius.lg,
     borderTopRightRadius: tokens.radius.lg,

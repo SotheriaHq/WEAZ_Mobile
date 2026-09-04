@@ -32,6 +32,7 @@ import { normalizeSocialLink } from '@/src/utils/socialLinks';
 import { AppMultiSelectSheet, AppSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
 import { Chip } from '@/components/ui/Chip';
 import { locationService, type CountryOption, type StateOption } from '@/src/services/locationService';
+import { countryFlag } from '@/src/utils/countryFlag';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type LocationSheet = 'country' | 'state' | 'city' | null;
@@ -602,8 +603,25 @@ export default function BrandProfileEditScreen() {
     () => withCurrentOption(BUSINESS_TYPE_OPTIONS, form?.businessType ?? ''),
     [form?.businessType],
   );
+  /*
+    The flag rides in the LABEL rather than as a separate field, because the
+    label is what both the picker row and the collapsed field render — adding
+    it here means it appears in both without touching either component. The
+    stored `value` stays the bare country name, so nothing downstream (the
+    form, the API payload, `getOptionLabel`) sees the emoji.
+  */
   const countryOptions = useMemo(
-    () => withCurrentOption(countries.map((country) => ({ label: country.name, value: country.name })), form?.brandCountry ?? ''),
+    () =>
+      withCurrentOption(
+        countries.map((country) => {
+          const flag = countryFlag(country);
+          return {
+            label: flag ? `${flag}  ${country.name}` : country.name,
+            value: country.name,
+          };
+        }),
+        form?.brandCountry ?? '',
+      ),
     [countries, form?.brandCountry],
   );
   const stateOptions = useMemo(
@@ -671,21 +689,44 @@ export default function BrandProfileEditScreen() {
             </Pressable>
           </View>
 
+          {/*
+            A locked field has to LOOK locked.
+
+            It rendered with the same weight, colour and underline as every
+            editable field below it, so the only thing saying otherwise was a
+            line of small print underneath — which meant the field read as
+            editable, the user tapped it, nothing happened, and only then did
+            the caption explain why. Making the state visible removes the need
+            to narrate it, so the caption goes.
+
+            Muted text plus a lock glyph, and no underline: the underline is
+            what the other fields use to say "type here".
+          */}
           <View style={styles.group}>
-            <Input
-              label="Brand Name"
-              value={form.brandFullName}
-              onChangeText={(value) => updateField({ brandFullName: value })}
-              placeholder="Your brand name"
-              containerStyle={styles.group}
-              variant="underline"
-              editable={!brandNameLocked}
-            />
             {brandNameLocked ? (
-              <AppText variant="caption" tone="muted">
-                Your brand name is locked. Contact support if it needs to change.
-              </AppText>
-            ) : null}
+              <View>
+                <AppText variant="caption" tone="muted" style={styles.lockedLabel}>
+                  Brand Name
+                </AppText>
+                <View style={styles.lockedField}>
+                  <AppText variant="body" tone="muted" style={styles.lockedValue}>
+                    {form.brandFullName}
+                  </AppText>
+                  <AppText variant="caption" tone="muted" accessibilityLabel="Locked">
+                    🔒
+                  </AppText>
+                </View>
+              </View>
+            ) : (
+              <Input
+                label="Brand Name"
+                value={form.brandFullName}
+                onChangeText={(value) => updateField({ brandFullName: value })}
+                placeholder="Your brand name"
+                containerStyle={styles.group}
+                variant="underline"
+              />
+            )}
           </View>
 
           <View style={styles.group}>
@@ -981,6 +1022,19 @@ const styles = StyleSheet.create({
   },
   group: {
     gap: tokens.spacing.sm,
+  },
+  lockedLabel: {
+    marginBottom: tokens.spacing.xs,
+  },
+  lockedField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.sm,
+  },
+  lockedValue: {
+    flex: 1,
   },
   selectField: {
     minHeight: 52,
