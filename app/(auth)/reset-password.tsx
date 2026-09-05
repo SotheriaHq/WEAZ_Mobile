@@ -9,7 +9,7 @@ import { confirmPasswordReset } from '@/src/api/AuthApi';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { tokens } from '@/src/styles/tokens';
-import { WiezLogo } from '@/components/ui/WiezLogo';
+import WiezOrb from '@/src/brand/WiezOrb';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
 import { Button } from '@/components/ui/Button';
 import { AppText } from '@/components/ui/AppText';
@@ -269,7 +269,7 @@ export default function ResetPasswordScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to login"
           >
-            <WiezLogo size={36} />
+            <WiezOrb size={36} />
           </Pressable>
         </View>
 

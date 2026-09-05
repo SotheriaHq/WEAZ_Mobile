@@ -5,7 +5,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/wiez-icon.png",
-    "scheme": ["wiezmobile", "com.sotheriahq.wiez"],
+    "scheme": [
+      "wiezmobile",
+      "com.sotheriahq.wiez"
+    ],
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
@@ -14,7 +17,7 @@
       "package": "com.sotheriahq.wiez",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/wiez-adaptive-icon.png",
-        "backgroundColor": "#0b0710"
+        "backgroundColor": "#0c0b11"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -31,9 +34,13 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/wiez-splash-icon.png",
-          "imageWidth": 116,
+          "imageWidth": 148,
           "resizeMode": "contain",
-          "backgroundColor": "#FFFFFF"
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/images/wiez-splash-icon-dark.png",
+            "backgroundColor": "#0c0b11"
+          }
         }
       ],
       "expo-status-bar",

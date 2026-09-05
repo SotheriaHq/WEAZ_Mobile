@@ -12,7 +12,7 @@ import { GoogleMark } from '@/components/auth/GoogleMark';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { WiezLogo } from '@/components/ui/WiezLogo';
+import WiezOrb from '@/src/brand/WiezOrb';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
@@ -509,7 +509,7 @@ export default function LoginScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go to home"
           >
-            <WiezLogo size={36} />
+            <WiezOrb size={36} />
           </Pressable>
         </Animated.View>
 

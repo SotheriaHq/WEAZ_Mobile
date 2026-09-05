@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -31,6 +31,7 @@ import { LAYOUT, tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { routeForNotification } from '@/src/utils/mobileRouting';
 import { navPerf } from '@/src/utils/navPerf';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type NotificationGroup = {
   title: string;
@@ -296,7 +297,7 @@ export default function NotificationsScreen() {
         </View>
         <View style={styles.stateWrap}>
           {status === 'loading' ? (
-            <ActivityIndicator size="small" color={theme.colors.primary} />
+            <MuseLoader size={20} />
           ) : (
             <>
               <AppText variant="subtitle">Notifications</AppText>
@@ -335,7 +336,7 @@ export default function NotificationsScreen() {
 
       {loading ? (
         <View style={styles.stateWrap}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="body" tone="muted">Loading notifications...</AppText>
         </View>
       ) : error ? (

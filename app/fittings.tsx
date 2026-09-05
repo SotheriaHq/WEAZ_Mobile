@@ -35,7 +35,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -68,6 +68,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { drillDownPush } from '@/src/utils/mobileNavigation';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type LengthUnit = 'CM' | 'IN';
 type CoreValues = Record<CoreMeasurementKey, string>;
@@ -265,7 +266,7 @@ export default function FittingsScreen() {
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <FittingsHeader />
         <View style={styles.stateWrap}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="body" tone="muted">
             Loading your fittings...
           </AppText>

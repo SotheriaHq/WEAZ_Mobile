@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { DEFAULT_CURRENCY, formatMoneyOr } from '@/src/utils/money';
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -34,6 +33,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 const MIN_PAYOUT = 5000;
 
@@ -225,7 +225,7 @@ export default function StudioFinanceScreen() {
 
       {loading && !data ? (
         <View style={styles.centered}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="caption" tone="secondary" style={styles.loadingHint}>
             Loading finance (settlement self-heal may run briefly)…
           </AppText>

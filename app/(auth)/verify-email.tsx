@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
@@ -13,7 +13,8 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { WiezLogo } from '@/components/ui/WiezLogo';
+import WiezOrb from '@/src/brand/WiezOrb';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type VerifyEmailState = 'verifying' | 'success' | 'error';
 
@@ -142,7 +143,7 @@ export default function VerifyEmailScreen() {
   const renderVerifying = () => (
     <View style={[styles.formInner, { backgroundColor: theme.colors.surface }]}>
       <View style={styles.stateBlock}>
-        <ActivityIndicator color={theme.colors.primary} />
+        <MuseLoader size={20} />
         <AppText variant="title">Verifying email</AppText>
         <AppText variant="body" tone="muted">
           Keep this screen open while WIEZ confirms your email address.
@@ -178,7 +179,7 @@ export default function VerifyEmailScreen() {
           {message}
         </AppText>
         <View style={styles.successHandoff}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="caption" tone="muted">
             Taking you to your profile…
           </AppText>
@@ -243,7 +244,7 @@ export default function VerifyEmailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to login"
           >
-            <WiezLogo size={36} />
+            <WiezOrb size={36} />
           </Pressable>
         </View>
 

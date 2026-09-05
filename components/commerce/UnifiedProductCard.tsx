@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { BAG_IT_LABEL, CUSTOM_ORDER_EMOJI } from '@/src/constants/bagging';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
-import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -11,6 +11,7 @@ import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type UnifiedProductCardProps = {
   width: number;
@@ -176,7 +177,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
           accessibilityLabel={favoriteAccessibilityLabel ?? (favorite ? 'Remove from favorites' : 'Add to favorites')}
         >
           {favoriteBusy ? (
-            <ActivityIndicator size="small" color={theme.colors.textInverse} />
+            <MuseLoader size={20} />
           ) : (
             <AppText variant="captionBold" tone="inverse">
               {favorite ? FAVORITE_ICON : FAVORITE_EMPTY_ICON}
@@ -269,7 +270,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
                   `accessibilityLabel`, so nothing is lost to a screen reader.
                 */}
                 {actionBusy && !isBagAction ? (
-                  <ActivityIndicator size="small" color={theme.colors.onPrimary} />
+                  <MuseLoader size={20} />
                 ) : isBagAction ? (
                   /*
                     The mark and its heartbeat, with nothing behind it.

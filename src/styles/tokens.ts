@@ -214,13 +214,16 @@ export const tokens = {
     lightGray: '#f0f2f5',
     primary: '#9333EA',
     /**
-     * Halo behind the animated WIEZ mark while the app is waiting.
+     * The loader ring, per ground.
      *
-     * Scheme-independent on purpose: the loader paints its own backdrop, so the
-     * halo has to read against both, and it is the one place the brand gold
-     * appears as light rather than as ink.
+     * Two colours, not two shades of one. `wiezRingLight` sits at 1.9:1 against
+     * the night ground and `wiezRingDark` at 2.2:1 against paper — neither
+     * survives on the other side, which is exactly the mistake the old logo
+     * made when it used one palette everywhere. Kept in step with
+     * `--wiez-ring` in the web build and `BRAND_COLORS` in src/brand/identity.
      */
-    loaderGlow: 'rgba(212,175,55,0.22)',
+    wiezRingLight: '#6015e2',
+    wiezRingDark: '#af87f4',
     /**
      * Loader backdrop and the two ambient orbs behind the mark.
      *
@@ -229,12 +232,16 @@ export const tokens = {
      * only lit thing on screen. The light scheme uses the ambient `bg` instead,
      * so only the dark value needs a home here. The orbs differ per scheme only
      * in opacity — same hues, softer on paper.
+     *
+     * These were half violet and half brand gold, from the era when the mark
+     * itself was gold. The mark is violet now and a gold wash behind it read as
+     * a colour bug.
      */
     loaderBackdropDark: '#0b0710',
-    loaderOrbPrimaryDark: 'rgba(147,51,234,0.18)',
-    loaderOrbSecondaryDark: 'rgba(212,175,55,0.14)',
-    loaderOrbPrimaryLight: 'rgba(147,51,234,0.12)',
-    loaderOrbSecondaryLight: 'rgba(212,175,55,0.12)',
+    loaderOrbPrimaryDark: 'rgba(96,21,226,0.20)',
+    loaderOrbSecondaryDark: 'rgba(175,135,244,0.14)',
+    loaderOrbPrimaryLight: 'rgba(96,21,226,0.12)',
+    loaderOrbSecondaryLight: 'rgba(169,126,243,0.12)',
     /**
      * Elevation shadow colour. Eleven files had written `shadowColor: '#000'`
      * independently; it is one concept and belongs in one place.
@@ -242,6 +249,16 @@ export const tokens = {
     shadow: '#000000',
     /** Neutral (not black) wash used for inline message/attachment surfaces. */
     neutralWash: 'rgba(128,128,128,0.15)',
+    /**
+     * Scrim behind a modal sheet.
+     *
+     * Scheme-independent, and it has to be: the job is to darken whatever is
+     * behind the sheet, which on the light theme is paper and on the dark theme
+     * is already near-black. The per-scheme `theme.colors.backdrop` pair is for
+     * surfaces that sit IN the theme; a scrim sits over it. This also has to be
+     * reachable from a static StyleSheet, where the scheme is not known.
+     */
+    scrim: 'rgba(0,0,0,0.5)',
     /** Paint behind the app before the theme resolves — matches light `bg`. */
     bootBackground: '#FFFFFF',
     /** Opaque white. Chrome over media, where the backdrop is unknown. */

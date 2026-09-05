@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -10,6 +10,7 @@ import { publicLinkApi } from '@/src/api/PublicLinkApi';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { perfMeasure } from '@/src/utils/perf';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type StudioAliasType = 'profile' | 'brand';
 
@@ -94,7 +95,7 @@ export default function StudioAliasResolverScreen() {
       <View style={styles.content}>
         {loading ? (
           <>
-            <ActivityIndicator color={theme.colors.primary} />
+            <MuseLoader size={20} />
             <AppText variant="body" tone="muted">
               Resolving link...
             </AppText>

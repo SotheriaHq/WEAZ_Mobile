@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -20,6 +20,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { useCachedQuery, cachePolicies } from '@/src/cache';
 import { queryKeys } from '@/src/query/queryKeys';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 const STAFF_ROLES: BrandMemberRole[] = [
   'MANAGER',
@@ -206,7 +207,7 @@ export default function StudioStaffScreen() {
 
       {loading ? (
         <View style={styles.centerState}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
         </View>
       ) : (
         <KeyboardAwareFormScroll

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { formatMoneyRange } from '@/src/utils/money';
-import { ActivityIndicator, Animated, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Animated, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
@@ -16,6 +16,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { getCatalogCardCopy, resolveCatalogCardBranch } from '@/src/features/catalog/catalogCardBranch';
 import { getContentStatusLabel } from '@/src/features/design-editor/designCreationRules';
 import { ContentReviewDecisionSheet } from './ContentReviewDecisionSheet';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 export interface CollectionCardProps {
   collection: CollectionDto;
@@ -546,7 +547,7 @@ function RailButton({ emoji, label, busy = false, onPress }: { emoji: string; la
         style={StyleSheet.absoluteFill}
       />
       <View style={styles.railButtonContent}>
-        {busy ? <ActivityIndicator size="small" color={theme.colors.primary} /> : <AppText variant="caption">{emoji}</AppText>}
+        {busy ? <MuseLoader size={20} /> : <AppText variant="caption">{emoji}</AppText>}
         {label ? (
           <AppText variant="captionBold" tone="secondary">
             {label}

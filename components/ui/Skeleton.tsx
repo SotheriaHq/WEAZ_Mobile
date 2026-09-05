@@ -57,8 +57,12 @@ export function Skeleton({
    * deferred data load never runs → the skeleton keeps shimmering. It only
    * broke when something else happened to unmount the loader. That is the
    * "5 seconds before I see the next screen" report, and the same trap was set
-   * in six components including `WiezLogoLoader`, which is on screen during
+   * in six components including the app-wide loader, which is on screen during
    * every single load in the app.
+   *
+   * Its replacement, `MuseLoader`, is immune rather than opted out: Reanimated
+   * runs on the UI thread and never takes an InteractionManager handle. Any
+   * animation written with RN's own `Animated` still has to opt out by hand.
    *
    * Any looping or decorative animation MUST opt out. `NewDropBadge` already
    * did, which is how the pattern was identified.

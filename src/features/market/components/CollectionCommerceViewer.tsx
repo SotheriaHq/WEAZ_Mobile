@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   ScrollView,
@@ -39,6 +38,7 @@ import { navPerf } from '@/src/utils/navPerf';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
 import { formatMoney } from '@/src/utils/money';
 import { contentReferenceToParams } from '@/src/features/messaging/contentReference';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type CollectionCommerceViewerProps = {
   collectionId: string;
@@ -521,7 +521,7 @@ export function CollectionCommerceViewer({
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: chrome.insets.top }]}>
         <StatusBar style={statusBarContrast(scheme)} />
         <View style={styles.centerState}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="bodyBold">Loading collection</AppText>
         </View>
       </SafeAreaView>

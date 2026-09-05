@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, FlatList, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, FlatList, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,6 +9,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Input } from '@/components/ui/Input';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { tokens } from '@/src/styles/tokens';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type Comment = {
   id: string;
@@ -350,7 +351,7 @@ export default function CollectionCommentsSheet({
 
           {commentsLoading ? (
             <View style={styles.commentsLoading}>
-              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <MuseLoader size={20} />
             </View>
           ) : (
             <FlatList
@@ -426,7 +427,7 @@ export default function CollectionCommentsSheet({
                   },
                 ]}
               >
-                {sendingComment ? <ActivityIndicator size="small" color={tokens.colors.light} /> : <AppText variant="h3" tone="inverse">↑</AppText>}
+                {sendingComment ? <MuseLoader size={20} /> : <AppText variant="h3" tone="inverse">↑</AppText>}
               </Pressable>
             </View>
           </KeyboardAvoider>

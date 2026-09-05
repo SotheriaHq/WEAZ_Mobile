@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -12,6 +12,7 @@ import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 function extractErrorMessage(error: unknown, fallback: string) {
   const data = (error as any)?.response?.data;
@@ -199,7 +200,7 @@ export default function PrivacySettingsScreen() {
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <SettingsHeader title="Privacy" />
         <View style={styles.stateWrap}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
         </View>
       </SafeAreaView>
     );

@@ -3,10 +3,11 @@ import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme, type ThemeContextValue } from '@/src/theme/ThemeProvider';
-import { PRODUCT_NAME } from '@/src/config/productIdentity';
+import { PRODUCT_NAME } from '@/src/brand/identity';
 import { tokens } from '@/src/styles/tokens';
 
-import { WiezLogoLoader } from './WiezLogoLoader';
+import WiezMark from '@/src/brand/WiezMark';
+import { MuseLoader } from './MuseLoader';
 
 type LoaderTone = 'light' | 'dark';
 
@@ -93,11 +94,16 @@ function LoaderBackdrop({ visualTheme }: { visualTheme: LoaderVisualTheme }) {
  * accepted (call sites pass them) and deliberately not rendered; a wait needs a
  * heartbeat, not a script. Anything the user must ACT on is an error state, not
  * a loader.
+ *
+ * A full screen is the one place with room for the figure, so it gets the mark
+ * with the spinner beneath it. Everywhere smaller — `LoaderBlock`, buttons,
+ * rows — is the orb alone, because the muse's face stops reading below ~96px.
  */
 function LoaderContent({ size = 88 }: LoaderContentProps) {
   return (
     <View style={styles.content} accessibilityLabel={`Loading ${PRODUCT_NAME}`}>
-      <WiezLogoLoader size={size} />
+      <WiezMark size={Math.max(size, 96)} />
+      <MuseLoader size={28} style={styles.contentSpinner} />
     </View>
   );
 }
@@ -140,7 +146,9 @@ export function LoaderBlock({
   return (
     <View style={[styles.block, { minHeight, backgroundColor: visualTheme.background }, style]}>
       <LoaderBackdrop visualTheme={visualTheme} />
-      <LoaderContent title={title} message={message} size={size} visualTheme={visualTheme} />
+      <View style={styles.content} accessibilityLabel={`Loading ${PRODUCT_NAME}`}>
+        <MuseLoader size={Math.min(size, 56)} />
+      </View>
     </View>
   );
 }
@@ -184,6 +192,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
+  },
+  contentSpinner: {
+    marginTop: 20,
   },
   orb: {
     position: 'absolute',

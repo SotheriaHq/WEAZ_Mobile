@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -25,6 +25,7 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type ScenarioMeta = {
   title: string;
@@ -360,7 +361,7 @@ export default function EmailPreferencesSettingsScreen() {
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <SettingsHeader title="Email notifications" subtitle="Backend email delivery preferences" />
         <View style={styles.stateWrap}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="body" tone="muted">
             Loading email preferences...
           </AppText>

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -26,6 +25,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type CollectionGalleryViewerProps = {
   collectionId: string;
@@ -197,7 +197,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: chrome.insets.top }]}>
         <StatusBar style={statusBarContrast(scheme)} />
         <View style={styles.centerState}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="bodyBold">Loading gallery</AppText>
         </View>
       </SafeAreaView>

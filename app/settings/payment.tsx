@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -18,6 +18,7 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { formatMoney } from '@/src/utils/money';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 function extractErrorMessage(error: unknown, fallback: string) {
   const data = (error as any)?.response?.data;
@@ -119,7 +120,7 @@ export default function PaymentSettingsScreen() {
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <SettingsHeader title="Payment settings" subtitle="Checkout and payment history" />
         <View style={styles.stateWrap}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="body" tone="muted">
             Loading payment settings...
           </AppText>

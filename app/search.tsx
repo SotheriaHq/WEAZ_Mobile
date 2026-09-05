@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   ScrollView,
@@ -37,6 +36,7 @@ import { perfMeasure } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
 import MobileMarketSuggestionBlocks from '@/src/features/market/components/MobileMarketSuggestionBlocks';
 import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type FilterType = 'all' | SearchEntityType;
 
@@ -624,7 +624,7 @@ export default function SearchScreen() {
         {submitted && resultState.status === 'loading' ? (
           <Card>
             <View style={styles.stateBlock}>
-              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <MuseLoader size={20} />
               <AppText variant="body" tone="muted">Searching WIEZ...</AppText>
             </View>
           </Card>
@@ -708,7 +708,7 @@ export default function SearchScreen() {
                 <View style={styles.sectionStack}>
                   {suggestionsLoading ? (
                     <View style={styles.stateInline}>
-                      <ActivityIndicator size="small" color={theme.colors.primary} />
+                      <MuseLoader size={20} />
                       <AppText variant="body" tone="muted">Loading suggestions...</AppText>
                     </View>
                   ) : (

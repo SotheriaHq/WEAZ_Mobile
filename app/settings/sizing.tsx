@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -27,6 +27,7 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type SizeFitSharePolicy = 'OWNER_ONLY' | 'REQUIRE_PERMISSION' | 'ALLOW_ANYONE';
 
@@ -197,7 +198,7 @@ export default function SizingSettingsScreen() {
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         <SettingsHeader title="Sizing and fits" subtitle="Custom-order measurement preferences" />
         <View style={styles.stateWrap}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="body" tone="muted">
             Loading sizing settings...
           </AppText>

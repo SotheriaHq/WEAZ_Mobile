@@ -1,6 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Animated,
   AppState,
   FlatList,
@@ -55,6 +54,7 @@ import {
   contentReferenceToSendFields,
   type MessageContentReference,
 } from '@/src/features/messaging/contentReference';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 import type {
   ConversationParticipant,
   ConversationThread,
@@ -1688,7 +1688,7 @@ export default function ChatThreadScreen() {
   const listFooter = useMemo(
     () => loadingMore ? (
       <View style={styles.footerLoader}>
-        <ActivityIndicator size="small" color={theme.colors.primary} />
+        <MuseLoader size={20} />
       </View>
     ) : null,
     [loadingMore, theme.colors.primary],
@@ -1729,7 +1729,7 @@ export default function ChatThreadScreen() {
           <View style={styles.loadingWrap}>
             {phase === 'resolving' ? (
               <View style={[styles.resolvingBanner, { backgroundColor: theme.colors.surfaceAlt }]}>
-                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <MuseLoader size={20} />
                 <AppText variant="captionRegular" tone="muted">
                   Resolving conversation context
                 </AppText>
@@ -1880,7 +1880,7 @@ export default function ChatThreadScreen() {
                       {attachment.status !== 'ready' ? (
                         <View style={[styles.attachmentPreviewOverlay, { backgroundColor: theme.colors.overlay }]} pointerEvents="none">
                           {attachment.status === 'uploading' ? (
-                            <ActivityIndicator size="small" color={theme.colors.primary} />
+                            <MuseLoader size={20} />
                           ) : (
                             <AppText variant="captionBold" tone="danger">!</AppText>
                           )}

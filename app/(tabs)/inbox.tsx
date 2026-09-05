@@ -1,6 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   AppState,
   FlatList,
   Pressable,
@@ -40,6 +39,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { navPerf } from '@/src/utils/navPerf';
 import type { ConversationListResponse, ConversationSummary } from '@/src/types/messaging';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type FilterKey = 'all' | 'unread' | 'orders';
 type InboxCursor = ConversationListResponse['endCursor'];
@@ -722,7 +722,7 @@ export default function InboxScreen() {
     () => (
       loadingMore ? (
         <View style={styles.footerLoader}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <MuseLoader size={20} />
         </View>
       ) : null
     ),

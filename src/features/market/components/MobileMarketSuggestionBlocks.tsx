@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -34,6 +33,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { formatMoney } from '@/src/utils/money';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type Props = {
   context: MarketSuggestionContext;
@@ -428,7 +428,7 @@ export function MobileMarketSuggestionBlocks({
   if (loading && !loaded) {
     return (
       <Card padding="md" style={[styles.loadingCard, style]}>
-        <ActivityIndicator size="small" color={theme.colors.primary} />
+        <MuseLoader size={20} />
         <AppText variant="body" tone="muted">
           Loading market picks...
         </AppText>

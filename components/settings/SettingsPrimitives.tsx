@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 export function SettingsHeader({
   title,
@@ -53,7 +54,7 @@ export function SettingsStateCard({
 
   return (
     <Card padding="lg" style={styles.stateCard}>
-      {loading ? <ActivityIndicator size="small" color={theme.colors.primary} /> : null}
+      {loading ? <MuseLoader size={20} /> : null}
       <AppText variant="bodyBold" style={styles.centerText}>
         {title}
       </AppText>
@@ -128,7 +129,7 @@ export function SettingsToggleRow({
         />
         {busy ? (
           <View style={styles.switchBusy} pointerEvents="none">
-            <ActivityIndicator size="small" color={theme.colors.textInverse} />
+            <MuseLoader size={20} />
           </View>
         ) : null}
       </View>

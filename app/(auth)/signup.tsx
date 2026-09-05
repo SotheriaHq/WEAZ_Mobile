@@ -24,7 +24,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
-import { WiezLogo } from '@/components/ui/WiezLogo';
+import WiezOrb from '@/src/brand/WiezOrb';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
 import { GoogleMark } from '@/components/auth/GoogleMark';
 import { AccountTypeSelector } from '@/components/auth/AccountTypeSelector';
@@ -352,7 +352,7 @@ export default function SignupScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go to home"
           >
-            <WiezLogo size={36} />
+            <WiezOrb size={36} />
           </Pressable>
         </Animated.View>
 

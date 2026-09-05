@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -26,6 +26,7 @@ import { StableImage } from '@/components/ui/StableImage';
 import { tokens } from '@/src/styles/tokens';
 import { readWarmScreenState } from '@/src/state/screenWarmState';
 import { backOrNavigate, topLevelNavigate } from '@/src/utils/mobileNavigation';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 /**
  * Where "back" should land, stated by whoever opened this screen.
@@ -413,7 +414,7 @@ export default function MeEditScreen() {
             // save is indistinguishable from a frozen screen.
             <View style={styles.statusRow}>
               {saveState === 'saving' ? (
-                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <MuseLoader size={20} />
               ) : null}
               <AppText variant="caption" tone={statusTone} style={styles.status}>
                 {currentStatusLabel}

@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
 import { Input } from '@/components/ui/Input';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 import { ProfileApi, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { MobileStoreApi, type ProductBagStatus } from '@/src/api/StoreApi';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
@@ -306,7 +307,7 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
           </AppText>
         ) : loadingProfile ? (
           <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" />
+            <MuseLoader size={20} />
             <AppText variant="body" tone="muted">Loading fittings...</AppText>
           </View>
         ) : null}

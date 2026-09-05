@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
   scrim: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: tokens.colors.scrim,
     padding: tokens.spacing.lg,
   },
   sheet: {

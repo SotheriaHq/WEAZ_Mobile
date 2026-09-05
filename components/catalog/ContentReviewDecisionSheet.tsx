@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
 import { contentIntegrityApi, type ContentReviewDecision } from '@/src/api/ContentIntegrityApi';
 import { getContentStatusLabel } from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 interface ContentReviewDecisionSheetProps {
   open: boolean;
@@ -82,7 +83,7 @@ export function ContentReviewDecisionSheet({
 
           {loading ? (
             <View style={styles.loading}>
-              <ActivityIndicator color={theme.colors.primary} />
+              <MuseLoader size={20} />
             </View>
           ) : (
             <View style={[styles.reasonBox, { borderColor: theme.colors.border }]}>

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -32,6 +31,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { navPerf } from '@/src/utils/navPerf';
 import { MobileMarketSuggestionBlocks } from '@/src/features/market/components/MobileMarketSuggestionBlocks';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type Props = {
   sectionKey: string;
@@ -292,7 +292,7 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
 
   const renderFooter = () => (
     <View style={styles.footer}>
-      {loadingMore ? <ActivityIndicator color={theme.colors.primary} /> : null}
+      {loadingMore ? <MuseLoader size={20} /> : null}
       {section ? (
         <MobileMarketSuggestionBlocks
           context="MARKET_SECTION_DETAIL"
@@ -313,7 +313,7 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         {renderHeader()}
         <View style={styles.centerState}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="small" tone="muted">Loading section</AppText>
         </View>
       </SafeAreaView>

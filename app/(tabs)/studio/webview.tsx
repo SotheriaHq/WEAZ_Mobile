@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
 import { IconButton } from '@/components/ui/IconButton';
 import { StableImage } from '@/components/ui/StableImage';
-import { WiezLogoLoader } from '@/components/ui/WiezLogoLoader';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 import StudioApi from '@/src/api/StudioApi';
 import { env } from '@/src/config/env';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
@@ -941,7 +941,7 @@ export default function StudioWebViewScreen() {
             accessibilityRole="progressbar"
             accessibilityLabel="Loading Studio"
           >
-            <WiezLogoLoader size={84} />
+            <MuseLoader size={84} />
           </View>
         ) : null}
 

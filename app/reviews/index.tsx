@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
@@ -20,6 +20,7 @@ import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type ReviewFilter = 'ALL' | 'EDITABLE' | 'EXPIRED' | ReviewTargetType;
 
@@ -170,7 +171,7 @@ export default function MyReviewsScreen() {
     if (status === 'loading' || loading) {
       return (
         <View style={styles.centerState}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="body" tone="muted">Loading your reviews...</AppText>
         </View>
       );

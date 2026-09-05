@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import DeleteReviewConfirmSheet from '@/components/reviews/DeleteReviewConfirmSheet';
@@ -16,6 +16,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 const emptySummary: ReviewSummaryDto = {
   averageRating: 0,
@@ -182,7 +183,7 @@ export default function ReviewsTab({ brandId, productId, compact = false, enable
   if (loading) {
     return (
       <View style={[styles.loading, compact ? styles.compactWrap : styles.wrap]}>
-        <ActivityIndicator color={theme.colors.primary} />
+        <MuseLoader size={20} />
         <AppText variant="body" tone="muted">Loading reviews...</AppText>
       </View>
     );

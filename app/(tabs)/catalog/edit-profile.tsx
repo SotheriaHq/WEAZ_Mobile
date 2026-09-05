@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -33,6 +33,7 @@ import { AppMultiSelectSheet, AppSelectSheet, type SelectSheetOption } from '@/c
 import { Chip } from '@/components/ui/Chip';
 import { locationService, type CountryOption, type StateOption } from '@/src/services/locationService';
 import { countryFlag } from '@/src/utils/countryFlag';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type LocationSheet = 'country' | 'state' | 'city' | null;
@@ -650,7 +651,7 @@ export default function BrandProfileEditScreen() {
             // swiping back triggered the save-on-exit.
             <View style={styles.statusRow}>
               {saveState === 'saving' ? (
-                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <MuseLoader size={20} />
               ) : null}
               <AppText variant="caption" tone={statusTone} style={styles.status}>
                 {currentStatusLabel}

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type * as ExpoNotificationsType from 'expo-notifications';
 import {
-  ActivityIndicator,
   Linking,
   Platform,
   Pressable,
@@ -34,6 +33,7 @@ import {
 } from '@/src/notifications/pushTokenRegistration';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type DevicePermissionStatus = 'granted' | 'denied' | 'undetermined' | 'unavailable';
 
@@ -326,7 +326,7 @@ function ToggleSettingRow({
         ) : null}
       </View>
       <View style={styles.switchSlot}>
-        {pending ? <ActivityIndicator size="small" color={theme.colors.primary} /> : null}
+        {pending ? <MuseLoader size={20} /> : null}
         <View pointerEvents="none">
           <Switch
             value={value}
@@ -558,7 +558,7 @@ function QuietHoursSection({
 
         {(pendingKey === 'push.quietHoursStart' || pendingKey === 'push.quietHoursEnd') ? (
           <View style={styles.inlineSaving}>
-            <ActivityIndicator size="small" color={theme.colors.primary} />
+            <MuseLoader size={20} />
             <AppText variant="captionRegular" tone="muted">
               Saving quiet hours...
             </AppText>
@@ -730,7 +730,7 @@ export default function NotificationSettingsScreen() {
 
       {loading ? (
         <View style={styles.stateWrap}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="body" tone="muted">
             Loading notification settings...
           </AppText>

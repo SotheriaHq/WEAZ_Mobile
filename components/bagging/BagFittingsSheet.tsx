@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
@@ -14,6 +14,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import type { BagSourceType, ProductBagStatus } from '@/src/api/StoreApi';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type BagProductInput = {
   id: string;
@@ -189,7 +190,7 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
       <View style={styles.group}>
         {loading ? (
           <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color={theme.colors.primary} />
+            <MuseLoader size={20} />
             <AppText variant="body" tone="muted">Loading fittings...</AppText>
           </View>
         ) : null}

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   PanResponder,
   Pressable,
@@ -34,6 +33,7 @@ import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
 import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
 import ReviewsTab from '@/components/reviews/ReviewsTab';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 import { StableImage } from '@/components/ui/StableImage';
 import { AspectAwareMedia } from '@/src/components/media/AspectAwareMedia';
 import {
@@ -389,7 +389,7 @@ function MediaSlide({
     <View style={[styles.mediaPage, { width, height, backgroundColor: theme.colors.bg }]}>
       {loading && !uri ? (
         <View style={[styles.mediaFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="captionBold" tone="muted">Loading image</AppText>
         </View>
       ) : uri && !failed ? (
@@ -1627,7 +1627,7 @@ export function MarketCommerceViewer({
           is what made opening content feel like a second of dead time. */}
       {loading && !hasPreviewFrame ? (
         <View style={[styles.stateOverlay, { backgroundColor: theme.colors.backdrop }]}>
-          <ActivityIndicator color={theme.colors.textInverse} />
+          <MuseLoader size={20} />
           <AppText variant="bodyBold" tone="inverse">Loading market item</AppText>
         </View>
       ) : error ? (

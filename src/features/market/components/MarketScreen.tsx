@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -18,7 +17,7 @@ import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 
-import { WiezLogo } from '@/components/ui/WiezLogo';
+import WiezOrb from '@/src/brand/WiezOrb';
 import { AppText } from '@/components/ui/AppText';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Input } from '@/components/ui/Input';
@@ -75,6 +74,7 @@ import {
 import { navPerf } from '@/src/utils/navPerf';
 import { prefetchMedia } from '@/src/prefetch/navPrefetch';
 import { formatMoney } from '@/src/utils/money';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 const SIDE_PADDING = tokens.spacing.lg;
 const SECTION_GAP = tokens.spacing.xl;
@@ -2369,7 +2369,7 @@ export function MarketScreen() {
         case 'LOADING_MORE':
           return (
             <View style={styles.loadingMoreRow}>
-              <ActivityIndicator color={theme.colors.primary} />
+              <MuseLoader size={20} />
             </View>
           );
         case 'ERROR_STATE':
@@ -2401,7 +2401,7 @@ export function MarketScreen() {
     <View style={styles.headerStack}>
       <View style={styles.topRow}>
         <Pressable onPress={() => topLevelNavigate('/' as any)} style={({ pressed }) => [styles.logoButton, pressed && styles.pressed]}>
-          <WiezLogo size={30} />
+          <WiezOrb size={30} />
         </Pressable>
         <View style={styles.titleWrap}>
           <AppText variant="title">Market</AppText>

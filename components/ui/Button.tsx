@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  ActivityIndicator,
   Animated,
   Easing,
   Pressable,
@@ -14,6 +13,7 @@ import {
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
@@ -238,10 +238,7 @@ export function Button({
             </AppText>
             {isBusy ? (
               <View style={styles.loaderOverlay} pointerEvents="none">
-                <ActivityIndicator
-                  size="small"
-                  color={variantTone === 'inverse' ? theme.colors.textInverse : theme.colors.text}
-                />
+                <MuseLoader size={20} />
               </View>
             ) : null}
           </View>

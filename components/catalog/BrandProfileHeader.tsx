@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, Linking, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions, Linking, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +15,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import type { ProfilePhotoViewState } from '@/src/types/profilePhoto';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 const BRAND_DESCRIPTION_PREVIEW_LINES = 2;
 const BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH = 120;
@@ -800,7 +801,7 @@ function VisitorActionIconButton({
       ]}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={theme.colors.primary} />
+        <MuseLoader size={20} />
       ) : (
         <AppText
           variant={emphasized ? 'title' : 'subtitle'}

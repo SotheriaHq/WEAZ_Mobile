@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
@@ -25,6 +25,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { formatMoney } from '@/src/utils/money';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'completed' | 'cancelled';
 
@@ -468,7 +469,7 @@ export default function OrdersScreen() {
         ListFooterComponent={
           loading && filteredItems.length > 0 ? (
             <View style={styles.footerLoading}>
-              <ActivityIndicator color={theme.colors.primary} />
+              <MuseLoader size={20} />
             </View>
           ) : null
         }
