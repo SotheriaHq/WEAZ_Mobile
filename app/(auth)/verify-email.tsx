@@ -13,7 +13,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import WiezOrb from '@/src/brand/WiezOrb';
+import WiezMark from '@/src/brand/WiezMark';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type VerifyEmailState = 'verifying' | 'success' | 'error';
@@ -244,7 +244,7 @@ export default function VerifyEmailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to login"
           >
-            <WiezOrb size={36} />
+            <WiezMark size={36} />
           </Pressable>
         </View>
 

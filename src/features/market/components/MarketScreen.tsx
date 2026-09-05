@@ -17,7 +17,7 @@ import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 
-import WiezOrb from '@/src/brand/WiezOrb';
+import WiezMark from '@/src/brand/WiezMark';
 import { AppText } from '@/components/ui/AppText';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Input } from '@/components/ui/Input';
@@ -2401,7 +2401,7 @@ export function MarketScreen() {
     <View style={styles.headerStack}>
       <View style={styles.topRow}>
         <Pressable onPress={() => topLevelNavigate('/' as any)} style={({ pressed }) => [styles.logoButton, pressed && styles.pressed]}>
-          <WiezOrb size={30} />
+          <WiezMark size={30} />
         </Pressable>
         <View style={styles.titleWrap}>
           <AppText variant="title">Market</AppText>

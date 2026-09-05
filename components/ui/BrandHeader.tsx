@@ -3,7 +3,7 @@ import { Pressable } from 'react-native';
 import { topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 import { Header } from '@/components/ui/Header';
-import WiezOrb from '@/src/brand/WiezOrb';
+import WiezMark from '@/src/brand/WiezMark';
 import { PRODUCT_NAME } from '@/src/brand/identity';
 
 export function BrandHeader({ right }: { right?: React.ReactNode }) {
@@ -17,7 +17,7 @@ export function BrandHeader({ right }: { right?: React.ReactNode }) {
           accessibilityRole="button"
           accessibilityLabel="Go to home"
         >
-          <WiezOrb size={32} />
+          <WiezMark size={32} />
         </Pressable>
       }
       right={right}
