@@ -26,7 +26,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
 import WiezMark from '@/src/brand/WiezMark';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
-import { GoogleMark } from '@/components/auth/GoogleMark';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { AccountTypeSelector } from '@/components/auth/AccountTypeSelector';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
@@ -558,14 +558,10 @@ export default function SignupScreen() {
             </View>
 
             <View style={styles.googleAction}>
-              <Button
-                title="Continue with Google"
-                variant="outline"
+              <GoogleSignInButton
                 onPress={onGoogleSignup}
                 loading={googleSubmitting}
-                disabled={!googleTokenRequest.configured || !googleTokenRequest.ready || googleSubmitting}
-                fullWidth
-                left={<GoogleMark />}
+                label="Sign up with Google"
                 testID="signup-google-button"
               />
               {__DEV__ && !googleTokenRequest.configured ? (

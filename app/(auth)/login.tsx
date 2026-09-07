@@ -8,7 +8,7 @@ import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
-import { GoogleMark } from '@/components/auth/GoogleMark';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -780,14 +780,9 @@ export default function LoginScreen() {
 
             {showGoogleAction ? (
               <View style={styles.googleAction}>
-                <Button
-                  title="Continue with Google"
-                  variant="outline"
+                <GoogleSignInButton
                   onPress={handleGoogleSignIn}
                   loading={googleLoading}
-                  disabled={!googleTokenRequest.configured || !googleTokenRequest.ready || googleLoading}
-                  fullWidth
-                  left={<GoogleMark />}
                   testID="login-google-button"
                 />
                 {__DEV__ && !googleTokenRequest.configured ? (
