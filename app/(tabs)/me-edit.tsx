@@ -113,7 +113,7 @@ export default function MeEditScreen() {
   const initialProfile = useMemo(
     () =>
       user?.id
-        ? readWarmScreenState<WarmProfileState>(`me:${user.id}`)?.profile ?? null
+        ? readWarmScreenState<WarmProfileState>(`me:v2:${user.id}`)?.profile ?? null
         : null,
     [user?.id],
   );

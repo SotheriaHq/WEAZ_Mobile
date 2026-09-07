@@ -697,7 +697,11 @@ export default function BuyerProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Saved');
-  const [hasWarmProfileSnapshot, setHasWarmProfileSnapshot] = useState(() => Boolean(initialWarmProfileState));
+  // This is deliberately a ref rather than state. `load` is intentionally
+  // stable across ordinary auth-profile object updates; capturing the initial
+  // `false` value in that stable callback made a later refresh behave like the
+  // very first load and turn a warm profile section back into a skeleton.
+  const hasWarmProfileSnapshotRef = useRef(Boolean(initialWarmProfileState));
   const unreadNotificationCount = useUnreadNotificationCount();
 
   useEffect(() => {
@@ -798,7 +802,7 @@ export default function BuyerProfileScreen() {
         setError(null);
         setLoading(!cachedState);
         setRefreshing(false);
-        setHasWarmProfileSnapshot(Boolean(cachedState));
+        hasWarmProfileSnapshotRef.current = Boolean(cachedState);
       }
       return;
     }
@@ -808,7 +812,7 @@ export default function BuyerProfileScreen() {
     setError(null);
     setLoading(false);
     setRefreshing(false);
-    setHasWarmProfileSnapshot(false);
+    hasWarmProfileSnapshotRef.current = false;
   }, [status, user?.id]);
 
   // NO auto-redirect to /(auth)/login here. WIEZ is browse-first: signing in is
@@ -852,7 +856,7 @@ export default function BuyerProfileScreen() {
     lastProfileLoadAtRef.current = now;
 
     const requestId = ++loadRequestIdRef.current;
-    if (!silent && !hasWarmProfileSnapshot) {
+    if (!silent && !hasWarmProfileSnapshotRef.current) {
       setLoading(true);
     }
     setOrdersLoading(true);
@@ -906,7 +910,7 @@ export default function BuyerProfileScreen() {
         patches: nextPatches,
         orders: nextOrders,
       });
-      setHasWarmProfileSnapshot(true);
+      hasWarmProfileSnapshotRef.current = true;
 
       if (warmProfileStateKey) {
         writeWarmScreenState(warmProfileStateKey, {
@@ -930,7 +934,7 @@ export default function BuyerProfileScreen() {
         ...current,
         profile: fallbackProfileRef.current,
       }));
-      setHasWarmProfileSnapshot(true);
+      hasWarmProfileSnapshotRef.current = true;
       setError(nextError instanceof Error ? nextError.message : 'Unable to load your profile.');
     } finally {
       if (requestId === loadRequestIdRef.current) {

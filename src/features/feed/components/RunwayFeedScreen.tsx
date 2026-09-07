@@ -1686,23 +1686,14 @@ export function RunwayFeedScreen() {
         title: item.collectionTitle,
         isModernAdre: item.collectionTitle?.includes('Modern Ad') || false,
       })));
-      /**
-       * Pin whatever is already on screen; the reshuffled page only supplies
-       * what comes below it. See `reconcileFeedItems`.
-       *
-       * EXCEPT on the session's first revalidation. Pinning exists so the design
-       * a viewer is currently looking at cannot change identity mid-look — but
-       * on a cold start nobody has looked at anything yet, and pinning the
-       * restored cache's head meant the server's fresh order was applied to
-       * everything BELOW a first item that never changed. The feed opened on the
-       * same design every launch even once the revalidation above was fixed.
-       */
-      const isFirstRevalidationThisSession = !feedRevalidatedThisSession;
+      // The server ranker rotates every response. A persisted snapshot gives us
+      // the instant first frame, so its visible head is already the reader's
+      // current context by the time this request returns. Preserve it on every
+      // silent revalidation — including the first one this session — and merge
+      // new results below it. Pull-to-refresh remains the explicit way to ask
+      // for a newly ordered first page.
       feedRevalidatedThisSession = true;
-      const nextItems =
-        isFirstRevalidationThisSession && feedActiveIndex === 0
-          ? sortedItems
-          : reconcileFeedItems(itemsRef.current, sortedItems, feedActiveIndex);
+      const nextItems = reconcileFeedItems(itemsRef.current, sortedItems, feedActiveIndex);
       setItems(nextItems);
       setNextCursor(res.nextCursor ?? null);
       setHasNextPage(res.hasNextPage);

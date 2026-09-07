@@ -40,7 +40,27 @@ assert.match(
 );
 assert.match(runway, /readMemoryCachedMarketFeed/, 'Runway must synchronously seed from its memory cache.');
 assert.match(runway, /readCachedMarketFeed\(cacheIdentity\)/, 'Runway must hydrate its persisted cache before fetching fresh data.');
+assert.match(
+  runway,
+  /const nextItems = reconcileFeedItems\(itemsRef\.current, sortedItems, feedActiveIndex\);/,
+  'A silent Runway revalidation must preserve the item already painted instead of replacing it with a newly ranked head.',
+);
+assert.doesNotMatch(
+  runway,
+  /isFirstRevalidationThisSession\s*&&\s*feedActiveIndex\s*===\s*0\s*\?\s*sortedItems/,
+  'The first silent revalidation must not swap a visible cached Runway item for a different item.',
+);
 assert.match(profile, /<ProfileSectionSkeleton\s*\/>/, 'Profile secondary orders loading must use a section skeleton, not a blocking spinner.');
+assert.match(
+  profile,
+  /hasWarmProfileSnapshotRef\.current/,
+  'A previously loaded profile must keep its warm-state knowledge across background refresh callbacks.',
+);
+assert.doesNotMatch(
+  profile,
+  /\[hasWarmProfileSnapshot, setHasWarmProfileSnapshot\]/,
+  'Profile refresh callbacks must not capture the first render\'s cold warm-state value.',
+);
 assert.match(
   inbox,
   /enabled:\s*deferredWorkReady\s*&&\s*status === 'authenticated'/,
