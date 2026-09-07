@@ -163,22 +163,20 @@ for (const height of PAGE_HEIGHTS) {
   }
 }
 
-// --- Invariant 6: the scrim is front-loaded -------------------------------
-// The whole point of SCRIM_MIDPOINT_RATIO. If this degrades to linear, the
-// outgoing page stops receding while the two pages actually overlap.
+// --- Invariant 6: content is never veiled during a swipe ------------------
+// Ready media must stay at its real luminance. A full-screen scrim was being
+// perceived as an image settling/reloading on every page transition.
 {
   const height = 820;
   const index = 1;
   const centre = index * height;
-  const half = evaluateCurve(buildScrimCurve(index, height), centre + height / 2);
-  near(half, RUNWAY_PAGE_SCRIM_MAX_OPACITY * SCRIM_MIDPOINT_RATIO, 'scrim midpoint must follow SCRIM_MIDPOINT_RATIO');
-  check(
-    half > RUNWAY_PAGE_SCRIM_MAX_OPACITY * 0.5,
-    'scrim must be front-loaded: halfway must exceed a linear ramp',
-  );
+  check(RUNWAY_PAGE_SCRIM_MAX_OPACITY === 0, 'Runway must not apply a media scrim during swipes');
+  for (const delta of [-height, -height / 2, 0, height / 2, height]) {
+    near(evaluateCurve(buildScrimCurve(index, height), centre + delta), 0, 'scrim must stay transparent throughout a swipe');
+  }
 }
 
-// --- Invariant 7: chrome retires before the media does --------------------
+// --- Invariant 7: chrome retires without dimming the media ----------------
 // Two action rails sliding past each other are a bigger share of the mid-swipe
 // load than the photographs, so the chrome must be gone well before the scrim
 // has finished its own ramp.
@@ -192,9 +190,10 @@ for (const height of PAGE_HEIGHTS) {
     evaluateCurve(buildChromeCurve(index, height), centre + height / 2) === 0,
     'chrome must already be gone at the halfway point',
   );
-  check(
-    evaluateCurve(buildScrimCurve(index, height), centre + height / 2) < RUNWAY_PAGE_SCRIM_MAX_OPACITY,
-    'scrim must still be ramping at the halfway point (chrome leads, media follows)',
+  near(
+    evaluateCurve(buildScrimCurve(index, height), centre + height / 2),
+    0,
+    'chrome fade must not darken the media at the halfway point',
   );
 }
 
@@ -207,10 +206,10 @@ for (const height of PAGE_HEIGHTS) {
   for (const delta of [0, height / 3, height, height * 4]) {
     near(evaluateCurve(reduced, centre + delta), 1, `reduced-motion scale must stay 1 at delta=${delta}`);
   }
-  // The cross-fades are not motion and must survive Reduce Motion untouched.
+  // The chrome fade is independent of Reduce Motion; media stays un-veiled.
   check(
-    evaluateCurve(buildScrimCurve(index, height), centre + height) === RUNWAY_PAGE_SCRIM_MAX_OPACITY,
-    'scrim must be unaffected by the reduce-motion path',
+    evaluateCurve(buildScrimCurve(index, height), centre + height) === 0,
+    'scrim must remain disabled under Reduce Motion',
   );
 }
 
@@ -236,23 +235,18 @@ for (const height of PAGE_HEIGHTS) {
   const centre = index * height;
   const scrim = buildScrimCurve(index, height);
 
-  check(SCRIM_INCOMING_RATIO > 0 && SCRIM_INCOMING_RATIO <= 1, 'SCRIM_INCOMING_RATIO must be within (0, 1]');
+  check(RUNWAY_PAGE_SCRIM_MAX_OPACITY === 0, 'Runway must not apply a media scrim during swipes');
 
   for (const delta of [height / 8, height / 4, height / 2, height * 0.75, height, height * 2]) {
     const arriving = evaluateCurve(scrim, centre - delta);
     const leaving = evaluateCurve(scrim, centre + delta);
-    check(
-      arriving < leaving,
-      `scrim must dim an approaching page less than a departing one at delta=${delta} (${arriving} vs ${leaving})`,
-    );
-    near(arriving, leaving * SCRIM_INCOMING_RATIO, `scrim asymmetry must follow SCRIM_INCOMING_RATIO at delta=${delta}`);
+    near(arriving, 0, `approaching media must stay un-veiled at delta=${delta}`);
+    near(leaving, 0, `departing media must stay un-veiled at delta=${delta}`);
   }
 
   // Both halves still meet at exactly 0, so the asymmetry can never produce a
   // step at centre — a settled page is untouched no matter which way it arrived.
-  near(evaluateCurve(scrim, centre), 0, 'asymmetric scrim must still rest at 0');
-  near(evaluateCurve(scrim, centre - 1e-6), 0, 'approach side must reach 0 at centre', 1e-6);
-  near(evaluateCurve(scrim, centre + 1e-6), 0, 'departure side must reach 0 at centre', 1e-6);
+  near(evaluateCurve(scrim, centre), 0, 'settled media must stay un-veiled');
 }
 
 // --- Invariant 11: the dot row is bound to the chrome curve ---------------

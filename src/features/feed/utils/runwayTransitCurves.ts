@@ -30,8 +30,16 @@
  *   heights — `Animated.interpolate` throws otherwise.
  */
 
-/** Scrim opacity once a page sits a full viewport away from centre. */
-export const RUNWAY_PAGE_SCRIM_MAX_OPACITY = 0.55;
+/**
+ * Runway content must remain un-veiled throughout a gesture.
+ *
+ * The earlier fade-through scrim was intended to reduce visual competition
+ * between pages, but a full-screen colour layer made otherwise ready media
+ * look as though it was briefly reloading or colour-correcting after every
+ * swipe. The chrome still fades independently; only the media veil is off.
+ * Keep this at zero on the web twin as well.
+ */
+export const RUNWAY_PAGE_SCRIM_MAX_OPACITY = 0;
 
 /**
  * Scrim at the halfway point, as a fraction of the peak. Deliberately more than

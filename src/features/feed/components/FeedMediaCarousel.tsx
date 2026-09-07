@@ -142,6 +142,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       safeActiveIndex + 1,
       safeActiveIndex - 1,
       safeActiveIndex + 2,
+      safeActiveIndex - 2,
     ].filter((index) => index >= 0 && index <= stableMediaItems.length - 1);
     candidateIndices.forEach((candidateIndex) => {
       const candidate = stableMediaItems[candidateIndex];

@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import Constants from 'expo-constants';
 import { exchangeCodeAsync } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 
@@ -102,9 +103,27 @@ export function useGoogleIdTokenRequest(options: UseGoogleIdTokenRequestOptions 
      * Keeping the tab in the SAME task means the redirect resumes the existing
      * activity, the listener is still attached, and the promise resolves.
      */
+    if (__DEV__) {
+      // Temporary. Answers three questions at once: whether this build is
+      // running the current bundle at all, what redirect Google is actually
+      // being given, and which execution environment makeRedirectUri branched
+      // on — the value that decides whether the native URI is used.
+      console.log('[google-auth] GOOGLE_DIAG_1', {
+        redirectUri: request.redirectUri,
+        clientId: request.clientId,
+        executionEnvironment: Constants.executionEnvironment,
+        appOwnership: Constants.appOwnership,
+        platform: Platform.OS,
+      });
+    }
+
     const result = await promptAsync(
       Platform.OS === 'android' ? { createTask: false } : undefined,
     );
+
+    if (__DEV__) {
+      console.log('[google-auth] GOOGLE_DIAG_2 result.type =', result.type);
+    }
 
     if (result.type === 'cancel' || result.type === 'dismiss') {
       throw googleSignInCancelled();

@@ -40,7 +40,8 @@ import type { MarketItem } from '@/src/types/market';
 import { FeedEmptyState } from '@/components/designs/FeedEmptyState';
 import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
 import { ScreenState } from '@/components/ui/ScreenState';
-import { isUsableImageHttpUrl, prefetchResolvedImageAsset, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { prefetchFeedImage } from '@/src/features/feed/media/mediaCache';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import {
   setBrandPatchStatus,
@@ -1504,12 +1505,18 @@ export function RunwayFeedScreen() {
     });
   }, [activePageIndex, items, pageHeight]);
 
-  // Warm the image cache in BOTH scroll directions (next two pages + previous
-  // page) so a settled page always reveals already-cached media instead of a
-  // shimmer that resolves after the swipe.
+  // Warm the image cache as soon as feed rows exist, rather than waiting for
+  // deferred non-visual work. A user can swipe before idle work runs, which
+  // previously left the incoming design competing with its own download.
+  // The shared prefetch helper deduplicates requests for five minutes, so this
+  // remains bounded when paging appends rows.
   useEffect(() => {
-    if (!deferredWorkReady) return;
-    const candidateIndices = [activePageIndex + 1, activePageIndex - 1, activePageIndex + 2];
+    const candidateIndices = [
+      activePageIndex + 1,
+      activePageIndex - 1,
+      activePageIndex + 2,
+      activePageIndex + 3,
+    ];
     candidateIndices.forEach((candidateIndex) => {
       const candidateItem = candidateIndex >= 0 ? items[candidateIndex] : null;
       const candidateMedia = candidateItem ? buildFallbackMediaItems(candidateItem)[0] : null;
@@ -1519,19 +1526,14 @@ export function RunwayFeedScreen() {
         normalizeStableUri(candidateMedia.url) ??
         normalizeStableUri(candidateMedia.previewUrl) ??
         normalizeStableUri(candidateMedia.thumbnailUrl);
-      if (!directUrl || !isUsableImageHttpUrl(directUrl)) return;
-      void prefetchResolvedImageAsset({
+      void prefetchFeedImage({
         src: directUrl,
-        fileId: null,
-        allowSignedFallback: false,
-        debugContext: {
-          designId: candidateMedia.id,
-          mediaIndex: 0,
-          sourceField: 'feed.next.preview',
-        },
+        fileId: candidateMedia.fileId,
+        collectionId: candidateItem?.collectionId,
+        mediaIndex: candidateMedia.mediaIndex,
       });
     });
-  }, [activePageIndex, deferredWorkReady, items]);
+  }, [activePageIndex, items]);
 
   useEffect(() => {
     if (!deferredWorkReady) return undefined;
@@ -1840,6 +1842,29 @@ export function RunwayFeedScreen() {
       pendingCollectionIdsRef.current.delete(collectionId);
     }
   }, []);
+
+  // Hydrate the current design and its immediate runway before the swipe
+  // settles. Legacy feed rows need their angle list from the detail endpoint;
+  // waiting for InteractionManager after landing made a left/right swipe race
+  // the request. The refs inside `hydrateCollectionMedia` deduplicate and bound
+  // this to the current page, two forward pages, and one backward page.
+  useEffect(() => {
+    if (!items.length) return;
+    const candidateIndices = [
+      activePageIndex,
+      activePageIndex + 1,
+      activePageIndex + 2,
+      activePageIndex - 1,
+    ];
+    const seenCollectionIds = new Set<string>();
+    candidateIndices.forEach((candidateIndex) => {
+      const candidate = candidateIndex >= 0 ? items[candidateIndex] : null;
+      const collectionId = candidate?.collectionId;
+      if (!candidate || !collectionId || seenCollectionIds.has(collectionId)) return;
+      seenCollectionIds.add(collectionId);
+      void hydrateCollectionMedia(candidate);
+    });
+  }, [activePageIndex, hydrateCollectionMedia, items]);
 
   // Viewability is DIAGNOSTICS ONLY here — `latestViewableIndexRef` is read in
   // exactly one place, the `vertical-settle-warning` in handleFeedMomentumEnd.

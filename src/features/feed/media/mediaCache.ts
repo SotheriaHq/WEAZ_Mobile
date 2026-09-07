@@ -22,11 +22,19 @@ export const prefetchFeedImage = async ({
   mediaIndex?: number | null;
 }) => {
   const directSrc = normalizeStableUri(src);
-  if (!directSrc || !isUsableImageHttpUrl(directSrc)) {
-    prefetchDevLog('prefetch-skipped', { reason: 'missing-public-url', collectionId, mediaIndex, hasFileId: Boolean(fileId) });
+  const normalizedFileId = normalizeStableUri(fileId);
+  if (!directSrc && !normalizedFileId) {
+    prefetchDevLog('prefetch-skipped', { reason: 'missing-source', collectionId, mediaIndex, hasFileId: false });
     return false;
   }
-  const key = directSrc;
+  if (directSrc && !isUsableImageHttpUrl(directSrc) && !normalizedFileId) {
+    prefetchDevLog('prefetch-skipped', { reason: 'unusable-url-without-file-id', collectionId, mediaIndex, hasFileId: false });
+    return false;
+  }
+  // File IDs are the durable identity. Some legacy rows expose only a file ID
+  // (or an unsigned S3 URL beside it), so keying on the usable URL alone left
+  // precisely those next pages cold until the user swiped onto them.
+  const key = normalizedFileId ? `file:${normalizedFileId}` : directSrc!;
   if (inFlightPrefetches.has(key)) {
     prefetchDevLog('prefetch-skipped', { reason: 'duplicate', collectionId, mediaIndex });
     return false;
@@ -45,7 +53,7 @@ export const prefetchFeedImage = async ({
   try {
     const ok = await prefetchResolvedImageAsset({
       src: directSrc,
-      fileId: null,
+      fileId: normalizedFileId,
       allowSignedFallback: false,
       debugContext: {
         designId: collectionId,
