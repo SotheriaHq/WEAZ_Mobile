@@ -7,14 +7,14 @@
     "icon": "./assets/images/wiez-icon.png",
     "scheme": [
       "wiezmobile",
-      "com.sotheriahq.wiez"
+      "com.wiez.wiez"
     ],
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
     "android": {
-      "package": "com.sotheriahq.wiez",
+      "package": "com.wiez.wiez",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/wiez-adaptive-icon.png",
         "backgroundColor": "#0c0b11"

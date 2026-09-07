@@ -329,7 +329,7 @@ function main() {
   // `scheme` is an array, and order matters: `Linking.createURL` uses the FIRST
   // entry, so `wiezmobile` has to stay first or every in-app deep link changes
   // scheme. The package entry is what lets Google's OAuth redirect
-  // (`com.sotheriahq.wiez:/oauthredirect`) reach the app at all — prebuild only
+  // (`com.wiez.wiez:/oauthredirect`) reach the app at all — prebuild only
   // emits intent filters for declared schemes.
   const declaredSchemes = Array.isArray(appJson.expo.scheme)
     ? appJson.expo.scheme

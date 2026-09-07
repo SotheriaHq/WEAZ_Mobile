@@ -2,7 +2,7 @@
  * Landing pad for the Google OAuth redirect.
  *
  * `expo-auth-session` builds its Android redirect from the package name —
- * `com.sotheriahq.wiez:/oauthredirect` — and `app.json` declares that scheme so
+ * `com.wiez.wiez:/oauthredirect` — and `app.json` declares that scheme so
  * the intent can reach the app at all. Android then delivers it to the router as
  * well as to the auth session, and `/oauthredirect` was not a screen: users
  * landed on `+not-found` ("This screen doesn't exist") seconds after signing in.
