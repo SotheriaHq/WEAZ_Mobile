@@ -87,7 +87,24 @@ export function useGoogleIdTokenRequest(options: UseGoogleIdTokenRequestOptions 
       throw googleSignInUnavailable();
     }
 
-    const result = await promptAsync();
+    /**
+     * `createTask: false` is the whole reason sign-in returned to a cold app.
+     *
+     * On Android expo-web-browser defaults to opening the auth tab in a NEW
+     * TASK. The redirect then arrives as a fresh launch of the app rather than
+     * a resume of the one that started the flow: the JS that is awaiting
+     * `promptAsync` is gone, so the promise never settles and nothing is
+     * created. In a development build the relaunch lands on the dev-client
+     * launcher — the "empty shell" — because no project is loaded yet in that
+     * new process; a standalone build fails the same way, just less visibly,
+     * restarting to a signed-out home screen.
+     *
+     * Keeping the tab in the SAME task means the redirect resumes the existing
+     * activity, the listener is still attached, and the promise resolves.
+     */
+    const result = await promptAsync(
+      Platform.OS === 'android' ? { createTask: false } : undefined,
+    );
 
     if (result.type === 'cancel' || result.type === 'dismiss') {
       throw googleSignInCancelled();
