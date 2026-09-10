@@ -384,11 +384,20 @@ function main() {
     declaredSchemes.includes(appJson.expo.android?.package),
     'Expo schemes must include the Android package so the Google OAuth redirect can reach the app.',
   );
+  // `com.wiez.wiez` is the only package the Google Android OAuth client is
+  // registered for. `com.sotheriahq.wiez` is the retired pre-rename package; a
+  // build carrying it sends a redirect Google will not accept.
+  assert.equal(appJson.expo.android?.package, 'com.wiez.wiez', 'Android package must be com.wiez.wiez.');
   const appConfigSource = fs.readFileSync(appConfigPath, 'utf8');
   assert.match(
     appConfigSource,
-    /com\.sotheriahq\.wiez/,
-    'The dynamic Expo config must preserve the Android package used by the installed development build.',
+    /com\.wiez\.wiez/,
+    'The dynamic Expo config must default to the com.wiez.wiez Android package.',
+  );
+  assert.doesNotMatch(
+    `${appConfigSource}\n${JSON.stringify(appJson)}`,
+    /sotheriahq/,
+    'The retired com.sotheriahq.wiez package must not return to the Expo config.',
   );
   assert.equal(
     appJson.expo.ios?.associatedDomains,
