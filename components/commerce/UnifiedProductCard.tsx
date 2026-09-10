@@ -6,6 +6,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { AppText } from '@/components/ui/AppText';
+import { MediaScrim } from '@/components/ui/MediaScrim';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
@@ -135,11 +136,22 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
         </LinearGradient>
       )}
 
-      <LinearGradient
-        pointerEvents="none"
-        colors={[theme.colors.backdrop, theme.colors.backdropStrong]}
-        style={styles.mediaShade}
-      />
+      {/*
+        The TOP band only, and lightly.
+
+        This was one gradient across the whole card — `backdrop` to
+        `backdropStrong`, i.e. 58% to 80% black over the entire photograph on the
+        dark theme (22% to 40% on light). Every product in the grid was being
+        shown through a grey wash, which is exactly the "cards look dull, nothing
+        pops" report, and it was doing that to protect two things that both sit
+        in the top ~20pt: the New Drop badge and the favourite button.
+
+        Both already carry their own treatment — the badge has a text shadow, the
+        button has a plate — so this is `light` and reaches a quarter of the way
+        down. Below that the artwork is untouched all the way to the copy panel,
+        which brings its own ramp.
+      */}
+      <MediaScrim edges={['top']} reach={0.26} strength="light" />
 
       {newDropItemId ? (
         <NewDropBadge
@@ -321,9 +333,6 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.985 }],
   },
   media: {
-    ...StyleSheet.absoluteFill,
-  },
-  mediaShade: {
     ...StyleSheet.absoluteFill,
   },
   fallback: {

@@ -3041,6 +3041,7 @@ export function RunwayFeedScreen() {
       <CollectionCommentsSheet
         progress={commentsProgress}
         onSheetHeight={setCommentsSheetHeight}
+        contentScaled
         visible={Boolean(commentsTarget)}
         collectionId={commentsTarget?.collectionId ?? null}
         collectionTitle={commentsTarget?.title ?? null}

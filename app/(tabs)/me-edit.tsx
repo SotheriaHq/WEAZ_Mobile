@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from 'expo-router';
+import type { CountryCode } from 'libphonenumber-js';
 
 import { ProfileApi, type UserProfile } from '@/src/api/ProfileApi';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
@@ -22,6 +23,10 @@ import {
 import { AppText } from '@/components/ui/AppText';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Input } from '@/components/ui/Input';
+import { LocationCascadeFields } from '@/components/forms/LocationCascadeFields';
+import { PhoneNumberField } from '@/components/forms/PhoneNumberField';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { iso2ForCountryName } from '@/src/utils/phoneCountries';
 import { StableImage } from '@/components/ui/StableImage';
 import { tokens } from '@/src/styles/tokens';
 import { readWarmScreenState } from '@/src/state/screenWarmState';
@@ -50,7 +55,20 @@ type ProfileFormState = {
   lastName: string;
   username: string;
   phoneNumber: string;
+  /**
+   * Street address only.
+   *
+   * This field used to be labelled "Location" and hold the whole thing — the
+   * one box a shopper had for a country, a state, an LGA and a street. It was
+   * seeded from `profile.location`, which the server COMPOSES, so anything
+   * typed here came back as part of a display line and could never be read back
+   * into a picker. The administrative levels are their own fields now and this
+   * one means what its label says.
+   */
   address: string;
+  country: string;
+  state: string;
+  city: string;
 };
 
 type WarmProfileState = {
@@ -73,7 +91,15 @@ function toForm(profile: UserProfile | null, user: AuthUser | null): ProfileForm
     lastName: profile?.lastName ?? user?.lastName ?? '',
     username: profile?.username ?? user?.username ?? '',
     phoneNumber: user?.phoneNumber ?? '',
-    address: profile?.location ?? profile?.address ?? '',
+    // `profile.location` is deliberately NOT read here any more. It is the
+    // server's composed "City, State, Country" display line; seeding an editable
+    // field from it meant a shopper who opened this screen and saved without
+    // touching anything wrote their own display line back in as a street
+    // address.
+    address: profile?.address ?? '',
+    country: profile?.country ?? '',
+    state: profile?.state ?? '',
+    city: profile?.city ?? '',
   };
 }
 
@@ -87,7 +113,10 @@ function formsEqual(a: ProfileFormState, b: ProfileFormState): boolean {
     normalized(a.lastName) === normalized(b.lastName) &&
     normalized(a.username) === normalized(b.username) &&
     normalized(a.phoneNumber) === normalized(b.phoneNumber) &&
-    normalized(a.address) === normalized(b.address)
+    normalized(a.address) === normalized(b.address) &&
+    normalized(a.country) === normalized(b.country) &&
+    normalized(a.state) === normalized(b.state) &&
+    normalized(a.city) === normalized(b.city)
   );
 }
 
@@ -105,6 +134,16 @@ function statusLabel(state: SaveState, savedAt: Date | null, error: string | nul
 export default function MeEditScreen() {
   const { user, updateUser } = useAuth();
   const { theme } = useTheme();
+  /*
+    This screen lives inside the `(tabs)` group, so the floating island is
+    rendered OVER it by `app/(tabs)/_layout.tsx` — it is not part of this
+    screen's layout and takes no space in it. The content padding was a fixed
+    `spacing['4xl']`, which is smaller than the island on every device, so the
+    last fields on the form sat underneath it: the email block was unreadable
+    and untappable. Every other screen in this group reserves
+    `standardScreenBottomPadding` for exactly this reason.
+  */
+  const { standardScreenBottomPadding } = useScreenChrome();
   const toast = useToast();
   const navigation = useNavigation();
   const params = useLocalSearchParams<{ from?: string | string[] }>();
@@ -198,7 +237,13 @@ export default function MeEditScreen() {
           firstName: resolvedFirstName,
           lastName: resolvedLastName,
           username,
-          address: draft.address.trim() || undefined,
+          // Empty STRING, not undefined. The server reads undefined as "leave it
+          // alone", so omitting a cleared field silently refuses to clear it —
+          // the user empties their state, saves, and it comes straight back.
+          address: draft.address.trim(),
+          country: draft.country.trim(),
+          state: draft.state.trim(),
+          city: draft.city.trim(),
           phoneNumber: draft.phoneNumber.trim() || undefined,
         });
         // A falsy response means nothing was persisted. Returning `true` here —
@@ -402,6 +447,24 @@ export default function MeEditScreen() {
     setForm((current) => ({ ...current, ...patch }));
   }, []);
 
+  /*
+    The dial code follows the country the user just picked, so a Ghanaian who
+    fills in their location does not then have to find Ghana again in the phone
+    picker. Two sources, in order: the ISO2 the cascade resolved from the live
+    country list, then the bundled name→ISO2 map, which still answers when the
+    country came from the offline fallback or from a value typed into the
+    free-text branch. Nigeria last, because that is the market, not a guess
+    about this person.
+  */
+  const [countryIso2, setCountryIso2] = useState<string | undefined>(undefined);
+  const phoneCountry = useMemo(
+    () =>
+      (countryIso2 as CountryCode | undefined) ??
+      iso2ForCountryName(form.country) ??
+      ('NG' as CountryCode),
+    [countryIso2, form.country],
+  );
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <View style={styles.header}>
@@ -426,7 +489,10 @@ export default function MeEditScreen() {
 
       <KeyboardAwareFormScroll
         style={styles.flex}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: standardScreenBottomPadding },
+        ]}
       >
           <View style={styles.avatarSection}>
             <Pressable
@@ -490,30 +556,72 @@ export default function MeEditScreen() {
             </View>
 
             <View style={[styles.fieldRow, { borderBottomColor: theme.colors.border }]}>
-            <Input
-              label="Phone number"
-              value={form.phoneNumber}
-              onChangeText={(value) => updateField({ phoneNumber: value })}
-              placeholder="+234 800 000 0000"
-              keyboardType="phone-pad"
-              autoCapitalize="none"
-              autoCorrect={false}
-              containerStyle={styles.group}
-              variant="bare"
-            />
+              <View style={styles.group}>
+                <AppText variant="smallBold" tone="secondary" style={styles.fieldLabel}>
+                  Phone number
+                </AppText>
+                {/*
+                  The country code is part of the VALUE, not something to type.
+
+                  This was a bare text input with a "+234 800 000 0000"
+                  placeholder — so the dial code was a hint, every user outside
+                  Nigeria had to know their own code, and a Nigerian typing the
+                  number the way it is printed on their SIM pack (0803…) got no
+                  warning about the trunk zero that has to be dropped once a
+                  country code is attached. The picker seeds itself from the
+                  country chosen just below, so most people never open it.
+                */}
+                <PhoneNumberField
+                  label="Phone number"
+                  value={form.phoneNumber}
+                  onChange={(next) => updateField({ phoneNumber: next })}
+                  defaultCountry={phoneCountry}
+                  disabled={isHydrating}
+                  variant="bare"
+                  testID="me-edit-phone"
+                />
+              </View>
             </View>
 
-            <View style={styles.fieldRow}>
-            <Input
-              label="Location"
-              value={form.address}
-              onChangeText={(value) => updateField({ address: value })}
-              placeholder={isHydrating ? 'Loading…' : 'City, State'}
-              editable={!isHydrating}
-              containerStyle={styles.group}
+            {/*
+              Country / State / City-LGA / street address.
+
+              There was ONE field here, labelled "Location", seeded from the
+              server's composed display line. A shopper could type anything into
+              it, nothing downstream could read it back, and the structured
+              fields the web brand form has had for a long time simply did not
+              exist on this screen.
+
+              `renderField` supplies this panel's own divider rows so the picked
+              fields sit in the same stack as the typed ones above rather than
+              reading as a second form pasted underneath.
+            */}
+            <LocationCascadeFields
+              value={{
+                country: form.country,
+                state: form.state,
+                city: form.city,
+                address: form.address,
+              }}
+              onChange={updateField}
               variant="bare"
+              disabled={isHydrating}
+              onCountryIso2Change={setCountryIso2}
+              addressHelperText="Only you can see this. Hidden entirely when “Show my location” is off in Settings."
+              renderField={(field, key) => (
+                <View
+                  style={[
+                    styles.fieldRow,
+                    // The address is the last row in the panel, so it draws no
+                    // rule — the panel's own border closes it.
+                    key === 'address' ? styles.fieldRowLast : null,
+                    { borderBottomColor: theme.colors.border },
+                  ]}
+                >
+                  <View style={styles.group}>{field}</View>
+                </View>
+              )}
             />
-            </View>
           </View>
 
           <View style={[styles.readOnlyPanel, { borderColor: theme.colors.border }]}>
@@ -555,7 +663,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.lg,
-    paddingBottom: tokens.spacing['4xl'],
     gap: tokens.spacing.md,
   },
   avatarSection: {
@@ -603,6 +710,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  fieldRowLast: {
+    borderBottomWidth: 0,
+  },
+  fieldLabel: {
+    marginBottom: tokens.spacing.sm,
+    letterSpacing: 0,
+    textTransform: 'none',
   },
   group: {
     width: '100%',

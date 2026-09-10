@@ -11,6 +11,22 @@ import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { tokens } from '@/src/styles/tokens';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
+/**
+ * Scrim weight, by what the caller has already done to its own content.
+ *
+ * A caller that SCALES its page into the band above the sheet has separated the
+ * two planes geometrically: the design is smaller, inset, and sitting above an
+ * opaque sheet. A 55% wash on top of that is the "grey background over the
+ * content" report — the design stops being viewable at exactly the moment the
+ * user is reading remarks about it. 0.18 is enough to seat the sheet as the
+ * foreground plane and light enough that the garment still reads.
+ *
+ * A caller that does NOT scale (a scrolling product list) has only the scrim,
+ * so it keeps the full weight.
+ */
+const SCALED_SCRIM_ALPHA = 0.18;
+const FLAT_SCRIM_ALPHA = 0.55;
+
 type Comment = {
   id: string;
   text: string;
@@ -51,6 +67,17 @@ type CollectionCommentsSheetProps = {
   progress?: Animated.Value;
   /** Measured sheet height, so a caller can compute how much room is left. */
   onSheetHeight?: (height: number) => void;
+  /**
+   * The caller is scaling its page into the band above this sheet.
+   *
+   * When it is, the content has ALREADY been pushed back — it is smaller, it is
+   * inset, and the sheet is an opaque plane below it. Dimming it a second time
+   * at scrim strength is what made an open comment thread read as a grey sheet
+   * pulled over the design being discussed. Callers that do not scale (a
+   * scrolling product list) keep the full scrim, because separation is the only
+   * thing they have.
+   */
+  contentScaled?: boolean;
 };
 const normalizeDisplayName = (user?: BackendCommentUser | null) => {
   if (!user) return 'User';
@@ -190,6 +217,7 @@ export default function CollectionCommentsSheet({
   onClose,
   progress: progressProp,
   onSheetHeight,
+  contentScaled = false,
 }: CollectionCommentsSheetProps) {
   const { theme, scheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -296,7 +324,13 @@ export default function CollectionCommentsSheet({
     >
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>
-          <Pressable style={styles.scrim} onPress={onClose} />
+          <Pressable
+            style={[
+              styles.scrim,
+              { backgroundColor: tokens.scrim(contentScaled ? SCALED_SCRIM_ALPHA : FLAT_SCRIM_ALPHA) },
+            ]}
+            onPress={onClose}
+          />
         </Animated.View>
 
         <Animated.View
@@ -439,7 +473,8 @@ export default function CollectionCommentsSheet({
 
 const styles = StyleSheet.create({
   /**
-   * A dim, not a blackout.
+   * A dim, not a blackout. Weight comes from `contentScaled` — see the two
+   * alphas above.
    *
    * This was `tokens.colors.dark` — fully opaque black — animated to full opacity
    * across the entire screen, so opening comments did not "cover" the design,
@@ -449,7 +484,6 @@ const styles = StyleSheet.create({
    */
   scrim: {
     flex: 1,
-    backgroundColor: tokens.scrim(0.55),
   },
   sheet: {
     position: 'absolute',

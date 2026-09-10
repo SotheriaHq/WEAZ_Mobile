@@ -14,11 +14,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
-import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 
 import WiezMark from '@/src/brand/WiezMark';
 import { AppText } from '@/components/ui/AppText';
+import { MediaScrim } from '@/components/ui/MediaScrim';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
@@ -719,10 +719,20 @@ function MarketHeroSlide({
       {imageUri ? (
         <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.heroImage} imageStyle={styles.heroImage} />
       ) : null}
-      <LinearGradient
-        colors={[theme.colors.backdropStrong, theme.colors.backdrop, theme.colors.backdropStrong]}
-        style={StyleSheet.absoluteFill}
-      />
+      {/*
+        Two bands, not a veil.
+
+        This ran `backdropStrong → backdrop → backdropStrong` across the whole
+        slide, so the BRIGHTEST point of the hero image — its centre, where the
+        garment is — sat under 58% black on the dark theme, and the top and
+        bottom under 80%. The hero is the largest photograph on the market
+        screen and it was the most heavily suppressed thing on it.
+
+        Copy only lives in the top row and the bottom block, so only those are
+        protected. `strong` because both are white text with no plate of their
+        own, and this image is unknown and can be pale.
+      */}
+      <MediaScrim edges={['top', 'bottom']} reach={0.36} strength="strong" />
       <View style={styles.heroTopRow}>
         <View style={[styles.heroPill, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
           <AppText variant="captionBold" tone="inverse">Market Pick</AppText>
@@ -850,17 +860,25 @@ function CollectionCard({
           <AppText variant="title" tone="muted">{String.fromCodePoint(0x1f5bc, 0xfe0f)}</AppText>
         </View>
       )}
-      <LinearGradient
-        colors={['transparent', theme.colors.backdropStrong] as [string, string]}
-        style={StyleSheet.absoluteFill}
-      />
+      {/*
+        A linear ramp across the FULL height was already 40% black by the
+        midpoint, which is where the cover art's subject sits. The copy is a
+        frosted panel pinned to the bottom edge and the count pill has its own
+        plate, so the ramp only has to carry the seam between them.
+      */}
+      <MediaScrim edges={['bottom']} reach={0.5} strength="standard" />
       <View style={[styles.collectionCountPill, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
         <AppText variant="captionBold" tone="inverse">
           {collection.productCount} {collection.productCount === 1 ? 'piece' : 'pieces'}
         </AppText>
       </View>
       <BlurView tint="dark" intensity={24} style={styles.collectionCopy}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdrop }]} />
+        {/*
+          `backdrop` here is 58% black on the dark theme, and it sat on top of a
+          24-intensity blur AND the full-height ramp above — three suppressions
+          stacked on one strip. The ramp is a band now, so one wash is enough.
+        */}
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: tokens.scrim(0.34) }]} />
         <AppText variant="bodyBold" tone="inverse" numberOfLines={2}>
           {collection.title}
         </AppText>
@@ -1232,10 +1250,17 @@ function EditorialCard({
       {imageUri ? (
         <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.editorialImage} imageStyle={styles.editorialImage} />
       ) : null}
-      <LinearGradient
-        colors={[theme.colors.backdropStrong, theme.colors.primaryDark, theme.colors.backdropStrong]}
-        style={StyleSheet.absoluteFill}
-      />
+      {/*
+        `primaryDark` is an OPAQUE violet, not a wash. Stopping this gradient
+        there meant the middle of the card was a solid purple band with the
+        photograph completely painted over, and the slivers above and below it
+        were 80% black. The image was, in effect, not rendered at all.
+
+        Copy sits in the bottom block and the tag pill is a filled chip, so a
+        bottom band is the whole job. `strong` and a deeper reach because this
+        card carries three lines of copy.
+      */}
+      <MediaScrim edges={['top', 'bottom']} reach={0.46} strength="strong" />
       <View style={[styles.editorialTag, { backgroundColor: theme.colors.primary }]}>
         <AppText variant="captionBold" tone="inverse">Market Edit</AppText>
       </View>

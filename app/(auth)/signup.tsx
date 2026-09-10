@@ -270,7 +270,11 @@ export default function SignupScreen() {
     setErrors({});
     setGoogleSubmitting(true);
     try {
-      const idToken = await googleTokenRequest.requestGoogleIdToken();
+      const idToken = await googleTokenRequest.requestGoogleIdToken({
+        intent: 'SIGNUP',
+        type: userType ?? 'REGULAR',
+        ...(userType === 'BRAND' ? { brandFullName: trimmedBrandName } : {}),
+      });
       const legalAcceptances = await getRequiredLegalAcceptances(
         LEGAL_SIGNUP_DOCUMENT_KEYS,
       );

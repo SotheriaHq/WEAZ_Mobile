@@ -22,7 +22,13 @@ export interface UserProfile {
     url?: string | null;
   } | null;
   bannerImage?: string | null;
+  /** Street address only — the administrative levels are their own fields. */
   address?: string | null;
+  country?: string | null;
+  state?: string | null;
+  /** Same administrative level Nigeria calls a Local Government Area. */
+  city?: string | null;
+  /** Server-composed "City, State, Country" for display. Never editable. */
   location?: string | null;
   profileVisibility: 'UNLOCKED' | 'LOCKED';
   showUsername: boolean;
@@ -270,6 +276,9 @@ function normalizeProfile(raw: unknown): UserProfile | null {
     profileImageFile: s.profileImageFile ?? null,
     bannerImage: s.bannerImage ?? null,
     address: s.address ?? null,
+    country: s.country ?? null,
+    state: s.state ?? null,
+    city: s.city ?? null,
     location: s.location ?? s.address ?? null,
     profileVisibility: s.profileVisibility === 'LOCKED' ? 'LOCKED' : 'UNLOCKED',
     showUsername: s.showUsername !== false,
@@ -424,6 +433,14 @@ export const ProfileApi = {
     lastName: string;
     username: string;
     address?: string;
+    /*
+      Sent as '' to CLEAR, never omitted for that purpose. The server treats
+      undefined as "leave it alone", so an omitted country cannot erase a stored
+      one — which is what a user expects when they empty the field.
+    */
+    country?: string;
+    state?: string;
+    city?: string;
     phoneNumber?: string;
     gender?: 'MALE' | 'FEMALE' | 'NON_BINARY' | 'UNSPECIFIED';
   }): Promise<UserProfile | null> {

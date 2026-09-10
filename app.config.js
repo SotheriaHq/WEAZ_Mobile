@@ -26,7 +26,7 @@ module.exports = ({ config } = {}) => {
 
       android: {
       ...(baseConfig.android ?? {}),
-      package: readString(process.env.EXPO_PUBLIC_ANDROID_PACKAGE) ?? 'com.wiez.wiez',
+      package: readString(process.env.EXPO_PUBLIC_ANDROID_PACKAGE) ?? 'com.sotheriahq.wiez',
     },
 
     plugins: withSentryPluginConfig(baseConfig.plugins),

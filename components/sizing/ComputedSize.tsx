@@ -43,9 +43,15 @@ export function ComputedSizeChip({
     The rule below — no empty-state slab beside the avatar — holds for the
     states whose cause is somewhere else: an unpublished chart is WIEZ's setup
     step, and a list of missing points is a job for the fittings screen. This one
-    is different. Its cause is visible on this screen, in the measurement chips
-    right beside it, and those chips are already marked; leaving the header
-    silent would put a ⚠ on a shopper's own number with nothing to explain it.
+    is different: its cause is a number the shopper themselves saved, and it is
+    the reason the size slot is empty. Staying silent would leave a blank where
+    an answer belongs with nothing anywhere on the profile to explain it.
+
+    (It used to read "the measurement chips right beside it are already marked".
+    Those chips are gone — the profile shows the answer, not the workings — so
+    this chip is now the ONLY thing on the screen that can raise the flag, which
+    makes it more load-bearing than it was, not less. It routes to /fittings,
+    where the offending value and its reason are shown together.)
   */
   if (state.kind === 'bad-measurements') {
     return (

@@ -250,28 +250,48 @@ assert.strictEqual(compactMeasurementLabel('HIP_SEAT'), 'Hip');
 assert.strictEqual(compactMeasurementLabel('EXTRA_AGBADA_DROP'), 'Extra Agbada Drop');
 
 /*
-  ── The header shows values, not just a progress bar ──
+  ── The profile shows the computed SIZE and nothing else about sizing ──
 
-  `me.tsx` had been reduced to "6 of 8", which answers whether the set is
-  finished and never what is in it, so a shopper could not check their own
-  numbers without leaving the screen. Guarded because the failure is silent: the
-  screen still renders, still typechecks, and still looks deliberate.
+  Supersedes the 2026-08-27 assertion that the hero must render `FittingsChips`.
+  That rule was written against a card reduced to "6 of 8" — a completeness bar
+  that never said what was in it — and the correction then was to move the
+  values into the header. The product decision since is narrower: a profile
+  answers "what size am I" and nothing more. Every measurement value, its
+  completeness and its problems live on `/fittings`, one tap away.
+
+  The guard is inverted rather than deleted, because the failure is silent in
+  both directions: a screen that quietly grows a measurement list back still
+  renders, still typechecks and still looks deliberate.
 */
 const meScreen = fs.readFileSync(
   path.join(projectRoot, 'app', '(tabs)', 'me.tsx'),
   'utf8',
 );
 assert.ok(
-  /<FittingsChips[\s\S]{0,400}?collapsed=\{heroFittings\}/.test(meScreen),
-  'the profile hero no longer renders FittingsChips — measurement values are off the screen again',
+  !/<FittingsChips\b/.test(meScreen),
+  'the profile hero renders FittingsChips again — raw measurement values are back on the profile',
 );
 assert.ok(
-  meScreen.includes('compactMeasurementLabel'),
-  'the header chips must label through the shared catalog, not a local map',
+  !/<FittingsSummaryCard\b/.test(meScreen),
+  'the profile renders the "My fittings" card again — sizing workings are back on the profile',
 );
 assert.ok(
-  /fittingProblemKeys/.test(meScreen),
-  'the header chips must mark measurements the server rejected',
+  /<ComputedSizeChip\b/.test(meScreen),
+  'the profile hero must still render ComputedSizeChip — the computed size is the one sizing readout it keeps',
+);
+
+/*
+  The values moved to the fittings screen, so that is where the compact labels
+  asserted above have to be consumed. Without this the coverage check guards a
+  catalog nothing reads.
+*/
+const fittingsScreen = fs.readFileSync(
+  path.join(projectRoot, 'app', 'fittings.tsx'),
+  'utf8',
+);
+assert.ok(
+  fittingsScreen.includes('measurementCatalog'),
+  'the fittings screen must read labels from the shared measurement catalog, not a local map',
 );
 
 /*

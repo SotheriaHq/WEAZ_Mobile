@@ -48,6 +48,16 @@ jobs:
       - name: Measurement catalog contract
         run: npm run test:measurement-catalog-contract
 
+      # Where a user lives. Three things are duplicated across repos here and
+      # all three have already broken: the bundled region fallback (an empty
+      # option list renders a DISABLED dropdown, so a third-party outage becomes
+      # a form nobody can finish), the countriesnow endpoint shape (web moved to
+      # the GET form when POST started 301-ing; mobile was left on the dead one
+      # and failed silently for months), and the "City / LGA" label, which has
+      # to name the same administrative level for both readers.
+      - name: Location cascade contract
+        run: npm run test:location-cascade-contract
+
       # Who gets asked how to size their clothes. The web and native copies of
       # this rule have drifted twice already — console operators were excluded
       # on one surface before the other, and the auth-route skip lists diverged

@@ -365,7 +365,7 @@ export default function LoginScreen() {
     setFlowError('');
     setGoogleLoading(true);
     try {
-      const idToken = await googleTokenRequest.requestGoogleIdToken();
+      const idToken = await googleTokenRequest.requestGoogleIdToken({ intent: 'LOGIN' });
       await signInWithGoogle({ idToken, intent: 'LOGIN' });
       toast.success('Welcome back!');
       setPendingNavigation(true);

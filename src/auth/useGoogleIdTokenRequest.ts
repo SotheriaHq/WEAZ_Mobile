@@ -1,24 +1,30 @@
-import { useCallback, useMemo } from 'react';
-import { Platform } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
-import Constants from 'expo-constants';
-import { exchangeCodeAsync } from 'expo-auth-session';
-import * as Google from 'expo-auth-session/providers/google';
+import { useCallback, useMemo } from "react";
+import { Platform } from "react-native";
+import * as WebBrowser from "expo-web-browser";
+import { exchangeCodeAsync } from "expo-auth-session";
+import * as Google from "expo-auth-session/providers/google";
 
 import {
   googleSignInCancelled,
   googleSignInUnavailable,
-} from '@/src/auth/authErrors';
-import { env } from '@/src/config/env';
+} from "@/src/auth/authErrors";
+import {
+  beginGoogleAuthRedirectRecovery,
+  clearGoogleAuthRedirectRecovery,
+  type GoogleAuthContinuation,
+} from "@/src/auth/googleRedirectRecovery";
+import { env } from "@/src/config/env";
 
 WebBrowser.maybeCompleteAuthSession();
 
 const UNCONFIGURED_GOOGLE_CLIENT_ID =
-  'wiez-google-auth-not-configured.apps.googleusercontent.com';
+  "wiez-google-auth-not-configured.apps.googleusercontent.com";
 
-const usableClientId = (value: string | undefined | null): string | undefined => {
-  const normalized = String(value ?? '').trim();
-  if (!normalized || normalized.startsWith('<')) return undefined;
+const usableClientId = (
+  value: string | undefined | null,
+): string | undefined => {
+  const normalized = String(value ?? "").trim();
+  if (!normalized || normalized.startsWith("<")) return undefined;
   return normalized;
 };
 
@@ -35,10 +41,10 @@ const getGoogleClientIds = (): GoogleClientIds => ({
 });
 
 const platformClientId = (clientIds: GoogleClientIds): string | undefined => {
-  if (Platform.OS === 'ios') {
+  if (Platform.OS === "ios") {
     return clientIds.iosClientId;
   }
-  if (Platform.OS === 'android') {
+  if (Platform.OS === "android") {
     return clientIds.androidClientId;
   }
   return clientIds.webClientId;
@@ -48,122 +54,120 @@ type UseGoogleIdTokenRequestOptions = {
   loginHint?: string;
 };
 
-export function useGoogleIdTokenRequest(options: UseGoogleIdTokenRequestOptions = {}) {
-  const config = useMemo(
-    () => {
-      const clientIds = getGoogleClientIds();
-      const fallbackClientId = platformClientId(clientIds) ?? UNCONFIGURED_GOOGLE_CLIENT_ID;
+export function useGoogleIdTokenRequest(
+  options: UseGoogleIdTokenRequestOptions = {},
+) {
+  const config = useMemo(() => {
+    const clientIds = getGoogleClientIds();
+    const fallbackClientId =
+      platformClientId(clientIds) ?? UNCONFIGURED_GOOGLE_CLIENT_ID;
 
-      return {
-        webClientId:
-          Platform.OS === 'web'
-            ? fallbackClientId
-            : clientIds.webClientId,
-        iosClientId:
-          Platform.OS === 'ios'
-            ? fallbackClientId
-            : clientIds.iosClientId,
-        androidClientId:
-          Platform.OS === 'android'
-            ? fallbackClientId
-            : clientIds.androidClientId,
-        selectAccount: true,
-        scopes: ['openid', 'email', 'profile'],
-        ...(options.loginHint?.trim() ? { loginHint: options.loginHint.trim() } : {}),
-      };
-    },
-    [options.loginHint],
-  );
+    return {
+      webClientId:
+        Platform.OS === "web" ? fallbackClientId : clientIds.webClientId,
+      iosClientId:
+        Platform.OS === "ios" ? fallbackClientId : clientIds.iosClientId,
+      androidClientId:
+        Platform.OS === "android"
+          ? fallbackClientId
+          : clientIds.androidClientId,
+      selectAccount: true,
+      scopes: ["openid", "email", "profile"],
+      ...(options.loginHint?.trim()
+        ? { loginHint: options.loginHint.trim() }
+        : {}),
+    };
+  }, [options.loginHint]);
 
   const [request, , promptAsync] = Google.useIdTokenAuthRequest(config);
   const configured = Boolean(platformClientId(getGoogleClientIds()));
 
-  const requestGoogleIdToken = useCallback(async () => {
-    if (!configured || !request) {
-      if (__DEV__) {
-        console.warn(
-          `[google-auth] not ${configured ? 'ready' : 'configured'} — check EXPO_PUBLIC_GOOGLE_*_CLIENT_ID and restart Metro (EXPO_PUBLIC_* is inlined at bundle time).`,
-        );
+  const requestGoogleIdToken = useCallback(
+    async (continuation?: GoogleAuthContinuation) => {
+      if (!configured || !request) {
+        if (__DEV__) {
+          console.warn(
+            `[google-auth] not ${configured ? "ready" : "configured"} — check EXPO_PUBLIC_GOOGLE_*_CLIENT_ID and restart Metro (EXPO_PUBLIC_* is inlined at bundle time).`,
+          );
+        }
+        throw googleSignInUnavailable();
       }
-      throw googleSignInUnavailable();
-    }
 
-    /**
-     * `createTask: false` is the whole reason sign-in returned to a cold app.
-     *
-     * On Android expo-web-browser defaults to opening the auth tab in a NEW
-     * TASK. The redirect then arrives as a fresh launch of the app rather than
-     * a resume of the one that started the flow: the JS that is awaiting
-     * `promptAsync` is gone, so the promise never settles and nothing is
-     * created. In a development build the relaunch lands on the dev-client
-     * launcher — the "empty shell" — because no project is loaded yet in that
-     * new process; a standalone build fails the same way, just less visibly,
-     * restarting to a signed-out home screen.
-     *
-     * Keeping the tab in the SAME task means the redirect resumes the existing
-     * activity, the listener is still attached, and the promise resolves.
-     */
-    if (__DEV__) {
-      // Temporary. Answers three questions at once: whether this build is
-      // running the current bundle at all, what redirect Google is actually
-      // being given, and which execution environment makeRedirectUri branched
-      // on — the value that decides whether the native URI is used.
-      console.log('[google-auth] GOOGLE_DIAG_1', {
-        redirectUri: request.redirectUri,
+      const codeVerifier = request.codeVerifier?.trim();
+      if (!codeVerifier) throw googleSignInUnavailable();
+
+      /**
+       * `createTask: false` is the whole reason sign-in returned to a cold app.
+       *
+       * On Android expo-web-browser defaults to opening the auth tab in a NEW
+       * TASK. The redirect then arrives as a fresh launch of the app rather than
+       * a resume of the one that started the flow: the JS that is awaiting
+       * `promptAsync` is gone, so the promise never settles and nothing is
+       * created. In a development build the relaunch lands on the dev-client
+       * launcher — the "empty shell" — because no project is loaded yet in that
+       * new process; a standalone build fails the same way, just less visibly,
+       * restarting to a signed-out home screen.
+       *
+       * Keeping the tab in the SAME task means the redirect resumes the existing
+       * activity, the listener is still attached, and the promise resolves.
+       */
+      await beginGoogleAuthRedirectRecovery({
         clientId: request.clientId,
-        executionEnvironment: Constants.executionEnvironment,
-        appOwnership: Constants.appOwnership,
-        platform: Platform.OS,
+        redirectUri: request.redirectUri,
+        codeVerifier,
+        state: request.state,
+        continuation,
       });
-    }
 
-    const result = await promptAsync(
-      Platform.OS === 'android' ? { createTask: false } : undefined,
-    );
+      try {
+        const result = await promptAsync(
+          Platform.OS === "android" ? { createTask: false } : undefined,
+        );
 
-    if (__DEV__) {
-      console.log('[google-auth] GOOGLE_DIAG_2 result.type =', result.type);
-    }
+        if (result.type === "cancel" || result.type === "dismiss") {
+          throw googleSignInCancelled();
+        }
+        if (result.type !== "success") {
+          throw googleSignInUnavailable();
+        }
 
-    if (result.type === 'cancel' || result.type === 'dismiss') {
-      throw googleSignInCancelled();
-    }
-    if (result.type !== 'success') {
-      throw googleSignInUnavailable();
-    }
+        // Only web asks Google for an `id_token` directly. Installed apps run the
+        // PKCE code flow, so `promptAsync` resolves with the RAW redirect params —
+        // an authorization `code`, never an `id_token`, no matter how long you wait.
+        //
+        // `useIdTokenAuthRequest` does auto-exchange the code, but it publishes the
+        // result on the hook's second tuple element on a later render; it cannot
+        // reach back into the promise `promptAsync` already resolved. Reading
+        // `id_token` off that promise is why every Android sign-in died here with
+        // "Google did not return an ID token" before the API was ever called.
+        const directIdToken = result.params?.id_token?.trim();
+        if (directIdToken) return directIdToken;
 
-    // Only web asks Google for an `id_token` directly. Installed apps run the
-    // PKCE code flow, so `promptAsync` resolves with the RAW redirect params —
-    // an authorization `code`, never an `id_token`, no matter how long you wait.
-    //
-    // `useIdTokenAuthRequest` does auto-exchange the code, but it publishes the
-    // result on the hook's second tuple element on a later render; it cannot
-    // reach back into the promise `promptAsync` already resolved. Reading
-    // `id_token` off that promise is why every Android sign-in died here with
-    // "Google did not return an ID token" before the API was ever called.
-    const directIdToken = result.params?.id_token?.trim();
-    if (directIdToken) return directIdToken;
+        const code = result.params?.code?.trim();
+        if (!code) throw googleSignInUnavailable();
 
-    const code = result.params?.code?.trim();
-    if (!code) throw googleSignInUnavailable();
+        const tokenResponse = await exchangeCodeAsync(
+          {
+            clientId: request.clientId,
+            redirectUri: request.redirectUri,
+            code,
+            // Proves we are the app that started the flow. Installed apps have no
+            // client secret, so PKCE is the whole of the exchange's security.
+            extraParams: { code_verifier: codeVerifier },
+          },
+          Google.discovery,
+        );
 
-    const tokenResponse = await exchangeCodeAsync(
-      {
-        clientId: request.clientId,
-        redirectUri: request.redirectUri,
-        code,
-        // Proves we are the app that started the flow. Installed apps have no
-        // client secret, so PKCE is the whole of the exchange's security.
-        extraParams: { code_verifier: request.codeVerifier ?? '' },
-      },
-      Google.discovery,
-    );
+        const idToken = tokenResponse.idToken?.trim();
+        if (!idToken) throw googleSignInUnavailable();
 
-    const idToken = tokenResponse.idToken?.trim();
-    if (!idToken) throw googleSignInUnavailable();
-
-    return idToken;
-  }, [configured, promptAsync, request]);
+        return idToken;
+      } finally {
+        await clearGoogleAuthRedirectRecovery();
+      }
+    },
+    [configured, promptAsync, request],
+  );
 
   return {
     configured,

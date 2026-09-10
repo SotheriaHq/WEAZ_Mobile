@@ -1,8 +1,10 @@
 import axios from 'axios';
 
+import { getOfflineRegions } from '@/src/data/countryRegions';
+
 /**
  * Location cascade source for profile/checkout forms.
- * Kept in parity with `fwiez/src/services/LocationService.ts`:
+ * Kept in parity with `fthreadly/src/services/LocationService.ts`:
  * Country (name) → State/Province → City/LGA.
  */
 
@@ -140,7 +142,7 @@ export const locationService = {
     }
   },
 
-  async getStates(countryName: string): Promise<StateOption[]> {
+  async getStates(countryName: string, iso2?: string): Promise<StateOption[]> {
     const normalizedCountry = countryName.trim();
     if (!normalizedCountry) {
       return [];
@@ -150,31 +152,62 @@ export const locationService = {
     }
 
     try {
-      const response = await axios.post<CountriesNowStatesResponse>(
-        `${COUNTRIES_API}/states`,
-        { country: normalizedCountry },
-        { timeout: LOCATION_REQUEST_TIMEOUT_MS },
+      // GET .../states/q?country=Nigeria — NOT the old POST .../states.
+      //
+      // The POST form answers `301 → /states/q?country=…` and takes ~13s to do
+      // it, which is past the 8s timeout below. Web hit this first (a redirect
+      // on a preflighted request is a hard CORS failure there) and moved; this
+      // copy was left on the dead endpoint, so on native the state list has been
+      // failing every time — and with no fallback below, that rendered as a
+      // permanently disabled dropdown.
+      const response = await axios.get<CountriesNowStatesResponse>(
+        `${COUNTRIES_API}/states/q`,
+        {
+          params: { country: normalizedCountry },
+          timeout: LOCATION_REQUEST_TIMEOUT_MS,
+        },
       );
-      if (response.data?.error) {
-        return [];
+      const remote = response.data?.error ? [] : (response.data.data?.states ?? []);
+      if (Array.isArray(remote) && remote.length > 0) {
+        const states = sortByName(
+          remote
+            .map((state) => {
+              const name = state.name?.trim() ?? '';
+              if (!name) return null;
+              const iso2 = state.state_code?.trim() ?? name;
+              return { name, iso2, code: iso2 };
+            })
+            .filter((state): state is StateOption => Boolean(state)),
+        );
+        statesCache.set(normalizedCountry, states);
+        return states;
       }
-      const states = sortByName(
-        (response.data.data?.states ?? [])
-          .map((state) => {
-            const name = state.name?.trim() ?? '';
-            if (!name) return null;
-            const iso2 = state.state_code?.trim() ?? name;
-            return { name, iso2, code: iso2 };
-          })
-          .filter((state): state is StateOption => Boolean(state)),
-      );
-      statesCache.set(normalizedCountry, states);
-      return states;
     } catch {
-      return [];
+      // Fall through to the bundled list rather than returning [].
     }
+
+    // An empty list is rendered as a DISABLED dropdown by every caller, so
+    // returning [] on a network failure strands the user on a form they cannot
+    // finish. Bundled data for our operating markets is worth more than a
+    // perfect list nobody can reach.
+    const offline = getOfflineRegions(normalizedCountry, iso2).map((name) => ({
+      name,
+      iso2: '',
+      code: '',
+    }));
+    if (offline.length > 0) {
+      // Cached so a flaky connection does not re-await the timeout every time
+      // the cascade re-runs.
+      statesCache.set(normalizedCountry, offline);
+    }
+    return offline;
   },
 
+  /**
+   * Cities/LGAs for a state. There is deliberately NO bundled fallback — the
+   * list is far too large to ship and too country-specific to guess at — so an
+   * empty result means "let the user type one", never "disable the field".
+   */
   async getCities(countryName: string, stateName: string): Promise<string[]> {
     const normalizedCountry = countryName.trim();
     const normalizedState = stateName.trim();
@@ -188,13 +221,13 @@ export const locationService = {
     }
 
     try {
-      const response = await axios.post<CountriesNowCitiesResponse>(
-        `${COUNTRIES_API}/state/cities`,
+      // GET .../state/cities/q, for the same reason `getStates` moved.
+      const response = await axios.get<CountriesNowCitiesResponse>(
+        `${COUNTRIES_API}/state/cities/q`,
         {
-          country: normalizedCountry,
-          state: normalizedState,
+          params: { country: normalizedCountry, state: normalizedState },
+          timeout: LOCATION_REQUEST_TIMEOUT_MS,
         },
-        { timeout: LOCATION_REQUEST_TIMEOUT_MS },
       );
       if (response.data?.error) {
         return [];

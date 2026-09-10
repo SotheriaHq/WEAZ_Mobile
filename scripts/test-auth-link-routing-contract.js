@@ -16,7 +16,10 @@ const loginPath = path.join(repoRoot, 'app', '(auth)', 'login.tsx');
 const signupPath = path.join(repoRoot, 'app', '(auth)', 'signup.tsx');
 const googleMarkPath = path.join(repoRoot, 'components', 'auth', 'GoogleMark.tsx');
 const googleHookPath = path.join(repoRoot, 'src', 'auth', 'useGoogleIdTokenRequest.ts');
+const googleRecoveryPath = path.join(repoRoot, 'src', 'auth', 'googleRedirectRecovery.ts');
+const rootLayoutPath = path.join(repoRoot, 'app', '_layout.tsx');
 const appJsonPath = path.join(repoRoot, 'app.json');
+const appConfigPath = path.join(repoRoot, 'app.config.js');
 const packageJsonPath = path.join(repoRoot, 'package.json');
 
 function compile(filePath) {
@@ -86,11 +89,10 @@ function main() {
   assert.match(verifyEmailRouteSource, /renderVerifying/, 'Verify route must include a verifying/loading state.');
   assert.match(verifyEmailRouteSource, /renderSuccess/, 'Verify route must include a success state.');
   assert.match(verifyEmailRouteSource, /renderError/, 'Verify route must include an invalid-or-expired error state.');
-  assert.match(
-    verifyEmailRouteSource,
-    /router\.replace\(\(isAuthenticated \? '\/\(tabs\)\/me' : '\/login'\)/,
-    'Verify route must send authenticated users to profile and guests to login.',
-  );
+  assert.match(verifyEmailRouteSource, /destinationAfterVerification/, 'Verify route must resolve a post-verification destination.');
+  assert.match(verifyEmailRouteSource, /!isAuthenticated[\s\S]{0,160}'\/login'/, 'Verify route must send guests to login.');
+  assert.match(verifyEmailRouteSource, /isBrandAccount\(user\)[\s\S]{0,120}'\/catalog'/, 'Verify route must send newly verified brands to catalog.');
+  assert.match(verifyEmailRouteSource, /:\s*'\/\(tabs\)\/me'/, 'Verify route must send verified shoppers to profile.');
   assert.doesNotMatch(verifyEmailRouteSource, /console\.(log|warn|error).*token/, 'Verify route must not log raw tokens.');
   assert.doesNotMatch(verifyEmailRouteSource, /\bsignIn\b/, 'Verify route must not automatically log the user in.');
 
@@ -205,8 +207,18 @@ function main() {
   const googleMarkSource = fs.readFileSync(googleMarkPath, 'utf8');
   assert.match(googleMarkSource, /react-native-svg/, 'Mobile Google social mark must use an SVG component.');
   assert.match(googleMarkSource, /fill="#1976D2"/, 'Mobile Google social mark must use brand-color SVG paths.');
-  assert.match(loginSource, /left=\{<GoogleMark \/>/, 'Mobile login Google button must render the Google SVG mark.');
-  assert.match(signupSource, /left=\{<GoogleMark \/>/, 'Mobile signup Google button must render the Google SVG mark.');
+  for (const [label, source] of [['login', loginSource], ['signup', signupSource]]) {
+    assert.match(
+      source,
+      /import \{ GoogleSignInButton \} from '@\/components\/auth\/GoogleSignInButton';/,
+      `Mobile ${label} must use the shared accessible Google button.`,
+    );
+    assert.match(
+      source,
+      /<GoogleSignInButton[\s\S]{0,240}testID="(?:login|signup)-google-button"/,
+      `Mobile ${label} must render its Google action through the shared button.`,
+    );
+  }
   assert.doesNotMatch(
     [loginSource, signupSource, googleMarkSource].join('\n'),
     /\u{1F34E}/u,
@@ -228,7 +240,7 @@ function main() {
   );
   assert.match(
     googleHookSource,
-    /code_verifier:\s*request\.codeVerifier/,
+    /code_verifier:\s*codeVerifier/,
     'Mobile Google auth must send the PKCE verifier on the code exchange.',
   );
   // Toast copy is owned by `authErrors`; a bare `throw new Error(...)` here is
@@ -258,6 +270,39 @@ function main() {
     /GOOGLE_CLIENT_SECRET|google-client-secret|client_secret/i,
     'Mobile source and env example must not contain a Google client secret.',
   );
+  assert.match(
+    googleHookSource,
+    /beginGoogleAuthRedirectRecovery\(/,
+    'Mobile Google auth must persist state-bound PKCE recovery before opening Android OAuth.',
+  );
+  assert.match(
+    googleHookSource,
+    /state:\s*request\.state/,
+    'Mobile Google auth recovery must retain the AuthSession state for callback validation.',
+  );
+  assert.match(
+    googleHookSource,
+    /createTask:\s*false/,
+    'Android Google auth must keep the Custom Tab in the current app task.',
+  );
+  assert.match(
+    googleHookSource,
+    /clearGoogleAuthRedirectRecovery\(\)/,
+    'Mobile Google auth must remove transient PKCE recovery after its live result settles.',
+  );
+
+  const googleRecoverySource = fs.readFileSync(googleRecoveryPath, 'utf8');
+  assert.match(googleRecoverySource, /GOOGLE_REDIRECT_RECOVERY_MAX_AGE_MS\s*=\s*10 \* 60 \* 1000/, 'Google redirect recovery must expire quickly.');
+  assert.match(googleRecoverySource, /returnedState !== pending\.state/, 'Google redirect recovery must reject mismatched OAuth state.');
+  assert.match(googleRecoverySource, /exchangeCodeAsync\(/, 'Google redirect recovery must exchange the one-time PKCE code.');
+  assert.match(googleRecoverySource, /finally[\s\S]{0,240}clearGoogleAuthRedirectRecovery\(\)/, 'Google redirect recovery must delete one-time PKCE material after every callback outcome.');
+  assert.doesNotMatch(googleRecoverySource, /setItemAsync\([^\n]+idToken/, 'Google redirect recovery must never persist a Google ID token.');
+
+  const rootLayoutSource = fs.readFileSync(rootLayoutPath, 'utf8');
+  assert.match(rootLayoutSource, /function GoogleAuthRedirectRecoveryGate\(/, 'The root layout must install the cold-relaunch Google callback handler.');
+  assert.match(rootLayoutSource, /recoverGoogleAuthRedirect\(/, 'The root layout must consume a recovered Google callback.');
+  assert.match(rootLayoutSource, /Linking\.getInitialURL\(\)/, 'The root layout must handle a Google callback that cold-started the app.');
+  assert.match(rootLayoutSource, /<GoogleAuthRedirectRecoveryGate\s*\/>/, 'The cold-relaunch Google handler must be mounted inside authenticated app providers.');
 
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   assert.ok(
@@ -338,6 +383,12 @@ function main() {
   assert.ok(
     declaredSchemes.includes(appJson.expo.android?.package),
     'Expo schemes must include the Android package so the Google OAuth redirect can reach the app.',
+  );
+  const appConfigSource = fs.readFileSync(appConfigPath, 'utf8');
+  assert.match(
+    appConfigSource,
+    /com\.sotheriahq\.wiez/,
+    'The dynamic Expo config must preserve the Android package used by the installed development build.',
   );
   assert.equal(
     appJson.expo.ios?.associatedDomains,

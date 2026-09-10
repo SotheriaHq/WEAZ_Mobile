@@ -1617,6 +1617,7 @@ export function MarketCommerceViewer({
           initialCommentId={initialCommentId}
           progress={commentsProgress}
           onSheetHeight={setCommentsSheetHeight}
+          contentScaled
           onClose={() => setCommentsOpen(false)}
         />
       ) : null}

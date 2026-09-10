@@ -21,23 +21,7 @@ import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useFrameBatchedItems } from '@/src/hooks/useFrameBatchedItems';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
-import {
-  collectMeasurementProblems,
-  resolveComputedSizeState,
-  resolveCategorySizes,
-
-} from '@/src/features/sizing/computedSize';
-import {
-  resolveDisplayCategory,
-  useProfileSizeCategory,
-} from '@/src/features/sizing/profileSizePreference';
-import {
-  CORE_MEASUREMENT_SLOTS,
-  collapseMeasurements,
-  compactMeasurementLabel,
-  type CollapsedMeasurements,
-  type CoreMeasurementKey,
-} from '@/src/features/sizing/measurementCatalog';
+import { resolveComputedSizeState } from '@/src/features/sizing/computedSize';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -300,254 +284,18 @@ function ProfileAction({
 /**
  * The profile shows the ANSWER, not the workings.
  *
- * This card used to render every stored measurement as a row — and because the
- * server deliberately stores one measurement under several keys (canonical,
- * gendered registry, plus whatever key the client originally sent), eight real
- * measurements arrived as nineteen rows: "Height 182" twice, "Chest Bust 45"
- * beside "Chest Full Bust 45", "Hip 26" beside "Hip Seat 26". A shopper looking
- * at their own body reported back as a nineteen-item list, with duplicates,
- * cannot check it, cannot correct it, and cannot tell which row a brand will
- * read.
+ * `FittingsChips` (raw measurement values under the name) and
+ * `FittingsSummaryCard` (the "My fittings" card under the summary row) both
+ * lived here and are deliberately gone. Between them they put the sizing
+ * points, their completeness bar, their problem count and a SECOND copy of
+ * the computed size on a screen whose sizing question is one word long.
  *
- * The full list, deduplicated and editable, is now `app/fittings.tsx`. What is
- * left here is what belongs on a profile: how complete the core set is, the
- * per-garment sizes that fall out of it, and a way in. The headline size itself
- * lives up beside the avatar (`ComputedSizeChip`) where the eye already is.
+ * What a profile shows about sizing is now exactly one thing: the computed
+ * size, beside the avatar (`ComputedSizeChip`). The values, the duplicate
+ * keys the server stores them under, the completeness state and every
+ * correction path live on `app/fittings.tsx`, one tap away via the 📏 tile —
+ * which is the screen that can actually act on any of them.
  */
-/**
- * The saved measurements as chips, in the column beside the avatar.
- *
- * Values, not a progress bar. The bar answers "is this finished"; a shopper
- * checking whether the app has their body right needs to read the numbers, and
- * this is the screen they look at to do it.
- *
- * Core points only, in tailor order, with the extras rolled into a single "+n"
- * chip — the extras are garment-specific points a brand asked for once, so they
- * belong on `/fittings` rather than in a profile header, but their COUNT is
- * worth showing so the roll-up is not a hidden state.
- *
- * A chip whose value the server rejected is marked. That is the only place a
- * shopper ever sees the offending number and the reason together, and without it
- * a wrong measurement is invisible until it produces a wrong size.
- */
-const FittingsChips = React.memo(function FittingsChips({
-  collapsed,
-  unit,
-  problemKeys,
-  onPress,
-}: {
-  collapsed: CollapsedMeasurements;
-  unit: string;
-  problemKeys: Set<string>;
-  onPress: () => void;
-}) {
-  const { theme } = useTheme();
-  const unitLabel = unit.toLowerCase();
-
-  const saved = CORE_MEASUREMENT_SLOTS.map((slot) => ({
-    key: slot.key,
-    value: collapsed.core[slot.key],
-  })).filter((entry): entry is { key: CoreMeasurementKey; value: string } =>
-    Boolean(entry.value),
-  );
-
-  if (saved.length === 0) {
-    return (
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel="Add your measurements"
-        style={({ pressed }) => [styles.fittingChipRow, pressed ? styles.pressed : null]}
-      >
-        <View style={[styles.fittingChip, { backgroundColor: theme.colors.primarySoft }]}>
-          <AppText variant="captionBold" tone="primary">
-            📏 Add your measurements
-          </AppText>
-        </View>
-      </Pressable>
-    );
-  }
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${saved.length} measurements saved. Open my fittings.`}
-      style={({ pressed }) => [styles.fittingChipRow, pressed ? styles.pressed : null]}
-    >
-      {saved.map((entry) => {
-        const flagged = problemKeys.has(entry.key);
-        return (
-          <View
-            key={entry.key}
-            style={[
-              styles.fittingChip,
-              {
-                backgroundColor: theme.colors.surfaceAlt,
-                borderColor: flagged ? theme.colors.warning : theme.colors.border,
-              },
-            ]}
-          >
-            <AppText variant="captionBold" tone={flagged ? 'warning' : 'secondary'}>
-              {flagged ? '⚠ ' : ''}
-              {compactMeasurementLabel(entry.key)} {entry.value}
-              {unitLabel}
-            </AppText>
-          </View>
-        );
-      })}
-      {collapsed.extras.length > 0 ? (
-        <View
-          style={[
-            styles.fittingChip,
-            { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
-          ]}
-        >
-          <AppText variant="captionBold" tone="muted">
-            +{collapsed.extras.length}
-          </AppText>
-        </View>
-      ) : null}
-    </Pressable>
-  );
-});
-
-function FittingsSummaryCard({
-  sizeFit,
-  computed,
-  onPress,
-}: {
-  sizeFit: SizeFitProfile | null;
-  computed: ComputedSizeFitProfile | null;
-  onPress: () => void;
-}) {
-  const { theme } = useTheme();
-  const collapsed = React.useMemo(
-    () => collapseMeasurements(sizeFit?.measurements),
-    [sizeFit?.measurements],
-  );
-  const categorySizes = React.useMemo(() => resolveCategorySizes(computed), [computed]);
-  const { category: preferredCategory } = useProfileSizeCategory();
-  const displaySize = React.useMemo(() => {
-    const resolved = resolveDisplayCategory(preferredCategory, categorySizes);
-    return categorySizes.find((entry) => entry.category === resolved) ?? null;
-  }, [categorySizes, preferredCategory]);
-  const measurementProblems = React.useMemo(
-    () => collectMeasurementProblems(computed),
-    [computed],
-  );
-  const totalCore = CORE_MEASUREMENT_SLOTS.length;
-  const complete = collapsed.coreSavedCount >= totalCore;
-
-  return (
-    <Card padding="sm" style={[styles.fittingsCard, { backgroundColor: theme.colors.surfaceAlt }]}>
-      <View style={styles.sectionHeaderRow}>
-        <View style={styles.sectionHeaderCopy}>
-          <AppText variant="bodyBold">My fittings</AppText>
-          <AppText variant="captionRegular" tone="muted">
-            {complete
-              ? 'Reused on every custom order, so no brand has to ask you again.'
-              : 'Save these once and no brand has to ask you again.'}
-          </AppText>
-        </View>
-        <Button
-          title={collapsed.coreSavedCount > 0 ? 'Manage' : 'Add'}
-          size="sm"
-          variant="secondary"
-          onPress={onPress}
-        />
-      </View>
-
-      {/*
-        A bar, not a list.
-
-        "6 of 8" answers the only question the profile needs to answer about
-        measurements — is this finished — in one glance, and it does not grow
-        with the data.
-      */}
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`${collapsed.coreSavedCount} of ${totalCore} sizing points saved. Open my fittings.`}
-        style={({ pressed }) => [styles.fittingsProgressWrap, pressed ? styles.pressed : null]}
-      >
-        <View style={styles.fittingsProgressCopy}>
-          <AppText variant="captionBold" tone="secondary">
-            Sizing points
-          </AppText>
-          <AppText variant="captionBold" tone={complete ? 'success' : 'secondary'}>
-            {collapsed.coreSavedCount}/{totalCore}
-          </AppText>
-        </View>
-        <View style={[styles.fittingsTrack, { backgroundColor: theme.colors.surface }]}>
-          <View
-            style={[
-              styles.fittingsFill,
-              {
-                backgroundColor: complete ? theme.colors.success : theme.colors.primary,
-                width: `${Math.round((collapsed.coreSavedCount / totalCore) * 100)}%`,
-              },
-            ]}
-          />
-        </View>
-        {/*
-          A rejected measurement outranks the completeness copy. "Every point we
-          size you by is saved" is true of the COUNT and false of the answer when
-          one of those points cannot describe a body, and a shopper who reads it
-          stops looking for the thing that is actually blocking their size.
-        */}
-        <AppText
-          variant="captionRegular"
-          tone={measurementProblems.length > 0 ? 'warning' : 'muted'}
-        >
-          {measurementProblems.length > 0
-            ? `${measurementProblems.length} saved measurement${measurementProblems.length === 1 ? '' : 's'} cannot be right — tap to check ${measurementProblems.length === 1 ? 'it' : 'them'}.`
-            : complete
-              ? collapsed.extras.length > 0
-                ? `Plus ${collapsed.extras.length} extra point${collapsed.extras.length === 1 ? '' : 's'} brands have asked you for.`
-                : 'Every point we size you by is saved.'
-              : `Add ${totalCore - collapsed.coreSavedCount} more and WIEZ can work out your size.`}
-        </AppText>
-      </Pressable>
-
-      {/*
-        ONE size, not five.
-
-        This used to render a pill for every category the engine could compute
-        — Tops, Bottoms, Dresses, Shirts, Jackets — next to a progress bar and
-        a completeness sentence. Five answers to a question with one answer, on
-        a screen that is not the sizing screen. The full breakdown, the region
-        switcher and the measurements all live on the fittings screen now; the
-        profile shows the one the shopper chose there.
-      */}
-      {displaySize ? (
-        <Pressable
-          onPress={onPress}
-          accessibilityRole="button"
-          accessibilityLabel={`Your ${displaySize.label} size is ${displaySize.size}. Open my fittings.`}
-          style={({ pressed }) => [
-            styles.categorySizePill,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-            pressed ? styles.pressed : null,
-          ]}
-        >
-          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-            {displaySize.label}
-          </AppText>
-          <AppText variant="captionBold" numberOfLines={1}>
-            {displaySize.size}
-          </AppText>
-        </Pressable>
-      ) : null}
-
-      {computed?.staleMeasurementWarning ? (
-        <AppText variant="captionRegular" tone="warning">
-          These measurements are getting old — worth checking before your next order.
-        </AppText>
-      ) : null}
-    </Card>
-  );
-}
 
 function SavedDesignCard({ item }: { item: SavedItem }) {
   const { theme } = useTheme();
@@ -1157,21 +905,6 @@ export default function BuyerProfileScreen() {
     [state.computedSizeFit],
   );
 
-  /*
-    Collapsed once, here, rather than inside the chip row — it is the same
-    derivation `FittingsSummaryCard` runs further down the screen, and doing it
-    in the leaf would repeat it on every render of a component that lives inside
-    a scrolling hero.
-  */
-  const heroFittings = useMemo(
-    () => collapseMeasurements(state.sizeFit?.measurements),
-    [state.sizeFit?.measurements],
-  );
-  const fittingProblemKeys = useMemo(
-    () => new Set(collectMeasurementProblems(state.computedSizeFit).map((p) => p.key.toUpperCase())),
-    [state.computedSizeFit],
-  );
-
   const handleSignOut = useCallback(() => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -1325,31 +1058,23 @@ export default function BuyerProfileScreen() {
               </AppText>
             ) : null}
 
-            {/*
-              The saved measurements, right here under the name.
-
-              They were not on this screen at all — the card further down had
-              been reduced to a "6 of 8" progress bar, which answers "is this
-              finished" but never "what did I save", so a shopper could not
-              check their own numbers without opening `/fittings`. That was the
-              right call about the DUPLICATE-heavy full list and the wrong call
-              about showing values at all. `collapseMeasurements` already
-              resolves the fan-out (`HEIGHT` + `MEN_HEIGHT` + …) to one entry per
-              point, so the honest short form fits in the space beside the
-              avatar that was empty on every phone.
-            */}
-            <FittingsChips
-              collapsed={heroFittings}
-              unit={state.sizeFit?.preferredLengthUnit ?? 'CM'}
-              problemKeys={fittingProblemKeys}
-              onPress={handleOpenFittings}
-            />
           </View>
 
           {/*
-            Renders only when there IS a size. The reason there is not one — an
-            unpublished size chart is a WIEZ setup step, missing points are the
-            shopper's — belongs on `/fittings`, which can act on either.
+            The ONLY sizing readout on this screen, by product decision.
+
+            Raw measurement values used to sit under the name as a chip row, and
+            a "My fittings" card further down repeated the completeness bar, the
+            problem count and a second copy of the size. A profile answers "what
+            size am I"; the numbers that produce that answer, their completeness
+            and their problems all belong on `/fittings`, which is the screen
+            that can act on them. Everything below is reachable in one tap from
+            the 📏 tile in the action row.
+
+            Renders only when there IS a size (or when a saved measurement is
+            blocking one). The reason there is not one — an unpublished size
+            chart is a WIEZ setup step, missing points are the shopper's —
+            belongs on `/fittings` too.
           */}
           <ComputedSizeChip state={computedSizeState} onPress={handleOpenFittings} />
         </View>
@@ -1384,12 +1109,6 @@ export default function BuyerProfileScreen() {
           <SummaryStat title="Patched" value={String(profileCounts.patches)} subtitle="brands" />
           <SummaryStat title="Recent" value={String(profileCounts.orders)} subtitle="orders" />
         </View>
-
-        <FittingsSummaryCard
-          sizeFit={state.sizeFit}
-          computed={state.computedSizeFit}
-          onPress={handleOpenFittings}
-        />
 
         {error ? (
           <View style={[styles.inlineNotice, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
@@ -1576,18 +1295,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: tokens.spacing.xs,
   },
-  fittingChipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.xs,
-    marginTop: tokens.spacing.xs,
-  },
-  fittingChip: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.sm,
-    paddingHorizontal: tokens.spacing.xs,
-    paddingVertical: tokens.spacing.xs,
-  },
   centerText: {
     textAlign: 'center',
   },
@@ -1632,51 +1339,6 @@ const styles = StyleSheet.create({
   summaryStat: {
     flex: 1,
     alignItems: 'center',
-    gap: tokens.spacing.xs,
-  },
-  fittingsCard: {
-    gap: tokens.spacing.sm,
-  },
-  fittingsProgressWrap: {
-    gap: tokens.spacing.xs,
-  },
-  fittingsProgressCopy: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.sm,
-  },
-  fittingsTrack: {
-    height: 6,
-    borderRadius: tokens.radius.full,
-    overflow: 'hidden',
-  },
-  fittingsFill: {
-    height: '100%',
-    borderRadius: tokens.radius.full,
-  },
-  categorySizeWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
-  },
-  categorySizePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
-    minHeight: 32,
-    maxWidth: '100%',
-    borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.md,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-  },
-  sectionHeaderCopy: {
-    flex: 1,
     gap: tokens.spacing.xs,
   },
   errorCard: {

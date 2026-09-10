@@ -52,6 +52,20 @@ type BaseProps = {
 type SingleProps = BaseProps & {
   value: string | null;
   onChange: (value: string) => void;
+  /**
+   * Filter box above the list. Off by default, so every existing caller is
+   * unchanged.
+   *
+   * Turn it on for lists a thumb cannot reasonably reach the end of — the
+   * country picker is 245 rows, and scrolling to "Nigeria" past two hundred
+   * cards is not a picker, it is a punishment. A short curated list (business
+   * type, sort order) is better WITHOUT it: a search box over six options adds
+   * a keyboard and a step to a decision that was one tap.
+   */
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  /** Shown when the filter matches nothing, as opposed to an empty list. */
+  searchEmptyMessage?: string;
 };
 
 type MultiProps = BaseProps & {
@@ -149,12 +163,38 @@ export function AppSelectSheet({
   loading,
   errorMessage,
   emptyMessage = 'No options available.',
+  searchable = false,
+  searchPlaceholder = 'Search…',
+  searchEmptyMessage = 'Nothing matches that.',
 }: SingleProps) {
   const pendingValueRef = useRef<string | null>(null);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
-    if (visible) pendingValueRef.current = null;
+    if (visible) {
+      pendingValueRef.current = null;
+      // Cleared on OPEN rather than on close: clearing on close re-renders the
+      // list to its full length during the exit animation, which is visible.
+      setQuery('');
+    }
   }, [visible]);
+
+  /*
+    Matches the label AND the value. The country picker's label carries a flag
+    emoji and its value is the bare name, so a reader typing "nigeria" has to
+    match through whichever of the two the caller chose to make searchable —
+    and neither is reliably the other.
+  */
+  const visibleOptions = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!searchable || !needle) return options;
+    return options.filter(
+      (option) =>
+        option.label.toLowerCase().includes(needle) ||
+        option.value.toLowerCase().includes(needle) ||
+        (option.description ?? '').toLowerCase().includes(needle),
+    );
+  }, [options, query, searchable]);
 
   return (
     <AppBottomSheet
@@ -169,14 +209,29 @@ export function AppSelectSheet({
       }}
       keyboardBehavior="none"
     >
+      {searchable ? (
+        <Input
+          label={searchPlaceholder}
+          hideLabel
+          value={query}
+          onChangeText={setQuery}
+          placeholder={searchPlaceholder}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          containerStyle={styles.searchField}
+        />
+      ) : null}
       <SelectSheetState
         loading={loading}
         errorMessage={errorMessage}
-        empty={options.length === 0}
-        emptyMessage={emptyMessage}
+        empty={visibleOptions.length === 0}
+        emptyMessage={
+          query.trim() && options.length > 0 ? searchEmptyMessage : emptyMessage
+        }
       />
       <View style={styles.optionWrapSingle}>
-        {options.map((option) => (
+        {visibleOptions.map((option) => (
           <AnimatedOptionCard
             key={option.value}
             option={option}
@@ -616,6 +671,9 @@ function SelectSheetState({
 }
 
 const styles = StyleSheet.create({
+  searchField: {
+    marginBottom: tokens.spacing.md,
+  },
   optionWrapSingle: {
     gap: tokens.spacing.sm,
   },

@@ -6,7 +6,7 @@ import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium';
 import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
 import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 import { useFonts } from 'expo-font';
-import { Stack, usePathname } from 'expo-router';
+import { router, Stack, usePathname } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -26,6 +26,12 @@ import { setFontFallbackMode } from '@/src/styles/FontMode';
 import { ToastProvider } from '@/src/toast/ToastContext';
 import { useToast } from '@/src/toast/ToastContext';
 import { useAuth } from '@/src/auth/AuthContext';
+import { getAuthErrorMessage, AuthRequestError } from '@/src/auth/authErrors';
+import { recoverGoogleAuthRedirect } from '@/src/auth/googleRedirectRecovery';
+import {
+  getRequiredLegalAcceptances,
+  LEGAL_SIGNUP_DOCUMENT_KEYS,
+} from '@/src/api/LegalApi';
 import { BagCountProvider } from '@/src/features/bagging/BagCountContext';
 import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
 import * as Linking from 'expo-linking';
@@ -219,6 +225,87 @@ function NotificationSetup() {
       cleanupNotificationHandling?.();
     };
   }, [handleNotification, handleDeepLink]);
+
+  return null;
+}
+
+/**
+ * Android normally returns the Google Custom Tab to the live AuthSession. Some
+ * device launchers recreate the development client instead; the callback then
+ * arrives after its in-memory listener has disappeared. The auth hook stores a
+ * 10-minute, state-bound PKCE recovery record before opening Google, and this
+ * gate consumes it only after the local auth bootstrap is settled.
+ */
+function GoogleAuthRedirectRecoveryGate() {
+  const { localSessionReady, signInWithGoogle } = useAuth();
+  const toast = useToast();
+  const processingRef = useRef(false);
+
+  useEffect(() => {
+    if (!localSessionReady) return;
+
+    let mounted = true;
+
+    const completeRedirect = async (url: string | null | undefined) => {
+      if (processingRef.current) return;
+      processingRef.current = true;
+
+      try {
+        const recovered = await recoverGoogleAuthRedirect(url);
+        if (!recovered || !mounted) return;
+
+        const legalAcceptances =
+          recovered.continuation.intent === 'SIGNUP'
+            ? await getRequiredLegalAcceptances(LEGAL_SIGNUP_DOCUMENT_KEYS)
+            : undefined;
+        if (!mounted) return;
+
+        await signInWithGoogle({
+          idToken: recovered.idToken,
+          ...recovered.continuation,
+          ...(legalAcceptances ? { legalAcceptances } : {}),
+        });
+        if (!mounted) return;
+
+        const isNewBrand =
+          recovered.continuation.intent === 'SIGNUP' &&
+          recovered.continuation.type === 'BRAND';
+        router.replace((isNewBrand ? '/catalog' : '/(tabs)/me') as any);
+        toast.success(
+          recovered.continuation.intent === 'SIGNUP' ? 'Welcome to WIEZ!' : 'Welcome back!',
+        );
+      } catch (error) {
+        if (!mounted) return;
+
+        if (error instanceof AuthRequestError) {
+          if (error.code === 'GOOGLE_NO_ACCOUNT') {
+            router.replace('/(auth)/signup');
+            toast.info("No WIEZ account for that Google email yet — let's get you signed up.");
+            return;
+          }
+          if (error.code === 'EMAIL_ALREADY_EXISTS') {
+            router.replace('/(auth)/login');
+            toast.info('That email already has a WIEZ account — log in to continue.');
+            return;
+          }
+        }
+
+        toast.error(getAuthErrorMessage(error));
+      } finally {
+        processingRef.current = false;
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      void completeRedirect(url);
+    });
+    void Linking.getInitialURL().then((url) => completeRedirect(url));
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, [localSessionReady, signInWithGoogle, toast]);
 
   return null;
 }
@@ -479,6 +566,7 @@ function RootLayoutNav({
         <ToastProvider>
           <AuthProvider>
             <ThemeBackendSync />
+            <GoogleAuthRedirectRecoveryGate />
             <GenderPromptSheet />
             <BagCountProvider>
               <BagFlowProvider>
