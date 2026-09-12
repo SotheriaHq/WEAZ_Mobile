@@ -124,6 +124,46 @@ export function describeNotificationSegments(
   return [actor(name), plain(' sent you a notification.')];
 }
 
+/**
+ * The short category label above a row.
+ *
+ * The row printed the raw enum (`type.replace(/_/g, ' ')`), so a bag
+ * confirmation was captioned "BAG ITEM ADDED" — a database value shown to a
+ * shopper. An unmapped type falls back to sentence-cased words rather than a
+ * generic label, so a newly added notification type stays legible here before
+ * anyone gets round to naming it.
+ */
+export function describeNotificationCategory(type: string): string {
+  const value = type.toUpperCase();
+
+  if (value.startsWith('BAG_')) return 'Bag';
+  if (value.startsWith('CUSTOM_ORDER_')) return 'Custom order';
+  if (value.startsWith('ORDER_')) return 'Order';
+  if (value.startsWith('MESSAGE_')) return 'Messages';
+  if (value.startsWith('SIZE_FIT')) return 'Size & fit';
+  if (value.startsWith('WISHLIST_')) return 'Wishlist';
+  if (value.startsWith('VERIFICATION_')) return 'Verification';
+  if (value.startsWith('REVIEW_')) return 'Reviews';
+  if (
+    value.startsWith('CONTENT_') ||
+    value.startsWith('COLLECTION_') ||
+    value.startsWith('PRODUCT_')
+  ) {
+    return 'Content';
+  }
+  if (['LOGIN', 'LOGOUT', 'LOGOUT_ALL', 'SIGNUP'].includes(value)) {
+    return 'Account';
+  }
+  if (
+    ['COMMENT', 'THREAD', 'FOLLOW', 'PATCH', 'TAG_MENTION'].includes(value)
+  ) {
+    return 'Activity';
+  }
+
+  const words = type.replace(/_/g, ' ').trim().toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Update';
+}
+
 /** Flat text, for accessibility labels and anywhere a single string is needed. */
 export function describeNotificationText(source: NotificationCopySource): string {
   return describeNotificationSegments(source)

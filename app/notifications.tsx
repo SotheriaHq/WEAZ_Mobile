@@ -8,6 +8,7 @@ import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import {
+  describeNotificationCategory,
   describeNotificationSegments,
   describeNotificationText,
   type NotificationCopySource,
@@ -189,7 +190,7 @@ function NotificationRow({
         <View style={styles.copyWrap}>
           <View style={styles.rowMeta}>
             <AppText variant="captionBold" tone={unread ? 'primary' : 'muted'}>
-              {item.type.replace(/_/g, ' ')}
+              {describeNotificationCategory(item.type)}
             </AppText>
             <AppText variant="captionRegular" tone="muted">
               {compactTime(item.createdAt)}
@@ -236,6 +237,12 @@ export default function NotificationsScreen() {
   const refetchNotifications = notificationsQuery.refetch;
 
   const groups = useMemo(() => groupNotifications(items), [items]);
+  // Counted from the list this screen already holds rather than from the
+  // unread-count store, so the badge and the rows below it can never disagree.
+  const unreadCount = useMemo(
+    () => items.reduce((total, item) => (item.isRead ? total : total + 1), 0),
+    [items],
+  );
 
   const load = useCallback(async () => {
     if (!hasAuthenticatedSession) return;
@@ -319,19 +326,41 @@ export default function NotificationsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+      {/*
+        Two rows, for the same reason the web header has two: back + title +
+        "Mark all" on one line leaves the title about 120dp on a 360dp phone,
+        which truncates "Notifications". The action gets its own right-aligned
+        line and can therefore carry its real name — the same words the web
+        surface uses, so the action is called one thing across the product.
+      */}
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
-        <AppBackButton fallbackHref="/(tabs)" />
-        <View style={styles.headerCopy}>
-          <AppText variant="title">Notifications</AppText>
+        <View style={styles.headerTop}>
+          <AppBackButton fallbackHref="/(tabs)" />
+          <View style={styles.headerCopy}>
+            <AppText variant="title" numberOfLines={1}>Notifications</AppText>
+          </View>
+          {/* Soft-primary pill with primary text, the same treatment the system
+              avatar in this list already uses. Colour comes from tone, never a
+              style override. */}
+          {unreadCount > 0 ? (
+            <View style={[styles.unreadPill, { backgroundColor: theme.colors.primarySoft }]}>
+              <AppText variant="captionBold" tone="primary">
+                {unreadCount > 99 ? '99+' : String(unreadCount)}
+              </AppText>
+            </View>
+          ) : null}
         </View>
-        <Button
-          title="Mark all"
-          size="sm"
-          variant="ghost"
-          onPress={() => void handleMarkAllRead()}
-          loading={markingAll}
-          disabled={items.length === 0 || items.every((item) => item.isRead)}
-        />
+        {unreadCount > 0 ? (
+          <View style={styles.headerActions}>
+            <Button
+              title="Mark all as read"
+              size="sm"
+              variant="ghost"
+              onPress={() => void handleMarkAllRead()}
+              loading={markingAll}
+            />
+          </View>
+        ) : null}
       </View>
 
       {loading ? (
@@ -384,12 +413,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.lg,
     paddingBottom: tokens.spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  unreadPill: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: tokens.spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerCopy: {
     flex: 1,
