@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
 
@@ -164,6 +164,59 @@ function NotificationAvatar({ item }: { item: MobileNotification }) {
   );
 }
 
+/**
+ * The nouns in a bag notification that are destinations in their own right.
+ *
+ * Pressing the ROW opens the bag, because that is what the notification is
+ * about. These open the item that was bagged and the brand that made it. They
+ * are built from the payload rather than matched out of the rendered sentence —
+ * that sentence is server-authored copy, and substring matching would break the
+ * moment a brand is named something that also appears in it.
+ */
+function bagEntityLinks(item: MobileNotification): {
+  content: { label: string; href: Href } | null;
+  brand: { label: string; href: Href } | null;
+} {
+  if (!item.type.toUpperCase().startsWith('BAG_')) {
+    return { content: null, brand: null };
+  }
+
+  const payload = (item.payload ?? {}) as Record<string, unknown>;
+  const readString = (value: unknown) =>
+    typeof value === 'string' && value.trim() ? value.trim() : null;
+  const firstOf = (value: unknown) => (Array.isArray(value) ? readString(value[0]) : null);
+
+  const sourceType = readString(payload.sourceType)?.toUpperCase() ?? null;
+  const productId =
+    readString(payload.productId) ??
+    firstOf(payload.productIds) ??
+    (sourceType === 'PRODUCT' ? readString(payload.sourceId) : null);
+  const title =
+    readString(payload.productName) ??
+    readString(payload.collectionName) ??
+    firstOf(payload.productNames) ??
+    readString(payload.topItemTitle);
+  const brandId = readString(payload.brandId);
+  const brandName = readString(payload.brandName);
+
+  return {
+    content:
+      productId && title
+        ? {
+            label: title,
+            href: { pathname: '/products/[productId]', params: { productId } } as Href,
+          }
+        : null,
+    brand:
+      brandId && brandName
+        ? {
+            label: brandName,
+            href: { pathname: '/catalog/[brandId]', params: { brandId } } as Href,
+          }
+        : null,
+  };
+}
+
 function NotificationRow({
   item,
   onPress,
@@ -173,6 +226,7 @@ function NotificationRow({
 }) {
   const { theme } = useTheme();
   const unread = !item.isRead;
+  const entityLinks = bagEntityLinks(item);
   const rawPreview = item.target?.preview ?? (typeof item.payload?.preview === 'string' ? item.payload.preview : null);
   // `target.preview` is a thumbnail URL for content notifications, but system
   // notifications reuse it to carry a route path (e.g. "/custom-orders/:id").
@@ -197,6 +251,39 @@ function NotificationRow({
             </AppText>
           </View>
           <NotificationCopy item={item} />
+          {entityLinks.content || entityLinks.brand ? (
+            <View style={styles.entityRow}>
+              {entityLinks.content ? (
+                <Pressable
+                  onPress={() => drillDownPush(entityLinks.content!.href)}
+                  hitSlop={8}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open ${entityLinks.content.label}`}
+                >
+                  <AppText variant="smallBold" tone="primary">
+                    {entityLinks.content.label}
+                  </AppText>
+                </Pressable>
+              ) : null}
+              {entityLinks.content && entityLinks.brand ? (
+                <AppText variant="small" tone="muted">
+                  ·
+                </AppText>
+              ) : null}
+              {entityLinks.brand ? (
+                <Pressable
+                  onPress={() => drillDownPush(entityLinks.brand!.href)}
+                  hitSlop={8}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open ${entityLinks.brand.label}'s catalogue`}
+                >
+                  <AppText variant="smallBold" tone="primary">
+                    {entityLinks.brand.label}
+                  </AppText>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
         </View>
         {previewUri ? (
           <StableImage uri={previewUri} containerStyle={styles.previewThumb} imageStyle={styles.previewThumb} />
@@ -504,6 +591,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
+  },
+  entityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
   },
   unreadDot: {
     width: 10,

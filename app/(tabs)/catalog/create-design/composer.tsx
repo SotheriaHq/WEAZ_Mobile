@@ -1416,24 +1416,6 @@ export default function CreateDesignComposerScreen() {
                 </AppText>
               )}
             </View>
-            <View
-              style={{
-                backgroundColor: theme.colors.surfaceAlt,
-                borderColor: theme.colors.border,
-                borderWidth: 1,
-                borderRadius: tokens.radius.lg,
-                padding: tokens.spacing.md,
-                marginTop: tokens.spacing.sm,
-                marginBottom: tokens.spacing.sm,
-              }}
-            >
-              <AppText variant="captionBold">
-                ℹ️ Payment split notice
-              </AppText>
-              <AppText variant="captionRegular" tone="muted" style={{ marginTop: 4 }}>
-                Customers pay the full quoted total at checkout. WIEZ retains the platform commission, and the brand receives the net settlement in milestone releases after production and delivery conditions are met.
-              </AppText>
-            </View>
             <View style={styles.priceRow}>
               <Input
                 label="Base charge"
