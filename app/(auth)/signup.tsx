@@ -32,6 +32,7 @@ import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
+import { useAuthFlowLock } from '@/src/auth/useAuthFlowLock';
 import {
   AuthRequestError,
   getAuthErrorMessage,
@@ -83,6 +84,9 @@ export default function SignupScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const googleTokenRequest = useGoogleIdTokenRequest();
+
+  /** Same app-wide exclusion the login screen uses — see `authFlowLock.ts`. */
+  const authFlow = useAuthFlowLock();
 
   // Field errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -351,10 +355,15 @@ export default function SignupScreen() {
         {/* ── Logo — icon only, top left ── */}
         <Animated.View style={[styles.logoRow, { opacity: logoOpacity }]}>
           <Pressable
-            onPress={() => router.replace('/')}
-            style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+            onPress={authFlow.guard(() => router.replace('/'))}
+            disabled={authFlow.busy}
+            style={({ pressed }) => [
+              pressed && { opacity: 0.7 },
+              authFlow.busy && styles.linkBlocked,
+            ]}
             accessibilityRole="button"
             accessibilityLabel="Go to home"
+            accessibilityState={{ disabled: authFlow.busy }}
           >
             <WiezMark size={36} />
           </Pressable>
@@ -531,16 +540,22 @@ export default function SignupScreen() {
             </Pressable>
             <View style={styles.legalLinksRow}>
               <Pressable
-                onPress={() => drillDownPush('/legal/terms' as never)}
+                onPress={authFlow.guard(() => drillDownPush('/legal/terms' as never))}
+                disabled={authFlow.busy}
+                style={authFlow.busy ? styles.linkBlocked : undefined}
                 accessibilityRole="button"
                 accessibilityLabel="View Terms of Service"
+                accessibilityState={{ disabled: authFlow.busy }}
               >
                 <AppText variant="captionBold" tone="primary">View Terms</AppText>
               </Pressable>
               <Pressable
-                onPress={() => drillDownPush('/legal/privacy' as never)}
+                onPress={authFlow.guard(() => drillDownPush('/legal/privacy' as never))}
+                disabled={authFlow.busy}
+                style={authFlow.busy ? styles.linkBlocked : undefined}
                 accessibilityRole="button"
                 accessibilityLabel="View Privacy Policy"
+                accessibilityState={{ disabled: authFlow.busy }}
               >
                 <AppText variant="captionBold" tone="primary">View Privacy</AppText>
               </Pressable>
@@ -555,22 +570,25 @@ export default function SignupScreen() {
             <View style={{ marginTop: tokens.spacing.xl }}>
               <PrimaryAuthButton
                 title={ctaTitle}
-                onPress={onSubmit}
+                onPress={() => authFlow.run('signup', onSubmit)}
                 loading={submitting || status === 'loading'}
-                disabled={submitting || status === 'loading'}
+                disabled={authFlow.busy || submitting || status === 'loading'}
               />
             </View>
 
             <View style={styles.googleAction}>
               <GoogleSignInButton
-                onPress={onGoogleSignup}
+                onPress={() => authFlow.run('google', onGoogleSignup)}
                 loading={googleSubmitting}
+                disabled={authFlow.busy && !googleSubmitting}
                 label="Sign up with Google"
                 testID="signup-google-button"
               />
-              {__DEV__ && !googleTokenRequest.configured ? (
+              {/* See the twin in login.tsx — deliberately not __DEV__-gated. */}
+              {!googleTokenRequest.configured ? (
                 <AppText variant="caption" tone="warning" style={styles.googleConfigText}>
-                  Google signup needs public Google client IDs in this build.
+                  Google sign-up isn&apos;t available in this version of the app.
+                  {__DEV__ ? ' Set EXPO_PUBLIC_GOOGLE_*_CLIENT_ID and restart Metro.' : ''}
                 </AppText>
               ) : null}
             </View>
@@ -579,9 +597,14 @@ export default function SignupScreen() {
             <View style={styles.footerRow}>
               <AppText variant="body" tone="muted">Already a member?</AppText>
               <Pressable
-                onPress={() => router.replace({ pathname: '/(auth)/login', params: { next: nextPath } })}
+                onPress={authFlow.guard(() =>
+                  router.replace({ pathname: '/(auth)/login', params: { next: nextPath } }),
+                )}
+                disabled={authFlow.busy}
+                style={authFlow.busy ? styles.linkBlocked : undefined}
                 accessibilityRole="button"
                 accessibilityLabel="Sign in to existing account"
+                accessibilityState={{ disabled: authFlow.busy }}
               >
                 <AppText variant="bodyBold" tone="primary" style={styles.footerLink}>{'  '}SIGN IN →</AppText>
               </Pressable>
@@ -702,6 +725,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexWrap: 'wrap',
+  },
+  /** See the twin in `login.tsx` — the visible half of `authFlow.guard`. */
+  linkBlocked: {
+    opacity: 0.4,
   },
   footerLink: {
     letterSpacing: 0.5,

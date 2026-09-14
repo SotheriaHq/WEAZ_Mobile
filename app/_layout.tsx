@@ -28,6 +28,7 @@ import { useToast } from '@/src/toast/ToastContext';
 import { useAuth } from '@/src/auth/AuthContext';
 import { getAuthErrorMessage, AuthRequestError } from '@/src/auth/authErrors';
 import { recoverGoogleAuthRedirect } from '@/src/auth/googleRedirectRecovery';
+import { acquireAuthFlowLock } from '@/src/auth/authFlowLock';
 import {
   getRequiredLegalAcceptances,
   LEGAL_SIGNUP_DOCUMENT_KEYS,
@@ -250,6 +251,24 @@ function GoogleAuthRedirectRecoveryGate() {
       if (processingRef.current) return;
       processingRef.current = true;
 
+      /**
+       * This gate finishes a Google sign-in that Android recreated the process
+       * out from under — so it runs while the auth screen underneath is mounted
+       * and fully interactive. Without the app-wide lock the person can start a
+       * second flow, or navigate away, while a session is being established for
+       * them. `authFlowLock` is module state precisely so it can be held from
+       * out here, where no screen owns the flow.
+       *
+       * A refused lock means a screen is already running an auth action; its
+       * flow is the live one and this stale callback is not worth interrupting
+       * it for. The pending record stays put for the next launch.
+       */
+      const releaseAuthFlow = acquireAuthFlowLock('google');
+      if (!releaseAuthFlow) {
+        processingRef.current = false;
+        return;
+      }
+
       try {
         const recovered = await recoverGoogleAuthRedirect(url);
         if (!recovered || !mounted) return;
@@ -292,6 +311,7 @@ function GoogleAuthRedirectRecoveryGate() {
 
         toast.error(getAuthErrorMessage(error));
       } finally {
+        releaseAuthFlow();
         processingRef.current = false;
       }
     };

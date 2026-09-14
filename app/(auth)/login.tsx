@@ -16,6 +16,7 @@ import WiezMark from '@/src/brand/WiezMark';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
+import { useAuthFlowLock } from '@/src/auth/useAuthFlowLock';
 import {
   AuthRequestError,
   getAuthErrorMessage,
@@ -87,6 +88,14 @@ export default function LoginScreen() {
   const toast = useToast();
   const params = useLocalSearchParams<{ reason?: string; next?: string }>();
   const insets = useSafeAreaInsets();
+
+  /**
+   * One auth action at a time. Every control below either runs THROUGH
+   * `authFlow.run` (submissions) or THROUGH `authFlow.guard` (navigation), so
+   * a second press during the Google account chooser does nothing instead of
+   * quietly pushing a route behind it.
+   */
+  const authFlow = useAuthFlowLock();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -504,10 +513,15 @@ export default function LoginScreen() {
       >
         <Animated.View style={[styles.logoRow, { opacity: logoOpacity }]}>
           <Pressable
-            onPress={() => router.replace('/')}
-            style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+            onPress={authFlow.guard(() => router.replace('/'))}
+            disabled={authFlow.busy}
+            style={({ pressed }) => [
+              pressed && { opacity: 0.7 },
+              authFlow.busy && styles.linkBlocked,
+            ]}
             accessibilityRole="button"
             accessibilityLabel="Go to home"
+            accessibilityState={{ disabled: authFlow.busy }}
           >
             <WiezMark size={36} />
           </Pressable>
@@ -616,17 +630,21 @@ export default function LoginScreen() {
                 <View style={styles.inlineActions}>
                   <Button
                     title="Verify code"
-                    onPress={confirmDirectLoginCodeFn}
+                    onPress={() => authFlow.run('login-code-confirm', confirmDirectLoginCodeFn)}
                     loading={directLoginConfirmLoading}
-                    disabled={directLoginConfirmLoading || directLoginSendLoading}
+                    disabled={authFlow.busy || directLoginConfirmLoading || directLoginSendLoading}
                     fullWidth
                   />
                   <Button
                     title="Resend code"
                     variant="outline"
-                    onPress={() => sendDirectLoginCode(normalizedEmail, loginOptions?.requestId)}
+                    onPress={() =>
+                      authFlow.run('login-code-send', () =>
+                        sendDirectLoginCode(normalizedEmail, loginOptions?.requestId),
+                      )
+                    }
                     loading={directLoginSendLoading}
-                    disabled={directLoginConfirmLoading || directLoginSendLoading}
+                    disabled={authFlow.busy || directLoginConfirmLoading || directLoginSendLoading}
                     fullWidth
                   />
                 </View>
@@ -653,16 +671,16 @@ export default function LoginScreen() {
                 <View style={styles.inlineActions}>
                   <Button
                     title="Verify code"
-                    onPress={confirmPasswordSetupCode}
+                    onPress={() => authFlow.run('password-setup-confirm', confirmPasswordSetupCode)}
                     loading={emailCodeLoading}
-                    disabled={emailCodeLoading}
+                    disabled={authFlow.busy || emailCodeLoading}
                     fullWidth
                   />
                   <Button
                     title="Resend code"
                     variant="outline"
-                    onPress={requestPasswordSetupCode}
-                    disabled={emailCodeLoading}
+                    onPress={() => authFlow.run('password-setup-request', requestPasswordSetupCode)}
+                    disabled={authFlow.busy || emailCodeLoading}
                     fullWidth
                   />
                 </View>
@@ -700,9 +718,9 @@ export default function LoginScreen() {
                 </AppText>
                 <PrimaryAuthButton
                   title="CREATE PASSWORD"
-                  onPress={submitPasswordSetup}
+                  onPress={() => authFlow.run('password-setup-submit', submitPasswordSetup)}
                   loading={passwordSetupLoading}
-                  disabled={passwordSetupLoading}
+                  disabled={authFlow.busy || passwordSetupLoading}
                 />
               </View>
             ) : null}
@@ -746,12 +764,13 @@ export default function LoginScreen() {
                 title="Forgot password?"
                 variant="ghost"
                 size="xs"
-                onPress={() =>
+                onPress={authFlow.guard(() =>
                   drillDownPush({
                     pathname: '/forgot-password',
                     params: { email: normalizedEmail },
-                  })
-                }
+                  }),
+                )}
+                disabled={authFlow.busy}
                 style={styles.forgotBtn}
               />
             ) : null}
@@ -760,9 +779,9 @@ export default function LoginScreen() {
               <View style={styles.primaryAction}>
                 <PrimaryAuthButton
                   title="CONTINUE"
-                  onPress={continueWithEmail}
+                  onPress={() => authFlow.run('email-continue', continueWithEmail)}
                   loading={optionsLoading}
-                  disabled={optionsLoading}
+                  disabled={authFlow.busy || optionsLoading}
                 />
               </View>
             ) : null}
@@ -771,9 +790,9 @@ export default function LoginScreen() {
               <View style={styles.primaryAction}>
                 <PrimaryAuthButton
                   title="SIGN IN"
-                  onPress={submitPasswordLogin}
+                  onPress={() => authFlow.run('password-login', submitPasswordLogin)}
                   loading={submitting || status === 'loading'}
-                  disabled={submitting || status === 'loading'}
+                  disabled={authFlow.busy || submitting || status === 'loading'}
                 />
               </View>
             ) : null}
@@ -781,13 +800,21 @@ export default function LoginScreen() {
             {showGoogleAction ? (
               <View style={styles.googleAction}>
                 <GoogleSignInButton
-                  onPress={handleGoogleSignIn}
+                  onPress={() => authFlow.run('google', handleGoogleSignIn)}
                   loading={googleLoading}
+                  disabled={authFlow.busy && !googleLoading}
                   testID="login-google-button"
                 />
-                {__DEV__ && !googleTokenRequest.configured ? (
+                {/*
+                  Not dev-gated. This hint used to be, which meant the one build
+                  shape with no console and no Metro log was also the one that
+                  said nothing — a release build just failed with a generic
+                  "try again in a moment" for a fault no retry can clear.
+                */}
+                {!googleTokenRequest.configured ? (
                   <AppText variant="caption" tone="warning" style={styles.googleConfigText}>
-                    Google sign-in needs public Google client IDs in this build.
+                    Google sign-in isn&apos;t available in this version of the app.
+                    {__DEV__ ? ' Set EXPO_PUBLIC_GOOGLE_*_CLIENT_ID and restart Metro.' : ''}
                   </AppText>
                 ) : null}
               </View>
@@ -799,9 +826,14 @@ export default function LoginScreen() {
                   New here?{' '}
                 </AppText>
                 <Pressable
-                  onPress={() => drillDownPush({ pathname: '/(auth)/signup', params: { next: nextPath } })}
+                  onPress={authFlow.guard(() =>
+                    drillDownPush({ pathname: '/(auth)/signup', params: { next: nextPath } }),
+                  )}
+                  disabled={authFlow.busy}
+                  style={authFlow.busy ? styles.linkBlocked : undefined}
                   accessibilityRole="button"
                   accessibilityLabel="Create an account"
+                  accessibilityState={{ disabled: authFlow.busy }}
                 >
                   <AppText variant="captionBold" tone="primary">
                     Create an account.
@@ -817,9 +849,9 @@ export default function LoginScreen() {
               <Button
                 title="Create a password with email code"
                 variant="outline"
-                onPress={requestPasswordSetupCode}
+                onPress={() => authFlow.run('password-setup-request', requestPasswordSetupCode)}
                 loading={emailCodeLoading}
-                disabled={emailCodeLoading}
+                disabled={authFlow.busy || emailCodeLoading}
                 fullWidth
                 style={styles.passwordSetupButton}
               />
@@ -830,9 +862,14 @@ export default function LoginScreen() {
                 New to WIEZ?
               </AppText>
               <Pressable
-                onPress={() => drillDownPush({ pathname: '/(auth)/signup', params: { next: nextPath } })}
+                onPress={authFlow.guard(() =>
+                  drillDownPush({ pathname: '/(auth)/signup', params: { next: nextPath } }),
+                )}
+                disabled={authFlow.busy}
+                style={authFlow.busy ? styles.linkBlocked : undefined}
                 accessibilityRole="button"
                 accessibilityLabel="Create account"
+                accessibilityState={{ disabled: authFlow.busy }}
               >
                 <AppText variant="bodyBold" tone="primary" style={styles.footerLink}>
                   {'  '}CREATE ACCOUNT
@@ -990,6 +1027,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexWrap: 'wrap',
+  },
+  /**
+   * Held while another auth action owns the flow lock. Dimming is the visible
+   * half of the guard: `authFlow.guard` already refuses the press, and this is
+   * what tells someone why before they make it.
+   */
+  linkBlocked: {
+    opacity: 0.4,
   },
   footerLink: {
     letterSpacing: 0.5,

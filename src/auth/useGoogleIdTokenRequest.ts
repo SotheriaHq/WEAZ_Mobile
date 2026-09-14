@@ -5,7 +5,12 @@ import { exchangeCodeAsync } from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 
 import {
+  googleSignInAlreadyRunning,
   googleSignInCancelled,
+  googleSignInNoCode,
+  googleSignInNoToken,
+  googleSignInNotConfigured,
+  googleSignInNotReady,
   googleSignInUnavailable,
 } from "@/src/auth/authErrors";
 import {
@@ -84,17 +89,30 @@ export function useGoogleIdTokenRequest(
 
   const requestGoogleIdToken = useCallback(
     async (continuation?: GoogleAuthContinuation) => {
-      if (!configured || !request) {
+      /**
+       * Not configured and not yet loaded look identical from the outside and
+       * are opposites in practice: one is a build that can never sign anyone
+       * in, the other is a race that fixes itself in a second. Telling a person
+       * to "try again in a moment" for the first is a lie they can act on for
+       * a long time.
+       *
+       * `EXPO_PUBLIC_*` is inlined at BUNDLE time, so a missing client ID is
+       * baked into the binary — for a cloud build that means the value has to
+       * exist in the EAS environment for that profile; a local `.env` is
+       * gitignored and never uploaded.
+       */
+      if (!configured) {
         if (__DEV__) {
           console.warn(
-            `[google-auth] not ${configured ? "ready" : "configured"} — check EXPO_PUBLIC_GOOGLE_*_CLIENT_ID and restart Metro (EXPO_PUBLIC_* is inlined at bundle time).`,
+            "[google-auth] not configured — set EXPO_PUBLIC_GOOGLE_*_CLIENT_ID and restart Metro (EXPO_PUBLIC_* is inlined at bundle time).",
           );
         }
-        throw googleSignInUnavailable();
+        throw googleSignInNotConfigured();
       }
+      if (!request) throw googleSignInNotReady();
 
       const codeVerifier = request.codeVerifier?.trim();
-      if (!codeVerifier) throw googleSignInUnavailable();
+      if (!codeVerifier) throw googleSignInNotReady();
 
       /**
        * `createTask: false` is the whole reason sign-in returned to a cold app.
@@ -127,6 +145,13 @@ export function useGoogleIdTokenRequest(
         if (result.type === "cancel" || result.type === "dismiss") {
           throw googleSignInCancelled();
         }
+        // `expo-auth-session` keeps a module-level `_authLock` and answers
+        // `locked` rather than opening a second browser session. That is a
+        // different instruction to the user than "try again": the first sheet
+        // is still open somewhere.
+        if (result.type === "locked") {
+          throw googleSignInAlreadyRunning();
+        }
         if (result.type !== "success") {
           throw googleSignInUnavailable();
         }
@@ -144,7 +169,7 @@ export function useGoogleIdTokenRequest(
         if (directIdToken) return directIdToken;
 
         const code = result.params?.code?.trim();
-        if (!code) throw googleSignInUnavailable();
+        if (!code) throw googleSignInNoCode();
 
         const tokenResponse = await exchangeCodeAsync(
           {
@@ -159,7 +184,7 @@ export function useGoogleIdTokenRequest(
         );
 
         const idToken = tokenResponse.idToken?.trim();
-        if (!idToken) throw googleSignInUnavailable();
+        if (!idToken) throw googleSignInNoToken();
 
         return idToken;
       } finally {
