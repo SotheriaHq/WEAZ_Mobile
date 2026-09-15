@@ -27,7 +27,10 @@ import { ToastProvider } from '@/src/toast/ToastContext';
 import { useToast } from '@/src/toast/ToastContext';
 import { useAuth } from '@/src/auth/AuthContext';
 import { getAuthErrorMessage, AuthRequestError } from '@/src/auth/authErrors';
-import { recoverGoogleAuthRedirect } from '@/src/auth/googleRedirectRecovery';
+import {
+  captureGoogleAuthRedirectIfLive,
+  recoverGoogleAuthRedirect,
+} from '@/src/auth/googleRedirectRecovery';
 import { acquireAuthFlowLock } from '@/src/auth/authFlowLock';
 import {
   getRequiredLegalAcceptances,
@@ -248,6 +251,15 @@ function GoogleAuthRedirectRecoveryGate() {
     let mounted = true;
 
     const completeRedirect = async (url: string | null | undefined) => {
+      /**
+       * FIRST, before any gating. When a screen started sign-in, it holds the
+       * auth-flow lock and is waiting on a redirect that arrives right here —
+       * so both guards below would return early and throw it away. Handing it
+       * to the live session is the whole point of this listener on the happy
+       * path; the recovery code underneath only runs when no session is alive.
+       */
+      if (captureGoogleAuthRedirectIfLive(url)) return;
+
       if (processingRef.current) return;
       processingRef.current = true;
 

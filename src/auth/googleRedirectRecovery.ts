@@ -44,6 +44,27 @@ export class GoogleRedirectRecoveryError extends Error {
 // Android has recreated the JavaScript process before that listener can run.
 let hasLiveGoogleAuthSession = false;
 
+/**
+ * A redirect that reached the app while a live AuthSession still owned the flow.
+ *
+ * "Owned" turned out to be a promise expo-web-browser does not always keep. On
+ * Android it frequently resolves `openAuthSessionAsync` with `dismiss` when the
+ * Custom Tab closes, EVEN THOUGH the redirect arrived and is being delivered to
+ * the app as a VIEW intent (expo/expo issues 23781 and 29153). The old code dropped that
+ * URL on the floor — `recoverGoogleAuthRedirect` returned null whenever a live
+ * session existed — and the live session then reported a cancellation, which is
+ * deliberately silent. The person came back to the app signed out, with no
+ * error, having completed sign-in successfully at Google.
+ *
+ * So the URL is now kept instead of discarded, and the live session asks for it
+ * before concluding that a dismissal was a decision.
+ */
+let capturedRedirectUrl: string | null = null;
+
+/** How long a dismissed session waits for the redirect it may already have earned. */
+const REDIRECT_SALVAGE_TIMEOUT_MS = 1500;
+const REDIRECT_SALVAGE_POLL_MS = 50;
+
 function isAndroid(): boolean {
   return Platform.OS === "android";
 }
@@ -172,6 +193,9 @@ export async function beginGoogleAuthRedirectRecovery(input: {
  */
 export async function clearGoogleAuthRedirectRecovery(): Promise<void> {
   hasLiveGoogleAuthSession = false;
+  // A captured URL carries a single-use authorization code. Letting one survive
+  // into the next attempt would salvage the wrong sign-in.
+  capturedRedirectUrl = null;
   await SecureStore.deleteItemAsync(GOOGLE_REDIRECT_RECOVERY_STORAGE_KEY).catch(
     () => undefined,
   );
@@ -182,6 +206,91 @@ export async function clearGoogleAuthRedirectRecovery(): Promise<void> {
  * the live AuthSession. A recreated Android process has no live flag, so it
  * safely validates the persisted PKCE state before exchanging the code.
  */
+async function exchangeRedirectForIdToken(
+  pending: PendingGoogleAuthRedirect,
+  url: string,
+): Promise<RecoveredGoogleAuthRedirect | null> {
+  const callback = new URL(url);
+  const returnedState = callback.searchParams.get("state")?.trim() ?? "";
+  const code = callback.searchParams.get("code")?.trim() ?? "";
+
+  // Google sends an error callback when a person cancels. There is no code to
+  // exchange and no product error to show; the next Google attempt starts fresh.
+  if (!code) return null;
+  if (!returnedState || returnedState !== pending.state) {
+    throw new GoogleRedirectRecoveryError("state_mismatch");
+  }
+
+  const tokenResponse = await exchangeCodeAsync(
+    {
+      clientId: pending.clientId,
+      redirectUri: pending.redirectUri,
+      code,
+      extraParams: { code_verifier: pending.codeVerifier },
+    },
+    Google.discovery,
+  );
+  const idToken = tokenResponse.idToken?.trim();
+  if (!idToken) {
+    throw new GoogleRedirectRecoveryError("missing_id_token");
+  }
+
+  return {
+    idToken,
+    continuation: pending.continuation,
+  };
+}
+
+/**
+ * Called by the app's deep-link listener for EVERY incoming URL, before any
+ * other handling.
+ *
+ * Returns true when a live AuthSession owns the flow, in which case the URL is
+ * kept for that session to claim and the caller must not process it further.
+ * This has to run ahead of the listener's own gating — the auth-flow lock is
+ * held by the screen that started sign-in, so a gate that checks the lock first
+ * would return early and throw away the very URL the screen is waiting for.
+ */
+export function captureGoogleAuthRedirectIfLive(
+  url: string | null | undefined,
+): boolean {
+  if (!url || !hasLiveGoogleAuthSession) return false;
+  capturedRedirectUrl = url;
+  return true;
+}
+
+/**
+ * Completes a sign-in whose redirect arrived while the live session was told it
+ * had been dismissed. Resolves null when nothing was captured, which is what a
+ * real cancellation looks like.
+ *
+ * It deliberately does NOT clear the recovery record: the caller owns that in
+ * its own `finally`, and clearing here would delete the PKCE material a
+ * subsequent cold-start recovery might still need.
+ */
+export async function salvageLiveGoogleAuthRedirect(): Promise<RecoveredGoogleAuthRedirect | null> {
+  const deadline = Date.now() + REDIRECT_SALVAGE_TIMEOUT_MS;
+
+  // The intent usually lands before the tab finishes closing, so the common
+  // case exits on the first pass; the budget is only a margin for the reverse
+  // ordering. A genuine cancel pays it once and in silence.
+  let url = capturedRedirectUrl;
+  while (!url && Date.now() < deadline) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, REDIRECT_SALVAGE_POLL_MS),
+    );
+    url = capturedRedirectUrl;
+  }
+
+  capturedRedirectUrl = null;
+  if (!url) return null;
+
+  const pending = await readPendingGoogleAuthRedirect();
+  if (!pending || !isMatchingRedirect(url, pending.redirectUri)) return null;
+
+  return exchangeRedirectForIdToken(pending, url);
+}
+
 export async function recoverGoogleAuthRedirect(
   url: string | null | undefined,
 ): Promise<RecoveredGoogleAuthRedirect | null> {
@@ -191,35 +300,7 @@ export async function recoverGoogleAuthRedirect(
   if (!pending || !isMatchingRedirect(url, pending.redirectUri)) return null;
 
   try {
-    const callback = new URL(url);
-    const returnedState = callback.searchParams.get("state")?.trim() ?? "";
-    const code = callback.searchParams.get("code")?.trim() ?? "";
-
-    // Google sends an error callback when a person cancels. There is no code to
-    // exchange and no product error to show; the next Google attempt starts fresh.
-    if (!code) return null;
-    if (!returnedState || returnedState !== pending.state) {
-      throw new GoogleRedirectRecoveryError("state_mismatch");
-    }
-
-    const tokenResponse = await exchangeCodeAsync(
-      {
-        clientId: pending.clientId,
-        redirectUri: pending.redirectUri,
-        code,
-        extraParams: { code_verifier: pending.codeVerifier },
-      },
-      Google.discovery,
-    );
-    const idToken = tokenResponse.idToken?.trim();
-    if (!idToken) {
-      throw new GoogleRedirectRecoveryError("missing_id_token");
-    }
-
-    return {
-      idToken,
-      continuation: pending.continuation,
-    };
+    return await exchangeRedirectForIdToken(pending, url);
   } finally {
     // An authorization code is single-use. Keeping it after any completion or
     // failure would only invite a stale replay on a later app launch.

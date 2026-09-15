@@ -16,6 +16,7 @@ import {
 import {
   beginGoogleAuthRedirectRecovery,
   clearGoogleAuthRedirectRecovery,
+  salvageLiveGoogleAuthRedirect,
   type GoogleAuthContinuation,
 } from "@/src/auth/googleRedirectRecovery";
 import { env } from "@/src/config/env";
@@ -143,6 +144,22 @@ export function useGoogleIdTokenRequest(
         );
 
         if (result.type === "cancel" || result.type === "dismiss") {
+          /**
+           * `dismiss` does not mean the person backed out. On Android
+           * expo-web-browser reports it whenever the Custom Tab closes — which
+           * is exactly what the redirect itself causes — so a COMPLETED
+           * sign-in arrives here looking like a cancellation
+           * (expo/expo issues 23781 and 29153).
+           *
+           * The redirect is delivered to the app as a VIEW intent either way,
+           * and the deep-link listener now keeps it. Ask for it before calling
+           * this a decision: silently treating a successful sign-in as a
+           * cancellation is what returned people to a signed-out app with no
+           * error at all.
+           */
+          const salvaged = await salvageLiveGoogleAuthRedirect();
+          if (salvaged) return salvaged.idToken;
+
           throw googleSignInCancelled();
         }
         // `expo-auth-session` keeps a module-level `_authLock` and answers
