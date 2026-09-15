@@ -78,6 +78,8 @@ type NativeMessage =
   | {
       type: 'PROFILE_SETUP_REQUIRED';
       reason?: 'brand-profile' | 'email-verification';
+      /** Server's own `profileMissingFields`: 'description' | 'tags' | 'location'. */
+      missingFields?: string[];
       path?: string;
     }
   | { type: 'ACTION_COMPLETE'; action?: string; path?: string }
@@ -87,6 +89,34 @@ type NativeMessage =
 
 const asString = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value;
+
+/**
+ * `/store/status` has always returned which of the three checks failed, and no
+ * client ever read it. Saying "complete your brand profile" to someone who
+ * believes they already did is the least useful thing the app can say — the
+ * 20-character minimum in particular fails on a description that looks filled
+ * in. Name the gap instead.
+ */
+const BRAND_PROFILE_FIELD_LABELS: Record<string, string> = {
+  description: 'a description of at least 20 characters',
+  tags: 'at least one tag',
+  location: 'a country or state',
+};
+
+function describeMissingBrandProfileFields(fields?: string[]): string {
+  const labels = (fields ?? [])
+    .map((field) => BRAND_PROFILE_FIELD_LABELS[field] ?? field)
+    .filter(Boolean);
+
+  if (labels.length === 0) {
+    return 'Finish your brand profile to open Studio';
+  }
+  const list =
+    labels.length === 1
+      ? labels[0]
+      : `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+  return `Studio needs ${list}`;
+}
 
 const READY_TIMEOUT_MS = 20_000;
 
@@ -630,7 +660,7 @@ export default function StudioWebViewScreen() {
             closeStudio();
             break;
           }
-          toast.info('Add a description, a tag and your location to open Studio');
+          toast.info(describeMissingBrandProfileFields(message.missingFields));
           router.replace('/catalog/edit-profile' as any);
           break;
         case 'OPEN_EXTERNAL':
