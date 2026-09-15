@@ -68,7 +68,18 @@ type NativeMessage =
       message?: string;
       apiBaseUrl?: string;
     }
-  | { type: 'PROFILE_SETUP_REQUIRED'; path?: string }
+  /**
+   * `reason` disambiguates two different blocks that the web gate posts under
+   * this one type — an unverified email and an incomplete brand profile. They
+   * need different destinations, and without it the shell cannot tell them
+   * apart. Older web builds omit it; the handler treats that as the brand
+   * profile, which is the case that actually reaches people.
+   */
+  | {
+      type: 'PROFILE_SETUP_REQUIRED';
+      reason?: 'brand-profile' | 'email-verification';
+      path?: string;
+    }
   | { type: 'ACTION_COMPLETE'; action?: string; path?: string }
   | { type: 'OPEN_EXTERNAL'; url?: string }
   | { type: 'OPEN_NATIVE_ROUTE'; path?: string }
@@ -598,7 +609,29 @@ export default function StudioWebViewScreen() {
           setLoadState('error');
           break;
         case 'PROFILE_SETUP_REQUIRED':
-          toast.info('Complete brand setup in the app to continue');
+          /**
+           * The gate itself is right: Studio needs a description, at least one
+           * tag and a location before it can open (`isBrandProfileComplete`).
+           * What was wrong is what happened next — this case only raised a
+           * toast, so the shell left the person sitting on the WebView's own
+           * "Return to the app to complete your brand profile" card, telling
+           * them to go back to an app they had never left, with nothing to
+           * press. The event has always carried the destination and the shell
+           * discarded it.
+           *
+           * The path is a WEB route (`/profile?modal=brand-setup`) with no
+           * native equivalent, so this navigates to the native brand editor
+           * rather than translating the URL. `replace`, not push: Studio
+           * cannot open until this is done, so keeping it on the stack only
+           * offers a swipe back to the same dead end.
+           */
+          if (message.reason === 'email-verification') {
+            toast.info('Verify your email to open Studio');
+            closeStudio();
+            break;
+          }
+          toast.info('Add a description, a tag and your location to open Studio');
+          router.replace('/catalog/edit-profile' as any);
           break;
         case 'OPEN_EXTERNAL':
           if (message.url) {
