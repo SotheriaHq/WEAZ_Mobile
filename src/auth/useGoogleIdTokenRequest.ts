@@ -158,6 +158,16 @@ export function useGoogleIdTokenRequest(
            * error at all.
            */
           const salvaged = await salvageLiveGoogleAuthRedirect();
+          if (__DEV__) {
+            // The difference between "they cancelled" and "we lost a completed
+            // sign-in" is invisible from the outside — both end on the same
+            // screen in silence. Say which one happened.
+            console.log(
+              `[google-auth] browser reported "${result.type}"; redirect ${
+                salvaged ? "salvaged — completing sign-in" : "not captured — treating as a real cancel"
+              }`,
+            );
+          }
           if (salvaged) return salvaged.idToken;
 
           throw googleSignInCancelled();
