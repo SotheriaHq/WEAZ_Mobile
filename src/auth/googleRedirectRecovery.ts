@@ -109,6 +109,32 @@ function isPendingGoogleAuthRedirect(
   );
 }
 
+/**
+ * The path `makeRedirectUri({ native: `${applicationId}:/oauthredirect` })`
+ * produces for Google on native. It is the one fact about a Google callback
+ * that is knowable SYNCHRONOUSLY, before any storage read — which is what the
+ * app's other URL listeners need.
+ *
+ * They need it because a Google callback is not a link into a screen, and the
+ * notification deep-link router has no route for one: `routeForNotification`
+ * falls through every branch and returns its default, `/notifications`. So a
+ * completed sign-in was also issuing `router.replace('/notifications')`
+ * underneath the flow — landing people in a signed-out shell at the exact
+ * moment they had just authenticated successfully.
+ */
+const GOOGLE_REDIRECT_PATH = "/oauthredirect";
+
+export function isGoogleAuthRedirectUrl(
+  url: string | null | undefined,
+): boolean {
+  if (!url) return false;
+  try {
+    return new URL(url).pathname === GOOGLE_REDIRECT_PATH;
+  } catch {
+    return false;
+  }
+}
+
 function isMatchingRedirect(url: string, redirectUri: string): boolean {
   try {
     const actual = new URL(url);
@@ -199,6 +225,28 @@ export async function clearGoogleAuthRedirectRecovery(): Promise<void> {
   await SecureStore.deleteItemAsync(GOOGLE_REDIRECT_RECOVERY_STORAGE_KEY).catch(
     () => undefined,
   );
+}
+
+/**
+ * Ends the in-memory session but KEEPS the persisted PKCE record.
+ *
+ * For the one case the live session cannot tell apart: Android reports
+ * `dismiss` both when a person backs out and when the redirect went to a
+ * process that no longer exists (a task relaunch, an OEM kill, a dev-client
+ * reload). Clearing the record on that guess destroys the only material that
+ * could finish the sign-in on the next launch — and the next launch is
+ * precisely when the redirect shows up.
+ *
+ * Keeping it costs a real cancellation nothing: recovery still requires a
+ * matching redirect URI, an exact `state`, and an unused `code`, and the record
+ * expires in ten minutes. Clearing `hasLiveGoogleAuthSession` is the part that
+ * must NOT be skipped — while it is set, every incoming URL is captured for a
+ * session that has already ended and `recoverGoogleAuthRedirect` refuses them
+ * all.
+ */
+export function endGoogleAuthSessionKeepingRecovery(): void {
+  hasLiveGoogleAuthSession = false;
+  capturedRedirectUrl = null;
 }
 
 /**

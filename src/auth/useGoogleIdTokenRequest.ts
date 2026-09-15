@@ -16,6 +16,7 @@ import {
 import {
   beginGoogleAuthRedirectRecovery,
   clearGoogleAuthRedirectRecovery,
+  endGoogleAuthSessionKeepingRecovery,
   salvageLiveGoogleAuthRedirect,
   type GoogleAuthContinuation,
 } from "@/src/auth/googleRedirectRecovery";
@@ -138,10 +139,23 @@ export function useGoogleIdTokenRequest(
         continuation,
       });
 
+      /**
+       * Set only on the one exit where the persisted PKCE record is still
+       * useful: a reported dismissal whose redirect never reached this
+       * process. See `endGoogleAuthSessionKeepingRecovery`.
+       */
+      let keepRecoveryRecord = false;
+
       try {
         const result = await promptAsync(
           Platform.OS === "android" ? { createTask: false } : undefined,
         );
+
+        if (__DEV__) {
+          console.log(
+            `[google-auth] promptAsync → "${result.type}" (redirectUri ${request.redirectUri})`,
+          );
+        }
 
         if (result.type === "cancel" || result.type === "dismiss") {
           /**
@@ -170,6 +184,14 @@ export function useGoogleIdTokenRequest(
           }
           if (salvaged) return salvaged.idToken;
 
+          /**
+           * Nothing arrived in THIS process — which on Android is exactly what
+           * a real cancellation and a lost redirect both look like. The
+           * pending record is the only thing that can tell them apart later,
+           * so it survives: if the redirect turns up on the next launch, the
+           * recovery gate finishes the sign-in instead of starting over.
+           */
+          keepRecoveryRecord = true;
           throw googleSignInCancelled();
         }
         // `expo-auth-session` keeps a module-level `_authLock` and answers
@@ -215,7 +237,11 @@ export function useGoogleIdTokenRequest(
 
         return idToken;
       } finally {
-        await clearGoogleAuthRedirectRecovery();
+        if (keepRecoveryRecord) {
+          endGoogleAuthSessionKeepingRecovery();
+        } else {
+          await clearGoogleAuthRedirectRecovery();
+        }
       }
     },
     [configured, promptAsync, request],

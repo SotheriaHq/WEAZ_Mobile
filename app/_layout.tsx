@@ -29,6 +29,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { getAuthErrorMessage, AuthRequestError } from '@/src/auth/authErrors';
 import {
   captureGoogleAuthRedirectIfLive,
+  isGoogleAuthRedirectUrl,
   recoverGoogleAuthRedirect,
 } from '@/src/auth/googleRedirectRecovery';
 import { acquireAuthFlowLock } from '@/src/auth/authFlowLock';
@@ -189,8 +190,19 @@ function NotificationSetup() {
           },
         );
 
-        // Set up deep link listener
+        /**
+         * A Google OAuth callback is delivered to the app as an ordinary VIEW
+         * intent, so it reaches this listener too — and it is NOT a link into
+         * a screen. `handleDeepLink` has no route for `/oauthredirect`, so
+         * `routeForNotification` fell through to its default and replaced the
+         * current route with `/notifications` while sign-in was still in
+         * flight. That navigation is what dropped people into a signed-out
+         * shell immediately after they authenticated with Google.
+         *
+         * `GoogleAuthRedirectRecoveryGate` owns these URLs.
+         */
         const handleUrl = ({ url }: { url: string }) => {
+          if (isGoogleAuthRedirectUrl(url)) return;
           handleDeepLink(url);
         };
 
@@ -199,7 +211,7 @@ function NotificationSetup() {
 
         // Check for initial URL (app opened from link while closed)
         const initialUrl = await Linking.getInitialURL();
-        if (initialUrl) {
+        if (initialUrl && !isGoogleAuthRedirectUrl(initialUrl)) {
           schedule(() => {
             handleDeepLink(initialUrl);
           }, 100);
@@ -258,7 +270,22 @@ function GoogleAuthRedirectRecoveryGate() {
        * to the live session is the whole point of this listener on the happy
        * path; the recovery code underneath only runs when no session is alive.
        */
-      if (captureGoogleAuthRedirectIfLive(url)) return;
+      // Dev-only, and deliberately says nothing about `code` or `state`: a
+      // silent flow is what made this cost days, but an authorization code in
+      // a Metro log is a credential in a scrollback buffer.
+      const isGoogleCallback = __DEV__ && isGoogleAuthRedirectUrl(url);
+
+      if (captureGoogleAuthRedirectIfLive(url)) {
+        if (isGoogleCallback) {
+          console.log('[google-auth] callback handed to the live session');
+        }
+        return;
+      }
+      if (isGoogleCallback) {
+        console.log(
+          '[google-auth] callback arrived with no live session — attempting cold recovery',
+        );
+      }
 
       if (processingRef.current) return;
       processingRef.current = true;
@@ -283,6 +310,15 @@ function GoogleAuthRedirectRecoveryGate() {
 
       try {
         const recovered = await recoverGoogleAuthRedirect(url);
+        if (isGoogleCallback) {
+          console.log(
+            `[google-auth] cold recovery ${
+              recovered
+                ? 'exchanged the code — completing sign-in'
+                : 'found no usable pending record (expired, already spent, or state mismatch)'
+            }`,
+          );
+        }
         if (!recovered || !mounted) return;
 
         const legalAcceptances =
