@@ -279,11 +279,19 @@ export function NativeIslandBottomNav({
                   onPressIn={item.disabled ? undefined : () => handleItemPressIn(item)}
                   onPressOut={clearPressedItem}
                   onPress={undefined}
-                  android_ripple={{
-                    color: scheme === 'dark' ? tokens.island.glyphHaloDark : tokens.island.glyphHaloLight,
-                    borderless: false,
-                    foreground: true,
-                  }}
+                  /**
+                   * No `android_ripple`. A bounded ripple fills the PRESSABLE,
+                   * and the pressable is a full-height flex column — so it
+                   * painted a rectangle across a pill-shaped chip, the square
+                   * that appeared under the finger on every tap. `borderless`
+                   * would not fix it either: that spills a circle past the
+                   * dock's rounded edge.
+                   *
+                   * Press feedback is already carried by the chip itself —
+                   * `focused` goes true on press, so the active pill appears
+                   * under the finger immediately. That is the indicator, and
+                   * it is the same one the destination settles into.
+                   */
                   style={({ pressed }) => [
                     styles.navItemScroll,
                     item.disabled && styles.navItemDisabled,
@@ -318,11 +326,8 @@ export function NativeIslandBottomNav({
                   onPressIn={item.disabled ? undefined : () => handleItemPressIn(item)}
                   onPressOut={clearPressedItem}
                   onPress={undefined}
-                  android_ripple={{
-                    color: scheme === 'dark' ? tokens.island.glyphHaloDark : tokens.island.glyphHaloLight,
-                    borderless: false,
-                    foreground: true,
-                  }}
+                  // No `android_ripple` — see the scrolling dock above: a
+                  // bounded ripple paints a rectangle across a pill chip.
                   style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
                 >
                   {({ pressed }) => (
