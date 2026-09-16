@@ -383,19 +383,35 @@ export default function BrandProfileEditScreen() {
       setSaveState('saving');
       try {
         const updated = await brandApi.updateProfile(targetBrandId, toPayload(resolvedDraft));
+
+        /**
+         * `updateProfile` PATCHes and then re-reads, and the re-read can come
+         * back null on its own. That is NOT a failed save — `apiClient.patch`
+         * throws on any non-2xx, so reaching here means the server accepted
+         * and stored the change; only the confirmation read was lost.
+         *
+         * This used to fall through the `if (updated)` block and `return true`
+         * anyway, which is the bug people actually hit: the baseline was never
+         * advanced, `saveState` never left `'saving'` — so the status line sat
+         * on "Saving changes..." — and yet `persistOnExit` was told the save
+         * had succeeded, so `beforeRemove` dispatched the navigation and took
+         * them off the screen mid-save with no flag and no error. Everything
+         * downstream then read the STALE baseline as the brand's truth.
+         *
+         * The draft is what the server now holds, so it becomes the baseline
+         * either way. Only the reconciliation that genuinely needs the server
+         * copy is skipped.
+         */
+        setBaseline(resolvedDraft);
+        hasUserEditedRef.current = false;
+        setSaveState('saved');
+        setLastSavedAt(new Date());
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.brand.profile(targetBrandId),
+        });
+
         if (updated) {
           setProfile(updated);
-          setBaseline(resolvedDraft);
-          // The draft is now the server's truth, so a later refetch is free to
-          // refresh the form again.
-          hasUserEditedRef.current = false;
-          // Same reason as the avatar upload: the catalogue reads this profile
-          // from the query cache, so it has to be told the record moved.
-          void queryClient.invalidateQueries({
-            queryKey: queryKeys.brand.profile(targetBrandId),
-          });
-          setSaveState('saved');
-          setLastSavedAt(new Date());
           updateUser({
             firstName: updated.firstName ?? user?.firstName,
             lastName: updated.lastName ?? user?.lastName,
@@ -431,7 +447,9 @@ export default function BrandProfileEditScreen() {
     if (!pendingChangesRef.current || !latestFormRef.current) {
       return true;
     }
-    setSaveState('saving');
+    // `persistDraft` owns the 'saving' state. Setting it here too left the
+    // status line stuck on "Saving changes..." whenever persistDraft took its
+    // `formsEqual` early return and never moved the state on.
     return persistDraft(latestFormRef.current);
   }, [persistDraft]);
 

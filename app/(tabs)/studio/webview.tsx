@@ -706,6 +706,22 @@ export default function StudioWebViewScreen() {
               queryKey: queryKeys.store.status(),
               refetchType: 'all',
             });
+
+            /**
+             * And move the shell off the setup route key.
+             *
+             * The dock locks on `storeSetupComplete === false || isOnSetupRoute`
+             * — and `isOnSetupRoute` reads the NATIVE `routeKey` param, which a
+             * web-side navigation inside the WebView cannot change. Opening
+             * store setup sets it to `essentials`/`setup`, so after a
+             * successful publish the cache correctly said "complete" while the
+             * param still said "setup", and the OR kept every chip except
+             * Store greyed out until Studio was closed and reopened.
+             *
+             * Fixing only the cache was never going to be enough: the second
+             * condition had no way to clear itself.
+             */
+            router.setParams({ routeKey: 'store' } as never);
           }
           break;
         default:
