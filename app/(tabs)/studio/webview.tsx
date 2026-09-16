@@ -850,14 +850,16 @@ export default function StudioWebViewScreen() {
       />
 
       {/* Studio lives inside (tabs) now, so the floating island overlays this
-          screen's bottom edge — inset the web surface so the island never
-          covers Studio's own controls. */}
-      <View
-        style={[
-          styles.webHost,
-          { backgroundColor: studioShellBackground, paddingBottom: standardScreenBottomPadding },
-        ]}
-      >
+          screen's bottom edge.
+
+          The clearance used to be native `paddingBottom` on this host, which
+          left a solid band of APP background below the page — a strip in a
+          slightly different colour from the web surface above it, reading as a
+          container the island sat inside. The WebView now reaches the bottom
+          edge and the same clearance is applied INSIDE the page (see the
+          injected script), so the page's own background runs to the edge and
+          there is nothing to see under the island. */}
+      <View style={[styles.webHost, { backgroundColor: studioShellBackground }]}>
         {webUrl ? (
           <WebView
             ref={webViewRef}
@@ -871,6 +873,31 @@ export default function StudioWebViewScreen() {
             injectedJavaScript={`
               (function() {
                 ${STUDIO_NAV_BOOT_SCRIPT}
+
+                /**
+                 * Island clearance, applied inside the document.
+                 *
+                 * It used to be native padding on the host view, which painted
+                 * a band of app background under the page. Doing it here keeps
+                 * the page's own background running to the bottom edge, so the
+                 * island floats over the page instead of over a strip.
+                 *
+                 * scroll-padding-bottom matters as much as the padding: without
+                 * it, focusing a field near the end of a form scrolls it to
+                 * exactly where the island is.
+                 */
+                var inset = ${Math.round(standardScreenBottomPadding)};
+                var insetStyleId = 'wiez-native-island-inset';
+                if (!document.getElementById(insetStyleId)) {
+                  var insetStyle = document.createElement('style');
+                  insetStyle.id = insetStyleId;
+                  insetStyle.textContent =
+                    ':root{--wiez-native-island-inset:' + inset + 'px;}' +
+                    'body{padding-bottom:calc(' + inset + 'px + env(safe-area-inset-bottom,0px));}' +
+                    'html{scroll-padding-bottom:' + inset + 'px;}';
+                  (document.head || document.documentElement).appendChild(insetStyle);
+                }
+
                 if (window.__WIEZ_STUDIO_KEYBOARD_BOOTSTRAPPED__) {
                   return true;
                 }
