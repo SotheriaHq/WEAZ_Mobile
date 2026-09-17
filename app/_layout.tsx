@@ -65,18 +65,8 @@ import { useAndroidDoubleBackExit } from '@/src/hooks/useAndroidDoubleBackExit';
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { tokens } from '@/src/styles/tokens';
 
-// Phase 1: Force nav perf instrumentation + logs when running perf builds (--no-dev --minify).
-// This bypasses flaky EXPO_PUBLIC_DEBUG_NAV inlining in the project's env loader for perf mode.
-const isPerfBuild = (typeof __DEV__ === 'undefined' || !__DEV__);
-if (isPerfBuild) {
-  console.log('[NAV_PERF] PERF BUILD DETECTED — NAV PERF INSTRUMENTATION FORCED ON (bypassing selective env loader)');
-  console.log('[NAV_PERF] === To view logs: Press j (or shake → Debug), then in debugger console type:  __NAV_PERF_LOGS');
-  console.log('[NAV_PERF] === Or: console.table(__NAV_PERF_LOGS)   to see formatted table');
-}
-
-// Phase 1 debug: force-print the nav flag as early as possible in the root module.
-const _navRaw = (process as any).env?.EXPO_PUBLIC_DEBUG_NAV ?? process.env.EXPO_PUBLIC_DEBUG_NAV;
-console.log('[NAV_PERF ROOT] raw EXPO_PUBLIC_DEBUG_NAV =', JSON.stringify(_navRaw));
+// Nav timing is opt-in via EXPO_PUBLIC_DEBUG_NAV=1 in every build type; see
+// `src/utils/navPerf.ts`. It is no longer forced on for non-dev builds.
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -619,15 +609,6 @@ function RootLayoutNav({
   fontsReady: boolean;
   initialThemeMode: ThemeMode;
 }) {
-  // Phase 1: Force a log on mount to ensure we see something in perf builds
-  const isPerf = (typeof __DEV__ === 'undefined' || !__DEV__);
-  useEffect(() => {
-    if (isPerf) {
-      console.log('[NAV_PERF] ROOT LAYOUT MOUNTED - PERF INSTRUMENTATION ACTIVE');
-      console.log('[NAV_PERF] In JS debugger console, run:  __NAV_PERF_LOGS');
-    }
-  }, []);
-
   return (
     <ThemeProvider initialMode={initialThemeMode} bootstrapped>
       <QueryProvider>

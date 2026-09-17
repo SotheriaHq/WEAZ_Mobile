@@ -1,15 +1,22 @@
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 
 /**
- * Dev-only navigation timing instrumentation.
+ * Opt-in navigation timing instrumentation.
  *
  * Emits `[NAV_PERF]` breadcrumbs for a single in-flight navigation so the
  * tap -> route shell -> first paint -> data ready timeline can be measured on a
- * device/emulator. Output is gated by `isWiezDebugEnabled('nav')`, which is
- * itself `__DEV__`-only and opt-in via `EXPO_PUBLIC_DEBUG_NAV=1`. It produces no
- * output in production builds and stays silent in dev unless the flag is set, so
- * there is never user-visible log spam. Logs are buffered off the tap path so
- * Metro/console IO does not become part of the timing we are measuring.
+ * device/emulator. ON only when `EXPO_PUBLIC_DEBUG_NAV=1` is present at BUNDLE
+ * time — in every build type:
+ *   - dev / `start:perf`: set it in `.env.local`.
+ *   - EAS preview: `eas.json` sets it on the `preview` profile, so a preview APK
+ *     reports timings to logcat (`npm run logs:device -- --nav`).
+ *   - EAS production / store: not set, so this is fully inert.
+ *
+ * It used to force itself ON whenever `!__DEV__` (to make `start:perf` work
+ * without the flag), which also meant every STORE build built a log line,
+ * pushed it into an unbounded global array and `console.warn`ed it on every
+ * navigation — while this comment claimed production was silent. Logs are
+ * buffered off the tap path so console IO is not part of the timing measured.
  *
  * Navigation is sequential (the user taps one thing at a time), so a single
  * module-level "active flow" timer is sufficient. Call `tap(flow)` from the
@@ -46,11 +53,20 @@ let tapAt = 0;
 let pendingLogFlush: ReturnType<typeof setTimeout> | null = null;
 let pendingLogLines: string[] = [];
 
+/**
+ * Resolved once. `process.env.EXPO_PUBLIC_DEBUG_NAV` is inlined to a literal at
+ * bundle time, so the answer cannot change while the app runs.
+ */
+const NAV_PERF_ENABLED = isWiezDebugEnabled('nav');
+
+/** A long preview session must not grow the buffer without bound. */
+const MAX_BUFFERED_LOG_LINES = 400;
+
 // Collect all NAV_PERF events into a global so they can be inspected
 // even if Metro terminal doesn't forward console in --no-dev mode.
 // Access in JS debugger console with:  __NAV_PERF_LOGS
 // To clear between tests:   __NAV_PERF_LOGS.length = 0
-if (typeof globalThis !== 'undefined') {
+if (NAV_PERF_ENABLED && typeof globalThis !== 'undefined') {
   (globalThis as any).__NAV_PERF_LOGS = (globalThis as any).__NAV_PERF_LOGS || [];
   (global as any).__NAV_PERF_LOGS = (globalThis as any).__NAV_PERF_LOGS;
 }
@@ -165,30 +181,23 @@ function attachNavPerfHelpers() {
     }
   }
 }
-attachNavPerfHelpers();
+if (NAV_PERF_ENABLED) {
+  attachNavPerfHelpers();
 
-// Re-attach on next ticks (helps in some debugger / minified contexts)
-setTimeout(attachNavPerfHelpers, 0);
-setTimeout(attachNavPerfHelpers, 300);
-setTimeout(attachNavPerfHelpers, 1000);
-setTimeout(attachNavPerfHelpers, 2000);
+  // Re-attach on next ticks (helps in some debugger / minified contexts)
+  setTimeout(attachNavPerfHelpers, 0);
+  setTimeout(attachNavPerfHelpers, 300);
+  setTimeout(attachNavPerfHelpers, 1000);
+  setTimeout(attachNavPerfHelpers, 2000);
+}
 
-const enabled = () => {
-  // Force enable in perf builds (--no-dev --minify) so we can actually measure in start:perf.
-  // This is the out-of-the-box fix because the project's env loader selectively "exports"
-  // only some EXPO_PUBLIC_DEBUG_* vars (DEBUG_NETWORK always appears, DEBUG_NAV does not).
-  if (typeof __DEV__ === 'undefined' || !__DEV__) {
-    return true;
-  }
-
-  const fromHelper = isWiezDebugEnabled('nav');
-  if (fromHelper) return true;
-
-  // Fallback: direct raw check (helps when the project's env loader only "exports" certain DEBUG_ vars)
-  const raw = (process as any)?.env?.EXPO_PUBLIC_DEBUG_NAV ?? process.env.EXPO_PUBLIC_DEBUG_NAV;
-  const normalized = String(raw ?? '').trim().toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
-};
+/*
+  The old "raw fallback" read `(process as any)?.env?.EXPO_PUBLIC_DEBUG_NAV`.
+  Expo only inlines the literal `process.env.EXPO_PUBLIC_X` shape, so that read
+  was always undefined in a bundle — the "env loader drops DEBUG_NAV" it worked
+  around was this, not the loader. `isWiezDebugEnabled` uses the inlinable shape.
+*/
+const enabled = () => NAV_PERF_ENABLED;
 
 let currentSource: string | null = null;
 let currentTarget: string | null = null;
@@ -210,8 +219,12 @@ const emit = (stage: string, flow: string, extra?: { source?: string | null; tar
   const line = buildPerfLine(stage, flow, extra);
 
   pendingLogLines.push(line);
-  if (typeof globalThis !== 'undefined') {
-    (globalThis as any).__NAV_PERF_LOGS.push(line);
+  const buffer = typeof globalThis !== 'undefined' ? (globalThis as any).__NAV_PERF_LOGS : null;
+  if (Array.isArray(buffer)) {
+    buffer.push(line);
+    if (buffer.length > MAX_BUFFERED_LOG_LINES) {
+      buffer.splice(0, buffer.length - MAX_BUFFERED_LOG_LINES);
+    }
   }
   if (pendingLogFlush !== null) return;
 

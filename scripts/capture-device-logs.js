@@ -9,9 +9,11 @@
  *   - `console.log/info/debug` are STRIPPED at bundle time
  *     (babel `transform-remove-console`, production only). Never rely on them.
  *   - `console.warn` / `console.error` survive and land in logcat under the
- *     `ReactNativeJS` tag. That includes every `[NAV_PERF]` line (navPerf is
- *     always on outside __DEV__ and re-emits via console.warn) and swallowed
- *     API failures such as "Error fetching brand profile by ID".
+ *     `ReactNativeJS` tag. That includes swallowed API failures such as
+ *     "Error fetching brand profile by ID", and `[NAV_PERF]` lines — navPerf
+ *     re-emits via console.warn outside __DEV__, but only in builds bundled
+ *     with EXPO_PUBLIC_DEBUG_NAV=1. The EAS `preview` profile sets it
+ *     (eas.json); production/store builds do not, so `--nav` shows nothing there.
  *
  * The phone must be in USB-debugging mode. The "File transfer / Photo
  * transfer" USB choice is unrelated and does not matter:
