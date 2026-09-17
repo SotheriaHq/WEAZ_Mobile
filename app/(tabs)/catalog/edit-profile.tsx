@@ -34,6 +34,7 @@ import { Chip } from '@/components/ui/Chip';
 import { locationService, type CountryOption, type StateOption } from '@/src/services/locationService';
 import { countryFlag } from '@/src/utils/countryFlag';
 import { MuseLoader } from '@/components/ui/MuseLoader';
+import { ScreenState, classifyScreenState, type ScreenStateKind } from '@/components/ui/ScreenState';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type LocationSheet = 'country' | 'state' | 'city' | null;
@@ -228,6 +229,7 @@ export default function BrandProfileEditScreen() {
   const [form, setForm] = useState<BrandFormState | null>(null);
   const [baseline, setBaseline] = useState<BrandFormState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<ScreenStateKind | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [tagsSheetOpen, setTagsSheetOpen] = useState(false);
@@ -274,11 +276,13 @@ export default function BrandProfileEditScreen() {
     // `loading` back on and replace the whole editor with the full-page loader —
     // the "entire screen reloaded" on avatar upload.
     setLoading((current) => current || !latestFormRef.current);
+    setLoadError(null);
     try {
-      const data = await brandApi.getProfileById(targetBrandId);
+      const data = await brandApi.getProfileById(targetBrandId, { throwOnError: true });
       if (!data) {
-        toast.error('Could not load brand profile.');
-        setLoading(false);
+        // The request succeeded but carried no usable profile.
+        if (!latestFormRef.current) setLoadError('notFound');
+        else toast.error('Could not refresh the brand profile.');
         return;
       }
       setProfile(data);
@@ -288,8 +292,16 @@ export default function BrandProfileEditScreen() {
         setBaseline(nextForm);
         setSaveState('idle');
       }
-    } catch {
-      toast.error('Failed to load brand profile.');
+    } catch (error) {
+      /*
+        With nothing on screen yet, the failure IS the screen. This used to toast
+        and leave `form` null, and `loading || !form` kept the full-screen loader
+        (the mark with a spinner under it) up forever: a toast over a loader that
+        never ends, no reason, no retry. A refetch failing under an editor that
+        already has data stays a toast so it cannot wipe work in progress.
+      */
+      if (!latestFormRef.current) setLoadError(classifyScreenState(error));
+      else toast.error('Could not refresh the brand profile.');
     } finally {
       setLoading(false);
     }
@@ -651,6 +663,24 @@ export default function BrandProfileEditScreen() {
     () => withCurrentOption(cities.map((city) => ({ label: city, value: city })), form?.brandCity ?? ''),
     [cities, form?.brandCity],
   );
+
+  if (!form && loadError) {
+    return (
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+        <View style={styles.header}>
+          <AppBackButton onPress={() => backOrNavigate('/(tabs)/catalog' as never)} style={styles.backButton} />
+          <View style={styles.headerTextWrap}>
+            <AppText variant="bodyBold">Edit Brand Profile</AppText>
+          </View>
+        </View>
+        <ScreenState
+          kind={loadError}
+          title={loadError === 'notFound' ? 'Brand profile not found' : undefined}
+          onAction={() => void loadProfile()}
+        />
+      </SafeAreaView>
+    );
+  }
 
   if (loading || !form) {
     return <AppLoaderScreen message="Loading profile editor" />;

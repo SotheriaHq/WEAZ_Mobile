@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
+import { OrderConversationButton } from '@/components/messaging/OrderConversationButton';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -309,6 +310,8 @@ export default function BuyerOrderDetailScreen() {
             </View>
           </View>
         </Card>
+
+        <OrderConversationButton orderId={order.id} kind={order.kind} brandName={order.brandName} />
 
         {confirmable ? (
           <Button title={saving ? 'Confirming…' : 'Confirm delivery'} onPress={() => void handleConfirmDelivery()} disabled={saving} />

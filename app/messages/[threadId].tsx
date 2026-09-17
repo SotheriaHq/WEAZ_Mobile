@@ -1307,7 +1307,32 @@ export default function ChatThreadScreen() {
     setStateTitle('Resolving conversation');
     setStateBody('Finding the authorized message thread for this context.');
 
-    MessagingApi.resolveConversationFromContext(routeContext)
+    /*
+      An order context OPENS its conversation rather than looking one up.
+
+      The resolver only matches a thread already linked to the order, so an
+      order nobody had written about — every custom order paid through unified
+      checkout — resolved to 404 "Conversation not found", even with a live chat
+      with that brand. `openOrderConversation` reuses the one buyer<->brand
+      thread (creating it only if none exists) and links the order into it.
+      A 403 falls back to the resolver: brand staff can read a thread they are
+      a participant of without being the order's buyer or brand owner.
+    */
+    const orderRef = validId(routeContext.messageId)
+      ? null
+      : validId(routeContext.orderId)
+        ? { orderId: routeContext.orderId as string }
+        : validId(routeContext.customOrderId)
+          ? { customOrderId: routeContext.customOrderId as string }
+          : null;
+    const resolution = orderRef
+      ? MessagingApi.openOrderConversation(orderRef).catch((error) => {
+          if (getErrorStatus(error) === 403) return MessagingApi.resolveConversationFromContext(routeContext);
+          throw error;
+        })
+      : MessagingApi.resolveConversationFromContext(routeContext);
+
+    resolution
       .then((resolved) => {
         if (requestId !== requestIdRef.current) return;
         if (!resolved?.threadId) {

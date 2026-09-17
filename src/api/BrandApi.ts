@@ -869,7 +869,13 @@ export const brandApi = {
    */
   async getProfileById(
     brandId: string,
-    opts?: { forceRefresh?: boolean },
+    /**
+     * `throwOnError` hands the real failure back instead of `null`. Returning
+     * null for EVERY failure made an offline phone, an expired session and a
+     * missing brand all read as "Could not load brand profile." — with the
+     * actual reason only in a console line a release build never shows.
+     */
+    opts?: { forceRefresh?: boolean; throwOnError?: boolean },
   ): Promise<BrandProfileDto | null> {
     try {
       const cacheKey = asString(brandId);
@@ -918,6 +924,7 @@ export const brandApi = {
       });
     } catch (error) {
       console.error('Error fetching brand profile by ID:', error);
+      if (opts?.throwOnError) throw error;
       return null;
     }
   },

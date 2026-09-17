@@ -411,6 +411,10 @@ const resolveThreadPath = (context: MessageContextParams) => {
   throw new Error('A threadId, conversationId, orderId, or customOrderId is required');
 };
 
+export type OrderConversationRef =
+  | { orderId: string; customOrderId?: never }
+  | { customOrderId: string; orderId?: never };
+
 export const MessagingApi = {
   async listConversations(params?: ListConversationsParams): Promise<ConversationListResponse> {
     const response = await apiClient.get('/messaging/inbox', {
@@ -448,6 +452,26 @@ export const MessagingApi = {
         productId: context.productId ?? undefined,
       },
     });
+    return normalizeResolvedConversationRoute(response.data);
+  },
+
+  /**
+   * Read-only: is there already a conversation with this order's brand?
+   * Drives "Go to conversation" vs "Open conversation"; never creates a thread.
+   */
+  async findOrderConversation(ref: OrderConversationRef): Promise<{ exists: boolean; threadId: string | null }> {
+    const response = await apiClient.get('/messaging/conversations/by-order', { params: ref });
+    const source = asRecord(unwrapData<unknown>(response.data));
+    return { exists: source.exists === true, threadId: asString(source.threadId) };
+  },
+
+  /**
+   * Open the conversation for an order. Reuses the one buyer<->brand thread
+   * (creating it only if none exists) and links the order into it. The plain
+   * resolver 404s for any order nobody has written about yet.
+   */
+  async openOrderConversation(ref: OrderConversationRef): Promise<ResolvedConversationRoute | null> {
+    const response = await apiClient.post('/messaging/conversations/by-order', ref);
     return normalizeResolvedConversationRoute(response.data);
   },
 
