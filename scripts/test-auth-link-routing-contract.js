@@ -84,7 +84,13 @@ function main() {
   const verifyEmailRouteSource = fs.readFileSync(verifyEmailRoutePath, 'utf8');
   assert.match(verifyEmailRouteSource, /useLocalSearchParams/, 'Verify route must read query params.');
   assert.match(verifyEmailRouteSource, /firstParamValue\(params\.token\)\.trim\(\)/, 'Verify route must trim route tokens.');
-  assert.match(verifyEmailRouteSource, /verifyEmail\(token\)/, 'Verify route must call the verify-email API with the route token.');
+  assert.match(verifyEmailRouteSource, /verifyEmailTokenOnce\(token\)/, 'Verify route must spend the route token through the shared single-spend helper.');
+  assert.doesNotMatch(verifyEmailRouteSource, /[^.\w]verifyEmail\(token\)/, 'Verify route must not call the API directly: a second spend of a single-use token reads as "invalid or expired".');
+  assert.match(
+    fs.readFileSync(path.join(repoRoot, 'src', 'auth', 'emailVerificationLink.ts'), 'utf8'),
+    /verifyEmail\(token\)/,
+    'The single-spend helper must call the verify-email API with the token.',
+  );
   assert.match(verifyEmailRouteSource, /renderMissingToken/, 'Verify route must include a missing-token state.');
   assert.match(verifyEmailRouteSource, /renderVerifying/, 'Verify route must include a verifying/loading state.');
   assert.match(verifyEmailRouteSource, /renderSuccess/, 'Verify route must include a success state.');
@@ -112,6 +118,22 @@ function main() {
 
   const notificationRoutingSource = fs.readFileSync(notificationRoutingPath, 'utf8');
   assert.match(notificationRoutingSource, /resolveMobileAuthRoute/, 'Deep-link handling must check auth links explicitly.');
+  assert.doesNotMatch(
+    notificationRoutingSource,
+    /router\.replace\(authRoute/,
+    'Deep-link handling must leave auth links to AuthLinkGate; a second navigation raced the gate.',
+  );
+
+  // Cold-start auth links: Expo Router's Android launch-URL read races a 150 ms
+  // timeout and dropped the verify link, so a gate owns them instead.
+  const nativeIntentSource = fs.readFileSync(path.join(repoRoot, 'app', '+native-intent.tsx'), 'utf8');
+  assert.match(nativeIntentSource, /export async function redirectSystemPath/, 'app/+native-intent.tsx must export redirectSystemPath.');
+  assert.match(nativeIntentSource, /resolveMobileAuthRoute\(path\)/, 'Expo Router must not route auth links itself.');
+  const authLinkGateSource = fs.readFileSync(path.join(repoRoot, 'components', 'auth', 'AuthLinkGate.tsx'), 'utf8');
+  assert.match(authLinkGateSource, /Linking\.getInitialURL\(\)/, 'AuthLinkGate must read the launch URL itself, without a timeout.');
+  assert.match(authLinkGateSource, /verifyEmailTokenOnce\(token\)/, 'AuthLinkGate must spend a verify token before any screen mounts.');
+  assert.match(authLinkGateSource, /useRootNavigationState\(\)/, 'AuthLinkGate must wait for the root navigator before navigating.');
+  assert.match(authLinkGateSource, /updateUser\(\{ isEmailVerified: true \}\)/, 'AuthLinkGate must clear the unverified flag itself.');
 
   const forgotPasswordSource = fs.readFileSync(forgotPasswordPath, 'utf8');
   assert.match(forgotPasswordSource, /browser/i, 'Forgot-password success copy must mention browser fallback.');
@@ -303,6 +325,9 @@ function main() {
   assert.match(rootLayoutSource, /recoverGoogleAuthRedirect\(/, 'The root layout must consume a recovered Google callback.');
   assert.match(rootLayoutSource, /Linking\.getInitialURL\(\)/, 'The root layout must handle a Google callback that cold-started the app.');
   assert.match(rootLayoutSource, /<GoogleAuthRedirectRecoveryGate\s*\/>/, 'The cold-relaunch Google handler must be mounted inside authenticated app providers.');
+  assert.match(rootLayoutSource, /<AuthLinkGate\s*\/>/, 'AuthLinkGate must be mounted outside the boot gate.');
+  assert.match(rootLayoutSource, /<RouteRestorationGate\s*\/>/, 'The root must restore the route after Android kills the app in the background.');
+  assert.match(rootLayoutSource, /claimFreshLaunchUrl\(/, 'The deep-link fallback must ignore a launch URL Android is replaying.');
 
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   assert.ok(

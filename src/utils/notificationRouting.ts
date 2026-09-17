@@ -194,9 +194,11 @@ export function useNotificationRouting() {
       if (!url) return;
 
       try {
-        const authRoute = resolveMobileAuthRoute(url);
-        if (authRoute) {
-          router.replace(authRoute as any);
+        // Verify-email and reset-password links are owned by `AuthLinkGate`,
+        // which spends a verify token once and navigates when the navigator is
+        // mounted. They must still be recognised here: falling through would
+        // route them to the notifications list.
+        if (resolveMobileAuthRoute(url)) {
           return;
         }
 

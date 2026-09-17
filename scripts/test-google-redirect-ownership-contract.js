@@ -106,7 +106,9 @@ check('the deep-link listener skips Google callbacks', () =>
 );
 
 check('the cold-start initial URL path skips Google callbacks', () =>
-  /const initialUrl = await Linking\.getInitialURL\(\);\s*if \(initialUrl && !isGoogleAuthRedirectUrl\(initialUrl\)\)/.test(
+  // The launch URL may be passed through `claimFreshLaunchUrl` (replay filter)
+  // first; the Google skip must still guard whatever comes out of it.
+  /const initialUrl = await (?:claimFreshLaunchUrl\(await )?Linking\.getInitialURL\(\)\)?;\s*if \(initialUrl && !isGoogleAuthRedirectUrl\(initialUrl\)\)/.test(
     layoutSource,
   ),
 );

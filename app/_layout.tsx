@@ -46,6 +46,9 @@ import { initMobileSentry } from '@/src/observability/sentry';
 initMobileSentry();
 
 import { handleInitialNotification, setupNotificationListeners } from '@/src/utils/notificationRouting';
+import { AuthLinkGate } from '@/components/auth/AuthLinkGate';
+import { RouteRestorationGate } from '@/components/navigation/RouteRestorationGate';
+import { claimFreshLaunchUrl } from '@/src/navigation/launchLinkLedger';
 import { useNotificationRouting } from '@/src/utils/notificationRouting';
 import { useAuthenticatedPushTokenRegistration } from '@/src/notifications/pushTokenRegistration';
 import {
@@ -133,9 +136,25 @@ function hideNativeSplashOnce(reason: string) {
 }
 
 function NotificationSetup() {
-  const { handleNotification, handleDeepLink } = useNotificationRouting();
+  const routing = useNotificationRouting();
+  /*
+    Handlers through a ref, and the effect below runs ONCE.
+
+    `handleNotification`/`handleDeepLink` are rebuilt whenever the auth user
+    object changes, which happens several times during boot. With them as effect
+    dependencies every change tore the effect down — clearing the 100 ms timer
+    that was about to route the launch link — and started it again. A cold start
+    from a link could lose that race repeatedly and land on the Runway.
+  */
+  const routingRef = useRef(routing);
+  routingRef.current = routing;
 
   useEffect(() => {
+    const handleNotification: typeof routing.handleNotification = (notification) =>
+      routingRef.current.handleNotification(notification);
+    const handleDeepLink: typeof routing.handleDeepLink = (url) =>
+      routingRef.current.handleDeepLink(url);
+
     let isMounted = true;
     let cleanupNotificationHandling: (() => void) | null = null;
     const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -199,8 +218,10 @@ function NotificationSetup() {
         // Handle URL when app is already running
         const urlSubscription = Linking.addEventListener('url', handleUrl);
 
-        // Check for initial URL (app opened from link while closed)
-        const initialUrl = await Linking.getInitialURL();
+        // Check for initial URL (app opened from link while closed). A launch URL
+        // Android is REPLAYING after reviving a killed app is not a new tap, and
+        // `RouteRestorationGate` returns the person to where they were instead.
+        const initialUrl = await claimFreshLaunchUrl(await Linking.getInitialURL());
         if (initialUrl && !isGoogleAuthRedirectUrl(initialUrl)) {
           schedule(() => {
             handleDeepLink(initialUrl);
@@ -230,7 +251,7 @@ function NotificationSetup() {
       timers.clear();
       cleanupNotificationHandling?.();
     };
-  }, [handleNotification, handleDeepLink]);
+  }, []);
 
   return null;
 }
@@ -513,6 +534,7 @@ function RootBootstrap({
       <PushTokenRegistrationGate />
       <ForegroundMessagingSetup />
       <RootStack />
+      <RouteRestorationGate />
     </View>
   );
 }
@@ -616,6 +638,7 @@ function RootLayoutNav({
           <AuthProvider>
             <ThemeBackendSync />
             <GoogleAuthRedirectRecoveryGate />
+            <AuthLinkGate />
             <GenderPromptSheet />
             <BagCountProvider>
               <BagFlowProvider>

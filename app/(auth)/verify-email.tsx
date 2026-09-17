@@ -5,12 +5,11 @@ import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { verifyEmail } from '@/src/api/AuthApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { verifyEmailTokenOnce } from '@/src/auth/emailVerificationLink';
 import { isBrandAccount } from '@/src/auth/brandAccess';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { useToast } from '@/src/toast/ToastContext';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import WiezMark from '@/src/brand/WiezMark';
@@ -25,28 +24,9 @@ const firstParamValue = (value: string | string[] | undefined): string => {
   return value ?? '';
 };
 
-const getVerifyEmailErrorMessage = (error: unknown): string => {
-  const responseData = (error as any)?.response?.data;
-  const candidates = [
-    responseData?.message,
-    responseData?.data?.message,
-    responseData?.error,
-    (error as any)?.message,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim().length > 0) {
-      return candidate.trim();
-    }
-  }
-
-  return 'Unable to verify email. The link may be invalid or expired.';
-};
-
 export default function VerifyEmailScreen() {
   const { theme, scheme } = useTheme();
   const isDark = scheme === 'dark';
-  const toast = useToast();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ token?: string | string[] }>();
   const { isAuthenticated, updateUser, user, validateToken } = useAuth();
@@ -102,23 +82,42 @@ export default function VerifyEmailScreen() {
       setState('verifying');
       setMessage('Verifying your email address...');
 
-      try {
-        const response = await verifyEmail(token);
+      /*
+        The same request `AuthLinkGate` already started for this link, not a
+        second one: the gate spends the token the moment the link arrives, so
+        verification survives this screen never mounting, or mounting twice.
+        The gate also owns the "Email verified." toast.
+      */
+      const outcome = await verifyEmailTokenOnce(token);
+      if (outcome.status === 'verified') {
         if (isAuthenticated) {
           updateUser({ isEmailVerified: true });
           await validateToken({ forceRefresh: true }).catch(() => false);
         }
         setState('success');
-        setMessage(response.message || 'Your email has been verified.');
-        toast.success('Email verified.');
-      } catch (error) {
-        setState('error');
-        setMessage(getVerifyEmailErrorMessage(error));
+        setMessage(outcome.message);
+        return;
+      }
+
+      setState('error');
+      setMessage(outcome.message);
+      // An older link (superseded by a resend) fails even when the account is
+      // already verified. Ask the server; the effect below turns that into
+      // success instead of a false "verification unavailable".
+      if (isAuthenticated) {
+        await validateToken({ forceRefresh: true }).catch(() => false);
       }
     };
 
     void verifyToken();
-  }, [isAuthenticated, token, toast, validateToken]);
+  }, [isAuthenticated, token, updateUser, validateToken]);
+
+  useEffect(() => {
+    if (state === 'error' && isAuthenticated && user?.isEmailVerified === true) {
+      setState('success');
+      setMessage('Your email is verified.');
+    }
+  }, [isAuthenticated, state, user?.isEmailVerified]);
 
   const renderMissingToken = () => (
     <View style={[styles.formInner, { backgroundColor: theme.colors.surface }]}>

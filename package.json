@@ -14,6 +14,7 @@
     "web": "expo start --web",
     "audit:design-system": "node ../scripts/audit-mobile-design-system.js",
     "logs:device": "node scripts/capture-device-logs.js",
+    "test:app-survival-contract": "node scripts/test-app-survival-contract.js",
     "test:aspect-aware-media": "node scripts/test-aspect-aware-media-strategy.js",
     "test:runway-responsiveness-contract": "node scripts/test-runway-responsiveness-contract.js",
     "test:runway-transit-curves": "node scripts/test-runway-transit-curves.js",
