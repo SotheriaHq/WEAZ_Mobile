@@ -1076,9 +1076,16 @@ export default function BuyerProfileScreen() {
                 {profileIdentity.handle}
               </AppText>
             ) : null}
+            {/*
+              The same location tag a brand carries (`BrandProfileHeader`), for
+              the same reason: without the marker the line is just a place name
+              under a handle, and reads as part of the name rather than as where
+              the person is. Typography stays as it was — a shopper's location is
+              a quieter fact than a brand's, and this is about the marker.
+            */}
             {profileIdentity.locationLabel ? (
               <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-                {profileIdentity.locationLabel}
+                📍 {profileIdentity.locationLabel}
               </AppText>
             ) : null}
 
