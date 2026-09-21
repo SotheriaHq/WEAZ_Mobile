@@ -146,14 +146,40 @@ check('a snapshot is consumed on read, so a crash on restore cannot loop', async
   assert.equal(await restoration.takeRouteSnapshot(), null);
 });
 
-function loadNativeIntent(storage) {
+/** A verification link is a credential, so it lives in SecureStore, not AsyncStorage. */
+function createSecureStore() {
+  const storage = createStorage();
+  return {
+    map: storage.map,
+    getItemAsync: storage.getItem,
+    setItemAsync: storage.setItem,
+    deleteItemAsync: storage.removeItem,
+  };
+}
+
+function loadPendingVerification(secureStore, verifyEmail) {
+  const verification = loadVerification(verifyEmail);
+  return {
+    verification,
+    pending: load('src/auth/pendingEmailVerification.ts', {
+      'expo-secure-store': secureStore,
+      '@/src/auth/emailVerificationLink': verification,
+    }),
+  };
+}
+
+function loadNativeIntent(storage, secureStore = createSecureStore()) {
   const authLinkRouting = load('src/utils/authLinkRouting.ts', {});
   const ledger = load('src/navigation/launchLinkLedger.ts', { '@react-native-async-storage/async-storage': { __esModule: true, default: storage } });
+  const { pending } = loadPendingVerification(secureStore, async () => ({ message: 'Email verified successfully' }));
   return {
     ledger,
+    pending,
+    secureStore,
     intent: load('app/+native-intent.tsx', {
       '@/src/utils/authLinkRouting': authLinkRouting,
       '@/src/navigation/launchLinkLedger': ledger,
+      '@/src/auth/pendingEmailVerification': pending,
     }),
   };
 }
@@ -216,6 +242,63 @@ check('a network failure is retried; a server answer is not re-asked', async () 
   assert.equal(second.retryable, false);
   await verification.verifyEmailTokenOnce('t1');
   assert.equal(calls, 2);
+});
+
+check('Expo Router writes a verify link down even though it does not route it', async () => {
+  const { intent, pending, secureStore } = loadNativeIntent(createStorage());
+  assert.equal(await intent.redirectSystemPath({ path: verifyUrl, initial: true }), '/');
+  assert.equal([...secureStore.map.values()].join('').includes('abc123'), true, 'the link must survive the process that received it');
+  const outcome = await pending.drainPendingEmailVerification();
+  assert.equal(outcome.status, 'verified');
+  assert.equal(await pending.drainPendingEmailVerification(), null, 'a spent link is not retried');
+});
+
+check('a link whose request never reached the server is kept and retried', async () => {
+  const secureStore = createSecureStore();
+  let calls = 0;
+  const { pending } = loadPendingVerification(secureStore, async () => {
+    calls += 1;
+    if (calls === 1) throw Object.assign(new Error('Network Error'), { isAxiosError: true });
+    return { message: 'Email verified successfully' };
+  });
+
+  const first = await pending.spendEmailVerificationToken('abc123');
+  assert.equal(first.status, 'failed');
+  assert.equal([...secureStore.map.values()].join('').includes('abc123'), true, 'a lost request must leave something to retry');
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const retried = await pending.drainPendingEmailVerification();
+  assert.equal(retried.status, 'verified');
+  assert.equal(calls, 2);
+  assert.equal(await pending.drainPendingEmailVerification(), null);
+});
+
+check('a link the server rejects is discarded rather than retried forever', async () => {
+  const secureStore = createSecureStore();
+  let calls = 0;
+  const { pending } = loadPendingVerification(secureStore, async () => {
+    calls += 1;
+    throw Object.assign(new Error('bad'), {
+      isAxiosError: true,
+      response: { status: 400, data: { message: 'Invalid or expired verification link' } },
+    });
+  });
+
+  const outcome = await pending.spendEmailVerificationToken('abc123');
+  assert.equal(outcome.status, 'failed');
+  assert.equal(outcome.retryable, false);
+  assert.equal(await pending.drainPendingEmailVerification(), null, 'a rejected link must not be re-sent on every refresh');
+  assert.equal(calls, 1);
+});
+
+check('draining with nothing stored costs one local read and no request', async () => {
+  let calls = 0;
+  const { pending } = loadPendingVerification(createSecureStore(), async () => {
+    calls += 1;
+    return { message: 'Email verified successfully' };
+  });
+  assert.equal(await pending.drainPendingEmailVerification(), null);
+  assert.equal(calls, 0);
 });
 
 (async () => {

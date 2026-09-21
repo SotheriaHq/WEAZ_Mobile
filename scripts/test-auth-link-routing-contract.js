@@ -84,7 +84,8 @@ function main() {
   const verifyEmailRouteSource = fs.readFileSync(verifyEmailRoutePath, 'utf8');
   assert.match(verifyEmailRouteSource, /useLocalSearchParams/, 'Verify route must read query params.');
   assert.match(verifyEmailRouteSource, /firstParamValue\(params\.token\)\.trim\(\)/, 'Verify route must trim route tokens.');
-  assert.match(verifyEmailRouteSource, /verifyEmailTokenOnce\(token\)/, 'Verify route must spend the route token through the shared single-spend helper.');
+  assert.match(verifyEmailRouteSource, /spendEmailVerificationToken\(token\)/, 'Verify route must spend the route token through the shared single-spend helper.');
+  assert.match(verifyEmailRouteSource, /setRetryNonce/, 'Verify route must offer a retry: a request that never reached the server is not a rejected link.');
   assert.doesNotMatch(verifyEmailRouteSource, /[^.\w]verifyEmail\(token\)/, 'Verify route must not call the API directly: a second spend of a single-use token reads as "invalid or expired".');
   assert.match(
     fs.readFileSync(path.join(repoRoot, 'src', 'auth', 'emailVerificationLink.ts'), 'utf8'),
@@ -129,9 +130,35 @@ function main() {
   const nativeIntentSource = fs.readFileSync(path.join(repoRoot, 'app', '+native-intent.tsx'), 'utf8');
   assert.match(nativeIntentSource, /export async function redirectSystemPath/, 'app/+native-intent.tsx must export redirectSystemPath.');
   assert.match(nativeIntentSource, /resolveMobileAuthRoute\(path\)/, 'Expo Router must not route auth links itself.');
+  assert.match(
+    nativeIntentSource,
+    /rememberPendingEmailVerification\(authRoute\.params\.token\)/,
+    'Expo Router sees system URLs the gate sometimes never gets: a verify link must be written down here even though it is not routed here.',
+  );
   const authLinkGateSource = fs.readFileSync(path.join(repoRoot, 'components', 'auth', 'AuthLinkGate.tsx'), 'utf8');
   assert.match(authLinkGateSource, /Linking\.getInitialURL\(\)/, 'AuthLinkGate must read the launch URL itself, without a timeout.');
-  assert.match(authLinkGateSource, /verifyEmailTokenOnce\(token\)/, 'AuthLinkGate must spend a verify token before any screen mounts.');
+  assert.match(authLinkGateSource, /spendEmailVerificationToken\(token\)/, 'AuthLinkGate must spend a verify token before any screen mounts.');
+  assert.match(
+    authLinkGateSource,
+    /drainPendingEmailVerification\(\)/,
+    'AuthLinkGate must retry a link an earlier run could not spend; a request lost to a cold start had nothing to retry it.',
+  );
+
+  // Verification happens outside this process, and the request carrying it can
+  // die with the process. Everything that notices the account is still
+  // unverified must be able to finish the job, not just re-read the account.
+  const noticeSource = fs.readFileSync(path.join(repoRoot, 'components', 'auth', 'EmailVerificationNotice.tsx'), 'utf8');
+  assert.match(
+    noticeSource,
+    /drainPendingEmailVerification\(\)[\s\S]{0,200}validateToken\(\{ forceRefresh: true \}\)/,
+    'The verification watcher must finish an unspent link BEFORE re-reading the account.',
+  );
+  const profileTabSource = fs.readFileSync(path.join(repoRoot, 'app', '(tabs)', 'me.tsx'), 'utf8');
+  assert.match(
+    profileTabSource,
+    /handleRefresh[\s\S]{0,900}drainPendingEmailVerification\(\)/,
+    'Pull-to-refresh on the profile must retry an unspent link, not only re-read the account.',
+  );
   assert.match(authLinkGateSource, /useRootNavigationState\(\)/, 'AuthLinkGate must wait for the root navigator before navigating.');
   assert.match(authLinkGateSource, /updateUser\(\{ isEmailVerified: true \}\)/, 'AuthLinkGate must clear the unverified flag itself.');
 

@@ -19,6 +19,7 @@ import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
 import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
+import { drainPendingEmailVerification } from '@/src/auth/pendingEmailVerification';
 import { useFrameBatchedItems } from '@/src/hooks/useFrameBatchedItems';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { resolveComputedSizeState } from '@/src/features/sizing/computedSize';
@@ -800,15 +801,38 @@ export default function BuyerProfileScreen() {
     drillDownPush('/settings' as any);
   }, []);
 
+  /**
+   * Pulling down on your own profile is also "check my email again".
+   *
+   * Refreshing already re-read the account, which is enough when the server
+   * recorded the confirmation. It is not enough when the link reached this
+   * device and its request never landed — a cold start with no network, or the
+   * OS reclaiming the app while the person was still in their mail client. The
+   * account is then genuinely unverified and no number of re-reads will change
+   * that, which is exactly the "I confirmed it, the flag is still there, and
+   * refreshing does nothing" case.
+   *
+   * So an unverified account retries the stored link first, and only then reads
+   * the account back. The toast belongs here and nowhere else in this flow: the
+   * person just asked, so an answer is owed. Every other path to the same check
+   * runs on its own and lets the banner disappear without comment.
+   */
+  const emailUnverified = user?.isEmailVerified === false;
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     lastProfileLoadAtRef.current = 0;
     await Promise.all([
-      validateToken({ forceRefresh: true }),
+      (async () => {
+        const outcome = emailUnverified
+          ? await drainPendingEmailVerification().catch(() => null)
+          : null;
+        await validateToken({ forceRefresh: true });
+        if (outcome?.status === 'verified') toast.success('Email verified.');
+      })(),
       load({ silent: true, force: true }),
       refreshUnreadNotificationCount({ authenticated: true, forceRefresh: true }),
     ]);
-  }, [load, validateToken]);
+  }, [emailUnverified, load, toast, validateToken]);
 
   const handlePickAvatar = useCallback(async () => {
     if (!profileRecord) return;

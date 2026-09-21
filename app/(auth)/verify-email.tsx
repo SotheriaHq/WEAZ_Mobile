@@ -6,7 +6,7 @@ import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/src/auth/AuthContext';
-import { verifyEmailTokenOnce } from '@/src/auth/emailVerificationLink';
+import { spendEmailVerificationToken } from '@/src/auth/pendingEmailVerification';
 import { isBrandAccount } from '@/src/auth/brandAccess';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -30,12 +30,21 @@ export default function VerifyEmailScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ token?: string | string[] }>();
   const { isAuthenticated, updateUser, user, validateToken } = useAuth();
-  const verificationStartedRef = useRef(false);
+  const verificationStartedRef = useRef<number | null>(null);
 
   const token = useMemo(() => firstParamValue(params.token).trim(), [params.token]);
 
   const [state, setState] = useState<VerifyEmailState>('verifying');
   const [message, setMessage] = useState('Verifying your email address...');
+  /**
+   * A request that never reached the server is a different failure from a link
+   * the server rejected, and only one of them is worth trying again. Tapping a
+   * verification link is exactly when the connection is least settled — the app
+   * is usually cold starting — so this screen offers the retry rather than
+   * sending someone back to login to request a whole new email.
+   */
+  const [retryable, setRetryable] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const bgGradient = isDark
     ? tokens.auth.screenGradientDark
@@ -69,17 +78,18 @@ export default function VerifyEmailScreen() {
 
   useEffect(() => {
     if (!token) {
-      verificationStartedRef.current = false;
+      verificationStartedRef.current = null;
       setState('error');
       setMessage('This verification link is missing a valid token. Request a new verification email before trying again.');
       return;
     }
 
-    if (verificationStartedRef.current) return;
-    verificationStartedRef.current = true;
+    if (verificationStartedRef.current === retryNonce) return;
+    verificationStartedRef.current = retryNonce;
 
     const verifyToken = async () => {
       setState('verifying');
+      setRetryable(false);
       setMessage('Verifying your email address...');
 
       /*
@@ -88,8 +98,8 @@ export default function VerifyEmailScreen() {
         verification survives this screen never mounting, or mounting twice.
         The gate also owns the "Email verified." toast.
       */
-      const outcome = await verifyEmailTokenOnce(token);
-      if (outcome.status === 'verified') {
+      const outcome = await spendEmailVerificationToken(token);
+      if (outcome?.status === 'verified') {
         if (isAuthenticated) {
           updateUser({ isEmailVerified: true });
           await validateToken({ forceRefresh: true }).catch(() => false);
@@ -100,7 +110,8 @@ export default function VerifyEmailScreen() {
       }
 
       setState('error');
-      setMessage(outcome.message);
+      setRetryable(outcome?.status === 'failed' && outcome.retryable);
+      setMessage(outcome?.message ?? 'Unable to verify email right now.');
       // An older link (superseded by a resend) fails even when the account is
       // already verified. Ask the server; the effect below turns that into
       // success instead of a false "verification unavailable".
@@ -110,7 +121,7 @@ export default function VerifyEmailScreen() {
     };
 
     void verifyToken();
-  }, [isAuthenticated, token, updateUser, validateToken]);
+  }, [isAuthenticated, retryNonce, token, updateUser, validateToken]);
 
   useEffect(() => {
     if (state === 'error' && isAuthenticated && user?.isEmailVerified === true) {
@@ -201,12 +212,24 @@ export default function VerifyEmailScreen() {
             {message}
           </AppText>
         </View>
+        {retryable ? (
+          <Button
+            title="Try again"
+            onPress={() => setRetryNonce((nonce) => nonce + 1)}
+            size="lg"
+            fullWidth
+            style={styles.primaryButton}
+            textStyle={styles.primaryButtonText}
+            testID="verify-email-retry"
+          />
+        ) : null}
         <Button
           title="Back to login"
           onPress={goToLogin}
           size="lg"
+          variant={retryable ? 'secondary' : 'primary'}
           fullWidth
-          style={styles.primaryButton}
+          style={retryable ? undefined : styles.primaryButton}
           textStyle={styles.primaryButtonText}
           testID="verify-email-login"
         />

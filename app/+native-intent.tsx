@@ -1,5 +1,6 @@
 import { resolveMobileAuthRoute } from '@/src/utils/authLinkRouting';
 import { claimFreshLaunchUrl } from '@/src/navigation/launchLinkLedger';
+import { rememberPendingEmailVerification } from '@/src/auth/pendingEmailVerification';
 
 /**
  * Expo Router's hook for every system URL, before it becomes navigation.
@@ -17,10 +18,23 @@ import { claimFreshLaunchUrl } from '@/src/navigation/launchLinkLedger';
  *    instead of re-running a link the person finished with. See
  *    `launchLinkLedger.ts`; `RouteRestorationGate` then returns them to where
  *    they actually were.
+ *
+ * 3. A verify-email link is WRITTEN DOWN here even though it is not routed here.
+ *    This function is the one place Expo Router calls for every system URL it
+ *    does see, cold or warm, and it runs before any provider exists — so it is
+ *    the earliest moment the link can be made to survive the process. The gate
+ *    still reads the launch URL itself, because Expo Router sometimes never
+ *    gets it; between the two, the link is recorded whichever door it came
+ *    through, and `pendingEmailVerification.ts` retries it until the server
+ *    gives a final answer.
  */
 export async function redirectSystemPath({ path, initial }: { path: string; initial: boolean }) {
   try {
-    if (resolveMobileAuthRoute(path)) {
+    const authRoute = resolveMobileAuthRoute(path);
+    if (authRoute) {
+      if (authRoute.pathname === '/(auth)/verify-email' && authRoute.params?.token) {
+        await rememberPendingEmailVerification(authRoute.params.token);
+      }
       return initial ? '/' : '';
     }
     if (initial) {

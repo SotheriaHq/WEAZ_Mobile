@@ -5,6 +5,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { resendVerificationEmail } from '@/src/api/AuthApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { drainPendingEmailVerification } from '@/src/auth/pendingEmailVerification';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -80,10 +81,27 @@ function subscribeToVerificationWatch(
   watcherCount += 1;
 
   if (watcherCount === 1) {
-    // AuthContext coalesces concurrent validations, so a refresh that overlaps
-    // an in-flight one costs nothing extra.
+    /*
+      Two questions, in order, and the order is the point.
+
+      "Did the server already record this?" is the cheap one and it was the only
+      one asked — which is correct only when the confirmation actually reached
+      the server. The common failure is the other one: the link arrived on THIS
+      device and the request behind it never landed, because the app was cold
+      starting without a network or the OS killed it on the way back from the
+      mail client. Re-reading the profile forever cannot fix that; nobody is
+      going to write the answer down for us.
+
+      So finish the unspent link first, then read the account. A drain with
+      nothing stored is a single local read and costs nothing, which is the case
+      on all but the first pass. AuthContext coalesces concurrent validations,
+      so a refresh that overlaps an in-flight one costs nothing extra either.
+    */
     watcherRefresh = () => {
-      void validateToken({ forceRefresh: true }).catch(() => false);
+      void (async () => {
+        await drainPendingEmailVerification().catch(() => null);
+        await validateToken({ forceRefresh: true }).catch(() => false);
+      })();
     };
 
     const startPolling = () => {
