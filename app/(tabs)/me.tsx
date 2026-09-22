@@ -1090,14 +1090,14 @@ export default function BuyerProfileScreen() {
             {(shopperEmail || shopperAddress) ? (
               <View style={styles.identityMetaStack}>
                 {shopperEmail ? (
-                  <View style={[styles.identityTag, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+                  <View style={[styles.identityTag, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                     <AppText variant="captionRegular" tone="muted" style={styles.identityTagText}>
                       ✉️ {shopperEmail}
                     </AppText>
                   </View>
                 ) : null}
                 {shopperAddress ? (
-                  <View style={[styles.identityTag, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+                  <View style={[styles.identityTag, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                     <AppText variant="captionRegular" tone="muted" style={styles.identityTagText}>
                       📍 {shopperAddress}
                     </AppText>
@@ -1311,7 +1311,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: tokens.spacing.lg,
   },
   avatarWrap: {
@@ -1347,6 +1347,23 @@ const styles = StyleSheet.create({
   },
   profileHandle: {
     fontStyle: 'italic',
+  },
+  identityMetaStack: {
+    gap: tokens.spacing.xs,
+    marginTop: tokens.spacing.xs,
+    alignItems: 'flex-start',
+  },
+  identityTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 3,
+    borderRadius: tokens.radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    maxWidth: '100%',
+  },
+  identityTagText: {
+    flexShrink: 1,
   },
   actionRow: {
     flexDirection: 'row',
