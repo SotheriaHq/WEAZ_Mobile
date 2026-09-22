@@ -415,7 +415,19 @@ export function AppBottomSheet({
         },
         contentContainerStyle: [
           styles.bodyContent,
-          keyboardBehavior === 'auto' ? styles.bodyContentKeyboard : null,
+          keyboardBehavior === 'auto'
+            ? keyboardVisible
+              ? [
+                  styles.bodyContentKeyboard,
+                  {
+                    paddingBottom: Math.max(
+                      240,
+                      keyboardEventHeight + tokens.spacing.xl,
+                    ),
+                  },
+                ]
+              : styles.bodyContentKeyboard
+            : null,
         ],
       }
     : { style: [styles.bodyContent, { flexShrink: 1 }] };

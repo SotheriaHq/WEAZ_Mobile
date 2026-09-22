@@ -86,6 +86,73 @@ export const getDialCode = (iso2?: string): string => {
   return country ? `+${country.callingCode}` : '';
 };
 
+const COUNTRY_INITIALS_MAP: Record<string, string> = {
+  NG: 'NGN',
+  US: 'USA',
+  GB: 'GBR',
+  EU: 'EUR',
+  GH: 'GHA',
+  KE: 'KEN',
+  ZA: 'ZAF',
+  CA: 'CAN',
+  DE: 'DEU',
+  FR: 'FRA',
+  IT: 'ITA',
+  ES: 'ESP',
+  NL: 'NLD',
+  BE: 'BEL',
+  AT: 'AUT',
+  CH: 'CHE',
+  SE: 'SWE',
+  NO: 'NOR',
+  DK: 'DNK',
+  IE: 'IRL',
+  PT: 'PRT',
+  PL: 'POL',
+  AE: 'ARE',
+  SA: 'SAU',
+  EG: 'EGY',
+  RW: 'RWA',
+  TZ: 'TZA',
+  UG: 'UGA',
+  ET: 'ETH',
+  CM: 'CMR',
+  SN: 'SEN',
+  CI: 'CIV',
+  IN: 'IND',
+  CN: 'CHN',
+  JP: 'JPN',
+  AU: 'AUS',
+  NZ: 'NZL',
+  BR: 'BRA',
+  MX: 'MEX',
+  TR: 'TUR',
+  RU: 'RUS',
+  KR: 'KOR',
+  SG: 'SGP',
+  MY: 'MYS',
+  TH: 'THA',
+  ID: 'IDN',
+  PH: 'PHL',
+  VN: 'VNM',
+  PK: 'PAK',
+  BD: 'BGD',
+  AR: 'ARG',
+  CL: 'CHL',
+  CO: 'COL',
+  PE: 'PER',
+};
+
+/**
+ * Country initials / 3-letter code, formatted for compact trigger displays
+ * (e.g. Nigeria -> NGN, USA, EUR) without truncation.
+ */
+export const getCountryInitials = (iso2?: string): string => {
+  if (!iso2) return '';
+  const upper = iso2.toUpperCase();
+  return COUNTRY_INITIALS_MAP[upper] ?? upper;
+};
+
 /**
  * The ISO2 for a country NAME, so the phone field can follow the country the
  * user just picked in the location cascade.

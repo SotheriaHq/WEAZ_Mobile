@@ -22,6 +22,8 @@ export type InputProps = Omit<TextInputProps, 'style'> & {
   error?: string;
   helperText?: string;
   leading?: React.ReactNode;
+  /** Custom left padding to clear wider leading elements (e.g. dial codes). */
+  leadingWidth?: number;
   trailing?: React.ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
   /**
@@ -41,6 +43,7 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
   error,
   helperText,
   leading,
+  leadingWidth,
   trailing,
   containerStyle,
   variant = 'default',
@@ -117,8 +120,14 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
           style={[
             styles.input,
             {
-              color: theme.colors.text,
-              paddingLeft: isPlain ? 0 : leading ? tokens.spacing.xl2 : tokens.spacing.lg,
+              color: rest.editable === false ? theme.colors.textMuted : theme.colors.text,
+              paddingLeft: isPlain
+                ? 0
+                : leadingWidth != null
+                  ? leadingWidth
+                  : leading
+                    ? tokens.spacing.xl2
+                    : tokens.spacing.lg,
               paddingRight: isPlain ? 0 : trailing ? 44 : tokens.spacing.lg,
               paddingTop: multiline ? tokens.spacing.lg : 0,
               paddingBottom: multiline ? tokens.spacing.lg : 0,
@@ -157,6 +166,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.xs,
     marginBottom: tokens.spacing.sm,
+    minHeight: 20,
   },
   label: {
     // Vertical rhythm moved to `labelRow`, which now owns the row the label and
@@ -166,9 +176,8 @@ const styles = StyleSheet.create({
     textTransform: 'none',
   },
   field: {
-    borderRadius: tokens.radius.lg,
+    borderRadius: tokens.radius.md,
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   fieldUnderline: {
     // Square, so the rule reads as a writing line and not a clipped box.

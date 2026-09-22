@@ -520,6 +520,17 @@ export default function MeEditScreen() {
           </View>
 
           <View style={[styles.formPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.fieldRow, styles.emailRow, { borderBottomColor: theme.colors.border }]}>
+              <Input
+                label="Email"
+                value={user?.email ?? '—'}
+                editable={false}
+                placeholder="Email"
+                containerStyle={styles.group}
+                variant="bare"
+              />
+            </View>
+
             <View style={[styles.fieldRow, { borderBottomColor: theme.colors.border }]}>
             <Input
               label="First Name"
@@ -623,14 +634,6 @@ export default function MeEditScreen() {
               )}
             />
           </View>
-
-          <View style={[styles.readOnlyPanel, { borderColor: theme.colors.border }]}>
-            <AppText variant="captionBold" tone="muted">EMAIL</AppText>
-            <AppText variant="body">{user?.email ?? '—'}</AppText>
-            <AppText variant="caption" tone="muted">
-              Change your email under Settings › Phone &amp; email.
-            </AppText>
-          </View>
       </KeyboardAwareFormScroll>
     </SafeAreaView>
   );
@@ -723,9 +726,7 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: tokens.spacing.sm,
   },
-  readOnlyPanel: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: tokens.spacing.lg,
-    gap: tokens.spacing.xs,
+  emailRow: {
+    opacity: 0.72,
   },
 });

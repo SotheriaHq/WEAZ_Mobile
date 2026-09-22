@@ -1418,7 +1418,7 @@ export default function CreateDesignComposerScreen() {
             </View>
             <View style={styles.priceRow}>
               <Input
-                label="Base charge"
+                label="Base charge (₦)"
                 value={form.baseProductionCharge}
                 onChangeText={(value) => updateField('baseProductionCharge', value.replace(/[^0-9.]/g, ''))}
                 keyboardType="decimal-pad"
@@ -1427,7 +1427,7 @@ export default function CreateDesignComposerScreen() {
                 error={customOrderFieldErrors.baseCharge ?? undefined}
               />
               <Input
-                label="Fabric cost / yard"
+                label="Fabric / yd (₦)"
                 value={form.fabricCostPerYard}
                 onChangeText={(value) => updateField('fabricCostPerYard', value.replace(/[^0-9.]/g, ''))}
                 keyboardType="decimal-pad"
@@ -1453,51 +1453,73 @@ export default function CreateDesignComposerScreen() {
                 entering={FadeIn.duration(140)}
                 exiting={FadeOut.duration(120)}
                 layout={LinearTransition.duration(180)}
-                style={styles.priceRow}
+                style={styles.sheetSection}
               >
-                <Input
-                  label="Rush fee"
-                  value={form.rushFee}
-                  onChangeText={(value) => updateField('rushFee', value.replace(/[^0-9.]/g, ''))}
-                  keyboardType="decimal-pad"
-                  placeholder="2000"
-                  containerStyle={styles.priceInput}
-                  error={customOrderFieldErrors.rushFee ?? undefined}
-                />
-                <Input
-                  label="Rush time"
-                  value={form.rushProductionLeadDays}
-                  onChangeText={(value) => updateField('rushProductionLeadDays', value.replace(/[^0-9]/g, ''))}
-                  keyboardType="numeric"
-                  placeholder="3"
-                  containerStyle={styles.priceInput}
-                  helperText="1-3 days (72 hours max), shorter than production time."
-                  error={customOrderFieldErrors.rushTime ?? undefined}
-                />
+                <View style={styles.priceRow}>
+                  <Input
+                    label="Rush fee (₦)"
+                    value={form.rushFee}
+                    onChangeText={(value) => updateField('rushFee', value.replace(/[^0-9.]/g, ''))}
+                    keyboardType="decimal-pad"
+                    placeholder="2000"
+                    containerStyle={styles.priceInput}
+                    error={customOrderFieldErrors.rushFee ?? undefined}
+                  />
+                  <Input
+                    label="Rush lead (days)"
+                    value={form.rushProductionLeadDays}
+                    onChangeText={(value) => updateField('rushProductionLeadDays', value.replace(/[^0-9]/g, ''))}
+                    keyboardType="numeric"
+                    placeholder="3"
+                    containerStyle={styles.priceInput}
+                    error={customOrderFieldErrors.rushTime ?? undefined}
+                  />
+                </View>
+                <AppText variant="captionRegular" tone="muted">
+                  1-3 days (72 hours max), shorter than production time.
+                </AppText>
               </Reanimated.View>
             ) : null}
 
             <View style={styles.sheetSection}>
               <RequiredFieldLabel required>Fabric sourcing</RequiredFieldLabel>
-              <View style={styles.sheetChipWrap}>
+              <View style={styles.segmentedControl}>
                 {([
                   { value: 'BRAND_SOURCED', label: 'Brand Sourced' },
                   { value: 'BUYER_SUPPLIED', label: 'Buyer Supplied' },
-                  { value: 'EITHER', label: 'Either' }
-                ] as const).map((opt) => (
-                  <Chip
-                    key={opt.value}
-                    label={opt.label}
-                    selected={form.fabricSourcingMode === opt.value}
-                    onPress={() => updateField('fabricSourcingMode', opt.value)}
-                  />
-                ))}
+                  { value: 'EITHER', label: 'Either' },
+                ] as const).map((opt) => {
+                  const isSelected = form.fabricSourcingMode === opt.value;
+                  return (
+                    <Pressable
+                      key={opt.value}
+                      onPress={() => updateField('fabricSourcingMode', opt.value)}
+                      style={[
+                        styles.segmentButton,
+                        {
+                          backgroundColor: isSelected ? theme.colors.primary : 'transparent',
+                          borderColor: isSelected ? theme.colors.primary : theme.colors.border,
+                        },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
+                    >
+                      <AppText
+                        variant="captionBold"
+                        tone={isSelected ? 'inverse' : 'default'}
+                        style={styles.segmentButtonText}
+                      >
+                        {opt.label}
+                      </AppText>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
 
             <View style={styles.priceRow}>
               <Input
-                label="Delivery min days"
+                label="Delivery min (days)"
                 value={form.deliveryMinDays}
                 onChangeText={(value) => updateField('deliveryMinDays', value.replace(/[^0-9]/g, ''))}
                 keyboardType="numeric"
@@ -1511,7 +1533,7 @@ export default function CreateDesignComposerScreen() {
                 }
               />
               <Input
-                label="Delivery max days"
+                label="Delivery max (days)"
                 value={form.deliveryMaxDays}
                 onChangeText={(value) => updateField('deliveryMaxDays', value.replace(/[^0-9]/g, ''))}
                 keyboardType="numeric"
@@ -1526,24 +1548,18 @@ export default function CreateDesignComposerScreen() {
                 }
               />
             </View>
-            {customOrderFieldErrors.delivery ? (
-              <AppText variant="captionRegular" tone="muted">
-                Delivery and production must each be 1-7 days.
-              </AppText>
-            ) : null}
-            <Input
-              label="Production time"
-              value={form.productionLeadDays}
-              onChangeText={(value) => updateField('productionLeadDays', value.replace(/[^0-9]/g, ''))}
-              keyboardType="numeric"
-              placeholder="7"
-              helperText="1-7 days to produce the custom order."
-              error={customOrderFieldErrors.productionTime ?? undefined}
-            />
-
             <View style={styles.priceRow}>
               <Input
-                label="Fallback yards"
+                label="Production (days)"
+                value={form.productionLeadDays}
+                onChangeText={(value) => updateField('productionLeadDays', value.replace(/[^0-9]/g, ''))}
+                keyboardType="numeric"
+                placeholder="7"
+                containerStyle={styles.priceInput}
+                error={customOrderFieldErrors.productionTime ?? undefined}
+              />
+              <Input
+                label="Fallback (yards)"
                 value={form.fallbackOutputYards}
                 onChangeText={(value) => updateField('fallbackOutputYards', value.replace(/[^0-9.]/g, ''))}
                 keyboardType="decimal-pad"
@@ -1551,22 +1567,25 @@ export default function CreateDesignComposerScreen() {
                 containerStyle={styles.priceInput}
                 error={customOrderFieldErrors.fallbackYards ?? undefined}
               />
+            </View>
+
+            <View style={styles.priceRow}>
               <Input
-                label="Average base yards"
+                label="Average base (yards)"
                 value={form.averageBaseYards}
                 onChangeText={(value) => updateField('averageBaseYards', value.replace(/[^0-9.]/g, ''))}
                 keyboardType="decimal-pad"
                 placeholder="3.5"
                 containerStyle={styles.priceInput}
               />
+              <Input
+                label="Delivery scope"
+                value={form.deliveryScope}
+                onChangeText={(value) => updateField('deliveryScope', value)}
+                placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryScope}
+                containerStyle={styles.priceInput}
+              />
             </View>
-
-            <Input
-              label="Delivery scope"
-              value={form.deliveryScope}
-              onChangeText={(value) => updateField('deliveryScope', value)}
-              placeholder={DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryScope}
-            />
             <Input
               label="Additional instructions"
               value={form.buyerInstructionText}
@@ -1890,6 +1909,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: tokens.spacing.sm,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xs,
+    width: '100%',
+  },
+  segmentButton: {
+    flex: 1,
+    minHeight: 40,
+    paddingHorizontal: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentButtonText: {
+    textAlign: 'center',
   },
   switchRow: {
     flexDirection: 'row',

@@ -42,6 +42,8 @@ export type SelectFieldProps = {
   containerStyle?: StyleProp<ViewStyle>;
   /** Matches `Input`'s variants so the two stack cleanly. */
   variant?: 'default' | 'bare' | 'underline';
+  /** Tighter padding and typography for compact inline pickers (e.g. phone country codes). */
+  compact?: boolean;
   onPress: () => void;
   testID?: string;
 };
@@ -59,6 +61,7 @@ export function SelectField({
   leading,
   containerStyle,
   variant = 'default',
+  compact = false,
   onPress,
   testID,
 }: SelectFieldProps) {
@@ -117,14 +120,19 @@ export function SelectField({
                     pressed && !disabled ? theme.colors.primary : borderColor,
                 }
               : null),
-            paddingHorizontal: isPlain ? 0 : tokens.spacing.lg,
+            paddingHorizontal: isPlain
+              ? 0
+              : compact
+                ? tokens.spacing.sm
+                : tokens.spacing.lg,
+            gap: compact ? tokens.spacing.xs : tokens.spacing.sm,
           },
           disabled && styles.disabled,
         ]}
       >
         {leading ? <View style={styles.leading}>{leading}</View> : null}
         <AppText
-          variant="body"
+          variant={compact ? 'smallBold' : 'body'}
           tone={hasValue ? 'default' : 'muted'}
           numberOfLines={1}
           style={styles.value}

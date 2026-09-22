@@ -65,7 +65,7 @@ export function ComputedSizeChip({
         }
         style={({ pressed }) => [
           styles.chip,
-          { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.warning },
+          { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
           pressed ? styles.pressed : null,
         ]}
       >
@@ -90,7 +90,7 @@ export function ComputedSizeChip({
       accessibilityLabel={`Your size is ${state.size}. Open my fittings.`}
       style={({ pressed }) => [
         styles.chip,
-        { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.focusRing },
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
         pressed ? styles.pressed : null,
       ]}
     >

@@ -10,6 +10,7 @@ import {
   PHONE_COUNTRIES,
   checkPhoneCompleteness,
   formatAsYouType,
+  getCountryInitials,
   getDialCode,
   getExampleNationalNumber,
   getPhoneCountry,
@@ -159,17 +160,12 @@ export function PhoneNumberField({
           hideLabel
           value={
             selected
-              ? `${selected.flag ? `${selected.flag} ` : ''}${getDialCode(iso2)}`
-              : getDialCode(iso2)
+              ? `${selected.flag ? `${selected.flag} ` : ''}${getCountryInitials(iso2)}`
+              : getCountryInitials(iso2)
           }
           placeholder="Code"
-          /*
-            Always bordered, even inside a `bare` row. The picker has to read as
-            something you can press; a borderless code sitting beside a
-            borderless number is one continuous string, and the user's first
-            question becomes whether the +234 is editable.
-          */
           variant="default"
+          compact
           disabled={disabled}
           onPress={() => setPickerOpen(true)}
           containerStyle={styles.picker}
@@ -186,6 +182,15 @@ export function PhoneNumberField({
           textContentType="telephoneNumber"
           autoComplete="tel"
           editable={!disabled}
+          leading={
+            <View style={styles.dialCodeRow}>
+              <AppText variant="bodyBold" tone="secondary" style={styles.dialCodeText}>
+                {getDialCode(iso2)}
+              </AppText>
+              <View style={[styles.dialCodeDivider, { backgroundColor: theme.colors.border }]} />
+            </View>
+          }
+          leadingWidth={Math.max(54, 16 + getDialCode(iso2).length * 10 + 14)}
           onChangeText={(next) => {
             // Keep only digits in state; formatting is a view concern. The
             // leading trunk zero survives typing and is stripped at validation,
@@ -252,14 +257,25 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   picker: {
-    // Wide enough for a flag plus the longest dial code (+1-268 style codes are
-    // four digits), narrow enough that the number keeps the rest of the row.
-    width: 108,
+    // Sized for flag plus 3-letter country initials (e.g. 🇳🇬 NGN) and chevron.
+    width: 90,
     flexShrink: 0,
   },
   number: {
     flex: 1,
     minWidth: 0,
+  },
+  dialCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  dialCodeText: {
+    fontFamily: tokens.fontFamily.semiBold,
+  },
+  dialCodeDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 20,
   },
   message: {
     marginTop: tokens.spacing.xs,

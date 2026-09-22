@@ -506,6 +506,17 @@ export default function BuyerProfileScreen() {
   fallbackProfileRef.current = fallbackProfile;
   const profileRecord = state.profile ?? fallbackProfile;
   const profileIdentity = useMemo(() => resolveIdentity(profileRecord), [profileRecord]);
+  const shopperEmail = user?.email?.trim() || profileRecord?.email?.trim() || null;
+  const shopperAddress = useMemo(() => {
+    const parts = [
+      profileRecord?.address?.trim(),
+      profileRecord?.city?.trim(),
+      profileRecord?.state?.trim(),
+      profileRecord?.country?.trim(),
+    ].filter(Boolean);
+    if (parts.length > 0) return parts.join(', ');
+    return profileRecord?.location?.trim() || profileIdentity.locationLabel || null;
+  }, [profileIdentity.locationLabel, profileRecord]);
   const profileCounts = useMemo(
     () => ({
       saved: state.saved.length,
@@ -1076,19 +1087,24 @@ export default function BuyerProfileScreen() {
                 {profileIdentity.handle}
               </AppText>
             ) : null}
-            {/*
-              The same location tag a brand carries (`BrandProfileHeader`), for
-              the same reason: without the marker the line is just a place name
-              under a handle, and reads as part of the name rather than as where
-              the person is. Typography stays as it was — a shopper's location is
-              a quieter fact than a brand's, and this is about the marker.
-            */}
-            {profileIdentity.locationLabel ? (
-              <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-                📍 {profileIdentity.locationLabel}
-              </AppText>
+            {(shopperEmail || shopperAddress) ? (
+              <View style={styles.identityMetaStack}>
+                {shopperEmail ? (
+                  <View style={[styles.identityTag, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+                    <AppText variant="captionRegular" tone="muted" style={styles.identityTagText}>
+                      ✉️ {shopperEmail}
+                    </AppText>
+                  </View>
+                ) : null}
+                {shopperAddress ? (
+                  <View style={[styles.identityTag, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+                    <AppText variant="captionRegular" tone="muted" style={styles.identityTagText}>
+                      📍 {shopperAddress}
+                    </AppText>
+                  </View>
+                ) : null}
+              </View>
             ) : null}
-
           </View>
 
           {/*
