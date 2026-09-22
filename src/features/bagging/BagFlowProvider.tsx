@@ -81,6 +81,12 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
   const [customTarget, setCustomTarget] = useState<BagFlowTarget | null>(null);
   const [fittingsTarget, setFittingsTarget] = useState<BagFlowTarget | null>(null);
   const [staleTarget, setStaleTarget] = useState<BagFlowTarget | null>(null);
+  /**
+   * The custom sheet was reached by saving fittings first. Both sheets then say
+   * which step they are, so "save your measurements" and "custom order" read as
+   * one flow rather than two unrelated sheets asking for the same numbers.
+   */
+  const [customAfterFittings, setCustomAfterFittings] = useState(false);
   const [summaryTarget, setSummaryTarget] = useState<BagFlowTarget | null>(null);
   const [myBagVisible, setMyBagVisible] = useState(false);
   const [pendingAuth, setPendingAuth] = useState<PendingAuthResume | null>(null);
@@ -88,6 +94,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
   const pendingResumeRef = useRef<PendingAuthResume | null>(null);
 
   const closeActiveFlow = useCallback(() => {
+    setCustomAfterFittings(false);
     setSelectorTarget(null);
     setCustomTarget(null);
     setFittingsTarget(null);
@@ -395,6 +402,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
         onClose={closeActiveFlow}
         onResolved={(nextStatus) => {
           if (!fittingsTarget) return;
+          setCustomAfterFittings(true);
           void routeResolvedStatus(fittingsTarget.product, nextStatus);
         }}
       />
@@ -444,9 +452,11 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
         visible={Boolean(customTarget)}
         product={customTarget?.product ?? null}
         status={customTarget?.status ?? null}
+        afterFittings={customAfterFittings}
         onClose={closeActiveFlow}
         onCompleted={(nextStatus) => {
           if (!customTarget) return;
+          setCustomAfterFittings(false);
           setCustomTarget(null);
           setSummaryTarget({ product: customTarget.product, status: nextStatus });
         }}

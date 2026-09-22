@@ -144,6 +144,35 @@ check('the custom bag sheet reads delivery from the address book, not six bare f
   assert.doesNotMatch(sheet, /label="Customer name"/);
 });
 
+check('the custom sheet shows the price before anything is bagged, as web does', () => {
+  const sheet = read('components/bagging/CustomBagSheet.tsx');
+  assert.match(sheet, /label: 'Get price'/);
+  assert.match(sheet, /label: 'Add to bag'/);
+  // Pricing and bagging are separate handlers; one tap must not do both.
+  const getPrice = sheet.slice(sheet.indexOf('const handleGetPrice'), sheet.indexOf('const handleAddToBag'));
+  assert.doesNotMatch(getPrice, /addCustomOrder\(/, 'pricing must never add to the bag');
+  assert.match(sheet, /quote\.priceSummary\.grandTotal/);
+  assert.doesNotMatch(
+    sheet,
+    /noDirectMatchAcknowledged: true,/,
+    'the size-match note must be shown and acknowledged, not auto-accepted',
+  );
+  const api = read('src/api/StoreApi.ts');
+  assert.match(api, /priceSummary: toCustomPriceSummary\(summary\)/, 'the API client must keep the price it is sent');
+});
+
+check('a custom order keeps a street address, not just a city', () => {
+  const sheet = read('components/bagging/CustomBagSheet.tsx');
+  assert.match(sheet, /street: delivery\.street,/);
+  assert.match(sheet, /label="Street address"/);
+});
+
+check('the two custom-order sheets say which step they are', () => {
+  assert.match(read('components/bagging/BagFittingsSheet.tsx'), /'Step 1 of 2'/);
+  assert.match(read('components/bagging/CustomBagSheet.tsx'), /'Step 2 of 2'/);
+  assert.match(read('src/features/bagging/BagFlowProvider.tsx'), /afterFittings=\{customAfterFittings\}/);
+});
+
 let failed = 0;
 for (const { name, fn } of checks) {
   try {

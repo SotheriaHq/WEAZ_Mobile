@@ -507,15 +507,28 @@ export default function BuyerProfileScreen() {
   const profileRecord = state.profile ?? fallbackProfile;
   const profileIdentity = useMemo(() => resolveIdentity(profileRecord), [profileRecord]);
   const shopperEmail = user?.email?.trim() || profileRecord?.email?.trim() || null;
+  /**
+   * The PLACE, as a brand's header shows it — city, state, country.
+   *
+   * The street used to lead this line, which is what made it wrap: a full
+   * street address does not fit one line in the column beside the avatar at any
+   * readable size. Where someone lives is identity; the street is delivery
+   * detail, and it lives with the delivery address at checkout. The street is
+   * the last fallback only, for a profile with nothing else to show.
+   */
   const shopperAddress = useMemo(() => {
     const parts = [
-      profileRecord?.address?.trim(),
       profileRecord?.city?.trim(),
       profileRecord?.state?.trim(),
       profileRecord?.country?.trim(),
     ].filter(Boolean);
     if (parts.length > 0) return parts.join(', ');
-    return profileRecord?.location?.trim() || profileIdentity.locationLabel || null;
+    return (
+      profileRecord?.location?.trim() ||
+      profileIdentity.locationLabel ||
+      profileRecord?.address?.trim() ||
+      null
+    );
   }, [profileIdentity.locationLabel, profileRecord]);
   const profileCounts = useMemo(
     () => ({
@@ -1087,21 +1100,38 @@ export default function BuyerProfileScreen() {
                 {profileIdentity.handle}
               </AppText>
             ) : null}
+            {/*
+              Plain lines, the way a brand's header shows its location — no box.
+              Each was a bordered tag, which made two facts about the person
+              look like two buttons. One line each, never wrapped: a long
+              address or email shrinks to fit (down to 80%) instead of breaking
+              onto a second line and pushing the actions down.
+            */}
             {(shopperEmail || shopperAddress) ? (
               <View style={styles.identityMetaStack}>
-                {shopperEmail ? (
-                  <View style={[styles.identityTag, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                    <AppText variant="captionRegular" tone="muted" style={styles.identityTagText}>
-                      ✉️ {shopperEmail}
-                    </AppText>
-                  </View>
-                ) : null}
                 {shopperAddress ? (
-                  <View style={[styles.identityTag, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                    <AppText variant="captionRegular" tone="muted" style={styles.identityTagText}>
-                      📍 {shopperAddress}
-                    </AppText>
-                  </View>
+                  <AppText
+                    variant="small"
+                    tone="secondary"
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    style={styles.identityMetaLine}
+                  >
+                    📍 {shopperAddress}
+                  </AppText>
+                ) : null}
+                {shopperEmail ? (
+                  <AppText
+                    variant="small"
+                    tone="muted"
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    style={styles.identityMetaLine}
+                  >
+                    ✉️ {shopperEmail}
+                  </AppText>
                 ) : null}
               </View>
             ) : null}
@@ -1351,19 +1381,10 @@ const styles = StyleSheet.create({
   identityMetaStack: {
     gap: tokens.spacing.xs,
     marginTop: tokens.spacing.xs,
-    alignItems: 'flex-start',
   },
-  identityTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: 3,
-    borderRadius: tokens.radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    maxWidth: '100%',
-  },
-  identityTagText: {
-    flexShrink: 1,
+  identityMetaLine: {
+    // Full column width is what `adjustsFontSizeToFit` measures against.
+    alignSelf: 'stretch',
   },
   actionRow: {
     flexDirection: 'row',

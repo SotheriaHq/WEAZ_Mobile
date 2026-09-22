@@ -82,10 +82,51 @@ export interface ActiveCustomConfiguration {
   isActive: boolean;
 }
 
+export interface CustomPriceSummary {
+  grandTotal: number;
+  subtotal: number | null;
+  shippingFee: number | null;
+  rushFee: number | null;
+  fabricCharge: number | null;
+}
+
+/**
+ * The locked quote for a custom request.
+ *
+ * This used to be three ids — the server's price breakdown, lock expiry and
+ * size-match guidance were all discarded here, so the native sheet could not
+ * show a shopper what they were about to add to their bag. Web shows every one
+ * of these before its "Add to bag" button; the fields match its
+ * `PricePreviewResponse`.
+ */
 export interface CustomPricePreview {
   checkoutIntentId: string | null;
   configurationVersionId?: string;
   quoteStatus?: string;
+  currency: string;
+  priceSummary: CustomPriceSummary | null;
+  priceLockExpiresAt: string | null;
+  noDirectMatch: boolean;
+  conversionGuidance: string | null;
+}
+
+const asFiniteNumber = (value: unknown): number | null => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+function toCustomPriceSummary(raw: unknown): CustomPriceSummary | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const source = raw as Record<string, unknown>;
+  const grandTotal = asFiniteNumber(source.grandTotal);
+  if (grandTotal == null) return null;
+  return {
+    grandTotal,
+    subtotal: asFiniteNumber(source.subtotal),
+    shippingFee: asFiniteNumber(source.shippingFee),
+    rushFee: asFiniteNumber(source.rushFee),
+    fabricCharge: asFiniteNumber(source.fabricCharge),
+  };
 }
 
 export interface CustomBagState {
@@ -1473,10 +1514,16 @@ export const MobileStoreApi = {
     });
 
     const data = unwrapData<Record<string, unknown>>(response.data);
+    const summary = data?.buyerPriceSummary as Record<string, unknown> | null | undefined;
     return {
       checkoutIntentId: asString(data?.checkoutIntentId),
       configurationVersionId: asString(data?.configurationVersionId) ?? undefined,
       quoteStatus: asString(data?.quoteStatus) ?? undefined,
+      currency: asString(data?.currency) ?? asString(summary?.currency) ?? 'NGN',
+      priceSummary: toCustomPriceSummary(summary),
+      priceLockExpiresAt: asString(data?.priceLockExpiresAt),
+      noDirectMatch: data?.noDirectMatch === true,
+      conversionGuidance: asString(data?.conversionGuidance),
     };
   },
 

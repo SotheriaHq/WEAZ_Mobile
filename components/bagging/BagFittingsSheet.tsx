@@ -178,11 +178,21 @@ export default function BagFittingsSheet({ visible, product, status, onClose, on
     <AppBottomSheet
       visible={visible}
       title={`${status?.custom.freshnessState === 'STALE' || status?.custom.freshnessState === 'VERY_STALE' ? 'Update' : 'Finish'} fittings for ${product?.name || 'this item'}`}
-      subtitle={status?.custom.freshnessState === 'STALE' || status?.custom.freshnessState === 'VERY_STALE' ? 'Refresh the measurements required for this bag request.' : 'Add the missing measurements before continuing this bag request.'}
+      // When a custom order follows, say so: this is step 1, and the price and
+      // bag come next. Without it the next sheet looked like a second, unrelated
+      // form. A standard-size item has no custom step after it.
+      headerMeta={status?.custom.configurationId ? 'Step 1 of 2' : undefined}
+      subtitle={
+        status?.custom.configurationId
+          ? 'Save the measurements this piece needs. Next you will see your price.'
+          : status?.custom.freshnessState === 'STALE' || status?.custom.freshnessState === 'VERY_STALE'
+            ? 'Refresh the measurements required for this bag request.'
+            : 'Add the missing measurements before continuing this bag request.'
+      }
       onClose={onClose}
       showCloseButton
       onDone={handleSave}
-      doneLabel="Save"
+      doneLabel={status?.custom.configurationId ? 'Save & continue' : 'Save'}
       doneDisabled={loading || saving || measurementsToEdit.length === 0 || unresolvedKeys.length > 0}
       loading={saving}
       scrollable
