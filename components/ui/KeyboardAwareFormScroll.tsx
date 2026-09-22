@@ -101,10 +101,19 @@ export const KeyboardAwareFormScroll = forwardRef<
   const scrollOffsetY = useRef(0);
   // Seeded from the live keyboard so a form mounted under an open keyboard is
   // right on frame one, rather than waiting for a show event that already fired.
+  const baseWindowHeightRef = useRef(Dimensions.get('window').height);
   const keyboardHeightRef = useRef(currentKeyboardHeight());
+  const initialWinHeight = Dimensions.get('window').height;
+  const initialResizedBySystem =
+    Platform.OS === 'android' &&
+    keyboardHeightRef.current > 0 &&
+    baseWindowHeightRef.current - initialWinHeight > keyboardHeightRef.current * 0.5;
+
   const bottomSpacer = useSharedValue(
     keyboardHeightRef.current > 0
-      ? keyboardHeightRef.current + bottomOffset + extraKeyboardSpace
+      ? (initialResizedBySystem
+          ? bottomOffset + extraKeyboardSpace
+          : keyboardHeightRef.current + bottomOffset + extraKeyboardSpace)
       : extraKeyboardSpace,
   );
 
@@ -163,9 +172,18 @@ export const KeyboardAwareFormScroll = forwardRef<
 
     const applyKeyboardHeight = (height: number) => {
       keyboardHeightRef.current = height;
-      // One layout pass, not one per frame. See the component doc block.
+      const isAndroid = Platform.OS === 'android';
+      const currentWinHeight = Dimensions.get('window').height;
+      const resizedBySystem =
+        isAndroid &&
+        height > 0 &&
+        baseWindowHeightRef.current - currentWinHeight > height * 0.5;
+
+      // When the Android window is already resized by the system, we do not add a duplicate height spacer
       bottomSpacer.value =
-        height > 0 ? height + bottomOffset + extraKeyboardSpace : extraKeyboardSpace;
+        height > 0
+          ? (resizedBySystem ? bottomOffset + extraKeyboardSpace : height + bottomOffset + extraKeyboardSpace)
+          : extraKeyboardSpace;
     };
 
     const onShow = (event: KeyboardEvent) => {
@@ -176,7 +194,12 @@ export const KeyboardAwareFormScroll = forwardRef<
     };
 
     const onHide = () => {
-      applyKeyboardHeight(0);
+      keyboardHeightRef.current = 0;
+      bottomSpacer.value = extraKeyboardSpace;
+      const currentWinHeight = Dimensions.get('window').height;
+      if (currentWinHeight > baseWindowHeightRef.current) {
+        baseWindowHeightRef.current = currentWinHeight;
+      }
     };
 
     const subs = [

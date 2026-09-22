@@ -73,7 +73,7 @@ import { MuseLoader } from '@/components/ui/MuseLoader';
 type LengthUnit = 'CM' | 'IN';
 type CoreValues = Record<CoreMeasurementKey, string>;
 
-const FOOTER_CLEARANCE = 132;
+const FOOTER_CLEARANCE = 112;
 
 type FittingsTab = 'measurements' | 'sizes';
 
@@ -308,6 +308,7 @@ export default function FittingsScreen() {
   }
 
   const unitSuffix = unit.toLowerCase();
+  const footerClearance = Math.max(FOOTER_CLEARANCE, insets.bottom + 80);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
@@ -329,9 +330,12 @@ export default function FittingsScreen() {
 
       <KeyboardAwareFormScroll
         style={styles.flex}
-        contentContainerStyle={styles.content}
-        bottomOffset={FOOTER_CLEARANCE + tokens.spacing.lg}
-        extraKeyboardSpace={FOOTER_CLEARANCE}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: activeTab === 'measurements' ? footerClearance : tokens.spacing.xl },
+        ]}
+        bottomOffset={tokens.spacing.xl}
+        extraKeyboardSpace={0}
         automaticallyAdjustKeyboardInsets={false}
       >
         {activeTab === 'sizes' ? (
@@ -483,25 +487,27 @@ export default function FittingsScreen() {
         on screen in the first frame even when this screen opens with a keyboard
         already up.
       */}
-      <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }}>
-        <View
-          style={[
-            styles.footer,
-            {
-              backgroundColor: theme.colors.bg,
-              borderTopColor: theme.colors.border,
-              paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
-            },
-          ]}
-        >
-          <Button
-            title="Save fittings"
-            size="md"
-            onPress={() => void handleSave()}
-            loading={saving}
-          />
-        </View>
-      </KeyboardStickyFooter>
+      {activeTab === 'measurements' && !loading && !loadError ? (
+        <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }}>
+          <View
+            style={[
+              styles.footer,
+              {
+                backgroundColor: theme.colors.bg,
+                borderTopColor: theme.colors.border,
+                paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
+              },
+            ]}
+          >
+            <Button
+              title="Save fittings"
+              size="md"
+              onPress={() => void handleSave()}
+              loading={saving}
+            />
+          </View>
+        </KeyboardStickyFooter>
+      ) : null}
     </SafeAreaView>
   );
 }

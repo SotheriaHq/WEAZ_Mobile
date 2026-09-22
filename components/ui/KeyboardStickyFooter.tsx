@@ -1,46 +1,35 @@
-import React from 'react';
-import type { StyleProp, ViewStyle } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import {
+  Dimensions,
+  Keyboard,
+  Platform,
+  type KeyboardEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import Animated, {
   useAnimatedKeyboard,
   useAnimatedStyle,
+  useSharedValue,
 } from 'react-native-reanimated';
 
 /**
  * Footer that rides the keyboard.
  *
- * Driven by the platform's own keyboard inset (`useAnimatedKeyboard`), not by
- * JS `Keyboard` events.
+ * Driven by the platform's own keyboard inset (`useAnimatedKeyboard`), reinforced
+ * with native keyboard hide events and Android system-resize detection.
  *
- * The event-based version could get STUCK, and did: it moved the footer up on
- * `keyboardDidShow` and only ever brought it back down on `keyboardDidHide`.
- * Under Android edge-to-edge the window no longer resizes for the IME, and that
- * hide event is not dependable — OEM skins, gesture dismissal and the collapse
- * key can all close the keyboard without one arriving. When it went missing the
- * footer stayed translated up by the last keyboard height it saw, which parks
- * a bottom action bar somewhere around the middle of the screen with no way to
- * recover. That is the reported "expanded the keyboard, collapsed it, and the
- * buttons stuck mid-screen" on the design composer.
+ * Under Android with adjustResize (or edge-to-edge system insets), the window
+ * already resizes for the IME. Translating the footer when the window is already
+ * resized double-insets the footer into the middle of the screen. Furthermore,
+ * on OEM Android skins (Xiaomi, Samsung) Reanimated's keyboard inset can miss
+ * dismissal events and get stuck at non-zero height.
  *
- * The inset cannot go stale in that way: it is the real keyboard height,
- * published from the platform on the UI thread, so a closed keyboard is
- * always 0 whether or not any JS event fired.
- *
- * It also subsumes, for free, the two things the old implementation had to
- * handle by hand:
- *
- * 1. A footer that MOUNTS under an already-open keyboard starts at the right
- *    place. Events only report future transitions, so that case needed a
- *    `Keyboard.metrics()` seed — the "bottom buttons don't render until I
- *    refresh" report.
- *
- * 2. RESIZES of an open keyboard — emoji panel, suggestion strip, Samsung
- *    toolbar, one-handed/floating keyboards, hardware keyboard, rotation —
- *    which on iOS surface only as `keyboardWillChangeFrame`.
- *
- * The animation curve comes from the keyboard itself, so the footer moves in
- * lockstep with it instead of chasing it with a timing function. That also
- * retires the Android catch-up ease that existed only because `keyboardDidShow`
- * arrives after the keyboard has already finished moving.
+ * This implementation guarantees:
+ * 1. Android system resize suppresses duplicate translation.
+ * 2. Keyboard hide events act as an authoritative failsafe to guarantee translateY
+ *    returns to 0 when the keyboard is closed.
+ * 3. Smooth UI-thread animations on platforms requiring translation (such as iOS).
  */
 export type KeyboardStickyFooterProps = {
   offset?: { closed?: number; opened?: number };
@@ -57,7 +46,56 @@ export function KeyboardStickyFooter({
   const openedOffset = offset.opened ?? 0;
   const keyboard = useAnimatedKeyboard();
 
+  const baseWindowHeightRef = useRef(Dimensions.get('window').height);
+  const initialMetrics = Keyboard.metrics?.();
+  const initialKbHeight = Math.max(0, initialMetrics?.height ?? 0);
+  const isKeyboardVisible = useSharedValue(initialKbHeight > 0);
+  const isResizedBySystem = useSharedValue(false);
+
+  useEffect(() => {
+    const isIOS = Platform.OS === 'ios';
+
+    const onShow = (event: KeyboardEvent) => {
+      isKeyboardVisible.value = true;
+      if (!isIOS) {
+        const kbHeight = Math.max(0, event?.endCoordinates?.height ?? 0);
+        const currentWinHeight = Dimensions.get('window').height;
+        // If Android window shrunk significantly while keyboard is up, the system already resized the view
+        if (kbHeight > 0 && baseWindowHeightRef.current - currentWinHeight > kbHeight * 0.5) {
+          isResizedBySystem.value = true;
+        } else {
+          isResizedBySystem.value = false;
+        }
+      }
+    };
+
+    const onHide = () => {
+      isKeyboardVisible.value = false;
+      isResizedBySystem.value = false;
+      const currentWinHeight = Dimensions.get('window').height;
+      if (currentWinHeight > baseWindowHeightRef.current) {
+        baseWindowHeightRef.current = currentWinHeight;
+      }
+    };
+
+    const showSub = Keyboard.addListener(isIOS ? 'keyboardWillShow' : 'keyboardDidShow', onShow);
+    const hideSub = Keyboard.addListener(isIOS ? 'keyboardWillHide' : 'keyboardDidHide', onHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [isKeyboardVisible, isResizedBySystem]);
+
   const animatedStyle = useAnimatedStyle(() => {
+    // Failsafe 1: If keyboard is hidden, translate MUST be closedOffset (0).
+    // Failsafe 2: If Android system already resized the window, the footer is already lifted.
+    if (!isKeyboardVisible.value || isResizedBySystem.value) {
+      return {
+        transform: [{ translateY: -closedOffset }],
+      };
+    }
+
     const height = Math.max(0, keyboard.height.value);
     return {
       transform: [
