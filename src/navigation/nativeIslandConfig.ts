@@ -5,6 +5,7 @@ export const NATIVE_ISLAND_KEYS = {
   designs: 'designs',
   market: 'market',
   bag: 'bag',
+  charts: 'charts',
   inbox: 'inbox',
   profile: 'profile',
 } as const;
@@ -32,6 +33,9 @@ export const NATIVE_ISLAND_ICONS: Record<NativeIslandKey | 'signIn', string> = {
   designs: String.fromCodePoint(0x1f457),
   market: String.fromCodePoint(0x1f3ea),
   bag: MY_BAG_EMOJI,
+  // The triangular rule — the same mark as the Size Guide entry in Settings
+  // and the size chip on the profile, so the three read as one feature.
+  charts: String.fromCodePoint(0x1f4d0),
   inbox: String.fromCodePoint(0x2709, 0xfe0f),
   profile: String.fromCodePoint(0x1f464),
   signIn: String.fromCodePoint(0x1f510),
@@ -262,6 +266,8 @@ export function mapPathnameToIslandKey(pathname: string): NativeIslandKey {
 
   if (normalized === '/bag' || normalized === '/checkout' || normalized === '/payment') return NATIVE_ISLAND_KEYS.bag;
 
+  if (normalized === '/charts') return NATIVE_ISLAND_KEYS.charts;
+
   if (normalized === '/inbox' || normalized.startsWith('/messages/')) return NATIVE_ISLAND_KEYS.inbox;
 
   if (
@@ -319,6 +325,12 @@ export function buildNativeIslandItems(args: {
       badge: args.bagBadge,
     },
     {
+      key: NATIVE_ISLAND_KEYS.charts,
+      label: 'Charts',
+      emoji: NATIVE_ISLAND_ICONS.charts,
+      active: args.activeKey === NATIVE_ISLAND_KEYS.charts,
+    },
+    {
       key: NATIVE_ISLAND_KEYS.inbox,
       label: 'Inbox',
       emoji: NATIVE_ISLAND_ICONS.inbox,
@@ -337,8 +349,13 @@ export function buildNativeIslandItems(args: {
   // Brands do not shop. Bag is a buyer surface, and leaving it on the brand
   // island gave sellers a route into their own checkout — and from there into
   // the buyer orders screen, which is not their orders at all.
+  //
+  // Charts goes with it, for the same reason: it reads a SHOPPER's fittings
+  // against size grades, and a brand has no fittings to read.
   return args.isBrand
-    ? baseItems.filter((item) => item.key !== NATIVE_ISLAND_KEYS.bag)
+    ? baseItems.filter(
+        (item) => item.key !== NATIVE_ISLAND_KEYS.bag && item.key !== NATIVE_ISLAND_KEYS.charts,
+      )
     : baseItems;
 }
 
@@ -346,6 +363,7 @@ export function getNativeIslandRoute(key: string, isBrand: boolean) {
   if (key === NATIVE_ISLAND_KEYS.designs) return '/' as const;
   if (key === NATIVE_ISLAND_KEYS.market) return '/(tabs)/discover' as const;
   if (key === NATIVE_ISLAND_KEYS.inbox) return '/(tabs)/inbox' as const;
+  if (key === NATIVE_ISLAND_KEYS.charts) return '/(tabs)/charts' as const;
   if (key === NATIVE_ISLAND_KEYS.profile) return isBrand ? '/catalog' : '/(tabs)/me';
   return null;
 }

@@ -114,6 +114,26 @@ export function AppBottomSheet({
   const bodyScrollYRef = React.useRef(0);
 
   /**
+   * Whether the body actually has anything to scroll.
+   *
+   * On Android the body is a NATIVE ScrollView, and a native ScrollView takes
+   * every vertical drag past its touch slop — including a downward one at the
+   * top, where it has nowhere to go. When it does, the JS responder is
+   * cancelled and the sheet snaps back. That is why a swipe on the content
+   * "only worked from the top strip": the handle and header sit outside the
+   * scroller, the body does not.
+   *
+   * A body whose content fits has nothing to scroll, so scrolling is switched
+   * off there. With it off, the native view never claims the drag and the
+   * whole sheet — fields, labels, empty space — is draggable. Unmeasured counts
+   * as overflowing, so nothing that needs to scroll can start out stuck.
+   */
+  const [bodyViewportHeight, setBodyViewportHeight] = React.useState(0);
+  const [bodyContentHeight, setBodyContentHeight] = React.useState(0);
+  const bodyOverflows =
+    bodyViewportHeight <= 0 || bodyContentHeight > bodyViewportHeight + 1;
+
+  /**
    * How far the sheet has to move to be gone.
    *
    * The close animation used to travel to a fixed `28` — a 28pt nudge that
@@ -128,7 +148,12 @@ export function AppBottomSheet({
   const sheetHeightRef = React.useRef(EXIT_TRAVEL_FALLBACK);
 
   React.useEffect(() => {
-    if (!mounted) bodyScrollYRef.current = 0;
+    if (mounted) return;
+    bodyScrollYRef.current = 0;
+    // The next opening may hold different content; measure it afresh rather
+    // than start from the last sheet's verdict on whether it could scroll.
+    setBodyViewportHeight(0);
+    setBodyContentHeight(0);
   }, [mounted]);
 
   /** Distance that puts the sheet fully below the screen edge. */
@@ -247,9 +272,42 @@ export function AppBottomSheet({
          * ScrollView would have consumed it and done nothing anyway.
          */
         onMoveShouldSetPanResponderCapture: (_, gestureState) =>
-          bodyScrollYRef.current <= 0 &&
+          // `<= 1`, not `<= 0`: Android reports sub-pixel offsets (0.33, 0.67)
+          // for a body resting at the top after a keyboard or layout change,
+          // and a strict zero check read those as "scrolled" and refused the
+          // drag for the rest of the sheet's life.
+          bodyScrollYRef.current <= 1 &&
           gestureState.dy > 3 &&
           gestureState.dy > Math.abs(gestureState.dx),
+        // Once a clear downward pull is ours, a nested input or chip scroller
+        // asking for it back must not snap the sheet up mid-drag.
+        onPanResponderTerminationRequest: () => false,
+        ...dragHandlers,
+      }),
+    [dragHandlers],
+  );
+
+  /**
+   * Pull down on the dimmed area to close, exactly as on the sheet.
+   *
+   * Outside the sheet only a TAP did anything. A person who puts a thumb on the
+   * empty space above and drags down — the gesture every other sheet on the
+   * phone answers — got nothing until they lifted, and then the sheet vanished
+   * without having moved, which reads as a glitch rather than a dismissal. The
+   * sheet now follows the finger from there too, and is released or thrown
+   * away by the same rules as a drag on the sheet itself.
+   *
+   * Capture phase, so it can take the gesture from the backdrop `Pressable`
+   * once it is clearly a downward drag. That TERMINATES the press, so a drag
+   * never also fires the tap-to-close — one gesture, one dismissal. A tap that
+   * does not move is untouched and still closes on release.
+   */
+  const backdropDragResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          gestureState.dy > 4 && gestureState.dy > Math.abs(gestureState.dx),
+        onPanResponderTerminationRequest: () => false,
         ...dragHandlers,
       }),
     [dragHandlers],
@@ -405,6 +463,16 @@ export function AppBottomSheet({
          * enough — which the paired fittings grid did.
          */
         style: { flexShrink: 1 },
+        // Off when the content fits — see `bodyOverflows`. The ScrollView stays
+        // mounted either way, so `keyboardShouldPersistTaps` still governs taps.
+        scrollEnabled: bodyOverflows,
+        onLayout: (event: { nativeEvent: { layout: { height: number } } }) => {
+          const height = event.nativeEvent.layout.height;
+          if (height > 0) setBodyViewportHeight(height);
+        },
+        onContentSizeChange: (_width: number, height: number) => {
+          setBodyContentHeight(height);
+        },
         scrollEventThrottle: 16,
         // Feeds `sheetDragResponder`: a swipe-down only becomes a dismiss when
         // there is nothing left to scroll up to.
@@ -466,25 +534,28 @@ export function AppBottomSheet({
           Split, both hold. `onPress` completes on lift and is cancelled if the
           finger leaves the bounds, so the tap can be taken back.
         */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPressIn={() => {
-            Keyboard.dismiss();
-          }}
-          onPress={() => {
-            onClose();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Close sheet"
-        >
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              backdropStyle,
-              { backgroundColor: theme.colors.backdrop },
-            ]}
-          />
-        </Pressable>
+        {/* Drag-down on the dimmed area moves the sheet — `backdropDragResponder`. */}
+        <View style={StyleSheet.absoluteFill} {...backdropDragResponder.panHandlers}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPressIn={() => {
+              Keyboard.dismiss();
+            }}
+            onPress={() => {
+              onClose();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Close sheet"
+          >
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFill,
+                backdropStyle,
+                { backgroundColor: theme.colors.backdrop },
+              ]}
+            />
+          </Pressable>
+        </View>
         {/*
           `box-none` is load-bearing.
 

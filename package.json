@@ -36,6 +36,7 @@
     "test:notification-settings-contract": "node scripts/test-notification-settings-contract.js",
     "test:push-token-registration-contract": "node scripts/test-push-token-registration-contract.js",
     "test:email-verification-notice-contract": "node scripts/test-email-verification-notice-contract.js",
+    "test:size-charts-contract": "node scripts/test-size-charts-contract.js",
     "test:shopper-settings-contract": "node scripts/test-shopper-settings-contract.js",
     "test:market-signal-queue-contract": "node scripts/test-market-signal-queue-contract.js",
     "test:request-budget-contract": "node scripts/test-request-budget-contract.js",

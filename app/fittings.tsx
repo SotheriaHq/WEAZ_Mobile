@@ -35,7 +35,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -67,7 +68,7 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
-import { drillDownPush } from '@/src/utils/mobileNavigation';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type LengthUnit = 'CM' | 'IN';
@@ -87,6 +88,18 @@ const emptyCoreValues = (): CoreValues =>
   Object.fromEntries(CORE_MEASUREMENT_SLOTS.map((slot) => [slot.key, ''])) as CoreValues;
 
 const sanitizeNumeric = (value: string) => value.replace(/[^0-9.]/g, '');
+
+/** The form as one comparable string, for the unsaved-changes check. */
+const snapshotForm = (
+  core: Record<string, string>,
+  extras: Record<string, string>,
+  unit: string,
+) =>
+  JSON.stringify({
+    unit,
+    core: Object.entries(core).map(([key, value]) => [key, String(value ?? '').trim()]).sort(),
+    extras: Object.entries(extras).map(([key, value]) => [key, String(value ?? '').trim()]).sort(),
+  });
 
 export default function FittingsScreen() {
   const { theme } = useTheme();
@@ -113,6 +126,13 @@ export default function FittingsScreen() {
    */
   const seededRef = useRef(false);
 
+  /**
+   * What the form held when it last matched the server — on load, and after
+   * every save. Comparing against it is how the Charts button knows whether
+   * leaving would throw typed numbers away.
+   */
+  const savedSnapshotRef = useRef<string | null>(null);
+
   const [extraKeys, setExtraKeys] = useState<Array<{ key: string; label: string }>>([]);
 
   const load = useCallback(async () => {
@@ -132,15 +152,20 @@ export default function FittingsScreen() {
 
       if (!seededRef.current) {
         const collapsed = collapseMeasurements(profile?.measurements);
-        setUnit(profile?.preferredLengthUnit ?? 'CM');
-        setCoreValues(
-          Object.fromEntries(
-            CORE_MEASUREMENT_SLOTS.map((slot) => [slot.key, collapsed.core[slot.key] ?? '']),
-          ) as CoreValues,
+        const seededCore = Object.fromEntries(
+          CORE_MEASUREMENT_SLOTS.map((slot) => [slot.key, collapsed.core[slot.key] ?? '']),
+        ) as CoreValues;
+        const seededExtras = Object.fromEntries(
+          collapsed.extras.map((entry) => [entry.key, entry.value]),
         );
+        setUnit(profile?.preferredLengthUnit ?? 'CM');
+        setCoreValues(seededCore);
         setExtraKeys(collapsed.extras.map(({ key, label }) => ({ key, label })));
-        setExtraValues(
-          Object.fromEntries(collapsed.extras.map((entry) => [entry.key, entry.value])),
+        setExtraValues(seededExtras);
+        savedSnapshotRef.current = snapshotForm(
+          seededCore,
+          seededExtras,
+          profile?.preferredLengthUnit ?? 'CM',
         );
         seededRef.current = true;
       }
@@ -219,8 +244,8 @@ export default function FittingsScreen() {
     [unit],
   );
 
-  const handleSave = useCallback(async () => {
-    if (saving) return;
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (saving) return false;
     setSaving(true);
     try {
       /*
@@ -249,22 +274,70 @@ export default function FittingsScreen() {
       // The estimate is derived from what we just saved, so re-read it rather
       // than leaving a stale size on screen next to fresh numbers.
       setComputed(await ProfileApi.getComputedSizeFit().catch(() => computed));
+      savedSnapshotRef.current = snapshotForm(coreValues, extraValues, unit);
       toast.success('Fittings saved.');
+      return true;
     } catch (error) {
       toast.error(
         error instanceof Error && error.message.trim()
           ? error.message
           : 'Could not save your fittings. Please try again.',
       );
+      return false;
     } finally {
       setSaving(false);
     }
   }, [computed, coreValues, extraKeys, extraValues, saving, toast, unit]);
 
+  const { from } = useLocalSearchParams<{ from?: string }>();
+
+  /**
+   * Fittings ↔ Charts, both ways.
+   *
+   * Opened FROM the charts, this steps back to them — the charts are a tab that
+   * stayed mounted underneath, so going back returns to the same chart and
+   * scroll position, now re-read against whatever was just saved. Opened from
+   * anywhere else, it navigates to the Charts tab.
+   *
+   * Leaving with typed but unsaved numbers asks first. The round trip exists
+   * precisely so a shopper can change a measurement and check where it lands;
+   * losing the change on the way over would defeat it.
+   */
+  const openCharts = useCallback(() => {
+    const go = () => {
+      if (from === 'charts' && router.canGoBack()) {
+        router.back();
+        return;
+      }
+      topLevelNavigate('/charts' as never);
+    };
+
+    const dirty =
+      savedSnapshotRef.current !== null &&
+      snapshotForm(coreValues, extraValues, unit) !== savedSnapshotRef.current;
+    if (!dirty) {
+      go();
+      return;
+    }
+
+    Alert.alert('Save your changes first?', 'Some measurements have not been saved yet.', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: go },
+      {
+        text: 'Save',
+        onPress: () => {
+          void handleSave().then((saved) => {
+            if (saved) go();
+          });
+        },
+      },
+    ]);
+  }, [coreValues, extraValues, from, handleSave, unit]);
+
   if (status === 'loading' || (loading && !sizeFit)) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <FittingsHeader />
+        <FittingsHeader onOpenCharts={openCharts} />
         <View style={styles.stateWrap}>
           <MuseLoader size={20} />
           <AppText variant="body" tone="muted">
@@ -278,7 +351,7 @@ export default function FittingsScreen() {
   if (!isAuthenticated) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <FittingsHeader />
+        <FittingsHeader onOpenCharts={openCharts} />
         <View style={styles.stateContent}>
           <SettingsStateCard
             title="Sign in required"
@@ -294,7 +367,7 @@ export default function FittingsScreen() {
   if (loadError && !sizeFit) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <FittingsHeader />
+        <FittingsHeader onOpenCharts={openCharts} />
         <View style={styles.stateContent}>
           <SettingsStateCard
             title="Could not load your fittings"
@@ -312,7 +385,7 @@ export default function FittingsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <FittingsHeader />
+      <FittingsHeader onOpenCharts={openCharts} />
 
       {/*
         Two jobs, two tabs.
@@ -512,7 +585,7 @@ export default function FittingsScreen() {
   );
 }
 
-function FittingsHeader() {
+function FittingsHeader({ onOpenCharts }: { onOpenCharts?: () => void }) {
   const { theme } = useTheme();
   return (
     <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
@@ -525,6 +598,10 @@ function FittingsHeader() {
           Saved once, reused on every custom order
         </AppText>
       </View>
+      {/* The other half of the round trip: see where these numbers land. */}
+      {onOpenCharts ? (
+        <Button title="📐 Charts" size="sm" variant="secondary" onPress={onOpenCharts} />
+      ) : null}
     </View>
   );
 }

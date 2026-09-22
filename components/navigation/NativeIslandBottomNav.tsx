@@ -185,7 +185,13 @@ export function NativeIslandBottomNav({
   // Studio docks have 9 chips — do not compress them into flex:1 slots.
   // Scroll horizontally with a fixed min width so spacing matches the main
   // 5-item dock instead of "crammed into the bar".
-  const scrollableDock = items.length > 5;
+  //
+  // The line is at SIX, not five. The shopper island is six with Charts, and
+  // at `> 5` it tipped into the scrolling dock, which on a phone pushes "Me"
+  // past the edge — the one tab you must never have to swipe to find. The
+  // compact fixed layout below already existed for exactly six items (see the
+  // `items.length >= 6` branch) and was simply unreachable.
+  const scrollableDock = items.length > 6;
   const compact = !scrollableDock && (items.length >= 6 || windowWidth < 380);
   const [pressedItemKey, setPressedItemKey] = React.useState<string | null>(null);
   const [immediateActiveKey, setImmediateActiveKey] = React.useState<string | null>(null);

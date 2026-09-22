@@ -3,9 +3,20 @@ import { StyleSheet, View } from 'react-native';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { MuseLoader } from '@/components/ui/MuseLoader';
-import { ProfileApi, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
+import {
+  ProfileApi,
+  type SavedDeliveryAddress,
+  type SizeFitProfile,
+  type UserProfile,
+} from '@/src/api/ProfileApi';
+import {
+  formatMeasurementLabel,
+  getMeasurementHint,
+} from '@/src/features/sizing/measurementCatalog';
 import { MobileStoreApi, type ProductBagStatus } from '@/src/api/StoreApi';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import {
@@ -36,15 +47,6 @@ type Props = {
   onClose: () => void;
   onCompleted: (nextStatus: ProductBagStatus) => void;
 };
-
-const toTitleCase = (value: string) =>
-  value
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .map((part) => (part ? `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}` : part))
-    .join(' ');
 
 const toApiErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error === 'string' && error.trim()) return error;
@@ -92,6 +94,37 @@ const buildLocationFields = (profile: UserProfile | null) => {
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
+/**
+ * The address the shopper last used — the same book checkout and the web
+ * composer read from, so a custom request goes where their orders go.
+ */
+const pickLatestAddress = (addresses: SavedDeliveryAddress[]) =>
+  [...addresses].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0] ?? null;
+
+const nameFromAddress = (address: SavedDeliveryAddress | null) =>
+  (address?.customerName || [address?.firstName, address?.lastName].filter(Boolean).join(' ')).trim();
+
+type DeliveryDetails = {
+  customerName: string;
+  email: string;
+  phone: string;
+  city: string;
+  state: string;
+  country: string;
+};
+
+/** What still has to be supplied before the request can be sent, in words. */
+const listMissingDelivery = (details: DeliveryDetails): string[] => {
+  const missing: string[] = [];
+  if (details.customerName.trim().length < 3) missing.push('name');
+  if (!isValidEmail(details.email)) missing.push('valid email');
+  if (!isValidPhone(details.phone.trim())) missing.push('phone');
+  if (!details.city.trim()) missing.push('city');
+  if (!details.state.trim()) missing.push('state');
+  if (!details.country.trim()) missing.push('country');
+  return missing;
+};
+
 export default function CustomBagSheet({ visible, product, status, onClose, onCompleted }: Props) {
   const toast = useToast();
   const { addCustomOrder, prepareBag, prepareSourceBag } = useMobileBagging();
@@ -107,6 +140,18 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [manualQuoteRequired, setManualQuoteRequired] = useState(false);
+  /**
+   * Whether the delivery fields are on screen.
+   *
+   * This sheet asked for name, email, phone, city, state and country as six
+   * bare fields above the measurements — on a sheet whose job is "check the
+   * fittings for this piece". The web composer never asks for them: it reads
+   * the saved delivery address. The server does need them attached to the
+   * request, so they are still sent, but they are filled from the same address
+   * book and shown as one line. The fields appear only when something is
+   * actually missing, or when the shopper chooses to change them.
+   */
+  const [editingDelivery, setEditingDelivery] = useState(false);
 
   const requiredKeys = useMemo(
     () => status?.custom.requiredMeasurementKeys ?? [],
@@ -135,17 +180,35 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
     }
 
     setLoadingProfile(true);
+    setEditingDelivery(false);
 
-    void Promise.all([ProfileApi.getMe(), ProfileApi.getSizeFit()])
-      .then(([nextProfile, sizeFit]) => {
+    void Promise.all([
+      ProfileApi.getMe(),
+      ProfileApi.getSizeFit(),
+      // No address book is a normal state for a new shopper, not an error.
+      ProfileApi.getDeliveryAddresses().catch(() => [] as SavedDeliveryAddress[]),
+    ])
+      .then(([nextProfile, sizeFit, addresses]) => {
         if (!active) return;
+        const saved = pickLatestAddress(addresses);
         const location = buildLocationFields(nextProfile);
-        setCustomerName(buildCustomerName(nextProfile));
-        setEmail(nextProfile?.email ?? '');
-        setPhone('');
-        setCity(location.city);
-        setStateName(location.state);
-        setCountry(location.country);
+        const resolved: DeliveryDetails = {
+          customerName: nameFromAddress(saved) || buildCustomerName(nextProfile),
+          email: saved?.contactEmail || nextProfile?.email || '',
+          phone: saved?.phone ?? '',
+          city: saved?.city || location.city,
+          state: saved?.state || location.state,
+          country: saved?.country || location.country,
+        };
+        setCustomerName(resolved.customerName);
+        setEmail(resolved.email);
+        setPhone(resolved.phone);
+        setCity(resolved.city);
+        setStateName(resolved.state);
+        setCountry(resolved.country);
+        // Only a gap earns the fields. Decided from the loaded values, not an
+        // effect: on first render every field is empty and would always open.
+        setEditingDelivery(listMissingDelivery(resolved).length > 0);
         const measurements = extractNumericMeasurements(sizeFit);
         setValues(
           requiredKeys.reduce<Record<string, string>>((acc, key) => {
@@ -190,16 +253,18 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
   const trimmedCity = city.trim();
   const trimmedState = stateName.trim();
   const trimmedCountry = country.trim();
-  const missingContactFields = useMemo(() => {
-    const missing: string[] = [];
-    if (trimmedCustomerName.length < 3) missing.push('name');
-    if (!isValidEmail(trimmedEmail)) missing.push('valid email');
-    if (!isValidPhone(trimmedPhone)) missing.push('phone');
-    if (!trimmedCity) missing.push('city');
-    if (!trimmedState) missing.push('state');
-    if (!trimmedCountry) missing.push('country');
-    return missing;
-  }, [trimmedCity, trimmedCountry, trimmedCustomerName, trimmedEmail, trimmedPhone, trimmedState]);
+  const missingContactFields = useMemo(
+    () =>
+      listMissingDelivery({
+        customerName: trimmedCustomerName,
+        email: trimmedEmail,
+        phone: trimmedPhone,
+        city: trimmedCity,
+        state: trimmedState,
+        country: trimmedCountry,
+      }),
+    [trimmedCity, trimmedCountry, trimmedCustomerName, trimmedEmail, trimmedPhone, trimmedState],
+  );
 
   const canSubmit =
     checkoutEnabled &&
@@ -225,7 +290,8 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
       return;
     }
     if (missingContactFields.length > 0) {
-      setError(`Add ${missingContactFields.join(', ')} before adding this custom request.`);
+      setEditingDelivery(true);
+      setError(`Add your ${missingContactFields.join(', ')} below before adding this custom request.`);
       return;
     }
 
@@ -312,61 +378,116 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
           </View>
         ) : null}
 
-        {checkoutEnabled ? (
+        {checkoutEnabled && !loadingProfile ? (
           <>
-            <View style={styles.group}>
-              <Input
-                label="Customer name"
-                value={customerName}
-                onChangeText={setCustomerName}
-                placeholder="Full name"
-                error={trimmedCustomerName.length > 0 && trimmedCustomerName.length < 3 ? 'Use at least 3 characters' : undefined}
-              />
-              <Input
-                label="Email"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                placeholder="name@example.com"
-                error={trimmedEmail.length > 0 && !isValidEmail(trimmedEmail) ? 'Enter a valid email' : undefined}
-              />
-              <Input
-                label="Phone"
-                value={phone}
-                onChangeText={(value) => setPhone(sanitizePhoneInput(value))}
-                keyboardType="phone-pad"
-                placeholder="080XXXXXXXX or +234..."
-                error={
-                  trimmedPhone.length > 0 && !isValidPhone(trimmedPhone)
-                    ? PHONE_INVALID_MESSAGE
-                    : undefined
-                }
-              />
-              <Input label="City" value={city} onChangeText={setCity} placeholder="City" />
-              <Input label="State" value={stateName} onChangeText={setStateName} placeholder="State" />
-              <Input label="Country" value={country} onChangeText={setCountry} placeholder="Country" />
-            </View>
-
+            {/*
+              The measurements are the point of this sheet, so they come first,
+              named the way the fittings screen names them — "Hips / seat", not
+              the pattern key "Waist To Hip" — with the same where-to-put-the-
+              tape line underneath. They are filled from saved fittings; the
+              shopper only touches the ones that are empty or have changed.
+            */}
             {requiredKeys.length > 0 ? (
               <View style={styles.group}>
+                <View style={styles.sectionHead}>
+                  <AppText variant="subtitle">Your measurements</AppText>
+                  <AppText variant="caption" tone="muted">
+                    Filled from your fittings. Change any that are different for this piece.
+                  </AppText>
+                </View>
                 {requiredKeys.map((key) => (
                   <Input
                     key={key}
-                    label={`${toTitleCase(key)} (cm)`}
+                    label={`${formatMeasurementLabel(key)} (cm)`}
                     value={values[key] ?? ''}
                     onChangeText={(value) => {
                       setValues((current) => ({ ...current, [key]: value }));
                     }}
                     keyboardType="decimal-pad"
                     placeholder="0"
+                    helperText={getMeasurementHint(key) ?? undefined}
                     error={missingKeys.includes(key) ? 'Required' : undefined}
                   />
                 ))}
               </View>
             ) : (
               <AppText variant="body" tone="muted">
-                This custom configuration does not require fitting measurements.
+                This piece does not need any measurements.
               </AppText>
+            )}
+
+            {editingDelivery ? (
+              <View style={styles.group}>
+                <View style={styles.sectionHead}>
+                  <AppText variant="subtitle">Delivery details</AppText>
+                  <AppText variant="caption" tone="muted">
+                    Sent with this request so the brand can quote and ship it.
+                  </AppText>
+                </View>
+                <Input
+                  label="Full name"
+                  value={customerName}
+                  onChangeText={setCustomerName}
+                  placeholder="Full name"
+                  error={trimmedCustomerName.length > 0 && trimmedCustomerName.length < 3 ? 'Use at least 3 characters' : undefined}
+                />
+                <Input
+                  label="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  placeholder="name@example.com"
+                  error={trimmedEmail.length > 0 && !isValidEmail(trimmedEmail) ? 'Enter a valid email' : undefined}
+                />
+                <Input
+                  label="Phone"
+                  value={phone}
+                  onChangeText={(value) => setPhone(sanitizePhoneInput(value))}
+                  keyboardType="phone-pad"
+                  placeholder="080XXXXXXXX or +234..."
+                  error={
+                    trimmedPhone.length > 0 && !isValidPhone(trimmedPhone)
+                      ? PHONE_INVALID_MESSAGE
+                      : undefined
+                  }
+                />
+                <Input label="City" value={city} onChangeText={setCity} placeholder="City" />
+                <Input label="State" value={stateName} onChangeText={setStateName} placeholder="State" />
+                <Input label="Country" value={country} onChangeText={setCountry} placeholder="Country" />
+                {missingContactFields.length === 0 ? (
+                  <Button
+                    title="Done"
+                    size="sm"
+                    variant="secondary"
+                    onPress={() => setEditingDelivery(false)}
+                  />
+                ) : null}
+              </View>
+            ) : (
+              /*
+                One line, not six fields. Everything here came from the saved
+                address; showing it lets the shopper spot a wrong city without
+                making them re-read their own name and email to get there.
+              */
+              <Card padding="md" style={styles.deliveryCard}>
+                <View style={styles.deliveryCopy}>
+                  <AppText variant="captionBold" tone="muted">
+                    Delivering to
+                  </AppText>
+                  <AppText variant="bodyBold" numberOfLines={1}>
+                    {trimmedCustomerName}
+                  </AppText>
+                  <AppText variant="caption" tone="muted" numberOfLines={2}>
+                    {[trimmedCity, trimmedState, trimmedCountry].filter(Boolean).join(', ')}
+                  </AppText>
+                </View>
+                <Button
+                  title="Change"
+                  size="sm"
+                  variant="secondary"
+                  onPress={() => setEditingDelivery(true)}
+                />
+              </Card>
             )}
           </>
         ) : null}
@@ -381,11 +502,7 @@ export default function CustomBagSheet({ visible, product, status, onClose, onCo
           </AppText>
         ) : error ? (
           <AppText variant="caption" tone="danger">{error}</AppText>
-        ) : (
-          <AppText variant="caption" tone="muted">
-            Contact and delivery details are saved with this custom bag request for unified checkout.
-          </AppText>
-        )}
+        ) : null}
       </View>
     </AppBottomSheet>
   );
@@ -399,5 +516,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.sm,
+  },
+  sectionHead: {
+    gap: tokens.spacing.xs,
+  },
+  deliveryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+  },
+  deliveryCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: tokens.spacing.xs,
   },
 });

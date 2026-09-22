@@ -12,6 +12,8 @@
  * which is the grade UK/US/EU high-street sizing is conventionally built on.
  */
 
+import type { CoreMeasurementKey } from '@/src/features/sizing/measurementCatalog';
+
 export type LengthUnitPreference = 'CM' | 'IN';
 
 export type SizeChartRow = {
@@ -32,6 +34,21 @@ export type SizeChart = {
   rows: SizeChartRow[];
   /** How to take each measurement, same order as `measureLabels`. */
   howToMeasure: string[];
+  /**
+   * The measurement point behind each column, same order as `measureLabels`.
+   *
+   * What lets the screen read a shopper's own fittings against this table,
+   * light the matching point on the body diagram, and show the same
+   * where-to-put-the-tape line the fittings screen uses. A label like "Bust"
+   * is for reading; this is for joining.
+   */
+  measureKeys: CoreMeasurementKey[];
+  /**
+   * The column a size is graded on (ISO 8559-2 primary dimension): bust or
+   * chest for tops, waist for trousers. It carries the most weight when
+   * finding the closest row, because it is the one the grade steps on.
+   */
+  primaryKey: CoreMeasurementKey;
 };
 
 export const SIZE_CHARTS: SizeChart[] = [
@@ -39,6 +56,8 @@ export const SIZE_CHARTS: SizeChart[] = [
     id: 'women-tops',
     label: "Women's tops & dresses",
     measureLabels: ['Bust', 'Waist', 'Hip'],
+    measureKeys: ['CHEST_BUST', 'WAIST', 'HIP_SEAT'],
+    primaryKey: 'CHEST_BUST',
     rows: [
       { alpha: 'XS', uk: '6', us: '2', eu: '34', measures: [78, 60, 86] },
       { alpha: 'S', uk: '8', us: '4', eu: '36', measures: [82, 64, 90] },
@@ -61,6 +80,8 @@ export const SIZE_CHARTS: SizeChart[] = [
     id: 'men-tops',
     label: "Men's tops & shirts",
     measureLabels: ['Chest', 'Waist', 'Neck'],
+    measureKeys: ['CHEST_BUST', 'WAIST', 'NECK_COLLAR'],
+    primaryKey: 'CHEST_BUST',
     rows: [
       { alpha: 'XS', uk: '34', us: '34', eu: '44', measures: [86, 71, 36] },
       { alpha: 'S', uk: '36', us: '36', eu: '46', measures: [91, 76, 37] },
@@ -82,6 +103,8 @@ export const SIZE_CHARTS: SizeChart[] = [
     id: 'bottoms',
     label: 'Trousers & skirts',
     measureLabels: ['Waist', 'Hip', 'Inseam'],
+    measureKeys: ['WAIST', 'HIP_SEAT', 'INSEAM'],
+    primaryKey: 'WAIST',
     rows: [
       { alpha: 'XS', uk: '6', us: '2', eu: '34', measures: [60, 86, 76] },
       { alpha: 'S', uk: '8', us: '4', eu: '36', measures: [64, 90, 77] },

@@ -97,6 +97,7 @@ function getIslandTabRouteName(key: string, isBrand: boolean) {
   if (key === NATIVE_ISLAND_KEYS.designs) return 'index';
   if (key === NATIVE_ISLAND_KEYS.market) return 'discover';
   if (key === NATIVE_ISLAND_KEYS.inbox) return 'inbox';
+  if (key === NATIVE_ISLAND_KEYS.charts) return 'charts';
   if (key === NATIVE_ISLAND_KEYS.profile) return isBrand ? 'catalog' : 'me';
   return null;
 }
@@ -106,6 +107,7 @@ function getIslandNavFlow(item: NativeIslandNavItem, isBrand: boolean, isAuthent
   if (item.key === NATIVE_ISLAND_KEYS.market) return 'tabs→market';
   if (item.key === NATIVE_ISLAND_KEYS.inbox) return 'tabs→inbox';
   if (item.key === NATIVE_ISLAND_KEYS.bag) return 'tabs→bag';
+  if (item.key === NATIVE_ISLAND_KEYS.charts) return 'tabs→charts';
   if (item.key === NATIVE_ISLAND_KEYS.profile) {
     if (!isAuthenticated) return 'tabs→login';
     return isBrand ? 'tabs→catalog' : 'tabs→me';
@@ -896,6 +898,16 @@ export default function TabLayout() {
 
         <Tabs.Screen
           name="two"
+          options={{
+            href: null,
+          }}
+        />
+
+        {/* Size charts. Reached from the island, so it lives in (tabs) to keep
+            the island on screen and survive a round trip to /fittings with its
+            state intact. URL stays /charts; hidden from any tab bar. */}
+        <Tabs.Screen
+          name="charts"
           options={{
             href: null,
           }}

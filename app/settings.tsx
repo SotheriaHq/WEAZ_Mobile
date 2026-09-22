@@ -195,9 +195,11 @@ export default function SettingsScreen() {
           },
           {
             emoji: '📐',
-            title: 'Size Guide / Charts',
-            subtitle: 'Sizing systems, measurements, and limitations',
-            onPress: () => drillDownPush('/size-guide' as never),
+            title: 'Size charts',
+            subtitle: 'Find your size on common charts, and how to measure',
+            // A top-level destination now (it is on the island), so navigate to
+            // the tab rather than push a second copy of it over Settings.
+            onPress: () => topLevelNavigate('/charts' as never),
           },
           {
             emoji: '🧵',
