@@ -6,17 +6,16 @@ import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
-import { AppSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
-import { locationService, type CountryOption, type StateOption } from '@/src/services/locationService';
+import { DeliveryAddressBook } from '@/components/delivery/DeliveryAddressBook';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Input } from '@/components/ui/Input';
 import {
   createMobileCheckoutIdempotencyKey,
   paymentApi,
   type ShippingAddress,
 } from '@/src/api/PaymentApi';
-import { ProfileApi } from '@/src/api/ProfileApi';
+import type { SavedDeliveryAddress } from '@/src/api/ProfileApi';
+import { displayNameOf } from '@/src/features/delivery/deliveryAddressBook';
 import { useAuth } from '@/src/auth/AuthContext';
 import { queryClient } from '@/src/query/queryClient';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
@@ -40,8 +39,6 @@ import {
   isEmptyPhone,
   isValidPhone,
   normalizePhoneToE164,
-  PHONE_INVALID_MESSAGE,
-  sanitizePhoneInput,
 } from '@/src/utils/phoneNumber';
 
 type CheckoutForm = {
@@ -109,19 +106,12 @@ function missingRequiredFields(form: CheckoutForm): string[] {
   return missing;
 }
 
-function fieldError(field: keyof CheckoutForm, errors: string[]) {
-  if (!errors.includes(field)) return undefined;
-  if (field === 'phone') return PHONE_INVALID_MESSAGE;
-  return 'Required for checkout';
-}
-
 export function MobileCheckoutScreen() {
   const { theme } = useTheme();
   const toast = useToast();
   const auth = useAuth();
   const { count, refreshGlobalBagCount } = useBagCount();
   const [form, setForm] = useState<CheckoutForm>(() => emptyForm(auth.user));
-  const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [paymentPolicyAccepted, setPaymentPolicyAccepted] = useState(false);
@@ -133,162 +123,49 @@ export function MobileCheckoutScreen() {
     [form.firstName, form.lastName],
   );
 
-  const updateField = useCallback(
-    (field: keyof CheckoutForm, value: string) => {
-      setForm((current) => ({ ...current, [field]: value }));
-      setErrors((current) => current.filter((entry) => entry !== field));
-    },
-    [],
+  /*
+    Delivery comes from the shared address book — the same one web and the
+    custom-order sheet use. It replaced a nine-field form that silently copied
+    the FIRST saved address in, with no way to choose another, edit it, or add a
+    new one, plus its own copy of the country/state/city pickers. The chosen
+    address becomes the checkout details below.
+  */
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [addressEditing, setAddressEditing] = useState(false);
+  const addressDefaults = useMemo(
+    () => ({
+      customerName: [auth.user?.firstName, auth.user?.lastName].filter(Boolean).join(' ').trim(),
+      contactEmail: auth.user?.email?.trim() ?? '',
+      phone: auth.user?.phoneNumber?.trim() ?? '',
+    }),
+    [auth.user?.email, auth.user?.firstName, auth.user?.lastName, auth.user?.phoneNumber],
   );
 
-  // Cross-platform address book: prefill from the backend-saved delivery
-  // addresses (same book the web checkout maintains) so an address saved on
-  // web appears here. Never overwrite anything the user already typed.
-  useEffect(() => {
-    let active = true;
-    ProfileApi.getDeliveryAddresses()
-      .then((items) => {
-        if (!active || items.length === 0) return;
-        const primary = items[0];
-        setForm((current) => {
-          if (current.street.trim()) return current;
-          return {
-            ...current,
-            firstName: current.firstName.trim() ? current.firstName : primary.firstName,
-            lastName: current.lastName.trim() ? current.lastName : primary.lastName,
-            email: current.email.trim() ? current.email : primary.contactEmail,
-            phone: current.phone.trim() ? current.phone : primary.phone,
-            street: primary.street,
-            apartment: primary.apartment,
-            city: primary.city,
-            state: primary.state,
-            postalCode: primary.postalCode,
-            country: primary.country || current.country,
-          };
-        });
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  // Location selections
-  const [countries, setCountries] = useState<CountryOption[]>([]);
-  const [loadingCountries, setLoadingCountries] = useState(false);
-  const [countrySheetVisible, setCountrySheetVisible] = useState(false);
-
-  const [states, setStates] = useState<StateOption[]>([]);
-  const [loadingStates, setLoadingStates] = useState(false);
-  const [stateSheetVisible, setStateSheetVisible] = useState(false);
-
-  const [cities, setCities] = useState<string[]>([]);
-  const [loadingCities, setLoadingCities] = useState(false);
-  const [citySheetVisible, setCitySheetVisible] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setLoadingCountries(true);
-    locationService.getCountries()
-      .then((data) => {
-        if (active) setCountries(data);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoadingCountries(false);
+  const handleSelectAddress = useCallback(
+    (address: SavedDeliveryAddress | null) => {
+      setSelectedAddressId(address?.id ?? null);
+      if (!address) {
+        setForm(emptyForm(auth.user));
+        return;
+      }
+      const name = displayNameOf(address);
+      const [first = '', ...rest] = name.split(' ');
+      setForm({
+        firstName: address.firstName || first,
+        lastName: address.lastName || rest.join(' '),
+        // A saved address may predate contact fields; the account fills gaps.
+        email: address.contactEmail || auth.user?.email || '',
+        phone: address.phone || auth.user?.phoneNumber || '',
+        street: address.street,
+        apartment: address.apartment,
+        city: address.city,
+        state: address.state,
+        postalCode: address.postalCode,
+        country: address.country || 'Nigeria',
       });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    if (!form.country) {
-      setStates([]);
-      return;
-    }
-    setLoadingStates(true);
-    locationService.getStates(form.country)
-      .then((data) => {
-        if (active) setStates(data);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoadingStates(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [form.country]);
-
-  useEffect(() => {
-    let active = true;
-    if (!form.country || !form.state) {
-      setCities([]);
-      return;
-    }
-    setLoadingCities(true);
-    locationService.getCities(form.country, form.state)
-      .then((data) => {
-        if (active) setCities(data);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoadingCities(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [form.country, form.state]);
-
-  const countryOptions = useMemo<SelectSheetOption[]>(() => {
-    return countries.map((c) => ({
-      value: c.name,
-      label: c.name,
-    }));
-  }, [countries]);
-
-  const stateOptions = useMemo<SelectSheetOption[]>(() => {
-    return states.map((s) => ({
-      value: s.name,
-      label: s.name,
-    }));
-  }, [states]);
-
-  const cityOptions = useMemo<SelectSheetOption[]>(() => {
-    return cities.map((c) => ({
-      value: c,
-      label: c,
-    }));
-  }, [cities]);
-
-  const handleSelectCountry = useCallback((countryName: string) => {
-    setForm((current) => ({
-      ...current,
-      country: countryName,
-      state: '',
-      city: '',
-    }));
-    setErrors((current) => current.filter((entry) => entry !== 'country'));
-  }, []);
-
-  const handleSelectState = useCallback((stateName: string) => {
-    setForm((current) => ({
-      ...current,
-      state: stateName,
-      city: '',
-    }));
-    setErrors((current) => current.filter((entry) => entry !== 'state'));
-  }, []);
-
-  const handleSelectCity = useCallback((cityName: string) => {
-    setForm((current) => ({
-      ...current,
-      city: cityName,
-    }));
-    setErrors((current) => current.filter((entry) => entry !== 'city'));
-  }, []);
+    },
+    [auth.user],
+  );
 
   // Dev-only nav timing for bag→checkout. The checkout shell + form render at
   // mount; data is ready once the required legal acceptances load settles.
@@ -326,10 +203,19 @@ export function MobileCheckoutScreen() {
     }
 
     const trimmed = trimForm(form);
+    if (addressEditing) {
+      toast.error('Save the address you are editing first.');
+      return;
+    }
     const missing = missingRequiredFields(trimmed);
-    if (missing.length > 0) {
-      setErrors(missing);
-      toast.error('Complete the required delivery details.');
+    if (!selectedAddressId || missing.length > 0) {
+      // The book validates on save, so a gap here means an older saved address
+      // is missing something. Editing it is the fix.
+      toast.error(
+        selectedAddressId
+          ? 'This address is missing details. Tap Edit on it to complete it.'
+          : 'Choose or add a delivery address.',
+      );
       return;
     }
     if (!paymentPolicyAccepted) {
@@ -457,115 +343,14 @@ export function MobileCheckoutScreen() {
             />
           </Card>
 
-          <Card style={styles.card}>
-            <AppText variant="subtitle">Delivery details</AppText>
-            <View style={styles.fieldGrid}>
-              <Input
-                label="First name"
-                value={form.firstName}
-                onChangeText={(value) => updateField('firstName', value)}
-                error={fieldError('firstName', errors)}
-              />
-              <Input
-                label="Last name"
-                value={form.lastName}
-                onChangeText={(value) => updateField('lastName', value)}
-                error={fieldError('lastName', errors)}
-              />
-              <Input
-                label="Email"
-                value={form.email}
-                onChangeText={(value) => updateField('email', value)}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                error={fieldError('email', errors)}
-              />
-              <Input
-                label="Phone"
-                value={form.phone}
-                onChangeText={(value) =>
-                  updateField('phone', sanitizePhoneInput(value))
-                }
-                keyboardType="phone-pad"
-                error={fieldError('phone', errors)}
-              />
-              <Input
-                label="Street address"
-                value={form.street}
-                onChangeText={(value) => updateField('street', value)}
-                error={fieldError('street', errors)}
-              />
-              <Input
-                label="Apartment"
-                value={form.apartment}
-                onChangeText={(value) => updateField('apartment', value)}
-              />
-              {/* Country Selector Trigger */}
-              <Pressable onPress={() => setCountrySheetVisible(true)}>
-                <View pointerEvents="none">
-                  <Input
-                    label="Country"
-                    value={form.country}
-                    placeholder="Select Country"
-                    error={fieldError('country', errors)}
-                    editable={false}
-                  />
-                </View>
-              </Pressable>
-
-              {/* State Selector Trigger / Fallback */}
-              {form.country && stateOptions.length > 0 ? (
-                <Pressable onPress={() => setStateSheetVisible(true)}>
-                  <View pointerEvents="none">
-                    <Input
-                      label="State / Province"
-                      value={form.state}
-                      placeholder={loadingStates ? 'Loading states...' : 'Select state / province'}
-                      error={fieldError('state', errors)}
-                      editable={false}
-                    />
-                  </View>
-                </Pressable>
-              ) : (
-                <Input
-                  label="State / Province"
-                  value={form.state}
-                  placeholder="State / Province"
-                  onChangeText={(value) => updateField('state', value)}
-                  error={fieldError('state', errors)}
-                />
-              )}
-
-              {/* City / LGA Selector Trigger / Fallback */}
-              {form.state && cityOptions.length > 0 ? (
-                <Pressable onPress={() => setCitySheetVisible(true)}>
-                  <View pointerEvents="none">
-                    <Input
-                      label="City / LGA"
-                      value={form.city}
-                      placeholder={loadingCities ? 'Loading cities...' : 'Select city / LGA'}
-                      error={fieldError('city', errors)}
-                      editable={false}
-                    />
-                  </View>
-                </Pressable>
-              ) : (
-                <Input
-                  label="City / LGA"
-                  value={form.city}
-                  placeholder="City / LGA"
-                  onChangeText={(value) => updateField('city', value)}
-                  error={fieldError('city', errors)}
-                />
-              )}
-
-              <Input
-                label="Postal code"
-                value={form.postalCode}
-                onChangeText={(value) => updateField('postalCode', value)}
-              />
-            </View>
-          </Card>
+          <DeliveryAddressBook
+            title="Delivery details"
+            subtitle="Choose where this order goes, or add another address."
+            selectedId={selectedAddressId}
+            onSelect={handleSelectAddress}
+            defaults={addressDefaults}
+            onEditingChange={setAddressEditing}
+          />
 
           <Card style={styles.card}>
             <AppText variant="subtitle">Payment</AppText>
@@ -613,7 +398,7 @@ export function MobileCheckoutScreen() {
             <Button
               title={submitting ? 'Initializing...' : 'Continue to secure payment'}
               loading={submitting}
-              disabled={!hasBagItems || submitting || !paymentPolicyAccepted}
+              disabled={!hasBagItems || submitting || !paymentPolicyAccepted || addressEditing}
               onPress={() => {
                 void beginCheckout();
               }}
@@ -628,39 +413,6 @@ export function MobileCheckoutScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      <AppSelectSheet
-        visible={countrySheetVisible}
-        title="Select Country"
-        options={countryOptions}
-        value={form.country}
-        onChange={(val) => {
-          handleSelectCountry(val);
-        }}
-        onClose={() => setCountrySheetVisible(false)}
-        loading={loadingCountries}
-      />
-      <AppSelectSheet
-        visible={stateSheetVisible}
-        title="Select State / Province"
-        options={stateOptions}
-        value={form.state}
-        onChange={(val) => {
-          handleSelectState(val);
-        }}
-        onClose={() => setStateSheetVisible(false)}
-        loading={loadingStates}
-      />
-      <AppSelectSheet
-        visible={citySheetVisible}
-        title="Select City / LGA"
-        options={cityOptions}
-        value={form.city}
-        onChange={(val) => {
-          handleSelectCity(val);
-        }}
-        onClose={() => setCitySheetVisible(false)}
-        loading={loadingCities}
-      />
     </>
   );
 }

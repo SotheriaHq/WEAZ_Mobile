@@ -519,6 +519,16 @@ export const ProfileApi = {
       .filter((entry: SavedDeliveryAddress) => Boolean(entry.id && entry.street && entry.city));
   },
 
+  /**
+   * Save the whole address book. The server keeps one list per account (the
+   * same one web reads), caps it at 10, and drops any entry without a name,
+   * street, city, state and phone — so what comes back is what was kept.
+   */
+  async replaceDeliveryAddresses(items: SavedDeliveryAddress[]): Promise<SavedDeliveryAddress[]> {
+    await apiClient.put('/users/me/delivery-addresses', { items });
+    return ProfileApi.getDeliveryAddresses();
+  },
+
   async getComputedSizeFit(params?: { region?: SizingRegion }): Promise<ComputedSizeFitProfile | null> {
     const res = await apiClient.get('/users/me/size-fit/computed', {
       params: params?.region ? { region: params.region } : undefined,

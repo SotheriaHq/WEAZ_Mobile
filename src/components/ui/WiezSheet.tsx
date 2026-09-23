@@ -1,13 +1,7 @@
 import React from 'react';
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -36,50 +30,22 @@ export function WiezSheet({
   onClose,
 }: WiezSheetProps) {
   const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
 
+  /*
+    Rendered through the shared AppBottomSheet, so an action menu slides, drags
+    and dismisses exactly like every selector in the app. It was a plain
+    Modal with a cross-fade: no slide, no swipe-to-close, and a different close
+    timing from the sheet opened a second earlier.
+  */
   return (
-    <Modal
-      transparent
+    <AppBottomSheet
       visible={visible}
-      animationType="fade"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={onClose}
+      title={title}
+      subtitle={subtitle}
+      onClose={onClose}
+      scrollable={false}
+      keyboardBehavior="none"
     >
-      <View style={styles.modalRoot} accessibilityViewIsModal>
-        <Pressable
-          style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdropStrong }]}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close sheet"
-        />
-
-        <View
-          style={[
-            styles.sheet,
-            {
-              paddingBottom: Math.max(insets.bottom, tokens.spacing.lg),
-              backgroundColor: theme.colors.bottomSheetSurface,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          {title || subtitle ? (
-            <View style={styles.header}>
-              {title ? (
-                <AppText variant="subtitle" numberOfLines={2}>
-                  {title}
-                </AppText>
-              ) : null}
-              {subtitle ? (
-                <AppText variant="captionRegular" tone="muted" numberOfLines={3}>
-                  {subtitle}
-                </AppText>
-              ) : null}
-            </View>
-          ) : null}
-
           <ScrollView
             bounces={false}
             keyboardShouldPersistTaps="handled"
@@ -119,6 +85,8 @@ export function WiezSheet({
                   variant="bodyBold"
                   tone={option.destructive ? 'danger' : 'default'}
                   numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
                   style={styles.optionLabel}
                 >
                   {option.label}
@@ -126,31 +94,11 @@ export function WiezSheet({
               </Pressable>
             ))}
           </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </AppBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  modalRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    maxHeight: '82%',
-    borderTopLeftRadius: tokens.radius.xl,
-    borderTopRightRadius: tokens.radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingTop: tokens.spacing.lg,
-    paddingHorizontal: tokens.spacing.lg,
-    gap: tokens.spacing.md,
-    ...tokens.elevation.lg,
-  },
-  header: {
-    gap: tokens.spacing.xs,
-    paddingRight: tokens.spacing.lg,
-  },
   options: {
     gap: tokens.spacing.sm,
     paddingBottom: tokens.spacing.sm,

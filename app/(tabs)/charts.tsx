@@ -260,7 +260,7 @@ export default function ChartsScreen() {
                   pressed && styles.pressed,
                 ]}
               >
-                <AppText variant="smallBold" tone={selected ? 'inverse' : 'secondary'}>
+                <AppText variant="smallBold" tone={selected ? 'inverse' : 'secondary'} numberOfLines={1}>
                   {entry.label}
                 </AppText>
               </Pressable>
@@ -286,7 +286,7 @@ export default function ChartsScreen() {
                   accessibilityState={{ checked: selected }}
                   style={[styles.unitOption, selected ? { backgroundColor: theme.colors.primary } : null]}
                 >
-                  <AppText variant="smallBold" tone={selected ? 'inverse' : 'secondary'}>
+                  <AppText variant="smallBold" tone={selected ? 'inverse' : 'secondary'} numberOfLines={1}>
                     {option}
                   </AppText>
                 </Pressable>
@@ -489,7 +489,7 @@ export default function ChartsScreen() {
                     pressed && styles.pressed,
                   ]}
                 >
-                  <AppText variant="smallBold" tone={selected ? 'primary' : 'secondary'}>
+                  <AppText variant="smallBold" tone={selected ? 'primary' : 'secondary'} numberOfLines={1}>
                     {chart.measureLabels[measureIndex]}
                   </AppText>
                 </Pressable>

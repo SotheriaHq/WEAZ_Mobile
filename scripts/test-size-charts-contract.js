@@ -138,10 +138,85 @@ check('the backdrop drags the sheet, and scrolling is off when content fits', ()
 
 check('the custom bag sheet reads delivery from the address book, not six bare fields', () => {
   const sheet = read('components/bagging/CustomBagSheet.tsx');
-  assert.match(sheet, /ProfileApi\.getDeliveryAddresses\(\)/);
-  assert.match(sheet, /editingDelivery \?/);
+  assert.match(sheet, /<DeliveryAddressBook/);
   assert.match(sheet, /formatMeasurementLabel\(key\)/, 'no more pattern keys like "Waist To Hip"');
   assert.doesNotMatch(sheet, /label="Customer name"/);
+  // The profile endpoint carries no phone; the signed-in account does.
+  assert.match(sheet, /user\?\.phoneNumber/, 'email and phone must prefill from the account');
+});
+
+check('checkout uses the same address book, not its own form and pickers', () => {
+  const checkout = read('src/features/checkout/MobileCheckoutScreen.tsx');
+  assert.match(checkout, /<DeliveryAddressBook/);
+  assert.doesNotMatch(checkout, /AppSelectSheet/, 'the book owns the location pickers now');
+  assert.doesNotMatch(checkout, /label="Street address"/);
+});
+
+check('the address book offers choose, edit, remove and add another, and saves the whole book', () => {
+  const book = read('components/delivery/DeliveryAddressBook.tsx');
+  assert.match(book, /title="Edit"/);
+  assert.match(book, /title="Remove"/);
+  assert.match(book, /Add another address/);
+  assert.match(book, /ProfileApi\.replaceDeliveryAddresses/);
+  assert.match(book, /<LocationCascadeFields/, 'reuse the shared country/state/city pickers');
+});
+
+check('address book list maths: newest first, capped, replace by id, validated like the server', () => {
+  const lib = load('src/features/delivery/deliveryAddressBook.ts', {
+    '@/src/utils/phoneNumber': {
+      isValidPhone: (value) => /^\+?\d{10,15}$/.test(String(value).replace(/\s/g, '')),
+      normalizePhoneToE164: (value) => (String(value).startsWith('+') ? String(value) : null),
+    },
+  });
+  const make = (id, updatedAt) => ({
+    id, firstName: '', lastName: '', customerName: `Name ${id}`, contactEmail: 'a@b.co',
+    phone: '+2348030000000', street: 'Street', apartment: '', city: 'Ikeja', state: 'Lagos',
+    postalCode: '', country: 'Nigeria', updatedAt,
+  });
+  const book = [make('a', '2026-01-01'), make('b', '2026-02-01')];
+  const edited = { ...make('a', '2026-03-01'), city: 'Lekki' };
+  const next = lib.upsertAddress(book, edited);
+  assert.deepEqual([...next.map((entry) => entry.id)], ['a', 'b'], 'edited address becomes newest');
+  assert.equal(next[0].city, 'Lekki');
+  assert.equal(next.length, 2, 'editing replaces, never duplicates');
+
+  const full = Array.from({ length: 10 }, (_, index) => make(`x${index}`, `2026-01-${String(index + 1).padStart(2, '0')}`));
+  const grown = lib.upsertAddress(full, make('new', '2026-12-01'));
+  assert.equal(grown.length, lib.MAX_DELIVERY_ADDRESSES);
+  assert.equal(grown[0].id, 'new');
+  assert.ok(!grown.some((entry) => entry.id === 'x0'), 'the oldest drops off, as the server would');
+
+  assert.deepEqual([...lib.removeAddress(book, 'a').map((entry) => entry.id)], ['b']);
+
+  const errors = lib.validateAddressDraft(lib.emptyAddressDraft({ customerName: 'Jo' }));
+  for (const field of ['customerName', 'contactEmail', 'phone', 'street', 'city', 'state']) {
+    assert.ok(errors[field], `${field} must be required`);
+  }
+  const saved = lib.toSavedAddress({ ...lib.emptyAddressDraft(), customerName: 'Tale  Roll Junior', street: 'x' });
+  assert.equal(saved.firstName, 'Tale');
+  assert.equal(saved.lastName, 'Roll Junior');
+});
+
+check('sheets close on one curve, slide fully out, and never restart a drag', () => {
+  const sheet = read('components/ui/AppBottomSheet.tsx');
+  assert.match(sheet, /dragExitRef\.current = true/);
+  assert.match(sheet, /if \(!dragExitRef\.current\)/);
+  assert.match(sheet, /opacity: sheetOpacity\.value/, 'the sheet slides out solid; only the backdrop fades');
+  assert.match(sheet, /SHEET_CLOSE_FALLBACK_MS = 450/, 'the fallback must outlast every close');
+  const wiez = read('src/components/ui/WiezSheet.tsx');
+  assert.match(wiez, /<AppBottomSheet/, 'action menus close like every other sheet');
+  assert.doesNotMatch(wiez, /animationType="fade"/);
+});
+
+check('selectors commit after the close, and keep every label on one line', () => {
+  const select = read('components/ui/AppSelectSheet.tsx');
+  const onPress = select.slice(select.indexOf('selected={option.value === (pickedValue ?? value)}'));
+  assert.match(onPress, /pendingValueRef\.current = option\.value;\s*onClose\(\);/);
+  assert.doesNotMatch(onPress.slice(0, 1200), /onChange\(option\.value\)/, 'no form re-render mid-animation');
+  assert.match(select, /\{option\.label\}/);
+  assert.match(select, /numberOfLines=\{1\}\s*adjustsFontSizeToFit\s*minimumFontScale=\{0\.8\}\s*>\s*\{option\.label\}/);
+  const field = read('components/forms/SelectField.tsx');
+  assert.match(field, /numberOfLines=\{1\}\s*adjustsFontSizeToFit\s*minimumFontScale=\{0\.8\}\s*>\s*\{label\}/);
 });
 
 check('the custom sheet shows the price before anything is bagged, as web does', () => {
@@ -163,8 +238,7 @@ check('the custom sheet shows the price before anything is bagged, as web does',
 
 check('a custom order keeps a street address, not just a city', () => {
   const sheet = read('components/bagging/CustomBagSheet.tsx');
-  assert.match(sheet, /street: delivery\.street,/);
-  assert.match(sheet, /label="Street address"/);
+  assert.match(sheet, /street: selectedAddress\.street,/);
 });
 
 check('the two custom-order sheets say which step they are', () => {

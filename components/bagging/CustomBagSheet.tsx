@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { DeliveryAddressBook } from '@/components/delivery/DeliveryAddressBook';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -8,23 +9,20 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 import { ThemedSwitch } from '@/components/ui/ThemedSwitch';
-import {
-  ProfileApi,
-  type SavedDeliveryAddress,
-  type SizeFitProfile,
-  type UserProfile,
-} from '@/src/api/ProfileApi';
+import { ProfileApi, type SavedDeliveryAddress, type SizeFitProfile } from '@/src/api/ProfileApi';
 import {
   MobileStoreApi,
   type BagSourceType,
   type CustomPricePreview,
   type ProductBagStatus,
 } from '@/src/api/StoreApi';
+import { useAuth } from '@/src/auth/AuthContext';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import {
   getMobileCheckoutUnavailableMessage,
   isMobileCheckoutEnabled,
 } from '@/src/features/checkout/mobileCheckoutGate';
+import { displayNameOf } from '@/src/features/delivery/deliveryAddressBook';
 import {
   formatMeasurementLabel,
   getMeasurementHint,
@@ -33,12 +31,7 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { formatMoney } from '@/src/utils/money';
-import {
-  isValidPhone,
-  normalizePhoneToE164,
-  PHONE_INVALID_MESSAGE,
-  sanitizePhoneInput,
-} from '@/src/utils/phoneNumber';
+import { normalizePhoneToE164 } from '@/src/utils/phoneNumber';
 
 /**
  * The custom order sheet — the native twin of the web composer.
@@ -46,7 +39,7 @@ import {
  * It runs the same sequence web does, in one sheet:
  *
  *   1. Measurements — the points THIS brand asked for, filled from fittings.
- *   2. Delivery     — the latest saved address, shown as one line.
+ *   2. Delivery     — the saved address book: choose, edit, or add another.
  *   3. Get price    — the server prices the request and holds that price,
  *                     and the breakdown is shown BEFORE anything is bagged.
  *   4. Add to bag   — only now does the request go into the bag, at the price
@@ -54,8 +47,7 @@ import {
  *
  * It used to do steps 3 and 4 in one silent tap. The price-preview response was
  * reduced to three ids in the API client, so the sheet had no price to show,
- * and a shopper added a custom order without ever seeing what it cost — the
- * first number they saw was at checkout.
+ * and a shopper added a custom order without ever seeing what it cost.
  *
  * Delivery is here, not only at checkout, because a custom request is priced
  * WITH its delivery: the shipping fee is quoted from the address and locked
@@ -108,63 +100,6 @@ const extractNumericMeasurements = (sizeFit: SizeFitProfile | null | undefined) 
   }, {});
 };
 
-const buildCustomerName = (profile: UserProfile | null) => {
-  const legalName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ').trim();
-  if (legalName.length >= 3) return legalName;
-  if (profile?.username && profile.username.length >= 3) return profile.username;
-  return '';
-};
-
-const buildLocationFields = (profile: UserProfile | null) => {
-  const locationParts = String(profile?.location ?? '')
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  return {
-    city: profile?.city?.trim() || locationParts[0] || '',
-    state: profile?.state?.trim() || locationParts[1] || '',
-    country: profile?.country?.trim() || locationParts[2] || 'Nigeria',
-  };
-};
-
-const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-
-/** The address the shopper last used — the book checkout and web read from. */
-const pickLatestAddress = (addresses: SavedDeliveryAddress[]) =>
-  [...addresses].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0] ?? null;
-
-const nameFromAddress = (address: SavedDeliveryAddress | null) =>
-  (address?.customerName || [address?.firstName, address?.lastName].filter(Boolean).join(' ')).trim();
-
-type DeliveryDetails = {
-  customerName: string;
-  email: string;
-  phone: string;
-  street: string;
-  city: string;
-  state: string;
-  country: string;
-};
-
-/** What still has to be supplied before the request can be priced, in words. */
-const listMissingDelivery = (details: DeliveryDetails): string[] => {
-  const missing: string[] = [];
-  if (details.customerName.trim().length < 3) missing.push('name');
-  if (!isValidEmail(details.email)) missing.push('email');
-  if (!isValidPhone(details.phone.trim())) missing.push('phone');
-  if (!details.street.trim()) missing.push('street address');
-  if (!details.city.trim()) missing.push('city');
-  if (!details.state.trim()) missing.push('state');
-  if (!details.country.trim()) missing.push('country');
-  return missing;
-};
-
-const joinWords = (words: string[]) =>
-  words.length <= 1
-    ? words.join('')
-    : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
-
 const formatHoldTime = (iso: string | null) => {
   if (!iso) return null;
   const date = new Date(iso);
@@ -188,27 +123,19 @@ export default function CustomBagSheet({
 }: Props) {
   const { theme } = useTheme();
   const toast = useToast();
+  const { user } = useAuth();
   const { addCustomOrder, prepareBag, prepareSourceBag } = useMobileBagging();
   const checkoutEnabled = isMobileCheckoutEnabled();
 
   const [values, setValues] = useState<Record<string, string>>({});
-  const [customerName, setCustomerName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [street, setStreet] = useState('');
-  const [apartment, setApartment] = useState('');
-  const [city, setCity] = useState('');
-  const [stateName, setStateName] = useState('');
-  const [country, setCountry] = useState('Nigeria');
-
-  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [loadingFittings, setLoadingFittings] = useState(false);
   const [pricing, setPricing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  /** Fields are shown only when something is missing, or on request. */
   const [editingMeasurements, setEditingMeasurements] = useState(false);
-  const [editingDelivery, setEditingDelivery] = useState(false);
+
+  const [selectedAddress, setSelectedAddress] = useState<SavedDeliveryAddress | null>(null);
+  const [addressEditing, setAddressEditing] = useState(false);
 
   /**
    * The held price. Cleared the moment anything it was computed from changes,
@@ -217,6 +144,20 @@ export default function CustomBagSheet({
    */
   const [quote, setQuote] = useState<CustomPricePreview | null>(null);
   const [noMatchAcknowledged, setNoMatchAcknowledged] = useState(false);
+
+  /**
+   * The signed-in account, as the prefill for a new address and the fallback
+   * for a saved one that lacks a contact. The account has the email and phone
+   * the shopper gave at sign-up — the profile endpoint this sheet used to read
+   * carries no phone at all, which is why the phone never prefilled.
+   */
+  const accountName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+  const accountEmail = user?.email?.trim() ?? '';
+  const accountPhone = user?.phoneNumber?.trim() ?? '';
+  const addressDefaults = useMemo(
+    () => ({ customerName: accountName, contactEmail: accountEmail, phone: accountPhone }),
+    [accountEmail, accountName, accountPhone],
+  );
 
   const requiredKeys = useMemo(
     () => status?.custom.requiredMeasurementKeys ?? [],
@@ -236,56 +177,27 @@ export default function CustomBagSheet({
     setError(null);
     setQuote(null);
     setNoMatchAcknowledged(false);
+    setEditingMeasurements(false);
 
     if (!checkoutEnabled) {
-      setLoadingProfile(false);
+      setLoadingFittings(false);
       return () => {
         active = false;
       };
     }
 
-    setLoadingProfile(true);
-    setEditingDelivery(false);
-    setEditingMeasurements(false);
-
-    void Promise.all([
-      ProfileApi.getMe(),
-      ProfileApi.getSizeFit(),
-      // No address book is a normal state for a new shopper, not an error.
-      ProfileApi.getDeliveryAddresses().catch(() => [] as SavedDeliveryAddress[]),
-    ])
-      .then(([nextProfile, sizeFit, addresses]) => {
+    setLoadingFittings(true);
+    void ProfileApi.getSizeFit()
+      .then((sizeFit) => {
         if (!active) return;
-        const saved = pickLatestAddress(addresses);
-        const location = buildLocationFields(nextProfile);
-        const resolved: DeliveryDetails = {
-          customerName: nameFromAddress(saved) || buildCustomerName(nextProfile),
-          email: saved?.contactEmail || nextProfile?.email || '',
-          phone: saved?.phone || '',
-          street: saved?.street || '',
-          city: saved?.city || location.city,
-          state: saved?.state || location.state,
-          country: saved?.country || location.country,
-        };
-        setCustomerName(resolved.customerName);
-        setEmail(resolved.email);
-        setPhone(resolved.phone);
-        setStreet(resolved.street);
-        setApartment(saved?.apartment ?? '');
-        setCity(resolved.city);
-        setStateName(resolved.state);
-        setCountry(resolved.country);
-
         const measurements = extractNumericMeasurements(sizeFit);
         const seeded = requiredKeys.reduce<Record<string, string>>((acc, key) => {
           acc[key] = measurements[key] ? String(measurements[key]) : '';
           return acc;
         }, {});
         setValues(seeded);
-
-        // Decided from the loaded values, not an effect: on first render every
-        // field is empty and would always open.
-        setEditingDelivery(listMissingDelivery(resolved).length > 0);
+        // Fields only when something is missing; a complete set shows as a
+        // summary. Decided from the loaded values, not an effect.
         setEditingMeasurements(requiredKeys.some((key) => !seeded[key]));
       })
       .catch((nextError) => {
@@ -293,7 +205,7 @@ export default function CustomBagSheet({
         setError(toApiErrorMessage(nextError, 'Unable to load your fittings.'));
       })
       .finally(() => {
-        if (active) setLoadingProfile(false);
+        if (active) setLoadingFittings(false);
       });
 
     return () => {
@@ -318,33 +230,28 @@ export default function CustomBagSheet({
     [measurementValues, requiredKeys],
   );
 
-  const delivery: DeliveryDetails = {
-    customerName: customerName.trim(),
-    email: email.trim(),
-    phone: phone.trim(),
-    street: street.trim(),
-    city: city.trim(),
-    state: stateName.trim(),
-    country: country.trim(),
-  };
-  const missingDelivery = listMissingDelivery(delivery);
+  const deliveryName = selectedAddress ? displayNameOf(selectedAddress) || accountName : '';
+  const deliveryEmail = selectedAddress?.contactEmail || accountEmail;
+  const deliveryPhone = selectedAddress?.phone || accountPhone;
 
   /**
    * The address the order keeps — and the one its shipping fee is quoted from.
-   * The street was missing here: only city, state and country were sent, so a
-   * custom order placed from the app reached the brand with no street to
-   * deliver to. Web has always sent it.
+   * It now carries the street: only city, state and country used to be sent, so
+   * a custom order placed from the app reached the brand with nowhere to deliver.
    */
-  const shippingAddress = {
-    street: delivery.street,
-    ...(apartment.trim() ? { apartment: apartment.trim() } : {}),
-    city: delivery.city,
-    state: delivery.state,
-    country: delivery.country,
-  };
+  const shippingAddress = selectedAddress
+    ? {
+        street: selectedAddress.street,
+        ...(selectedAddress.apartment ? { apartment: selectedAddress.apartment } : {}),
+        city: selectedAddress.city,
+        state: selectedAddress.state,
+        ...(selectedAddress.postalCode ? { postalCode: selectedAddress.postalCode } : {}),
+        country: selectedAddress.country,
+      }
+    : null;
 
   const manualQuote = quote?.quoteStatus === 'MANUAL_QUOTE_REQUIRED';
-  const busy = loadingProfile || pricing || submitting;
+  const busy = loadingFittings || pricing || submitting;
 
   const handleGetPrice = async () => {
     if (!product || !status?.custom.configurationId) return;
@@ -353,9 +260,12 @@ export default function CustomBagSheet({
       setError(`Add ${missingKeys.length} missing measurement${missingKeys.length === 1 ? '' : 's'} to get your price.`);
       return;
     }
-    if (missingDelivery.length > 0) {
-      setEditingDelivery(true);
-      setError(`Add your ${joinWords(missingDelivery)} to get your price.`);
+    if (addressEditing) {
+      setError('Save the address you are editing first.');
+      return;
+    }
+    if (!selectedAddress || !shippingAddress) {
+      setError('Choose or add a delivery address to get your price.');
       return;
     }
 
@@ -385,7 +295,7 @@ export default function CustomBagSheet({
   };
 
   const handleAddToBag = async () => {
-    if (!product || !status?.custom.configurationId || !quote?.checkoutIntentId) return;
+    if (!product || !status?.custom.configurationId || !quote?.checkoutIntentId || !shippingAddress) return;
     if (isHoldExpired(quote.priceLockExpiresAt)) {
       invalidateQuote();
       setError('The price hold ended. Get your price again to continue.');
@@ -409,11 +319,11 @@ export default function CustomBagSheet({
         measurementValues,
         shippingAddress,
         contactInfo: {
-          email: delivery.email,
-          phone: normalizePhoneToE164(delivery.phone) ?? delivery.phone,
-          customerName: delivery.customerName,
+          email: deliveryEmail,
+          phone: normalizePhoneToE164(deliveryPhone) ?? deliveryPhone,
+          customerName: deliveryName,
         },
-        customerName: delivery.customerName,
+        customerName: deliveryName,
         noDirectMatchAcknowledged: quote.noDirectMatch ? noMatchAcknowledged : true,
       }, sourceType, sourceId);
 
@@ -451,17 +361,24 @@ export default function CustomBagSheet({
             onPress: () => void handleAddToBag(),
             disabled: busy || (quote.noDirectMatch && !noMatchAcknowledged),
           }
-        : { label: 'Get price', onPress: () => void handleGetPrice(), disabled: busy || !product };
+        : {
+            label: 'Get price',
+            onPress: () => void handleGetPrice(),
+            disabled: busy || !product || addressEditing,
+          };
 
   const updateMeasurement = (key: string, value: string) => {
     setValues((current) => ({ ...current, [key]: value }));
     invalidateQuote();
   };
 
-  const updateDelivery = (setter: (value: string) => void) => (value: string) => {
-    setter(value);
-    invalidateQuote();
-  };
+  const handleSelectAddress = useCallback(
+    (address: SavedDeliveryAddress | null) => {
+      setSelectedAddress(address);
+      invalidateQuote();
+    },
+    [invalidateQuote],
+  );
 
   return (
     <AppBottomSheet
@@ -488,15 +405,15 @@ export default function CustomBagSheet({
           <AppText variant="body" tone="muted">
             {getMobileCheckoutUnavailableMessage()}
           </AppText>
-        ) : loadingProfile ? (
-          <View style={styles.loadingRow}>
-            <MuseLoader size={20} />
-            <AppText variant="body" tone="muted">Loading your fittings…</AppText>
-          </View>
         ) : (
           <>
             {/* ── 1. Measurements ─────────────────────────────────────── */}
-            {requiredKeys.length === 0 ? (
+            {loadingFittings ? (
+              <View style={styles.loadingRow}>
+                <MuseLoader size={20} />
+                <AppText variant="body" tone="muted">Loading your fittings…</AppText>
+              </View>
+            ) : requiredKeys.length === 0 ? (
               <AppText variant="body" tone="muted">
                 This piece does not need any measurements.
               </AppText>
@@ -560,82 +477,14 @@ export default function CustomBagSheet({
             )}
 
             {/* ── 2. Delivery ─────────────────────────────────────────── */}
-            {editingDelivery ? (
-              <View style={styles.group}>
-                <View style={styles.sectionHead}>
-                  <AppText variant="subtitle">Delivery details</AppText>
-                  <AppText variant="caption" tone="muted">
-                    Shipping is priced from this address, so it is needed before your price.
-                  </AppText>
-                </View>
-                <Input
-                  label="Full name"
-                  value={customerName}
-                  onChangeText={updateDelivery(setCustomerName)}
-                  placeholder="Full name"
-                  error={delivery.customerName.length > 0 && delivery.customerName.length < 3 ? 'Use at least 3 characters' : undefined}
-                />
-                <Input
-                  label="Email"
-                  value={email}
-                  onChangeText={updateDelivery(setEmail)}
-                  keyboardType="email-address"
-                  placeholder="name@example.com"
-                  error={delivery.email.length > 0 && !isValidEmail(delivery.email) ? 'Enter a valid email' : undefined}
-                />
-                <Input
-                  label="Phone"
-                  value={phone}
-                  onChangeText={updateDelivery((value) => setPhone(sanitizePhoneInput(value)))}
-                  keyboardType="phone-pad"
-                  placeholder="080XXXXXXXX or +234..."
-                  error={delivery.phone.length > 0 && !isValidPhone(delivery.phone) ? PHONE_INVALID_MESSAGE : undefined}
-                />
-                <Input
-                  label="Street address"
-                  value={street}
-                  onChangeText={updateDelivery(setStreet)}
-                  placeholder="House number and street"
-                />
-                <Input
-                  label="Apartment / suite (optional)"
-                  value={apartment}
-                  onChangeText={updateDelivery(setApartment)}
-                  placeholder="Apt, floor, landmark"
-                />
-                <Input label="City" value={city} onChangeText={updateDelivery(setCity)} placeholder="City" />
-                <Input label="State" value={stateName} onChangeText={updateDelivery(setStateName)} placeholder="State" />
-                <Input label="Country" value={country} onChangeText={updateDelivery(setCountry)} placeholder="Country" />
-                {missingDelivery.length === 0 ? (
-                  <Button
-                    title="Done"
-                    size="sm"
-                    variant="secondary"
-                    onPress={() => setEditingDelivery(false)}
-                  />
-                ) : null}
-              </View>
-            ) : (
-              <Card padding="md" style={styles.summaryCard}>
-                <View style={styles.summaryHead}>
-                  <AppText variant="captionBold" tone="muted">
-                    Delivering to
-                  </AppText>
-                  <Button
-                    title="Change"
-                    size="sm"
-                    variant="secondary"
-                    onPress={() => setEditingDelivery(true)}
-                  />
-                </View>
-                <AppText variant="bodyBold" numberOfLines={1}>
-                  {delivery.customerName}
-                </AppText>
-                <AppText variant="caption" tone="muted" numberOfLines={2}>
-                  {[delivery.street, delivery.city, delivery.state, delivery.country].filter(Boolean).join(', ')}
-                </AppText>
-              </Card>
-            )}
+            <DeliveryAddressBook
+              title="Delivering to"
+              subtitle="Shipping is priced from this address, so it is set before your price."
+              selectedId={selectedAddress?.id ?? null}
+              onSelect={handleSelectAddress}
+              defaults={addressDefaults}
+              onEditingChange={setAddressEditing}
+            />
 
             {/* ── 3. Price ────────────────────────────────────────────── */}
             {quote && manualQuote ? (

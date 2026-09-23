@@ -125,26 +125,36 @@ function AnimatedOptionCard({
           option.disabled && styles.optionDisabled,
         ]}
       >
-        <View style={{ flex: 1, gap: tokens.spacing.xs }}>
+        {/*
+          One row per option, always. A label that breaks — "Women's tops &" on
+          one line and "dresses" on the next — reads as two options. It shrinks
+          to fit (down to 80%) before it would wrap. The selected marker is a
+          tick rather than the word "Selected", which took a fifth of the row and
+          was the main reason labels ran out of room.
+        */}
+        <View style={styles.optionCopy}>
           <AppText
             variant="bodyBold"
             tone={selected ? 'primary' : option.pending ? 'warning' : 'default'}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
           >
             {option.label}
           </AppText>
           {option.description ? (
-            <AppText variant="captionRegular" tone="muted">
+            <AppText variant="captionRegular" tone="muted" numberOfLines={2}>
               {option.description}
             </AppText>
           ) : null}
         </View>
         {selected || option.pending ? (
           <AppText
-            variant="captionBold"
+            variant="bodyBold"
             tone={selected ? 'primary' : 'warning'}
             accessibilityLabel={selected ? 'Selected' : 'Pending review'}
           >
-            {selected ? 'Selected' : 'Pending'}
+            {selected ? '✓' : '⏳'}
           </AppText>
         ) : null}
       </Animated.View>
@@ -168,11 +178,14 @@ export function AppSelectSheet({
   searchEmptyMessage = 'Nothing matches that.',
 }: SingleProps) {
   const pendingValueRef = useRef<string | null>(null);
+  /** The option just tapped, highlighted while the sheet slides away. */
+  const [pickedValue, setPickedValue] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
   useEffect(() => {
     if (visible) {
       pendingValueRef.current = null;
+      setPickedValue(null);
       // Cleared on OPEN rather than on close: clearing on close re-renders the
       // list to its full length during the exit animation, which is visible.
       setQuery('');
@@ -235,15 +248,26 @@ export function AppSelectSheet({
           <AnimatedOptionCard
             key={option.value}
             option={option}
-            selected={option.value === value}
+            selected={option.value === (pickedValue ?? value)}
             onPress={() => {
               if (option.disabled) return;
-              // Apply immediately, then close. Deferring onChange to onDismiss
-              // left the sheet stuck open when the close animation was cancelled
-              // (selecting the already-active "All categories" was the repro:
-              // visible flipped false, finished=false, finishDismiss never ran).
-              onChange(option.value);
-              pendingValueRef.current = null;
+              /*
+                Highlight now, commit after the sheet has gone.
+
+                Committing on tap re-rendered the whole form behind the sheet
+                while the sheet was still animating out — new value, new layout,
+                sometimes a new dependent list (pick a country, the state list
+                reloads) — and that work landed on the same frames as the close.
+                That is the stutter on every selector. The value now lands in
+                `onDismiss`, once the slide has finished.
+
+                This was once immediate because a cancelled close animation could
+                skip `finishDismiss`, stranding the value. The sheet now always
+                runs `finishDismiss` (on the slide's completion, with a timed
+                fallback), so the deferred commit always arrives.
+              */
+              setPickedValue(option.value);
+              pendingValueRef.current = option.value;
               onClose();
             }}
           />
@@ -686,10 +710,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: tokens.spacing.sm,
   },
+  optionCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: tokens.spacing.xs,
+  },
   optionCard: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
+    gap: tokens.spacing.md,
     borderWidth: 1,
     borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.spacing.md,

@@ -79,10 +79,16 @@ export function SelectField({
     <View style={containerStyle}>
       {!hideLabel ? (
         <View style={styles.labelRow}>
+          {/* One line: in half-width layouts a three-word label used to split
+              across two, which pushed its field out of line with the one
+              beside it. Shrinks to fit instead. */}
           <AppText
             variant="smallBold"
             tone={hasError ? 'danger' : 'secondary'}
             style={styles.label}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
           >
             {label}
           </AppText>
@@ -135,6 +141,8 @@ export function SelectField({
           variant={compact ? 'smallBold' : 'body'}
           tone={hasValue ? 'default' : 'muted'}
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
           style={styles.value}
         >
           {hasValue ? String(value) : placeholder}

@@ -70,7 +70,12 @@ export function AppBottomSheet({
   const { theme, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(28);
+  /** The backdrop's opacity (and drag feedback). */
   const opacity = useSharedValue(0);
+  /** The sheet's own opacity: fades in on open, stays solid while it slides out. */
+  const sheetOpacity = useSharedValue(0);
+  /** A swipe already owns the close animation; the close effect must not restart it. */
+  const dragExitRef = useRef(false);
   const [mounted, setMounted] = useState(
     visible && (keyboardBehavior !== 'none' || !Keyboard.isVisible()),
   );
@@ -167,7 +172,9 @@ export function AppBottomSheet({
       onPanResponderMove: (_: unknown, gestureState: { dy: number }) => {
         const nextY = Math.max(0, gestureState.dy);
         translateY.value = nextY;
-        opacity.value = Math.max(0.62, 1 - nextY / 420);
+        // Only the backdrop lightens as the sheet is pulled; the sheet itself
+        // stays solid under the finger.
+        opacity.value = Math.max(0.35, 1 - nextY / 420);
       },
       onPanResponderRelease: (
         _: unknown,
@@ -196,12 +203,23 @@ export function AppBottomSheet({
           const duration = Math.round(
             Math.max(130, Math.min(260, remaining / flickSpeed)),
           );
-          translateY.value = withTiming(exitTranslate, {
-            duration,
-            easing: Easing.out(Easing.cubic),
-          });
+          /*
+            This throw is the WHOLE close. `dragExitRef` tells the close effect
+            not to start a second animation when `visible` flips a moment later:
+            it used to re-issue its own 200ms ease-in from wherever the sheet had
+            got to, which stopped the throw mid-flight and restarted it slow —
+            the visible hitch at the end of every swipe-to-close.
+          */
+          dragExitRef.current = true;
+          translateY.value = withTiming(
+            exitTranslate,
+            { duration, easing: Easing.out(Easing.cubic) },
+            () => {
+              runOnJS(finishDismiss)();
+            },
+          );
           opacity.value = withTiming(0, {
-            duration: Math.round(duration * 0.85),
+            duration,
             easing: Easing.out(Easing.cubic),
           });
           onClose();
@@ -227,7 +245,7 @@ export function AppBottomSheet({
         });
       },
     }),
-    [getExitTranslate, onClose, opacity, translateY],
+    [finishDismiss, getExitTranslate, onClose, opacity, translateY],
   );
 
   /** Handle + header. Always draggable, whatever the body is doing. */
@@ -393,43 +411,64 @@ export function AppBottomSheet({
     windowHeight,
   ]);
 
+  /**
+   * One close, one curve, and the sheet leaves the screen before it unmounts.
+   *
+   * Every sheet and selector in the app closes through here, so these are the
+   * app-wide collapse rules:
+   *
+   *  - The sheet SLIDES out at full opacity and only the backdrop fades. It used
+   *    to fade as well, which read as the sheet dissolving mid-air.
+   *  - Unmount is tied to the SLIDE finishing. It was tied to the fade (160ms),
+   *    which finished before the slide (200ms), so the sheet vanished with a
+   *    fifth of its journey left — the snap at the end of every close.
+   *  - A drag-started close is left alone (`dragExitRef`), so the throw is never
+   *    interrupted and restarted.
+   *  - A gentler ease-in (quad, not cubic): cubic sat almost still for the first
+   *    third of the close, which reads as lag after a tap.
+   */
   useEffect(() => {
     if (!mounted) return;
 
     if (visible) {
       dismissCompletedRef.current = false;
+      dragExitRef.current = false;
       translateY.value = 28;
       opacity.value = 0;
-      translateY.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
-      opacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
+      sheetOpacity.value = 0;
+      translateY.value = withTiming(0, { duration: SHEET_OPEN_MS, easing: Easing.out(Easing.cubic) });
+      opacity.value = withTiming(1, { duration: SHEET_OPEN_MS, easing: Easing.out(Easing.cubic) });
+      sheetOpacity.value = withTiming(1, { duration: 160, easing: Easing.out(Easing.cubic) });
       return;
     }
 
-    // Same outward target as the drag path, so a close that starts from a
-    // dragged position never animates backwards up the screen.
-    translateY.value = withTiming(getExitTranslate(), {
-      duration: 200,
-      easing: Easing.in(Easing.cubic),
-    });
-    opacity.value = withTiming(0, { duration: 160, easing: Easing.in(Easing.cubic) }, (finished) => {
-      // Always unmount. Reanimated can report finished=false when a new timing
-      // interrupts the close (rapid re-open/close, same-value reselect) and the
-      // old path left the Modal mounted forever — "categories selector never
-      // closes".
-      runOnJS(finishDismiss)();
-      if (!finished) {
-        // no-op: finishDismiss already handles the unmount
-      }
-    });
-    // Hard fallback if the UI-thread callback never fires.
+    if (!dragExitRef.current) {
+      // Same outward target as the drag path, so a close that starts from a
+      // dragged position never animates backwards up the screen.
+      translateY.value = withTiming(
+        getExitTranslate(),
+        { duration: SHEET_CLOSE_MS, easing: Easing.in(Easing.quad) },
+        () => {
+          // Always unmount. Reanimated can report finished=false when a new
+          // timing interrupts the close (rapid re-open/close, same-value
+          // reselect), and the old path left the Modal mounted forever —
+          // "categories selector never closes".
+          runOnJS(finishDismiss)();
+        },
+      );
+      opacity.value = withTiming(0, { duration: SHEET_CLOSE_MS, easing: Easing.in(Easing.quad) });
+    }
+
+    // Hard fallback if the UI-thread callback never fires. Longer than any
+    // close so it can never cut one short.
     const forceUnmount = setTimeout(() => {
       finishDismiss();
-    }, 320);
+    }, SHEET_CLOSE_FALLBACK_MS);
     return () => clearTimeout(forceUnmount);
-  }, [finishDismiss, getExitTranslate, mounted, opacity, translateY, visible]);
+  }, [finishDismiss, getExitTranslate, mounted, opacity, sheetOpacity, translateY, visible]);
 
   const sheetStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
+    opacity: sheetOpacity.value,
     transform: [{ translateY: translateY.value }],
   }));
 
@@ -673,6 +712,10 @@ export function AppBottomSheet({
  * Comfortably past the bottom edge for any sheet we render.
  */
 const EXIT_TRAVEL_FALLBACK = 420;
+const SHEET_OPEN_MS = 240;
+const SHEET_CLOSE_MS = 230;
+/** Longer than the slowest close (a drag throw caps at 260ms). */
+const SHEET_CLOSE_FALLBACK_MS = 450;
 
 const styles = StyleSheet.create({
   root: {

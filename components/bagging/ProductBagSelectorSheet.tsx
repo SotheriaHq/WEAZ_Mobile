@@ -332,7 +332,7 @@ export default function ProductBagSelectorSheet({
                         },
                       ]}
                     >
-                      <AppText variant="caption" tone={selected ? 'inverse' : 'default'}>
+                      <AppText variant="caption" tone={selected ? 'inverse' : 'default'} numberOfLines={1}>
                         {size}
                       </AppText>
                     </Pressable>
@@ -370,7 +370,7 @@ export default function ProductBagSelectorSheet({
                         },
                       ]}
                     >
-                      <AppText variant="caption" tone={selected ? 'inverse' : 'default'}>
+                      <AppText variant="caption" tone={selected ? 'inverse' : 'default'} numberOfLines={1}>
                         {color}
                       </AppText>
                     </Pressable>
