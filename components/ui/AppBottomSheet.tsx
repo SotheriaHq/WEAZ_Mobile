@@ -717,6 +717,23 @@ const SHEET_CLOSE_MS = 230;
 /** Longer than the slowest close (a drag throw caps at 260ms). */
 const SHEET_CLOSE_FALLBACK_MS = 450;
 
+/**
+ * The one way a sheet moves in this app.
+ *
+ * Exported because a couple of surfaces cannot be this component and still have
+ * to match it — the collection comments panel reports its own height so the
+ * viewer behind it can scale, which this component has no notion of. Those
+ * surfaces run their own animation on these numbers rather than inventing a
+ * spring, so every panel on the same journey opens and closes at the same rate.
+ *
+ * Pair them with `Easing.out(Easing.cubic)` opening and `Easing.in(Easing.quad)`
+ * closing: it arrives quickly and settles, then leaves without dawdling.
+ */
+export const SHEET_MOTION = {
+  openMs: SHEET_OPEN_MS,
+  closeMs: SHEET_CLOSE_MS,
+} as const;
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,

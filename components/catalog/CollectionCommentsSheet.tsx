@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, FlatList, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Easing, FlatList, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { SHEET_MOTION } from '@/components/ui/AppBottomSheet';
 import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -259,7 +260,8 @@ export default function CollectionCommentsSheet({
     if (!visible || !collectionId) {
       Animated.timing(progress, {
         toValue: 0,
-        duration: 220,
+        duration: SHEET_MOTION.closeMs,
+        easing: Easing.in(Easing.quad),
         useNativeDriver: true,
         isInteraction: false,
       }).start(({ finished }) => {
@@ -272,12 +274,16 @@ export default function CollectionCommentsSheet({
 
     setMounted(true);
     void loadComments(collectionId);
-    Animated.spring(progress, {
+    // The shared sheet's curve, not a spring of its own. This panel cannot be
+    // `AppBottomSheet` (it reports its height so the viewer behind it can
+    // scale), but a shopper going from the design to its comments should not
+    // feel the panel arrive on a different rhythm from the bag or the filters.
+    Animated.timing(progress, {
       toValue: 1,
+      duration: SHEET_MOTION.openMs,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
       isInteraction: false,
-      damping: 24,
-      stiffness: 220,
     }).start();
   }, [collectionId, loadComments, progress, visible]);
 

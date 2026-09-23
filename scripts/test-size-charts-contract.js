@@ -247,6 +247,34 @@ check('the two custom-order sheets say which step they are', () => {
   assert.match(read('src/features/bagging/BagFlowProvider.tsx'), /afterFittings=\{customAfterFittings\}/);
 });
 
+check('panels on the way to the bag all open as the shared sheet', () => {
+  // The product detail panel sat between the grid and the bag on the platform's
+  // own slide animation, with no handle and no swipe to dismiss.
+  const shop = read('components/catalog/BrandShopTab.tsx');
+  assert.match(shop, /<AppBottomSheet\s+visible=\{detailVisible\}/);
+  assert.doesNotMatch(shop, /<Modal[\s>]/, 'no panel here runs its own modal');
+  const review = read('components/catalog/ContentReviewDecisionSheet.tsx');
+  assert.match(review, /<AppBottomSheet/);
+  assert.doesNotMatch(review, /<Modal[\s>]/);
+});
+
+check('a panel that cannot be the shared sheet still moves on its timings', () => {
+  // The comments panel reports its own height so the viewer behind it can
+  // scale, so it animates itself — but on the shared numbers, not a spring.
+  const comments = read('components/catalog/CollectionCommentsSheet.tsx');
+  assert.match(comments, /SHEET_MOTION\.openMs/);
+  assert.match(comments, /SHEET_MOTION\.closeMs/);
+  assert.doesNotMatch(comments, /Animated\.spring/, 'a spring reads as a different sheet');
+  assert.match(read('components/ui/AppBottomSheet.tsx'), /export const SHEET_MOTION/);
+});
+
+check('Saved Looks uses the same card as every other grid', () => {
+  const profile = read('app/(tabs)/me.tsx');
+  assert.match(profile, /<UnifiedProductCard/);
+  assert.doesNotMatch(profile, /styles\.savedCard/, 'no card of its own');
+  assert.doesNotMatch(profile, /styles\.savedThumb/);
+});
+
 let failed = 0;
 for (const { name, fn } of checks) {
   try {

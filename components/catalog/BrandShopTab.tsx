@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
@@ -277,8 +276,6 @@ export function BrandShopTab({
   enabled = true,
 }: BrandShopTabProps) {
   const { scheme, theme } = useTheme();
-  const insets = useSafeAreaInsets();
-  const modalBottomGap = Platform.OS === 'android' ? Math.max(0, insets.bottom) : 0;
   const { status, user } = useAuth();
   const { standardScreenBottomPadding } = useScreenChrome();
   const requireAuth = useAuthAction();
@@ -1027,23 +1024,29 @@ export function BrandShopTab({
         </View>
       )}
 
-      <Modal
-        visible={detailVisible}
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-        navigationBarTranslucent
-        onRequestClose={closeProductDetail}
-      >
-        <View style={styles.modalRoot}>
-          <Pressable style={[styles.modalBackdrop, { backgroundColor: theme.colors.overlay }]} onPress={closeProductDetail} />
-          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, marginBottom: modalBottomGap }]}>
-            <View style={[styles.modalHandle, { backgroundColor: theme.colors.border }]} />
+      {/*
+        The product sheet uses the app's sheet, not its own modal.
 
-            {detailLoading || !activeProduct ? (
-              <LoaderBlock message="Loading product options" minHeight={240} style={styles.modalLoadingWrap} />
-            ) : (
-              <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+        It was a transparent `Modal` with `animationType="slide"` — the
+        platform's slide, on the platform's curve, with no handle to drag and no
+        swipe to dismiss. Every other sheet a shopper meets on the way to the bag
+        (filters, sort, size and colour, the bag itself) is `AppBottomSheet`, so
+        the one step in the middle of that flow opened and closed unlike the
+        steps either side of it.
+      */}
+      <AppBottomSheet
+        visible={detailVisible}
+        title={activeProduct?.name ?? 'Product'}
+        subtitle={
+          activeProduct ? formatPrice(activeProduct.price, activeProduct.currency) : undefined
+        }
+        onClose={closeProductDetail}
+        showCloseButton
+      >
+        {detailLoading || !activeProduct ? (
+          <LoaderBlock message="Loading product options" minHeight={240} style={styles.modalLoadingWrap} />
+        ) : (
+              <View style={styles.modalContent}>
                 <View style={styles.modalImageWrap}>
                   {activeProductImageUri ? (
                     <StableImage
@@ -1059,11 +1062,7 @@ export function BrandShopTab({
                   )}
                 </View>
 
-                <AppText variant="title">{activeProduct.name}</AppText>
-                <AppText variant="subtitle" tone="primary">
-                  {formatPrice(activeProduct.price, activeProduct.currency)}
-                </AppText>
-
+                {/* Name and price are the sheet's own header now. */}
                 {activeProduct.description ? (
                   <AppText variant="small" tone="muted" style={styles.modalDescription}> 
                     {activeProduct.description}
@@ -1203,11 +1202,9 @@ export function BrandShopTab({
                     ) : null}
                   </View>
                 )}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
+              </View>
+        )}
+      </AppBottomSheet>
 
       <AppSelectSheet
         visible={categorySheetOpen}
@@ -1474,35 +1471,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  modalRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFill,
-  },
-  modalCard: {
-    maxHeight: '86%',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    paddingTop: 8,
-  },
-  modalHandle: {
-    width: 54,
-    height: 5,
-    borderRadius: 999,
-    alignSelf: 'center',
-    marginBottom: 8,
-  },
   modalLoadingWrap: {
     paddingVertical: 44,
     alignItems: 'center',
     gap: 8,
   },
   modalContent: {
-    paddingHorizontal: 16,
+    // No horizontal padding: the sheet body brings its own.
     paddingBottom: 24,
     gap: 12,
   },
@@ -1515,14 +1490,6 @@ const styles = StyleSheet.create({
   modalImage: {
     width: '100%',
     height: '100%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  modalPrice: {
-    fontSize: 18,
-    fontWeight: '800',
   },
   modalDescription: {
     lineHeight: 20,

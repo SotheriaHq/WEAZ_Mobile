@@ -77,7 +77,12 @@ export function GenderPromptSheet() {
   if (!open) return null;
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={() => undefined}>
+    // Slides, like every other sheet. It used to fade, which is the motion this
+    // app uses for dialogs; this is a sheet and sits on the bottom edge, so
+    // fading it in place read as a different kind of surface. It stays a plain
+    // Modal rather than `AppBottomSheet` on purpose: the prompt is not
+    // dismissible, and the shared sheet is built around being dismissed.
+    <Modal visible transparent animationType="slide" onRequestClose={() => undefined}>
       <View style={styles.scrim}>
         <View
           style={[
