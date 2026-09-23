@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -10,6 +10,7 @@ import { BrandHeader } from '@/components/ui/BrandHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ComputedSizeChip } from '@/components/sizing/ComputedSize';
+import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import ProfileImageModal from '@/components/profile/ProfileImageModal';
@@ -63,6 +64,9 @@ const PROFILE_TABS: ProfileTab[] = ['Saved', 'Patches', 'Orders'];
 const PROFILE_INITIAL_SECTION_ITEMS = 6;
 const PROFILE_SECTION_BATCH_ITEMS = 8;
 const PROFILE_ORDERS_PREVIEW_LIMIT = 6;
+/** The saved grid, laid out like Market's: two up, same gap, same proportions. */
+const SAVED_CARD_GAP = tokens.spacing.md;
+const SAVED_CARD_RATIO = 1.58;
 /*
   The measurement vocabulary now lives in `src/features/sizing/measurementCatalog.ts`.
 
@@ -298,8 +302,24 @@ function ProfileAction({
  * which is the screen that can actually act on any of them.
  */
 
-function SavedDesignCard({ item }: { item: SavedItem }) {
-  const { theme } = useTheme();
+/**
+ * Saved Looks uses the same card as every other grid in the app.
+ *
+ * It used to have its own: a tall photo with a solid copy panel bolted
+ * underneath, which is why the saved grid read as a different product from
+ * Market, the brand shop and Adire. `UnifiedProductCard` is the agreed
+ * treatment — full-bleed media, frosted copy over the bottom of the image —
+ * and a saved item carries everything it asks for.
+ *
+ * No favourite button here: on this grid every card is already saved, so a
+ * heart would have nothing to say. Tapping opens the item, as before.
+ *
+ * The brand line the old card carried is gone with it — no grid in the app
+ * puts a brand name on a card, and the shared card has no slot for one. Saved
+ * items with a price show it; a saved look that is quoted per order reads
+ * "Price on request", the same as it does in Market.
+ */
+function SavedDesignCard({ item, width }: { item: SavedItem; width: number }) {
   const destinationId =
     item.targetType === 'DESIGN'
       ? item.designId ?? item.targetId
@@ -331,25 +351,15 @@ function SavedDesignCard({ item }: { item: SavedItem }) {
     );
   };
   return (
-    <Pressable
+    <UnifiedProductCard
+      width={width}
+      height={Math.round(width * SAVED_CARD_RATIO)}
+      title={item.title}
+      priceLabel={typeof item.price === 'number' ? formatMoney(item.price) : null}
+      mediaSrc={item.thumbnail ?? null}
+      analyticsSourceScreen="profile_saved"
       onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [styles.savedCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, pressed ? styles.pressed : null]}
-    >
-      {item.thumbnail ? (
-        <StableImage uri={item.thumbnail} containerStyle={styles.savedThumb} imageStyle={styles.savedThumb} />
-      ) : (
-        <View style={[styles.savedThumb, styles.savedThumbFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
-          <AppText variant="title">🗂️</AppText>
-        </View>
-      )}
-      <View style={styles.savedCopy}>
-        <AppText variant="bodyBold" numberOfLines={1}>{item.title}</AppText>
-        <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-          {[item.brand.firstName, item.brand.lastName].filter(Boolean).join(' ') || item.brand.username}
-        </AppText>
-      </View>
-    </Pressable>
+    />
   );
 }
 
@@ -452,6 +462,12 @@ export default function BuyerProfileScreen() {
   // very first load and turn a warm profile section back into a skeleton.
   const hasWarmProfileSnapshotRef = useRef(Boolean(initialWarmProfileState));
   const unreadNotificationCount = useUnreadNotificationCount();
+  const { width: windowWidth } = useWindowDimensions();
+  // Measured, not a percentage: `UnifiedProductCard` needs a number to size its
+  // copy panel against, and a whole-pixel width keeps the two columns even.
+  const savedCardWidth = Math.floor(
+    (windowWidth - tokens.spacing.lg * 2 - SAVED_CARD_GAP) / 2,
+  );
 
   useEffect(() => {
     navPerf.screenMounted('tabs→me');
@@ -1233,7 +1249,7 @@ export default function BuyerProfileScreen() {
           ) : (
             <View style={styles.savedGrid}>
               {visibleSavedItems.map((item) => (
-                <SavedDesignCard key={item.id} item={item} />
+                <SavedDesignCard key={item.id} item={item} width={savedCardWidth} />
               ))}
             </View>
           )
@@ -1433,25 +1449,7 @@ const styles = StyleSheet.create({
   savedGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: tokens.spacing.xs,
-  },
-  savedCard: {
-    width: '48.5%',
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  savedThumb: {
-    width: '100%',
-    aspectRatio: 4 / 5,
-  },
-  savedThumbFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  savedCopy: {
-    gap: tokens.spacing.xs,
-    padding: tokens.spacing.md,
+    gap: SAVED_CARD_GAP,
   },
   listStack: {
     gap: tokens.spacing.xs,
