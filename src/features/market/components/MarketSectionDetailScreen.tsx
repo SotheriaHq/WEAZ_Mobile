@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   View,
@@ -9,14 +8,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { router } from 'expo-router';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { ScreenState } from '@/components/ui/ScreenState';
-import { StableImage } from '@/components/ui/StableImage';
-import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import {
   getMarketSectionDetail,
   type MarketSection,
@@ -31,6 +27,11 @@ import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { navPerf } from '@/src/utils/navPerf';
 import { MobileMarketSuggestionBlocks } from '@/src/features/market/components/MobileMarketSuggestionBlocks';
+import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
+import {
+  DesignerFrontCard,
+  type DesignerFrontBrand,
+} from '@/src/features/market/components/DesignerFrontCard';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type Props = {
@@ -63,6 +64,17 @@ const formatPrice = (item: MarketSectionItem) => {
   if (item.entityType === 'CATEGORY') return 'Explore';
   return 'View';
 };
+
+/** Section payload -> the designer front's props. */
+const toDesignerFrontBrand = (item: MarketSectionItem): DesignerFrontBrand => ({
+  id: item.brand?.id ?? item.target?.id ?? item.sourceId,
+  name: item.brand?.name ?? item.title,
+  handle: item.subtitle ?? null,
+  logoUrl: item.brand?.logoUrl ?? item.media?.thumbnailUrl ?? null,
+  logoFileId: item.media?.fileId ?? null,
+  pieceCount: item.stats?.products ?? null,
+  blurb: item.description ?? null,
+});
 
 const openItem = (item: MarketSectionItem, sectionKey: string) => {
   const targetType = item.target?.type ?? item.entityType;
@@ -113,6 +125,17 @@ const openItem = (item: MarketSectionItem, sectionKey: string) => {
   topLevelNavigate('/(tabs)/discover' as any);
 };
 
+/**
+ * The same card as every other grid in the app.
+ *
+ * This screen was drawing its own: a bordered box with a cropped image on top,
+ * an entity-type pill ("DESIGN"), then title, subtitle and price stacked
+ * underneath on a solid body. Market itself moved to `UnifiedProductCard`
+ * (full-bleed media, frosted copy panel) and this screen — the one you land on
+ * from every "See more" — was left behind, so following a row into its own page
+ * changed what the cards looked like. The entity pill goes with it: "DESIGN"
+ * tells a shopper nothing the picture has not.
+ */
 function SectionItemCard({
   item,
   width,
@@ -122,56 +145,22 @@ function SectionItemCard({
   width: number;
   sectionKey: string;
 }) {
-  const { theme } = useTheme();
-  const rawImageUri = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
-  const imageUri = useResolvedImageUri({
-    src: rawImageUri,
-    fileId: item.media?.fileId ?? null,
-    enabled: Boolean(rawImageUri || item.media?.fileId),
-  });
+  const mediaSrc = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
 
   return (
-    <Pressable
+    <UnifiedProductCard
+      width={width}
+      height={Math.round(width * 1.58)}
+      title={item.title}
+      brandName={item.brand?.name ?? null}
+      priceLabel={formatPrice(item)}
+      customOrder={Boolean(item.availability?.customOrderEnabled)}
+      mediaSrc={mediaSrc}
+      mediaFileId={item.media?.fileId ?? null}
+      analyticsSourceScreen="market_section"
       onPress={() => openItem(item, sectionKey)}
-      style={({ pressed }) => [
-        styles.card,
-        { width, backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-        pressed && styles.pressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${item.title}`}
-    >
-      {imageUri ? (
-        <StableImage
-          uri={imageUri}
-          resizeMode="cover"
-          containerStyle={styles.cardImage}
-          imageStyle={styles.cardImage}
-        />
-      ) : (
-        <View style={[styles.cardImage, styles.cardFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
-          <AppText variant="title" tone="muted">
-            {item.title.slice(0, 1).toUpperCase()}
-          </AppText>
-        </View>
-      )}
-      <View style={styles.cardBody}>
-        <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-          {item.entityType}
-        </AppText>
-        <AppText variant="bodyBold" numberOfLines={2}>
-          {item.title}
-        </AppText>
-        {item.subtitle ? (
-          <AppText variant="caption" tone="muted" numberOfLines={1}>
-            {item.subtitle}
-          </AppText>
-        ) : null}
-        <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-          {formatPrice(item)}
-        </AppText>
-      </View>
-    </Pressable>
+      style={styles.gridCard}
+    />
   );
 }
 
@@ -188,7 +177,21 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const columnCount = width >= 720 ? 3 : 2;
+  /*
+    A section of BRANDS is not a grid.
+
+    "New designers to watch" carries brands, and a brand tile in a two-up grid
+    is a logo and a number — nothing to judge a designer by. Those sections lay
+    out one designer front per row instead, full width, each showing that
+    designer's actual work. Every other section stays a grid, because a product
+    or a design IS its picture and a grid shows more of them.
+  */
+  const isDesignerSection = useMemo(
+    () => items.length > 0 && items.every((item) => item.entityType === 'BRAND'),
+    [items],
+  );
+  const columnCount = isDesignerSection ? 1 : width >= 720 ? 3 : 2;
+  const fullWidth = Math.floor(width - SIDE_PADDING * 2);
   const cardWidth = useMemo(
     () => Math.floor((width - SIDE_PADDING * 2 - GAP * (columnCount - 1)) / columnCount),
     [columnCount, width],
@@ -333,9 +336,31 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
         columnWrapperStyle={columnCount > 1 ? styles.gridRow : undefined}
         contentContainerStyle={[styles.content, { paddingBottom: standardScreenBottomPadding + tokens.spacing.lg }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
-        renderItem={({ item }) => (
-          <SectionItemCard item={item} width={cardWidth} sectionKey={section?.key ?? sectionKey} />
-        )}
+        renderItem={({ item }) =>
+          isDesignerSection ? (
+            <DesignerFrontCard
+              brand={toDesignerFrontBrand(item)}
+              width={fullWidth}
+              onOpenDesign={(design) =>
+                drillDownPush({
+                  pathname: '/market-viewer',
+                  params: {
+                    sourceType: 'DESIGN',
+                    sourceId: design.id,
+                    brandId: item.brand?.id ?? item.sourceId,
+                    title: design.title,
+                    brandName: design.brandName ?? item.brand?.name ?? '',
+                  },
+                } as any)
+              }
+              onOpenCatalogue={(brandId) =>
+                drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId } } as any)
+              }
+            />
+          ) : (
+            <SectionItemCard item={item} width={cardWidth} sectionKey={section?.key ?? sectionKey} />
+          )
+        }
         onEndReached={() => {
           if (hasNextPage && !loadingMore) void loadSection('more');
         }}
@@ -387,23 +412,8 @@ const styles = StyleSheet.create({
   gridRow: {
     gap: GAP,
   },
-  card: {
+  gridCard: {
     marginBottom: GAP,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  cardImage: {
-    width: '100%',
-    aspectRatio: 4 / 5,
-  },
-  cardFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardBody: {
-    padding: tokens.spacing.md,
-    gap: tokens.spacing.xs,
   },
   footer: {
     paddingTop: tokens.spacing.md,
@@ -415,8 +425,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: tokens.spacing.sm,
     paddingHorizontal: SIDE_PADDING,
-  },
-  pressed: {
-    opacity: 0.72,
   },
 });
