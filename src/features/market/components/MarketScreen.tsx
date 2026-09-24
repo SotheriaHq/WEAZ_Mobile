@@ -18,6 +18,7 @@ import { BlurView } from 'expo-blur';
 
 import WiezMark from '@/src/brand/WiezMark';
 import { AppText } from '@/components/ui/AppText';
+import { SeeMoreLink } from '@/components/ui/InlineNavLink';
 import { MediaScrim } from '@/components/ui/MediaScrim';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Input } from '@/components/ui/Input';
@@ -59,6 +60,7 @@ import {
 } from '@/src/features/market/marketUtils';
 import type { MarketContentItem, MarketFilters } from '@/src/features/market/types';
 import { tokens } from '@/src/styles/tokens';
+import { tagAccessibilityLabel } from '@/src/constants/tagging';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import type { MarketFeedResponse, MarketItem } from '@/src/types/market';
@@ -670,7 +672,7 @@ function MarketDesignCard({
       analyticsSourceScreen="market"
       favorite={favorite}
       favoriteBusy={favoriteBusy}
-      favoriteAccessibilityLabel={favorite ? 'Remove from Saved Looks' : 'Save look for inspiration'}
+      favoriteAccessibilityLabel={tagAccessibilityLabel(favorite)}
       actionLabel={canRequestCustomOrder ? BAG_IT_LABEL : undefined}
       actionBusy={bagBusy}
       actionDisabled={!canRequestCustomOrder}
@@ -919,10 +921,11 @@ function CollectionRow({
 
   return (
     <View style={styles.section}>
+      {/* Same rule as the rows above: the title names the section, the cards
+          say the rest. The subtitle is gone. */}
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleBlock}>
-          <AppText variant="subtitle">{title}</AppText>
-          <AppText variant="caption" tone="muted" numberOfLines={1}>{subtitle}</AppText>
+          <AppText variant="subtitle" numberOfLines={1}>{title}</AppText>
         </View>
       </View>
 
@@ -1021,16 +1024,21 @@ function HorizontalCardRow({
 
   return (
     <View style={styles.section}>
+      {/*
+        The title, and the way out. Nothing else.
+
+        A row used to carry four pieces of chrome: a title, a subtitle
+        underneath it, a descriptive chip, and a filled "See all" control — for
+        ONE horizontal strip of cards. The subtitles are written for whoever
+        tuned the ranking ("Deterministic V1 heat from product views and thread
+        activity"), not for a shopper, and they push the first card further down
+        on every row. The title says what the row is; the cards say the rest.
+      */}
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleBlock}>
-          <AppText variant="subtitle">{title}</AppText>
-          {subtitle ? <AppText variant="caption" tone="muted" numberOfLines={1}>{subtitle}</AppText> : null}
+          <AppText variant="subtitle" numberOfLines={1}>{title}</AppText>
         </View>
-        {onSeeAll ? (
-          <Pressable onPress={onSeeAll} hitSlop={tokens.spacing.sm} accessibilityRole="button" accessibilityLabel={`See all ${title}`}>
-            <AppText variant="captionBold" tone="primary">See all</AppText>
-          </Pressable>
-        ) : null}
+        {onSeeAll ? <SeeMoreLink onPress={onSeeAll} ofWhat={title} /> : null}
       </View>
       <FlatList
         data={items}
@@ -1137,20 +1145,12 @@ function ApiSectionRow({
 }) {
   return (
     <View style={styles.section}>
+      {/* See the note on the curated row: title + the way out, nothing else. */}
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleBlock}>
-          <AppText variant="subtitle">{section.title}</AppText>
-          {section.subtitle ? (
-            <AppText variant="caption" tone="muted" numberOfLines={1}>
-              {section.subtitle}
-            </AppText>
-          ) : null}
+          <AppText variant="subtitle" numberOfLines={1}>{section.title}</AppText>
         </View>
-        {onSeeAll ? (
-          <Pressable onPress={onSeeAll} hitSlop={tokens.spacing.sm} accessibilityRole="button" accessibilityLabel={`See all ${section.title}`}>
-            <AppText variant="captionBold" tone="primary">See all</AppText>
-          </Pressable>
-        ) : null}
+        {onSeeAll ? <SeeMoreLink onPress={onSeeAll} ofWhat={section.title} /> : null}
       </View>
       <FlatList
         data={section.items}

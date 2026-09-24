@@ -16,6 +16,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
+import { BackLink } from '@/components/ui/InlineNavLink';
 import { Button } from '@/components/ui/Button';
 import { StableImage } from '@/components/ui/StableImage';
 import { MobileStoreApi, type CollectionBagStatus } from '@/src/api/StoreApi';
@@ -212,7 +213,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
           <AppText variant="subtitle">Gallery unavailable</AppText>
           <AppText variant="body" tone="secondary">{error ?? 'Try again later.'}</AppText>
           <Button title="Retry" onPress={() => void load()} />
-          <Button title="Back to collection" variant="outline" onPress={goBack} />
+          <BackLink label="Collection" onPress={goBack} />
         </View>
       </SafeAreaView>
     );

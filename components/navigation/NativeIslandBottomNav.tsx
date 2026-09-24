@@ -61,12 +61,28 @@ export function NativeIslandTabIcon({
   // (it has overflow:hidden) and momentarily blanks its glyph — that is the
   // "link disappears when navigating" bug. So: border width is always present
   // (transparent when inactive), no dynamic shadow, and a constant emoji size.
+  /*
+    The active chip is a PILL: a tint with a ring around it.
+
+    `borderColor` was set to `navActiveSurface` — the same value as the fill —
+    so the ring rendered invisible and the active state was a bare tinted blob
+    with nothing defining its edge. On the frosted island, over whatever
+    photograph happens to be behind it, that blob has no shape: it reads as a
+    smudge rather than as the selected tab. The browser build has had the ring
+    all along, which is why the same bar looks finished there and unfinished
+    here.
+
+    `focusRing` is the one token for "this is the selected thing" and it is the
+    same lilac in both themes, so the pill keeps its edge on dark chrome too.
+    Colour is the ONLY thing that may change on focus here — see the note above
+    about Android re-clipping the glyph.
+  */
   const chipStyle = [
     styles.tabChip,
     compact && styles.tabChipCompact,
     {
       backgroundColor: focused ? theme.colors.navActiveSurface : 'transparent',
-      borderColor: focused ? theme.colors.navActiveSurface : 'transparent',
+      borderColor: focused ? theme.colors.focusRing : 'transparent',
     },
   ];
 
@@ -433,9 +449,14 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
     // Border is always present (transparent when inactive) so the chip's box
     // model never changes on focus — prevents Android re-clipping the glyph.
-    borderWidth: StyleSheet.hairlineWidth,
+    // A hairline ring disappears at this size on a busy backdrop; 1pt is the
+    // thinnest that still draws an edge on a 3x screen. Constant in both
+    // states, so the chip's box never changes on focus.
+    borderWidth: 1,
     borderColor: 'transparent',
-    paddingHorizontal: 5,
+    // Was 5. The pill hugged the cell instead of its contents, so the tint ran
+    // edge to edge and the label had nowhere to breathe.
+    paddingHorizontal: 9,
     paddingVertical: 1,
     alignItems: 'center',
     justifyContent: 'center',
