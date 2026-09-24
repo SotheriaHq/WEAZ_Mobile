@@ -1,11 +1,11 @@
 /**
- * Tagging vocabulary, market chrome, and the island's active state.
+ * Clipping vocabulary, market chrome, and the island's active state.
  *
  * Three things that are cheap to regress because each one is a handful of
  * strings spread over a dozen screens:
  *
  *  - "save" had four names (Save / Saved / Save look / Saved Looks) and a heart
- *    glyph that meant "like". One vocabulary now lives in `src/constants/tagging.ts`
+ *    glyph that meant "like". One vocabulary now lives in `src/constants/clipping.ts`
  *    and every surface reads it.
  *  - a market row is a heading and a way out. Subtitles written for whoever
  *    tuned the ranking, and "see more" dressed as a button, both came back
@@ -25,15 +25,15 @@ const read = (relative) => fs.readFileSync(path.join(repoRoot, relative), 'utf8'
 const checks = [];
 const check = (name, fn) => checks.push({ name, fn });
 
-check('one tag vocabulary, and every surface reads it', () => {
-  const constants = read('src/constants/tagging.ts');
+check('one clip vocabulary, and every surface reads it', () => {
+  const constants = read('src/constants/clipping.ts');
   for (const token of [
-    'TAG_LABEL',
-    'TAGGED_LABEL',
-    'UNTAG_LABEL',
-    'TAGS_TAB_LABEL',
-    'tagActionLabel',
-    'tagAccessibilityLabel',
+    'CLIP_LABEL',
+    'CLIPPED_LABEL',
+    'UNCLIP_LABEL',
+    'CLIPS_TAB_LABEL',
+    'clipActionLabel',
+    'clipAccessibilityLabel',
   ]) {
     assert.match(constants, new RegExp(`export const ${token}\\b`), `${token} is the shared name`);
   }
@@ -45,8 +45,17 @@ check('one tag vocabulary, and every surface reads it', () => {
     'src/features/market/components/MarketCommerceViewer.tsx',
     'src/features/market/components/CollectionCommerceViewer.tsx',
   ]) {
-    assert.match(read(file), /constants\/tagging/, `${file} reads the shared vocabulary`);
+    assert.match(read(file), /constants\/clipping/, `${file} reads the shared vocabulary`);
   }
+});
+
+check('clip does not collide with the hashtag vocabulary', () => {
+  // The reason this is not called "tag": `tags` means hashtags everywhere in
+  // this codebase, and a second meaning would cost a reader a beat every time.
+  const constants = read('src/constants/clipping.ts');
+  assert.doesNotMatch(constants, /TAG_|tagAction/, 'no tag-named export survives');
+  // The market screen keeps its hashtag filter chips untouched.
+  assert.match(read('src/features/market/components/MarketScreen.tsx'), /tag: activeTag|tag: params\.filters\.category|tagKeys/);
 });
 
 check('no surface still says Saved Looks or Save look', () => {
@@ -63,10 +72,10 @@ check('no surface still says Saved Looks or Save look', () => {
   }
 });
 
-check('the tag control is two shapes, not one shape in two tints', () => {
+check('the clip control is two shapes, not one shape in two tints', () => {
   const card = read('components/commerce/UnifiedProductCard.tsx');
-  assert.match(card, /const FAVORITE_ICON = TAGGED_EMOJI;/);
-  assert.match(card, /const FAVORITE_EMPTY_ICON = TAG_EMOJI;/);
+  assert.match(card, /const FAVORITE_ICON = CLIPPED_EMOJI;/);
+  assert.match(card, /const FAVORITE_EMPTY_ICON = CLIP_EMOJI;/);
   // The hearts differed only in colour, which is invisible over a photograph.
   assert.doesNotMatch(card, /0x2764/, 'no heart glyph');
   assert.doesNotMatch(card, /0x1f90d/, 'no white-heart glyph');
@@ -150,7 +159,7 @@ for (const { name, fn } of checks) {
   }
 }
 if (failed) {
-  console.error(`Tagging and market chrome contract: ${failed} of ${checks.length} checks failed`);
+  console.error(`Clipping and market chrome contract: ${failed} of ${checks.length} checks failed`);
   process.exit(1);
 }
-console.log(`Tagging and market chrome contract: ${checks.length} checks passed`);
+console.log(`Clipping and market chrome contract: ${checks.length} checks passed`);

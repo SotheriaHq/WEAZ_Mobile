@@ -47,7 +47,7 @@ import {
   assertValidPickedUploadAsset,
 } from '@/src/utils/uploadValidation';
 import { formatMoney } from '@/src/utils/money';
-import { TAGGED_EMOJI, TAGS_TAB_LABEL } from '@/src/constants/tagging';
+import { CLIPPED_EMOJI, CLIPS_TAB_LABEL } from '@/src/constants/clipping';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 
@@ -87,7 +87,7 @@ const getSavedLooksCountBucket = (count: number) => {
 };
 
 /*
-  The tab is the shopper's TAGS.
+  The tab is the shopper's CLIPS.
 
   It read "Saved Looks", which is a third name for the thing the runway rail
   called "Save look", the viewer called "Save" and the browser called "Saved" —
@@ -95,7 +95,7 @@ const getSavedLooksCountBucket = (count: number) => {
   the deep links and analytics buckets already in the wild keep resolving; only
   what the reader sees changes.
 */
-const getProfileTabLabel = (tab: ProfileTab) => (tab === 'Saved' ? TAGS_TAB_LABEL : tab);
+const getProfileTabLabel = (tab: ProfileTab) => (tab === 'Saved' ? CLIPS_TAB_LABEL : tab);
 
 function formatCurrency(amount: number, currency = 'NGN') {
   return formatMoney(amount, currency);
@@ -1210,7 +1210,7 @@ export default function BuyerProfileScreen() {
         </View>
 
         <View style={styles.summaryRow}>
-          <SummaryStat title={TAGS_TAB_LABEL} value={String(profileCounts.saved)} subtitle="tagged" />
+          <SummaryStat title={CLIPS_TAB_LABEL} value={String(profileCounts.saved)} subtitle="clipped" />
           <SummaryStat title="Patched" value={String(profileCounts.patches)} subtitle="brands" />
           <SummaryStat title="Recent" value={String(profileCounts.orders)} subtitle="orders" />
         </View>
@@ -1252,9 +1252,9 @@ export default function BuyerProfileScreen() {
         {activeTab === 'Saved' ? (
           state.saved.length === 0 ? (
             <EmptyState
-              emoji={TAGGED_EMOJI}
-              title="Nothing tagged yet"
-              body="Tag a piece you want to come back to and it waits for you here."
+              emoji={CLIPPED_EMOJI}
+              title="Nothing clipped yet"
+              body="Clip a piece you want to come back to and it waits for you here."
               cta="Browse Runway"
               onPress={() => topLevelNavigate('/(tabs)' as any)}
             />

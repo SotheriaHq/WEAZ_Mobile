@@ -29,7 +29,7 @@ import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
-import { TAG_REMOVED_TOAST, tagActionLabel } from '@/src/constants/tagging';
+import { CLIP_REMOVED_TOAST, clipActionLabel } from '@/src/constants/clipping';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -337,7 +337,7 @@ export function CollectionCommerceViewer({
     try {
       if (previous) {
         await SavedItemsApi.unsaveCatalogTarget({ targetType: 'COLLECTION', collectionId: normalizedCollectionId });
-        toast.success(TAG_REMOVED_TOAST);
+        toast.success(CLIP_REMOVED_TOAST);
       } else {
         await SavedItemsApi.saveCatalogTarget({ targetType: 'COLLECTION', collectionId: normalizedCollectionId });
         toast.success('Collection saved.');
@@ -567,7 +567,7 @@ export function CollectionCommerceViewer({
               </Pressable>
               <View style={styles.topActions}>
                 <Button title="Share" size="sm" variant="outline" onPress={handleShare} loading={busy === 'share'} />
-                <Button title={tagActionLabel(saved)} size="sm" variant="outline" onPress={handleSave} loading={busy === 'save'} />
+                <Button title={clipActionLabel(saved)} size="sm" variant="outline" onPress={handleSave} loading={busy === 'save'} />
               </View>
             </View>
 

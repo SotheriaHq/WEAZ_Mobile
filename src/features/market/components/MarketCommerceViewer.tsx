@@ -59,7 +59,7 @@ import { contentReferenceToParams } from '@/src/features/messaging/contentRefere
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
-import { TAG_ADDED_TOAST, TAG_REMOVED_TOAST, tagAccessibilityLabel, tagActionLabel } from '@/src/constants/tagging';
+import { CLIP_ADDED_TOAST, CLIP_REMOVED_TOAST, clipAccessibilityLabel, clipActionLabel } from '@/src/constants/clipping';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { useShopperOnlyAction } from '@/src/features/bagging/useShopperOnlyAction';
@@ -984,7 +984,7 @@ export function MarketCommerceViewer({
       toast.success(
         sourceType === 'PRODUCT'
           ? wasSaved ? 'Removed from wishlist.' : 'Saved to wishlist.'
-          : wasSaved ? TAG_REMOVED_TOAST : TAG_ADDED_TOAST,
+          : wasSaved ? CLIP_REMOVED_TOAST : CLIP_ADDED_TOAST,
       );
     } catch (nextError) {
       setSaved(wasSaved);
@@ -1163,7 +1163,7 @@ export function MarketCommerceViewer({
       accessibilityLabel={
         sourceType === 'PRODUCT'
           ? saved ? 'Remove from wishlist' : 'Save to wishlist'
-          : tagAccessibilityLabel(saved)
+          : clipAccessibilityLabel(saved)
       }
     >
       <AppText
@@ -1175,7 +1175,7 @@ export function MarketCommerceViewer({
         {variant === 'dock'
           ? saved ? WISHLIST_EMOJI_ON : WISHLIST_EMOJI_OFF
           : `${saved ? WISHLIST_EMOJI_ON : WISHLIST_EMOJI_OFF}  ${
-              sourceType === 'PRODUCT' ? (saved ? 'Wishlisted' : 'Wishlist') : tagActionLabel(saved)
+              sourceType === 'PRODUCT' ? (saved ? 'Wishlisted' : 'Wishlist') : clipActionLabel(saved)
             }`}
       </AppText>
     </Pressable>

@@ -14,7 +14,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
-import { TAG_ADDED_TOAST, TAG_REMOVED_TOAST, tagActionLabel } from '@/src/constants/tagging';
+import { CLIP_ADDED_TOAST, CLIP_REMOVED_TOAST, clipActionLabel } from '@/src/constants/clipping';
 import { useToast } from '@/src/toast/ToastContext';
 import { useShopperOnlyAction } from '@/src/features/bagging/useShopperOnlyAction';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
@@ -546,7 +546,7 @@ const FeedSaveLookAction = React.memo(function FeedSaveLookAction({
         <AppText variant="subtitle">{saved ? '🔖' : '📌'}</AppText>
       </IconButton>
       <AppText variant="captionBold" tone="inverse" style={styles.railCountLabel} numberOfLines={1}>
-        {tagActionLabel(saved)}
+        {clipActionLabel(saved)}
       </AppText>
     </View>
   );
@@ -2287,7 +2287,7 @@ export function RunwayFeedScreen() {
               brandId: item.brandId,
               feedPosition: activePageIndex,
             });
-            toast.success(TAG_REMOVED_TOAST);
+            toast.success(CLIP_REMOVED_TOAST);
           } else {
             await SavedItemsApi.saveCatalogTarget({
               targetType: 'DESIGN',
@@ -2302,7 +2302,7 @@ export function RunwayFeedScreen() {
               brandId: item.brandId,
               feedPosition: activePageIndex,
             });
-            toast.success(TAG_ADDED_TOAST);
+            toast.success(CLIP_ADDED_TOAST);
           }
         } catch (error) {
           savedLookByCollectionIdRef.current = {

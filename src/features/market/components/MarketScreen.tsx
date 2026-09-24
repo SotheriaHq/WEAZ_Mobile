@@ -60,7 +60,7 @@ import {
 } from '@/src/features/market/marketUtils';
 import type { MarketContentItem, MarketFilters } from '@/src/features/market/types';
 import { tokens } from '@/src/styles/tokens';
-import { tagAccessibilityLabel } from '@/src/constants/tagging';
+import { clipAccessibilityLabel } from '@/src/constants/clipping';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import type { MarketFeedResponse, MarketItem } from '@/src/types/market';
@@ -672,7 +672,7 @@ function MarketDesignCard({
       analyticsSourceScreen="market"
       favorite={favorite}
       favoriteBusy={favoriteBusy}
-      favoriteAccessibilityLabel={tagAccessibilityLabel(favorite)}
+      favoriteAccessibilityLabel={clipAccessibilityLabel(favorite)}
       actionLabel={canRequestCustomOrder ? BAG_IT_LABEL : undefined}
       actionBusy={bagBusy}
       actionDisabled={!canRequestCustomOrder}

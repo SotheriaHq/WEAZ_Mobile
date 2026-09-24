@@ -11,7 +11,7 @@ import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
-import { TAG_EMOJI, TAGGED_EMOJI, tagAccessibilityLabel } from '@/src/constants/tagging';
+import { CLIP_EMOJI, CLIPPED_EMOJI, clipAccessibilityLabel } from '@/src/constants/clipping';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
@@ -56,16 +56,16 @@ type UnifiedProductCardProps = {
 
 const IMAGE_FALLBACK_ICON = String.fromCodePoint(0x1f5bc, 0xfe0f);
 /*
-  A tag, not a heart.
+  A clip, not a heart.
 
   ❤️/🤍 says "like", and two hearts that differ only in COLOUR is the
   weakest possible way to show a state change: over a photograph the tint is
   swallowed, and anyone who cannot separate red from white sees no change at
-  all. The tag and the bookmark are different shapes, so the state reads at a
-  glance and in greyscale. See `src/constants/tagging.ts`.
+  all. The paperclip and the bookmark are different shapes, so the state
+  reads at a glance and in greyscale. See `src/constants/clipping.ts`.
 */
-const FAVORITE_ICON = TAGGED_EMOJI;
-const FAVORITE_EMPTY_ICON = TAG_EMOJI;
+const FAVORITE_ICON = CLIPPED_EMOJI;
+const FAVORITE_EMPTY_ICON = CLIP_EMOJI;
 
 export const UnifiedProductCard = memo(function UnifiedProductCard({
   width,
@@ -196,7 +196,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
             pressed && styles.inlinePressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={favoriteAccessibilityLabel ?? tagAccessibilityLabel(favorite)}
+          accessibilityLabel={favoriteAccessibilityLabel ?? clipAccessibilityLabel(favorite)}
         >
           {favoriteBusy ? (
             <MuseLoader size={20} />
