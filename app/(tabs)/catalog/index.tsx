@@ -70,6 +70,7 @@ import {
   type DesignEditorBackgroundTask,
 } from '@/src/features/design-editor/designEditorBackgroundTasks';
 import { tokens } from '@/src/styles/tokens';
+import { TAG_REMOVED_TOAST } from '@/src/constants/tagging';
 import { catalogDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { formatCount } from '@/src/utils/formatCount';
@@ -2053,7 +2054,7 @@ export default function CatalogScreen() {
             legacyCollectionId: collection.id,
             designId: collection.entityType === 'DESIGN' ? collection.id : undefined,
           });
-          toast.success('Removed from saved.');
+          toast.success(TAG_REMOVED_TOAST);
         } else {
           await SavedItemsApi.saveCatalogTarget({
             targetType: collection.entityType === 'DESIGN' ? 'DESIGN' : 'COLLECTION',

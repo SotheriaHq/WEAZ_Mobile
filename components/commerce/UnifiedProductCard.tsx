@@ -11,6 +11,7 @@ import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
+import { TAG_EMOJI, TAGGED_EMOJI, tagAccessibilityLabel } from '@/src/constants/tagging';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
@@ -54,8 +55,17 @@ type UnifiedProductCardProps = {
 };
 
 const IMAGE_FALLBACK_ICON = String.fromCodePoint(0x1f5bc, 0xfe0f);
-const FAVORITE_ICON = String.fromCodePoint(0x2764, 0xfe0f);
-const FAVORITE_EMPTY_ICON = String.fromCodePoint(0x1f90d);
+/*
+  A tag, not a heart.
+
+  ❤️/🤍 says "like", and two hearts that differ only in COLOUR is the
+  weakest possible way to show a state change: over a photograph the tint is
+  swallowed, and anyone who cannot separate red from white sees no change at
+  all. The tag and the bookmark are different shapes, so the state reads at a
+  glance and in greyscale. See `src/constants/tagging.ts`.
+*/
+const FAVORITE_ICON = TAGGED_EMOJI;
+const FAVORITE_EMPTY_ICON = TAG_EMOJI;
 
 export const UnifiedProductCard = memo(function UnifiedProductCard({
   width,
@@ -186,7 +196,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
             pressed && styles.inlinePressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={favoriteAccessibilityLabel ?? (favorite ? 'Remove from favorites' : 'Add to favorites')}
+          accessibilityLabel={favoriteAccessibilityLabel ?? tagAccessibilityLabel(favorite)}
         >
           {favoriteBusy ? (
             <MuseLoader size={20} />

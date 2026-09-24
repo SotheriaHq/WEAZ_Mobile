@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ComputedSizeChip } from '@/components/sizing/ComputedSize';
 import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
+import { BackLink } from '@/components/ui/InlineNavLink';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import ProfileImageModal from '@/components/profile/ProfileImageModal';
@@ -46,6 +47,7 @@ import {
   assertValidPickedUploadAsset,
 } from '@/src/utils/uploadValidation';
 import { formatMoney } from '@/src/utils/money';
+import { TAGGED_EMOJI, TAGS_TAB_LABEL } from '@/src/constants/tagging';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 
@@ -84,7 +86,16 @@ const getSavedLooksCountBucket = (count: number) => {
   return '10+';
 };
 
-const getProfileTabLabel = (tab: ProfileTab) => (tab === 'Saved' ? 'Saved Looks' : tab);
+/*
+  The tab is the shopper's TAGS.
+
+  It read "Saved Looks", which is a third name for the thing the runway rail
+  called "Save look", the viewer called "Save" and the browser called "Saved" —
+  four labels for one feature. `ProfileTab` keeps its internal 'Saved' key so
+  the deep links and analytics buckets already in the wild keep resolving; only
+  what the reader sees changes.
+*/
+const getProfileTabLabel = (tab: ProfileTab) => (tab === 'Saved' ? TAGS_TAB_LABEL : tab);
 
 function formatCurrency(amount: number, currency = 'NGN') {
   return formatMoney(amount, currency);
@@ -1031,11 +1042,12 @@ export default function BuyerProfileScreen() {
               onPress={() => drillDownPush({ pathname: '/(auth)/signup', params: { next: '/(tabs)/me' } } as any)}
               fullWidth
             />
-            <Button
-              title="Back to Runway"
-              variant="ghost"
+            {/* "Create an account" is the decision on this screen, so it is
+                the only button. Leaving is a link. */}
+            <BackLink
+              label="Runway"
               onPress={() => router.replace('/' as any)}
-              fullWidth
+              style={styles.signedOutBackLink}
             />
           </View>
         </View>
@@ -1198,7 +1210,7 @@ export default function BuyerProfileScreen() {
         </View>
 
         <View style={styles.summaryRow}>
-          <SummaryStat title="Saved Looks" value={String(profileCounts.saved)} subtitle="inspiration" />
+          <SummaryStat title={TAGS_TAB_LABEL} value={String(profileCounts.saved)} subtitle="tagged" />
           <SummaryStat title="Patched" value={String(profileCounts.patches)} subtitle="brands" />
           <SummaryStat title="Recent" value={String(profileCounts.orders)} subtitle="orders" />
         </View>
@@ -1240,9 +1252,9 @@ export default function BuyerProfileScreen() {
         {activeTab === 'Saved' ? (
           state.saved.length === 0 ? (
             <EmptyState
-              emoji="🗂️"
-              title="No saved looks yet"
-              body="Save looks you love for inspiration so you can revisit them quickly from here."
+              emoji={TAGGED_EMOJI}
+              title="Nothing tagged yet"
+              body="Tag a piece you want to come back to and it waits for you here."
               cta="Browse Runway"
               onPress={() => topLevelNavigate('/(tabs)' as any)}
             />
@@ -1307,6 +1319,10 @@ export default function BuyerProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  /** Centred under the sign-up buttons it replaces a button in. */
+  signedOutBackLink: {
+    alignSelf: 'center',
+  },
   root: {
     flex: 1,
   },
