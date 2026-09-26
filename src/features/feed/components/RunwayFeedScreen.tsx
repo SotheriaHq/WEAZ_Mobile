@@ -14,7 +14,13 @@ import { Image as ExpoImage } from 'expo-image';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
-import { CLIP_ADDED_TOAST, CLIP_REMOVED_TOAST, clipActionLabel } from '@/src/constants/clipping';
+import {
+  CLIP_ADDED_TOAST,
+  CLIP_EMOJI,
+  CLIP_REMOVED_TOAST,
+  CLIPPED_EMOJI,
+  clipActionLabel,
+} from '@/src/constants/clipping';
 import { useToast } from '@/src/toast/ToastContext';
 import { useShopperOnlyAction } from '@/src/features/bagging/useShopperOnlyAction';
 import { useAuthAction } from '@/src/hooks/useAuthAction';
@@ -543,7 +549,8 @@ const FeedSaveLookAction = React.memo(function FeedSaveLookAction({
   return (
     <View style={styles.railItem}>
       <IconButton size={44} onPress={handlePress} disabled={busy}>
-        <AppText variant="subtitle">{saved ? '🔖' : '📌'}</AppText>
+        {/* The shared glyphs, not a local pair. A pushpin is not a clip. */}
+        <AppText variant="subtitle">{saved ? CLIPPED_EMOJI : CLIP_EMOJI}</AppText>
       </IconButton>
       <AppText variant="captionBold" tone="inverse" style={styles.railCountLabel} numberOfLines={1}>
         {clipActionLabel(saved)}
@@ -830,7 +837,8 @@ const FeedSkeleton = ({
             <Skeleton width={24} height={12} borderRadius={4} />
           </View>
 
-          {/* Share button skeleton */}
+          {/* Clip button skeleton (the rail carries no share control: deciding
+              what to pass on happens in the viewer, not while scrolling) */}
           <View style={{ alignItems: 'center', gap: 4 }}>
             <Skeleton width={30} height={30} borderRadius={15} />
             <Skeleton width={24} height={12} borderRadius={4} />

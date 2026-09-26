@@ -5,6 +5,7 @@ import {
 } from '@/src/features/catalog/catalogTarget';
 import { queryClient, WIEZ_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
+import { markClipsChanged } from '@/src/features/clipping/clipRevision';
 
 export type SavedItemTargetType = 'COLLECTION' | 'COLLECTION_MEDIA';
 
@@ -39,21 +40,25 @@ export const SavedItemsApi = {
   async saveItem(targetType: SavedItemTargetType, targetId: string): Promise<void> {
     await apiClient.post('/saved', { targetType, targetId });
     await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
+    markClipsChanged();
   },
 
   async saveCatalogTarget(target: CatalogTargetInput): Promise<void> {
     await apiClient.post('/saved', savedPayloadForCatalogTarget(target));
     await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
+    markClipsChanged();
   },
 
   async unsaveItem(targetType: SavedItemTargetType, targetId: string): Promise<void> {
     await apiClient.delete('/saved', { data: { targetType, targetId } });
     await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
+    markClipsChanged();
   },
 
   async unsaveCatalogTarget(target: CatalogTargetInput): Promise<void> {
     await apiClient.delete('/saved', { data: savedPayloadForCatalogTarget(target) });
     await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
+    markClipsChanged();
   },
 
   async checkBatch(targetType: SavedItemTargetType, targetIds: string[]): Promise<Record<string, boolean>> {

@@ -48,6 +48,7 @@ import {
 } from '@/src/utils/uploadValidation';
 import { formatMoney } from '@/src/utils/money';
 import { CLIPPED_EMOJI, CLIPS_TAB_LABEL } from '@/src/constants/clipping';
+import { getClipRevision } from '@/src/features/clipping/clipRevision';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
 
@@ -781,6 +782,8 @@ export default function BuyerProfileScreen() {
   }, []);
 
   const hasFocusedOnceRef = useRef(false);
+  /** Last clip-write count this screen has reloaded for. */
+  const lastClipRevisionRef = useRef(getClipRevision());
   useFocusEffect(
     useCallback(() => {
       if (!deferredWorkReady) return undefined;
@@ -793,9 +796,23 @@ export default function BuyerProfileScreen() {
       if (hasFocusedOnceRef.current && status === 'authenticated') {
         void refreshSizeFit();
       }
+
+      /*
+        Clips made elsewhere since the last time this screen was looked at.
+
+        `load()` coalesces anything inside 15 seconds, which is right for a
+        focus that changed nothing and wrong for the one case where the shopper
+        just clipped a piece in the viewer and came straight here. The counter
+        moves only on a real write, so this forces a reload exactly then.
+      */
+      if (status === 'authenticated' && lastClipRevisionRef.current !== getClipRevision()) {
+        lastClipRevisionRef.current = getClipRevision();
+        void load({ silent: true, force: true });
+      }
+
       hasFocusedOnceRef.current = true;
       return undefined;
-    }, [deferredWorkReady, refreshSizeFit, status]),
+    }, [deferredWorkReady, load, refreshSizeFit, status]),
   );
 
   useEffect(() => {
