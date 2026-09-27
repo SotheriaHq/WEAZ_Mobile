@@ -16,10 +16,18 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 /**
  * The app's loading vocabulary. Every wait on native renders this.
  *
- * **The logo is the loader.** A dim copy of the mark is the track and a lit
- * copy fills from the bottom, so the thing that fills IS the brand — not a ring
- * orbiting one piece of it, and not the OS spinner, which is what 48 call sites
- * across 36 files were actually showing.
+ * **An empty vessel in the shape of the mark, filling with the system colour.**
+ * Like a phone charging while it is switched off: the outline of the thing, and
+ * a level rising inside it. Not a ring orbiting one piece of the logo, and not
+ * the OS spinner, which is what 48 call sites across 36 files were showing.
+ *
+ * Both layers are TINTED, which is the whole point. Painting the full-colour
+ * artwork and uncovering it bottom-up reads as a picture downloading over a
+ * slow connection — a dim logo is what a half-loaded image looks like, and
+ * revealing it in strips is the progressive-JPEG effect. Tinting throws the
+ * artwork away and keeps only its silhouette, so the empty state is a shape
+ * holding nothing rather than a broken logo, and empty and full are the same
+ * ink at two strengths across a hard edge.
  *
  * Driven on the UI thread, which matters more here than on web: a loader is on
  * screen precisely when JS is busy, and a JS-driven animation freezes at exactly
@@ -32,8 +40,8 @@ import { useTheme } from '@/src/theme/ThemeProvider';
  * takes the handle.
  */
 
-/** From the mark's own viewBox (461 x 430). */
-const MARK_ASPECT_RATIO = 461 / 430;
+/** From the mark's own artwork (538 x 498). */
+const MARK_ASPECT_RATIO = 538 / 498;
 
 const MARK_LIGHT = require('@/assets/images/wiez-loader-mark-light.png');
 const MARK_DARK = require('@/assets/images/wiez-loader-mark-dark.png');
@@ -50,7 +58,7 @@ type MuseLoaderProps = {
 };
 
 export function MuseLoader({ size = 32, style, label = 'Loading' }: MuseLoaderProps) {
-  const { scheme } = useTheme();
+  const { theme, scheme } = useTheme();
   const fill = useSharedValue(MIN_FILL);
   const reduceMotion = useReducedMotion();
 
@@ -88,15 +96,17 @@ export function MuseLoader({ size = 32, style, label = 'Loading' }: MuseLoaderPr
       accessibilityRole="progressbar"
       accessibilityLabel={label}
     >
+      {/* The empty vessel: the whole silhouette, holding nothing. */}
       <Image
         source={source}
         style={[StyleSheet.absoluteFill, styles.track]}
         contentFit="contain"
         cachePolicy="memory-disk"
         transition={0}
+        tintColor={theme.colors.primary}
       />
       {/* The window grows from the bottom; the mark inside it stays put, so the
-          artwork is revealed rather than moved. */}
+          level rises rather than the shape moving. */}
       <Animated.View style={[styles.window, fillStyle]}>
         <Image
           source={source}
@@ -104,6 +114,7 @@ export function MuseLoader({ size = 32, style, label = 'Loading' }: MuseLoaderPr
           contentFit="contain"
           cachePolicy="memory-disk"
           transition={0}
+          tintColor={theme.colors.primary}
         />
       </Animated.View>
     </View>
