@@ -190,6 +190,46 @@ function main() {
     '/checkout',
   );
 
+  // The size/fits reminder opens the fittings screen, not the profile it sits
+  // on. It shipped as a bare '/profile', so the one thing the notification was
+  // about was a further tap away that the notification never named.
+  assert.equal(
+    toJson(routeForNotification({
+      type: 'SIZE_FIT_UPDATE_REMINDER',
+      payload: { targetUrl: '/profile?tab=fits' },
+      targetUrl: '/profile?tab=fits',
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/fittings',
+  );
+
+  // The neighbouring tab values must keep their own destinations.
+  assert.equal(
+    toJson(routeForNotification({
+      type: 'ORDER_STATUS_CHANGED',
+      payload: { targetUrl: '/profile?tab=orders' },
+      targetUrl: '/profile?tab=orders',
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/orders',
+  );
+
+  assert.equal(
+    toJson(routeForNotification({
+      type: 'UNKNOWN_PROFILE_NOTICE',
+      payload: { targetUrl: '/profile' },
+      targetUrl: '/profile',
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/(tabs)/me',
+  );
+
   assert.equal(
     toJson(routeForNotification({
       type: 'UNKNOWN',

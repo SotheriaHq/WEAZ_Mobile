@@ -472,6 +472,21 @@ export function routeForNotification(
   }
 
   if (type.startsWith('SIZE_FIT_')) {
+    /*
+      The reminder to refresh your measurements opens the measurements, and
+      every other size-fit notice stays on the profile.
+
+      All of them used to land on the Me tab, because this branch ran before
+      the `targetUrl` block and swallowed the whole family. For the SHARE
+      notices that is right — the fittings screen has two tabs, measurements
+      and sizes, and no shares section, so sending a "someone shared their fit
+      with you" notice there would arrive at a screen that cannot show it. For
+      the update reminder it is wrong: the measurements ARE its subject, and
+      they were left one unnamed tap away.
+    */
+    if (type === 'SIZE_FIT_UPDATE_REMINDER') {
+      return '/fittings' as Href;
+    }
     return '/(tabs)/me' as Href;
   }
 
@@ -545,6 +560,12 @@ export function routeForNotification(
     if (path === '/profile') {
       const tab = new URL(targetUrl, 'https://wiez.mobile').searchParams.get('tab')?.toLowerCase();
       if (tab === 'orders') return '/orders' as Href;
+      /*
+        The fittings screen itself. The "update your size/fits profile"
+        reminder used to arrive as a bare `/profile` and land on the Me tab,
+        leaving its subject behind a further tap the notification never named.
+      */
+      if (tab === 'fits') return '/fittings' as Href;
       return '/(tabs)/me' as Href;
     }
     if (path === '/bag') {
