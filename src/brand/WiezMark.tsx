@@ -8,15 +8,10 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 /**
  * The full WIEZ mark — the W, the muse and the orb.
  *
- * Not for chrome: the figure's face stops reading below roughly 96px, so tab
- * bars and headers use `WiezOrb`. This is for the splash hold, auth heroes and
- * empty states.
- *
- * A raster rather than the vector, deliberately. The mark is 290 KB of path
- * data, and `react-native-svg` parses that on every mount — on a screen that
- * exists to say "we are still working", that is the wrong thing to spend a
- * frame budget on. It only ever renders at splash scale, where the difference
- * is invisible.
+ * A raster rather than the vector, deliberately. The vector was 45 KB of
+ * traced path data that `react-native-svg` re-parsed on every mount, and it
+ * traced a logo the brand no longer uses. The file is square, so the box here
+ * is square and `contain` keeps the artwork's own proportions inside it.
  *
  * Theme-paired rather than tinted: full-colour artwork has no tint that turns
  * a light-ground ramp into a dark-ground one.
@@ -26,7 +21,7 @@ const MARK_LIGHT = require('@/assets/images/wiez-mark-light.png');
 const MARK_DARK = require('@/assets/images/wiez-mark-dark.png');
 
 type WiezMarkProps = {
-  /** Rendered edge length. Below ~96 use `WiezOrb` instead. */
+  /** Rendered edge length. */
   size?: number;
   style?: StyleProp<ViewStyle>;
   /** Omit when adjacent text already names the brand. */

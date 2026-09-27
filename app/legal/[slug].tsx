@@ -71,9 +71,21 @@ export default function LegalDocumentScreen() {
                 ordered_list: { marginVertical: tokens.spacing.xs },
                 hr: { backgroundColor: theme.colors.border, height: StyleSheet.hairlineWidth, marginVertical: tokens.spacing.md },
                 code_inline: { backgroundColor: theme.colors.surfaceAlt, color: theme.colors.primary, paddingHorizontal: tokens.spacing.xs, borderRadius: tokens.radius.sm },
-                table: { borderColor: theme.colors.border, borderWidth: StyleSheet.hairlineWidth, marginVertical: tokens.spacing.sm },
-                th: { backgroundColor: theme.colors.surfaceAlt, padding: tokens.spacing.sm },
-                td: { borderColor: theme.colors.border, borderWidth: StyleSheet.hairlineWidth, padding: tokens.spacing.sm },
+                /*
+                  Rules between rows, not a box around every cell.
+
+                  These documents now carry real tables — the retention
+                  schedules and the cookie directory used to be drawn with box
+                  characters inside a code fence, which on a phone was a
+                  monospace panel that scrolled sideways. A cell grid would
+                  reintroduce most of that noise: it draws four lines per cell
+                  to express one separation.
+                */
+                table: { borderColor: theme.colors.border, borderWidth: StyleSheet.hairlineWidth, borderRadius: tokens.radius.md, overflow: 'hidden', marginVertical: tokens.spacing.sm },
+                thead: { backgroundColor: theme.colors.surfaceAlt },
+                th: { padding: tokens.spacing.sm, fontWeight: '700' },
+                tr: { borderBottomColor: theme.colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
+                td: { padding: tokens.spacing.sm },
               }}
             >
               {document.content}

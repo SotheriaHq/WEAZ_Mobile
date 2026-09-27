@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 
+import { BRAND_ASPECT } from '@/src/brand/assetSizes';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
 /**
@@ -40,8 +41,15 @@ import { useTheme } from '@/src/theme/ThemeProvider';
  * takes the handle.
  */
 
-/** From the mark's own artwork (538 x 498). */
-const MARK_ASPECT_RATIO = 538 / 498;
+/**
+ * The loader mark's file is square, so the loader's box is square.
+ *
+ * It used to be the ARTWORK's ratio (538 x 498), which is not the file's. The
+ * image is `contain`-fitted, so the extra 8% of width became an empty gutter
+ * down each side — inside a button, a gap between the spinner and its label
+ * that no spacing rule put there.
+ */
+const MARK_ASPECT_RATIO = BRAND_ASPECT.loaderMark;
 
 const MARK_LIGHT = require('@/assets/images/wiez-loader-mark-light.png');
 const MARK_DARK = require('@/assets/images/wiez-loader-mark-dark.png');
