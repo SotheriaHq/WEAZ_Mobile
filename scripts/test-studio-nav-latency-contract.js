@@ -11,6 +11,7 @@ const studioLayout = read('app/(tabs)/studio/_layout.tsx');
 const studioRoutes = read('src/features/studio/studioRoutes.ts');
 const studioNav = read('src/features/studio/studioNavController.ts');
 const islandConfig = read('src/navigation/nativeIslandConfig.ts');
+const island = read('components/navigation/NativeIslandBottomNav.tsx');
 
 assert.match(
   studioNav,
@@ -79,6 +80,32 @@ assert.match(
   studioLayout,
   /animation:\s*'none'/,
   'WebView island hops must not slide as if they were a new stack screen.',
+);
+
+assert.match(
+  island,
+  /const TAP_SLOP_PX = 10/,
+  'The scrolling Studio dock needs a movement slop so a swipe is not a tap.',
+);
+assert.match(
+  island,
+  /onScrollBeginDrag=\{cancelScrollCandidate\}/,
+  'A scroll that starts on a chip must cancel that chip before it navigates.',
+);
+assert.match(
+  island,
+  /commitScrollDockTap/,
+  'The scrolling dock commits a tap only after the gesture stays inside the slop.',
+);
+assert.match(
+  island,
+  /commitAfterPaint/,
+  'The fixed dock must paint the active pill a frame before it routes.',
+);
+assert.doesNotMatch(
+  island,
+  /onPressIn=\{item\.disabled \? undefined : \(\) => handleItemPressIn\(item\)\}/,
+  'Touch-down must not route by itself. That fires at the start of a swipe.',
 );
 
 console.log('Studio navigation latency contract checks passed.');

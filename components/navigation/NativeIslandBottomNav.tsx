@@ -1,5 +1,14 @@
 import React from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+  type GestureResponderEvent,
+  type NativeSyntheticEvent,
+  type NativeTouchEvent,
+} from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { AppText } from '@/components/ui/AppText';
@@ -15,6 +24,36 @@ import {
 } from '@/src/system/ScreenChrome';
 
 export { getNativeIslandContentClearance, getNativeIslandLayout, NATIVE_ISLAND_NAV };
+
+/**
+ * Movement past this is a scroll, not a tap.
+ *
+ * Ten points is the platform touch slop. A finger that stays inside it is a
+ * press; a finger that leaves it is looking for a chip that is off-screen.
+ */
+const TAP_SLOP_PX = 10;
+
+/**
+ * How long a still finger waits before the scrolling dock treats it as a tap.
+ *
+ * The dock cannot route on touch-down: that is what made a swipe open the chip
+ * the finger landed on. Waiting for finger-up makes a deliberate press feel
+ * late. If the finger is still inside the slop after this delay, the press is
+ * real and the route starts while the finger is still down.
+ */
+const SCROLL_DOCK_COMMIT_DELAY_MS = 90;
+
+/** Press-in and press both fire for one tap. Ignore the second. */
+const COMMIT_DEDUPE_MS = 400;
+
+type ScrollDockGesture = {
+  key: string;
+  x: number;
+  y: number;
+  moved: boolean;
+  committed: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+};
 
 export type NativeIslandNavItem = {
   key: string;
@@ -212,6 +251,9 @@ export function NativeIslandBottomNav({
   const [pressedItemKey, setPressedItemKey] = React.useState<string | null>(null);
   const [immediateActiveKey, setImmediateActiveKey] = React.useState<string | null>(null);
   const [immediateActiveNavFlow, setImmediateActiveNavFlow] = React.useState<string | null>(null);
+  const pendingCommitRef = React.useRef<number | null>(null);
+  const lastCommitRef = React.useRef<{ key: string; at: number } | null>(null);
+  const scrollGestureRef = React.useRef<ScrollDockGesture | null>(null);
 
   React.useEffect(() => {
     if (!immediateActiveKey || !immediateActiveNavFlow) return;
@@ -228,26 +270,151 @@ export function NativeIslandBottomNav({
     }
   }, [immediateActiveKey, items]);
 
+  React.useEffect(() => {
+    return () => {
+      if (pendingCommitRef.current != null) {
+        cancelAnimationFrame(pendingCommitRef.current);
+        pendingCommitRef.current = null;
+      }
+      const gesture = scrollGestureRef.current;
+      if (gesture?.timer) clearTimeout(gesture.timer);
+    };
+  }, []);
+
   const clearPressedItem = React.useCallback(() => {
     setPressedItemKey(null);
   }, []);
 
-  const handleItemPressIn = React.useCallback(
+  const paintCandidate = React.useCallback((item: NativeIslandNavItem) => {
+    const navFlow = item.navFlow ?? item.key;
+    const targetRoute = item.targetRoute ?? undefined;
+    setPressedItemKey(item.key);
+    setImmediateActiveKey(item.key);
+    setImmediateActiveNavFlow(navFlow);
+    navPerf.tapPressIn(navFlow, { target: targetRoute });
+    navPerf.optimisticActiveSet(navFlow, { target: targetRoute });
+    navPerf.tap(navFlow);
+    navPerf.pressedFeedbackVisible(navFlow);
+    navPerf.activeIndicatorIntent(navFlow);
+  }, []);
+
+  /**
+   * Route after the pill has been asked to paint.
+   *
+   * `onSelect` jumps tabs, and that jump re-renders the destination on the
+   * same JavaScript turn as the highlight. The pill then cannot appear until
+   * the screen is ready, which is the late active indicator. One frame lets
+   * this component commit the pill on its own before that work starts.
+   */
+  const commitSelection = React.useCallback(
     (item: NativeIslandNavItem) => {
-      const navFlow = item.navFlow ?? item.key;
-      const targetRoute = item.targetRoute ?? undefined;
-      setPressedItemKey(item.key);
-      setImmediateActiveKey(item.key);
-      setImmediateActiveNavFlow(navFlow);
-      navPerf.tapPressIn(navFlow, { target: targetRoute });
-      navPerf.optimisticActiveSet(navFlow, { target: targetRoute });
-      navPerf.tap(navFlow); // keep existing for compat
-      navPerf.pressedFeedbackVisible(navFlow);
-      navPerf.activeIndicatorIntent(navFlow);
+      const now = Date.now();
+      const last = lastCommitRef.current;
+      if (last && last.key === item.key && now - last.at < COMMIT_DEDUPE_MS) return;
+      lastCommitRef.current = { key: item.key, at: now };
       onPressIn?.(item);
       onSelect(item);
     },
     [onPressIn, onSelect],
+  );
+
+  const commitAfterPaint = React.useCallback(
+    (item: NativeIslandNavItem) => {
+      if (pendingCommitRef.current != null) {
+        cancelAnimationFrame(pendingCommitRef.current);
+      }
+      pendingCommitRef.current = requestAnimationFrame(() => {
+        pendingCommitRef.current = null;
+        commitSelection(item);
+      });
+    },
+    [commitSelection],
+  );
+
+  const handleFixedPressIn = React.useCallback(
+    (item: NativeIslandNavItem) => {
+      paintCandidate(item);
+      commitAfterPaint(item);
+    },
+    [commitAfterPaint, paintCandidate],
+  );
+
+  const handleFixedPress = React.useCallback(
+    (item: NativeIslandNavItem) => {
+      // Accessibility activate does not go through press-in. A finger tap
+      // already scheduled the route; don't start it twice.
+      if (pendingCommitRef.current != null) return;
+      commitSelection(item);
+    },
+    [commitSelection],
+  );
+
+  const clearScrollTimer = React.useCallback((gesture: ScrollDockGesture | null) => {
+    if (!gesture?.timer) return;
+    clearTimeout(gesture.timer);
+    gesture.timer = null;
+  }, []);
+
+  const cancelScrollCandidate = React.useCallback(() => {
+    const gesture = scrollGestureRef.current;
+    if (!gesture || gesture.committed) return;
+    gesture.moved = true;
+    clearScrollTimer(gesture);
+    const key = gesture.key;
+    setPressedItemKey((current) => (current === key ? null : current));
+    setImmediateActiveKey((current) => (current === key ? null : current));
+    setImmediateActiveNavFlow(null);
+  }, [clearScrollTimer]);
+
+  const commitScrollDockTap = React.useCallback(
+    (item: NativeIslandNavItem) => {
+      const gesture = scrollGestureRef.current;
+      if (gesture && (gesture.moved || gesture.committed || gesture.key !== item.key)) return;
+      if (gesture) {
+        gesture.committed = true;
+        clearScrollTimer(gesture);
+      }
+      scrollGestureRef.current = null;
+      // Same yield as the fixed dock. A very fast tap can release in the same
+      // frame as touch-down; routing in that frame would hold the pill back.
+      commitAfterPaint(item);
+    },
+    [clearScrollTimer, commitAfterPaint],
+  );
+
+  const beginScrollDockPress = React.useCallback(
+    (item: NativeIslandNavItem, event: GestureResponderEvent) => {
+      const previous = scrollGestureRef.current;
+      if (previous && !previous.committed) clearScrollTimer(previous);
+      const { pageX, pageY } = event.nativeEvent;
+      const timer = setTimeout(() => {
+        commitScrollDockTap(item);
+      }, SCROLL_DOCK_COMMIT_DELAY_MS);
+      scrollGestureRef.current = {
+        key: item.key,
+        x: pageX,
+        y: pageY,
+        moved: false,
+        committed: false,
+        timer,
+      };
+      paintCandidate(item);
+    },
+    [clearScrollTimer, commitScrollDockTap, paintCandidate],
+  );
+
+  const trackScrollDockMove = React.useCallback(
+    (item: NativeIslandNavItem, event: NativeSyntheticEvent<NativeTouchEvent>) => {
+      const gesture = scrollGestureRef.current;
+      if (!gesture || gesture.moved || gesture.committed || gesture.key !== item.key) return;
+      const touch = event.nativeEvent.changedTouches?.[0] ?? event.nativeEvent.touches?.[0];
+      if (!touch) return;
+      const movedPastSlop =
+        Math.abs(touch.pageX - gesture.x) > TAP_SLOP_PX ||
+        Math.abs(touch.pageY - gesture.y) > TAP_SLOP_PX;
+      if (movedPastSlop) cancelScrollCandidate();
+    },
+    [cancelScrollCandidate],
   );
 
   if (items.length === 0) {
@@ -285,6 +452,8 @@ export function NativeIslandBottomNav({
               showsHorizontalScrollIndicator={false}
               bounces={false}
               overScrollMode="never"
+              directionalLockEnabled
+              onScrollBeginDrag={cancelScrollCandidate}
               contentContainerStyle={styles.scrollDockContent}
               style={styles.scrollDock}
             >
@@ -298,9 +467,11 @@ export function NativeIslandBottomNav({
                   }}
                   accessibilityLabel={item.label}
                   disabled={item.disabled}
-                  onPressIn={item.disabled ? undefined : () => handleItemPressIn(item)}
+                  onPressIn={item.disabled ? undefined : (event) => beginScrollDockPress(item, event)}
+                  onTouchMove={item.disabled ? undefined : (event) => trackScrollDockMove(item, event)}
+                  onTouchCancel={item.disabled ? undefined : () => cancelScrollCandidate()}
                   onPressOut={clearPressedItem}
-                  onPress={undefined}
+                  onPress={item.disabled ? undefined : () => commitScrollDockTap(item)}
                   /**
                    * No `android_ripple`. A bounded ripple fills the PRESSABLE,
                    * and the pressable is a full-height flex column — so it
@@ -309,10 +480,11 @@ export function NativeIslandBottomNav({
                    * would not fix it either: that spills a circle past the
                    * dock's rounded edge.
                    *
-                   * Press feedback is already carried by the chip itself —
-                   * `focused` goes true on press, so the active pill appears
-                   * under the finger immediately. That is the indicator, and
-                   * it is the same one the destination settles into.
+                   * Press feedback is the chip itself. Touch-down only lights
+                   * it. The route waits until the finger stays inside the slop,
+                   * so a swipe along this row does not open the chip it started
+                   * on. `focused` is that light, and it is the same pill the
+                   * destination settles into.
                    */
                   style={({ pressed }) => [
                     styles.navItemScroll,
@@ -345,9 +517,9 @@ export function NativeIslandBottomNav({
                   }}
                   accessibilityLabel={item.label}
                   disabled={item.disabled}
-                  onPressIn={item.disabled ? undefined : () => handleItemPressIn(item)}
+                  onPressIn={item.disabled ? undefined : () => handleFixedPressIn(item)}
                   onPressOut={clearPressedItem}
-                  onPress={undefined}
+                  onPress={item.disabled ? undefined : () => handleFixedPress(item)}
                   // No `android_ripple` — see the scrolling dock above: a
                   // bounded ripple paints a rectangle across a pill chip.
                   style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}

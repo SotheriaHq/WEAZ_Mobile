@@ -69,9 +69,10 @@ type TabNavigationActionType = 'JUMP_TO' | 'PRELOAD';
 
 // Route preload mounts an entire hidden screen and begins its own queries. On a
 // constrained phone, doing that while the first Runway image is decoding turns
-// startup into a CPU, memory, and network contention storm. The Market is the
-// only automatic warm target, and only after the reader has seen Runway; all
-// other destinations retain their tap-time preload path below.
+// startup into a CPU, memory, and network contention storm. The island tabs
+// warm only after the reader has seen Runway (or the fallback below), and they
+// are staggered. Studio is not in that list — its WebView handoff is too heavy
+// to run under the feed. Nothing preloads inside the tap itself.
 const TAB_PRELOAD_FALLBACK_DELAY_MS = 8_000;
 
 function createTabNavigationAction(type: TabNavigationActionType, name: string) {
@@ -337,7 +338,12 @@ export default function TabLayout() {
     // Preserve the first-paint budget. Only Market is warmed automatically,
     // and that happens after the first Runway image is visible or the bounded
     // fallback window has elapsed.
-    const nextTabsToWarm = ['discover'];
+    // Market first, then the other island tabs a reader can open. Studio stays
+    // out: mounting it downloads the web bundle and runs a handoff under the
+    // Runway, which is the contention this delay exists to avoid.
+    const nextTabsToWarm = isBrand
+      ? ['discover', 'inbox', 'catalog']
+      : ['discover', 'inbox', 'me', 'charts'];
 
     let cancelled = false;
     let preloadTimers: Array<ReturnType<typeof setTimeout>> = [];
@@ -359,10 +365,11 @@ export default function TabLayout() {
       });
       // Stagger lightly but do not wait for InteractionManager — that API can
       // delay many seconds while Runway carousels keep interactions busy.
+      // The gap is wide on purpose: each preload mounts a whole screen.
       preloadTimers = nextTabsToWarm.map((tabName, index) =>
         setTimeout(() => {
           if (!cancelled) preloadIslandTab(tabName);
-        }, 80 + index * 180),
+        }, 80 + index * 360),
       );
     };
 
@@ -387,7 +394,7 @@ export default function TabLayout() {
       if (earlyTimer) clearTimeout(earlyTimer);
       preloadTimers.forEach((timer) => clearTimeout(timer));
     };
-  }, [preloadIslandTab]);
+  }, [isBrand, preloadIslandTab]);
 
   const navigateToProfile = useCallback(() => {
     const target = isBrand ? '/catalog' : '/(tabs)/me';
@@ -448,15 +455,10 @@ export default function TabLayout() {
   const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
     if (item.disabled) return;
     predictActiveKey(item.key);
-    // Warm the destination tab on press-in so JUMP_TO hits a preloaded scene
-    // instead of a cold lazy mount (main multi-second stall on first visit).
-    // Studio chips stay inside the studio tab — no main-app tab preload.
-    if (isStudioIslandKey(item.key)) return;
-    const tabName = getIslandTabRouteName(item.key, isBrand);
-    if (tabName) {
-      preloadIslandTab(tabName);
-    }
-  }, [isBrand, predictActiveKey, preloadIslandTab]);
+    // Do not preload here. A preload in the tap turn mounts the destination
+    // before the pill can paint, and a jump in the same turn mounts it again.
+    // Idle preload (above) is what makes the second visit warm.
+  }, [predictActiveKey]);
 
   const islandItems = useMemo<NativeIslandNavItem[]>(() => {
     // Inside Studio the dock must show Studio destinations (Dashboard, Store,
