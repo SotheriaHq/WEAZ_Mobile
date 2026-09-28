@@ -251,7 +251,6 @@ export function NativeIslandBottomNav({
   const [pressedItemKey, setPressedItemKey] = React.useState<string | null>(null);
   const [immediateActiveKey, setImmediateActiveKey] = React.useState<string | null>(null);
   const [immediateActiveNavFlow, setImmediateActiveNavFlow] = React.useState<string | null>(null);
-  const pendingCommitRef = React.useRef<number | null>(null);
   const lastCommitRef = React.useRef<{ key: string; at: number } | null>(null);
   const scrollGestureRef = React.useRef<ScrollDockGesture | null>(null);
 
@@ -272,10 +271,6 @@ export function NativeIslandBottomNav({
 
   React.useEffect(() => {
     return () => {
-      if (pendingCommitRef.current != null) {
-        cancelAnimationFrame(pendingCommitRef.current);
-        pendingCommitRef.current = null;
-      }
       const gesture = scrollGestureRef.current;
       if (gesture?.timer) clearTimeout(gesture.timer);
     };
@@ -299,12 +294,11 @@ export function NativeIslandBottomNav({
   }, []);
 
   /**
-   * Route after the pill has been asked to paint.
+   * Pill and route in the same turn.
    *
-   * `onSelect` jumps tabs, and that jump re-renders the destination on the
-   * same JavaScript turn as the highlight. The pill then cannot appear until
-   * the screen is ready, which is the late active indicator. One frame lets
-   * this component commit the pill on its own before that work starts.
+   * Painting the pill and waiting a frame for the route left Me lit while
+   * Runway was still the screen. On a busy feed that frame did not come for
+   * seconds. The highlight and the jump have to be one commit.
    */
   const commitSelection = React.useCallback(
     (item: NativeIslandNavItem) => {
@@ -318,32 +312,18 @@ export function NativeIslandBottomNav({
     [onPressIn, onSelect],
   );
 
-  const commitAfterPaint = React.useCallback(
-    (item: NativeIslandNavItem) => {
-      if (pendingCommitRef.current != null) {
-        cancelAnimationFrame(pendingCommitRef.current);
-      }
-      pendingCommitRef.current = requestAnimationFrame(() => {
-        pendingCommitRef.current = null;
-        commitSelection(item);
-      });
-    },
-    [commitSelection],
-  );
-
   const handleFixedPressIn = React.useCallback(
     (item: NativeIslandNavItem) => {
       paintCandidate(item);
-      commitAfterPaint(item);
+      commitSelection(item);
     },
-    [commitAfterPaint, paintCandidate],
+    [commitSelection, paintCandidate],
   );
 
   const handleFixedPress = React.useCallback(
     (item: NativeIslandNavItem) => {
       // Accessibility activate does not go through press-in. A finger tap
-      // already scheduled the route; don't start it twice.
-      if (pendingCommitRef.current != null) return;
+      // already committed in press-in; the dedupe ignores this second call.
       commitSelection(item);
     },
     [commitSelection],
@@ -375,11 +355,10 @@ export function NativeIslandBottomNav({
         clearScrollTimer(gesture);
       }
       scrollGestureRef.current = null;
-      // Same yield as the fixed dock. A very fast tap can release in the same
-      // frame as touch-down; routing in that frame would hold the pill back.
-      commitAfterPaint(item);
+      paintCandidate(item);
+      commitSelection(item);
     },
-    [clearScrollTimer, commitAfterPaint],
+    [clearScrollTimer, commitSelection, paintCandidate],
   );
 
   const beginScrollDockPress = React.useCallback(
@@ -398,9 +377,8 @@ export function NativeIslandBottomNav({
         committed: false,
         timer,
       };
-      paintCandidate(item);
     },
-    [clearScrollTimer, commitScrollDockTap, paintCandidate],
+    [clearScrollTimer, commitScrollDockTap],
   );
 
   const trackScrollDockMove = React.useCallback(
@@ -497,7 +475,7 @@ export function NativeIslandBottomNav({
                       label={item.label}
                       emoji={item.emoji}
                       avatarUri={item.avatarUri}
-                      focused={Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key || pressed) && !item.disabled)}
+                      focused={Boolean((item.active || immediateActiveKey === item.key) && !item.disabled)}
                       badge={item.badge}
                       compact={false}
                     />
@@ -529,7 +507,7 @@ export function NativeIslandBottomNav({
                       label={item.label}
                       emoji={item.emoji}
                       avatarUri={item.avatarUri}
-                      focused={Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key || pressed) && !item.disabled)}
+                      focused={Boolean((item.active || immediateActiveKey === item.key) && !item.disabled)}
                       badge={item.badge}
                       compact={compact}
                     />

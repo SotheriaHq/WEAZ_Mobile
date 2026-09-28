@@ -69,10 +69,9 @@ type TabNavigationActionType = 'JUMP_TO' | 'PRELOAD';
 
 // Route preload mounts an entire hidden screen and begins its own queries. On a
 // constrained phone, doing that while the first Runway image is decoding turns
-// startup into a CPU, memory, and network contention storm. The island tabs
-// warm only after the reader has seen Runway (or the fallback below), and they
-// are staggered. Studio is not in that list — its WebView handoff is too heavy
-// to run under the feed. Nothing preloads inside the tap itself.
+// startup into a CPU, memory, and network contention storm. Market is the only
+// automatic warm target, and only after the reader has seen Runway; every other
+// island tab mounts on the tap that opens it.
 const TAB_PRELOAD_FALLBACK_DELAY_MS = 8_000;
 
 function createTabNavigationAction(type: TabNavigationActionType, name: string) {
@@ -299,51 +298,22 @@ export default function TabLayout() {
   );
 
   const scheduleRouteAfterFrame = useCallback((navFlow: string, run: () => void) => {
-    // Prefer immediate navigation when the destination tab is already warm —
-    // cold JUMP_TO/mount still gets a single rAF so the optimistic active
-    // indicator can commit without inheriting the destination render cost.
-    // Waiting a frame on warm tabs made revisits feel laggy for no benefit.
+    // Run in the tap turn. Yielding a frame let the pill paint on the screen
+    // being left — Me stayed lit on Runway for as long as the feed kept the
+    // JavaScript thread busy, which on device was many seconds.
     cancelPendingRouteFrame();
     navPerf.routeScheduled(navFlow);
-
-    const tabName = (() => {
-      if (navFlow === 'tabs→catalog') return 'catalog';
-      if (navFlow === 'tabs→me') return 'me';
-      if (navFlow === 'tabs→discover' || navFlow === 'tabs→market') return 'discover';
-      if (navFlow === 'tabs→inbox' || navFlow === 'tabs→messages') return 'inbox';
-      if (navFlow === 'tabs→index' || navFlow === 'tabs→runway' || navFlow === 'tabs→home') return 'index';
-      return null;
-    })();
-    const isWarm =
-      tabName != null &&
-      (preloadedTabNamesRef.current.has(tabName) ||
-        getFocusedTabName(tabNavigationRef.current) === tabName);
-
-    if (isWarm) {
-      navPerf.frameYieldBeforeRoute(navFlow);
-      run();
-      return;
-    }
-
-    pendingRouteFrameRef.current = requestAnimationFrame(() => {
-      pendingRouteFrameRef.current = null;
-      navPerf.frameYieldBeforeRoute(navFlow);
-      run();
-    });
+    navPerf.frameYieldBeforeRoute(navFlow);
+    run();
   }, [cancelPendingRouteFrame]);
 
   useEffect(() => cancelPendingRouteFrame, [cancelPendingRouteFrame]);
 
   useEffect(() => {
-    // Preserve the first-paint budget. Only Market is warmed automatically,
-    // and that happens after the first Runway image is visible or the bounded
-    // fallback window has elapsed.
-    // Market first, then the other island tabs a reader can open. Studio stays
-    // out: mounting it downloads the web bundle and runs a handoff under the
-    // Runway, which is the contention this delay exists to avoid.
-    const nextTabsToWarm = isBrand
-      ? ['discover', 'inbox', 'catalog']
-      : ['discover', 'inbox', 'me', 'charts'];
+    // Only Market. Mounting Inbox, Me, and Charts beside a live Runway feed
+    // saturated the JavaScript thread, so a tap's route could not run and the
+    // pill sat on the screen being left. Those tabs mount on the tap itself.
+    const nextTabsToWarm = ['discover'];
 
     let cancelled = false;
     let preloadTimers: Array<ReturnType<typeof setTimeout>> = [];
@@ -365,11 +335,10 @@ export default function TabLayout() {
       });
       // Stagger lightly but do not wait for InteractionManager — that API can
       // delay many seconds while Runway carousels keep interactions busy.
-      // The gap is wide on purpose: each preload mounts a whole screen.
       preloadTimers = nextTabsToWarm.map((tabName, index) =>
         setTimeout(() => {
           if (!cancelled) preloadIslandTab(tabName);
-        }, 80 + index * 360),
+        }, 80 + index * 180),
       );
     };
 
@@ -394,7 +363,7 @@ export default function TabLayout() {
       if (earlyTimer) clearTimeout(earlyTimer);
       preloadTimers.forEach((timer) => clearTimeout(timer));
     };
-  }, [isBrand, preloadIslandTab]);
+  }, [preloadIslandTab]);
 
   const navigateToProfile = useCallback(() => {
     const target = isBrand ? '/catalog' : '/(tabs)/me';
@@ -455,9 +424,6 @@ export default function TabLayout() {
   const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
     if (item.disabled) return;
     predictActiveKey(item.key);
-    // Do not preload here. A preload in the tap turn mounts the destination
-    // before the pill can paint, and a jump in the same turn mounts it again.
-    // Idle preload (above) is what makes the second visit warm.
   }, [predictActiveKey]);
 
   const islandItems = useMemo<NativeIslandNavItem[]>(() => {

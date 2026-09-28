@@ -97,10 +97,20 @@ assert.match(
   /commitScrollDockTap/,
   'The scrolling dock commits a tap only after the gesture stays inside the slop.',
 );
-assert.match(
+assert.doesNotMatch(
   island,
   /commitAfterPaint/,
-  'The fixed dock must paint the active pill a frame before it routes.',
+  'The pill must not paint a frame ahead of the route. That left Me lit on Runway.',
+);
+assert.match(
+  tabLayout,
+  /Run in the tap turn/,
+  'Island routes run in the tap turn, not after a frame.',
+);
+assert.doesNotMatch(
+  tabLayout,
+  /nextTabsToWarm = isBrand/,
+  'Preloading Me, Inbox, and Charts under a live Runway stalled the tap.',
 );
 assert.doesNotMatch(
   island,
