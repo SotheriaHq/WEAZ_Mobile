@@ -86,8 +86,25 @@ export function AppBottomSheet({
   const { height: windowHeight } = useWindowDimensions();
   const baseWindowHeightRef = useRef(windowHeight);
   const isDark = scheme === 'dark';
+  /**
+   * Clearance under the sheet's last row, and why the floor is what it is.
+   *
+   * A sheet is rendered in a `Modal`, which on Android is its OWN window drawn
+   * behind the navigation bar (`navigationBarTranslucent`). The insets here are
+   * measured from the app's root window, not from that one, so this number is
+   * the app's best guess at the modal's bottom bar rather than a reading of it.
+   * When the guess comes back short — the documented failure mode for
+   * safe-area-context inside a core `Modal` — whatever sits at the bottom of
+   * the sheet ends up behind the system bar, which is the "bag opens but its
+   * buttons are hidden under the screen" report.
+   *
+   * `spacing.xl` (24) is therefore a FLOOR, not a design choice: it is more
+   * than a gesture bar and enough of a 3-button bar to keep a 44pt control
+   * pressable even if `insets.bottom` reports 0. Where the inset is reported
+   * correctly it wins, and this changes nothing.
+   */
   const sheetPaddingBottom = Math.max(
-    tokens.spacing.lg,
+    tokens.spacing.xl,
     insets.bottom + tokens.spacing.sm,
   );
 
@@ -821,6 +838,11 @@ const styles = StyleSheet.create({
     // Stating this here means the sheet's commit controls cannot be the thing
     // that gets squeezed off the bottom edge when the body outgrows the 88% cap.
     flexShrink: 0,
+    // ...and the footer cannot be squeezed to nothing either. A sheet whose
+    // body is long enough to hit the cap has a footer carrying the only way to
+    // commit, so it keeps its measured height rather than yielding it.
+    flexGrow: 0,
+    flexBasis: 'auto',
     paddingTop: tokens.spacing.sm,
   },
 });

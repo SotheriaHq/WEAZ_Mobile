@@ -47,7 +47,7 @@ import {
   assertValidPickedUploadAsset,
 } from '@/src/utils/uploadValidation';
 import { formatMoney } from '@/src/utils/money';
-import { CLIPPED_EMOJI, CLIPS_TAB_LABEL } from '@/src/constants/clipping';
+import { CLIP_EMOJI, CLIPS_TAB_LABEL } from '@/src/constants/clipping';
 import { getClipRevision } from '@/src/features/clipping/clipRevision';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
@@ -1269,7 +1269,7 @@ export default function BuyerProfileScreen() {
         {activeTab === 'Saved' ? (
           state.saved.length === 0 ? (
             <EmptyState
-              emoji={CLIPPED_EMOJI}
+              emoji={CLIP_EMOJI}
               title="Nothing clipped yet"
               body="Clip a piece you want to come back to and it waits for you here."
               cta="Browse Runway"

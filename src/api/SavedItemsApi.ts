@@ -1,6 +1,7 @@
 import { apiClient } from '@/src/api/httpClient';
 import {
   mapCatalogTargetForLegacyApi,
+  toSavedItemRequest,
   type CatalogTargetInput,
 } from '@/src/features/catalog/catalogTarget';
 import { queryClient, WIEZ_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
@@ -21,7 +22,8 @@ const savedPayloadForCatalogTarget = (target: CatalogTargetInput) => {
   if (legacyTarget.targetType === 'PRODUCT') {
     throw new Error('Product favorites use the wishlist API, not /saved.');
   }
-  return legacyTarget;
+  // Two fields, never the mapper's breadcrumbs — see `toSavedItemRequest`.
+  return toSavedItemRequest(legacyTarget);
 };
 
 const getLifecycleUserId = () => {

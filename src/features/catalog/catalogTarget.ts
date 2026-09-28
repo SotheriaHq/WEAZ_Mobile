@@ -94,6 +94,26 @@ export function buildCatalogTargetPayload(input: CatalogTargetInput): Normalized
   return target;
 }
 
+/**
+ * The two fields `/saved` actually declares, and nothing else.
+ *
+ * `mapCatalogTargetForLegacyApi` also hands back `legacyCollectionId` — a
+ * CLIENT-side breadcrumb recording which collection row a design is stored as.
+ * It is not part of the request, and the backend runs its global
+ * `ValidationPipe` with `forbidNonWhitelisted: true`, so a body carrying it is
+ * answered with a 400, not ignored.
+ *
+ * That is the "400" toast on clipping a piece from the Runway: only the DESIGN
+ * branch above attaches `legacyCollectionId`, and the Runway clips designs, so
+ * clipping worked everywhere a COLLECTION or PRODUCT was the target and failed
+ * on every design.
+ */
+export function toSavedItemRequest(
+  target: LegacyCatalogApiTarget,
+): { targetType: LegacyCatalogApiTargetType; targetId: string } {
+  return { targetType: target.targetType, targetId: target.targetId };
+}
+
 export function mapCatalogTargetForLegacyApi(input: CatalogTargetInput): LegacyCatalogApiTarget {
   const target = buildCatalogTargetPayload(input);
   if (target.targetType === 'DESIGN') {

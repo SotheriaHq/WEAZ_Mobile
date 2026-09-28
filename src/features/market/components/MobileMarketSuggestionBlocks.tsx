@@ -80,6 +80,25 @@ const formatPrice = (item: MarketSectionItem) => {
   return formatMoney(value, currency);
 };
 
+/**
+ * Types a card can OPEN as a piece of content.
+ *
+ * A `PRODUCT_DETAIL` response is not all pieces: "New Designers to Watch" is a
+ * BRAND block and "Category" cards are searches. Those are legitimate rows, but
+ * they are not what a card press means to a shopper who has just been shown
+ * "Similar pieces" — pressing one took them to a catalogue with no way to tell
+ * beforehand, which is the "some cards go to the brand instead" report. Cards
+ * that are pieces open the piece; cards that are not say what they are.
+ */
+const CONTENT_TARGET_TYPES = new Set(['PRODUCT', 'COLLECTION', 'DESIGN']);
+
+const isContentSuggestion = (item: MarketSectionItem) =>
+  CONTENT_TARGET_TYPES.has(String(item.target?.type ?? item.entityType));
+
+const navigateToBrand = (brandId: string) => {
+  drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId } } as any);
+};
+
 const navigateToSuggestion = (item: MarketSectionItem) => {
   const targetId = getItemTargetId(item);
   const targetType = item.target?.type ?? item.entityType;
@@ -136,6 +155,17 @@ function SuggestionCard({
     enabled: Boolean(rawImage || item.media?.fileId),
   });
 
+  const opensContent = isContentSuggestion(item);
+  const brandId = item.brand?.id?.trim() || null;
+  const brandName = item.brand?.name?.trim() || null;
+  /*
+    The brand line is only its own control on a CONTENT card. On a brand card
+    the whole card already goes to that brand, so a second control inside it
+    doing the same thing is just a smaller target for the same destination.
+  */
+  const showBrandLink = opensContent && Boolean(brandId && brandName);
+  const caption = showBrandLink ? null : item.subtitle?.trim() || null;
+
   const handlePress = useCallback(() => {
     trackMarketSignal({
       targetType: getItemTargetType(item),
@@ -149,6 +179,10 @@ function SuggestionCard({
     void flushMarketSignals();
     navigateToSuggestion(item);
   }, [blockKey, item, position, screenContext, surface]);
+
+  const handleBrandPress = useCallback(() => {
+    if (brandId) navigateToBrand(brandId);
+  }, [brandId]);
 
   return (
     <View
@@ -164,7 +198,7 @@ function SuggestionCard({
         onPress={handlePress}
         style={({ pressed }) => [styles.cardTapTarget, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={`Open ${item.title}`}
+        accessibilityLabel={opensContent ? `Open ${item.title}` : `Open ${item.title}'s catalogue`}
       >
         <View style={[styles.imageWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
           {image ? (
@@ -181,14 +215,31 @@ function SuggestionCard({
               </AppText>
             </View>
           )}
+          {/*
+            A card that is NOT a piece says so on its face. These sit in the
+            same rail as the pieces and used to look identical to them, so the
+            only way to find out a press led somewhere else was to press it.
+          */}
+          {opensContent ? null : (
+            <View
+              style={[
+                styles.kindBadge,
+                { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder },
+              ]}
+            >
+              <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+                {getItemTargetType(item) === 'BRAND' ? 'Brand' : 'Browse'}
+              </AppText>
+            </View>
+          )}
         </View>
         <View style={styles.cardCopy}>
           <AppText variant="captionBold" numberOfLines={2}>
             {item.title}
           </AppText>
-          {item.subtitle ? (
+          {caption ? (
             <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-              {item.subtitle}
+              {caption}
             </AppText>
           ) : null}
           <AppText variant="captionBold" tone="primary" numberOfLines={1}>
@@ -196,6 +247,28 @@ function SuggestionCard({
           </AppText>
         </View>
       </Pressable>
+      {/*
+        Outside the card's own Pressable, not nested inside it: the brand name
+        is the ONE place on a piece that goes to the brand, and the rest of the
+        card goes to the piece. Nesting the two would leave the boundary between
+        them to the touch system.
+      */}
+      {showBrandLink ? (
+        <Pressable
+          onPress={handleBrandPress}
+          style={({ pressed }) => [
+            styles.brandLink,
+            { borderTopColor: theme.colors.border },
+            pressed && styles.pressed,
+          ]}
+          accessibilityRole="link"
+          accessibilityLabel={`View ${brandName}'s catalogue`}
+        >
+          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+            {brandName}
+          </AppText>
+        </Pressable>
+      ) : null}
       <Pressable
         onPress={() => onHide(item, blockKey, position)}
         disabled={hiddenBusy}
@@ -491,6 +564,20 @@ const styles = StyleSheet.create({
   imageWrap: {
     height: 172,
     width: '100%',
+  },
+  kindBadge: {
+    position: 'absolute',
+    top: tokens.spacing.xs,
+    left: tokens.spacing.xs,
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 2,
+  },
+  brandLink: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.sm,
   },
   image: {
     height: '100%',

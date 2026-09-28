@@ -18,7 +18,6 @@ import {
   CLIP_ADDED_TOAST,
   CLIP_EMOJI,
   CLIP_REMOVED_TOAST,
-  CLIPPED_EMOJI,
   clipActionLabel,
 } from '@/src/constants/clipping';
 import { useToast } from '@/src/toast/ToastContext';
@@ -34,7 +33,7 @@ import { Skeleton, SkeletonAvatar, SkeletonText } from '@/components/ui/Skeleton
 import WiezMark from '@/src/brand/WiezMark';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 import ThreadRailAction from '../../../../components/catalog/ThreadRailAction';
-import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
+import CollectionCommentsSheet, { getCommentsSheetHeight } from '@/components/catalog/CollectionCommentsSheet';
 import { brandApi, type CollectionDetailMediaDto } from '@/src/api/BrandApi';
 import { ProfileApi } from '@/src/api/ProfileApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
@@ -542,15 +541,38 @@ const FeedSaveLookAction = React.memo(function FeedSaveLookAction({
   busy,
   onPress,
 }: FeedSaveLookActionProps) {
+  const { theme } = useTheme();
   const handlePress = useCallback(() => {
     onPress(item);
   }, [item, onPress]);
 
   return (
     <View style={styles.railItem}>
-      <IconButton size={44} onPress={handlePress} disabled={busy}>
-        {/* The shared glyphs, not a local pair. A pushpin is not a clip. */}
-        <AppText variant="subtitle">{saved ? CLIPPED_EMOJI : CLIP_EMOJI}</AppText>
+      <IconButton
+        size={44}
+        onPress={handlePress}
+        disabled={busy}
+        /*
+          Clipped is a FILLED button, not a different glyph.
+
+          The control used to swap the paperclip for a bookmark ribbon, so the
+          thing the eye tracks — the shape — changed on every press and the
+          shopper had to read two symbols to learn one state. A stable mark on a
+          brand-filled disc is the same read every time: the icon says what the
+          control is for, the fill says whether it is on.
+        */
+        style={
+          saved
+            ? {
+                backgroundColor: theme.colors.primary,
+                borderColor: theme.colors.primary,
+                borderWidth: StyleSheet.hairlineWidth,
+              }
+            : undefined
+        }
+      >
+        {/* The shared glyph, not a local pair. A pushpin is not a clip. */}
+        <AppText variant="subtitle">{CLIP_EMOJI}</AppText>
       </IconButton>
       <AppText variant="captionBold" tone="inverse" style={styles.railCountLabel} numberOfLines={1}>
         {clipActionLabel(saved)}
@@ -958,7 +980,19 @@ export function RunwayFeedScreen() {
    * released half way.
    */
   const commentsProgress = useRef(new Animated.Value(0)).current;
-  const [commentsSheetHeight, setCommentsSheetHeight] = useState(0);
+  /*
+    DERIVED, not measured.
+
+    This was `useState(0)` filled by the sheet's `onLayout`, which lands a frame
+    or two after the open animation has already begun — so on the first open
+    `commentsStageStyle` was still `null`, the page did not scale down WITH the
+    sheet, and it snapped to its smaller size once the measurement arrived. The
+    sheet is a fixed fraction of the window now and both sides read the same
+    function, so the rearrangement is something the user watches happen.
+  */
+  const [commentsSheetHeight, setCommentsSheetHeight] = useState(() =>
+    getCommentsSheetHeight(windowHeight),
+  );
   const pendingCollectionIdsRef = useRef(new Set<string>());
   const hydratedCollectionIdsRef = useRef(new Set<string>());
   const feedTeleportingRef = useRef(false);
@@ -1221,9 +1255,9 @@ export function RunwayFeedScreen() {
    * compensating translate is half the height the page just lost, minus the
    * safe-area top so it sits under the status bar rather than behind it.
    *
-   * Guarded on a measured sheet height: before the sheet has laid out there is
-   * no honest number to scale to, and a guessed one would jump on the next
-   * frame.
+   * The sheet height is derived from the window, not measured after layout, so
+   * this is never null on the frame the animation starts. The guard below is
+   * kept for a degenerate window size, not for a pending measurement.
    */
   const commentsStageStyle = useMemo(() => {
     if (commentsSheetHeight <= 0 || pageHeight <= 0) {

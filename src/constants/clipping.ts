@@ -18,17 +18,22 @@
  * Clip and Clipped are two states of one control, not two words for one thing.
  */
 
-/** Paperclip: the invitation. */
-export const CLIP_EMOJI = String.fromCodePoint(0x1f4ce);
 /**
- * Bookmark ribbon: kept.
+ * The paperclip, in BOTH states.
  *
- * A different SILHOUETTE, not the same shape in another tint — a tint alone is
- * swallowed over a photograph and says nothing to anyone who cannot separate
- * the two colours. (Scissors would have been the obvious partner to a clip, but
- * ✂️ is already the custom-order mark in `src/constants/bagging.ts`.)
+ * There used to be a second glyph — a bookmark ribbon for "kept" — on the
+ * theory that a different silhouette reads over a photograph where a tint
+ * would not. It does read, but it reads as a different control: the shape the
+ * eye tracks changed on every press, so a shopper had to learn two symbols to
+ * understand one button, and neither one on its own told them which state they
+ * were in.
+ *
+ * One mark, and the SURFACE carries the state: a clipped control is filled
+ * (brand background), an unclipped one is bare. The icon answers "what does
+ * this do", the fill answers "is it on" — and the fill is the affordance every
+ * other toggle in the app already uses.
  */
-export const CLIPPED_EMOJI = String.fromCodePoint(0x1f516);
+export const CLIP_EMOJI = String.fromCodePoint(0x1f4ce);
 
 export const CLIP_LABEL = 'Clip';
 export const CLIPPED_LABEL = 'Clipped';

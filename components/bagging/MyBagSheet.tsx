@@ -179,11 +179,17 @@ export default function MyBagSheet({ visible, onClose }: Props) {
               onPress={onClose}
             />
           </View>
-          {hasItems ? (
-            <AppText variant="caption" tone="muted">
-              Payment opens through the secure provider and is verified by WIEZ before orders update.
-            </AppText>
-          ) : null}
+          {/*
+            The payment note used to live here, under the buttons.
+
+            A footer is the sheet's commit controls and nothing else: it is the
+            one part of a sheet that must never be pushed off the bottom edge,
+            so every line of prose added to it is height competing with the
+            Checkout button for the same clearance — and at large system text
+            sizes that note ran to four lines. It reads better next to the
+            total anyway, which is where the shopper is looking when they think
+            about paying.
+          */}
         </View>
       }
     >
@@ -264,9 +270,14 @@ export default function MyBagSheet({ visible, onClose }: Props) {
         ) : null}
 
         {hasItems ? (
-          <View style={[styles.totalRow, { borderColor: theme.colors.border }]}>
-            <AppText variant="bodyBold">Total bag count</AppText>
-            <AppText variant="bodyBold">{loading ? '…' : String(count.combinedCount)}</AppText>
+          <View style={styles.totalBlock}>
+            <View style={[styles.totalRow, { borderColor: theme.colors.border }]}>
+              <AppText variant="bodyBold">Total bag count</AppText>
+              <AppText variant="bodyBold">{loading ? '…' : String(count.combinedCount)}</AppText>
+            </View>
+            <AppText variant="caption" tone="muted">
+              Payment opens through the secure provider and is verified by WIEZ before orders update.
+            </AppText>
           </View>
         ) : (
           <AppText variant="caption" tone="muted">
@@ -323,6 +334,9 @@ const styles = StyleSheet.create({
   lineAction: {
     alignSelf: 'flex-start',
     marginTop: tokens.spacing.xs,
+  },
+  totalBlock: {
+    gap: tokens.spacing.sm,
   },
   totalRow: {
     flexDirection: 'row',

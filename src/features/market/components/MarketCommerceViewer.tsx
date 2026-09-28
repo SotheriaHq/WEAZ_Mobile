@@ -31,7 +31,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
-import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
+import CollectionCommentsSheet, { getCommentsSheetHeight } from '@/components/catalog/CollectionCommentsSheet';
 import ReviewsTab from '@/components/reviews/ReviewsTab';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 import { StableImage } from '@/components/ui/StableImage';
@@ -463,7 +463,6 @@ export function MarketCommerceViewer({
   const [bagStatus, setBagStatus] = useState<ProductBagStatus | null>(null);
   const [saved, setSaved] = useState(false);
   const [sheetExpanded, setSheetExpanded] = useState(false);
-  const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
   const [loading, setLoading] = useState(!(cachedProduct || cachedDesign));
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -493,7 +492,19 @@ export function MarketCommerceViewer({
    * released half way. Nothing is cropped — the scale is uniform.
    */
   const commentsProgress = useRef(new RNAnimated.Value(0)).current;
-  const [commentsSheetHeight, setCommentsSheetHeight] = useState(0);
+  /*
+    DERIVED, not measured.
+
+    This used to be `useState(0)` filled by the sheet's `onLayout`, which lands
+    a frame or two after the open animation has already begun — so on the first
+    open `commentsStageStyle` below was still `null` and the page did not scale
+    down with the sheet, it snapped down late. Both sides read the same pure
+    function of the window now, so the page and the sheet start on the same
+    frame. `onSheetHeight` stays wired as the correction path.
+  */
+  const [commentsSheetHeight, setCommentsSheetHeight] = useState(() =>
+    getCommentsSheetHeight(height),
+  );
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [sizeRecommendation, setSizeRecommendation] = useState<SizeRecommendationResponse | null>(null);
   const [sizeRecommendationLoading, setSizeRecommendationLoading] = useState(false);
@@ -524,8 +535,9 @@ export function MarketCommerceViewer({
     Identical maths to the Runway; the two have to agree or the same design
     settles at a different size depending on where its comments were opened.
 
-    Guarded on a MEASURED sheet height: before the sheet has laid out there is no
-    honest number to scale to, and a guessed one would jump on the next frame.
+    The sheet height is derived, not measured, so this is never null on the
+    frame the animation starts — which is what makes the rearrangement visible
+    rather than a snap after the fact.
   */
   const commentsStageStyle = useMemo(() => {
     if (commentsSheetHeight <= 0 || mediaHeight <= 0) return null;
@@ -994,6 +1006,18 @@ export function MarketCommerceViewer({
     }
   }, [brandId, busyAction, normalizedSourceId, requireAuth, saved, sourceType, toast]);
 
+  /**
+   * Open this brand's catalogue, keeping the piece behind us.
+   *
+   * `drillDownPush` is `router.push`, so the catalogue stacks ON TOP of the
+   * viewer and Back returns to exactly this piece at exactly this scroll — the
+   * same contract as opening a similar piece from the rail below.
+   */
+  const handleOpenBrandCatalog = useCallback(() => {
+    if (!brandId) return;
+    drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId } } as any);
+  }, [brandId]);
+
   const handleMessagePress = useCallback(() => {
     if (!canMessageBrand || !brandId) {
       toast.info('Brand messaging is unavailable for this item.');
@@ -1338,9 +1362,32 @@ export function MarketCommerceViewer({
         >
           <View style={styles.sheetTitleRow}>
             <View style={styles.sheetTitleCopy}>
-              <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-                {brandName}
-              </AppText>
+              {/*
+                The brand name is a way IN to the brand, not a caption.
+
+                Wherever a maker's name appears on a piece, pressing it has to
+                open their catalogue — that is the one navigation a shopper
+                tries without being told. Here it was plain text, so expanding
+                the details and tapping the name did nothing at all, and the
+                only route to the brand was to close the piece and search.
+              */}
+              {brandId ? (
+                <Pressable
+                  onPress={handleOpenBrandCatalog}
+                  accessibilityRole="link"
+                  accessibilityLabel={`View ${brandName}'s catalogue`}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.brandNameLink, pressed && styles.pressed]}
+                >
+                  <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+                    {brandName}
+                  </AppText>
+                </Pressable>
+              ) : (
+                <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+                  {brandName}
+                </AppText>
+              )}
               <AppText variant="title" numberOfLines={2}>
                 {title}
               </AppText>
@@ -1460,26 +1507,26 @@ export function MarketCommerceViewer({
           ) : null}
 
           {sourceType === 'PRODUCT' ? (
+            /*
+              Not collapsible.
+
+              This was a +/− disclosure that started CLOSED, so the shopper who
+              scrolled to the bottom of the details found a row of text and had
+              to guess that a second tap would reveal anything. Similar pieces
+              are the reason a shopper keeps scrolling — the point of putting
+              them here is that they are seen on the way past, which a control
+              that hides them by default cannot do.
+            */
             <View style={styles.detailBlock}>
-              <Pressable
-                onPress={() => setSuggestionsExpanded(!suggestionsExpanded)}
-                style={({ pressed }) => [styles.suggestionsToggle, pressed && { opacity: 0.7 }]}
-                accessibilityRole="button"
-                accessibilityLabel={suggestionsExpanded ? "Hide similar pieces" : "Show similar pieces"}
-              >
-                <AppText variant="bodyBold">Similar pieces</AppText>
-                <AppText variant="bodyBold" tone="muted">{suggestionsExpanded ? '−' : '+'}</AppText>
-              </Pressable>
-              {suggestionsExpanded ? (
-                <MobileMarketSuggestionBlocks
-                  context="PRODUCT_DETAIL"
-                  targetType="PRODUCT"
-                  targetId={normalizedSourceId}
-                  surface="PRODUCT_DETAIL"
-                  screenContext="PRODUCT_DETAIL"
-                  style={styles.suggestionBlocks}
-                />
-              ) : null}
+              <AppText variant="bodyBold">Similar pieces</AppText>
+              <MobileMarketSuggestionBlocks
+                context="PRODUCT_DETAIL"
+                targetType="PRODUCT"
+                targetId={normalizedSourceId}
+                surface="PRODUCT_DETAIL"
+                screenContext="PRODUCT_DETAIL"
+                style={styles.suggestionBlocks}
+              />
             </View>
           ) : null}
         </ScrollView>
@@ -1871,6 +1918,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: tokens.spacing.xs,
   },
+  brandNameLink: {
+    alignSelf: 'flex-start',
+  },
   pricePill: {
     maxWidth: 142,
     minHeight: 34,
@@ -1913,12 +1963,6 @@ const styles = StyleSheet.create({
   },
   detailBlock: {
     gap: tokens.spacing.xs,
-  },
-  suggestionsToggle: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: tokens.spacing.sm,
   },
   reviewSummaryWrap: {
     gap: tokens.spacing.sm,

@@ -1,5 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, FlatList, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { SHEET_MOTION } from '@/components/ui/AppBottomSheet';
 import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +37,40 @@ import { MuseLoader } from '@/components/ui/MuseLoader';
  */
 const SCALED_SCRIM_ALPHA = 0.18;
 const FLAT_SCRIM_ALPHA = 0.55;
+
+/**
+ * How tall the panel is, as a fraction of the window — and why it is a
+ * CONSTANT rather than whatever the thread happens to need.
+ *
+ * The sheet used to be `minHeight: '50%'` / `maxHeight: '74%'`, so its height
+ * was whatever its content came out to. That is the whole reason opening
+ * comments did not animate:
+ *
+ *  - The caller scales its page into the band ABOVE this sheet, and it can only
+ *    work out that band once it knows the height. The height arrived from
+ *    `onLayout`, which is a frame or two AFTER the open animation has already
+ *    started — so the page did not scale down, it snapped down late, with the
+ *    slide already half over.
+ *  - The panel's own slide interpolated from a hard-coded `480` for exactly the
+ *    same reason, so on the first open it travelled the wrong distance.
+ *  - Worse, the height then CHANGED again when the comments finished loading
+ *    (an empty thread is short, a full one hits the cap), which re-scaled the
+ *    page a second time, after the transition had visibly settled.
+ *
+ * A fixed fraction is known before the first frame, so the page and the panel
+ * start moving together, and it does not move again when the thread loads.
+ * This is also what Reels and Facebook do — the comment panel is a fixed
+ * stage, not a box that grows with the conversation.
+ */
+const COMMENTS_SHEET_HEIGHT_RATIO = 0.68;
+
+/**
+ * The panel's height for a given window, for callers that scale content into
+ * the band above it. Both sides compute it from the same function, so neither
+ * has to wait for the other to measure.
+ */
+export const getCommentsSheetHeight = (windowHeight: number): number =>
+  Math.round(Math.max(0, windowHeight) * COMMENTS_SHEET_HEIGHT_RATIO);
 
 type Comment = {
   id: string;
@@ -231,10 +275,12 @@ export default function CollectionCommentsSheet({
    */
   const internalProgress = useRef(new Animated.Value(0)).current;
   const progress = progressProp ?? internalProgress;
-  const [sheetHeight, setSheetHeight] = useState(0);
+  const { height: windowHeight } = useWindowDimensions();
+  // Known before layout — see COMMENTS_SHEET_HEIGHT_RATIO.
+  const sheetHeight = getCommentsSheetHeight(windowHeight);
   const translateY = progress.interpolate({
     inputRange: [0, 1],
-    outputRange: [sheetHeight > 0 ? sheetHeight : 480, 0],
+    outputRange: [sheetHeight, 0],
   });
   const opacity = progress;
   const [mounted, setMounted] = useState(visible);
@@ -245,6 +291,15 @@ export default function CollectionCommentsSheet({
   const commentsListRef = useRef<FlatList<Comment> | null>(null);
 
   useAndroidOverlaySystemBars(visible, scheme, 'collection-comments');
+
+  /*
+    Declared ABOVE the open/close effect on purpose: effects run in source
+    order, so a caller that has not derived the height itself still has it
+    before the animation it is coupled to starts.
+  */
+  useEffect(() => {
+    onSheetHeight?.(sheetHeight);
+  }, [onSheetHeight, sheetHeight]);
 
   const loadComments = useMemo(
     () => async (targetCollectionId: string) => {
@@ -345,17 +400,12 @@ export default function CollectionCommentsSheet({
             {
               backgroundColor: isDark ? tokens.viewer.surface : tokens.colors.light,
               borderTopColor: theme.colors.border,
+              height: sheetHeight,
               marginBottom: androidBottomGap,
               paddingBottom: Platform.OS === 'android' ? 0 : insets.bottom,
               transform: [{ translateY }],
             },
           ]}
-          onLayout={(event) => {
-            const next = Math.round(event.nativeEvent.layout.height);
-            if (next <= 0 || next === sheetHeight) return;
-            setSheetHeight(next);
-            onSheetHeight?.(next);
-          }}
         >
           <View style={styles.panelHandle}>
             <Pressable onPress={onClose} style={styles.panelHandleBar}>
@@ -411,6 +461,10 @@ export default function CollectionCommentsSheet({
                   }}
                 />
               )}
+              // The panel is a fixed height now, so the list is the part that
+              // flexes. Without this it would take its CONTENT height and push
+              // the composer off the bottom of a full thread.
+              style={styles.commentsScroller}
               contentContainerStyle={styles.commentsList}
               showsVerticalScrollIndicator={false}
               onScrollToIndexFailed={({ index }) => {
@@ -496,8 +550,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    minHeight: '50%',
-    maxHeight: '74%',
+    // Height is set inline from `getCommentsSheetHeight` — fixed, and known
+    // before the first frame so the caller's page can scale WITH the slide.
     borderTopWidth: 1,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -543,9 +597,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   commentsLoading: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 32,
+  },
+  commentsScroller: {
+    flex: 1,
+    minHeight: 0,
   },
   commentsList: {
     paddingHorizontal: 16,

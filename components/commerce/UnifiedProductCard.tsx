@@ -11,7 +11,7 @@ import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
-import { CLIP_EMOJI, CLIPPED_EMOJI, clipAccessibilityLabel } from '@/src/constants/clipping';
+import { CLIP_EMOJI, clipAccessibilityLabel } from '@/src/constants/clipping';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
@@ -56,16 +56,22 @@ type UnifiedProductCardProps = {
 
 const IMAGE_FALLBACK_ICON = String.fromCodePoint(0x1f5bc, 0xfe0f);
 /*
-  A clip, not a heart.
+  A clip, not a heart — and ONE clip, not two glyphs.
 
   ❤️/🤍 says "like", and two hearts that differ only in COLOUR is the
   weakest possible way to show a state change: over a photograph the tint is
   swallowed, and anyone who cannot separate red from white sees no change at
-  all. The paperclip and the bookmark are different shapes, so the state
-  reads at a glance and in greyscale. See `src/constants/clipping.ts`.
+  all.
+
+  The first answer was a second SHAPE (a bookmark for "kept"), which does read
+  in greyscale but reads as a different control: the silhouette the eye tracks
+  moved on every press. So the shape is now fixed and the DISC behind it
+  carries the state — filled in the brand colour when clipped, glass when not.
+  A filled disc survives a photograph and greyscale for the same reason a
+  different shape did, without changing what the button looks like it does.
+  See `src/constants/clipping.ts`.
 */
-const FAVORITE_ICON = CLIPPED_EMOJI;
-const FAVORITE_EMPTY_ICON = CLIP_EMOJI;
+const FAVORITE_ICON = CLIP_EMOJI;
 
 export const UnifiedProductCard = memo(function UnifiedProductCard({
   width,
@@ -192,7 +198,9 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
           hitSlop={tokens.spacing.sm}
           style={({ pressed }) => [
             styles.favoriteButton,
-            { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder },
+            favorite
+              ? { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
+              : { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder },
             pressed && styles.inlinePressed,
           ]}
           accessibilityRole="button"
@@ -202,7 +210,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
             <MuseLoader size={20} />
           ) : (
             <AppText variant="captionBold" tone="inverse">
-              {favorite ? FAVORITE_ICON : FAVORITE_EMPTY_ICON}
+              {FAVORITE_ICON}
             </AppText>
           )}
         </Pressable>

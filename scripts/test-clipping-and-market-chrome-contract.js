@@ -72,13 +72,57 @@ check('no surface still says Saved Looks or Save look', () => {
   }
 });
 
-check('the clip control is two shapes, not one shape in two tints', () => {
+check('the clip control is one shape, and the fill carries the state', () => {
   const card = read('components/commerce/UnifiedProductCard.tsx');
-  assert.match(card, /const FAVORITE_ICON = CLIPPED_EMOJI;/);
-  assert.match(card, /const FAVORITE_EMPTY_ICON = CLIP_EMOJI;/);
-  // The hearts differed only in colour, which is invisible over a photograph.
+
+  /*
+    This check used to require the OPPOSITE — two glyphs, a paperclip and a
+    bookmark — on the reasoning that two hearts differing only in tint are
+    invisible over a photograph. The reasoning was right and the remedy was
+    wrong: swapping the glyph changes the silhouette the eye tracks, so the
+    control looked like a different control after every press and neither
+    symbol on its own said which state you were in.
+
+    The mark is fixed now and the SURFACE behind it changes — a brand-filled
+    disc when clipped, glass when not. That survives a photograph and greyscale
+    for the same reason a second shape did, without the button changing
+    identity. The tint objection still stands and is still checked below.
+  */
+  assert.match(card, /const FAVORITE_ICON = CLIP_EMOJI;/, 'one clip glyph, in both states');
+  assert.doesNotMatch(card, /FAVORITE_EMPTY_ICON/, 'no second glyph for the empty state');
+  assert.doesNotMatch(card, /CLIPPED_EMOJI/, 'the second glyph is retired');
+  // The state has to be legible as something other than a tint on the icon.
+  assert.match(
+    card,
+    /favorite\s*\n?\s*\?\s*\{ backgroundColor: theme\.colors\.primary/,
+    'clipped fills the control',
+  );
   assert.doesNotMatch(card, /0x2764/, 'no heart glyph');
   assert.doesNotMatch(card, /0x1f90d/, 'no white-heart glyph');
+
+  // ...and the one glyph is the only one the constants offer, so no surface
+  // can quietly reintroduce a pair.
+  const constants = read('src/constants/clipping.ts');
+  assert.doesNotMatch(constants, /CLIPPED_EMOJI/, 'no second clip glyph is exported');
+});
+
+check('clipping a design sends only the two fields /saved declares', () => {
+  /*
+    The backend validates this body with `forbidNonWhitelisted: true`, so an
+    extra property is a 400 rather than a key the server ignores. The legacy
+    mapper returns `legacyCollectionId` on the DESIGN branch, which is the
+    branch the Runway uses — so every clip from the feed was rejected while
+    collections and products were fine.
+  */
+  const api = read('src/api/SavedItemsApi.ts');
+  assert.match(api, /toSavedItemRequest\(legacyTarget\)/, 'the payload is narrowed before it is sent');
+
+  const target = read('src/features/catalog/catalogTarget.ts');
+  assert.match(
+    target,
+    /export function toSavedItemRequest[\s\S]*?return \{ targetType: target\.targetType, targetId: target\.targetId \};/,
+    'the request carries targetType and targetId only',
+  );
 });
 
 check('a market row is a heading and a way out', () => {
