@@ -159,6 +159,13 @@ check('the address book offers choose, edit, remove and add another, and saves t
   assert.match(book, /Add another address/);
   assert.match(book, /ProfileApi\.replaceDeliveryAddresses/);
   assert.match(book, /<LocationCascadeFields/, 'reuse the shared country/state/city pickers');
+  assert.doesNotMatch(book, /Loading your addresses/);
+  assert.match(book, /warmDeliveryAddressCache/);
+  assert.match(
+    read('src/features/bagging/BagFlowProvider.tsx'),
+    /warmDeliveryAddressCache/,
+    'Bag it must already have the address when the sheet opens',
+  );
 });
 
 check('address book list maths: newest first, capped, replace by id, validated like the server', () => {
@@ -203,6 +210,7 @@ check('sheets close on one curve, slide fully out, and never restart a drag', ()
   assert.match(sheet, /if \(!dragExitRef\.current\)/);
   assert.match(sheet, /opacity: sheetOpacity\.value/, 'the sheet slides out solid; only the backdrop fades');
   assert.match(sheet, /SHEET_CLOSE_FALLBACK_MS = 450/, 'the fallback must outlast every close');
+  assert.match(sheet, /HANDOFF_DISMISS_SUPPRESS_MS/, 'a sheet opened by another sheet must ignore the releasing finger');
   const wiez = read('src/components/ui/WiezSheet.tsx');
   assert.match(wiez, /<AppBottomSheet/, 'action menus close like every other sheet');
   assert.doesNotMatch(wiez, /animationType="fade"/);

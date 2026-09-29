@@ -74,10 +74,14 @@ let watcherCount = 0;
 let watcherInterval: ReturnType<typeof setInterval> | null = null;
 let watcherSubscription: { remove: () => void } | null = null;
 let watcherRefresh: (() => void) | null = null;
+/** Latest "the link just verified" callback. Read when the check finishes, not when the watcher starts. */
+let watcherOnVerified: (() => void) | null = null;
 
 function subscribeToVerificationWatch(
   validateToken: (options?: { forceRefresh?: boolean }) => Promise<boolean>,
+  onVerified: () => void,
 ): () => void {
+  watcherOnVerified = onVerified;
   watcherCount += 1;
 
   if (watcherCount === 1) {
@@ -99,8 +103,11 @@ function subscribeToVerificationWatch(
     */
     watcherRefresh = () => {
       void (async () => {
-        await drainPendingEmailVerification().catch(() => null);
+        const outcome = await drainPendingEmailVerification().catch(() => null);
         await validateToken({ forceRefresh: true }).catch(() => false);
+        // After the re-read, so a profile that left the server before the
+        // link was spent cannot put the banner back.
+        if (outcome?.status === 'verified') watcherOnVerified?.();
       })();
     };
 
@@ -139,6 +146,7 @@ function subscribeToVerificationWatch(
     if (watcherInterval) clearInterval(watcherInterval);
     watcherInterval = null;
     watcherRefresh = null;
+    watcherOnVerified = null;
   };
 }
 
@@ -150,8 +158,10 @@ export function EmailVerificationNotice({
 }: EmailVerificationNoticeProps) {
   const { theme } = useTheme();
   const toast = useToast();
-  const { validateToken } = useAuth();
+  const { validateToken, updateUser } = useAuth();
   const [sending, setSending] = useState(false);
+  const markVerifiedRef = useRef(updateUser);
+  markVerifiedRef.current = updateUser;
 
   /**
    * The banner checks its own premise.
@@ -174,7 +184,9 @@ export function EmailVerificationNotice({
 
   useEffect(() => {
     if (!shouldWatch) return;
-    return subscribeToVerificationWatch(validateToken);
+    return subscribeToVerificationWatch(validateToken, () => {
+      markVerifiedRef.current({ isEmailVerified: true });
+    });
   }, [shouldWatch, validateToken]);
 
   const handleResend = useCallback(async () => {
@@ -239,10 +251,10 @@ export function EmailVerificationNotice({
         ✉️
       </AppText>
       <View style={styles.copy}>
-        <AppText variant="captionBold" numberOfLines={1}>
+        <AppText variant="captionBold">
           {title}
         </AppText>
-        <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+        <AppText variant="captionRegular" tone="muted">
           Sent to {maskEmail(email)}
         </AppText>
       </View>

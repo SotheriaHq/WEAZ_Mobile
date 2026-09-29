@@ -101,8 +101,8 @@ export default function VerifyEmailScreen() {
       const outcome = await spendEmailVerificationToken(token);
       if (outcome?.status === 'verified') {
         if (isAuthenticated) {
-          updateUser({ isEmailVerified: true });
           await validateToken({ forceRefresh: true }).catch(() => false);
+          updateUser({ isEmailVerified: true });
         }
         setState('success');
         setMessage(outcome.message);

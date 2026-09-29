@@ -27,15 +27,15 @@ export type DeliveryAddressDraft = {
 };
 
 export const emptyAddressDraft = (
-  defaults?: Partial<Pick<DeliveryAddressDraft, 'customerName' | 'contactEmail' | 'phone' | 'country'>>,
+  defaults?: Partial<Omit<DeliveryAddressDraft, 'id' | 'apartment' | 'postalCode'>>,
 ): DeliveryAddressDraft => ({
   customerName: defaults?.customerName ?? '',
   contactEmail: defaults?.contactEmail ?? '',
   phone: defaults?.phone ?? '',
-  street: '',
+  street: defaults?.street ?? '',
   apartment: '',
-  city: '',
-  state: '',
+  city: defaults?.city ?? '',
+  state: defaults?.state ?? '',
   postalCode: '',
   country: defaults?.country || 'Nigeria',
 });

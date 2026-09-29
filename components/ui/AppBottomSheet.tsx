@@ -115,6 +115,10 @@ export function AppBottomSheet({
   }, [onDismiss]);
 
   const dismissCompletedRef = useRef(false);
+  /** Backdrop taps and drags before this instant are the previous sheet's finger. */
+  const suppressDismissUntilRef = useRef(0);
+  const wasVisibleRef = useRef(false);
+  const getExitTranslateRef = useRef<() => number>(() => EXIT_TRAVEL_FALLBACK);
   const finishDismiss = React.useCallback(() => {
     // Idempotent: animation callback + force-unmount timeout can both fire.
     if (dismissCompletedRef.current) return;
@@ -197,6 +201,17 @@ export function AppBottomSheet({
         _: unknown,
         gestureState: { dy: number; vy: number },
       ) => {
+        if (Date.now() < suppressDismissUntilRef.current) {
+          translateY.value = withTiming(0, {
+            duration: 140,
+            easing: Easing.out(Easing.cubic),
+          });
+          opacity.value = withTiming(1, {
+            duration: 120,
+            easing: Easing.out(Easing.cubic),
+          });
+          return;
+        }
         if (gestureState.dy > 48 || gestureState.vy > 0.8) {
           Keyboard.dismiss();
           /*
@@ -444,12 +459,17 @@ export function AppBottomSheet({
    *  - A gentler ease-in (quad, not cubic): cubic sat almost still for the first
    *    third of the close, which reads as lag after a tap.
    */
+  getExitTranslateRef.current = getExitTranslate;
+
   useEffect(() => {
     if (!mounted) return;
 
     if (visible) {
+      if (wasVisibleRef.current) return;
+      wasVisibleRef.current = true;
       dismissCompletedRef.current = false;
       dragExitRef.current = false;
+      suppressDismissUntilRef.current = Date.now() + HANDOFF_DISMISS_SUPPRESS_MS;
       translateY.value = 28;
       opacity.value = 0;
       sheetOpacity.value = 0;
@@ -459,11 +479,13 @@ export function AppBottomSheet({
       return;
     }
 
+    wasVisibleRef.current = false;
+
     if (!dragExitRef.current) {
       // Same outward target as the drag path, so a close that starts from a
       // dragged position never animates backwards up the screen.
       translateY.value = withTiming(
-        getExitTranslate(),
+        getExitTranslateRef.current(),
         { duration: SHEET_CLOSE_MS, easing: Easing.in(Easing.quad) },
         () => {
           // Always unmount. Reanimated can report finished=false when a new
@@ -482,7 +504,7 @@ export function AppBottomSheet({
       finishDismiss();
     }, SHEET_CLOSE_FALLBACK_MS);
     return () => clearTimeout(forceUnmount);
-  }, [finishDismiss, getExitTranslate, mounted, opacity, sheetOpacity, translateY, visible]);
+  }, [finishDismiss, mounted, opacity, sheetOpacity, translateY, visible]);
 
   const sheetStyle = useAnimatedStyle(() => ({
     opacity: sheetOpacity.value,
@@ -565,7 +587,10 @@ export function AppBottomSheet({
       animationType="none"
       statusBarTranslucent
       navigationBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (Date.now() < suppressDismissUntilRef.current) return;
+        onClose();
+      }}
     >
       <View style={styles.root}>
         {/*
@@ -598,6 +623,7 @@ export function AppBottomSheet({
               Keyboard.dismiss();
             }}
             onPress={() => {
+              if (Date.now() < suppressDismissUntilRef.current) return;
               onClose();
             }}
             accessibilityRole="button"
@@ -730,6 +756,13 @@ export function AppBottomSheet({
  */
 const EXIT_TRAVEL_FALLBACK = 420;
 const SHEET_OPEN_MS = 240;
+/**
+ * A sheet that replaces another one (fittings, then the custom order) is born
+ * under the finger that confirmed the previous sheet. That release lands on
+ * the new backdrop, or as a short downward drag, and used to dismiss the new
+ * sheet as soon as its content appeared.
+ */
+const HANDOFF_DISMISS_SUPPRESS_MS = 600;
 const SHEET_CLOSE_MS = 230;
 /** Longer than the slowest close (a drag throw caps at 260ms). */
 const SHEET_CLOSE_FALLBACK_MS = 450;

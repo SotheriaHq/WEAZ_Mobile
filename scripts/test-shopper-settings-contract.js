@@ -126,7 +126,7 @@ assert.match(
 );
 assert.match(
   bottomSheet,
-  /onPress=\{\(\) => \{\s*onClose\(\);\s*\}\}/,
+  /onPress=\{\(\) => \{\s*(?:if \(Date\.now\(\) < suppressDismissUntilRef\.current\) return;\s*)?onClose\(\);\s*\}\}/,
   'sheet backdrop must close on RELEASE, so a stray touch on a form sheet can be taken back',
 );
 const backdropPressIn = bottomSheet.match(/onPressIn=\{\(\) => \{([\s\S]*?)\}\}/);

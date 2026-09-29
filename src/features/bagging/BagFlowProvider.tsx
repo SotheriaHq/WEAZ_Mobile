@@ -28,6 +28,10 @@ import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { baggingService } from '@/src/services/bagging';
 import type { BagSourceType } from '@/src/api/StoreApi';
 import { BagFlowContext } from '@/src/features/bagging/BagFlowContext';
+import {
+  clearDeliveryAddressCache,
+  warmDeliveryAddressCache,
+} from '@/src/features/delivery/deliveryAddressCache';
 import type { BagFlowProductInput } from '@/src/features/bagging/BagFlowContext';
 
 export { useBagFlow } from '@/src/features/bagging/BagFlowContext';
@@ -92,6 +96,17 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
   const [pendingAuth, setPendingAuth] = useState<PendingAuthResume | null>(null);
 
   const pendingResumeRef = useRef<PendingAuthResume | null>(null);
+
+  // The address is on the account before anyone presses Bag it. Load it with
+  // the session so the custom sheet opens on the saved address, or on the
+  // profile fields, and never on a loading row that then dismisses.
+  useEffect(() => {
+    if (authStatus !== 'authenticated') {
+      clearDeliveryAddressCache();
+      return;
+    }
+    void warmDeliveryAddressCache();
+  }, [authStatus]);
 
   const closeActiveFlow = useCallback(() => {
     setCustomAfterFittings(false);

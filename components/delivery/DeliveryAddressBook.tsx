@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { LocationCascadeFields } from '@/components/forms/LocationCascadeFields';
@@ -7,7 +7,6 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
-import { MuseLoader } from '@/components/ui/MuseLoader';
 import { ProfileApi, type SavedDeliveryAddress } from '@/src/api/ProfileApi';
 import {
   displayNameOf,
@@ -21,6 +20,13 @@ import {
   validateAddressDraft,
   type DeliveryAddressDraft,
 } from '@/src/features/delivery/deliveryAddressBook';
+import {
+  getDeliveryAddressSnapshot,
+  rememberDeliveryAddresses,
+  subscribeDeliveryAddressCache,
+  warmDeliveryAddressCache,
+  type ProfileAddressSeed,
+} from '@/src/features/delivery/deliveryAddressCache';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
@@ -43,6 +49,9 @@ export type DeliveryAddressDefaults = {
   customerName?: string;
   contactEmail?: string;
   phone?: string;
+  street?: string;
+  city?: string;
+  state?: string;
   country?: string;
 };
 
@@ -72,12 +81,33 @@ export function DeliveryAddressBook({
   subtitle,
 }: DeliveryAddressBookProps) {
   const { theme } = useTheme();
-  const [book, setBook] = useState<SavedDeliveryAddress[]>([]);
-  const [loading, setLoading] = useState(true);
+  const snapshot = useSyncExternalStore(
+    subscribeDeliveryAddressCache,
+    getDeliveryAddressSnapshot,
+    getDeliveryAddressSnapshot,
+  );
+  const book = snapshot.book ?? [];
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(null);
   const [showErrors, setShowErrors] = useState(false);
+
+  const seedDraft = useCallback(
+    (profile: ProfileAddressSeed | null) =>
+      emptyAddressDraft({
+        ...defaults,
+        street: defaults?.street || profile?.street || '',
+        city: defaults?.city || profile?.city || '',
+        state: defaults?.state || profile?.state || '',
+        country: defaults?.country || profile?.country || '',
+      }),
+    [defaults],
+  );
+
+  const [form, setForm] = useState<FormState>(() => {
+    const initial = getDeliveryAddressSnapshot();
+    if (initial.book && initial.book.length > 0) return null;
+    return { mode: 'add', draft: emptyAddressDraft(defaults) };
+  });
 
   // Read inside effects without making them re-run when the parent re-renders.
   const onSelectRef = useRef(onSelect);
@@ -86,56 +116,83 @@ export function DeliveryAddressBook({
   defaultsRef.current = defaults;
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
+  const formRef = useRef(form);
+  formRef.current = form;
+  const touchedRef = useRef(false);
+  /** "Add another" stays open when a background refresh republishes the book. */
+  const heldOpenRef = useRef(false);
+  const announcedIdRef = useRef<string | null | undefined>(undefined);
 
   const openAdd = useCallback(() => {
+    heldOpenRef.current = true;
+    touchedRef.current = false;
     setShowErrors(false);
     setError(null);
-    setForm({ mode: 'add', draft: emptyAddressDraft(defaultsRef.current) });
+    setForm({
+      mode: 'add',
+      draft: emptyAddressDraft({
+        ...defaultsRef.current,
+        street: defaultsRef.current?.street || snapshot.profile?.street || '',
+        city: defaultsRef.current?.city || snapshot.profile?.city || '',
+        state: defaultsRef.current?.state || snapshot.profile?.state || '',
+        country: defaultsRef.current?.country || snapshot.profile?.country || '',
+      }),
+    });
+  }, [snapshot.profile]);
+
+  useEffect(() => {
+    void warmDeliveryAddressCache();
   }, []);
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    ProfileApi.getDeliveryAddresses()
-      .then((items) => {
-        if (!active) return;
-        const sorted = sortNewestFirst(items);
-        setBook(sorted);
-        if (sorted.length === 0) {
-          onSelectRef.current(null);
-          openAdd();
-          return;
-        }
-        // Keep the parent's choice when it is still in the book; otherwise the
-        // most recent address, as web does.
-        const current = sorted.find((entry) => entry.id === selectedIdRef.current);
-        onSelectRef.current(current ?? sorted[0]);
-      })
-      .catch(() => {
-        if (!active) return;
-        // No book is recoverable: the shopper can still add an address.
+    const loaded = snapshot.book;
+    const draft = seedDraft(snapshot.profile);
+    const current = formRef.current;
+    const keepWhatTheyTyped =
+      touchedRef.current || heldOpenRef.current || current?.mode === 'edit';
+
+    if (loaded == null || loaded.length === 0) {
+      if (!keepWhatTheyTyped) {
+        const currentDraft = formRef.current?.mode === 'add' ? formRef.current.draft : null;
+        const sameSeed =
+          currentDraft != null &&
+          currentDraft.customerName === draft.customerName &&
+          currentDraft.contactEmail === draft.contactEmail &&
+          currentDraft.phone === draft.phone &&
+          currentDraft.street === draft.street &&
+          currentDraft.city === draft.city &&
+          currentDraft.state === draft.state &&
+          currentDraft.country === draft.country;
+        if (!sameSeed) setForm({ mode: 'add', draft });
+      }
+      if (loaded && announcedIdRef.current !== null) {
+        announcedIdRef.current = null;
         onSelectRef.current(null);
-        openAdd();
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [openAdd]);
+      }
+      return;
+    }
+
+    if (!keepWhatTheyTyped) setForm(null);
+    const chosen =
+      loaded.find((entry) => entry.id === selectedIdRef.current) ?? loaded[0];
+    if (announcedIdRef.current !== chosen.id) {
+      announcedIdRef.current = chosen.id;
+      onSelectRef.current(chosen);
+    }
+  }, [seedDraft, snapshot]);
 
   useEffect(() => {
     onEditingChange?.(form !== null);
   }, [form, onEditingChange]);
 
   const updateDraft = (patch: Partial<DeliveryAddressDraft>) => {
+    touchedRef.current = true;
     setForm((current) => (current ? { ...current, draft: { ...current.draft, ...patch } } : current));
   };
 
   const persist = async (next: SavedDeliveryAddress[]) => {
     const kept = sortNewestFirst(await ProfileApi.replaceDeliveryAddresses(next));
-    setBook(kept);
+    rememberDeliveryAddresses(kept);
     return kept;
   };
 
@@ -152,6 +209,9 @@ export function DeliveryAddressBook({
     try {
       const saved = toSavedAddress(form.draft);
       const kept = await persist(upsertAddress(book, saved));
+      heldOpenRef.current = false;
+      touchedRef.current = false;
+      announcedIdRef.current = saved.id;
       onSelect(kept.find((entry) => entry.id === saved.id) ?? kept[0] ?? null);
       setForm(null);
       setShowErrors(false);
@@ -201,13 +261,7 @@ export function DeliveryAddressBook({
         ) : null}
       </View>
 
-      {loading ? (
-        <View style={styles.loadingRow}>
-          <MuseLoader size={18} />
-          <AppText variant="body" tone="muted">Loading your addresses…</AppText>
-        </View>
-      ) : (
-        <>
+      <>
           {/* ── Saved addresses ─────────────────────────────────────── */}
           {book.map((address) => {
             const selected = address.id === selectedId;
@@ -236,7 +290,6 @@ export function DeliveryAddressBook({
                     <AppText
                       variant="bodyBold"
                       tone={selected ? 'primary' : 'default'}
-                      numberOfLines={1}
                       style={styles.cardName}
                     >
                       {displayNameOf(address)}
@@ -247,10 +300,10 @@ export function DeliveryAddressBook({
                       </AppText>
                     ) : null}
                   </View>
-                  <AppText variant="caption" tone="secondary" numberOfLines={2}>
+                  <AppText variant="caption" tone="secondary">
                     {formatAddressLine(address)}
                   </AppText>
-                  <AppText variant="caption" tone="muted" numberOfLines={1}>
+                  <AppText variant="caption" tone="muted">
                     {[address.phone, address.contactEmail].filter(Boolean).join(' · ')}
                   </AppText>
                   {form === null ? (
@@ -284,7 +337,7 @@ export function DeliveryAddressBook({
           {form ? (
             <Card padding="md" style={styles.formCard}>
               <AppText variant="bodyBold">
-                {form.mode === 'edit' ? 'Edit address' : book.length > 0 ? 'Add another address' : 'Add a delivery address'}
+                {form.mode === 'edit' ? 'Edit address' : book.length > 0 ? 'Add another address' : 'Delivery address'}
               </AppText>
               <Input
                 label="Full name"
@@ -347,6 +400,8 @@ export function DeliveryAddressBook({
                     variant="secondary"
                     disabled={saving}
                     onPress={() => {
+                      heldOpenRef.current = false;
+                      touchedRef.current = false;
                       setForm(null);
                       setShowErrors(false);
                       setError(null);
@@ -377,8 +432,7 @@ export function DeliveryAddressBook({
               {error}
             </AppText>
           ) : null}
-        </>
-      )}
+      </>
     </View>
   );
 }
@@ -389,11 +443,6 @@ const styles = StyleSheet.create({
   },
   head: {
     gap: tokens.spacing.xs,
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
   },
   card: {
     gap: tokens.spacing.xs,

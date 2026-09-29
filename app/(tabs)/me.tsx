@@ -895,12 +895,15 @@ export default function BuyerProfileScreen() {
           ? await drainPendingEmailVerification().catch(() => null)
           : null;
         await validateToken({ forceRefresh: true });
-        if (outcome?.status === 'verified') toast.success('Email verified.');
+        if (outcome?.status === 'verified') {
+          updateUser({ isEmailVerified: true });
+          toast.success('Email verified.');
+        }
       })(),
       load({ silent: true, force: true }),
       refreshUnreadNotificationCount({ authenticated: true, forceRefresh: true }),
     ]);
-  }, [emailUnverified, load, toast, validateToken]);
+  }, [emailUnverified, load, toast, updateUser, validateToken]);
 
   const handlePickAvatar = useCallback(async () => {
     if (!profileRecord) return;

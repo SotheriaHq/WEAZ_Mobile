@@ -678,10 +678,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * dedupe window is far shorter than the poll interval. Every caller became
    * its own `GET /auth/profile`.
    *
-   * Sharing is safe because they all want the same thing: the current profile.
-   * A `forceRefresh` arriving while a NON-forced validation is in flight is
+   * Sharing is safe when the caller did not ask to bypass the cache. A
+   * `forceRefresh` arriving while a NON-forced validation is in flight is
    * deliberately NOT shared — it asked to bypass the cache and would otherwise
-   * be answered by the very read it was trying to skip.
+   * be answered by the very read it was trying to skip. A `forceRefresh` that
+   * arrives while another forced read is already on the wire waits for that
+   * read and then fetches again: the in-flight one may have started before
+   * the inbox link confirmed the email, and returning it is why a pull to
+   * refresh still showed the banner.
    */
   const inFlightValidationRef = useRef<{
     promise: Promise<boolean>;
@@ -692,7 +696,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (options?: { forceRefresh?: boolean }): Promise<boolean> => {
       const forceRefresh = Boolean(options?.forceRefresh);
       const inFlight = inFlightValidationRef.current;
-      if (inFlight && (!forceRefresh || inFlight.forceRefresh)) {
+      if (inFlight && forceRefresh && inFlight.forceRefresh) {
+        return inFlight.promise.then(() => validateToken({ forceRefresh: true }));
+      }
+      if (inFlight && !forceRefresh) {
         return inFlight.promise;
       }
 

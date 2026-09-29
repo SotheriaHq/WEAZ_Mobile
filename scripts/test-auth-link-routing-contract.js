@@ -336,6 +336,16 @@ function main() {
   );
   assert.match(
     googleHookSource,
+    /Application\.applicationId/,
+    'Native Google auth must build its redirect from the installed application id.',
+  );
+  assert.match(
+    googleHookSource,
+    /redirectUri:\s*nativeGoogleRedirectUri/,
+    'A development build must pass that redirect explicitly, or Google returns to the Expo launcher.',
+  );
+  assert.match(
+    googleHookSource,
     /clearGoogleAuthRedirectRecovery\(\)/,
     'Mobile Google auth must remove transient PKCE recovery after its live result settles.',
   );
@@ -416,6 +426,33 @@ function main() {
     {
       pathname: '/(auth)/verify-email',
     },
+  );
+  assert.deepEqual(
+    toJson(resolveMobileAuthRoute('threadlymobile://verify-email/abc123')),
+    {
+      pathname: '/(auth)/verify-email',
+      params: { token: 'abc123' },
+    },
+    'An Android intent drops ?token=, so the token in the path must still verify.',
+  );
+  assert.deepEqual(
+    toJson(resolveMobileAuthRoute('threadlymobile://verify-email/abc123?token=from-query')),
+    {
+      pathname: '/(auth)/verify-email',
+      params: { token: 'from-query' },
+    },
+  );
+  assert.deepEqual(
+    toJson(resolveMobileAuthRoute('wiezmobile://reset-password/abc123')),
+    {
+      pathname: '/(auth)/reset-password',
+      params: { token: 'abc123' },
+    },
+  );
+  assert.match(
+    profileTabSource,
+    /outcome\?\.status === 'verified'[\s\S]{0,180}updateUser\(\{ isEmailVerified: true \}\)/,
+    'A profile refresh that spends the link must clear the banner even if the profile read is stale.',
   );
   assert.equal(resolveMobileAuthRoute('threadlymobile://settings?tab=account-security&emailChangeToken=abc123'), null);
   assert.equal(resolveMobileAuthRoute('threadlymobile://change-email/confirm?token=abc123'), null);

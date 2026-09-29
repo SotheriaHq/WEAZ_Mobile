@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { Platform } from "react-native";
+import * as Application from "expo-application";
 import * as WebBrowser from "expo-web-browser";
 import { exchangeCodeAsync } from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
@@ -26,6 +27,21 @@ WebBrowser.maybeCompleteAuthSession();
 
 const UNCONFIGURED_GOOGLE_CLIENT_ID =
   "wiez-google-auth-not-configured.apps.googleusercontent.com";
+
+/**
+ * The redirect a development build must use.
+ *
+ * `makeRedirectUri` only honours `native: ${applicationId}:/oauthredirect` in a
+ * standalone or bare build. In a development client it ignores that and builds
+ * `wiezmobile://expo-development-client/?url=...` instead. Google then returns
+ * to the Expo launcher, which shows "start the app" and drops the sign-in.
+ * Passing `redirectUri` skips `makeRedirectUri` entirely, so the dev client and
+ * the preview build both return to `com.wiez.wiez:/oauthredirect` — the scheme
+ * the main activity owns, not the launcher.
+ */
+const nativeGoogleRedirectUri = Application.applicationId
+  ? `${Application.applicationId}:/oauthredirect`
+  : undefined;
 
 const usableClientId = (
   value: string | undefined | null,
@@ -82,6 +98,9 @@ export function useGoogleIdTokenRequest(
       scopes: ["openid", "email", "profile"],
       ...(options.loginHint?.trim()
         ? { loginHint: options.loginHint.trim() }
+        : {}),
+      ...(Platform.OS !== "web" && nativeGoogleRedirectUri
+        ? { redirectUri: nativeGoogleRedirectUri }
         : {}),
     };
   }, [options.loginHint]);

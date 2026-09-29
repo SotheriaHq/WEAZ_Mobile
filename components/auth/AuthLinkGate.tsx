@@ -135,10 +135,13 @@ export function AuthLinkGate() {
     // A guest has no cached account to correct; the verify screen sends them
     // to log in, and the server copy is already verified.
     if (!verified || status !== 'authenticated') return;
+    const announce = verified.announce;
     setVerified(null);
-    updateUser({ isEmailVerified: true });
-    void validateToken({ forceRefresh: true }).catch(() => false);
-    if (verified.announce) toast.success('Email verified.');
+    void (async () => {
+      await validateToken({ forceRefresh: true }).catch(() => false);
+      updateUser({ isEmailVerified: true });
+      if (announce) toast.success('Email verified.');
+    })();
   }, [status, toast, updateUser, validateToken, verified]);
 
   return null;
