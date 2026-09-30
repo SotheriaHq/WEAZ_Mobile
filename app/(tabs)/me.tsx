@@ -12,8 +12,11 @@ import { Card } from '@/components/ui/Card';
 import { ComputedSizeChip } from '@/components/sizing/ComputedSize';
 import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
 import { BackLink } from '@/components/ui/InlineNavLink';
+import { Input } from '@/components/ui/Input';
+import { SegmentedTabs } from '@/components/ui/SegmentedTabs';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
+import { OrderListRow } from '@/components/orders/OrderListRow';
 import ProfileImageModal from '@/components/profile/ProfileImageModal';
 import { ProfileApi, type ComputedSizeFitProfile, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
@@ -67,6 +70,8 @@ const PROFILE_TABS: ProfileTab[] = ['Saved', 'Patches', 'Orders'];
 const PROFILE_INITIAL_SECTION_ITEMS = 6;
 const PROFILE_SECTION_BATCH_ITEMS = 8;
 const PROFILE_ORDERS_PREVIEW_LIMIT = 6;
+/** Below this many orders, the tab rail alone is enough to find one. */
+const PROFILE_ORDERS_SEARCH_THRESHOLD = 5;
 /** The saved grid, laid out like Market's: two up, same gap, same proportions. */
 const SAVED_CARD_GAP = tokens.spacing.md;
 const SAVED_CARD_RATIO = 1.58;
@@ -97,17 +102,6 @@ const getSavedLooksCountBucket = (count: number) => {
   what the reader sees changes.
 */
 const getProfileTabLabel = (tab: ProfileTab) => (tab === 'Saved' ? CLIPS_TAB_LABEL : tab);
-
-function formatCurrency(amount: number, currency = 'NGN') {
-  return formatMoney(amount, currency);
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 function createEmptyProfileState(): ProfileState {
   return {
@@ -411,44 +405,6 @@ function PatchRow({ brand }: { brand: PatchedBrand }) {
   );
 }
 
-function OrderRow({ order }: { order: BuyerOrderSummary }) {
-  const { theme } = useTheme();
-  return (
-    <Pressable
-      onPress={() => {
-        const { topLevelNavigate } = require('@/src/utils/mobileNavigation');
-        topLevelNavigate({ pathname: '/orders/[orderId]', params: { orderId: order.id } } as any);
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${order.title}`}
-      style={({ pressed }) => [
-        styles.listCard,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-        pressed ? styles.pressed : null,
-      ]}
-    >
-      {order.thumbnail ? (
-        <StableImage uri={order.thumbnail} containerStyle={styles.rowAvatar} imageStyle={styles.rowAvatar} />
-      ) : (
-        <View style={[styles.rowAvatar, { backgroundColor: theme.colors.surfaceAlt }]}>
-          <AppText variant="captionBold">📦</AppText>
-        </View>
-      )}
-      <View style={styles.listCopy}>
-        <AppText variant="bodyBold" numberOfLines={1}>{order.title}</AppText>
-        <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-          {order.brandName} · {order.status} · {formatDate(order.createdAt)}
-        </AppText>
-      </View>
-      <View style={styles.orderMeta}>
-        <AppText variant="captionBold">{formatCurrency(order.amount, order.currency)}</AppText>
-        <AppText variant="captionRegular" tone="muted">
-          {order.itemCount} item{order.itemCount === 1 ? '' : 's'}
-        </AppText>
-      </View>
-    </Pressable>
-  );
-}
 
 export default function BuyerProfileScreen() {
   const { theme } = useTheme();
@@ -465,6 +421,8 @@ export default function BuyerProfileScreen() {
   const [state, setState] = useState<ProfileState>(() => initialWarmProfileState ?? createEmptyProfileState());
   const [loading, setLoading] = useState(() => !initialWarmProfileState);
   const [ordersLoading, setOrdersLoading] = useState(() => !initialWarmProfileState);
+  const [orderKind, setOrderKind] = useState<'all' | 'STANDARD' | 'CUSTOM'>('all');
+  const [orderSearch, setOrderSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Saved');
@@ -578,12 +536,50 @@ export default function BuyerProfileScreen() {
     batchCount: PROFILE_SECTION_BATCH_ITEMS,
     resetKey: `Patches:${state.patches.length}:${state.patches[0]?.id ?? ''}:${state.patches[state.patches.length - 1]?.id ?? ''}`,
   });
-  const visibleOrderItems = useFrameBatchedItems(state.orders, {
+  /**
+   * Orders are filtered BEFORE the frame batcher sees them.
+   *
+   * The batcher reveals a slice of whatever it is given, so filtering its
+   * output would search only the handful of rows already on screen and report
+   * "no matches" for an order sitting two rows below the fold.
+   */
+  const orderMatches = useMemo(() => {
+    const query = orderSearch.trim().toLowerCase();
+    return state.orders.filter((order) => {
+      if (orderKind !== 'all' && order.kind !== orderKind) return false;
+      if (!query) return true;
+      return [order.title, order.brandName, order.status, order.sourceLabel, order.id]
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [orderKind, orderSearch, state.orders]);
+
+  const visibleOrderItems = useFrameBatchedItems(orderMatches, {
     enabled: activeTab === 'Orders',
     initialCount: PROFILE_INITIAL_SECTION_ITEMS,
     batchCount: PROFILE_SECTION_BATCH_ITEMS,
-    resetKey: `Orders:${state.orders.length}:${state.orders[0]?.id ?? ''}:${state.orders[state.orders.length - 1]?.id ?? ''}`,
+    resetKey: `Orders:${orderKind}:${orderSearch}:${orderMatches.length}:${orderMatches[0]?.id ?? ''}:${orderMatches[orderMatches.length - 1]?.id ?? ''}`,
   });
+
+  /*
+    Labels only, no counts. Same reason the button below carries no number:
+    this tab holds a preview, so a count here would describe the preview and
+    read as the total. `/orders` loads the history and shows them there.
+  */
+  const orderKindTabs = useMemo(
+    () => [
+      { key: 'all' as const, label: 'All' },
+      { key: 'STANDARD' as const, label: 'Standard' },
+      { key: 'CUSTOM' as const, label: 'Custom' },
+    ],
+    [],
+  );
+
+  const profileTabItems = useMemo(
+    () => PROFILE_TABS.map((tab) => ({ key: tab, label: getProfileTabLabel(tab) })),
+    [],
+  );
 
   useEffect(() => {
     if (status !== 'authenticated' || activeTab !== 'Saved' || savedLooksOpenedTrackedRef.current) return;
@@ -1246,28 +1242,8 @@ export default function BuyerProfileScreen() {
           </View>
         ) : null}
 
-        <View style={[styles.tabRail, { borderBottomColor: theme.colors.border }] }>
-          {PROFILE_TABS.map((tab) => {
-            const selected = tab === activeTab;
-            return (
-              <Pressable
-                key={tab}
-                onPress={() => setActiveTab(tab)}
-                style={({ pressed }) => [
-                  styles.tabItem,
-                  selected && [styles.tabItemActive, { borderBottomColor: theme.colors.primary }],
-                  pressed ? styles.pressed : null,
-                ]}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-              >
-                <AppText variant="captionBold" tone={selected ? 'primary' : 'secondary'}>
-                  {getProfileTabLabel(tab)}
-                </AppText>
-              </Pressable>
-            );
-            })}
-        </View>
+        {/* One rule that travels to the tab you picked — see SegmentedTabs. */}
+        <SegmentedTabs items={profileTabItems} value={activeTab} onChange={setActiveTab} />
 
         {activeTab === 'Saved' ? (
           state.saved.length === 0 ? (
@@ -1318,12 +1294,64 @@ export default function BuyerProfileScreen() {
             </View>
           ) : (
             <>
-              <View style={styles.listStack}>
-                {visibleOrderItems.map((order) => (
-                  <OrderRow key={order.id} order={order} />
-                ))}
-              </View>
-              <Button title="View all orders" variant="outline" onPress={() => drillDownPush('/orders' as any)} />
+              <SegmentedTabs items={orderKindTabs} value={orderKind} onChange={setOrderKind} />
+
+              {/* Search earns its place once sorting alone stops narrowing the
+                  list — below that it is a control asking to be ignored. */}
+              {state.orders.length >= PROFILE_ORDERS_SEARCH_THRESHOLD ? (
+                <Input
+                  label="Search orders"
+                  hideLabel
+                  placeholder="Search orders, brands or status"
+                  value={orderSearch}
+                  onChangeText={setOrderSearch}
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  containerStyle={styles.ordersSearch}
+                />
+              ) : null}
+
+              {/* The FILTERED length, not the batched slice: the batcher's
+                  first frame is a slice of the matches, not a verdict on them. */}
+              {orderMatches.length === 0 ? (
+                <View style={[styles.ordersPreviewState, { backgroundColor: theme.colors.surfaceAlt }]}>
+                  <AppText variant="bodyBold">No orders match</AppText>
+                  <AppText variant="captionRegular" tone="muted" style={styles.centerText}>
+                    {orderSearch.trim()
+                      ? `Nothing here matches “${orderSearch.trim()}”.`
+                      : 'Nothing of this kind yet.'}
+                  </AppText>
+                </View>
+              ) : (
+                <View style={styles.ordersList}>
+                  {visibleOrderItems.map((order, index) => (
+                    <OrderListRow
+                      key={order.id}
+                      order={order}
+                      last={index === visibleOrderItems.length - 1}
+                      onPress={() =>
+                        topLevelNavigate({
+                          pathname: '/orders/[orderId]',
+                          params: { orderId: order.id },
+                        } as any)
+                      }
+                    />
+                  ))}
+                </View>
+              )}
+
+              {/* The full history is the destination this tab previews, so the
+                  control that opens it is the primary action here, not a
+                  hairline outline sitting under the last row. */}
+              {/* No count in this label. This tab fetches a PREVIEW
+                  (PROFILE_ORDERS_PREVIEW_LIMIT), so the number here would be 6
+                  for a shopper with forty orders — an invitation to view all
+                  of them that understates how many there are. */}
+              <Button
+                title="View all orders"
+                variant="primary"
+                onPress={() => drillDownPush('/orders' as any)}
+              />
             </>
           )
         ) : null}
@@ -1511,10 +1539,6 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
     minWidth: 0,
   },
-  orderMeta: {
-    alignItems: 'flex-end',
-    gap: tokens.spacing.xs,
-  },
   ordersPreviewState: {
     minHeight: 112,
     borderRadius: tokens.radius.lg,
@@ -1543,25 +1567,17 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  tabRail: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    justifyContent: 'space-between',
-    gap: tokens.spacing.sm,
-    paddingHorizontal: tokens.spacing.xs,
+  /**
+   * Orders are a LIST, so they get list geometry: rows the full width of the
+   * column, each closed by a hairline, and no gap. The gap plus a rounded,
+   * bordered card per order made six orders read as six separate objects that
+   * happened to be stacked.
+   */
+  ordersList: {
+    marginTop: tokens.spacing.xs,
   },
-  tabItem: {
-    flex: 1,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: tokens.spacing.md,
-    paddingHorizontal: tokens.spacing.sm,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  tabItemActive: {
-    borderBottomWidth: 2,
+  ordersSearch: {
+    marginTop: tokens.spacing.xs,
   },
   pressed: {
     opacity: 0.82,

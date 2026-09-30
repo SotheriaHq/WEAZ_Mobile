@@ -25,6 +25,7 @@ import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
+import { IconButton } from '@/components/ui/IconButton';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
@@ -360,6 +361,87 @@ function formatMessageTime(value: string | null) {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function startOfDay(timestamp: number) {
+  const date = new Date(timestamp);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+/**
+ * A thread with no day markers is a wall of times that all look equally
+ * recent: "17:05" reads as this afternoon whether it was today or in March.
+ * The bubbles keep their clock time; the marker says which day that clock
+ * belongs to, and only where the day actually changes.
+ */
+function formatDayLabel(timestamp: number) {
+  const day = startOfDay(timestamp);
+  const elapsedDays = Math.round((startOfDay(Date.now()) - day) / DAY_MS);
+  if (elapsedDays === 0) return 'Today';
+  if (elapsedDays === 1) return 'Yesterday';
+
+  const date = new Date(timestamp);
+  if (elapsedDays > 1 && elapsedDays < 7) {
+    return date.toLocaleDateString(undefined, { weekday: 'long' });
+  }
+  const thisYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString(
+    undefined,
+    thisYear
+      ? { month: 'short', day: 'numeric' }
+      : { month: 'short', day: 'numeric', year: 'numeric' },
+  );
+}
+
+type ThreadRow =
+  | { kind: 'message'; key: string; message: MessageItem }
+  | { kind: 'day'; key: string; label: string };
+
+/**
+ * Interleave day markers into the message list.
+ *
+ * `messages` is newest-first and the list is INVERTED, so a marker for day D
+ * belongs AFTER the oldest message of day D in array order — that is where it
+ * renders above the day's first bubble on screen. Getting this backwards puts
+ * every date under the day it labels.
+ */
+function buildThreadRows(messages: MessageItem[]): ThreadRow[] {
+  const rows: ThreadRow[] = [];
+
+  messages.forEach((message, index) => {
+    rows.push({ kind: 'message', key: message.id, message });
+
+    const timestamp = Date.parse(message.createdAt ?? '');
+    if (!Number.isFinite(timestamp)) return;
+
+    const next = messages[index + 1];
+    const nextTimestamp = next ? Date.parse(next.createdAt ?? '') : NaN;
+    const opensTheDay =
+      !Number.isFinite(nextTimestamp) || startOfDay(nextTimestamp) !== startOfDay(timestamp);
+
+    if (opensTheDay) {
+      const day = startOfDay(timestamp);
+      rows.push({ kind: 'day', key: `day-${day}`, label: formatDayLabel(day) });
+    }
+  });
+
+  return rows;
+}
+
+function DayDivider({ label }: { label: string }) {
+  const { theme } = useTheme();
+  return (
+    <View style={styles.dayDivider}>
+      <View style={[styles.dayRule, { backgroundColor: theme.colors.border }]} />
+      <AppText variant="small" tone="muted">
+        {label}
+      </AppText>
+      <View style={[styles.dayRule, { backgroundColor: theme.colors.border }]} />
+    </View>
+  );
 }
 
 function formatOrderLabel(order: ThreadOrderItem | null, context: MessageContextParams) {
@@ -909,7 +991,6 @@ export default function ChatThreadScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [composerText, setComposerText] = useState('');
-  const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [readWarning, setReadWarning] = useState<string | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<QuotedMessage | null>(null);
@@ -1043,9 +1124,17 @@ export default function ChatThreadScreen() {
   const subtitle =
     orderLabel ??
     (participant ? undefined : validId(activeContext?.brandId) && !activeThreadId ? 'Start the conversation' : 'Participant unavailable');
+  /*
+    Nothing here is "a send is in flight".
+
+    There WAS a `sending` flag in this expression. It was never once set — dead
+    since the composer went optimistic — and it is just as well, because a
+    composer that locks itself until the last message is acknowledged is the
+    behaviour being complained about. Messages queue; the thread shows each
+    one's own state on its own bubble.
+  */
   const canSend =
     phase === 'ready' &&
-    !sending &&
     Boolean(activeThreadId || validId(activeContext?.brandId)) &&
     !['READ_ONLY', 'ARCHIVED', 'BLOCKED'].includes(thread?.status ?? '');
   const attachmentsUploading = pendingAttachments.some((entry) => entry.status === 'uploading');
@@ -1113,10 +1202,11 @@ export default function ChatThreadScreen() {
       /*
         A reset replaces the server's messages but must KEEP the local ones.
 
-        Sending triggers a refresh, and a refresh is a reset — so sending a
-        second message while the first was still settling used to wipe the
-        second one's bubble off the screen mid-flight. Its request carried on
-        and the message arrived seconds later out of nowhere.
+        Sending no longer triggers one — see `dispatchSend` — but a pull to
+        refresh, a screen focus or a retry still does, and any of those can
+        land while a message is in flight. Dropping it then would wipe the
+        bubble off the screen mid-send; its request would carry on and the
+        message would arrive seconds later out of nowhere.
 
         Messages still in flight, or failed and waiting to be retried, exist
         only on this device: nothing the server sends can contain them, so they
@@ -1507,24 +1597,34 @@ export default function ChatThreadScreen() {
             : withoutDraft;
         });
 
-        if (nextThreadId) {
+        /*
+          A send does NOT reload the thread.
+
+          It used to, on both branches, and that is what made writing two
+          messages in a row feel like waiting your turn. The refetch replaces
+          `messages` wholesale a beat after the bubble has already settled, so
+          the list re-renders under the caret — and the composer is inside that
+          same tree, so the keystrokes typed during the swap compete with it.
+          Nothing was ever "blocked"; the screen was just busy re-drawing a
+          conversation it already had.
+
+          It is also redundant. `response.message` IS the persisted row and is
+          merged above; receipts arrive on their own channel. The one thing a
+          send can genuinely change about the thread is its IDENTITY — the
+          first message to a brand creates the conversation — so that case
+          updates the context and nothing else.
+        */
+        if (nextThreadId && nextThreadId !== targetThreadId) {
           setThread((current) =>
             current
               ? { ...current, threadId: nextThreadId, conversationId: nextThreadId }
               : current,
           );
-          const nextContext = {
+          setActiveContext({
             ...activeContextRef.current,
             threadId: nextThreadId,
             conversationId: nextThreadId,
-          };
-          setActiveContext(nextContext);
-          await loadThread(nextContext, 'refresh');
-        } else {
-          await loadThread(
-            { ...activeContextRef.current, threadId: targetThreadId },
-            'refresh',
-          );
+          });
         }
       } catch (error) {
         const message = getErrorMessage(error);
@@ -1695,20 +1795,25 @@ export default function ChatThreadScreen() {
     }
   }, [pendingAttachments.length, toast]);
 
+  const threadRows = useMemo(() => buildThreadRows(messages), [messages]);
+
   const renderMessage = useCallback(
-    ({ item }: ListRenderItemInfo<MessageItem>) => (
-      <MessageBubble
-        item={item}
-        currentUserId={user?.id ?? null}
-        onReply={handleReply}
-        onRetry={handleRetryMessage}
-        onDiscard={handleDiscardMessage}
-      />
-    ),
+    ({ item }: ListRenderItemInfo<ThreadRow>) =>
+      item.kind === 'day' ? (
+        <DayDivider label={item.label} />
+      ) : (
+        <MessageBubble
+          item={item.message}
+          currentUserId={user?.id ?? null}
+          onReply={handleReply}
+          onRetry={handleRetryMessage}
+          onDiscard={handleDiscardMessage}
+        />
+      ),
     [handleDiscardMessage, handleReply, handleRetryMessage, user?.id],
   );
 
-  const keyExtractor = useCallback((item: MessageItem) => item.id, []);
+  const keyExtractor = useCallback((item: ThreadRow) => item.key, []);
 
   const listFooter = useMemo(
     () => loadingMore ? (
@@ -1789,7 +1894,7 @@ export default function ChatThreadScreen() {
             ) : null}
 
             <FlatList
-              data={messages}
+              data={threadRows}
               keyExtractor={keyExtractor}
               renderItem={renderMessage}
               inverted
@@ -1932,54 +2037,97 @@ export default function ChatThreadScreen() {
                 onSelect={handleInsertEmoji}
               />
 
-              <View style={styles.composerRow}>
-                <TouchableOpacity
-                  onPress={handlePickAttachment}
-                  disabled={!canSend}
-                  style={[styles.composerIconButton, !canSend ? styles.composerIconButtonDisabled : null]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add image attachment"
-                >
-                  <AppText variant="subtitle">📎</AppText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setEmojiOpen((current) => !current)}
-                  disabled={!canSend}
+              {/*
+                ONE ROW, one pill.
+
+                The attachment and emoji controls now sit INSIDE the field's
+                pill rather than beside it, which is what every messenger does
+                and is not only a look: three separate boxes on a row each need
+                their own padding, and the row ends up as tall as the tallest
+                of them plus every gap. Inside the pill they share its height.
+
+                The field itself is `bare` — no chrome of its own. The pill
+                draws one hairline in the border colour instead of the form
+                field's 1.5pt brand-coloured focus ring, which on this screen
+                was the loudest thing on it: a bright box around an empty
+                composer competes with the conversation for attention, and
+                the keyboard already says where the caret is.
+              */}
+              <View style={styles.composerBar}>
+                <View
                   style={[
-                    styles.composerIconButton,
-                    emojiOpen ? { backgroundColor: theme.colors.primarySoft } : null,
-                    !canSend ? styles.composerIconButtonDisabled : null,
+                    styles.composerRow,
+                    { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
                   ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: emojiOpen }}
-                  accessibilityLabel="Insert emoji"
                 >
-                  <AppText variant="subtitle">😊</AppText>
-                </TouchableOpacity>
-                <Input
-                  label="Message"
-                  hideLabel
-                  value={composerText}
-                  onChangeText={setComposerText}
-                  placeholder="Write a message"
-                  autoCorrect
-                  returnKeyType="send"
-                  onSubmitEditing={() => {
-                    if (!sendDisabled) {
-                      void handleSend();
-                    }
-                  }}
-                  editable={canSend}
-                  containerStyle={styles.composerInput}
-                />
-                <Button
-                  title="Send"
-                  size="md"
+                  <TouchableOpacity
+                    onPress={handlePickAttachment}
+                    disabled={!canSend}
+                    style={[styles.composerIconButton, !canSend ? styles.composerIconButtonDisabled : null]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Add image attachment"
+                  >
+                    <AppText variant="body">📎</AppText>
+                  </TouchableOpacity>
+                  {/*
+                    `multiline` so a long message grows to a few lines instead of
+                    scrolling sideways through itself. Enter stays a newline —
+                    that is the platform default for a multiline field, and the
+                    only way to make it send is `blurOnSubmit`, which closes the
+                    keyboard after every message.
+                  */}
+                  <Input
+                    label="Message"
+                    hideLabel
+                    variant="bare"
+                    density="compact"
+                    multiline
+                    value={composerText}
+                    onChangeText={setComposerText}
+                    placeholder="Write a message"
+                    autoCorrect
+                    editable={canSend}
+                    containerStyle={styles.composerInput}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setEmojiOpen((current) => !current)}
+                    disabled={!canSend}
+                    style={[
+                      styles.composerIconButton,
+                      emojiOpen ? { backgroundColor: theme.colors.primarySoft } : null,
+                      !canSend ? styles.composerIconButtonDisabled : null,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: emojiOpen }}
+                    accessibilityLabel="Insert emoji"
+                  >
+                    <AppText variant="body">😊</AppText>
+                  </TouchableOpacity>
+                </View>
+                {/*
+                  Send is a mark, not a word. "Send" at button size took a
+                  sixth of the row for a label that says what the arrow already
+                  says, and it is pressed after every message — the one control
+                  here that never needs reading.
+                */}
+                <IconButton
+                  size={44}
                   onPress={() => void handleSend()}
                   disabled={sendDisabled}
-                  loading={sending}
-                  style={styles.sendButton}
-                />
+                  style={{
+                    backgroundColor: sendDisabled
+                      ? theme.colors.disabledSurface
+                      : theme.colors.primary,
+                  }}
+                >
+                  <AppText
+                    variant="subtitle"
+                    tone={sendDisabled ? 'disabled' : 'inverse'}
+                    accessibilityLabel="Send message"
+                  >
+                    ➤
+                  </AppText>
+                </IconButton>
               </View>
             </View>
           </>
@@ -2062,6 +2210,16 @@ const styles = StyleSheet.create({
   emptyListContent: {
     flexGrow: 1,
     justifyContent: 'center',
+  },
+  dayDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  dayRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
   },
   emptyThread: {
     alignItems: 'center',
@@ -2211,20 +2369,40 @@ const styles = StyleSheet.create({
   },
   composerShell: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.md,
+    // Was `md` top with an `sm` gap around a 52pt field and 40pt buttons: about
+    // 100pt of message bar under every conversation. The bar is chrome; the
+    // conversation is the screen.
+    paddingTop: tokens.spacing.sm,
+    gap: tokens.spacing.sm,
+  },
+  composerBar: {
+    flexDirection: 'row',
+    // `flex-end` so a composer that has grown to three lines keeps Send on the
+    // last one, level with the caret, instead of floating at the middle.
+    alignItems: 'flex-end',
     gap: tokens.spacing.sm,
   },
   composerRow: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
+    alignItems: 'flex-end',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.xl,
+    paddingHorizontal: tokens.spacing.xs,
+    minHeight: 44,
   },
   composerInput: {
     flex: 1,
+    minWidth: 0,
+    // The field's own left padding is what put a gap between the pill edge and
+    // the first character; `bare` removes it and the pill's icons set the
+    // rhythm instead.
+    justifyContent: 'center',
   },
   composerIconButton: {
-    width: 40,
+    width: 36,
     height: 40,
     borderRadius: tokens.radius.full,
     alignItems: 'center',
@@ -2232,9 +2410,6 @@ const styles = StyleSheet.create({
   },
   composerIconButtonDisabled: {
     opacity: 0.4,
-  },
-  sendButton: {
-    minWidth: 76,
   },
   attachmentPreviewRow: {
     flexDirection: 'row',

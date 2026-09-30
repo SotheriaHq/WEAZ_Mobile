@@ -123,19 +123,39 @@ function getConversationInitials(item: ConversationSummary) {
   return initials || '💬';
 }
 
+/**
+ * `[Attachment]` is a PLACEHOLDER the API stores when a message has no text
+ * (`messaging.service.ts`), not a line anybody wrote. It was being printed
+ * verbatim, square brackets and all — the list read like a log file where a
+ * photo had arrived.
+ *
+ * The value is persisted per conversation, so old rows carry it whatever the
+ * API stores next; translating it here covers those too.
+ */
+const ATTACHMENT_PLACEHOLDER = /^\[attachments?\]$/i;
+
 function getConversationPreview(item: ConversationSummary) {
-  return item.subtitle ?? 'No messages yet';
+  const subtitle = item.subtitle?.trim();
+  if (!subtitle) return 'No messages yet';
+  if (ATTACHMENT_PLACEHOLDER.test(subtitle)) return '📎 Photo';
+  return subtitle;
 }
 
+/**
+ * Only labels that tell the reader something they could not otherwise know.
+ *
+ * An order number does: it says which of several conversations with the same
+ * brand this one is about. "Inquiry" did not — every thread that is not about
+ * an order is an inquiry, so the label was on most rows, said the same thing
+ * on all of them, and was a piece of internal vocabulary at that. The context
+ * type still exists and the backend still routes on it; it is just not news.
+ */
 function getContextLabel(item: ConversationSummary) {
   if (item.customOrderId) {
     return `Custom #${item.customOrderId.slice(0, 8).toUpperCase()}`;
   }
   if (item.orderId) {
     return `Order #${item.orderId.slice(0, 8).toUpperCase()}`;
-  }
-  if (item.contextType === 'INQUIRY') {
-    return 'Inquiry';
   }
   return null;
 }

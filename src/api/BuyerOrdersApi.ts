@@ -266,27 +266,54 @@ function normalizeStandardDetail(raw: unknown): BuyerStandardOrderDetail {
   };
 }
 
+/**
+ * The custom-order LIST and DETAIL payloads describe their source differently.
+ *
+ * `mapDetail` nests it under `source: { type, id, title, primaryMediaUrl }`.
+ * `mapListItem` — the one `GET /custom-orders` returns — flattens the same
+ * facts to `sourceType` / `sourceId` / `sourceTitle` / `sourcePrimaryMediaUrl`.
+ *
+ * This normaliser read only the nested shape, so for every row in the list
+ * `source` was `{}` and each of its three reads fell through to a default:
+ * every custom order was titled "Custom order", carried no cover photo (hence
+ * the placeholder emoji in the orders list), and was labelled a design order
+ * whether or not it was one. Read both shapes.
+ */
+function readCustomSource(item: RecordLike) {
+  const nested = asRecord(item.source);
+  return {
+    type: optionalString(nested.type) ?? optionalString(item.sourceType),
+    id: optionalString(nested.id) ?? optionalString(item.sourceId),
+    title: optionalString(nested.title) ?? optionalString(item.sourceTitle),
+    primaryMediaUrl:
+      optionalString(nested.primaryMediaUrl) ?? optionalString(item.sourcePrimaryMediaUrl),
+    brandName: optionalString(nested.brandName) ?? optionalString(item.sourceBrandName),
+  };
+}
+
 function normalizeCustomSummary(item: RecordLike): BuyerOrderSummary | null {
   const id = optionalString(item.id);
   if (!id) return null;
 
-  const source = asRecord(item.source);
+  const source = readCustomSource(item);
   const brand = asRecord(item.brand);
   const summary = asRecord(item.buyerPriceSummary);
 
   return {
     id,
     kind: 'CUSTOM',
-    title: asString(source.title, 'Custom order'),
-    brandName: asString(brand.name, 'WIEZ store'),
+    title: source.title ?? 'Custom order',
+    brandName: optionalString(brand.name) ?? source.brandName ?? 'WIEZ store',
     status: asString(item.status, 'UNKNOWN'),
     paymentStatus: asString(item.paymentStatus, 'PENDING'),
     amount: asNumber(summary.grandTotal ?? 0),
     currency: asString(summary.currency, 'NGN'),
     createdAt: asString(item.createdAt),
     updatedAt: optionalString(item.updatedAt),
+    // A custom order has no line items — this is how many measurements were
+    // taken, which is why the row labels it as measurements and not as items.
     itemCount: asNumber(item.measurementCount, 0),
-    thumbnail: optionalString(source.primaryMediaUrl),
+    thumbnail: source.primaryMediaUrl,
     progressLabel: optionalString(item.currentProgressStage),
     sourceLabel: source.type === 'PRODUCT' ? 'Custom product order' : 'Custom design order',
     canConfirmDelivery: isDeliveryConfirmationPending(asString(item.status, '')),

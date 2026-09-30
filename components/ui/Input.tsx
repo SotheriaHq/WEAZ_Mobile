@@ -34,7 +34,19 @@ export type InputProps = Omit<TextInputProps, 'style'> & {
    *   the placeholder carries the hint and the label sits above.
    */
   variant?: 'default' | 'bare' | 'underline';
+  /**
+   * `comfortable` — a form field: 52pt tall, or 104 when multiline.
+   * `compact` — a field inside another control, where the control around it
+   *   supplies the touch target and the padding. The chat composer is the
+   *   case: at form height it made the message bar taller than the messages,
+   *   and a multiline composer that opens 104pt tall is a text editor, not a
+   *   place to write one line. Compact starts at one line and grows.
+   */
+  density?: 'comfortable' | 'compact';
 };
+
+/** Tallest a compact multiline field grows before it scrolls internally. */
+const COMPACT_MULTILINE_MAX_HEIGHT = 112;
 
 export const Input = React.forwardRef<TextInput, InputProps>(function Input({
   label,
@@ -47,6 +59,7 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
   trailing,
   containerStyle,
   variant = 'default',
+  density = 'comfortable',
   multiline,
   onFocus,
   ...rest
@@ -68,6 +81,8 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
       ? theme.colors.primary
       : theme.colors.border;
   const activeBorderWidth = isFocused || hasError ? 1.5 : 1;
+  const isCompact = density === 'compact';
+  const fieldMinHeight = isCompact ? 40 : multiline ? 104 : 52;
 
   return (
     <View style={containerStyle}>
@@ -92,7 +107,8 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
           styles.field,
           isUnderline && styles.fieldUnderline,
           {
-            minHeight: multiline ? 104 : 52,
+            minHeight: fieldMinHeight,
+            ...(isCompact && multiline ? { maxHeight: COMPACT_MULTILINE_MAX_HEIGHT } : null),
             backgroundColor: isPlain ? 'transparent' : theme.colors.surface,
             borderColor: isBare ? 'transparent' : activeBorderColor,
             borderWidth: isPlain ? 0 : activeBorderWidth,
@@ -120,6 +136,8 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
           style={[
             styles.input,
             {
+              minHeight: fieldMinHeight,
+              ...(isCompact && multiline ? { maxHeight: COMPACT_MULTILINE_MAX_HEIGHT } : null),
               color: rest.editable === false ? theme.colors.textMuted : theme.colors.text,
               paddingLeft: isPlain
                 ? 0
@@ -129,8 +147,8 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
                     ? tokens.spacing.xl2
                     : tokens.spacing.lg,
               paddingRight: isPlain ? 0 : trailing ? 44 : tokens.spacing.lg,
-              paddingTop: multiline ? tokens.spacing.lg : 0,
-              paddingBottom: multiline ? tokens.spacing.lg : 0,
+              paddingTop: multiline ? (isCompact ? tokens.spacing.sm : tokens.spacing.lg) : 0,
+              paddingBottom: multiline ? (isCompact ? tokens.spacing.sm : tokens.spacing.lg) : 0,
               textAlignVertical: multiline ? 'top' : 'center',
               // Medium, not regular. What the user types is the content of the
               // screen and was rendering one weight lighter than the body text
