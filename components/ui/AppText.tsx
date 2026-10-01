@@ -145,18 +145,18 @@ const VARIANT_MAP: Record<Variant, TypographyTokenKey> = {
  *   it just removes the contrast the headings need.
  */
 const FONT_FAMILY_MAP: Record<TypographyTokenKey, string> = {
-  display: tokens.fontFamily.bold,
-  title: tokens.fontFamily.bold,
+  display: tokens.fontFamily.extraBold,
+  title: tokens.fontFamily.extraBold,
   subtitle: tokens.fontFamily.bold,
   body: tokens.fontFamily.medium,
   caption: tokens.fontFamily.medium,
-  h1: tokens.fontFamily.bold,
+  h1: tokens.fontFamily.extraBold,
   h2: tokens.fontFamily.bold,
   h3: tokens.fontFamily.bold,
   bodyBold: tokens.fontFamily.bold,
   small: tokens.fontFamily.medium,
   smallBold: tokens.fontFamily.bold,
-  screenTitle: tokens.fontFamily.bold,
+  screenTitle: tokens.fontFamily.extraBold,
   profileName: tokens.fontFamily.bold,
   brandName: tokens.fontFamily.bold,
   sectionTitle: tokens.fontFamily.bold,
@@ -194,6 +194,7 @@ const FONT_WEIGHT_BY_FAMILY: Record<string, TextStyle['fontWeight']> = {
   [tokens.fontFamily.medium]: '500',
   [tokens.fontFamily.semiBold]: '600',
   [tokens.fontFamily.bold]: '700',
+  [tokens.fontFamily.extraBold]: '800',
 };
 
 function getToneColor(tone: Tone, theme: ReturnType<typeof useTheme>['theme']) {
@@ -311,6 +312,16 @@ export function AppText({
           fontSize: tier.size,
           fontWeight,
           lineHeight: tier.lineHeight,
+          /*
+            Tracking, which the scale carries and this component never emitted.
+
+            Inter is drawn on a wide default sidebearing: set at 24-32px with no
+            adjustment it reads loose and soft, which is most of why the app's
+            type looked flat next to a designed comp. Headings tighten (negative
+            tracking), small all-caps labels open up (positive), and body is left
+            essentially alone. A tier without the field keeps RN's default.
+          */
+          ...(tier.letterSpacing != null ? { letterSpacing: tier.letterSpacing } : {}),
           color: getToneColor(resolvedTone, theme),
         },
         sanitizeStyle(style),

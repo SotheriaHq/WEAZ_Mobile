@@ -433,6 +433,16 @@ export const tokens = {
     medium: 'Inter_500Medium',
     semiBold: 'Inter_600SemiBold',
     bold: 'Inter_700Bold',
+    /**
+     * The top of the ladder.
+     *
+     * Every heading tier in the scale below used to be 700 — a 32px display
+     * and a 17px card title carried identical weight, so size was the ONLY
+     * thing separating them. That is what reads as flat: there is no weight
+     * hierarchy to see. ExtraBold gives the display and screen-title tiers
+     * somewhere to go.
+     */
+    extraBold: 'Inter_800ExtraBold',
     // Fallback stack for any place fontFamily is not yet set
     stack: 'Inter_400Regular, system-ui, -apple-system, sans-serif',
   },
@@ -442,58 +452,58 @@ export const tokens = {
   // Rule: NEVER go below 12px for readable content. 16px is body minimum.
   typography: {
     /** 32px / 700 — hero splash, big editorial headers */
-    display: { size: 32, weight: '700' as const, lineHeight: 36 },
+    display: { size: 32, weight: '800' as const, lineHeight: 36, letterSpacing: -0.8 },
     /** 24px / 700 — primary screen titles */
-    screenTitle: { size: 24, weight: '700' as const, lineHeight: 28 },
+    screenTitle: { size: 24, weight: '800' as const, lineHeight: 28, letterSpacing: -0.5 },
     /** 24px / 700 — primary mobile titles */
-    title: { size: 24, weight: '700' as const, lineHeight: 28 },
+    title: { size: 24, weight: '800' as const, lineHeight: 28, letterSpacing: -0.5 },
     /** 22px / 700 — profile names (Instagram-dense) */
-    profileName: { size: 22, weight: '700' as const, lineHeight: 26 },
+    profileName: { size: 22, weight: '700' as const, lineHeight: 26, letterSpacing: -0.4 },
     /** 22px / 700 — brand names (Instagram-dense) */
-    brandName: { size: 22, weight: '700' as const, lineHeight: 26 },
+    brandName: { size: 22, weight: '700' as const, lineHeight: 26, letterSpacing: -0.4 },
     /** 18px / 700 — section headers */
-    sectionTitle: { size: 18, weight: '700' as const, lineHeight: 22 },
+    sectionTitle: { size: 18, weight: '700' as const, lineHeight: 22, letterSpacing: -0.3 },
     /** 18px / 700 — section headers and strong subtitles */
-    subtitle: { size: 18, weight: '700' as const, lineHeight: 22 },
+    subtitle: { size: 18, weight: '700' as const, lineHeight: 22, letterSpacing: -0.3 },
     /** 17px / 700 — card titles. One step ABOVE body, not level with it: at the
      *  old 16/600 a card title and its body copy shared a size and sat one
      *  weight apart, which is not a hierarchy anyone can see. */
-    cardTitle: { size: 17, weight: '700' as const, lineHeight: 22 },
+    cardTitle: { size: 17, weight: '700' as const, lineHeight: 22, letterSpacing: -0.2 },
     /** 16px / 500 — main body content */
-    body: { size: 16, weight: '500' as const, lineHeight: 22 },
+    body: { size: 16, weight: '500' as const, lineHeight: 23, letterSpacing: -0.1 },
     /** 14px / 500 — highly readable, Instagram-dense body text (bio/about).
      *  Was 13 despite the comment saying 14 — 13px reads as fine print, which
      *  is exactly the "scanty" complaint. */
-    bodyReadable: { size: 14, weight: '500' as const, lineHeight: 20 },
+    bodyReadable: { size: 14, weight: '500' as const, lineHeight: 21, letterSpacing: -0.05 },
     /** 16px / 700 — button labels */
-    buttonLabel: { size: 16, weight: '700' as const, lineHeight: 20 },
+    buttonLabel: { size: 16, weight: '700' as const, lineHeight: 20, letterSpacing: -0.2 },
     /** 16px / 700 — action labels */
-    actionLabel: { size: 16, weight: '700' as const, lineHeight: 20 },
+    actionLabel: { size: 16, weight: '700' as const, lineHeight: 20, letterSpacing: -0.2 },
     /** 12px / 500 — supporting meta text */
-    caption: { size: 12, weight: '500' as const, lineHeight: 16 },
+    caption: { size: 12, weight: '500' as const, lineHeight: 16, letterSpacing: 0 },
     /** 13px / 600 — meta */
-    meta: { size: 13, weight: '600' as const, lineHeight: 16 },
+    meta: { size: 13, weight: '600' as const, lineHeight: 17, letterSpacing: 0 },
     /** 12px / 700 — badge labels */
-    badgeLabel: { size: 12, weight: '700' as const, lineHeight: 16 },
+    badgeLabel: { size: 12, weight: '700' as const, lineHeight: 16, letterSpacing: 0.3 },
     /** 12px / 700 — nav + island labels. Was 11/600: below the 12px floor the
      *  rules set for readable content, and too light to hold its own against
      *  the icon above it — the "island links are not deep enough" report. */
-    navLabel: { size: 12, weight: '700' as const, lineHeight: 15 },
+    navLabel: { size: 12, weight: '700' as const, lineHeight: 15, letterSpacing: 0.2 },
     /** 14px / 700 — stat numbers. The number is the point of a stat; at 13px it
      *  was smaller than body text. */
-    statValue: { size: 14, weight: '700' as const, lineHeight: 18 },
+    statValue: { size: 14, weight: '700' as const, lineHeight: 18, letterSpacing: -0.2 },
     /** 11px / 700 — stat labels (compact, Instagram-dense) */
-    statLabel: { size: 11, weight: '700' as const, lineHeight: 14 },
+    statLabel: { size: 11, weight: '700' as const, lineHeight: 14, letterSpacing: 0.6 },
 
     // Compatibility aliases for existing mobile code during migration.
-    h1: { size: 24, weight: '700' as const, lineHeight: 30 },
-    h2: { size: 20, weight: '700' as const, lineHeight: 26 },
-    h3: { size: 18, weight: '700' as const, lineHeight: 24 },
+    h1: { size: 24, weight: '800' as const, lineHeight: 30, letterSpacing: -0.5 },
+    h2: { size: 20, weight: '700' as const, lineHeight: 26, letterSpacing: -0.4 },
+    h3: { size: 18, weight: '700' as const, lineHeight: 24, letterSpacing: -0.3 },
     /** The single most-used "this is a heading" variant in the app. 600 next to
      *  a 500 body is the flattest pairing in the scale; 700 makes it a heading. */
-    bodyBold: { size: 16, weight: '700' as const, lineHeight: 22 },
-    small: { size: 13, weight: '500' as const, lineHeight: 18 },
-    smallBold: { size: 13, weight: '700' as const, lineHeight: 18 },
+    bodyBold: { size: 16, weight: '700' as const, lineHeight: 22, letterSpacing: -0.2 },
+    small: { size: 13, weight: '500' as const, lineHeight: 18, letterSpacing: 0 },
+    smallBold: { size: 13, weight: '700' as const, lineHeight: 18, letterSpacing: -0.1 },
 
     // ── Legacy flat values kept for backward-compat with existing screens ──
     // New code should use the tier objects above instead.

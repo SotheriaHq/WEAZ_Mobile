@@ -1592,9 +1592,23 @@ export default function ChatThreadScreen() {
           const withoutDraft = current.filter(
             (message) => message.id !== clientMessageId,
           );
-          return response.message
-            ? mergeMessages([response.message as MessageItem], withoutDraft)
-            : withoutDraft;
+          if (!response.message) return withoutDraft;
+          /*
+            A tick must survive the swap from draft to persisted row.
+
+            `deliveryStatus` is computed server-side from the receipt table and
+            was historically only present on the LIST response, so the row
+            returned by a send could arrive without it — and the bubble renders
+            a tick only when the field is set, so the message landed with no
+            indicator at all. The server now says SENT explicitly; this keeps the
+            tick for any build that does not, since a row that came back from a
+            successful send IS, at minimum, sent.
+          */
+          const persisted = response.message as MessageItem;
+          const sent: MessageItem = persisted.deliveryStatus
+            ? persisted
+            : { ...persisted, deliveryStatus: 'SENT' };
+          return mergeMessages([sent], withoutDraft);
         });
 
         /*

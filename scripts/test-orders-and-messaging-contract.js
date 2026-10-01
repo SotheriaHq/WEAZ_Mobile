@@ -181,6 +181,58 @@ check('the inbox shows a photo, not a placeholder, and drops the internal label'
   assert.match(inbox, /Order #\$\{/);
 });
 
+check('a sent message arrives with a delivery status, so the tick renders', () => {
+  /*
+    The bubble renders a tick only when `deliveryStatus` is present. That field
+    is computed server-side from the receipt table and used to exist ONLY on the
+    list response, so the row returned by a send had none — the message landed
+    with no tick at all.
+
+    It went unnoticed because the client re-fetched the whole thread after every
+    send; removing that refetch (it was re-rendering the list under the composer)
+    turned a latent gap into the visible "the ticks are gone" regression. Both
+    ends are pinned here: the server states SENT, and the client defaults it.
+  */
+  const service = fs.readFileSync(
+    path.join(__dirname, '../../bthreadly/src/messaging/messaging.service.ts'),
+    'utf8',
+  );
+  const sendReturns = service.match(/deliveryStatus: 'SENT' as const/g) ?? [];
+  assert.ok(
+    sendReturns.length >= 2,
+    'both the fresh and the idempotent-replay send responses must carry a status',
+  );
+
+  const thread = read('app/messages/[threadId].tsx');
+  assert.match(thread, /persisted\.deliveryStatus/);
+  assert.match(thread, /deliveryStatus: 'SENT'/);
+  // The tick itself still renders off the field, so the field must be set.
+  assert.match(thread, /mine && item\.deliveryStatus \?/);
+});
+
+check('the type scale has a weight ladder and real tracking', () => {
+  /*
+    Every heading tier used to be weight 700, so a 32px display and a 17px card
+    title were the same weight and only size told them apart — which is what
+    reads as flat. And no tier carried letterSpacing, so Inter was set at its
+    default sidebearing at every size.
+  */
+  const tokensSource = read('src/styles/tokens.ts');
+  assert.match(tokensSource, /extraBold: 'Inter_800ExtraBold'/);
+  assert.match(tokensSource, /display: \{ size: 32, weight: '800'/);
+  assert.match(tokensSource, /letterSpacing: -0\.8/);
+  assert.match(tokensSource, /statLabel:.*letterSpacing: 0\.6/);
+
+  // A family that is referenced but never loaded silently falls back.
+  const layout = read('app/_layout.tsx');
+  assert.match(layout, /Inter_800ExtraBold/);
+
+  // The scale is only worth having if the component emits it.
+  const appText = read('components/ui/AppText.tsx');
+  assert.match(appText, /tier\.letterSpacing != null/);
+  assert.match(appText, /\[tokens\.fontFamily\.extraBold\]: '800'/);
+});
+
 let failed = 0;
 for (const { name, fn } of checks) {
   try {

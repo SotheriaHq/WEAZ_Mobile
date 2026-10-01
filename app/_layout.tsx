@@ -5,6 +5,7 @@ import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
 import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium';
 import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
 import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
+import { Inter_800ExtraBold } from '@expo-google-fonts/inter/800ExtraBold';
 import { useFonts } from 'expo-font';
 import { router, Stack, usePathname } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -546,6 +547,9 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    // The display/screen-title tiers sit at 800 so headings are not the same
+    // weight as every other heading. Without this they silently fall back.
+    Inter_800ExtraBold,
     // (No icon-library font is preloaded: every marker in the app is an emoji
     //  per Rule 5, so there are no glyphs left for it to serve.)
   });

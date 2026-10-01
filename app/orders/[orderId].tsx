@@ -18,11 +18,14 @@ import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { formatMeasurementLabel } from '@/src/features/sizing/measurementCatalog';
 import { readRecommendationSnapshot } from '@/src/utils/sizeRecommendation';
 import { formatMoney } from '@/src/utils/money';
 
 function formatCurrency(amount: number, currency = 'NGN') {
-  return formatMoney(amount, currency);
+  // `formatMoney` returns null for an unformattable amount; the tiles need a
+  // string, and an em dash is the honest rendering of "no figure".
+  return formatMoney(amount, currency) ?? '—';
 }
 
 function formatDate(value?: string | null) {
@@ -38,6 +41,96 @@ function statusTone(status: string) {
   if (upper.includes('DISPUT') || upper.includes('CANCEL') || upper.includes('REJECT') || upper.includes('REFUND')) return 'danger';
   if (upper.includes('PENDING') || upper.includes('PROCESS') || upper.includes('TRANSIT') || upper.includes('READY')) return 'warning';
   return 'neutral';
+}
+
+/** `IN_PRODUCTION` is a database value, not a sentence. */
+function humanizeToken(value?: string | null) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '—';
+  if (!/[_A-Z]/.test(raw) || /\s/.test(raw)) return raw;
+  return raw
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/^\w/, (character) => character.toUpperCase());
+}
+
+/** The stages a buyer sees, in order, so progress can be drawn as a fraction. */
+const BUYER_STAGE_ORDER = [
+  'ORDER_PLACED',
+  'ORDER_RECEIVED',
+  'FABRIC_AND_PIECE_PURCHASE_GATHERING',
+  'DESIGN_MODE',
+  'FINAL_TOUCHES_AND_PACKAGING',
+  'READY_FOR_DELIVERY',
+];
+
+function stageFraction(stage?: string | null) {
+  const index = BUYER_STAGE_ORDER.indexOf(String(stage ?? '').toUpperCase());
+  if (index < 0) return null;
+  return (index + 1) / BUYER_STAGE_ORDER.length;
+}
+
+/**
+ * One metric, as an object on the card rather than a line of text on it.
+ *
+ * The fill, the edge and the radius are what stop four numbers in a row reading
+ * as a paragraph — the "everything is flat" complaint. `progress` draws the
+ * stage as a bar under the label, because a stage name alone never says how far
+ * through it is.
+ */
+function StatTile({
+  label,
+  value,
+  tone = 'default',
+  emphasis = false,
+  marker,
+  progress,
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'primary';
+  emphasis?: boolean;
+  marker?: string;
+  progress?: number | null;
+}) {
+  const { theme } = useTheme();
+
+  return (
+    <View
+      style={[
+        styles.statTile,
+        { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+      ]}
+    >
+      <AppText variant="statLabel" tone="muted" numberOfLines={1}>
+        {label.toUpperCase()}
+      </AppText>
+      <View style={styles.statValueRow}>
+        {marker ? <AppText variant="small">{marker}</AppText> : null}
+        <AppText
+          variant={emphasis ? 'h3' : 'bodyBold'}
+          tone={tone === 'primary' ? 'primary' : 'default'}
+          numberOfLines={1}
+          style={styles.statValueText}
+        >
+          {value}
+        </AppText>
+      </View>
+      {progress != null ? (
+        <View style={[styles.progressTrack, { backgroundColor: theme.colors.primarySoft }]}>
+          <View
+            style={[
+              styles.progressFill,
+              {
+                backgroundColor: theme.colors.primary,
+                width: `${Math.round(Math.min(1, Math.max(0.08, progress)) * 100)}%`,
+              },
+            ]}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 function canConfirmDelivery(order: BuyerOrderDetail) {
@@ -172,6 +265,45 @@ export default function BuyerOrderDetailScreen() {
     }
   }, [order, saving, toast, mutateOrder]);
 
+  /** The measurement snapshot, as labelled tiles. Six fit a phone comfortably. */
+  const measurementTiles = useMemo(() => {
+    if (!order || order.kind !== 'CUSTOM') return [];
+    return Object.entries(order.measurementSnapshot)
+      .filter(([, value]) => value !== null && value !== undefined && value !== '')
+      .map(([key, value]) => ({
+        key,
+        label: formatMeasurementLabel(key),
+        value: `${value} in`,
+      }));
+  }, [order]);
+
+  /**
+   * Whether the delivery promise is still ahead of us. "On track" that keeps
+   * saying "on track" after the date has passed is worse than saying nothing.
+   */
+  const deliveryTrack = useMemo((): {
+    label: string;
+    tone: 'primary' | 'danger' | 'muted' | 'success';
+  } => {
+    if (!order || order.kind !== 'CUSTOM' || !order.promisedDeliveryAt) {
+      return { label: 'Not scheduled', tone: 'muted' };
+    }
+    if (order.status.toUpperCase().includes('COMPLET')) {
+      return { label: 'Delivered', tone: 'success' };
+    }
+    const due = new Date(order.promisedDeliveryAt).getTime();
+    if (Number.isNaN(due)) return { label: 'Not scheduled', tone: 'muted' };
+    if (due < Date.now()) return { label: 'Overdue', tone: 'danger' };
+    return { label: 'On track', tone: 'primary' };
+  }, [order]);
+
+  const progressFraction = useMemo(
+    () => (order?.kind === 'CUSTOM' ? stageFraction(order.currentProgressStage) : null),
+    [order],
+  );
+
+  const paymentSettled = Boolean(order && order.paymentStatus.toUpperCase() === 'PAID');
+
   const confirmable = useMemo(() => Boolean(order && canConfirmDelivery(order)), [order]);
   const heroThumbnail = order?.kind === 'STANDARD'
     ? order.items[0]?.thumbnail ?? null
@@ -293,6 +425,16 @@ export default function BuyerOrderDetailScreen() {
   }
 
   const tone = statusTone(order.status);
+  const statusDotColor =
+    tone === 'danger'
+      ? theme.colors.danger
+      : tone === 'success'
+        ? theme.colors.success
+        : tone === 'warning'
+          ? theme.colors.warning
+          : theme.colors.primary;
+  const statusTextTone =
+    tone === 'danger' ? 'danger' : tone === 'success' ? 'success' : 'default';
   const summaryLabel = order.kind === 'STANDARD' ? 'Standard order' : 'Custom order';
   const progressLabel = order.kind === 'STANDARD' ? order.status : order.currentProgressStage || order.status;
 
@@ -385,23 +527,40 @@ export default function BuyerOrderDetailScreen() {
           </Card>
         ) : null}
 
-        <Card padding="lg" style={styles.heroCard}>
+        {/*
+          The overview, as one card with depth rather than four flat rows.
+
+          Three things carry the weight: the piece's own image at a size worth
+          looking at, a status pill that states the stage instead of printing a
+          raw enum in caption grey, and four metric TILES — each with its own
+          fill and edge, so the numbers read as objects on the card instead of
+          text floating on it.
+        */}
+        <Card variant="elevated" padding="lg" style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View style={styles.badgeRow}>
-              <View style={[styles.pill, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}>
-                <AppText variant="captionBold" tone="muted">{order.kind === 'STANDARD' ? 'Standard' : 'Custom'}</AppText>
+              <View style={[styles.pill, { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }]}>
+                <AppText variant="badgeLabel" tone="primary">{order.kind === 'STANDARD' ? 'Standard' : 'Custom'}</AppText>
               </View>
               <View style={[styles.pill, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}>
-                <AppText variant="captionBold" tone="muted">Buyer view</AppText>
+                <AppText variant="badgeLabel" tone="muted">Buyer view</AppText>
               </View>
             </View>
-            <AppText variant="captionBold" tone={tone === 'danger' ? 'danger' : tone === 'warning' ? 'primary' : 'secondary'}>
-              {order.status}
-            </AppText>
+            <View
+              style={[
+                styles.statusPill,
+                { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt },
+              ]}
+            >
+              <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
+              <AppText variant="badgeLabel" tone={statusTextTone} numberOfLines={1}>
+                {humanizeToken(order.status)}
+              </AppText>
+            </View>
           </View>
 
           <View style={styles.heroTitleRow}>
-            <View style={[styles.heroThumb, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}>
+            <View style={[styles.heroThumb, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.primary }]}>
               <StableImage
                 uri={heroThumbnail ?? undefined}
                 containerStyle={styles.heroThumbFill}
@@ -414,28 +573,25 @@ export default function BuyerOrderDetailScreen() {
               />
             </View>
             <View style={styles.heroCopy}>
-              <AppText variant="title" numberOfLines={2}>{order.title}</AppText>
-              <AppText variant="body" tone="muted" numberOfLines={1}>{order.brandName}</AppText>
+              <AppText variant="h2" numberOfLines={2}>{order.title}</AppText>
+              <AppText variant="small" tone="muted" numberOfLines={1}>{order.brandName}</AppText>
             </View>
           </View>
 
           <View style={styles.summaryGrid}>
-            <View style={styles.summaryCell}>
-              <AppText variant="captionRegular" tone="muted">Amount</AppText>
-              <AppText variant="subtitle">{formatCurrency(order.amount, order.currency)}</AppText>
-            </View>
-            <View style={styles.summaryCell}>
-              <AppText variant="captionRegular" tone="muted">Placed</AppText>
-              <AppText variant="subtitle">{formatDate(order.createdAt) || '—'}</AppText>
-            </View>
-            <View style={styles.summaryCell}>
-              <AppText variant="captionRegular" tone="muted">Progress</AppText>
-              <AppText variant="subtitle">{progressLabel || 'Placed'}</AppText>
-            </View>
-            <View style={styles.summaryCell}>
-              <AppText variant="captionRegular" tone="muted">Payment</AppText>
-              <AppText variant="subtitle">{order.paymentStatus}</AppText>
-            </View>
+            <StatTile label="Amount" value={formatCurrency(order.amount, order.currency)} emphasis />
+            <StatTile label="Placed" value={formatDate(order.createdAt) || '—'} />
+            <StatTile
+              label="Progress"
+              value={humanizeToken(progressLabel ?? 'Placed')}
+              tone="primary"
+              progress={progressFraction}
+            />
+            <StatTile
+              label="Payment"
+              value={humanizeToken(order.paymentStatus)}
+              marker={paymentSettled ? '✅' : '⏳'}
+            />
           </View>
         </Card>
 
@@ -445,13 +601,25 @@ export default function BuyerOrderDetailScreen() {
           <Button title={saving ? 'Confirming…' : 'Confirm delivery'} onPress={() => void handleConfirmDelivery()} disabled={saving} />
         ) : null}
 
-        <Card padding="lg" style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <AppText variant="bodyBold">Order items</AppText>
-            <AppText variant="captionRegular" tone="muted">
-              {order.kind === 'STANDARD' ? order.itemCount : order.measurementCount} {order.kind === 'STANDARD' ? 'item' : 'measurement'}{(order.kind === 'STANDARD' ? order.itemCount : order.measurementCount) === 1 ? '' : 's'}
-            </AppText>
+        <Card variant="elevated" padding="lg" style={styles.sectionCard}>
+          <View style={[styles.sectionHeader, styles.sectionHeaderRule, { borderBottomColor: theme.colors.border }]}>
+            <View style={styles.sectionHeaderCopy}>
+              <AppText variant="cardTitle">Order items</AppText>
+              {order.kind === 'CUSTOM' ? (
+                <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+                  Source: {order.sourceType} · {order.sourceId.slice(0, 8)}…
+                </AppText>
+              ) : null}
+            </View>
+            <View style={[styles.countChip, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+              <AppText variant="badgeLabel" tone="muted">
+                {order.kind === 'STANDARD' ? order.itemCount : order.measurementCount}{' '}
+                {order.kind === 'STANDARD' ? 'item' : 'measurement'}
+                {(order.kind === 'STANDARD' ? order.itemCount : order.measurementCount) === 1 ? '' : 's'}
+              </AppText>
+            </View>
           </View>
+
           {order.kind === 'STANDARD' ? (
             order.items.length > 0 ? (
               <View style={styles.sectionList}>
@@ -461,20 +629,59 @@ export default function BuyerOrderDetailScreen() {
               <AppText variant="body" tone="muted">This order does not include line items in the mobile payload.</AppText>
             )
           ) : (
-            <View style={styles.sectionList}>
-              <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
-                <AppText variant="captionRegular" tone="muted">Source</AppText>
-                <AppText variant="bodyBold">{order.sourceType} · {order.sourceId}</AppText>
+            <>
+              {/*
+                The measurements themselves, not a count of them.
+                `measurementSnapshot` has been in the payload all along and the
+                screen only ever said "6 points" — the one thing a shopper
+                opening a bespoke order wants to check is what the maker is
+                cutting to.
+              */}
+              {measurementTiles.length > 0 ? (
+                <View style={styles.measurementGrid}>
+                  {measurementTiles.map((entry) => (
+                    <View
+                      key={entry.key}
+                      style={[
+                        styles.measurementTile,
+                        { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                      ]}
+                    >
+                      <AppText variant="statLabel" tone="muted" numberOfLines={1}>
+                        {entry.label.toUpperCase()}
+                      </AppText>
+                      <AppText variant="bodyBold" numberOfLines={1}>{entry.value}</AppText>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <AppText variant="body" tone="muted">
+                  No measurement values are stored on this order.
+                </AppText>
+              )}
+
+              <View
+                style={[
+                  styles.promiseRow,
+                  { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                ]}
+              >
+                <View style={styles.promiseCopy}>
+                  <AppText variant="statLabel" tone="muted">DELIVERY PROMISE</AppText>
+                  <AppText variant="bodyBold">
+                    {formatDate(order.promisedDeliveryAt) || 'Pending'}
+                  </AppText>
+                  {order.originalPromisedDeliveryAt ? (
+                    <AppText variant="captionRegular" tone="muted">
+                      Originally {formatDate(order.originalPromisedDeliveryAt)}
+                    </AppText>
+                  ) : null}
+                </View>
+                <AppText variant="badgeLabel" tone={deliveryTrack.tone}>
+                  {deliveryTrack.label}
+                </AppText>
               </View>
-              <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
-                <AppText variant="captionRegular" tone="muted">Measurements</AppText>
-                <AppText variant="bodyBold">{order.measurementCount} point{order.measurementCount === 1 ? '' : 's'}</AppText>
-              </View>
-              <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
-                <AppText variant="captionRegular" tone="muted">Delivery promise</AppText>
-                <AppText variant="bodyBold">{formatDate(order.promisedDeliveryAt) || 'Pending'}</AppText>
-              </View>
-            </View>
+            </>
           )}
         </Card>
 
@@ -542,6 +749,72 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     borderWidth: StyleSheet.hairlineWidth,
   },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    maxWidth: '55%',
+  },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statTile: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    minWidth: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.md,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.xs,
+  },
+  statValueRow: { flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs },
+  statValueText: { flexShrink: 1 },
+  progressTrack: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginTop: tokens.spacing.xs,
+  },
+  progressFill: { height: '100%', borderRadius: 2 },
+  sectionHeaderCopy: { flex: 1, minWidth: 0, gap: 2 },
+  sectionHeaderRule: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: tokens.spacing.md,
+  },
+  countChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+  },
+  measurementGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  measurementTile: {
+    flexBasis: '31%',
+    flexGrow: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.sm,
+    paddingVertical: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.xs,
+    gap: 2,
+  },
+  promiseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.md,
+    padding: tokens.spacing.md,
+  },
+  promiseCopy: { flex: 1, minWidth: 0, gap: 2 },
   noticeRow: {
     borderRadius: tokens.radius.sm,
     padding: tokens.spacing.md,
