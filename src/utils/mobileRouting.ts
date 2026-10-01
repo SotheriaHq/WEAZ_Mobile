@@ -458,6 +458,27 @@ export function routeForNotification(
       (typeof payload.orderId === 'string' && payload.orderId) ||
       (previewPath ? parseHrefId(previewPath, /\/(?:custom-orders|orders)\/([^/?#]+)/) : null) ||
       null;
+
+    /*
+      An extension notification names the REQUEST, and the decision lives on its
+      own screen. This branch used to drop `requestId` on the floor and land the
+      shopper on the order — which, before extensions were mapped at all, showed
+      no sign that anything was waiting on them. That is the reported bug.
+    */
+    const extensionRequestId =
+      typeof payload.requestId === 'string' && payload.requestId ? payload.requestId : null;
+    if (
+      isBuyerContext &&
+      explicitOrderId &&
+      extensionRequestId &&
+      type === 'CUSTOM_ORDER_EXTENSION_REQUESTED'
+    ) {
+      return {
+        pathname: '/orders/extension/[requestId]',
+        params: { requestId: extensionRequestId, orderId: explicitOrderId },
+      } as unknown as Href;
+    }
+
     if (isBuyerContext && explicitOrderId) {
       return {
         pathname: '/orders/[orderId]',

@@ -78,6 +78,44 @@ export interface BuyerStandardOrderDetail {
   raw: Order;
 }
 
+/**
+ * A brand's request for more time, and the shopper's answer to it.
+ *
+ * `appliedExtraDays` is what was actually granted, which differs from
+ * `requestedExtraDays` when a counter was accepted — the budget is audited on the
+ * applied figure, never the asked one.
+ */
+export interface BuyerExtensionRequest {
+  id: string;
+  targetType: string;
+  requestedExtraDays: number;
+  reason: string;
+  buyerResponseStatus: string;
+  buyerCounterDays: number | null;
+  buyerNote: string | null;
+  brandNote: string | null;
+  /** Past this, the request expires unanswered and an admin takes it on. */
+  respondByAt: string | null;
+  appliedExtraDays: number | null;
+  sequence: number | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * The extension budget, as the server resolved it. Policy is two approved
+ * extensions of at most three days each, six days total, and none at all on an
+ * order the shopper paid a rush fee on.
+ */
+export interface BuyerExtensionPolicy {
+  maxDaysPerRequest: number;
+  maxApprovedExtensions: number;
+  maxTotalDays: number;
+  totalExtensionDaysGranted: number;
+  approvedExtensionCount: number;
+  rushBlocked: boolean;
+}
+
 export interface BuyerCustomOrderDetail {
   kind: 'CUSTOM';
   id: string;
@@ -107,6 +145,16 @@ export interface BuyerCustomOrderDetail {
   shippingAddress: RecordLike | null;
   contactInfo: RecordLike | null;
   promisedDeliveryAt: string | null;
+  promisedProductionAt: string | null;
+  /** The promise before any extension moved it. Null means none was granted. */
+  originalPromisedDeliveryAt: string | null;
+  extensionRequests: BuyerExtensionRequest[];
+  extensionPolicy: BuyerExtensionPolicy;
+  buyerAdminNoticeAt: string | null;
+  hasUnreadBuyerAdminNotice: boolean;
+  adminInterventionAt: string | null;
+  adminInterventionReason: string | null;
+  adminInterventionResolvedAt: string | null;
   progressEvents: Array<{
     id: string;
     stage: string;
@@ -118,6 +166,7 @@ export interface BuyerCustomOrderDetail {
     actorType: string;
     eventType: string;
     createdAt: string;
+    payload: RecordLike;
   }>;
   raw: RecordLike;
 }
@@ -346,9 +395,39 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
           actorType: asString(sourceEntry.actorType),
           eventType: asString(sourceEntry.eventType),
           createdAt: asString(sourceEntry.createdAt),
+          // Admin notices carry their text in the payload, and the shopper's
+          // notice panel is the only place that text is ever shown.
+          payload: asRecord(sourceEntry.payloadJson),
         };
       })
     : [];
+
+  // Extension requests were not mapped at all, which is why a shopper who
+  // tapped "your maker needs more time" arrived at a screen with nothing on it.
+  const extensionRequests = Array.isArray(item.extensionRequests)
+    ? item.extensionRequests.map((entry) => {
+        const request = asRecord(entry);
+        return {
+          id: asString(request.id),
+          targetType: asString(request.targetType, 'PRODUCTION'),
+          requestedExtraDays: asNumber(request.requestedExtraDays ?? 0),
+          reason: asString(request.reason),
+          buyerResponseStatus: asString(request.buyerResponseStatus, 'OPEN'),
+          buyerCounterDays:
+            request.buyerCounterDays != null ? asNumber(request.buyerCounterDays) : null,
+          buyerNote: optionalString(request.buyerNote),
+          brandNote: optionalString(request.brandNote),
+          respondByAt: optionalString(request.respondByAt),
+          appliedExtraDays:
+            request.appliedExtraDays != null ? asNumber(request.appliedExtraDays) : null,
+          sequence: request.sequence != null ? asNumber(request.sequence) : null,
+          resolvedAt: optionalString(request.resolvedAt),
+          createdAt: asString(request.createdAt),
+        };
+      })
+    : [];
+
+  const policy = asRecord(item.extensionPolicy);
 
   return {
     kind: 'CUSTOM',
@@ -379,6 +458,24 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
     shippingAddress: item.shippingAddress && typeof item.shippingAddress === 'object' ? asRecord(item.shippingAddress) : null,
     contactInfo: item.contactInfo && typeof item.contactInfo === 'object' ? asRecord(item.contactInfo) : null,
     promisedDeliveryAt: optionalString(item.promisedDeliveryAt),
+    promisedProductionAt: optionalString(item.promisedProductionAt),
+    // The promise as it stood before any extension moved it. Null means none was
+    // ever granted, in which case the current promise IS the original.
+    originalPromisedDeliveryAt: optionalString(item.originalPromisedDeliveryAt),
+    extensionRequests,
+    extensionPolicy: {
+      maxDaysPerRequest: asNumber(policy.maxDaysPerRequest ?? 3),
+      maxApprovedExtensions: asNumber(policy.maxApprovedExtensions ?? 2),
+      maxTotalDays: asNumber(policy.maxTotalDays ?? 6),
+      totalExtensionDaysGranted: asNumber(policy.totalExtensionDaysGranted ?? 0),
+      approvedExtensionCount: asNumber(policy.approvedExtensionCount ?? 0),
+      rushBlocked: policy.rushBlocked === true,
+    },
+    buyerAdminNoticeAt: optionalString(item.buyerAdminNoticeAt),
+    hasUnreadBuyerAdminNotice: item.hasUnreadBuyerAdminNotice === true,
+    adminInterventionAt: optionalString(item.adminInterventionAt),
+    adminInterventionReason: optionalString(item.adminInterventionReason),
+    adminInterventionResolvedAt: optionalString(item.adminInterventionResolvedAt),
     progressEvents,
     timelineEvents,
     raw: item,
@@ -484,6 +581,32 @@ export const BuyerOrdersApi = {
       }
       return tryCustom();
     }
+  },
+
+  /**
+   * Accept or decline a request for more time.
+   *
+   * The note is optional on both answers: requiring a reason to say no is a way
+   * of discouraging no, and the shopper already has the harder job here. Counters
+   * are deliberately not offered on mobile — two answers is the whole decision,
+   * and a third option on a phone turns it into a form.
+   */
+  async respondToExtension(
+    orderId: string,
+    requestId: string,
+    payload: { response: 'ACCEPTED' | 'REJECTED'; note?: string },
+  ): Promise<BuyerCustomOrderDetail> {
+    const response = await apiClient.post(
+      `/custom-orders/${orderId}/extension-requests/${requestId}/respond`,
+      payload,
+    );
+    return normalizeCustomDetail(response.data);
+  },
+
+  /** Mark WIEZ's notices on this order as read. Read-only channel: no replies. */
+  async ackAdminNotices(orderId: string): Promise<BuyerCustomOrderDetail> {
+    const response = await apiClient.post(`/custom-orders/${orderId}/admin-notices/ack`);
+    return normalizeCustomDetail(response.data);
   },
 
   async confirmDelivery(order: BuyerOrderDetail, note?: string): Promise<BuyerOrderDetail> {

@@ -122,6 +122,56 @@ export default function BuyerOrderDetailScreen() {
     void refetchOrder({ forceRefresh: true });
   }, [refetchOrder]);
 
+  /**
+   * A request for more time waiting on this shopper.
+   *
+   * Nothing on this screen mentioned extensions before, which is why tapping
+   * "your maker needs more time" landed somewhere with no answer to give.
+   */
+  const openExtension = useMemo(() => {
+    if (!order || order.kind !== 'CUSTOM') return null;
+    return (
+      order.extensionRequests.find((entry) => entry.buyerResponseStatus === 'OPEN') ??
+      null
+    );
+  }, [order]);
+
+  /** WIEZ's own notes on the order — read-only, no reply path. */
+  const adminNotices = useMemo(() => {
+    if (!order || order.kind !== 'CUSTOM') return [];
+    return order.timelineEvents
+      .filter((event) => {
+        if (event.actorType.toUpperCase() !== 'ADMIN') return false;
+        const type = event.eventType.toUpperCase();
+        if (type === 'ADMIN_NOTICE_SENT') {
+          const audience = String(event.payload.audience ?? '').toUpperCase();
+          // A note written to the brand alone is not the shopper's to read.
+          return audience === 'BUYER' || audience === 'BOTH';
+        }
+        return type === 'ADMIN_INTERVENTION_RESOLVED';
+      })
+      .slice(0, 5);
+  }, [order]);
+
+  const interventionOpen = Boolean(
+    order?.kind === 'CUSTOM' &&
+      order.adminInterventionAt &&
+      !order.adminInterventionResolvedAt,
+  );
+
+  const handleAckNotices = useCallback(async () => {
+    if (!order || order.kind !== 'CUSTOM' || saving) return;
+    setSaving(true);
+    try {
+      const updated = await BuyerOrdersApi.ackAdminNotices(order.id);
+      mutateOrder(() => updated);
+    } catch {
+      toast.error('Could not update these notices. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }, [order, saving, toast, mutateOrder]);
+
   const confirmable = useMemo(() => Boolean(order && canConfirmDelivery(order)), [order]);
   const heroThumbnail = order?.kind === 'STANDARD'
     ? order.items[0]?.thumbnail ?? null
@@ -257,6 +307,84 @@ export default function BuyerOrderDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
+        {/*
+          An open request for more time goes above the artwork. It is the only
+          thing on this screen waiting on the shopper, and the decision itself
+          gets its own screen so the notification can land straight on it.
+        */}
+        {openExtension ? (
+          <Card
+            padding="lg"
+            style={[
+              styles.noticeCard,
+              { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
+            ]}
+          >
+            <AppText variant="captionBold" tone="primary">
+              ⏳ MORE TIME REQUESTED
+            </AppText>
+            <AppText variant="subtitle">
+              {order.brandName} needs {openExtension.requestedExtraDays} more day
+              {openExtension.requestedExtraDays === 1 ? '' : 's'}
+            </AppText>
+            <AppText variant="small" tone="muted" numberOfLines={3}>
+              {openExtension.reason}
+            </AppText>
+            <Button
+              title="Review the request"
+              onPress={() =>
+                drillDownPush(
+                  `/orders/extension/${openExtension.id}?orderId=${order.id}` as never,
+                )
+              }
+            />
+          </Card>
+        ) : null}
+
+        {adminNotices.length > 0 || interventionOpen ? (
+          <Card
+            padding="lg"
+            style={[
+              styles.noticeCard,
+              { borderColor: theme.colors.warning, backgroundColor: theme.colors.surfaceAlt },
+            ]}
+          >
+            <AppText variant="captionBold" tone="warning">
+              {interventionOpen ? '🛟 WIEZ IS REVIEWING THIS ORDER' : '📣 NOTES FROM WIEZ'}
+            </AppText>
+            <AppText variant="small" tone="muted">
+              {interventionOpen
+                ? 'Someone at WIEZ is working on this with your maker. You will hear from us here.'
+                : 'Updates from WIEZ about this order. You do not need to reply.'}
+            </AppText>
+            {adminNotices.map((notice) => {
+              const body = typeof notice.payload.note === 'string' ? notice.payload.note : '';
+              return (
+                <View
+                  key={notice.id}
+                  style={[styles.noticeRow, { backgroundColor: theme.colors.surface }]}
+                >
+                  <AppText variant="small">
+                    {body || 'WIEZ updated this order.'}
+                  </AppText>
+                  <AppText variant="captionRegular" tone="muted">
+                    {formatDate(notice.createdAt)}
+                  </AppText>
+                </View>
+              );
+            })}
+            {order.kind === 'CUSTOM' && order.hasUnreadBuyerAdminNotice ? (
+              <Button
+                title="Mark as read"
+                variant="secondary"
+                size="sm"
+                loading={saving}
+                onPress={() => void handleAckNotices()}
+              />
+            ) : null}
+          </Card>
+        ) : null}
+
         <Card padding="lg" style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View style={styles.badgeRow}>
@@ -409,6 +537,15 @@ const styles = StyleSheet.create({
   },
   heroCard: {
     gap: tokens.spacing.md,
+  },
+  noticeCard: {
+    gap: tokens.spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  noticeRow: {
+    borderRadius: tokens.radius.sm,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.xs,
   },
   heroTop: {
     flexDirection: 'row',
