@@ -201,6 +201,7 @@ export default function MyReviewsScreen() {
 
     return (
       <FlatList
+        showsVerticalScrollIndicator={false}
         data={filteredReviews}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (

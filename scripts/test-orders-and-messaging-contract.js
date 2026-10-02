@@ -53,9 +53,19 @@ check('an order is a row with a cover, not a card in a stack of cards', () => {
   assert.match(row, /order\.thumbnail/, 'the row renders the cover');
   assert.match(row, /StableImage/, 'through the shared image component');
 
-  // One hairline underneath, and none under the last row.
+  /*
+    Two variants, deliberately.
+
+    `/orders` is a long list and keeps the hairline rule with no radius — ten
+    rounded rectangles down a phone is ten outlines competing with what is
+    inside them. The profile preview is a handful of orders among other kinds of
+    content, so there each one is a raised card with an edge of its own. The row
+    still drops its rule on the last item either way.
+  */
   assert.match(row, /borderBottomWidth: StyleSheet\.hairlineWidth/);
-  assert.match(row, /last \? null :|!last \?/, 'the last row leaves the rule off');
+  assert.match(row, /last \? null :|!last\s*\?/, 'the last row leaves the rule off');
+  assert.match(row, /variant\?: 'rule' \| 'card'/, 'the two variants are explicit');
+  assert.match(row, /isCard/, 'and the card variant is what draws the raised edge');
   assert.doesNotMatch(
     row,
     /^\s*row: \{[^}]*borderRadius/ms,

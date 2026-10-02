@@ -232,6 +232,7 @@ export default function StudioFinanceScreen() {
         </View>
       ) : (
         <ScrollView
+          showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
             // Studio now sits inside (tabs), so the floating island overlays the

@@ -326,6 +326,7 @@ export default function OrdersScreen() {
       </View>
 
       <FlatList
+        showsVerticalScrollIndicator={false}
         data={filteredItems}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => (

@@ -83,13 +83,24 @@ export const OrderListRow = memo(function OrderListRow({
   onPressIn,
   /** The last row owns no rule — a list should not end in a line to nowhere. */
   last = false,
+  variant = 'rule',
 }: {
   order: BuyerOrderSummary;
   onPress: () => void;
   onPressIn?: () => void;
   last?: boolean;
+  /**
+   * `rule` — rows separated by a hairline, no radius. Right for `/orders`,
+   *   where the list is long and ten rounded rectangles down a phone is ten
+   *   outlines competing with what is inside them.
+   * `card` — a stacked, raised card per order. Right for the profile, where
+   *   the preview is a handful of orders among other kinds of content and each
+   *   one needs an edge of its own to read as a separate thing.
+   */
+  variant?: 'rule' | 'card';
 }) {
   const { theme } = useTheme();
+  const isCard = variant === 'card';
   const statusTone = getOrderStatusTone(order.status);
   // The dot is a View, so it takes the colour directly; the label takes the
   // matching AppText tone, which is where colour belongs on type.
@@ -112,7 +123,21 @@ export const OrderListRow = memo(function OrderListRow({
       accessibilityLabel={`Open ${order.title}, ${humanizeOrderStatus(order.status)}`}
       style={({ pressed }) => [
         styles.row,
-        !last ? { borderBottomColor: theme.colors.border, borderBottomWidth: StyleSheet.hairlineWidth } : null,
+        isCard
+          ? [
+              styles.cardRow,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                ...tokens.elevation.sm,
+              },
+            ]
+          : !last
+            ? {
+                borderBottomColor: theme.colors.border,
+                borderBottomWidth: StyleSheet.hairlineWidth,
+              }
+            : null,
         pressed ? { backgroundColor: theme.colors.surfaceAlt } : null,
       ]}
     >
@@ -169,6 +194,11 @@ export const OrderListRow = memo(function OrderListRow({
 });
 
 const styles = StyleSheet.create({
+  cardRow: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.lg,
+    paddingHorizontal: tokens.spacing.md,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

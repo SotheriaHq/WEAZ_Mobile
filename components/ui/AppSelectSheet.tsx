@@ -591,7 +591,7 @@ export function AppMultiSelectSheet({
       <ScrollView
         style={[styles.scrollArea, { maxHeight: tagListMaxHeight }]}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator
+        showsVerticalScrollIndicator={false}
         nestedScrollEnabled
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}

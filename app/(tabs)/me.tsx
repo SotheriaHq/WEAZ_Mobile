@@ -1109,8 +1109,9 @@ export default function BuyerProfileScreen() {
           photo where the space already was, and gives the computed size a real
           slot on the right instead of a footnote.
         */}
-        <View style={styles.hero}>
-          <View style={styles.avatarWrap}>
+        <Card variant="elevated" padding="lg" style={styles.heroCard}>
+          <View style={styles.hero}>
+            <View style={styles.avatarWrap}>
             <Pressable onPress={handleViewAvatar} style={({ pressed }) => [pressed ? styles.pressed : null]}>
               {avatarUri ? (
                 <StableImage uri={avatarUri} containerStyle={styles.heroAvatar} imageStyle={styles.heroAvatar} />
@@ -1197,8 +1198,44 @@ export default function BuyerProfileScreen() {
             chart is a WIEZ setup step, missing points are the shopper's —
             belongs on `/fittings` too.
           */}
-          <ComputedSizeChip state={computedSizeState} onPress={handleOpenFittings} />
-        </View>
+            <ComputedSizeChip state={computedSizeState} onPress={handleOpenFittings} />
+          </View>
+
+          {/*
+            The three counts, inside the identity card rather than only on the
+            tab rail.
+
+            A profile's first job is to say how much there IS of you here, and
+            the rail answers that only for the tab you are already looking at.
+            Divided cells rather than three floating numbers: the rules are what
+            stop them reading as one run-on figure.
+          */}
+          <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} />
+          <View style={styles.statRow}>
+            {PROFILE_TABS.map((tab, index) => (
+              <Pressable
+                key={tab}
+                onPress={() => setActiveTab(tab)}
+                accessibilityRole="button"
+                accessibilityLabel={`${profileCounts[tab.toLowerCase() as keyof typeof profileCounts]} ${tab}`}
+                style={({ pressed }) => [
+                  styles.statCell,
+                  index > 0
+                    ? { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: theme.colors.border }
+                    : null,
+                  pressed ? styles.pressed : null,
+                ]}
+              >
+                <AppText variant="h2" numberOfLines={1}>
+                  {profileCounts[tab.toLowerCase() as keyof typeof profileCounts]}
+                </AppText>
+                <AppText variant="statLabel" tone="muted" numberOfLines={1}>
+                  {tab.toUpperCase()}
+                </AppText>
+              </Pressable>
+            ))}
+          </View>
+        </Card>
 
         <EmailVerificationNotice
           context="profile"
@@ -1329,6 +1366,10 @@ export default function BuyerProfileScreen() {
                       key={order.id}
                       order={order}
                       last={index === visibleOrderItems.length - 1}
+                      // Stacked cards here, hairline rules on `/orders`. This is
+                      // a short preview among other kinds of content, so each
+                      // order needs an edge of its own to read as one thing.
+                      variant="card"
                       onPress={() =>
                         topLevelNavigate({
                           pathname: '/orders/[orderId]',
@@ -1419,10 +1460,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: tokens.spacing.sm,
   },
+  heroCard: {
+    gap: tokens.spacing.lg,
+  },
   hero: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: tokens.spacing.lg,
+  },
+  statDivider: {
+    height: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+  },
+  statRow: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+  },
+  statCell: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: tokens.spacing.xs,
   },
   avatarWrap: {
     position: 'relative',
@@ -1575,6 +1634,8 @@ const styles = StyleSheet.create({
    */
   ordersList: {
     marginTop: tokens.spacing.xs,
+    // Cards need air between them; the hairline variant on `/orders` does not.
+    gap: tokens.spacing.sm,
   },
   ordersSearch: {
     marginTop: tokens.spacing.xs,
