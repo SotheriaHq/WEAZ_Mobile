@@ -65,6 +65,9 @@ check(
 );
 
 // ── 2. The service enforces it, counts it, and keeps the original promise ─────
+const policyDispute = read(
+  path.join(BACKEND, 'src/custom-orders/custom-order-dispute.policy.ts'),
+);
 const service = read(
   path.join(BACKEND, 'src/custom-orders/custom-orders.service.ts'),
 );
@@ -251,6 +254,86 @@ check(
   /orders\/extension\/\[requestId\]/.test(routing) &&
     /CUSTOM_ORDER_EXTENSION_REQUESTED/.test(routing),
   'This branch used to drop requestId and land on the order list.',
+);
+
+// ── 6b. Disputing a LATE order, which was impossible on both clients ─────────
+check(
+  'the API decides delay eligibility, so neither client re-derives the policy',
+  /delayDispute: resolveDelayEligibility\(/.test(service),
+  'The grace period and the which-promise precedence are policy, not client logic.',
+);
+check(
+  'a delay complaint needs no photograph',
+  /isDelayClassIssue\(params\.issueType\)\) return;/.test(policyDispute),
+  'There is nothing to photograph on an order that has not arrived.',
+);
+check(
+  'the shopper can close their own delay dispute, and there is a route for it',
+  /async closeDelayDispute\(/.test(service) &&
+    /disputes\/:disputeId\/close/.test(
+      read(path.join(BACKEND, 'src/custom-orders/custom-orders-buyer.controller.ts')),
+    ),
+  'A service method with no route is a feature nobody can reach.',
+);
+check(
+  'a delay dispute does not stop the maker',
+  /Status is deliberately untouched/.test(service),
+  'The remedy a late shopper wants is the garment.',
+);
+check(
+  'the web offers the report and says it is not a cancellation',
+  /does <strong>not<\/strong> cancel/.test(
+    read(path.join(WEB, 'src/components/custom-orders/DelayDisputePanel.tsx')),
+  ),
+);
+check(
+  'the mobile order screen carries the report, the open state and the grace',
+  /DELAY REPORTED/.test(mobileDetail) &&
+    /PRODUCTION OVERDUE/.test(mobileDetail) &&
+    /RUNNING A LITTLE LATE/.test(mobileDetail),
+);
+check(
+  'mobile can call both dispute endpoints',
+  /reportDelay/.test(mobileApi) && /closeDelayDispute/.test(mobileApi),
+);
+
+// ── 6c. The brand debt is a record, and is recovered from later earnings ─────
+const brandBalance = read(path.join(BACKEND, 'src/finance/brand-balance.service.ts'));
+check(
+  'debt is recovered oldest-first from subsequent earnings',
+  /applyEarningsToDebt/.test(brandBalance) &&
+    /orderBy: \{ createdAt: 'asc' \}/.test(brandBalance),
+);
+check(
+  'a brand in debt must acknowledge it before accepting custom work',
+  /CUSTOM_ORDER_BRAND_DEBT_ACK_REQUIRED/.test(service) &&
+    /brandDebtAckAmount/.test(service),
+);
+check(
+  'both refund paths raise the debt',
+  /BrandBalanceAdjustmentType\.REFUND_CLAWBACK/.test(
+    read(path.join(BACKEND, 'src/custom-orders/custom-order-refund.service.ts')),
+  ) &&
+    /BrandBalanceAdjustmentType\.REFUND_CLAWBACK/.test(
+      read(path.join(BACKEND, 'src/finance/standard-order-escrow.service.ts')),
+    ),
+  'Custom orders and standard orders both release before a refund can land.',
+);
+check(
+  'the brand is told, in both directions',
+  /direction: 'DEBIT'/.test(brandBalance) && /direction: 'RECOVERY'/.test(brandBalance),
+);
+check(
+  'the seller terms state the negative-balance rule',
+  (() => {
+    const terms = read(
+      path.join(WORKSPACE, 'docs/legal/user-facing/05_SELLER_BRAND_TERMS.md'),
+    );
+    return (
+      /Refund Recovery, Negative Balances/.test(terms) &&
+      /Payouts are suspended while a debt is outstanding/.test(terms)
+    );
+  })(),
 );
 
 // ── 7. The legal documents say the same numbers as the code ──────────────────

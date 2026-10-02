@@ -150,6 +150,25 @@ export interface BuyerCustomOrderDetail {
   originalPromisedDeliveryAt: string | null;
   extensionRequests: BuyerExtensionRequest[];
   extensionPolicy: BuyerExtensionPolicy;
+  /** Open disputes on the order, so the screen can offer the way out of one. */
+  disputes: Array<{
+    id: string;
+    status: string;
+    reasonType: string;
+    openedAt: string | null;
+  }>;
+  /**
+   * Whether this order can be escalated for lateness. Decided by the API — the
+   * grace period and the precedence between the two promises are policy, and a
+   * client that recomputes them eventually disagrees with the endpoint and
+   * offers a button that fails.
+   */
+  delayDispute: {
+    eligible: boolean;
+    basis: 'PRODUCTION' | 'DELIVERY' | null;
+    availableAt: string | null;
+    reason: string;
+  };
   buyerAdminNoticeAt: string | null;
   hasUnreadBuyerAdminNotice: boolean;
   adminInterventionAt: string | null;
@@ -428,6 +447,7 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
     : [];
 
   const policy = asRecord(item.extensionPolicy);
+  const delayDispute = asRecord(item.delayDispute);
 
   return {
     kind: 'CUSTOM',
@@ -470,6 +490,26 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
       totalExtensionDaysGranted: asNumber(policy.totalExtensionDaysGranted ?? 0),
       approvedExtensionCount: asNumber(policy.approvedExtensionCount ?? 0),
       rushBlocked: policy.rushBlocked === true,
+    },
+    disputes: Array.isArray(item.disputes)
+      ? item.disputes.map((entry) => {
+          const dispute = asRecord(entry);
+          return {
+            id: asString(dispute.id),
+            status: asString(dispute.status, 'OPEN'),
+            reasonType: asString(dispute.reasonType),
+            openedAt: optionalString(dispute.openedAt),
+          };
+        })
+      : [],
+    delayDispute: {
+      eligible: delayDispute.eligible === true,
+      basis:
+        delayDispute.basis === 'DELIVERY' || delayDispute.basis === 'PRODUCTION'
+          ? delayDispute.basis
+          : null,
+      availableAt: optionalString(delayDispute.availableAt),
+      reason: asString(delayDispute.reason, 'NOT_LATE_YET'),
     },
     buyerAdminNoticeAt: optionalString(item.buyerAdminNoticeAt),
     hasUnreadBuyerAdminNotice: item.hasUnreadBuyerAdminNotice === true,
@@ -599,6 +639,38 @@ export const BuyerOrdersApi = {
     const response = await apiClient.post(
       `/custom-orders/${orderId}/extension-requests/${requestId}/respond`,
       payload,
+    );
+    return normalizeCustomDetail(response.data);
+  },
+
+  /**
+   * Report that a bespoke order is late.
+   *
+   * No photographs: there is nothing to photograph, which is exactly why this
+   * was impossible before — the evidence validator demanded one and a shopper
+   * with an overdue order could not supply it.
+   */
+  async reportDelay(
+    orderId: string,
+    payload: { basis: 'PRODUCTION' | 'DELIVERY' | null; description: string },
+  ): Promise<BuyerCustomOrderDetail> {
+    const response = await apiClient.post(`/custom-orders/${orderId}/report-issue`, {
+      issueType: payload.basis === 'DELIVERY' ? 'NON_DELIVERY' : 'UNREASONABLE_DELAY',
+      description: payload.description,
+      evidenceJson: {},
+    });
+    return normalizeCustomDetail(response.data);
+  },
+
+  /** "It arrived — I'll take it late." The shopper ends their own report. */
+  async closeDelayDispute(
+    orderId: string,
+    disputeId: string,
+    note?: string,
+  ): Promise<BuyerCustomOrderDetail> {
+    const response = await apiClient.post(
+      `/custom-orders/${orderId}/disputes/${disputeId}/close`,
+      { note },
     );
     return normalizeCustomDetail(response.data);
   },

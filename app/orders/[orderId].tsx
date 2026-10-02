@@ -252,6 +252,63 @@ export default function BuyerOrderDetailScreen() {
       !order.adminInterventionResolvedAt,
   );
 
+  /** The shopper's own open lateness complaint — the only kind they can close. */
+  const openDelayDispute = useMemo(() => {
+    if (!order || order.kind !== 'CUSTOM') return null;
+    return (
+      order.disputes.find(
+        (entry) =>
+          (entry.reasonType === 'UNREASONABLE_DELAY' ||
+            entry.reasonType === 'NON_DELIVERY') &&
+          entry.status !== 'CLOSED' &&
+          entry.status !== 'RESOLVED',
+      ) ?? null
+    );
+  }, [order]);
+
+  const handleReportDelay = useCallback(async () => {
+    if (!order || order.kind !== 'CUSTOM' || saving) return;
+    setSaving(true);
+    try {
+      const updated = await BuyerOrdersApi.reportDelay(order.id, {
+        basis: order.delayDispute.basis,
+        description:
+          order.delayDispute.basis === 'DELIVERY'
+            ? 'This order has passed its delivery date and has not arrived.'
+            : 'This order has passed its production date without an update.',
+      });
+      mutateOrder(() => updated);
+      toast.success('Reported. WIEZ is reviewing this with your maker.');
+    } catch (reportError: any) {
+      toast.error(
+        reportError?.response?.data?.message ||
+          'That report could not be sent. Please try again.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [order, saving, toast, mutateOrder]);
+
+  const handleCloseDelayDispute = useCallback(async () => {
+    if (!order || order.kind !== 'CUSTOM' || !openDelayDispute || saving) return;
+    setSaving(true);
+    try {
+      const updated = await BuyerOrdersApi.closeDelayDispute(
+        order.id,
+        openDelayDispute.id,
+      );
+      mutateOrder(() => updated);
+      toast.success('Closed. Thanks for letting us know.');
+    } catch (closeError: any) {
+      toast.error(
+        closeError?.response?.data?.message ||
+          'That could not be closed right now. Please try again.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [order, openDelayDispute, saving, toast, mutateOrder]);
+
   const handleAckNotices = useCallback(async () => {
     if (!order || order.kind !== 'CUSTOM' || saving) return;
     setSaving(true);
@@ -480,6 +537,73 @@ export default function BuyerOrderDetailScreen() {
                 )
               }
             />
+          </Card>
+        ) : null}
+
+        {/*
+          Lateness. A shopper had no way to raise this at all: the only dispute
+          control was for a garment they already had, and the API demanded a
+          photograph an undelivered order cannot produce.
+
+          An open report outranks the offer to make one, and carries the way out
+          most shoppers actually want — the piece turned up, take it late.
+        */}
+        {order.kind === 'CUSTOM' && openDelayDispute ? (
+          <Card
+            padding="lg"
+            style={[
+              styles.noticeCard,
+              { borderColor: theme.colors.warning, backgroundColor: theme.colors.surfaceAlt },
+            ]}
+          >
+            <AppText variant="captionBold" tone="warning">
+              🛟 DELAY REPORTED
+            </AppText>
+            <AppText variant="small" tone="muted">
+              Your order is still live and your maker has been told to keep
+              working. WIEZ will be in touch here.
+            </AppText>
+            <Button
+              title="It arrived — close this"
+              variant="secondary"
+              size="sm"
+              loading={saving}
+              onPress={() => void handleCloseDelayDispute()}
+            />
+          </Card>
+        ) : order.kind === 'CUSTOM' && order.delayDispute.eligible ? (
+          <Card
+            padding="lg"
+            style={[
+              styles.noticeCard,
+              { borderColor: theme.colors.danger, backgroundColor: theme.colors.surfaceAlt },
+            ]}
+          >
+            <AppText variant="captionBold" tone="danger">
+              🚩 {order.delayDispute.basis === 'DELIVERY' ? 'DELIVERY OVERDUE' : 'PRODUCTION OVERDUE'}
+            </AppText>
+            <AppText variant="small" tone="muted">
+              If your maker has not explained the delay, bring WIEZ in. This does
+              not cancel or refund your order — it freezes their payment and puts
+              a person on it.
+            </AppText>
+            <Button
+              title="Report the delay"
+              variant="secondary"
+              size="sm"
+              loading={saving}
+              onPress={() => void handleReportDelay()}
+            />
+          </Card>
+        ) : order.kind === 'CUSTOM' && order.delayDispute.reason === 'WITHIN_GRACE' ? (
+          // Inside the grace the right move is a message, not an escalation:
+          // makers run an afternoon late and usually say so.
+          <Card padding="lg" style={styles.noticeCard}>
+            <AppText variant="captionBold">⏳ RUNNING A LITTLE LATE</AppText>
+            <AppText variant="small" tone="muted">
+              Your maker is just past the production date. Message them first —
+              you can bring WIEZ in shortly if nothing moves.
+            </AppText>
           </Card>
         ) : null}
 
