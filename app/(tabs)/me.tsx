@@ -21,7 +21,10 @@ import ProfileImageModal from '@/components/profile/ProfileImageModal';
 import { ProfileApi, type ComputedSizeFitProfile, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
 import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
-import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
+import { readWarmScreenState } from '@/src/state/screenWarmState';
+// Written through to disk, not only to the in-memory warm map: the profile is
+// the screen where an empty first frame reads as a broken app.
+import { persistScreenState } from '@/src/state/persistentScreenCache';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { drainPendingEmailVerification } from '@/src/auth/pendingEmailVerification';
@@ -51,6 +54,7 @@ import {
 } from '@/src/utils/uploadValidation';
 import { formatMoney } from '@/src/utils/money';
 import { CLIP_EMOJI, CLIPS_TAB_LABEL } from '@/src/constants/clipping';
+import { getOrderRevision } from '@/src/features/orders/orderRevision';
 import { getClipRevision } from '@/src/features/clipping/clipRevision';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
@@ -102,6 +106,17 @@ const getSavedLooksCountBucket = (count: number) => {
   what the reader sees changes.
 */
 const getProfileTabLabel = (tab: ProfileTab) => (tab === 'Saved' ? CLIPS_TAB_LABEL : tab);
+
+/**
+ * The stat label under each count beside the avatar.
+ *
+ * Past tense, not the tab's noun: these read as "1 CLIPPED", describing what
+ * the shopper has done, where the rail below reads "Clips", naming a place to
+ * go. The old label said SAVED, which is not a word this app uses anywhere
+ * else — the feature has been called clipping throughout.
+ */
+const getProfileStatLabel = (tab: ProfileTab) =>
+  tab === 'Saved' ? 'Clipped' : tab;
 
 function createEmptyProfileState(): ProfileState {
   return {
@@ -230,24 +245,6 @@ function ProfileSectionSkeleton() {
           </View>
         </View>
       ))}
-    </View>
-  );
-}
-
-function SummaryStat({
-  title,
-  value,
-  subtitle,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-}) {
-  return (
-    <View style={styles.summaryStat}>
-      <AppText variant="captionRegular" tone="muted">{title}</AppText>
-      <AppText variant="subtitle">{value}</AppText>
-      <AppText variant="captionRegular" tone="muted">{subtitle}</AppText>
     </View>
   );
 }
@@ -466,7 +463,7 @@ export default function BuyerProfileScreen() {
 
   useEffect(() => {
     if (!warmProfileStateKey || !state.profile) return;
-    writeWarmScreenState(warmProfileStateKey, state);
+    persistScreenState(warmProfileStateKey, state);
   }, [state, warmProfileStateKey]);
 
   const fallbackProfile = useMemo(() => buildFallbackProfile(user), [user]);
@@ -710,7 +707,7 @@ export default function BuyerProfileScreen() {
       hasWarmProfileSnapshotRef.current = true;
 
       if (warmProfileStateKey) {
-        writeWarmScreenState(warmProfileStateKey, {
+        persistScreenState(warmProfileStateKey, {
           profile: nextProfile,
           sizeFit: nextSizeFit,
           computedSizeFit: nextComputedSizeFit,
@@ -745,13 +742,28 @@ export default function BuyerProfileScreen() {
     // Primitives only — see `fallbackProfileRef` above.
   }, [status, user?.id]);
 
+  /**
+   * Fetch on mount, NOT behind the deferred-work gate.
+   *
+   * `useDeferredScreenWork` yields one animation frame before running, which is
+   * the right contract for work that competes with the destination's first
+   * paint — subscriptions, analytics, prefetch. A network request competes with
+   * nothing: it is latency on another thread, and the sooner it leaves the
+   * sooner the screen can settle.
+   *
+   * Worse, a rAF callback cannot run while the JS thread is busy, and on this
+   * tab it reliably is: the Runway feed and the market pre-warm are both
+   * rendering when Me mounts. The trace showed `screen_mounted` and then a
+   * 2.5-SECOND wait before the request was even issued — the gate, not the API,
+   * was most of the delay a shopper felt. Starting here overlaps the round trip
+   * with that render instead of queueing behind it.
+   */
   useEffect(() => {
-    if (!deferredWorkReady) return;
     navPerf.mark('background_refresh_started', 'tabs→me');
     void load().finally(() => {
       navPerf.mark('background_refresh_completed', 'tabs→me');
     });
-  }, [deferredWorkReady, load]);
+  }, [load]);
 
   /**
    * Re-read size-fit when the user comes back from `/fittings`.
@@ -780,6 +792,8 @@ export default function BuyerProfileScreen() {
   const hasFocusedOnceRef = useRef(false);
   /** Last clip-write count this screen has reloaded for. */
   const lastClipRevisionRef = useRef(getClipRevision());
+  /** Same, for order writes that can move a date on a row. */
+  const lastOrderRevisionRef = useRef(getOrderRevision());
   useFocusEffect(
     useCallback(() => {
       if (!deferredWorkReady) return undefined;
@@ -803,6 +817,21 @@ export default function BuyerProfileScreen() {
       */
       if (status === 'authenticated' && lastClipRevisionRef.current !== getClipRevision()) {
         lastClipRevisionRef.current = getClipRevision();
+        void load({ silent: true, force: true });
+      }
+
+      /*
+        The same, for orders — and it matters more here.
+
+        An order row carries a countdown, and an approved extension moves the
+        date it counts to. Left to the 15-second coalescing window, a shopper
+        who granted extra time and came straight back to their profile saw the
+        OLD number: not merely stale, but wrong about the single fact the row
+        exists to state. `silent` so the list updates underneath rather than
+        collapsing into a skeleton the shopper has to watch reload.
+      */
+      if (status === 'authenticated' && lastOrderRevisionRef.current !== getOrderRevision()) {
+        lastOrderRevisionRef.current = getOrderRevision();
         void load({ silent: true, force: true });
       }
 
@@ -1109,7 +1138,16 @@ export default function BuyerProfileScreen() {
           photo where the space already was, and gives the computed size a real
           slot on the right instead of a footnote.
         */}
-        <Card variant="elevated" padding="lg" style={styles.heroCard}>
+        {/*
+          No card around the identity.
+
+          Wrapping it in an elevated panel gave the top of the screen a filled
+          slab that the rest of the page did not share, so the profile read as a
+          widget sitting on the app rather than as the top of it. The counts
+          below still need their dividing rules, but the identity itself sits
+          directly on the screen's own background — nothing behind it.
+        */}
+        <View style={styles.heroCard}>
           <View style={styles.hero}>
             <View style={styles.avatarWrap}>
             <Pressable onPress={handleViewAvatar} style={({ pressed }) => [pressed ? styles.pressed : null]}>
@@ -1230,12 +1268,12 @@ export default function BuyerProfileScreen() {
                   {profileCounts[tab.toLowerCase() as keyof typeof profileCounts]}
                 </AppText>
                 <AppText variant="statLabel" tone="muted" numberOfLines={1}>
-                  {tab.toUpperCase()}
+                  {getProfileStatLabel(tab).toUpperCase()}
                 </AppText>
               </Pressable>
             ))}
           </View>
-        </Card>
+        </View>
 
         <EmailVerificationNotice
           context="profile"
@@ -1262,11 +1300,14 @@ export default function BuyerProfileScreen() {
           <ProfileAction emoji="⚙️" label="Settings" accent="neutral" onPress={handleOpenSettings} />
         </View>
 
-        <View style={styles.summaryRow}>
-          <SummaryStat title={CLIPS_TAB_LABEL} value={String(profileCounts.saved)} subtitle="clipped" />
-          <SummaryStat title="Patched" value={String(profileCounts.patches)} subtitle="brands" />
-          <SummaryStat title="Recent" value={String(profileCounts.orders)} subtitle="orders" />
-        </View>
+        {/*
+          The second counts row used to sit here — Clips / Patched / Recent,
+          repeating the three numbers already shown beside the avatar and then
+          repeating their names a third time on the tab rail directly below.
+          Three statements of the same fact in one screenful. The counts belong
+          next to the identity they describe, so that is the only place they
+          are now.
+        */}
 
         {error ? (
           <View style={[styles.inlineNotice, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
@@ -1555,15 +1596,6 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     textAlign: 'center',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    paddingVertical: tokens.spacing.xs,
-  },
-  summaryStat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
   },
   errorCard: {
     gap: tokens.spacing.xs,

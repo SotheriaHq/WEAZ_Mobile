@@ -1,4 +1,5 @@
 import { apiClient } from './httpClient';
+import { markOrdersChanged } from '@/src/features/orders/orderRevision';
 import { type Order } from './ProfileApi';
 
 type RecordLike = Record<string, unknown>;
@@ -24,6 +25,78 @@ type StandardOrderLike = Order & {
 
 export type BuyerOrderKind = 'STANDARD' | 'CUSTOM';
 
+export type OrderScheduleState =
+  | 'NOT_STARTED'
+  | 'ON_TRACK'
+  | 'DUE_SOON'
+  | 'OVERDUE'
+  | 'DELIVERED'
+  | 'CLOSED';
+
+/**
+ * When an order is due, resolved by the API.
+ *
+ * The brand's production and delivery lead times are snapshotted on every
+ * custom order at the moment it is placed, so "is this late?" is answerable
+ * without opening it — which is the whole point: a shopper should not have to
+ * tap into three orders to discover one of them has slipped.
+ *
+ * `estimated` is true when the dates were derived from those lead times rather
+ * than from a promise recorded on the order, and the clients say so rather than
+ * presenting a derived date as a commitment.
+ */
+export interface BuyerOrderSchedule {
+  expectedProductionAt: string | null;
+  expectedDeliveryAt: string | null;
+  /** Whether the date the countdown measures against was derived. */
+  estimated: boolean;
+  productionEstimated: boolean;
+  deliveryEstimated: boolean;
+  state: OrderScheduleState;
+  daysRemaining: number | null;
+  daysOverdue: number;
+  extensionDaysGranted: number;
+}
+
+const EMPTY_SCHEDULE: BuyerOrderSchedule = {
+  expectedProductionAt: null,
+  expectedDeliveryAt: null,
+  estimated: false,
+  productionEstimated: false,
+  deliveryEstimated: false,
+  state: 'NOT_STARTED',
+  daysRemaining: null,
+  daysOverdue: 0,
+  extensionDaysGranted: 0,
+};
+
+const SCHEDULE_STATES: ReadonlySet<string> = new Set([
+  'NOT_STARTED',
+  'ON_TRACK',
+  'DUE_SOON',
+  'OVERDUE',
+  'DELIVERED',
+  'CLOSED',
+]);
+
+function normalizeSchedule(value: unknown): BuyerOrderSchedule {
+  if (!value || typeof value !== 'object') return EMPTY_SCHEDULE;
+  const source = value as RecordLike;
+  const state = typeof source.state === 'string' ? source.state : '';
+  return {
+    expectedProductionAt: optionalString(source.expectedProductionAt),
+    expectedDeliveryAt: optionalString(source.expectedDeliveryAt),
+    estimated: source.estimated === true,
+    productionEstimated: source.productionEstimated === true,
+    deliveryEstimated: source.deliveryEstimated === true,
+    state: (SCHEDULE_STATES.has(state) ? state : 'NOT_STARTED') as OrderScheduleState,
+    daysRemaining:
+      source.daysRemaining == null ? null : asNumber(source.daysRemaining),
+    daysOverdue: asNumber(source.daysOverdue, 0),
+    extensionDaysGranted: asNumber(source.extensionDaysGranted, 0),
+  };
+}
+
 export interface BuyerOrderSummary {
   id: string;
   kind: BuyerOrderKind;
@@ -40,6 +113,9 @@ export interface BuyerOrderSummary {
   progressLabel: string | null;
   sourceLabel: string;
   canConfirmDelivery: boolean;
+  /** When this order is due. Null-ish for standard orders, which carry no
+   *  production lead time of their own. */
+  schedule: BuyerOrderSchedule;
 }
 
 export interface BuyerOrderItem {
@@ -169,6 +245,8 @@ export interface BuyerCustomOrderDetail {
     availableAt: string | null;
     reason: string;
   };
+  /** Same resolver as the list row, so a row and this screen cannot disagree. */
+  schedule: BuyerOrderSchedule;
   buyerAdminNoticeAt: string | null;
   hasUnreadBuyerAdminNotice: boolean;
   adminInterventionAt: string | null;
@@ -274,6 +352,11 @@ function normalizeStandardSummary(order: StandardOrderLike): BuyerOrderSummary {
           : 'Placed',
     sourceLabel: 'Standard order',
     canConfirmDelivery: isDeliveryConfirmationPending(order.status),
+    // A standard order ships from stock against the store's dispatch SLA, not
+    // against a per-order production commitment, so there is no countdown to
+    // derive. The row falls back to its status, which is what it has always
+    // shown.
+    schedule: EMPTY_SCHEDULE,
   };
 }
 
@@ -385,6 +468,7 @@ function normalizeCustomSummary(item: RecordLike): BuyerOrderSummary | null {
     progressLabel: optionalString(item.currentProgressStage),
     sourceLabel: source.type === 'PRODUCT' ? 'Custom product order' : 'Custom design order',
     canConfirmDelivery: isDeliveryConfirmationPending(asString(item.status, '')),
+    schedule: normalizeSchedule(item.schedule),
   };
 }
 
@@ -511,6 +595,7 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
       availableAt: optionalString(delayDispute.availableAt),
       reason: asString(delayDispute.reason, 'NOT_LATE_YET'),
     },
+    schedule: normalizeSchedule(item.schedule),
     buyerAdminNoticeAt: optionalString(item.buyerAdminNoticeAt),
     hasUnreadBuyerAdminNotice: item.hasUnreadBuyerAdminNotice === true,
     adminInterventionAt: optionalString(item.adminInterventionAt),
@@ -640,6 +725,7 @@ export const BuyerOrdersApi = {
       `/custom-orders/${orderId}/extension-requests/${requestId}/respond`,
       payload,
     );
+    markOrdersChanged();
     return normalizeCustomDetail(response.data);
   },
 
@@ -659,6 +745,7 @@ export const BuyerOrdersApi = {
       description: payload.description,
       evidenceJson: {},
     });
+    markOrdersChanged();
     return normalizeCustomDetail(response.data);
   },
 
@@ -672,22 +759,26 @@ export const BuyerOrdersApi = {
       `/custom-orders/${orderId}/disputes/${disputeId}/close`,
       { note },
     );
+    markOrdersChanged();
     return normalizeCustomDetail(response.data);
   },
 
   /** Mark WIEZ's notices on this order as read. Read-only channel: no replies. */
   async ackAdminNotices(orderId: string): Promise<BuyerCustomOrderDetail> {
     const response = await apiClient.post(`/custom-orders/${orderId}/admin-notices/ack`);
+    markOrdersChanged();
     return normalizeCustomDetail(response.data);
   },
 
   async confirmDelivery(order: BuyerOrderDetail, note?: string): Promise<BuyerOrderDetail> {
     if (order.kind === 'STANDARD') {
       const response = await apiClient.post(`/store/orders/${order.id}/confirm-delivery`, { note });
+      markOrdersChanged();
       return normalizeStandardDetail(response.data);
     }
 
     const response = await apiClient.post(`/custom-orders/${order.id}/confirm-delivery`, { note });
+    markOrdersChanged();
     return normalizeCustomDetail(response.data);
   },
 };

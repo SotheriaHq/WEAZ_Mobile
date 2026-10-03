@@ -10,7 +10,7 @@ import { useFonts } from 'expo-font';
 import { router, Stack, usePathname } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import 'react-native-reanimated';
@@ -23,6 +23,7 @@ import { AuthProvider } from '@/src/auth/AuthContext';
 import { GenderPromptSheet } from '@/components/profile/GenderPromptSheet';
 import { setNetworkTraceScreen } from '@/src/api/networkTrace';
 import { setFontFallbackMode } from '@/src/styles/FontMode';
+import { primePersistentScreenCache } from '@/src/state/persistentScreenCache';
 
 import { ToastProvider } from '@/src/toast/ToastContext';
 import { useToast } from '@/src/toast/ToastContext';
@@ -559,11 +560,21 @@ export default function RootLayout() {
 
   useEffect(() => {
     let isMounted = true;
+    /**
+     * How long to wait for Inter before showing UI without it.
+     *
+     * In a dev build each face is fetched from the Metro server over the LAN,
+     * and six of them routinely take longer than the old flat 3s — so the
+     * timeout won on most dev sessions and the app rendered in the device's
+     * own font. Production reads them from the bundle, where 3s is generous.
+     * The fallback is no longer permanent either way (see `FontMode`), but a
+     * longer dev window avoids the visible swap.
+     */
     const timer = setTimeout(() => {
       if (isMounted) {
         setFontsTimeout(true);
       }
-    }, 3000);
+    }, __DEV__ ? 10000 : 3000);
     return () => {
       isMounted = false;
       clearTimeout(timer);
@@ -578,6 +589,18 @@ export default function RootLayout() {
 
   // Phase 5: pause predictive prefetching whenever the app is backgrounded.
   useEffect(() => installPrefetchAppStateBridge(), []);
+
+  /**
+   * Read last session's screen snapshots back into the warm cache.
+   *
+   * Started at the top of boot so it is long finished before anyone can reach a
+   * tab: by the time the shopper taps Me, the profile has content to render on
+   * its first frame instead of an empty tab and a spinner. Nothing waits on it —
+   * if it is slow or fails, the screen simply behaves as it did before.
+   */
+  useEffect(() => {
+    void primePersistentScreenCache();
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -606,7 +629,21 @@ export default function RootLayout() {
 
   const fontsReady = loaded || fontsTimeout || !!error;
   const usingFontFallback = fontsReady && !loaded;
-  setFontFallbackMode(usingFontFallback);
+
+  /**
+   * In a layout effect, not during render.
+   *
+   * `setFontFallbackMode` now notifies every subscribed `AppText`, so calling
+   * it mid-render would update other components while this one is rendering.
+   * A layout effect still runs before paint, so the first frame is correct —
+   * and because the store is reactive, the LATER transition matters too: when
+   * Inter finishes loading after the timeout has already fired, this fires
+   * again with `false` and the app re-renders in Inter instead of staying on
+   * the device's system font for the rest of the session.
+   */
+  useLayoutEffect(() => {
+    setFontFallbackMode(usingFontFallback);
+  }, [usingFontFallback]);
 
   useEffect(() => {
     if (!fontsReady) return;

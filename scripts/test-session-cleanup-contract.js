@@ -47,6 +47,7 @@ function loadSessionCleanup(options = {}) {
     clearMarketSignalQueue: 0,
     clearDesignEditorBackgroundTasks: 0,
     clearWarmScreenStateCache: 0,
+    clearPersistentScreenCache: 0,
     resetCustomOrdersAvailability: 0,
     deactivatePushToken: 0,
     clearAppBadge: 0,
@@ -202,6 +203,13 @@ function loadSessionCleanup(options = {}) {
       if (request === '@/src/state/screenWarmState') {
         return { clearWarmScreenStateCache: () => calls.clearWarmScreenStateCache++ };
       }
+      if (request === '@/src/state/persistentScreenCache') {
+        return {
+          clearPersistentScreenCache: async () => {
+            calls.clearPersistentScreenCache++;
+          },
+        };
+      }
       if (request === '@/src/storage/secureStorage') {
         return {
           removeAccessToken: async () => calls.removeAccessToken++,
@@ -265,6 +273,13 @@ async function main() {
   assert.equal(calls.clearMarketSignalQueue, 1, 'logout should clear persisted market signal queue');
   assert.equal(calls.clearDesignEditorBackgroundTasks, 1, 'logout should clear design editor tasks');
   assert.equal(calls.clearWarmScreenStateCache, 1, 'logout should clear warm screen state');
+  // The on-disk half of that cache. A profile snapshot surviving sign-out would
+  // greet the next person on this device with the previous account's content.
+  assert.equal(
+    calls.clearPersistentScreenCache,
+    1,
+    'logout should clear the persisted screen cache',
+  );
   assert.equal(calls.asyncStorageGetAllKeys, 1);
   assert.deepEqual(calls.asyncStorageMultiRemove[0], [
     'WIEZ_QUERY_CACHE_V1',

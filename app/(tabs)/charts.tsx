@@ -337,7 +337,11 @@ export default function ChartsScreen() {
               })}
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.scrollColumns}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.scrollColumns}
+            >
               <View>
                 <View style={[styles.headerRow, { borderBottomColor: theme.colors.border }]}>
                   {['UK', 'US', 'EU'].map((label) => (

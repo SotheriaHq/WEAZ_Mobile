@@ -9,7 +9,23 @@ import {
 
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { isFontFallbackMode } from '@/src/styles/FontMode';
+import { getFontFallbackMode, subscribeToFontMode } from '@/src/styles/FontMode';
+
+/**
+ * Live fallback state, not a value captured at first render.
+ *
+ * Read directly from the module, the flag never re-rendered anything — so a
+ * boot that timed out waiting for Inter stayed on the device's system font for
+ * the rest of the session even after the faces finished loading. See
+ * `src/styles/FontMode.ts`.
+ */
+function useFontFallbackMode(): boolean {
+  return React.useSyncExternalStore(
+    subscribeToFontMode,
+    getFontFallbackMode,
+    getFontFallbackMode,
+  );
+}
 
 type Variant =
   | 'display'
@@ -39,7 +55,10 @@ type Variant =
   | 'navLabel'
   | 'meta'
   | 'statValue'
-  | 'statLabel';
+  | 'statLabel'
+  | 'money'
+  | 'moneyLarge'
+  | 'moneySmall';
 
 type Tone = 'default' | 'secondary' | 'muted' | 'inverse' | 'primary' | 'danger' | 'success' | 'warning' | 'disabled';
 type TypographyTokenKey =
@@ -66,7 +85,10 @@ type TypographyTokenKey =
   | 'navLabel'
   | 'meta'
   | 'statValue'
-  | 'statLabel';
+  | 'statLabel'
+  | 'money'
+  | 'moneyLarge'
+  | 'moneySmall';
 
 type Props = Omit<TextProps, 'style'> & {
   variant?: Variant;
@@ -132,7 +154,25 @@ const VARIANT_MAP: Record<Variant, TypographyTokenKey> = {
   meta: 'meta',
   statValue: 'statValue',
   statLabel: 'statLabel',
+  money: 'money',
+  moneyLarge: 'moneyLarge',
+  moneySmall: 'moneySmall',
 };
+
+/**
+ * Tiers whose glyphs are digits that line up in a column.
+ *
+ * `tabular-nums` fixes every digit to the same advance width. Inter's default
+ * figures are proportional, so a 1 is narrower than a 0 and a stack of amounts
+ * in a list never aligns — the reason a column of prices looks subtly untidy
+ * however carefully the row is laid out.
+ */
+const TABULAR_TIERS: ReadonlySet<TypographyTokenKey> = new Set([
+  'money',
+  'moneyLarge',
+  'moneySmall',
+  'statValue',
+]);
 
 /**
  * Family per tier. Two deliberate changes from the original mapping:
@@ -169,6 +209,9 @@ const FONT_FAMILY_MAP: Record<TypographyTokenKey, string> = {
   meta: tokens.fontFamily.semiBold,
   statValue: tokens.fontFamily.bold,
   statLabel: tokens.fontFamily.bold,
+  money: tokens.fontFamily.extraBold,
+  moneyLarge: tokens.fontFamily.extraBold,
+  moneySmall: tokens.fontFamily.bold,
 };
 
 /**
@@ -261,6 +304,7 @@ export function AppText({
 }: Props) {
   const { theme: activeTheme } = useTheme();
   const theme = onDarkStage ? DARK_STAGE_THEME : activeTheme;
+  const fontFallbackMode = useFontFallbackMode();
   const variant = providedVariant ?? 'body';
 
   if (__DEV__ && !providedVariant) {
@@ -287,8 +331,11 @@ export function AppText({
           : variant === 'bodyStrong'
             ? tokens.fontFamily.bold
             : FONT_FAMILY_MAP[tokenKey];
-  const fontFamily = isFontFallbackMode ? undefined : intendedFamily;
+  const fontFamily = fontFallbackMode ? undefined : intendedFamily;
   const fontWeight = FONT_WEIGHT_BY_FAMILY[intendedFamily] ?? tier.weight;
+  const fontVariant = TABULAR_TIERS.has(tokenKey)
+    ? (['tabular-nums'] as TextStyle['fontVariant'])
+    : undefined;
 
   let defaultMaxFontSizeMultiplier: number | undefined = undefined;
   if (['navLabel', 'badgeLabel', 'actionLabel', 'meta', 'caption', 'small', 'smallBold'].includes(variant)) {
@@ -322,6 +369,7 @@ export function AppText({
             essentially alone. A tier without the field keeps RN's default.
           */
           ...(tier.letterSpacing != null ? { letterSpacing: tier.letterSpacing } : {}),
+          ...(fontVariant ? { fontVariant } : {}),
           color: getToneColor(resolvedTone, theme),
         },
         sanitizeStyle(style),

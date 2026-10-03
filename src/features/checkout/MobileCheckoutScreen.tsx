@@ -318,7 +318,11 @@ export function MobileCheckoutScreen() {
     <>
       <Stack.Screen options={{ title: 'Checkout' }} />
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.bg }]}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.header}>
             <AppText variant="title">Secure checkout</AppText>
             <AppText variant="body" tone="muted">

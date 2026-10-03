@@ -33,6 +33,9 @@ import {
   type BuyerExtensionRequest,
 } from '@/src/api/BuyerOrdersApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { writeCachedQueryData } from '@/src/cache';
+import { queryClient } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
@@ -127,6 +130,26 @@ export default function ExtensionDecisionScreen() {
           note: note.trim() || undefined,
         });
         setOrder(updated);
+        /*
+          Publish the answer to the order screen BEFORE routing back to it.
+
+          This screen loads the order itself; the order screen reads it through
+          `useCachedQuery`. Without this write, going back re-rendered that
+          screen's own cached copy — which still had the request open — so a
+          shopper who had just declined was shown the request again, told they
+          had already answered when they opened it, and had to refresh twice
+          before the notice cleared.
+
+          Both key variants: the screen keys on the `kind` route param, which is
+          present when a notification deep-linked into it and absent when the
+          shopper tapped through from the order.
+        */
+        writeCachedQueryData(queryKeys.orders.detail(order.id, 'CUSTOM'), updated);
+        writeCachedQueryData(queryKeys.orders.detail(order.id), updated);
+        // The list carries a countdown that an approved extension moves, so it
+        // has to be refetched rather than left to its own staleness window.
+        void queryClient.invalidateQueries({ queryKey: queryKeys.orders.list() });
+
         toast.success(
           decision === 'ACCEPTED'
             ? 'Extra time granted. Your delivery date has moved.'
@@ -172,7 +195,10 @@ export default function ExtensionDecisionScreen() {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
         {header}
-        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}>
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
+          showsVerticalScrollIndicator={false}
+        >
           <Card padding="lg" style={styles.card}>
             <Skeleton width="70%" height={22} borderRadius={6} />
             <Skeleton width="45%" height={14} borderRadius={6} />

@@ -327,6 +327,7 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
     <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <FlatList
+        showsVerticalScrollIndicator={false}
         data={items}
         key={columnCount}
         numColumns={columnCount}

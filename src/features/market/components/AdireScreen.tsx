@@ -227,6 +227,7 @@ export function AdireScreen() {
       ) : (
         <FlatList
           ref={listRef}
+          showsVerticalScrollIndicator={false}
           data={rows}
           keyExtractor={(row) => row.key}
           renderItem={renderRow}

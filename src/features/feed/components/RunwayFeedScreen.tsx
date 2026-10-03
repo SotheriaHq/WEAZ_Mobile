@@ -2979,7 +2979,8 @@ export function RunwayFeedScreen() {
         <ScrollView
           contentInset={Platform.OS === 'ios' ? { bottom: overlayScrollPadding } : undefined}
           contentContainerStyle={{ flexGrow: 1, paddingBottom: overlayScrollPadding }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}>
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
+          showsVerticalScrollIndicator={false}>
           <FeedEmptyState onStartExploring={() => setSelectedFilterId(visibleFilterChips[0]?.id ?? DEFAULT_MARKET_FILTER_CHIPS[0].id)} />
         </ScrollView>
       ) : (

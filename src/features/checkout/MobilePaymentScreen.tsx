@@ -248,7 +248,7 @@ export function MobilePaymentScreen() {
     <>
       <Stack.Screen options={{ title: 'Payment' }} />
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.bg }]}>
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Card style={styles.card}>
             <AppText variant="title">Payment verification</AppText>
             <AppText variant="body" tone="muted">

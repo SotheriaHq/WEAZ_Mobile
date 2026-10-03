@@ -29,6 +29,7 @@ import { clearNotificationRealtimeSession } from '@/src/realtime/notifications';
 import { resetCustomOrdersAvailability } from '@/src/api/BuyerOrdersApi';
 import { clearMobileMarketSignalQueue } from '@/src/services/marketSignals';
 import { clearWarmScreenStateCache } from '@/src/state/screenWarmState';
+import { clearPersistentScreenCache } from '@/src/state/persistentScreenCache';
 import { removeAccessToken, removeCachedAuthUser, removeRefreshToken } from '@/src/storage/secureStorage';
 
 export const ACTIVE_BRAND_STORAGE_KEY = 'wiez.activeBrandId';
@@ -103,6 +104,9 @@ export async function clearMobilePrivateSessionState({
   resetCustomOrdersAvailability();
 
   await Promise.allSettled([
+    // The on-disk half of the warm cache. One account's profile snapshot must
+    // never greet the next person to sign in on this device.
+    clearPersistentScreenCache(),
     clearAppBadge(),
     removeAccessToken(),
     removeRefreshToken(),

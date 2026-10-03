@@ -142,6 +142,27 @@ export async function getCachedQuery<T>(options: CachedQueryOptions<T>): Promise
   return revalidateCachedQuery({ ...options, policy, client, forceRefresh });
 }
 
+/**
+ * Write a value into the shared cache from outside the hook.
+ *
+ * For the case where one screen performs a mutation whose fresh result another
+ * screen is about to render. The extension-decision screen is the example: it
+ * loads the order itself, answers the request, and routes back — and the order
+ * screen behind it re-rendered from its own cached copy, still showing the
+ * request as open. The shopper saw a notice for a decision they had just made,
+ * and it only cleared after two manual refreshes.
+ *
+ * `useCachedQuery`'s own `mutate` already writes through for the screen that
+ * owns the query. This is the same write, for the screen that does not.
+ */
+export function writeCachedQueryData<T>(
+  key: QueryKey,
+  data: T,
+  client: QueryClient = defaultQueryClient,
+): void {
+  client.setQueryData(key, data);
+}
+
 export function preloadQuery<T>(options: CachedQueryOptions<T>): Promise<T> {
   return revalidateCachedQuery({ ...options, backgroundRefresh: true });
 }

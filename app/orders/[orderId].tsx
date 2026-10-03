@@ -5,6 +5,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { OrderConversationButton } from '@/components/messaging/OrderConversationButton';
+import {
+  OrderAttentionPanel,
+  type AttentionItem,
+} from '@/components/orders/OrderAttentionPanel';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -85,6 +89,7 @@ function StatTile({
   emphasis = false,
   marker,
   progress,
+  money = false,
 }: {
   label: string;
   value: string;
@@ -92,23 +97,30 @@ function StatTile({
   emphasis?: boolean;
   marker?: string;
   progress?: number | null;
+  /** Render the value in the money tier: heavier, tighter, tabular figures. */
+  money?: boolean;
 }) {
   const { theme } = useTheme();
 
   return (
-    <View
-      style={[
-        styles.statTile,
-        { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
-      ]}
-    >
+    /*
+      `tinted`, not a grey fill.
+
+      These tiles were `surfaceAlt` — a blue-grey plate inside a white card,
+      which is both the "some containers are grey and some are white" problem
+      and, on its own, a flat rectangle with a number on it. The tinted variant
+      gives each tile a faint vertical wash of the brand purple: not enough to
+      read as a coloured box, enough that the tile has a surface rather than
+      being a hole cut in the card.
+    */
+    <Card variant="tinted" padding="md" style={styles.statTile}>
       <AppText variant="statLabel" tone="muted" numberOfLines={1}>
         {label.toUpperCase()}
       </AppText>
       <View style={styles.statValueRow}>
         {marker ? <AppText variant="small">{marker}</AppText> : null}
         <AppText
-          variant={emphasis ? 'h3' : 'bodyBold'}
+          variant={money ? 'moneyLarge' : emphasis ? 'h3' : 'bodyBold'}
           tone={tone === 'primary' ? 'primary' : 'default'}
           numberOfLines={1}
           style={styles.statValueText}
@@ -129,7 +141,7 @@ function StatTile({
           />
         </View>
       ) : null}
-    </View>
+    </Card>
   );
 }
 
@@ -322,6 +334,141 @@ export default function BuyerOrderDetailScreen() {
     }
   }, [order, saving, toast, mutateOrder]);
 
+  /**
+   * Everything waiting on the shopper, in one list, worst first.
+   *
+   * Assembled here rather than rendered inline so the screen shows a single
+   * summary row instead of a column of outlined boxes, and so the severity
+   * ordering lives in one place. The panel sorts by tone; this decides what
+   * each state's tone, wording and action are.
+   */
+  const attentionItems = useMemo<AttentionItem[]>(() => {
+    if (!order) return [];
+    const items: AttentionItem[] = [];
+
+    if (openExtension) {
+      items.push({
+        id: `extension:${openExtension.id}`,
+        tone: 'primary',
+        marker: '⏳',
+        title: `${order.brandName} needs ${openExtension.requestedExtraDays} more day${
+          openExtension.requestedExtraDays === 1 ? '' : 's'
+        }`,
+        body: openExtension.reason || 'Your maker has asked for more time.',
+        meta: openExtension.respondByAt
+          ? `Answer by ${formatDate(openExtension.respondByAt)}`
+          : undefined,
+        action: {
+          label: 'Review the request',
+          onPress: () =>
+            drillDownPush(
+              `/orders/extension/${openExtension.id}?orderId=${order.id}` as never,
+            ),
+        },
+      });
+    }
+
+    if (order.kind === 'CUSTOM') {
+      if (openDelayDispute) {
+        items.push({
+          id: `delay:${openDelayDispute.id}`,
+          tone: 'warning',
+          marker: '🛟',
+          title: 'Delay reported',
+          body:
+            'Your order is still live and your maker has been told to keep working. WIEZ will be in touch here.',
+          action: {
+            label: 'It arrived — close this',
+            loading: saving,
+            onPress: () => void handleCloseDelayDispute(),
+          },
+        });
+      } else if (order.delayDispute.eligible) {
+        items.push({
+          id: 'delay:eligible',
+          tone: 'danger',
+          marker: '🚩',
+          title:
+            order.delayDispute.basis === 'DELIVERY'
+              ? 'This order is past its delivery date'
+              : 'This order is past its production date',
+          // The reassurance goes BEFORE the button, every time. Without it
+          // "report a problem" reads as "cancel my order", which it is not.
+          body:
+            'If your maker has not explained the delay, bring WIEZ in. This does not cancel or refund your order — it freezes their payment and puts a person on it.',
+          action: {
+            label: 'Report the delay',
+            loading: saving,
+            onPress: () => void handleReportDelay(),
+          },
+        });
+      } else if (order.delayDispute.reason === 'WITHIN_GRACE') {
+        items.push({
+          id: 'delay:grace',
+          tone: 'neutral',
+          marker: '⏳',
+          title: 'Running a little late',
+          body:
+            'Your maker is just past the production date. Message them first — you can bring WIEZ in shortly if nothing moves.',
+        });
+      }
+    }
+
+    if (interventionOpen) {
+      items.push({
+        id: 'intervention',
+        tone: 'warning',
+        marker: '🛟',
+        title: 'WIEZ is reviewing this order',
+        body:
+          'Someone at WIEZ is working on this with your maker. You will hear from us here.',
+      });
+    }
+
+    adminNotices.forEach((notice) => {
+      const body = typeof notice.payload.note === 'string' ? notice.payload.note : '';
+      items.push({
+        id: `notice:${notice.id}`,
+        tone: 'neutral',
+        marker: '📣',
+        title: 'Note from WIEZ',
+        body: body || 'WIEZ updated this order.',
+        meta: formatDate(notice.createdAt),
+      });
+    });
+
+    if (
+      order.kind === 'CUSTOM' &&
+      order.hasUnreadBuyerAdminNotice &&
+      adminNotices.length > 0
+    ) {
+      items.push({
+        id: 'notice:ack',
+        tone: 'neutral',
+        marker: '✅',
+        title: 'Mark these as read',
+        body: 'This is a read-only channel — you do not need to reply.',
+        action: {
+          label: 'Mark as read',
+          loading: saving,
+          onPress: () => void handleAckNotices(),
+        },
+      });
+    }
+
+    return items;
+  }, [
+    order,
+    openExtension,
+    openDelayDispute,
+    interventionOpen,
+    adminNotices,
+    saving,
+    handleCloseDelayDispute,
+    handleReportDelay,
+    handleAckNotices,
+  ]);
+
   /** The measurement snapshot, as labelled tiles. Six fit a phone comfortably. */
   const measurementTiles = useMemo(() => {
     if (!order || order.kind !== 'CUSTOM') return [];
@@ -342,16 +489,45 @@ export default function BuyerOrderDetailScreen() {
     label: string;
     tone: 'primary' | 'danger' | 'muted' | 'success';
   } => {
-    if (!order || order.kind !== 'CUSTOM' || !order.promisedDeliveryAt) {
+    /*
+      The API's verdict, not a second opinion.
+
+      This measured `promisedDeliveryAt` against the clock here — a date only
+      written at payment confirmation, so an order accepted by any other path
+      reported "Not scheduled" however overdue it was, while the report control
+      (reading the same null through the dispute gate) stayed hidden. One
+      resolver now answers both, derived from the brand's published lead times
+      when no promise was recorded.
+    */
+    if (!order || order.kind !== 'CUSTOM') {
       return { label: 'Not scheduled', tone: 'muted' };
     }
-    if (order.status.toUpperCase().includes('COMPLET')) {
-      return { label: 'Delivered', tone: 'success' };
+    const { schedule } = order;
+    switch (schedule.state) {
+      case 'OVERDUE': {
+        const days = Math.max(1, schedule.daysOverdue);
+        return { label: `${days} day${days === 1 ? '' : 's'} late`, tone: 'danger' };
+      }
+      case 'DUE_SOON': {
+        const days = schedule.daysRemaining ?? 0;
+        return {
+          label: days <= 0 ? 'Due today' : `${days} day${days === 1 ? '' : 's'} left`,
+          tone: 'danger',
+        };
+      }
+      case 'ON_TRACK': {
+        const days = schedule.daysRemaining;
+        return days == null
+          ? { label: 'On track', tone: 'primary' }
+          : { label: `${days} day${days === 1 ? '' : 's'} left`, tone: 'primary' };
+      }
+      case 'DELIVERED':
+        return { label: 'Delivered', tone: 'success' };
+      case 'CLOSED':
+        return { label: 'Closed', tone: 'muted' };
+      default:
+        return { label: 'Not scheduled', tone: 'muted' };
     }
-    const due = new Date(order.promisedDeliveryAt).getTime();
-    if (Number.isNaN(due)) return { label: 'Not scheduled', tone: 'muted' };
-    if (due < Date.now()) return { label: 'Overdue', tone: 'danger' };
-    return { label: 'On track', tone: 'primary' };
   }, [order]);
 
   const progressFraction = useMemo(
@@ -507,149 +683,12 @@ export default function BuyerOrderDetailScreen() {
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
         {/*
-          An open request for more time goes above the artwork. It is the only
-          thing on this screen waiting on the shopper, and the decision itself
-          gets its own screen so the notification can land straight on it.
+          One row, not a stack of bordered boxes. Everything waiting on the
+          shopper — a request for more time, a lateness state, WIEZ's notes —
+          is collected and summarised here, and the detail opens in a sheet.
+          See `OrderAttentionPanel` for why.
         */}
-        {openExtension ? (
-          <Card
-            padding="lg"
-            style={[
-              styles.noticeCard,
-              { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
-            ]}
-          >
-            <AppText variant="captionBold" tone="primary">
-              ⏳ MORE TIME REQUESTED
-            </AppText>
-            <AppText variant="subtitle">
-              {order.brandName} needs {openExtension.requestedExtraDays} more day
-              {openExtension.requestedExtraDays === 1 ? '' : 's'}
-            </AppText>
-            <AppText variant="small" tone="muted" numberOfLines={3}>
-              {openExtension.reason}
-            </AppText>
-            <Button
-              title="Review the request"
-              onPress={() =>
-                drillDownPush(
-                  `/orders/extension/${openExtension.id}?orderId=${order.id}` as never,
-                )
-              }
-            />
-          </Card>
-        ) : null}
-
-        {/*
-          Lateness. A shopper had no way to raise this at all: the only dispute
-          control was for a garment they already had, and the API demanded a
-          photograph an undelivered order cannot produce.
-
-          An open report outranks the offer to make one, and carries the way out
-          most shoppers actually want — the piece turned up, take it late.
-        */}
-        {order.kind === 'CUSTOM' && openDelayDispute ? (
-          <Card
-            padding="lg"
-            style={[
-              styles.noticeCard,
-              { borderColor: theme.colors.warning, backgroundColor: theme.colors.surfaceAlt },
-            ]}
-          >
-            <AppText variant="captionBold" tone="warning">
-              🛟 DELAY REPORTED
-            </AppText>
-            <AppText variant="small" tone="muted">
-              Your order is still live and your maker has been told to keep
-              working. WIEZ will be in touch here.
-            </AppText>
-            <Button
-              title="It arrived — close this"
-              variant="secondary"
-              size="sm"
-              loading={saving}
-              onPress={() => void handleCloseDelayDispute()}
-            />
-          </Card>
-        ) : order.kind === 'CUSTOM' && order.delayDispute.eligible ? (
-          <Card
-            padding="lg"
-            style={[
-              styles.noticeCard,
-              { borderColor: theme.colors.danger, backgroundColor: theme.colors.surfaceAlt },
-            ]}
-          >
-            <AppText variant="captionBold" tone="danger">
-              🚩 {order.delayDispute.basis === 'DELIVERY' ? 'DELIVERY OVERDUE' : 'PRODUCTION OVERDUE'}
-            </AppText>
-            <AppText variant="small" tone="muted">
-              If your maker has not explained the delay, bring WIEZ in. This does
-              not cancel or refund your order — it freezes their payment and puts
-              a person on it.
-            </AppText>
-            <Button
-              title="Report the delay"
-              variant="secondary"
-              size="sm"
-              loading={saving}
-              onPress={() => void handleReportDelay()}
-            />
-          </Card>
-        ) : order.kind === 'CUSTOM' && order.delayDispute.reason === 'WITHIN_GRACE' ? (
-          // Inside the grace the right move is a message, not an escalation:
-          // makers run an afternoon late and usually say so.
-          <Card padding="lg" style={styles.noticeCard}>
-            <AppText variant="captionBold">⏳ RUNNING A LITTLE LATE</AppText>
-            <AppText variant="small" tone="muted">
-              Your maker is just past the production date. Message them first —
-              you can bring WIEZ in shortly if nothing moves.
-            </AppText>
-          </Card>
-        ) : null}
-
-        {adminNotices.length > 0 || interventionOpen ? (
-          <Card
-            padding="lg"
-            style={[
-              styles.noticeCard,
-              { borderColor: theme.colors.warning, backgroundColor: theme.colors.surfaceAlt },
-            ]}
-          >
-            <AppText variant="captionBold" tone="warning">
-              {interventionOpen ? '🛟 WIEZ IS REVIEWING THIS ORDER' : '📣 NOTES FROM WIEZ'}
-            </AppText>
-            <AppText variant="small" tone="muted">
-              {interventionOpen
-                ? 'Someone at WIEZ is working on this with your maker. You will hear from us here.'
-                : 'Updates from WIEZ about this order. You do not need to reply.'}
-            </AppText>
-            {adminNotices.map((notice) => {
-              const body = typeof notice.payload.note === 'string' ? notice.payload.note : '';
-              return (
-                <View
-                  key={notice.id}
-                  style={[styles.noticeRow, { backgroundColor: theme.colors.surface }]}
-                >
-                  <AppText variant="small">
-                    {body || 'WIEZ updated this order.'}
-                  </AppText>
-                  <AppText variant="captionRegular" tone="muted">
-                    {formatDate(notice.createdAt)}
-                  </AppText>
-                </View>
-              );
-            })}
-            {order.kind === 'CUSTOM' && order.hasUnreadBuyerAdminNotice ? (
-              <Button
-                title="Mark as read"
-                variant="secondary"
-                size="sm"
-                loading={saving}
-                onPress={() => void handleAckNotices()}
-              />
-            ) : null}
-          </Card>
-        ) : null}
+        <OrderAttentionPanel items={attentionItems} />
 
         {/*
           The overview, as one card with depth rather than four flat rows.
@@ -703,7 +742,7 @@ export default function BuyerOrderDetailScreen() {
           </View>
 
           <View style={styles.summaryGrid}>
-            <StatTile label="Amount" value={formatCurrency(order.amount, order.currency)} emphasis />
+            <StatTile label="Amount" value={formatCurrency(order.amount, order.currency)} money />
             <StatTile label="Placed" value={formatDate(order.createdAt) || '—'} />
             <StatTile
               label="Progress"
@@ -793,11 +832,19 @@ export default function BuyerOrderDetailScreen() {
                 <View style={styles.promiseCopy}>
                   <AppText variant="statLabel" tone="muted">DELIVERY PROMISE</AppText>
                   <AppText variant="bodyBold">
-                    {formatDate(order.promisedDeliveryAt) || 'Pending'}
+                    {formatDate(
+                      order.promisedDeliveryAt ?? order.schedule.expectedDeliveryAt,
+                    ) || 'Pending'}
                   </AppText>
                   {order.originalPromisedDeliveryAt ? (
                     <AppText variant="captionRegular" tone="muted">
                       Originally {formatDate(order.originalPromisedDeliveryAt)}
+                    </AppText>
+                  ) : order.schedule.deliveryEstimated ? (
+                    // A date worked out from the brand's published lead times
+                    // is not a promise they made on this order. Say which it is.
+                    <AppText variant="captionRegular" tone="muted">
+                      Estimated from this brand's stated turnaround
                     </AppText>
                   ) : null}
                 </View>
@@ -869,10 +916,6 @@ const styles = StyleSheet.create({
   heroCard: {
     gap: tokens.spacing.md,
   },
-  noticeCard: {
-    gap: tokens.spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -888,9 +931,8 @@ const styles = StyleSheet.create({
     flexBasis: '48%',
     flexGrow: 1,
     minWidth: 0,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.md,
-    padding: tokens.spacing.md,
+    // Border, radius and padding now come from ; only the layout is
+    // the tile's own business.
     gap: tokens.spacing.xs,
   },
   statValueRow: { flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs },
@@ -939,11 +981,6 @@ const styles = StyleSheet.create({
     padding: tokens.spacing.md,
   },
   promiseCopy: { flex: 1, minWidth: 0, gap: 2 },
-  noticeRow: {
-    borderRadius: tokens.radius.sm,
-    padding: tokens.spacing.md,
-    gap: tokens.spacing.xs,
-  },
   heroTop: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -245,7 +245,12 @@ check(
 const mobileDetail = read(path.join(MOBILE, 'app/orders/[orderId].tsx'));
 check(
   'the mobile order screen surfaces an open request and the notices',
-  /MORE TIME REQUESTED/.test(mobileDetail) && /NOTES FROM WIEZ/.test(mobileDetail),
+  // These are no longer three stacked bordered cards on the screen — they are
+  // collected into one attention row that opens a sheet. Assert the states are
+  // still built and still reachable, not the markup they used to be drawn in.
+  /needs \$\{openExtension\.requestedExtraDays\} more day/.test(mobileDetail) &&
+    /Note from WIEZ/.test(mobileDetail) &&
+    /<OrderAttentionPanel items=\{attentionItems\} \/>/.test(mobileDetail),
 );
 
 const routing = read(path.join(MOBILE, 'src/utils/mobileRouting.ts'));
@@ -288,9 +293,16 @@ check(
 );
 check(
   'the mobile order screen carries the report, the open state and the grace',
-  /DELAY REPORTED/.test(mobileDetail) &&
-    /PRODUCTION OVERDUE/.test(mobileDetail) &&
-    /RUNNING A LITTLE LATE/.test(mobileDetail),
+  /Delay reported/.test(mobileDetail) &&
+    /past its production date/.test(mobileDetail) &&
+    /Running a little late/.test(mobileDetail),
+);
+check(
+  'the report control states that reporting does not cancel the order',
+  // The reassurance has to be in the body, which renders ABOVE the button —
+  // without it "Report the delay" reads as "cancel my order".
+  /does not cancel or refund your order/.test(mobileDetail),
+  'A shopper must know what the control does before they press it.',
 );
 check(
   'mobile can call both dispute endpoints',

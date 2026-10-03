@@ -67,6 +67,56 @@ export function orderCountLabel(order: BuyerOrderSummary): string | null {
   return `${count} item${count === 1 ? '' : 's'}`;
 }
 
+/**
+ * The time left on an order, as a shopper would say it.
+ *
+ * This is the whole point of putting a countdown on the row: someone with three
+ * live orders should be able to see which one has slipped without opening any
+ * of them. The API resolves the dates (it owns the lead-time rules and the
+ * extension days folded into them); this only decides the wording and the
+ * colour, so a row and the order screen can never disagree about lateness.
+ *
+ * `null` means there is nothing useful to say — the order has not started, or
+ * it is finished — and the row simply omits the chip rather than printing a
+ * reassuring "on track" over an order nobody is working on.
+ */
+export function formatOrderCountdown(
+  schedule: BuyerOrderSummary['schedule'],
+): { label: string; tone: 'danger' | 'warning' | 'muted'; marker: string | null } | null {
+  switch (schedule.state) {
+    case 'OVERDUE': {
+      const days = Math.max(1, schedule.daysOverdue);
+      return {
+        label: `${days} day${days === 1 ? '' : 's'} late`,
+        tone: 'danger',
+        // Rule 5: markers are emoji. A red square is the one that reads as a
+        // flag at 12px without looking like decoration.
+        marker: '🟥',
+      };
+    }
+    case 'DUE_SOON': {
+      const days = schedule.daysRemaining ?? 0;
+      if (days <= 0) return { label: 'Due today', tone: 'warning', marker: '⏳' };
+      return {
+        label: `${days} day${days === 1 ? '' : 's'} left`,
+        tone: 'warning',
+        marker: '⏳',
+      };
+    }
+    case 'ON_TRACK': {
+      const days = schedule.daysRemaining;
+      if (days == null) return null;
+      return {
+        label: `${days} day${days === 1 ? '' : 's'} left`,
+        tone: 'muted',
+        marker: null,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
 export function formatOrderDate(value: string): string {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return '';
@@ -114,6 +164,7 @@ export const OrderListRow = memo(function OrderListRow({
           : theme.colors.textMuted;
   const textTone = statusTone === 'neutral' ? 'muted' : statusTone;
   const countLabel = orderCountLabel(order);
+  const countdown = formatOrderCountdown(order.schedule);
 
   return (
     <Pressable
@@ -177,10 +228,36 @@ export const OrderListRow = memo(function OrderListRow({
             · {formatOrderDate(order.createdAt)}
           </AppText>
         </View>
+        {/*
+          The countdown, on its own line under the status.
+
+          It sits with the status rather than with the amount because it is a
+          fact about the ORDER, not about the money — and because a late order
+          needs the width to say so in words.
+        */}
+        {countdown ? (
+          <View style={styles.countdownLine}>
+            {countdown.marker ? (
+              <AppText variant="small" numberOfLines={1}>
+                {countdown.marker}
+              </AppText>
+            ) : null}
+            <AppText variant="smallBold" tone={countdown.tone} numberOfLines={1}>
+              {countdown.label}
+            </AppText>
+            {order.schedule.estimated ? (
+              // A derived date is not a promise the brand made on this order,
+              // and the row should not imply that it is.
+              <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+                est.
+              </AppText>
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.amount}>
-        <AppText variant="bodyBold" numberOfLines={1}>
+        <AppText variant="money" numberOfLines={1}>
           {formatMoney(order.amount, order.currency)}
         </AppText>
         {countLabel ? (
@@ -243,6 +320,12 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
+  },
+  countdownLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+    marginTop: 2,
   },
   amount: {
     alignItems: 'flex-end',

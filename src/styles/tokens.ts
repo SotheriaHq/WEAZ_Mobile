@@ -74,6 +74,20 @@ type Theme = {
      * turning the navigation into a block of colour.
      */
     navActiveSurface: string;
+    /**
+     * The two stops of the faint brand wash laid over a tile or a card.
+     *
+     * Cards that are only a fill and a hairline read as bare, and a screen of
+     * them reads as a form. This is the smallest thing that fixes that: a
+     * barely-perceptible vertical gradient in the brand hue, light enough that
+     * nothing sitting on it loses contrast, present enough that a surface stops
+     * looking like untouched paper.
+     *
+     * Both stops are declared per theme rather than derived with opacity: a
+     * translucent purple over a near-black ground goes muddy, so the dark pair
+     * is picked by eye to lift the same amount without greying.
+     */
+    surfaceTintGradient: readonly [string, string];
     focusRing: string;
     onPrimary: string;
     danger: string;
@@ -129,6 +143,8 @@ export const tokens = {
         // One shade deeper than `primarySoft` (#F3E8FF), which disappeared into
         // the island's frosted white. Same family, enough weight to register.
         navActiveSurface: '#E4D2FA',
+        // Roughly a 3% purple over white at the top, clearing to plain surface.
+        surfaceTintGradient: ['#F8F3FE', '#FFFFFF'] as readonly [string, string],
         focusRing: '#C084FC',
         onPrimary: '#ffffff',
         danger: '#ef4444',
@@ -182,6 +198,9 @@ export const tokens = {
         // Same one-step-deeper treatment applied to the dark tint (#2B1742),
         // which had the same "is that selected?" problem on dark chrome.
         navActiveSurface: '#3B2260',
+        // The same lift, mirrored: a touch of violet INTO the surface rather
+        // than a wash over it, so the card warms without going grey.
+        surfaceTintGradient: ['#191430', '#111620'] as readonly [string, string],
         focusRing: '#C084FC',
         onPrimary: '#ffffff',
         danger: '#ef4444',
@@ -492,6 +511,25 @@ export const tokens = {
     /** 14px / 700 — stat numbers. The number is the point of a stat; at 13px it
      *  was smaller than body text. */
     statValue: { size: 14, weight: '700' as const, lineHeight: 18, letterSpacing: -0.2 },
+
+    /**
+     * Money. Its own tier, because a price is not a heading that happens to
+     * contain digits.
+     *
+     * Amounts were rendering as `bodyBold` — the same face, weight and spacing
+     * as a card title — so "₦60,500" read as a label rather than as the figure
+     * the row exists to communicate. Two changes carry it: 800 lifts it clear
+     * of the 700 title beside it, and the slight negative tracking tightens the
+     * digit run so a five-figure sum reads as one number instead of five
+     * glyphs. `AppText` pairs these tiers with `tabular-nums`, which is what
+     * keeps a column of amounts aligned on the decimal — proportional digits
+     * make a stack of prices ragged no matter how the row is laid out.
+     */
+    money: { size: 17, weight: '800' as const, lineHeight: 22, letterSpacing: -0.3 },
+    /** 22px / 800 — the headline amount on an order or a receipt. */
+    moneyLarge: { size: 22, weight: '800' as const, lineHeight: 26, letterSpacing: -0.5 },
+    /** 13px / 700 — a secondary amount: a line item, a fee, a deduction. */
+    moneySmall: { size: 13, weight: '700' as const, lineHeight: 17, letterSpacing: -0.2 },
     /** 11px / 700 — stat labels (compact, Instagram-dense) */
     statLabel: { size: 11, weight: '700' as const, lineHeight: 14, letterSpacing: 0.6 },
 
