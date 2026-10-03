@@ -262,7 +262,8 @@ export default function SettingsScreen() {
             onPress: () => {
               // Browse-first: after sign-out the home surface is the guest
               // Runway, never the auth screen.
-              void signOut().finally(() => router.replace('/(tabs)' as never));
+              void signOut();
+              router.replace('/(tabs)' as never);
             },
           },
           {

@@ -34,7 +34,6 @@ import {
 } from '@/src/api/BuyerOrdersApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { writeCachedQueryData } from '@/src/cache';
-import { queryClient } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -146,9 +145,10 @@ export default function ExtensionDecisionScreen() {
         */
         writeCachedQueryData(queryKeys.orders.detail(order.id, 'CUSTOM'), updated);
         writeCachedQueryData(queryKeys.orders.detail(order.id), updated);
-        // The list carries a countdown that an approved extension moves, so it
-        // has to be refetched rather than left to its own staleness window.
-        void queryClient.invalidateQueries({ queryKey: queryKeys.orders.list() });
+        // `BuyerOrdersApi.respondToExtension` also publishes this detail as a
+        // row summary. Both Orders and the profile preview replace their
+        // countdown synchronously, so an approval never briefly shows the old
+        // deadline while a list refetch catches up.
 
         toast.success(
           decision === 'ACCEPTED'

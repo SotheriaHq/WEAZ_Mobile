@@ -608,6 +608,59 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
 }
 
 /**
+ * The server returns a full detail after a buyer action. Project it into the
+ * exact shape used by list rows so a visible deadline can update immediately
+ * instead of waiting for the next navigation or list refetch.
+ */
+export function toBuyerOrderSummary(detail: BuyerOrderDetail): BuyerOrderSummary {
+  if (detail.kind === 'STANDARD') {
+    return {
+      id: detail.id,
+      kind: 'STANDARD',
+      title: detail.title,
+      brandName: detail.brandName,
+      status: detail.status,
+      paymentStatus: detail.paymentStatus,
+      amount: detail.amount,
+      currency: detail.currency,
+      createdAt: detail.createdAt,
+      updatedAt: detail.updatedAt,
+      itemCount: detail.itemCount,
+      thumbnail: detail.items[0]?.thumbnail ?? null,
+      progressLabel: detail.deliveredAt
+        ? 'Delivered'
+        : detail.buyerConfirmedDeliveryAt
+          ? 'Completed'
+          : detail.paidAt
+            ? 'Processing'
+            : 'Placed',
+      sourceLabel: 'Standard order',
+      canConfirmDelivery: isDeliveryConfirmationPending(detail.status),
+      schedule: EMPTY_SCHEDULE,
+    };
+  }
+
+  return {
+    id: detail.id,
+    kind: 'CUSTOM',
+    title: detail.title,
+    brandName: detail.brandName,
+    status: detail.status,
+    paymentStatus: detail.paymentStatus,
+    amount: detail.amount,
+    currency: detail.currency,
+    createdAt: detail.createdAt,
+    updatedAt: detail.updatedAt,
+    itemCount: detail.measurementCount,
+    thumbnail: detail.sourcePrimaryMediaUrl,
+    progressLabel: detail.currentProgressStage,
+    sourceLabel: detail.sourceType === 'PRODUCT' ? 'Custom product order' : 'Custom design order',
+    canConfirmDelivery: isDeliveryConfirmationPending(detail.status),
+    schedule: detail.schedule,
+  };
+}
+
+/**
  * `/custom-orders` is buyer-only — the API answers 400 "Endpoint requires user
  * type REGULAR" for BRAND accounts. Two problems followed from calling it
  * blindly: the `Promise.all` below rejected, so a brand viewing Orders lost the
@@ -725,8 +778,9 @@ export const BuyerOrdersApi = {
       `/custom-orders/${orderId}/extension-requests/${requestId}/respond`,
       payload,
     );
-    markOrdersChanged();
-    return normalizeCustomDetail(response.data);
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
   },
 
   /**
@@ -745,8 +799,9 @@ export const BuyerOrdersApi = {
       description: payload.description,
       evidenceJson: {},
     });
-    markOrdersChanged();
-    return normalizeCustomDetail(response.data);
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
   },
 
   /** "It arrived — I'll take it late." The shopper ends their own report. */
@@ -759,26 +814,30 @@ export const BuyerOrdersApi = {
       `/custom-orders/${orderId}/disputes/${disputeId}/close`,
       { note },
     );
-    markOrdersChanged();
-    return normalizeCustomDetail(response.data);
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
   },
 
   /** Mark WIEZ's notices on this order as read. Read-only channel: no replies. */
   async ackAdminNotices(orderId: string): Promise<BuyerCustomOrderDetail> {
     const response = await apiClient.post(`/custom-orders/${orderId}/admin-notices/ack`);
-    markOrdersChanged();
-    return normalizeCustomDetail(response.data);
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
   },
 
   async confirmDelivery(order: BuyerOrderDetail, note?: string): Promise<BuyerOrderDetail> {
     if (order.kind === 'STANDARD') {
       const response = await apiClient.post(`/store/orders/${order.id}/confirm-delivery`, { note });
-      markOrdersChanged();
-      return normalizeStandardDetail(response.data);
+      const detail = normalizeStandardDetail(response.data);
+      markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+      return detail;
     }
 
     const response = await apiClient.post(`/custom-orders/${order.id}/confirm-delivery`, { note });
-    markOrdersChanged();
-    return normalizeCustomDetail(response.data);
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
   },
 };

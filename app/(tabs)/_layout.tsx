@@ -49,6 +49,11 @@ import {
 import { withNavigationLock, releaseNavigationLock } from '@/src/utils/mobileNavigation';
 import { requestStudioInPlaceNav } from '@/src/features/studio/studioNavController';
 import { isStudioRouteKey } from '@/src/features/studio/studioRoutes';
+import {
+  fetchShopperProfileWarmState,
+  shopperProfileWarmStateKey,
+} from '@/src/profile/shopperProfileWarmup';
+import { persistScreenState } from '@/src/state/persistentScreenCache';
 
 // Keep Runway (`index`) as the tab shell's anchor route now that Catalogue is
 // also a (hidden) tab — without this, adding sibling screens can shift Expo
@@ -188,6 +193,31 @@ export default function TabLayout() {
     `400 Endpoint requires user type REGULAR`.
   */
   const isBrand = isBrandAccount(user);
+
+  /**
+   * A freshly signed-in shopper has no on-disk snapshot (it was deliberately
+   * cleared on the previous sign-out). Warm the complete Me payload from the
+   * tab shell, before they tap the profile island item. The cancellation guard
+   * is an account-isolation boundary: an old request may finish, but it can
+   * never repopulate the cache after its owner signs out or switches account.
+   */
+  useEffect(() => {
+    if (status !== 'authenticated' || !user?.id || isBrand) return undefined;
+
+    let active = true;
+    const userId = user.id;
+    void fetchShopperProfileWarmState(userId)
+      .then((snapshot) => {
+        if (!active || !snapshot) return;
+        persistScreenState(shopperProfileWarmStateKey(userId), snapshot);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, [isBrand, status, user?.id]);
+
   const canOpenProfileMenu = status === 'authenticated';
   const profileNavLabel = status === 'loading' || canOpenProfileMenu ? 'Me' : 'Sign In';
   const profileNavEmoji = status === 'loading' || canOpenProfileMenu

@@ -105,6 +105,8 @@ check(
 // ── 4. The profile opens on content, not on a spinner ───────────────────────
 const persistent = read('src/state/persistentScreenCache.ts');
 const me = read('app/(tabs)/me.tsx');
+const tabLayout = read('app/(tabs)/_layout.tsx');
+const shopperProfileWarmup = read('src/profile/shopperProfileWarmup.ts');
 
 check(
   'the screen cache is written through to disk',
@@ -128,6 +130,16 @@ check(
   !/if \(!deferredWorkReady\) return;\s*\n\s*navPerf\.mark\('background_refresh_started'/.test(me),
   'rAF cannot fire while the JS thread renders the feed — a 2.5s stall.',
 );
+check(
+  'the authenticated tab shell warms the full shopper profile before Me is opened',
+  /fetchShopperProfileWarmState/.test(tabLayout) && /persistScreenState\(shopperProfileWarmStateKey/.test(tabLayout),
+  'Saved, Patches and Orders must start before the shopper taps the Me island item.',
+);
+check(
+  'a fast Me tap joins the shell warm-up rather than duplicating its six requests',
+  /inFlightWarmups/.test(shopperProfileWarmup) && /await fetchShopperProfileWarmState\(user\.id\)/.test(me),
+  'A fast route must share the in-flight work, not compete with it.',
+);
 
 // ── 5. An answered extension does not come back ─────────────────────────────
 const extensionScreen = read('app/orders/extension/[requestId].tsx');
@@ -143,6 +155,13 @@ check(
   /markOrdersChanged/.test(read('src/api/BuyerOrdersApi.ts')) &&
     /getOrderRevision/.test(me),
   'A row carries a deadline; a stale one is wrong, not merely untidy.',
+);
+check(
+  'an approved extension replaces visible order rows synchronously',
+  /markOrdersChanged\(\{ summary: toBuyerOrderSummary\(detail\) \}\)/.test(read('src/api/BuyerOrdersApi.ts')) &&
+    /subscribeOrderChanges/.test(me) &&
+    /subscribeOrderChanges/.test(read('app/orders/index.tsx')),
+  'The returned schedule must replace the old countdown without a reroute or refetch.',
 );
 
 // ── 5b. The island clips to its own shape ───────────────────────────────────
@@ -190,6 +209,18 @@ check(
 check(
   'the row renders a day count with an overdue marker',
   /formatOrderCountdown/.test(read('components/orders/OrderListRow.tsx')),
+);
+check(
+  'order timelines use the shared purple metric surface and red issue marker',
+  /variant="tinted"/.test(read('components/orders/OrderScheduleBadge.tsx')) &&
+    /🟥/.test(read('components/orders/OrderScheduleBadge.tsx')),
+  'Healthy order timing needs the brand wash; delays need a recognisable red issue signal.',
+);
+check(
+  'order timing text wraps instead of truncating on a narrow phone',
+  !/numberOfLines|ellipsizeMode/.test(read('components/orders/OrderListRow.tsx')) &&
+    !/numberOfLines|ellipsizeMode/.test(read('components/orders/OrderScheduleBadge.tsx')),
+  'A deadline must remain readable at large text sizes and narrow widths.',
 );
 check(
   'both clients read the schedule rather than recomputing lateness',

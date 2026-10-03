@@ -9,6 +9,7 @@ import {
   OrderAttentionPanel,
   type AttentionItem,
 } from '@/components/orders/OrderAttentionPanel';
+import { OrderScheduleBadge } from '@/components/orders/OrderScheduleBadge';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -114,7 +115,7 @@ function StatTile({
       being a hole cut in the card.
     */
     <Card variant="tinted" padding="md" style={styles.statTile}>
-      <AppText variant="statLabel" tone="muted" numberOfLines={1}>
+      <AppText variant="statLabel" tone="muted">
         {label.toUpperCase()}
       </AppText>
       <View style={styles.statValueRow}>
@@ -122,7 +123,6 @@ function StatTile({
         <AppText
           variant={money ? 'moneyLarge' : emphasis ? 'h3' : 'bodyBold'}
           tone={tone === 'primary' ? 'primary' : 'default'}
-          numberOfLines={1}
           style={styles.statValueText}
         >
           {value}
@@ -168,7 +168,7 @@ function DetailItemRow({ item }: { item: BuyerOrderItem }) {
         />
       </View>
       <View style={styles.itemCopy}>
-        <AppText variant="bodyBold" numberOfLines={1}>{item.productName}</AppText>
+        <AppText variant="bodyBold">{item.productName}</AppText>
         <AppText variant="captionRegular" tone="muted">
           {[`Qty ${item.quantity}`, item.selectedSize ? `Size ${item.selectedSize}` : null, item.selectedColor ? `Color ${item.selectedColor}` : null]
             .filter(Boolean)
@@ -481,55 +481,6 @@ export default function BuyerOrderDetailScreen() {
       }));
   }, [order]);
 
-  /**
-   * Whether the delivery promise is still ahead of us. "On track" that keeps
-   * saying "on track" after the date has passed is worse than saying nothing.
-   */
-  const deliveryTrack = useMemo((): {
-    label: string;
-    tone: 'primary' | 'danger' | 'muted' | 'success';
-  } => {
-    /*
-      The API's verdict, not a second opinion.
-
-      This measured `promisedDeliveryAt` against the clock here — a date only
-      written at payment confirmation, so an order accepted by any other path
-      reported "Not scheduled" however overdue it was, while the report control
-      (reading the same null through the dispute gate) stayed hidden. One
-      resolver now answers both, derived from the brand's published lead times
-      when no promise was recorded.
-    */
-    if (!order || order.kind !== 'CUSTOM') {
-      return { label: 'Not scheduled', tone: 'muted' };
-    }
-    const { schedule } = order;
-    switch (schedule.state) {
-      case 'OVERDUE': {
-        const days = Math.max(1, schedule.daysOverdue);
-        return { label: `${days} day${days === 1 ? '' : 's'} late`, tone: 'danger' };
-      }
-      case 'DUE_SOON': {
-        const days = schedule.daysRemaining ?? 0;
-        return {
-          label: days <= 0 ? 'Due today' : `${days} day${days === 1 ? '' : 's'} left`,
-          tone: 'danger',
-        };
-      }
-      case 'ON_TRACK': {
-        const days = schedule.daysRemaining;
-        return days == null
-          ? { label: 'On track', tone: 'primary' }
-          : { label: `${days} day${days === 1 ? '' : 's'} left`, tone: 'primary' };
-      }
-      case 'DELIVERED':
-        return { label: 'Delivered', tone: 'success' };
-      case 'CLOSED':
-        return { label: 'Closed', tone: 'muted' };
-      default:
-        return { label: 'Not scheduled', tone: 'muted' };
-    }
-  }, [order]);
-
   const progressFraction = useMemo(
     () => (order?.kind === 'CUSTOM' ? stageFraction(order.currentProgressStage) : null),
     [order],
@@ -716,7 +667,7 @@ export default function BuyerOrderDetailScreen() {
               ]}
             >
               <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
-              <AppText variant="badgeLabel" tone={statusTextTone} numberOfLines={1}>
+              <AppText variant="badgeLabel" tone={statusTextTone}>
                 {humanizeToken(order.status)}
               </AppText>
             </View>
@@ -736,8 +687,8 @@ export default function BuyerOrderDetailScreen() {
               />
             </View>
             <View style={styles.heroCopy}>
-              <AppText variant="h2" numberOfLines={2}>{order.title}</AppText>
-              <AppText variant="small" tone="muted" numberOfLines={1}>{order.brandName}</AppText>
+              <AppText variant="h2">{order.title}</AppText>
+              <AppText variant="small" tone="muted">{order.brandName}</AppText>
             </View>
           </View>
 
@@ -769,8 +720,8 @@ export default function BuyerOrderDetailScreen() {
             <View style={styles.sectionHeaderCopy}>
               <AppText variant="cardTitle">Order items</AppText>
               {order.kind === 'CUSTOM' ? (
-                <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-                  Source: {order.sourceType} · {order.sourceId.slice(0, 8)}…
+                <AppText variant="captionRegular" tone="muted">
+                  Source: {order.sourceType} · {order.sourceId}
                 </AppText>
               ) : null}
             </View>
@@ -810,10 +761,10 @@ export default function BuyerOrderDetailScreen() {
                         { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
                       ]}
                     >
-                      <AppText variant="statLabel" tone="muted" numberOfLines={1}>
+                      <AppText variant="statLabel" tone="muted">
                         {entry.label.toUpperCase()}
                       </AppText>
-                      <AppText variant="bodyBold" numberOfLines={1}>{entry.value}</AppText>
+                      <AppText variant="bodyBold">{entry.value}</AppText>
                     </View>
                   ))}
                 </View>
@@ -848,9 +799,7 @@ export default function BuyerOrderDetailScreen() {
                     </AppText>
                   ) : null}
                 </View>
-                <AppText variant="badgeLabel" tone={deliveryTrack.tone}>
-                  {deliveryTrack.label}
-                </AppText>
+                <OrderScheduleBadge schedule={order.schedule} variant="detail" />
               </View>
             </>
           )}
@@ -864,7 +813,7 @@ export default function BuyerOrderDetailScreen() {
           <View style={styles.sectionList}>
             <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
               <AppText variant="captionRegular" tone="muted">Order ID</AppText>
-              <AppText variant="bodyBold">#{order.id.slice(0, 8).toUpperCase()}</AppText>
+              <AppText variant="bodyBold">#{order.id.toUpperCase()}</AppText>
             </View>
             <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
               <AppText variant="captionRegular" tone="muted">Payment status</AppText>
@@ -973,7 +922,7 @@ const styles = StyleSheet.create({
   },
   promiseRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
     borderWidth: StyleSheet.hairlineWidth,

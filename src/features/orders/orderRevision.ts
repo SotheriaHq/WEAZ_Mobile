@@ -12,20 +12,44 @@
  * order whose date just moved is wrong about the one fact the row exists to
  * state.
  *
- * `BuyerOrdersApi` bumps it after any write that can move a date or a status —
- * one chokepoint, so no screen has to remember — and the profile compares it on
- * focus and reloads only when it actually moved. A declined extension changes
- * nothing about the schedule, but it does change the order's state, so it bumps
- * too: the cost of an unnecessary reload is one request, and the cost of a
- * missed one is a shopper looking at a number that is not true.
+ * `BuyerOrdersApi` publishes the server-resolved row after every write. Mounted
+ * lists replace that row immediately; the revision remains a focus-time safety
+ * net for a list that was not mounted at the time. A declined extension returns
+ * the unchanged schedule, while an approved one arrives with the shifted date.
  */
 
+import type { BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
+
 let revision = 0;
+const listeners = new Set<(change: OrderChange) => void>();
+
+/** A server-resolved replacement for a row that is already visible. */
+export type OrderChange = {
+  summary?: BuyerOrderSummary;
+};
 
 /** Called by `BuyerOrdersApi` after any order-mutating request. */
-export const markOrdersChanged = (): void => {
+export const markOrdersChanged = (change: OrderChange = {}): void => {
   revision += 1;
+  listeners.forEach((listener) => listener(change));
 };
 
 /** Read by a screen that lists orders, against its own last-seen value. */
 export const getOrderRevision = (): number => revision;
+
+/**
+ * Apply a single server-confirmed order to a list without waiting for focus,
+ * navigation, or an eventually-consistent list refetch.
+ */
+export function applyOrderSummaryUpdate(
+  orders: BuyerOrderSummary[],
+  summary: BuyerOrderSummary,
+): BuyerOrderSummary[] {
+  return orders.map((order) => (order.id === summary.id ? summary : order));
+}
+
+/** Listen for a confirmed order mutation while a list screen is mounted. */
+export function subscribeOrderChanges(listener: (change: OrderChange) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}

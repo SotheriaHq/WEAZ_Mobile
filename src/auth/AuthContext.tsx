@@ -502,15 +502,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOutImpl = useCallback(async (options?: { notifyServer?: boolean }) => {
     const notifyServer = options?.notifyServer ?? true;
-    const refreshToken = refreshTokenState ?? (await getRefreshToken());
+    const revokeOnServer = (refreshToken: string | null) => {
+      // Local sign-out must never be held hostage by a slow or offline API.
+      // The request is created while this account's credentials are still
+      // present; local tokens and private data are cleared immediately after.
+      void apiClient
+        .post('/auth/logout', { refreshToken: refreshToken ?? undefined })
+        .catch(() => undefined);
+    };
 
     if (notifyServer) {
-      try {
-        await apiClient.post('/auth/logout', {
-          refreshToken: refreshToken ?? undefined,
-        });
-      } catch {
-        // best-effort server logout only
+      if (refreshTokenState) {
+        revokeOnServer(refreshTokenState);
+      } else {
+        // A missing in-memory refresh token is unusual but recoverable. Do not
+        // await SecureStore before clearing the account from the visible app.
+        void getRefreshToken().then(revokeOnServer).catch(() => undefined);
       }
     }
 
@@ -524,7 +531,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus('unauthenticated');
     // Signed out is a settled answer — nothing private left to wait on.
     setSessionSettled(true);
-    await clearMobilePrivateSessionState({ client: queryClient });
+    // This performs all in-memory isolation before its first await. Durable
+    // storage and push cleanup continue safely after the guest UI is visible.
+    void clearMobilePrivateSessionState({ client: queryClient });
   }, [refreshTokenState]);
 
   /**

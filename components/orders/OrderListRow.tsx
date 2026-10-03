@@ -16,6 +16,10 @@
 import React, { memo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import {
+  OrderScheduleBadge,
+  formatOrderCountdown as formatScheduleCountdown,
+} from '@/components/orders/OrderScheduleBadge';
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
 import type { BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
@@ -82,39 +86,8 @@ export function orderCountLabel(order: BuyerOrderSummary): string | null {
  */
 export function formatOrderCountdown(
   schedule: BuyerOrderSummary['schedule'],
-): { label: string; tone: 'danger' | 'warning' | 'muted'; marker: string | null } | null {
-  switch (schedule.state) {
-    case 'OVERDUE': {
-      const days = Math.max(1, schedule.daysOverdue);
-      return {
-        label: `${days} day${days === 1 ? '' : 's'} late`,
-        tone: 'danger',
-        // Rule 5: markers are emoji. A red square is the one that reads as a
-        // flag at 12px without looking like decoration.
-        marker: '🟥',
-      };
-    }
-    case 'DUE_SOON': {
-      const days = schedule.daysRemaining ?? 0;
-      if (days <= 0) return { label: 'Due today', tone: 'warning', marker: '⏳' };
-      return {
-        label: `${days} day${days === 1 ? '' : 's'} left`,
-        tone: 'warning',
-        marker: '⏳',
-      };
-    }
-    case 'ON_TRACK': {
-      const days = schedule.daysRemaining;
-      if (days == null) return null;
-      return {
-        label: `${days} day${days === 1 ? '' : 's'} left`,
-        tone: 'muted',
-        marker: null,
-      };
-    }
-    default:
-      return null;
-  }
+): ReturnType<typeof formatScheduleCountdown> {
+  return formatScheduleCountdown(schedule);
 }
 
 export function formatOrderDate(value: string): string {
@@ -171,7 +144,7 @@ export const OrderListRow = memo(function OrderListRow({
       onPress={onPress}
       onPressIn={onPressIn}
       accessibilityRole="button"
-      accessibilityLabel={`Open ${order.title}, ${humanizeOrderStatus(order.status)}`}
+      accessibilityLabel={`Open ${order.title}, ${humanizeOrderStatus(order.status)}${countdown ? `, ${countdown.label}` : ''}`}
       style={({ pressed }) => [
         styles.row,
         isCard
@@ -206,25 +179,25 @@ export const OrderListRow = memo(function OrderListRow({
         />
         {/* The kind reads off the cover, so the row needs no pill for it. */}
         <View style={[styles.kindTag, { backgroundColor: theme.colors.backdropStrong }]}>
-          <AppText variant="small" tone="inverse" numberOfLines={1}>
+          <AppText variant="small" tone="inverse">
             {order.kind === 'STANDARD' ? 'Standard' : 'Custom'}
           </AppText>
         </View>
       </View>
 
       <View style={styles.copy}>
-        <AppText variant="bodyBold" numberOfLines={1}>
+        <AppText variant="bodyBold">
           {order.title}
         </AppText>
-        <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+        <AppText variant="captionRegular" tone="muted">
           {order.brandName}
         </AppText>
         <View style={styles.statusLine}>
           <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
-          <AppText variant="small" tone={textTone} numberOfLines={1}>
+          <AppText variant="small" tone={textTone}>
             {humanizeOrderStatus(order.status)}
           </AppText>
-          <AppText variant="small" tone="muted" numberOfLines={1}>
+          <AppText variant="small" tone="muted">
             · {formatOrderDate(order.createdAt)}
           </AppText>
         </View>
@@ -235,33 +208,15 @@ export const OrderListRow = memo(function OrderListRow({
           fact about the ORDER, not about the money — and because a late order
           needs the width to say so in words.
         */}
-        {countdown ? (
-          <View style={styles.countdownLine}>
-            {countdown.marker ? (
-              <AppText variant="small" numberOfLines={1}>
-                {countdown.marker}
-              </AppText>
-            ) : null}
-            <AppText variant="smallBold" tone={countdown.tone} numberOfLines={1}>
-              {countdown.label}
-            </AppText>
-            {order.schedule.estimated ? (
-              // A derived date is not a promise the brand made on this order,
-              // and the row should not imply that it is.
-              <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-                est.
-              </AppText>
-            ) : null}
-          </View>
-        ) : null}
+        <OrderScheduleBadge schedule={order.schedule} />
       </View>
 
       <View style={styles.amount}>
-        <AppText variant="money" numberOfLines={1}>
+        <AppText variant="money">
           {formatMoney(order.amount, order.currency)}
         </AppText>
         {countLabel ? (
-          <AppText variant="small" tone="muted" numberOfLines={1}>
+          <AppText variant="small" tone="muted">
             {countLabel}
           </AppText>
         ) : null}
@@ -278,7 +233,7 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
   },
@@ -313,6 +268,7 @@ const styles = StyleSheet.create({
   statusLine: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: tokens.spacing.xs,
     marginTop: 2,
   },
@@ -321,14 +277,9 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
   },
-  countdownLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
-    marginTop: 2,
-  },
   amount: {
     alignItems: 'flex-end',
+    flexShrink: 1,
     gap: 2,
   },
 });

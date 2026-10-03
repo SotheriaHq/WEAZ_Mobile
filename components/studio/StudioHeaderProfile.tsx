@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { router } from 'expo-router';
 import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -357,6 +358,9 @@ export function useStudioProfileMenu(overrides?: {
   const handleSignOut = useCallback(() => {
     setVisible(false);
     void signOut();
+    // A Studio-only route cannot render a useful guest state. Leave the warm
+    // WebView behind immediately and land on the guest Runway.
+    router.replace('/(tabs)' as never);
   }, [signOut]);
 
   return {

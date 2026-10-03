@@ -799,10 +799,9 @@ export default function StudioWebViewScreen() {
 
   const handleStudioSignOut = useCallback(() => {
     setProfileMenuVisible(false);
-    void signOut().finally(() => {
-      // Browse-first: sign-out exits to the guest Runway, never the auth screen.
-      router.replace('/(tabs)' as any);
-    });
+    void signOut();
+    // Browse-first: sign-out exits to the guest Runway, never the auth screen.
+    router.replace('/(tabs)' as any);
   }, [signOut]);
 
   const studioShellBackground = theme.colors.bg;

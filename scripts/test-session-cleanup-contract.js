@@ -47,6 +47,7 @@ function loadSessionCleanup(options = {}) {
     clearMarketSignalQueue: 0,
     clearDesignEditorBackgroundTasks: 0,
     clearWarmScreenStateCache: 0,
+    clearShopperProfileWarmups: 0,
     clearPersistentScreenCache: 0,
     resetCustomOrdersAvailability: 0,
     deactivatePushToken: 0,
@@ -203,6 +204,9 @@ function loadSessionCleanup(options = {}) {
       if (request === '@/src/state/screenWarmState') {
         return { clearWarmScreenStateCache: () => calls.clearWarmScreenStateCache++ };
       }
+      if (request === '@/src/profile/shopperProfileWarmup') {
+        return { clearShopperProfileWarmups: () => calls.clearShopperProfileWarmups++ };
+      }
       if (request === '@/src/state/persistentScreenCache') {
         return {
           clearPersistentScreenCache: async () => {
@@ -273,6 +277,7 @@ async function main() {
   assert.equal(calls.clearMarketSignalQueue, 1, 'logout should clear persisted market signal queue');
   assert.equal(calls.clearDesignEditorBackgroundTasks, 1, 'logout should clear design editor tasks');
   assert.equal(calls.clearWarmScreenStateCache, 1, 'logout should clear warm screen state');
+  assert.equal(calls.clearShopperProfileWarmups, 1, 'logout should detach in-flight shopper profile warm-ups');
   // The on-disk half of that cache. A profile snapshot surviving sign-out would
   // greet the next person on this device with the previous account's content.
   assert.equal(

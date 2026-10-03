@@ -30,6 +30,7 @@ import { resetCustomOrdersAvailability } from '@/src/api/BuyerOrdersApi';
 import { clearMobileMarketSignalQueue } from '@/src/services/marketSignals';
 import { clearWarmScreenStateCache } from '@/src/state/screenWarmState';
 import { clearPersistentScreenCache } from '@/src/state/persistentScreenCache';
+import { clearShopperProfileWarmups } from '@/src/profile/shopperProfileWarmup';
 import { removeAccessToken, removeCachedAuthUser, removeRefreshToken } from '@/src/storage/secureStorage';
 
 export const ACTIVE_BRAND_STORAGE_KEY = 'wiez.activeBrandId';
@@ -77,10 +78,6 @@ export async function clearMobilePrivateSessionState({
   client?: QueryClient;
   deactivatePushToken?: boolean;
 } = {}) {
-  if (deactivatePushToken) {
-    await deactivateRegisteredPushTokenForLogout().catch(() => undefined);
-  }
-
   // Coalesced reads are per-account; none may survive into the next user.
   clearCoalescedRequests();
   /*
@@ -97,6 +94,7 @@ export async function clearMobilePrivateSessionState({
   clearMessagingRealtimeSession();
   clearBrandApiSessionCaches();
   clearWarmScreenStateCache();
+  clearShopperProfileWarmups();
   clearResolvedImageUriCache();
   clearDesignEditorBackgroundTasks();
   // "This account type has no custom orders" is a per-account verdict, so it
@@ -104,6 +102,11 @@ export async function clearMobilePrivateSessionState({
   resetCustomOrdersAvailability();
 
   await Promise.allSettled([
+    // The UI is already private before this network best-effort begins. Waiting
+    // for token deactivation here made sign-out feel frozen on slow networks.
+    deactivatePushToken
+      ? deactivateRegisteredPushTokenForLogout().catch(() => undefined)
+      : Promise.resolve(),
     // The on-disk half of the warm cache. One account's profile snapshot must
     // never greet the next person to sign in on this device.
     clearPersistentScreenCache(),

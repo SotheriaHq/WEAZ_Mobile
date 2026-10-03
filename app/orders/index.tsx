@@ -19,7 +19,12 @@ import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi
 import reviewApi, { type ReviewPromptDto, type SubmitReviewPayload } from '@/src/api/ReviewApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useCachedQuery, cachePolicies } from '@/src/cache';
+import { queryClient } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
+import {
+  applyOrderSummaryUpdate,
+  subscribeOrderChanges,
+} from '@/src/features/orders/orderRevision';
 import { prefetchDetailOnPress, prefetchQuery } from '@/src/prefetch/navPrefetch';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -176,6 +181,22 @@ export default function OrdersScreen() {
   const load = useCallback(() => {
     void refetchOrders({ forceRefresh: true });
   }, [refetchOrders]);
+
+  // A mutation returns the newly resolved schedule. Patch the mounted history
+  // directly, rather than making an approved extension wait for a route change
+  // or the list query's next refetch before the day count becomes truthful.
+  useEffect(() => {
+    if (status !== 'authenticated' || !user?.id) return undefined;
+
+    return subscribeOrderChanges((change) => {
+      const summary = change.summary;
+      if (!summary) return;
+      queryClient.setQueryData<BuyerOrderSummary[]>(
+        queryKeys.orders.list(user.id),
+        (current) => (current ? applyOrderSummaryUpdate(current, summary) : current),
+      );
+    });
+  }, [status, user?.id]);
 
   // Phase 5 scroll-proximity: warm the detail query for on-screen orders so a
   // tap opens instantly. Bounded by the prefetch budget (query lane) + dedupe.

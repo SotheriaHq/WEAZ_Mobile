@@ -21,7 +21,11 @@ import ProfileImageModal from '@/components/profile/ProfileImageModal';
 import { ProfileApi, type ComputedSizeFitProfile, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
 import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
-import { readWarmScreenState } from '@/src/state/screenWarmState';
+import { readWarmScreenState, subscribeWarmScreenState } from '@/src/state/screenWarmState';
+import {
+  fetchShopperProfileWarmState,
+  shopperProfileWarmStateKey,
+} from '@/src/profile/shopperProfileWarmup';
 // Written through to disk, not only to the in-memory warm map: the profile is
 // the screen where an empty first frame reads as a broken app.
 import { persistScreenState } from '@/src/state/persistentScreenCache';
@@ -54,7 +58,11 @@ import {
 } from '@/src/utils/uploadValidation';
 import { formatMoney } from '@/src/utils/money';
 import { CLIP_EMOJI, CLIPS_TAB_LABEL } from '@/src/constants/clipping';
-import { getOrderRevision } from '@/src/features/orders/orderRevision';
+import {
+  applyOrderSummaryUpdate,
+  getOrderRevision,
+  subscribeOrderChanges,
+} from '@/src/features/orders/orderRevision';
 import { getClipRevision } from '@/src/features/clipping/clipRevision';
 
 type ProfileTab = 'Saved' | 'Patches' | 'Orders';
@@ -412,7 +420,7 @@ export default function BuyerProfileScreen() {
   const toast = useToast();
   const params = useLocalSearchParams<{ tab?: string | string[] }>();
   const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
-  const warmProfileStateKey = user?.id ? `me:v2:${user.id}` : null;
+  const warmProfileStateKey = user?.id ? shopperProfileWarmStateKey(user.id) : null;
   const initialWarmProfileState = warmProfileStateKey ? readWarmScreenState<ProfileState>(warmProfileStateKey) : null;
 
   const [state, setState] = useState<ProfileState>(() => initialWarmProfileState ?? createEmptyProfileState());
@@ -454,6 +462,7 @@ export default function BuyerProfileScreen() {
   const savedLooksOpenedTrackedRef = useRef(false);
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const loadRequestIdRef = useRef(0);
+  const lastProfileLoadAtRef = useRef(0);
   const lastUserIdRef = useRef<string | null>(null);
   const stateRef = useRef(state);
 
@@ -588,6 +597,12 @@ export default function BuyerProfileScreen() {
   }, [activeTab, state.saved.length, status]);
 
   useEffect(() => {
+    // The identity can change while one of the six profile reads is still in
+    // flight. Invalidate that completion before clearing visible state, or a
+    // late response can repopulate a signed-out or different user's profile.
+    loadRequestIdRef.current += 1;
+    lastProfileLoadAtRef.current = 0;
+
     if (status === 'authenticated' && user?.id) {
       if (lastUserIdRef.current !== user.id) {
         lastUserIdRef.current = user.id;
@@ -607,7 +622,28 @@ export default function BuyerProfileScreen() {
     setLoading(false);
     setRefreshing(false);
     hasWarmProfileSnapshotRef.current = false;
-  }, [status, user?.id]);
+  }, [status, user?.id, warmProfileStateKey]);
+
+  /**
+   * The tab shell starts its shopper-profile warm-up before this route is
+   * opened. If the route wins that race, adopt the completed snapshot instead
+   * of leaving the shopper on a cold skeleton until a second request settles.
+   */
+  useEffect(() => {
+    if (!warmProfileStateKey) return undefined;
+
+    return subscribeWarmScreenState(warmProfileStateKey, () => {
+      if (hasWarmProfileSnapshotRef.current) return;
+      const snapshot = readWarmScreenState<ProfileState>(warmProfileStateKey);
+      if (!snapshot?.profile) return;
+
+      hasWarmProfileSnapshotRef.current = true;
+      setState(snapshot);
+      setLoading(false);
+      setOrdersLoading(false);
+      setError(null);
+    });
+  }, [warmProfileStateKey]);
 
   // NO auto-redirect to /(auth)/login here. WIEZ is browse-first: signing in is
   // a choice, never a toll gate. This screen also mounts unfocused during the
@@ -626,7 +662,6 @@ export default function BuyerProfileScreen() {
     if (normalized === 'saved') setActiveTab('Saved');
   }, [requestedTab]);
 
-  const lastProfileLoadAtRef = useRef(0);
   const load = useCallback(async (options?: { silent?: boolean; force?: boolean }) => {
     const silent = options?.silent ?? false;
     if (status !== 'authenticated' || !user?.id) {
@@ -656,6 +691,25 @@ export default function BuyerProfileScreen() {
     setOrdersLoading(true);
     setError(null);
     try {
+      /*
+       * If the tab shell has already started the all-tab profile warm-up, join
+       * that exact promise instead of issuing the six requests again. This is
+       * the fast-tap case: the shopper reaches Me while the island shell is
+       * still warming it.
+       */
+      if (!options?.force && !stateRef.current.profile) {
+        const warmSnapshot = await fetchShopperProfileWarmState(user.id);
+        if (requestId !== loadRequestIdRef.current) return;
+
+        if (warmSnapshot) {
+          setState(warmSnapshot);
+          hasWarmProfileSnapshotRef.current = true;
+          if (warmProfileStateKey) persistScreenState(warmProfileStateKey, warmSnapshot);
+          setError(null);
+          return;
+        }
+      }
+
       const [profileResult, sizeFitResult, computedSizeFitResult, savedResult, patchesResult, ordersResult] = await Promise.allSettled([
         ProfileApi.getMe(),
         ProfileApi.getSizeFit(),
@@ -740,7 +794,7 @@ export default function BuyerProfileScreen() {
       }
     }
     // Primitives only — see `fallbackProfileRef` above.
-  }, [status, user?.id]);
+  }, [status, user?.id, warmProfileStateKey]);
 
   /**
    * Fetch on mount, NOT behind the deferred-work gate.
@@ -794,6 +848,21 @@ export default function BuyerProfileScreen() {
   const lastClipRevisionRef = useRef(getClipRevision());
   /** Same, for order writes that can move a date on a row. */
   const lastOrderRevisionRef = useRef(getOrderRevision());
+  useEffect(() => {
+    return subscribeOrderChanges((change) => {
+      lastOrderRevisionRef.current = getOrderRevision();
+      const summary = change.summary;
+      if (!summary) return;
+
+      // The extension endpoint has already returned the new server-resolved
+      // schedule. Replace the visible row synchronously; do not make the
+      // shopper leave and re-enter this tab to stop seeing the old deadline.
+      setState((current) => ({
+        ...current,
+        orders: applyOrderSummaryUpdate(current.orders, summary),
+      }));
+    });
+  }, []);
   useFocusEffect(
     useCallback(() => {
       if (!deferredWorkReady) return undefined;
@@ -1032,9 +1101,10 @@ export default function BuyerProfileScreen() {
         text: 'Sign out',
         style: 'destructive',
         onPress: () => {
-          void signOut().finally(() => {
-            router.replace(PROFILE_LOGIN_ROUTE as any);
-          });
+          // Local session cleanup happens synchronously. Leave this private
+          // screen at once; server revocation continues safely in background.
+          void signOut();
+          router.replace('/(tabs)' as any);
         },
       },
     ]);
