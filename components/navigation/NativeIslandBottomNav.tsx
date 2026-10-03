@@ -542,6 +542,22 @@ const styles = StyleSheet.create({
   navItems: {
     flex: 1,
     overflow: 'hidden',
+    /**
+     * Clip to the island's SHAPE, not to its bounding box.
+     *
+     * `navWrap` draws the pill (radius 28 on a 56pt bar, so both ends are full
+     * semicircles) but deliberately carries no `overflow: hidden` — pairing it
+     * with elevation makes Android drop child layers. Clipping was therefore
+     * delegated here, and this view had no radius, so it clipped to a
+     * RECTANGLE: every scrolling chip was free to render across the curved ends
+     * where the island's own background had already stopped. That is the
+     * "icons overflow outside the borders of the island" report — the links
+     * were not inside the bar, they were painted over the gap beside it.
+     *
+     * This view is `flex: 1` inside a fixed-height `navWrap`, so the same
+     * radius reproduces the pill exactly.
+     */
+    borderRadius: NATIVE_ISLAND_NAV.radius,
     position: 'relative',
   },
   navModeLayer: {
@@ -566,7 +582,19 @@ const styles = StyleSheet.create({
   scrollDockContent: {
     flexGrow: 1,
     alignItems: 'center',
-    paddingHorizontal: NATIVE_ISLAND_NAV.horizontalPadding,
+    /**
+     * Enough inset to clear the pill's curved ends.
+     *
+     * The shared `horizontalPadding` is 4, which is right for the fixed dock
+     * where `flex: 1` items are distributed and nothing sits hard against the
+     * edge. A SCROLLING dock is different: its first and last chips travel all
+     * the way to the content edge, and on a 56pt bar with a 28pt radius the arc
+     * reaches about 8pt inward at the top and bottom of a chip's glyph box. At
+     * 4pt those chips were landing inside the curve — so once the clip is
+     * correct they would be sliced by it instead of spilling past it. 12pt
+     * keeps the whole chip in the straight section of the pill.
+     */
+    paddingHorizontal: 12,
     gap: 2,
   },
   // Fixed chip width so Studio's 9 items keep the same breathing room as the

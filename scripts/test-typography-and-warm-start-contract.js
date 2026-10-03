@@ -145,6 +145,22 @@ check(
   'A row carries a deadline; a stale one is wrong, not merely untidy.',
 );
 
+// ── 5b. The island clips to its own shape ───────────────────────────────────
+const island = read('components/navigation/NativeIslandBottomNav.tsx');
+check(
+  'the island clips content to the pill, not to its bounding box',
+  /navItems: \{[\s\S]{0,900}?borderRadius: NATIVE_ISLAND_NAV\.radius/.test(island),
+  'navWrap cannot carry overflow:hidden (Android drops layers when paired with '
+    + 'elevation), so navItems does the clipping — and without the radius it '
+    + 'clipped to a rectangle while the island drew a pill, letting scrolling '
+    + 'chips paint across the curved ends.',
+);
+check(
+  'the scrolling dock insets its chips clear of the curved ends',
+  /scrollDockContent: \{[\s\S]{0,1400}?paddingHorizontal: 12/.test(island),
+  'At the shared 4pt the first and last chips sit inside the corner arc.',
+);
+
 // ── 6. Lateness is answerable on every order ────────────────────────────────
 const schedulePolicy = fs.readFileSync(
   path.join(MOBILE, '..', 'bthreadly/src/custom-orders/custom-order-schedule.policy.ts'),
