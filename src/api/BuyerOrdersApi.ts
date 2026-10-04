@@ -232,6 +232,22 @@ export interface BuyerCustomOrderDetail {
     status: string;
     reasonType: string;
     openedAt: string | null;
+    /**
+     * A settlement WIEZ has put to a party and is waiting on.
+     *
+     * Present only while the dispute is AWAITING_PARTY_CONSENT. More time is
+     * the shopper's to give — it is the exact thing they already refused — so
+     * it is proposed rather than applied, and nothing moves until they answer.
+     */
+    proposal: {
+      resolution: string;
+      note: string | null;
+      extraDays: number | null;
+      consentBy: 'BUYER' | 'BRAND' | 'BOTH' | null;
+      respondByAt: string | null;
+      buyerConsentAt: string | null;
+      buyerDeclinedAt: string | null;
+    } | null;
   }>;
   /**
    * Whether this order can be escalated for lateness. Decided by the API — the
@@ -578,11 +594,31 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
     disputes: Array.isArray(item.disputes)
       ? item.disputes.map((entry) => {
           const dispute = asRecord(entry);
+          const proposal = asRecord(dispute.proposal);
           return {
             id: asString(dispute.id),
             status: asString(dispute.status, 'OPEN'),
             reasonType: asString(dispute.reasonType),
             openedAt: optionalString(dispute.openedAt),
+            // `null` rather than an empty object when there is no proposal, so
+            // the screen can test for one without inspecting its fields.
+            proposal: dispute.proposal
+              ? {
+                  resolution: asString(proposal.resolution),
+                  note: optionalString(proposal.note),
+                  extraDays:
+                    proposal.extraDays != null ? asNumber(proposal.extraDays) : null,
+                  consentBy:
+                    proposal.consentBy === 'BUYER' ||
+                    proposal.consentBy === 'BRAND' ||
+                    proposal.consentBy === 'BOTH'
+                      ? proposal.consentBy
+                      : null,
+                  respondByAt: optionalString(proposal.respondByAt),
+                  buyerConsentAt: optionalString(proposal.buyerConsentAt),
+                  buyerDeclinedAt: optionalString(proposal.buyerDeclinedAt),
+                }
+              : null,
           };
         })
       : [],
@@ -805,6 +841,27 @@ export const BuyerOrdersApi = {
   },
 
   /** "It arrived — I'll take it late." The shopper ends their own report. */
+  /**
+   * Answer a settlement WIEZ has proposed.
+   *
+   * Declining does not close the dispute — it returns it to the admin handling
+   * it with the disagreement still live, which is what the screen tells the
+   * shopper before they press anything.
+   */
+  async respondToDisputeProposal(
+    orderId: string,
+    disputeId: string,
+    accept: boolean,
+  ): Promise<BuyerCustomOrderDetail> {
+    const response = await apiClient.post(
+      `/custom-orders/${orderId}/disputes/${disputeId}/proposal/respond`,
+      { accept },
+    );
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
+  },
+
   async closeDelayDispute(
     orderId: string,
     disputeId: string,

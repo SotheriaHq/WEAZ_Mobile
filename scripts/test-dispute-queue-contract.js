@@ -221,6 +221,87 @@ check(
   'A queue that cannot tell "waiting on us" from "waiting on them" cannot triage.',
 );
 
+// ── 8. A claim that goes quiet is still a failure ───────────────────────────
+check(
+  'the stale-claim policy is actually read by something',
+  /DISPUTE_CLAIM_POLICY\.staleClaimHours/.test(cron),
+  'The constant existed and nothing used it, so an owner could go quiet '
+    + 'indefinitely while the row read as handled.',
+);
+check(
+  'a proposal inside its response window is not reported as stale',
+  /proposalRespondByAt: null[\s\S]{0,200}?proposalRespondByAt: \{ lte: now \}/.test(cron),
+  'Waiting on a party is the admin having acted, not having stopped.',
+);
+check(
+  'a SuperAdmin can actually take a stale dispute off its owner',
+  /async reassign\(/.test(service) &&
+    /@Post\('dispute-queue\/:id\/reassign'\)/.test(controller),
+  'Telling someone to reassign with no way to do it is an alert they cannot act on.',
+);
+check(
+  'reassigning moves the dispute to a named admin rather than releasing it',
+  /CUSTOM_ORDER_DISPUTE_HANDOVER_INVALID_SUCCESSOR[\s\S]{0,1400}?claimedByAdminId: successorAdminId/.test(
+    service,
+  ),
+);
+
+// ── 9. Handover and consent have screens, not just endpoints ────────────────
+const drawer = read(WEB, 'src/pages/admin/disputes/DisputeQueueDetailDrawer.tsx');
+check(
+  'the console can request, approve and refuse a handover',
+  /requestDisputeHandover/.test(drawer) && /decideDisputeHandover/.test(drawer),
+);
+check(
+  'the console can reassign',
+  /reassignDispute/.test(drawer),
+);
+check(
+  'the handover form will not offer the current holder as their own successor',
+  /user\.id !== detail\?\.claimedByAdminId/.test(drawer),
+  'An option the API always refuses is worse than no option.',
+);
+check(
+  'the ownership filter is a tab rail with a moving indicator, not pills',
+  /DisputeOwnershipTabs/.test(read(WEB, 'src/pages/admin/AdminDisputesPage.tsx')) &&
+    /transition-all/.test(
+      read(WEB, 'src/pages/admin/disputes/DisputeOwnershipTabs.tsx'),
+    ),
+  'These are mutually exclusive views of one queue, which is a tab bar.',
+);
+
+const mobileOrder = read(
+  path.join(ROOT, 'threadly-mobile'),
+  'app/orders/[orderId].tsx',
+);
+const webPanel = read(WEB, 'src/components/custom-orders/DisputeProposalPanel.tsx');
+check(
+  'the shopper can answer a proposal on web',
+  /respondToDisputeProposal/.test(read(WEB, 'src/api/CustomOrderApi.ts')) &&
+    /onRespond/.test(webPanel),
+);
+check(
+  'the shopper can answer a proposal on mobile',
+  /respondToDisputeProposal/.test(
+    read(path.join(ROOT, 'threadly-mobile'), 'src/api/BuyerOrdersApi.ts'),
+  ) && /handleRespondToProposal/.test(mobileOrder),
+);
+check(
+  'both clients say that declining does not close the dispute',
+  /does not close your dispute/.test(webPanel) &&
+    /does not close your dispute/.test(mobileOrder),
+  'Shoppers read "No" next to a dispute as giving up. The opposite is true.',
+);
+check(
+  'a proposal awaiting the BRAND is not shown to the shopper',
+  /consentBy === 'BUYER'[\s\S]{0,120}?consentBy === 'BOTH'/.test(mobileOrder),
+  'Offering a decision that is not theirs to make.',
+);
+check(
+  'an already-answered proposal is not asked again',
+  /!entry\.proposal\.buyerConsentAt/.test(mobileOrder),
+);
+
 console.log(
   '\nDispute queue contract: ' + passed + '/' + (passed + failed) + ' checks passed',
 );

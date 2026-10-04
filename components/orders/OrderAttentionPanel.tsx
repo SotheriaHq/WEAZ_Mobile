@@ -43,6 +43,18 @@ export interface AttentionItem {
     onPress: () => void;
     loading?: boolean;
   };
+  /**
+   * A second answer, for the items that are a question rather than a task.
+   *
+   * A proposed settlement is the case: "yes" and "no" are both real answers and
+   * neither is a dismissal, so offering only one and expecting the shopper to
+   * close the sheet to decline would quietly bias the outcome.
+   */
+  secondaryAction?: {
+    label: string;
+    onPress: () => void;
+    loading?: boolean;
+  };
 }
 
 const TONE_RANK: Record<AttentionTone, number> = {
@@ -140,19 +152,37 @@ export function OrderAttentionPanel({ items }: { items: AttentionItem[] }) {
                   {item.meta}
                 </AppText>
               ) : null}
-              {item.action ? (
-                <Button
-                  title={item.action.label}
-                  variant="secondary"
-                  size="sm"
-                  loading={item.action.loading}
-                  onPress={() => {
-                    // Close first: an action that routes elsewhere must not
-                    // leave a sheet open behind the destination.
-                    setOpen(false);
-                    item.action?.onPress();
-                  }}
-                />
+              {item.action || item.secondaryAction ? (
+                <View style={styles.actionRow}>
+                  {item.action ? (
+                    <Button
+                      title={item.action.label}
+                      variant={item.secondaryAction ? 'primary' : 'secondary'}
+                      size="sm"
+                      loading={item.action.loading}
+                      onPress={() => {
+                        // Close first: an action that routes elsewhere must not
+                        // leave a sheet open behind the destination.
+                        setOpen(false);
+                        item.action?.onPress();
+                      }}
+                      style={styles.actionButton}
+                    />
+                  ) : null}
+                  {item.secondaryAction ? (
+                    <Button
+                      title={item.secondaryAction.label}
+                      variant="secondary"
+                      size="sm"
+                      loading={item.secondaryAction.loading}
+                      onPress={() => {
+                        setOpen(false);
+                        item.secondaryAction?.onPress();
+                      }}
+                      style={styles.actionButton}
+                    />
+                  ) : null}
+                </View>
               ) : null}
             </View>
           ))}
@@ -192,6 +222,16 @@ const styles = StyleSheet.create({
   sheetItem: {
     gap: tokens.spacing.xs,
     paddingBottom: tokens.spacing.md,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.xs,
+  },
+  actionButton: {
+    flexGrow: 1,
+    flexBasis: '46%',
   },
 });
 

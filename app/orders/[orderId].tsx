@@ -301,6 +301,56 @@ export default function BuyerOrderDetailScreen() {
     }
   }, [order, saving, toast, mutateOrder]);
 
+  /**
+   * A settlement this shopper has been asked to agree to.
+   *
+   * Only one that binds the BUYER: a proposal awaiting the brand is not this
+   * screen's business, and offering it here would put a decision in front of
+   * someone it does not belong to.
+   */
+  const proposalDispute = useMemo(() => {
+    if (!order || order.kind !== 'CUSTOM') return null;
+    return (
+      order.disputes.find(
+        (entry) =>
+          entry.status === 'AWAITING_PARTY_CONSENT' &&
+          entry.proposal != null &&
+          (entry.proposal.consentBy === 'BUYER' ||
+            entry.proposal.consentBy === 'BOTH') &&
+          !entry.proposal.buyerConsentAt &&
+          !entry.proposal.buyerDeclinedAt,
+      ) ?? null
+    );
+  }, [order]);
+
+  const handleRespondToProposal = useCallback(
+    async (accept: boolean) => {
+      if (!order || order.kind !== 'CUSTOM' || !proposalDispute || saving) return;
+      setSaving(true);
+      try {
+        const updated = await BuyerOrdersApi.respondToDisputeProposal(
+          order.id,
+          proposalDispute.id,
+          accept,
+        );
+        mutateOrder(() => updated);
+        toast.success(
+          accept
+            ? 'Agreed. We have told your maker.'
+            : 'Thanks — WIEZ is picking this back up with your maker.',
+        );
+      } catch (respondError: any) {
+        toast.error(
+          respondError?.response?.data?.message ||
+            'That answer could not be saved. Please try again.',
+        );
+      } finally {
+        setSaving(false);
+      }
+    },
+    [order, proposalDispute, saving, toast, mutateOrder],
+  );
+
   const handleCloseDelayDispute = useCallback(async () => {
     if (!order || order.kind !== 'CUSTOM' || !openDelayDispute || saving) return;
     setSaving(true);
@@ -364,6 +414,41 @@ export default function BuyerOrderDetailScreen() {
             drillDownPush(
               `/orders/extension/${openExtension.id}?orderId=${order.id}` as never,
             ),
+        },
+      });
+    }
+
+    /*
+      A proposed settlement outranks everything else.
+
+      It is the only item in this list where WIEZ is waiting on the SHOPPER
+      rather than the other way round, so it carries the top tone and sits
+      above the delay states that would otherwise just say "we're on it".
+    */
+    if (proposalDispute?.proposal) {
+      const { proposal } = proposalDispute;
+      const days = proposal.extraDays ?? 0;
+      items.push({
+        id: `proposal:${proposalDispute.id}`,
+        tone: 'primary',
+        marker: '🤝',
+        title: 'A way to settle this',
+        body:
+          proposal.resolution === 'MEDIATED_EXTENSION'
+            ? `WIEZ suggests giving your maker ${days} more day${days === 1 ? '' : 's'}. Your delivery date moves by the same amount. Saying no does not close your dispute — it goes back to the person handling it.`
+            : proposal.resolution === 'REMAKE'
+              ? 'WIEZ suggests your maker remakes the piece. Saying no does not close your dispute — it goes back to the person handling it.'
+              : 'WIEZ has proposed a way to settle this order. Saying no does not close your dispute.',
+        meta: proposal.note ? `“${proposal.note}” — WIEZ` : undefined,
+        action: {
+          label: 'Yes, that works',
+          loading: saving,
+          onPress: () => void handleRespondToProposal(true),
+        },
+        secondaryAction: {
+          label: 'No — keep looking at it',
+          loading: saving,
+          onPress: () => void handleRespondToProposal(false),
         },
       });
     }
@@ -461,6 +546,8 @@ export default function BuyerOrderDetailScreen() {
     order,
     openExtension,
     openDelayDispute,
+    proposalDispute,
+    handleRespondToProposal,
     interventionOpen,
     adminNotices,
     saving,
