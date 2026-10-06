@@ -23,6 +23,7 @@ import { useScreenChrome } from '@/src/system/ScreenChrome';
 import {
   useDataUsable,
   useFirstMeaningfulRender,
+  useScreenArrival,
   useSkeletonTiming,
 } from '@/src/perf/usePerfStages';
 import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
@@ -131,6 +132,7 @@ export default function PublicProfileScreen() {
   // cached-vs-cold comparison in the app: the same tap either opens on content
   // or opens on a skeleton, depending only on whether this profile has been
   // visited before.
+  useScreenArrival('profile_detail');
   useFirstMeaningfulRender(Boolean(profile), 'profile_detail');
   useDataUsable(Boolean(profile), 'profile_detail');
   useSkeletonTiming(loading, 'profile_detail');

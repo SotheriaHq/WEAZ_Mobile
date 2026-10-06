@@ -73,7 +73,7 @@ import {
   startMarketSignalRuntime,
   trackMarketSignal,
 } from '@/src/services/marketSignals';
-import { useSkeletonTiming } from '@/src/perf/usePerfStages';
+import { useScreenArrival, useSkeletonTiming } from '@/src/perf/usePerfStages';
 import { navPerf } from '@/src/utils/navPerf';
 import { prefetchMedia } from '@/src/prefetch/navPrefetch';
 import { formatMoney } from '@/src/utils/money';
@@ -1372,6 +1372,7 @@ export function MarketScreen() {
     if (!loading) navPerf.dataReady('tabs→market');
   }, [loading]);
   // T10 from the flag that actually decides whether a skeleton is on screen.
+  useScreenArrival('tabs→market');
   useSkeletonTiming(loading, 'tabs→market');
 
   useEffect(() => {

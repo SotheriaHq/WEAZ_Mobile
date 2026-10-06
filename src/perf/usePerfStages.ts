@@ -7,7 +7,8 @@
  * drift away from what the user is actually looking at — if the summary says
  * the skeleton cleared at 900ms, the skeleton cleared at 900ms.
  */
-import { useEffect, useRef } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef } from 'react';
 
 import { perfAnnotate, perfMark, perfNote } from '@/src/perf/wiezPerf';
 
@@ -65,6 +66,30 @@ export function useFirstMeaningfulRender(
     reportedRef.current = true;
     perfMark('first_meaningful_render', { detail: label });
   }, [hasMeaningfulContent, label]);
+}
+
+/**
+ * Report a screen's arrival when it was already mounted (also T3).
+ *
+ * The tab navigator runs `freezeOnBlur` with `detachInactiveScreens={false}`,
+ * so a visited tab stays mounted and a revisit never re-runs its mount effect.
+ * T3 taken from a mount therefore cannot fire on the most common navigation
+ * there is — switching back to a tab you have already opened — and the first
+ * capture showed `T1->T3=n/a` on most flows for exactly that reason.
+ *
+ * `screen_mount` keeps first-occurrence semantics, so on a genuine cold mount
+ * the mount still wins and this is a no-op. On a revisit it is the only signal
+ * there is. The distinction is preserved in the summary's `mounted=` field
+ * rather than being flattened away, because "already mounted" and "never
+ * arrived" are opposite diagnoses that both produced `n/a` before.
+ */
+export function useScreenArrival(label: string): void {
+  useFocusEffect(
+    useCallback(() => {
+      perfMark('screen_mount', { detail: `${label}:focus` });
+      return undefined;
+    }, [label]),
+  );
 }
 
 /** Report that primary data reached state (T9). */

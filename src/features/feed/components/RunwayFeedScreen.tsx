@@ -63,7 +63,7 @@ import { useUnreadNotificationCount } from '@/src/realtime/notifications';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { perfMark } from '@/src/utils/perf';
-import { useSkeletonTiming } from '@/src/perf/usePerfStages';
+import { useScreenArrival, useSkeletonTiming } from '@/src/perf/usePerfStages';
 import { navPerf } from '@/src/utils/navPerf';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { fetchMarketFilterChipsQuery } from '@/src/query/bootstrapQueries';
@@ -1085,6 +1085,7 @@ export function RunwayFeedScreen() {
     if (!loading) navPerf.dataReady('tabs→runway');
   }, [loading]);
   // T10 from the flag that actually decides whether a skeleton is on screen.
+  useScreenArrival('tabs→runway');
   useSkeletonTiming(loading, 'tabs→runway');
 
   useEffect(() => {

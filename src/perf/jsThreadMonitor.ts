@@ -26,7 +26,12 @@
  * logged unless a sample exceeds `BLOCK_THRESHOLD_MS`, so a healthy session is
  * silent. Fully inert when the debug flag is absent.
  */
-import { perfEnabled, perfNote, perfAnnotate } from '@/src/perf/wiezPerf';
+import {
+  perfAddBlockedMs,
+  perfAnnotate,
+  perfEnabled,
+  perfNote,
+} from '@/src/perf/wiezPerf';
 
 const SAMPLE_MS = 100;
 
@@ -68,7 +73,13 @@ export function startJsThreadMonitor(): () => void {
     perfNote('RENDER', 'js_thread_blocked', `${drift.toFixed(0)}ms`);
     // So the flow's own summary says the thread stalled during it. A reader
     // comparing T3->T4 across runs needs to know which runs were contended.
+    //
+    // The boolean alone turned out to distinguish nothing — it appeared on 25
+    // of 27 flows in the first capture. The accumulated duration is what ranks
+    // them, and it has to be on the summary line, not only in these notes,
+    // because the summary is the view a tester reads.
     perfAnnotate('js_thread_blocked');
+    perfAddBlockedMs(drift);
   }, SAMPLE_MS);
 
   return () => {

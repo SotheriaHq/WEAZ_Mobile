@@ -266,6 +266,37 @@ for (const [file, label] of [
   check(`${label} reports T4 from real content`, /useFirstMeaningfulRender\(/.test(read(file)));
 }
 
+// ------------------------------- first-capture gaps (2026-10-06 device run)
+
+check(
+  'the summary carries accumulated thread-stall time, not just a boolean',
+  /blockedMs=/.test(wiezPerf) && /perfAddBlockedMs/.test(wiezPerf),
+);
+check(
+  'a stall adds its duration to the flow it happened during',
+  /perfAddBlockedMs\(drift\)/.test(threadMonitor),
+);
+check(
+  'the summary distinguishes "already mounted" from "never arrived"',
+  /mounted=\$\{flow\.stages\.has\('screen_mount'\)/.test(wiezPerf),
+);
+check(
+  'a kept-alive tab can still report T3 on focus',
+  /useFocusEffect/.test(stageHooks) && /export function useScreenArrival/.test(stageHooks),
+);
+check(
+  'focus-based arrival reuses screen_mount so a cold mount still wins',
+  /perfMark\('screen_mount', \{ detail: `\$\{label\}:focus`/.test(stageHooks),
+);
+for (const [file, label] of [
+  ['app/(tabs)/me.tsx', 'me'],
+  ['app/profile/[id].tsx', 'profile detail'],
+  ['src/features/market/components/MarketScreen.tsx', 'market'],
+  ['src/features/feed/components/RunwayFeedScreen.tsx', 'runway'],
+]) {
+  check(`${label} reports arrival on revisit`, /useScreenArrival\(/.test(read(file)));
+}
+
 // ------------------------------------------------------ the known waterfall
 
 const warmup = read('src/profile/shopperProfileWarmup.ts');

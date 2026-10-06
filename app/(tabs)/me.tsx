@@ -24,6 +24,7 @@ import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
 import {
   useDataUsable,
   useFirstMeaningfulRender,
+  useScreenArrival,
   useSkeletonTiming,
 } from '@/src/perf/usePerfStages';
 import { readWarmScreenState, subscribeWarmScreenState } from '@/src/state/screenWarmState';
@@ -475,6 +476,7 @@ export default function BuyerProfileScreen() {
     shopper's report was about the tabs, so the stage that matters is the one
     where real profile content exists.
   */
+  useScreenArrival('tabs→me');
   useFirstMeaningfulRender(Boolean(state.profile), 'me:profile');
   useDataUsable(Boolean(state.profile), 'me:profile');
   useSkeletonTiming(loading, 'me:profile');

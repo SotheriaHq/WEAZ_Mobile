@@ -122,6 +122,16 @@ type Flow = {
   stages: Map<string, StageRecord>;
   /** Free-form notes that belong in the summary (cache hit/miss, urls, counts). */
   notes: string[];
+  /**
+   * Total JS-thread stall observed during this flow.
+   *
+   * The first capture annotated flows with a bare `js_thread_blocked` boolean,
+   * which showed up on 25 of 27 flows and so distinguished nothing. The
+   * durations existed, but only in the RENDER note lines — which the
+   * `--summary` filter drops, so the one number that would have ranked the
+   * stalls was invisible in the view a tester actually reads. It belongs here.
+   */
+  blockedMs: number;
   closed: boolean;
   watchdog: ReturnType<typeof setTimeout> | null;
 };
@@ -223,6 +233,17 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
     `requests=${flow.stages.get('request_begin')?.count ?? 0}`,
     `responses=${flow.stages.get('response_available')?.count ?? 0}`,
     `T9=${intervalText(flow.stages.get('data_usable')?.firstAt ?? null)}`,
+    // How much of this flow the thread spent unavailable. The first capture
+    // showed `apiWindow` an order of magnitude above `T7->T8` on nearly every
+    // flow — nine requests spread over 6.8s with 350ms round trips — which
+    // means the gaps were not network. This is the number that says so
+    // directly instead of by inference.
+    `blockedMs=${fmt(flow.blockedMs)}`,
+    // A tab kept alive by `freezeOnBlur` does not remount, so its mount effect
+    // never re-runs and T3 cannot fire from a mount. Without this field a
+    // revisit's `T1->T3=n/a` is ambiguous between "already mounted" and "never
+    // arrived", and those are opposite diagnoses.
+    `mounted=${flow.stages.has('screen_mount') ? 'yes' : 'no'}`,
   ];
   if (flow.notes.length > 0) parts.push(`notes=${flow.notes.join(',')}`);
 
@@ -252,6 +273,7 @@ export function perfBeginFlow(label: string): void {
     startedAt: now(),
     stages: new Map(),
     notes: [],
+    blockedMs: 0,
     closed: false,
     watchdog: null,
   };
@@ -322,6 +344,13 @@ export function perfNote(
     `[WIEZ-PERF][${channel}] event=${event}${scope}${offset}` +
       ` tMono=${fmt(now())}${detail ? ` detail=${detail}` : ''}`,
   );
+}
+
+/** Add an observed JS-thread stall to the open flow's total. */
+export function perfAddBlockedMs(ms: number): void {
+  if (!ENABLED) return;
+  if (!activeFlow || activeFlow.closed) return;
+  activeFlow.blockedMs += ms;
 }
 
 /** Attach a short fact to the open flow's summary line. */
