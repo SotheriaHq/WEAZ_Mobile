@@ -26,6 +26,7 @@ import {
   perfBeginFlowIfNew,
   perfMark,
   perfNote,
+  perfRecordIndicatorVisible,
   type PerfChannel,
   type PerfStage,
 } from '@/src/perf/wiezPerf';
@@ -86,6 +87,15 @@ export function bridgeNavPerfStage(stage: string, flow: string): void {
     // The cache verdict is not a stage pair on its own, but it is the single
     // most important fact about a flow: whether the screen had anything to
     // show. Record both ends and put the verdict on the summary line.
+    // The island's active pill reaching the screen. Not a T-stage, but it is
+    // what the user reads as "did my press register", so it earns a place on
+    // the summary line rather than only in a note.
+    if (stage === 'active_indicator_visible') {
+      perfRecordIndicatorVisible();
+      perfNote('NAV', stage);
+      return;
+    }
+
     if (stage === 'cache_hit' || stage === 'cache_miss') {
       perfMark('cache_lookup_begin', { detail: stage });
       perfMark('cache_result', { detail: stage });

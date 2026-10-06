@@ -297,6 +297,49 @@ for (const [file, label] of [
   check(`${label} reports arrival on revisit`, /useScreenArrival\(/.test(read(file)));
 }
 
+// ------------------------------- island press -> active pill (2026-10-06 bug)
+
+const island = read('components/navigation/NativeIslandBottomNav.tsx');
+
+check(
+  'the summary reports press -> active pill latency',
+  /indicatorMs=/.test(wiezPerf) && /perfRecordIndicatorVisible/.test(wiezPerf),
+);
+check(
+  'the pill timestamp is first-write-wins',
+  /if \(activeFlow\.indicatorAt !== null\) return;/.test(wiezPerf),
+);
+check(
+  'the bridge routes active_indicator_visible into that field',
+  /stage === 'active_indicator_visible'/.test(bridge) &&
+    /perfRecordIndicatorVisible\(\)/.test(bridge),
+);
+check(
+  'the fixed dock does not batch the pill into the navigation commit',
+  /React\.startTransition\(\(\) => commitSelection\(item\)\)/.test(island),
+);
+check(
+  'the fixed dock still paints the pill urgently, outside the transition',
+  /paintCandidate\(item\);[\s\S]{0,1400}?React\.startTransition\(\(\) => commitSelection\(item\)\)/.test(
+    island,
+  ),
+);
+check(
+  'the scrolling dock highlights on touch-down instead of after the slop timer',
+  /paintCandidate\(item\);\s*\n\s*const timer = setTimeout\(\(\) => \{\s*\n\s*commitScrollDockTap\(item\);\s*\n\s*\}, SCROLL_DOCK_COMMIT_DELAY_MS\);/.test(
+    island,
+  ),
+);
+check(
+  'the slop timer still gates the ROUTE, not just the highlight',
+  /SCROLL_DOCK_COMMIT_DELAY_MS\)/.test(island) &&
+    /commitScrollDockTap\(item\);/.test(island),
+);
+check(
+  'a highlight taken back by a scroll is recorded',
+  /optimistic_active_cancelled/.test(island),
+);
+
 // ------------------------------------------------------ the known waterfall
 
 const warmup = read('src/profile/shopperProfileWarmup.ts');

@@ -132,6 +132,16 @@ type Flow = {
    * stalls was invisible in the view a tester actually reads. It belongs here.
    */
   blockedMs: number;
+  /**
+   * When the island's active pill actually committed to screen, since T0.
+   *
+   * Not one of the eleven stages, but it is the thing a user judges a tap by:
+   * the pill is the app's acknowledgement that the press registered at all. It
+   * was already marked (`active_indicator_visible`) and already only in a note
+   * line, which the `--summary` filter drops — so the most visible latency in
+   * the app was the one number absent from the view a tester reads.
+   */
+  indicatorAt: number | null;
   closed: boolean;
   watchdog: ReturnType<typeof setTimeout> | null;
 };
@@ -244,6 +254,8 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
     // revisit's `T1->T3=n/a` is ambiguous between "already mounted" and "never
     // arrived", and those are opposite diagnoses.
     `mounted=${flow.stages.has('screen_mount') ? 'yes' : 'no'}`,
+    // Press -> the active pill on screen. Reported as very obviously late.
+    `indicatorMs=${flow.indicatorAt === null ? 'n/a' : fmt(flow.indicatorAt)}`,
   ];
   if (flow.notes.length > 0) parts.push(`notes=${flow.notes.join(',')}`);
 
@@ -274,6 +286,7 @@ export function perfBeginFlow(label: string): void {
     stages: new Map(),
     notes: [],
     blockedMs: 0,
+    indicatorAt: null,
     closed: false,
     watchdog: null,
   };
@@ -344,6 +357,19 @@ export function perfNote(
     `[WIEZ-PERF][${channel}] event=${event}${scope}${offset}` +
       ` tMono=${fmt(now())}${detail ? ` detail=${detail}` : ''}`,
   );
+}
+
+/**
+ * Record that the island's active pill has committed to screen.
+ *
+ * First write wins: the pill paints once per tap, and a later confirming
+ * render must not overwrite the moment the user actually saw it.
+ */
+export function perfRecordIndicatorVisible(): void {
+  if (!ENABLED) return;
+  if (!activeFlow || activeFlow.closed) return;
+  if (activeFlow.indicatorAt !== null) return;
+  activeFlow.indicatorAt = now() - activeFlow.startedAt;
 }
 
 /** Add an observed JS-thread stall to the open flow's total. */

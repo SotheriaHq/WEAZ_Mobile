@@ -315,7 +315,24 @@ export function NativeIslandBottomNav({
   const handleFixedPressIn = React.useCallback(
     (item: NativeIslandNavItem) => {
       paintCandidate(item);
-      commitSelection(item);
+      /*
+        The pill and the route are the same TICK, but not the same COMMIT.
+
+        Calling both plainly put them in one commit, because React batches
+        every update inside one event handler — so the pill could not appear
+        until the destination's render had finished, and on this app that was
+        measured at 1.5s for a cold Me mount on a contended thread. The press
+        looked ignored for half a second, which is the complaint.
+
+        `startTransition` runs its callback SYNCHRONOUSLY, so `router.navigate`
+        still leaves in this tick and the route is not delayed by a frame or a
+        timer — only the re-render it causes is marked non-urgent. The pill's
+        own setState stays urgent, so React commits it first and renders the
+        destination after. That keeps the invariant the previous fix was
+        protecting (never light a pill for a screen the user is not going to)
+        without paying for it in perceived responsiveness.
+      */
+      React.startTransition(() => commitSelection(item));
     },
     [commitSelection, paintCandidate],
   );
@@ -344,6 +361,10 @@ export function NativeIslandBottomNav({
     setPressedItemKey((current) => (current === key ? null : current));
     setImmediateActiveKey((current) => (current === key ? null : current));
     setImmediateActiveNavFlow(null);
+    // The highlight painted on touch-down is being taken back, because this
+    // turned out to be a scroll rather than a tap. Record it, or a trace shows
+    // an indicator that appeared and then silently vanished.
+    navPerf.mark('optimistic_active_cancelled', key);
   }, [clearScrollTimer]);
 
   const commitScrollDockTap = React.useCallback(
@@ -355,8 +376,11 @@ export function NativeIslandBottomNav({
         clearScrollTimer(gesture);
       }
       scrollGestureRef.current = null;
+      // Already painted on touch-down for a finger press; still needed for the
+      // accessibility activate path, which never goes through press-in. The
+      // setState calls are no-ops when the values match.
       paintCandidate(item);
-      commitSelection(item);
+      React.startTransition(() => commitSelection(item));
     },
     [clearScrollTimer, commitSelection, paintCandidate],
   );
@@ -366,6 +390,19 @@ export function NativeIslandBottomNav({
       const previous = scrollGestureRef.current;
       if (previous && !previous.committed) clearScrollTimer(previous);
       const { pageX, pageY } = event.nativeEvent;
+      /*
+        Highlight on touch-down; route still waits out the slop timer.
+
+        The 90ms gate exists so a SWIPE across the dock does not open the chip
+        the finger happened to land on. It was gating the highlight as well,
+        which made every deliberate press on the Studio dock feel dead for its
+        first 90ms — on top of the batching delay fixed above.
+
+        A highlight is allowed to be wrong for 90ms, because
+        `cancelScrollCandidate` takes it straight back the moment the finger
+        passes the slop. A route is not, which is why only the route is gated.
+      */
+      paintCandidate(item);
       const timer = setTimeout(() => {
         commitScrollDockTap(item);
       }, SCROLL_DOCK_COMMIT_DELAY_MS);
