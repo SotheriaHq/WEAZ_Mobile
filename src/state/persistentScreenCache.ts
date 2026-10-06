@@ -19,7 +19,15 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { perfEnabled, perfNote } from '@/src/perf/wiezPerf';
+
 import { readWarmScreenState, writeWarmScreenState } from './screenWarmState';
+
+const primeNow: () => number = (() => {
+  const perf = (globalThis as { performance?: { now?: () => number } }).performance;
+  if (perf && typeof perf.now === 'function') return () => perf.now!();
+  return () => Date.now();
+})();
 
 const STORAGE_PREFIX = 'warm:v1:';
 
@@ -72,12 +80,33 @@ export function persistScreenState<T>(key: string, value: T): void {
  * a snapshot from the last one.
  */
 export async function primePersistentScreenCache(): Promise<void> {
+  const startedAt = perfEnabled() ? primeNow() : 0;
   try {
+    /*
+      Two awaits, and both are on the measured path for a shopper who reaches a
+      tab early. `getAllKeys` scans the whole AsyncStorage keyspace — not just
+      this prefix — so its cost grows with everything else the app has ever
+      stored, including the single large blob the React Query persister keeps.
+      Nothing waits for this to finish, which is the right call, but it does
+      mean a fast tap can beat it; the two marks say whether it did.
+    */
+    perfNote('BOOT', 'warm_cache_prime_began');
     const keys = await AsyncStorage.getAllKeys();
     const warmKeys = keys.filter((key) => key.startsWith(STORAGE_PREFIX));
-    if (warmKeys.length === 0) return;
+    if (warmKeys.length === 0) {
+      perfNote('BOOT', 'warm_cache_prime_finished', 'entries=0');
+      return;
+    }
 
     const entries = await AsyncStorage.multiGet(warmKeys);
+    if (perfEnabled()) {
+      perfNote(
+        'BOOT',
+        'warm_cache_prime_finished',
+        `entries=${warmKeys.length} totalKeys=${keys.length}` +
+          ` ms=${(primeNow() - startedAt).toFixed(1)}`,
+      );
+    }
     entries.forEach(([storedKey, raw]) => {
       if (!raw) return;
       const key = storedKey.slice(STORAGE_PREFIX.length);

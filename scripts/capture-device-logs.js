@@ -2,8 +2,10 @@
  * Capture JS logs from a USB-connected Android phone running a PREVIEW/RELEASE
  * build — no Metro, no dev client.
  *
- *   npm run logs:device            # stream + save
- *   npm run logs:device -- --nav   # only [NAV_PERF] timing lines
+ *   npm run logs:device               # stream + save
+ *   npm run logs:device -- --nav      # [NAV_PERF] + [WIEZ-PERF] timing lines
+ *   npm run logs:device -- --perf     # only the [WIEZ-PERF] T0–T10 timeline
+ *   npm run logs:device -- --summary  # only the one-per-flow SUMMARY lines
  *
  * What a release build actually prints:
  *   - `console.log/info/debug` are STRIPPED at bundle time
@@ -26,6 +28,27 @@ const fs = require('fs');
 const path = require('path');
 
 const navOnly = process.argv.includes('--nav');
+/** `[WIEZ-PERF]` only — the T0–T10 timeline. */
+const perfOnly = process.argv.includes('--perf');
+/** Just the one-line-per-flow summaries, for filling in the results table. */
+const summaryOnly = process.argv.includes('--summary');
+
+function keepLine(line) {
+  if (summaryOnly) return line.includes('[WIEZ-PERF][SUMMARY]');
+  if (perfOnly) return line.includes('[WIEZ-PERF]');
+  // `--nav` predates the T-timeline and is still the broad timing filter, so it
+  // keeps both instruments rather than silently dropping the newer one.
+  if (navOnly) return line.includes('[NAV_PERF]') || line.includes('[WIEZ-PERF]');
+  return true;
+}
+
+const filterLabel = summaryOnly
+  ? '[WIEZ-PERF][SUMMARY] flow summaries'
+  : perfOnly
+    ? '[WIEZ-PERF] T0–T10 timeline'
+    : navOnly
+      ? '[NAV_PERF] + [WIEZ-PERF] timing lines'
+      : 'JS warnings/errors + crashes';
 
 const devices = spawnSync('adb', ['devices'], { encoding: 'utf8', shell: process.platform === 'win32' });
 if (devices.error || devices.status !== 0) {
@@ -49,10 +72,11 @@ if (rows.every((row) => row.endsWith('unauthorized'))) {
 const outDir = path.resolve(__dirname, '..', '..', '.runtime-logs');
 fs.mkdirSync(outDir, { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-const outFile = path.join(outDir, `device-${navOnly ? 'nav-' : ''}${stamp}.log`);
+const kindPrefix = summaryOnly ? 'summary-' : perfOnly ? 'perf-' : navOnly ? 'nav-' : '';
+const outFile = path.join(outDir, `device-${kindPrefix}${stamp}.log`);
 const out = fs.createWriteStream(outFile);
 
-console.log(`Streaming ${navOnly ? '[NAV_PERF] lines' : 'JS warnings/errors + crashes'} — saving to ${outFile}`);
+console.log(`Streaming ${filterLabel} — saving to ${outFile}`);
 console.log('Reproduce the issue on the phone, then press Ctrl+C.\n');
 
 // Clear the old buffer so the capture starts at "now", not hours ago.
@@ -70,7 +94,7 @@ logcat.stdout.on('data', (chunk) => {
   const lines = pending.split(/\r?\n/);
   pending = lines.pop() ?? '';
   for (const line of lines) {
-    if (navOnly && !line.includes('[NAV_PERF]')) continue;
+    if (!keepLine(line)) continue;
     out.write(`${line}\n`);
     process.stdout.write(`${line}\n`);
   }

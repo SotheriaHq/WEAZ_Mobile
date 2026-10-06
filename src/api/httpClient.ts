@@ -5,12 +5,20 @@ import Constants from 'expo-constants';
 import { env } from '@/src/config/env';
 import { apiHostDevLog, apiHostDevWarn, isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { finishNetworkTrace, startNetworkTrace } from './networkTrace';
+import { perfEnabled, perfNote } from '@/src/perf/wiezPerf';
 import { createRequestId } from '@/src/utils/requestId';
 import {
   getCachedDeviceId,
   getDeviceId,
   WIEZ_DEVICE_ID_HEADER,
 } from '@/src/utils/deviceId';
+
+/** Monotonic, for the pre-transport gate above the request interceptor. */
+const perfGateNow: () => number = (() => {
+  const perf = (globalThis as { performance?: { now?: () => number } }).performance;
+  if (perf && typeof perf.now === 'function') return () => perf.now!();
+  return () => Date.now();
+})();
 
 const DEFAULT_PORT = 3040;
 const MOBILE_PLATFORM_HEADER = 'x-client-platform';
@@ -711,8 +719,32 @@ if (resolvedBaseAdapter) {
 apiClient.interceptors.request.use(async (config) => {
   const retryableConfig = config as RetryableConfig;
 
+  /*
+    Everything between here and `startNetworkTrace` below happens BEFORE the
+    request reaches the transport, so it is latency the user pays and T7 does
+    not see. On a cold start `waitForAuthHydration` is the big one: every
+    request in the app queues behind a SecureStore read, and the first screen's
+    whole fan-out therefore cannot start until that resolves. Measuring it
+    separately is what distinguishes "the API is slow" from "we did not ask it
+    anything for 400ms".
+  */
+  const gateStartedAt = perfEnabled() ? perfGateNow() : 0;
+
   // Hold until the restored token (or its confirmed absence) is known.
   await waitForAuthHydration(retryableConfig.url);
+
+  if (perfEnabled()) {
+    const waited = perfGateNow() - gateStartedAt;
+    // Sub-millisecond means it was already hydrated; that is the common case
+    // and logging it would drown the cold-start case that matters.
+    if (waited >= 1) {
+      perfNote(
+        'API',
+        'auth_hydration_wait',
+        `${waited.toFixed(1)}ms ${String(retryableConfig.url ?? '').split('?')[0]}`,
+      );
+    }
+  }
 
   const requestBaseUrl =
     retryableConfig.baseURL ?? apiClient.defaults.baseURL ?? getActiveBaseUrl();

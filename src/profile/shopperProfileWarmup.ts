@@ -16,7 +16,14 @@ import {
   type UserProfile,
 } from '@/src/api/ProfileApi';
 import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
+import { perfEnabled, perfNote } from '@/src/perf/wiezPerf';
 import { readWarmScreenState } from '@/src/state/screenWarmState';
+
+const warmupNow: () => number = (() => {
+  const perf = (globalThis as { performance?: { now?: () => number } }).performance;
+  if (perf && typeof perf.now === 'function') return () => perf.now!();
+  return () => Date.now();
+})();
 
 export type ShopperProfileWarmState = {
   profile: UserProfile | null;
@@ -57,14 +64,48 @@ export async function fetchShopperProfileWarmState(
   if (alreadyLoading) return alreadyLoading;
 
   const warmup = (async (): Promise<ShopperProfileWarmState | null> => {
+    /*
+      `allSettled` waits for the slowest of the six.
+
+      The profile header only needs the first of them. Resolving the batch as a
+      unit means the shopper's own name cannot appear until the orders list and
+      both size-fit reads have also come back, so first meaningful paint is
+      pinned to max(six requests) rather than to the one request that produces
+      the content at the top of the screen. The marks either side bound that
+      cost; `fanout_slowest` names which request actually set it, because
+      optimising the wrong one of six is the easy mistake here.
+    */
+    perfNote('API', 'profile_fanout_began', 'requests=6');
+    const fanoutStartedAt = perfEnabled() ? warmupNow() : 0;
+    const settleTimes = new Map<string, number>();
+    const timed = <T,>(name: string, promise: Promise<T>): Promise<T> => {
+      if (!perfEnabled()) return promise;
+      return promise.finally(() => {
+        settleTimes.set(name, warmupNow() - fanoutStartedAt);
+      });
+    };
+
     const [profileResult, sizeFitResult, computedSizeFitResult, savedResult, patchesResult, ordersResult] = await Promise.allSettled([
-      ProfileApi.getMe(),
-      ProfileApi.getSizeFit(),
-      ProfileApi.getComputedSizeFit(),
-      ProfileApi.getSaved(),
-      ProfileApi.getPatches(userId),
-      BuyerOrdersApi.list({ limit: 6 }),
+      timed('getMe', ProfileApi.getMe()),
+      timed('getSizeFit', ProfileApi.getSizeFit()),
+      timed('getComputedSizeFit', ProfileApi.getComputedSizeFit()),
+      timed('getSaved', ProfileApi.getSaved()),
+      timed('getPatches', ProfileApi.getPatches(userId)),
+      timed('orders', BuyerOrdersApi.list({ limit: 6 })),
     ]);
+
+    if (perfEnabled()) {
+      const ranked = [...settleTimes.entries()].sort((a, b) => b[1] - a[1]);
+      const slowest = ranked[0];
+      const profileOnly = settleTimes.get('getMe');
+      perfNote(
+        'API',
+        'profile_fanout_settled',
+        `totalMs=${(warmupNow() - fanoutStartedAt).toFixed(1)}` +
+          ` slowest=${slowest ? `${slowest[0]}:${slowest[1].toFixed(1)}ms` : 'n/a'}` +
+          ` getMe=${profileOnly === undefined ? 'n/a' : `${profileOnly.toFixed(1)}ms`}`,
+      );
+    }
 
     const profile = profileResult.status === 'fulfilled' ? profileResult.value : null;
 

@@ -1,4 +1,5 @@
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { bridgeNavPerfStage } from '@/src/perf/navPerfBridge';
 
 /**
  * Opt-in navigation timing instrumentation.
@@ -50,6 +51,19 @@ type NavStage =
 
 let activeFlow: string | null = null;
 let tapAt = 0;
+/**
+ * Whether the active flow has already reached its terminal stage.
+ *
+ * `dataReady` used to zero `tapAt` and `activeFlow`. Two things broke as a
+ * result: every stage emitted AFTER data_ready — `profile_image_loaded`,
+ * `background_data_ready`, the image and prefetch marks — lost its `deltaMs`
+ * and became untimed, and `mark()` calls that rely on the active flow emitted
+ * nothing at all. The late stages are exactly the ones that explain why a
+ * screen still looks unfinished after its data arrived, so they were the worst
+ * possible ones to drop. The clock now keeps running; this flag records that
+ * the flow is over, and the next tap starts a new one.
+ */
+let flowEnded = false;
 let pendingLogFlush: ReturnType<typeof setTimeout> | null = null;
 let pendingLogLines: string[] = [];
 
@@ -216,6 +230,12 @@ function buildPerfLine(stage: string, flow: string, extra?: { source?: string | 
 
 const emit = (stage: string, flow: string, extra?: { source?: string | null; target?: string | null; pathname?: string | null }) => {
   if (!enabled()) return;
+
+  // Feed the T0–T10 timeline from the same event, before any string building,
+  // so the canonical timestamp is as close to the thing that happened as the
+  // original mark is. See src/perf/navPerfBridge.ts.
+  bridgeNavPerfStage(stage, flow);
+
   const line = buildPerfLine(stage, flow, extra);
 
   pendingLogLines.push(line);
@@ -256,8 +276,14 @@ export const navPerf = {
   /** Record the moment the user taps a navigation control. */
   tap(flow: string) {
     if (!enabled()) return;
-    activeFlow = flow;
-    tapAt = Date.now();
+    // A second mark for a gesture whose press-in already started the clock must
+    // not restart it, or T0 moves forward by the press-to-release duration and
+    // every later interval is reported shorter than the user experienced it.
+    if (activeFlow !== flow || flowEnded) {
+      activeFlow = flow;
+      tapAt = Date.now();
+      flowEnded = false;
+    }
     emit('tap_start', flow);
   },
   /** Record when the native pressed state should be visible. */
@@ -335,11 +361,9 @@ export const navPerf = {
     if (!enabled()) return;
     const f = flow ?? activeFlow;
     if (f) emit('data_ready', f);
-    activeFlow = null;
-    tapAt = 0;
-    currentSource = null;
-    currentTarget = null;
-    currentPathname = null;
+    // Keep `tapAt` and `activeFlow` so post-data stages stay timed and
+    // attributable; see `flowEnded` above. The next tap replaces both.
+    flowEnded = true;
   },
 
   // --- Phase 1 granular island + link markers (added without changing behavior) ---
@@ -348,9 +372,16 @@ export const navPerf = {
   tapPressIn(flow: string, meta?: { source?: string; target?: string; pathname?: string }) {
     if (!enabled()) return;
     setNavContext(meta?.source, meta?.target, meta?.pathname);
-    if (!activeFlow) {
+    // `if (!activeFlow)` was the bug: a navigation that never reached
+    // `dataReady` — an abandoned tap, a screen that errored, a flow whose
+    // terminal mark simply is not wired — left `activeFlow` set forever, so
+    // every subsequent tap was measured from that stale timestamp. The deltas
+    // then grew for the rest of the session, which reads exactly like
+    // "navigation gets slower the longer you use the app" and is not that.
+    if (activeFlow !== flow || flowEnded) {
       activeFlow = flow;
       tapAt = Date.now();
+      flowEnded = false;
     }
     emit('tap_press_in', flow, meta);
   },
@@ -402,11 +433,13 @@ export const navPerf = {
 // Phase 1 helper: Print a one-time confirmation the moment the navPerf module is loaded.
 // This makes it obvious in the Metro terminal (for both dev and --no-dev --minify perf runs)
 // whether EXPO_PUBLIC_DEBUG_NAV is active.
-const rawDebugNav = process.env.EXPO_PUBLIC_DEBUG_NAV;
-console.log('[NAV_PERF DEBUG] raw EXPO_PUBLIC_DEBUG_NAV =', JSON.stringify(rawDebugNav), 'enabled()=', enabled());
-
+// Guarded by the flag. These three lines used to run unconditionally at module
+// load — including in store builds, where the file's own header claims to be
+// "fully inert". Two of the three also only reported that the flag was off,
+// which is information nobody can act on from a shipped build.
 if (enabled()) {
-  console.log('[NAV_PERF] NAV PERF INSTRUMENTATION ACTIVE (forced in perf builds)');
-} else {
-  console.log('[NAV_PERF DEBUG] nav perf is DISABLED (flag not truthy)');
+  console.log(
+    '[NAV_PERF] instrumentation active — raw EXPO_PUBLIC_DEBUG_NAV =',
+    JSON.stringify(process.env.EXPO_PUBLIC_DEBUG_NAV),
+  );
 }

@@ -20,6 +20,11 @@ import { useToast } from '@/src/toast/ToastContext';
 import { resolveIdentity } from '@/src/utils/identity';
 import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import {
+  useDataUsable,
+  useFirstMeaningfulRender,
+  useSkeletonTiming,
+} from '@/src/perf/usePerfStages';
 import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
 import { navPerf } from '@/src/utils/navPerf';
 import { prefetchDetailOnPress } from '@/src/prefetch/navPrefetch';
@@ -121,6 +126,14 @@ export default function PublicProfileScreen() {
     navPerf.shellVisible('profile_detail');
     navPerf.firstVisibleUi('profile_detail');
   }, []);
+
+  // T4 / T9 / T10. This screen's own warm snapshot makes it the clearest
+  // cached-vs-cold comparison in the app: the same tap either opens on content
+  // or opens on a skeleton, depending only on whether this profile has been
+  // visited before.
+  useFirstMeaningfulRender(Boolean(profile), 'profile_detail');
+  useDataUsable(Boolean(profile), 'profile_detail');
+  useSkeletonTiming(loading, 'profile_detail');
 
   const load = useCallback(async () => {
     if (!profileId) {

@@ -3,6 +3,7 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import React, { useEffect } from 'react';
 import { AppState } from 'react-native';
 
+import { CacheRestoreProbe } from '@/src/perf/CacheRestoreProbe';
 import { queryClient } from '@/src/query/queryClient';
 import {
   WIEZ_QUERY_CACHE_BUSTER,
@@ -33,6 +34,9 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         },
       }}
     >
+      {/* Inert without EXPO_PUBLIC_DEBUG_NAV; must sit INSIDE the provider so
+          it can read `useIsRestoring`. */}
+      <CacheRestoreProbe />
       {children}
     </PersistQueryClientProvider>
   );

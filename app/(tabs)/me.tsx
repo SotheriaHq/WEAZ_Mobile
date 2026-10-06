@@ -21,6 +21,11 @@ import ProfileImageModal from '@/components/profile/ProfileImageModal';
 import { ProfileApi, type ComputedSizeFitProfile, type PatchedBrand, type SavedItem, type SizeFitProfile, type UserProfile } from '@/src/api/ProfileApi';
 import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
 import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
+import {
+  useDataUsable,
+  useFirstMeaningfulRender,
+  useSkeletonTiming,
+} from '@/src/perf/usePerfStages';
 import { readWarmScreenState, subscribeWarmScreenState } from '@/src/state/screenWarmState';
 import {
   fetchShopperProfileWarmState,
@@ -459,6 +464,20 @@ export default function BuyerProfileScreen() {
   React.useLayoutEffect(() => {
     navPerf.shellVisible('tabs→me');
   }, []);
+
+  /*
+    T4 / T9 / T10 for this screen.
+
+    T4 is deliberately `state.profile`, not the rendered profile record. The
+    screen falls back to the auth user for the header, which is available
+    synchronously and would make T4 read ~0ms on every run — a flattering
+    number that says nothing, since the tabs underneath are still empty. The
+    shopper's report was about the tabs, so the stage that matters is the one
+    where real profile content exists.
+  */
+  useFirstMeaningfulRender(Boolean(state.profile), 'me:profile');
+  useDataUsable(Boolean(state.profile), 'me:profile');
+  useSkeletonTiming(loading, 'me:profile');
   const savedLooksOpenedTrackedRef = useRef(false);
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const loadRequestIdRef = useRef(0);

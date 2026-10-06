@@ -23,6 +23,7 @@ import { AuthProvider } from '@/src/auth/AuthContext';
 import { GenderPromptSheet } from '@/components/profile/GenderPromptSheet';
 import { setNetworkTraceScreen } from '@/src/api/networkTrace';
 import { setFontFallbackMode } from '@/src/styles/FontMode';
+import { startJsThreadMonitor } from '@/src/perf/jsThreadMonitor';
 import { primePersistentScreenCache } from '@/src/state/persistentScreenCache';
 
 import { ToastProvider } from '@/src/toast/ToastContext';
@@ -601,6 +602,15 @@ export default function RootLayout() {
   useEffect(() => {
     void primePersistentScreenCache();
   }, []);
+
+  /**
+   * Sample JS-thread availability for the duration of the session.
+   *
+   * Inert unless EXPO_PUBLIC_DEBUG_NAV is set at bundle time. It is what makes
+   * "the request left late" separable from "the response came back late" — see
+   * src/perf/jsThreadMonitor.ts.
+   */
+  useEffect(() => startJsThreadMonitor(), []);
 
   useEffect(() => {
     let isMounted = true;

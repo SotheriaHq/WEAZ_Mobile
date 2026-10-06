@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
 
 import { cachePolicies, type CachePolicy } from '@/src/cache/policies';
+import { perfAnnotate, perfMark } from '@/src/perf/wiezPerf';
 import {
   queryClient as defaultQueryClient,
   WIEZ_QUERY_CACHE_MAX_ENTRIES,
@@ -282,7 +283,17 @@ export function useCachedQuery<T>({
     }
 
     let cancelled = false;
+    // T5/T6. The lookup is synchronous against the in-memory cache, so the
+    // interval is ~0 by construction — and that is the finding, not a
+    // non-result: the only thing that makes this answer `undefined` when data
+    // exists on disk is the persisted cache not having been rehydrated yet.
+    // `cache_restore_*` in the BOOT channel is the other half of that story.
+    perfMark('cache_lookup_begin', { detail: cacheKey });
     const cached = client.getQueryData<T>(stableKey);
+    perfMark('cache_result', {
+      detail: `${cacheKey} ${cached === undefined ? 'miss' : 'hit'}`,
+    });
+    perfAnnotate(cached === undefined ? 'query_cache_miss' : 'query_cache_hit');
     // Assign unconditionally, including `undefined`. The miss branch used to
     // leave `data` untouched, so when the key changed to something uncached
     // (opening a second brand, switching profile tabs) the screen kept
