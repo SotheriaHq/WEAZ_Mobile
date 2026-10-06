@@ -315,14 +315,32 @@ check(
     /perfRecordIndicatorVisible\(\)/.test(bridge),
 );
 check(
-  'the fixed dock does not batch the pill into the navigation commit',
-  /React\.startTransition\(\(\) => commitSelection\(item\)\)/.test(island),
+  'the pill is driven by a UI-thread shared value, not a React commit',
+  /useSharedValue<string \| null>\(null\)/.test(island) &&
+    /useAnimatedStyle\(\(\) => \{/.test(island) &&
+    /pressedKey\?\.value === itemKey/.test(island),
 );
 check(
-  'the fixed dock still paints the pill urgently, outside the transition',
-  /paintCandidate\(item\);[\s\S]{0,1400}?React\.startTransition\(\(\) => commitSelection\(item\)\)/.test(
+  'the pressed key is written before any React state in the press path',
+  /pressedKey\.value = item\.key;\s*\n\s*setPressedItemKey\(item\.key\);/.test(island),
+);
+check(
+  'the pill still honours React-confirmed focus, so untapped routes light up',
+  /const isActive = focused \|\| \(!!itemKey && pressedKey\?\.value === itemKey\)/.test(
     island,
   ),
+);
+check(
+  'the pill element can host an animated style',
+  /<Animated\.View style=\{chipStyle\}>/.test(island),
+);
+check(
+  'only colour changes on focus (borderWidth toggling re-clips the glyph)',
+  !/borderWidth: focused/.test(island) && !/borderWidth: isActive/.test(island),
+);
+check(
+  'the disproven React-transition indirection is gone',
+  !/React\.startTransition\(/.test(island),
 );
 check(
   'the scrolling dock highlights on touch-down instead of after the slop timer',
@@ -331,9 +349,8 @@ check(
   ),
 );
 check(
-  'the slop timer still gates the ROUTE, not just the highlight',
-  /SCROLL_DOCK_COMMIT_DELAY_MS\)/.test(island) &&
-    /commitScrollDockTap\(item\);/.test(island),
+  'a cancelled scroll candidate clears the UI-thread key too',
+  /if \(pressedKey\.value === key\) pressedKey\.value = null;/.test(island),
 );
 check(
   'a highlight taken back by a scroll is recorded',

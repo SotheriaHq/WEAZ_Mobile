@@ -10,6 +10,11 @@ import {
   type NativeTouchEvent,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
@@ -85,6 +90,8 @@ export function NativeIslandTabIcon({
   focused,
   badge,
   compact,
+  itemKey,
+  pressedKey,
 }: {
   label: string;
   emoji: string;
@@ -92,6 +99,24 @@ export function NativeIslandTabIcon({
   focused: boolean;
   badge?: number;
   compact?: boolean;
+  /** This chip's identity, compared against `pressedKey` on the UI thread. */
+  itemKey?: string;
+  /**
+   * The key the user last pressed, written straight to the UI thread.
+   *
+   * `focused` arrives through React, and React cannot deliver it before the
+   * destination's own render: expo-router keeps route state in a
+   * `useSyncExternalStore`, and React forces external-store updates to sync to
+   * avoid tearing — so `startTransition` cannot defer the navigation's render
+   * out of the pill's commit. Measured, the pill landed within a few ms of
+   * `screen_mount` every time, which on a cold heavy destination is over a
+   * second after the finger went down.
+   *
+   * A shared value does not go through React at all. The write happens in the
+   * press handler and the UI thread picks it up on its next frame, whatever
+   * the JavaScript thread is doing afterwards.
+   */
+  pressedKey?: SharedValue<string | null>;
 }) {
   const { theme } = useTheme();
   // The chip must stay structurally IDENTICAL whether focused or not — only
@@ -116,19 +141,29 @@ export function NativeIslandTabIcon({
     Colour is the ONLY thing that may change on focus here — see the note above
     about Android re-clipping the glyph.
   */
-  const chipStyle = [
-    styles.tabChip,
-    compact && styles.tabChipCompact,
-    {
-      backgroundColor: focused ? theme.colors.navActiveSurface : 'transparent',
-      borderColor: focused ? theme.colors.focusRing : 'transparent',
-    },
-  ];
+  /*
+    Colour only, and evaluated on the UI thread.
+
+    `focused` stays in the condition so the pill is still correct once React
+    catches up, and so a chip that was never pressed (deep link, back, restored
+    route) lights up normally. The shared value only ever makes it EARLIER.
+  */
+  const activeFill = theme.colors.navActiveSurface;
+  const activeRing = theme.colors.focusRing;
+  const pillStyle = useAnimatedStyle(() => {
+    const isActive = focused || (!!itemKey && pressedKey?.value === itemKey);
+    return {
+      backgroundColor: isActive ? activeFill : 'transparent',
+      borderColor: isActive ? activeRing : 'transparent',
+    };
+  }, [activeFill, activeRing, focused, itemKey, pressedKey]);
+
+  const chipStyle = [styles.tabChip, compact && styles.tabChipCompact, pillStyle];
 
   return (
     <View style={styles.tabIconWrap}>
       <View style={styles.tabGlyphWrap}>
-        <View style={chipStyle}>
+        <Animated.View style={chipStyle}>
           <View style={styles.tabGlyphStack}>
             <View style={styles.tabEmojiWrap}>
               {avatarUri ? (
@@ -156,7 +191,7 @@ export function NativeIslandTabIcon({
               </AppText>
             </View>
           </View>
-        </View>
+        </Animated.View>
         {typeof badge === 'number' && badge > 0 ? (
           <View style={styles.badgeWrap} pointerEvents="none">
             <View style={[styles.badge, { backgroundColor: theme.colors.badgeRed }]}>
@@ -251,6 +286,14 @@ export function NativeIslandBottomNav({
   const [pressedItemKey, setPressedItemKey] = React.useState<string | null>(null);
   const [immediateActiveKey, setImmediateActiveKey] = React.useState<string | null>(null);
   const [immediateActiveNavFlow, setImmediateActiveNavFlow] = React.useState<string | null>(null);
+  /**
+   * The pressed key, on the UI thread.
+   *
+   * Written synchronously in the press handler so the pill can paint without
+   * waiting for a React commit it would otherwise share with the destination's
+   * render. See the note on `pressedKey` in `NativeIslandTabIcon`.
+   */
+  const pressedKey = useSharedValue<string | null>(null);
   const lastCommitRef = React.useRef<{ key: string; at: number } | null>(null);
   const scrollGestureRef = React.useRef<ScrollDockGesture | null>(null);
 
@@ -283,6 +326,9 @@ export function NativeIslandBottomNav({
   const paintCandidate = React.useCallback((item: NativeIslandNavItem) => {
     const navFlow = item.navFlow ?? item.key;
     const targetRoute = item.targetRoute ?? undefined;
+    // First, and outside React: this is the write the pill actually paints
+    // from. Everything below it is bookkeeping that may take a commit to land.
+    pressedKey.value = item.key;
     setPressedItemKey(item.key);
     setImmediateActiveKey(item.key);
     setImmediateActiveNavFlow(navFlow);
@@ -291,7 +337,7 @@ export function NativeIslandBottomNav({
     navPerf.tap(navFlow);
     navPerf.pressedFeedbackVisible(navFlow);
     navPerf.activeIndicatorIntent(navFlow);
-  }, []);
+  }, [pressedKey]);
 
   /**
    * Pill and route in the same turn.
@@ -314,25 +360,19 @@ export function NativeIslandBottomNav({
 
   const handleFixedPressIn = React.useCallback(
     (item: NativeIslandNavItem) => {
+      // `paintCandidate` writes `pressedKey` before anything else, and the pill
+      // reads that on the UI thread, so the highlight no longer depends on this
+      // commit at all.
+      //
+      // This previously wrapped `commitSelection` in a React transition to keep
+      // the pill out of the navigation's commit. That cannot work: expo-router
+      // holds route state in a `useSyncExternalStore`, and React forces
+      // external-store updates to sync to avoid tearing, so the navigation
+      // render is never deferred. The measurement said so plainly — the pill
+      // landed within a few ms of `screen_mount` on every single flow — and the
+      // indirection is removed rather than left in looking load-bearing.
       paintCandidate(item);
-      /*
-        The pill and the route are the same TICK, but not the same COMMIT.
-
-        Calling both plainly put them in one commit, because React batches
-        every update inside one event handler — so the pill could not appear
-        until the destination's render had finished, and on this app that was
-        measured at 1.5s for a cold Me mount on a contended thread. The press
-        looked ignored for half a second, which is the complaint.
-
-        `startTransition` runs its callback SYNCHRONOUSLY, so `router.navigate`
-        still leaves in this tick and the route is not delayed by a frame or a
-        timer — only the re-render it causes is marked non-urgent. The pill's
-        own setState stays urgent, so React commits it first and renders the
-        destination after. That keeps the invariant the previous fix was
-        protecting (never light a pill for a screen the user is not going to)
-        without paying for it in perceived responsiveness.
-      */
-      React.startTransition(() => commitSelection(item));
+      commitSelection(item);
     },
     [commitSelection, paintCandidate],
   );
@@ -364,8 +404,9 @@ export function NativeIslandBottomNav({
     // The highlight painted on touch-down is being taken back, because this
     // turned out to be a scroll rather than a tap. Record it, or a trace shows
     // an indicator that appeared and then silently vanished.
+    if (pressedKey.value === key) pressedKey.value = null;
     navPerf.mark('optimistic_active_cancelled', key);
-  }, [clearScrollTimer]);
+  }, [clearScrollTimer, pressedKey]);
 
   const commitScrollDockTap = React.useCallback(
     (item: NativeIslandNavItem) => {
@@ -380,7 +421,7 @@ export function NativeIslandBottomNav({
       // accessibility activate path, which never goes through press-in. The
       // setState calls are no-ops when the values match.
       paintCandidate(item);
-      React.startTransition(() => commitSelection(item));
+      commitSelection(item);
     },
     [clearScrollTimer, commitSelection, paintCandidate],
   );
@@ -513,6 +554,8 @@ export function NativeIslandBottomNav({
                       emoji={item.emoji}
                       avatarUri={item.avatarUri}
                       focused={Boolean((item.active || immediateActiveKey === item.key) && !item.disabled)}
+                      itemKey={item.disabled ? undefined : item.key}
+                      pressedKey={pressedKey}
                       badge={item.badge}
                       compact={false}
                     />
@@ -545,6 +588,8 @@ export function NativeIslandBottomNav({
                       emoji={item.emoji}
                       avatarUri={item.avatarUri}
                       focused={Boolean((item.active || immediateActiveKey === item.key) && !item.disabled)}
+                      itemKey={item.disabled ? undefined : item.key}
+                      pressedKey={pressedKey}
                       badge={item.badge}
                       compact={compact}
                     />
