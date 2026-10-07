@@ -50,6 +50,22 @@ const SCROLL_DOCK_COMMIT_DELAY_MS = 90;
 
 /** Press-in and press both fire for one tap. Ignore the second. */
 const COMMIT_DEDUPE_MS = 400;
+/**
+ * How long the UI-thread pressed key may outlive its press.
+ *
+ * The shared value exists only to bridge the gap until React's `focused`
+ * catches up, so it must be given back. Without a bound it is never cleared
+ * when a press leads nowhere — a navigation the central guard ignores as a
+ * duplicate or a same-target tap changes no item, so the confirmation effect
+ * below never re-runs and the chip stays lit for the rest of the session. That
+ * is the "two chips active at once" report: a stale pressed key on one chip and
+ * a real `focused` on another.
+ *
+ * Clearing is safe whenever it fires: if the press did arrive, `focused` is
+ * already carrying the highlight and dropping the shared key changes nothing.
+ * 1200ms comfortably covers the 345-428ms shell render measured on device.
+ */
+const PRESSED_KEY_MAX_MS = 1200;
 
 type ScrollDockGesture = {
   key: string;
@@ -158,6 +174,43 @@ export function NativeIslandTabIcon({
     };
   }, [activeFill, activeRing, focused, itemKey, pressedKey]);
 
+  /*
+    The glyph and the label brighten on the UI thread too.
+
+    Moving only the chip's fill was a half fix, and the device capture showed
+    exactly what that feels like. The chip tinted within a frame while the
+    emoji stayed at 0.76 and the label at 0.9 until React committed — and the
+    tab shell that owns `focused` does not re-render until 345-428ms after the
+    tap (measured: T2 `path_changed` lands there, while the destination screen
+    mounts at 22-60ms). So a press lit the pill immediately and then the icon
+    snapped brighter a third of a second later, which reads as "press, pause,
+    active" however fast the pill itself was.
+
+    Same `isActive` expression as the pill, same shared value, so all three
+    cues now land on one frame. The inactive values are the previous literals
+    unchanged, kept per-glyph: an avatar sat at 0.82 and an emoji at 0.76.
+
+    `tone` on the label stays React-driven on purpose: AppText resolves colour
+    from variant/tone only and `sanitizeStyle` strips a colour override, so the
+    hue still settles on commit. Brightness is the dominant cue and it is now
+    immediate; the hue arriving later is not perceptible the way the old
+    opacity jump was.
+
+    Opacity only — nothing structural. The note above still applies: toggling
+    `borderWidth`, `shadow*` or `fontSize` on focus re-clips the chip and blanks
+    the glyph. These wrappers are always present and only their alpha changes.
+  */
+  const inactiveGlyphOpacity = avatarUri ? 0.82 : 0.76;
+  const glyphStyle = useAnimatedStyle(() => {
+    const isActive = focused || (!!itemKey && pressedKey?.value === itemKey);
+    return { opacity: isActive ? 1 : inactiveGlyphOpacity };
+  }, [focused, inactiveGlyphOpacity, itemKey, pressedKey]);
+
+  const labelStyle = useAnimatedStyle(() => {
+    const isActive = focused || (!!itemKey && pressedKey?.value === itemKey);
+    return { opacity: isActive ? 1 : 0.9 };
+  }, [focused, itemKey, pressedKey]);
+
   const chipStyle = [styles.tabChip, compact && styles.tabChipCompact, pillStyle];
 
   return (
@@ -165,31 +218,31 @@ export function NativeIslandTabIcon({
       <View style={styles.tabGlyphWrap}>
         <Animated.View style={chipStyle}>
           <View style={styles.tabGlyphStack}>
-            <View style={styles.tabEmojiWrap}>
+            <Animated.View style={[styles.tabEmojiWrap, glyphStyle]}>
               {avatarUri ? (
                 <StableImage
                   uri={avatarUri}
                   resizeMode="cover"
-                  containerStyle={[styles.tabAvatar, { opacity: focused ? 1 : 0.82 }]}
+                  containerStyle={styles.tabAvatar}
                   imageStyle={styles.tabAvatarFill}
                 />
               ) : (
-                <AppText variant="title" style={[styles.tabEmoji, { opacity: focused ? 1 : 0.76 }]}>
+                <AppText variant="title" style={styles.tabEmoji}>
                   {emoji}
                 </AppText>
               )}
-            </View>
-            <View style={styles.tabLabelWrap}>
+            </Animated.View>
+            <Animated.View style={[styles.tabLabelWrap, labelStyle]}>
               <AppText
                 variant="captionBold"
                 tone={focused ? 'primary' : 'secondary'}
                 numberOfLines={1}
-                style={focused ? styles.tabLabelActive : styles.tabLabelInactive}
+                style={styles.tabLabelBase}
                 maxFontSizeMultiplier={1.2}
               >
                 {label}
               </AppText>
-            </View>
+            </Animated.View>
           </View>
         </Animated.View>
         {typeof badge === 'number' && badge > 0 ? (
@@ -294,6 +347,7 @@ export function NativeIslandBottomNav({
    * render. See the note on `pressedKey` in `NativeIslandTabIcon`.
    */
   const pressedKey = useSharedValue<string | null>(null);
+  const pressedKeyResetRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCommitRef = React.useRef<{ key: string; at: number } | null>(null);
   const scrollGestureRef = React.useRef<ScrollDockGesture | null>(null);
 
@@ -312,10 +366,29 @@ export function NativeIslandBottomNav({
     }
   }, [immediateActiveKey, items]);
 
+  // Hand the UI-thread key back as soon as React's own `active` agrees, so the
+  // pill is only ever painted from one source of truth at a time. Reading
+  // `.value` here does not subscribe, which is fine: `items` changing IS the
+  // signal that the authoritative state moved.
+  React.useEffect(() => {
+    const pressed = pressedKey.value;
+    if (!pressed) return;
+    const confirmed = items.some((item) => item.key === pressed && item.active);
+    const stillExists = items.some((item) => item.key === pressed);
+    if (confirmed || !stillExists) {
+      pressedKey.value = null;
+      if (pressedKeyResetRef.current) {
+        clearTimeout(pressedKeyResetRef.current);
+        pressedKeyResetRef.current = null;
+      }
+    }
+  }, [items, pressedKey]);
+
   React.useEffect(() => {
     return () => {
       const gesture = scrollGestureRef.current;
       if (gesture?.timer) clearTimeout(gesture.timer);
+      if (pressedKeyResetRef.current) clearTimeout(pressedKeyResetRef.current);
     };
   }, []);
 
@@ -329,6 +402,16 @@ export function NativeIslandBottomNav({
     // First, and outside React: this is the write the pill actually paints
     // from. Everything below it is bookkeeping that may take a commit to land.
     pressedKey.value = item.key;
+    // Bounded, so a press that leads nowhere cannot leave the chip lit. See
+    // `PRESSED_KEY_MAX_MS`.
+    if (pressedKeyResetRef.current) clearTimeout(pressedKeyResetRef.current);
+    pressedKeyResetRef.current = setTimeout(() => {
+      pressedKeyResetRef.current = null;
+      if (pressedKey.value === item.key) {
+        pressedKey.value = null;
+        navPerf.mark('optimistic_active_expired', item.key);
+      }
+    }, PRESSED_KEY_MAX_MS);
     setPressedItemKey(item.key);
     setImmediateActiveKey(item.key);
     setImmediateActiveNavFlow(navFlow);
@@ -764,13 +847,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabLabelInactive: {
-    opacity: 0.9,
-    textAlign: 'center',
-    flexShrink: 1,
-  },
-  tabLabelActive: {
-    opacity: 1,
+  // One style for both states. The active/inactive pair differed only in
+  // opacity, which is now driven on the UI thread by `labelStyle` so the label
+  // brightens on the same frame as the pill instead of on React's commit.
+  tabLabelBase: {
     textAlign: 'center',
     flexShrink: 1,
   },

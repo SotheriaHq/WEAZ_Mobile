@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 import { backOrNavigate, drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
+import { useAuth } from '@/src/auth/AuthContext';
+import { isBrandAccount, isSelfIdentity } from '@/src/auth/brandAccess';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
@@ -101,6 +103,7 @@ function PublicProfileEmpty() {
 
 export default function PublicProfileScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const { user } = useAuth();
   const { theme, scheme } = useTheme();
   const toast = useToast();
   const { standardScreenBottomPadding } = useScreenChrome();
@@ -261,6 +264,26 @@ export default function PublicProfileScreen() {
         console.error('Failed to mark profile photo viewed', markError);
       });
   }, [avatarUri, profile]);
+
+  /*
+    Your own profile is not a visitor surface.
+
+    This screen renders `isOwner={false}` in both of its branches, which is
+    correct for what it is — the public, patched-brands view of SOMEONE ELSE.
+    It has no session identity at all, so opening it with your own id showed
+    you yourself as a stranger: no owner controls, no edit, no drafts. The
+    Runway reaches it exactly that way, by pushing the id on the tapped card.
+
+    The owner surfaces already exist and the island routes to them by the same
+    rule, so send the request there rather than teaching this screen a second
+    identity. `replace`, not push, so Back still returns where the user came
+    from instead of landing back on a screen that would redirect again.
+
+    This runs after every hook above it, so the hook order is unconditional.
+  */
+  if (isSelfIdentity(user, profileId)) {
+    return <Redirect href={(isBrandAccount(user) ? '/catalog' : '/(tabs)/me') as never} />;
+  }
 
   if (loading && !hasWarmProfileSnapshot) {
     return (

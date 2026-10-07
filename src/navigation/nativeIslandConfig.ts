@@ -249,7 +249,22 @@ export function buildStudioIslandItems(args: {
   });
 }
 
-export function mapPathnameToIslandKey(pathname: string): NativeIslandKey {
+/**
+ * Catalogue sub-routes that belong to the OWNER, not to a visited brand.
+ *
+ * `/catalog/<anything-else>` is a brand id, i.e. somebody else's catalogue.
+ * Keep in step with `FOCUSED_CATALOG_FLOW` in `app/(tabs)/_layout.tsx`.
+ */
+const CATALOG_OWNER_SUBROUTES = new Set(['view', 'create-design', 'create-collection', 'edit-profile']);
+
+function isVisitorCatalogPath(normalized: string): boolean {
+  if (!normalized.startsWith('/catalog/')) return false;
+  const segment = normalized.slice('/catalog/'.length).split('/')[0] ?? '';
+  return segment.length > 0 && !CATALOG_OWNER_SUBROUTES.has(segment);
+}
+
+/** The chip to light for a pathname, or `null` when none of them is true. */
+export function mapPathnameToIslandKey(pathname: string): NativeIslandKey | null {
   const normalized = normalizePathname(pathname);
 
   if (
@@ -270,12 +285,29 @@ export function mapPathnameToIslandKey(pathname: string): NativeIslandKey {
 
   if (normalized === '/inbox' || normalized.startsWith('/messages/')) return NATIVE_ISLAND_KEYS.inbox;
 
+  /*
+    Somebody else's catalogue or profile is NOT the Me surface.
+
+    These two used to map to the profile chip along with the owner's own
+    screens, so standing on another brand's catalogue — or any stranger's
+    public profile — lit the user's own avatar in the island. Combined with a
+    tab jump that did not pop the nested stack, that is how a brand came to
+    believe they were looking at their own account in visitor mode: the island
+    said "me" and the screen showed someone else.
+
+    They return no key at all. Both are push-reached drill-downs with a Back
+    affordance of their own, and no island chip is a true statement about where
+    you are. The owner's own catalogue sub-flows (`create-design`,
+    `edit-profile`, ...) are NOT affected — they stay on the profile chip, and
+    the tab shell hides the island for them anyway.
+  */
+  if (normalized.startsWith('/profile/') || isVisitorCatalogPath(normalized)) return null;
+
   if (
     normalized === '/me' ||
     normalized === '/me-edit' ||
     normalized === '/catalog' ||
     normalized.startsWith('/catalog/') ||
-    normalized.startsWith('/profile/') ||
     normalized === '/orders' ||
     normalized.startsWith('/orders/') ||
     normalized === '/notifications' ||
@@ -295,7 +327,8 @@ export function mapPathnameToIslandKey(pathname: string): NativeIslandKey {
 }
 
 export function buildNativeIslandItems(args: {
-  activeKey: NativeIslandKey;
+  /** `null` when the current route is nobody's tab — then no chip is active. */
+  activeKey: NativeIslandKey | null;
   isBrand: boolean;
   profileLabel: string;
   profileIcon: string;

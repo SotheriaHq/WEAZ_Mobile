@@ -29,7 +29,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
-import { canManageCatalog, getActiveBrandId } from '@/src/auth/brandAccess';
+import { canManageCatalog, getActiveBrandId, isSelfIdentity } from '@/src/auth/brandAccess';
 import { brandApi, type BrandProfileDto, type CollectionDto } from '@/src/api/BrandApi';
 import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
@@ -420,7 +420,16 @@ export default function CatalogScreen() {
   const unreadNotificationCount = useUnreadNotificationCount();
   const isDark = scheme === 'dark';
   const activeBrandId = getActiveBrandId(user);
-  const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || routeBrandId === activeBrandId));
+  // Identity by the whole set of ids that mean "me", not by one `===`.
+  //
+  // `/catalog/[brandId]` is reachable with either the brand id or the owner
+  // user id depending on which the originating row carried — the Runway pushes
+  // whatever `handleOpenBrand` received. Comparing only against
+  // `getActiveBrandId` made "open my own card from the feed" render the owner
+  // their own catalogue as a visitor: no owner controls, no drafts, no edit.
+  // `isSelfIdentity` accepts any of the account's ids. `canManageCatalog` still
+  // supplies the permission half, unchanged.
+  const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || isSelfIdentity(user, routeBrandId)));
   const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
   const targetBrandId = routeBrandId || activeBrandId || null;
   const catalogUiStateKey = targetBrandId ? buildCatalogUiStateKey(targetBrandId, isOwner) : null;

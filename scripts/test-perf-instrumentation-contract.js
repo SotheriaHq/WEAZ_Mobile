@@ -320,9 +320,40 @@ check(
     /useAnimatedStyle\(\(\) => \{/.test(island) &&
     /pressedKey\?\.value === itemKey/.test(island),
 );
+// Ordering, not adjacency. The invariant is that the shared value is written
+// before anything that needs a React commit — not that the two lines touch.
+// Arming the bounded reset between them is allowed and does not weaken it.
+const paintCandidateBody = (() => {
+  const start = island.indexOf('const paintCandidate');
+  if (start < 0) return '';
+  const end = island.indexOf('}, [pressedKey]);', start);
+  return end < 0 ? '' : island.slice(start, end);
+})();
 check(
   'the pressed key is written before any React state in the press path',
-  /pressedKey\.value = item\.key;\s*\n\s*setPressedItemKey\(item\.key\);/.test(island),
+  paintCandidateBody.includes('pressedKey.value = item.key;') &&
+    paintCandidateBody.includes('setPressedItemKey(item.key);') &&
+    paintCandidateBody.indexOf('pressedKey.value = item.key;') <
+      paintCandidateBody.indexOf('setPressedItemKey(item.key);'),
+);
+check(
+  'the glyph and label brighten on the UI thread, not on React focus',
+  /const glyphStyle = useAnimatedStyle\(/.test(island) &&
+    /const labelStyle = useAnimatedStyle\(/.test(island) &&
+    /<Animated\.View style=\{\[styles\.tabEmojiWrap, glyphStyle\]\}>/.test(island) &&
+    /<Animated\.View style=\{\[styles\.tabLabelWrap, labelStyle\]\}>/.test(island),
+);
+check(
+  'no focus cue is left behind on a React-driven opacity',
+  !/opacity: focused \?/.test(island),
+);
+check(
+  'the UI-thread pressed key is bounded so it cannot strand a lit chip',
+  /PRESSED_KEY_MAX_MS/.test(island) &&
+    /pressedKeyResetRef/.test(island) &&
+    /const confirmed = items\.some\(\(item\) => item\.key === pressed && item\.active\)/.test(
+      island,
+    ),
 );
 check(
   'the pill still honours React-confirmed focus, so untapped routes light up',
@@ -384,6 +415,65 @@ check('the log capture can filter to flow summaries only', /--summary/.test(capt
 check(
   '--nav still captures both instruments',
   /includes\('\[NAV_PERF\]'\) \|\| line\.includes\('\[WIEZ-PERF\]'\)/.test(capture),
+);
+
+// ------------------------------------------------- navigation truthfulness
+
+/*
+  These are not timing checks. They are here because the island's active chip
+  is the only thing telling the user which account's surface they are on, and
+  a device session proved it could say "me" while showing somebody else's
+  catalogue in visitor mode. Each check below corresponds to one of the three
+  mechanisms that produced that, so none of them can come back quietly.
+*/
+
+const brandAccess = read('src/auth/brandAccess.ts');
+const catalogScreen = read('app/(tabs)/catalog/index.tsx');
+const publicProfile = read('app/profile/[id].tsx');
+const islandConfig = read('src/navigation/nativeIslandConfig.ts');
+const tabsLayout = read('app/(tabs)/_layout.tsx');
+const mobileNav = read('src/utils/mobileNavigation.ts');
+
+check(
+  'owner identity accepts every id the account is reachable by',
+  /export function getSelfIdentityIds/.test(brandAccess) &&
+    /export function isSelfIdentity/.test(brandAccess) &&
+    /user\.activeBrandId/.test(brandAccess),
+);
+check(
+  'the catalogue decides owner by identity set, not a single id comparison',
+  /isSelfIdentity\(user, routeBrandId\)/.test(catalogScreen) &&
+    !/routeBrandId === activeBrandId/.test(catalogScreen),
+);
+check(
+  'your own id on the public profile screen redirects to your own surface',
+  /isSelfIdentity\(user, profileId\)/.test(publicProfile) &&
+    /<Redirect href=/.test(publicProfile),
+);
+check(
+  'a visited catalogue or profile lights no island chip',
+  /isVisitorCatalogPath/.test(islandConfig) &&
+    /startsWith\('\/profile\/'\) \|\| isVisitorCatalogPath\(normalized\)\) return null/.test(
+      islandConfig,
+    ),
+);
+check(
+  'the island key mapping can answer "none"',
+  /export function mapPathnameToIslandKey\(pathname: string\): NativeIslandKey \| null/.test(
+    islandConfig,
+  ),
+);
+check(
+  'a tab jump from a drill-down pops instead of only re-focusing the tab',
+  /TAB_ROOT_PATHS/.test(tabsLayout) &&
+    /const atTabRoot = TAB_ROOT_PATHS\.has\(normCurrent\)/.test(tabsLayout) &&
+    /if \(atTabRoot && dispatchTabNavigationAction\('JUMP_TO', tabName\)\)/.test(tabsLayout),
+);
+check(
+  'drill-down pushes are single-flight so queued taps cannot stack screens',
+  /singleFlight\?: boolean/.test(mobileNav) &&
+    /navigation_ignored_in_flight/.test(mobileNav) &&
+    /\{ singleFlight: true \}/.test(mobileNav),
 );
 
 // ----------------------------------------------------------------- report

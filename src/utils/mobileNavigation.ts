@@ -86,7 +86,11 @@ export function releaseNavigationLock(reason = 'manual') {
   clearLock(reason);
 }
 
-export function withNavigationLock<T>(href: Href, action: () => T, opts: { force?: boolean } = {}): T | undefined {
+export function withNavigationLock<T>(
+  href: Href,
+  action: () => T,
+  opts: { force?: boolean; singleFlight?: boolean } = {},
+): T | undefined {
   const target = normalizeTarget(href);
   const current = (global as any).__navCurrentPathname || null;
 
@@ -97,6 +101,26 @@ export function withNavigationLock<T>(href: Href, action: () => T, opts: { force
 
   if (current && normalizeTarget(current) === target && !opts.force) {
     navPerf.mark?.('navigation_same_target_ignored', target);
+    return undefined;
+  }
+
+  if (inFlightTarget && !opts.force && opts.singleFlight) {
+    /*
+      A push while a push is already in flight is a queued tap, not a decision.
+
+      The JS thread stalls for 327-408ms on a navigation (measured on device),
+      and taps that land during the stall sit in the native queue and then all
+      dispatch within a few milliseconds of each other once the thread frees.
+      Replacing the lock per target meant every one of them pushed: the screen
+      looked frozen, then four or five detail screens opened at once and had to
+      be dismissed one by one.
+
+      Rejecting while a target is in flight collapses that burst. The window is
+      self-limiting rather than a fixed delay — the lock is released on
+      `path_match` as soon as the route actually moves (~400ms), so a
+      deliberate second tap after the screen has changed is unaffected.
+    */
+    navPerf.mark?.('navigation_ignored_in_flight', target);
     return undefined;
   }
 
@@ -133,7 +157,13 @@ export function topLevelNavigate(href: Href) {
   return result;
 }
 
-/** Open a true drill-down detail screen on top of the current screen. */
+/**
+ * Open a true drill-down detail screen on top of the current screen.
+ *
+ * Single-flight: one push at a time, whatever the target. A push stacks a
+ * screen that the user must dismiss, so a burst of queued taps must not stack
+ * a burst of screens. See the note in `withNavigationLock`.
+ */
 export function drillDownPush(href: Href) {
   const target = normalizeTarget(href);
   const result = withNavigationLock(href, () => {
@@ -141,7 +171,7 @@ export function drillDownPush(href: Href) {
     navPerf.navigationCalled();
     router.push(href as never);
     navPerf.routeCallEnd(undefined, { target });
-  });
+  }, { singleFlight: true });
   return result;
 }
 

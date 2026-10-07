@@ -79,6 +79,14 @@ type TabNavigationActionType = 'JUMP_TO' | 'PRELOAD';
 // island tab mounts on the tap that opens it.
 const TAB_PRELOAD_FALLBACK_DELAY_MS = 8_000;
 
+/**
+ * The root path of every island destination, with `/(tabs)` stripped.
+ *
+ * `JUMP_TO` is only safe from one of these — see the note in
+ * `jumpToIslandTab`. Keep in step with `getNativeIslandRoute`.
+ */
+const TAB_ROOT_PATHS = new Set(['/', '/(tabs)', '/discover', '/inbox', '/charts', '/catalog', '/me']);
+
 function createTabNavigationAction(type: TabNavigationActionType, name: string) {
   return {
     type,
@@ -298,9 +306,38 @@ export default function TabLayout() {
   const jumpToIslandTab = useCallback(
     (tabName: string, fallbackRoute: string) => {
       navPerf.routeCallStart(tabName, { target: fallbackRoute });
-      if (dispatchTabNavigationAction('JUMP_TO', tabName)) {
+      /*
+        JUMP_TO changes which TAB is focused. That is all it does.
+
+        It does not pop the focused tab's own nested stack, and it does not
+        dismiss a root-stack screen sitting on top of the whole tab shell. Both
+        of those are reachable in one tap and both made the island lie:
+
+          - Catalogue is a nested Stack (`index` + `[brandId]`). Open another
+            brand from the Runway, then press the island's own chip: JUMP_TO
+            focused the catalogue tab, which was still parked on `[brandId]`.
+            The chip read "me" and the screen was somebody else's catalogue in
+            visitor mode. Pressing again did the same thing, so there was no way
+            out but a relaunch.
+          - `/profile/[id]` is a ROOT-stack route, above the tab shell entirely.
+            JUMP_TO re-focused a tab underneath it and left the profile on
+            screen, so the press appeared to do nothing at all.
+
+        So JUMP_TO is only used from a tab ROOT, where it is exactly right and
+        cheap. From anywhere deeper, `router.navigate` is what pops the nested
+        stack back to its root and dismisses anything stacked above it.
+
+        `pathnameRef` is read instead of `pathname` so this callback stays
+        stable and does not churn the island on every route change.
+      */
+      const normCurrent = String(pathnameRef.current ?? '').replace('/(tabs)', '');
+      const atTabRoot = TAB_ROOT_PATHS.has(normCurrent);
+      if (atTabRoot && dispatchTabNavigationAction('JUMP_TO', tabName)) {
         navPerf.routeCallEnd(tabName, { target: fallbackRoute });
         return;
+      }
+      if (!atTabRoot) {
+        navPerf.mark?.('tab_jump_needs_pop', normCurrent);
       }
 
       router.navigate(fallbackRoute as any);

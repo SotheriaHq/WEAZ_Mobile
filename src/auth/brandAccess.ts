@@ -62,6 +62,49 @@ export function getActiveBrandId(user?: AuthUser | null): string | null {
   return getActiveBrandMembership(user)?.brandId ?? user?.activeBrandId ?? null;
 }
 
+/**
+ * Every id that means "this is me".
+ *
+ * A brand is reachable under more than one id. `/brands/:id` resolves by OWNER
+ * USER id (see the routing note in `src/utils/mobileRouting.ts`), feed and
+ * search rows carry whichever of the two the backend row happened to hold, and
+ * `getActiveBrandId` returns the BRAND id. So an owner-identity check written
+ * as a single `routeBrandId === activeBrandId` is false half the time it should
+ * be true — and the screen that asked silently renders the owner their own
+ * catalogue in visitor mode, with none of their controls.
+ *
+ * That was reproducible from the Runway: tapping your own card pushes
+ * `/catalog/[brandId]` with the id on the feed row, which need not be the brand
+ * id the session holds. Comparing against the whole identity set removes the
+ * guess. Membership brand ids are included so a staff member switching
+ * workspaces is still recognised in the workspace they are actually in.
+ *
+ * This answers IDENTITY only — "whose surface is this". It is never a
+ * permission: pair it with `canManageCatalog` for that, exactly as before.
+ */
+export function getSelfIdentityIds(user?: AuthUser | null): string[] {
+  if (!user) return [];
+  const ids = [
+    user.id,
+    user.activeBrandId,
+    ...getActiveMemberships(user).map((membership) => membership.brandId),
+  ];
+  return Array.from(
+    new Set(
+      ids
+        .map((id) => (typeof id === 'string' ? id.trim() : ''))
+        .filter((id): id is string => id.length > 0),
+    ),
+  );
+}
+
+/** Does `candidateId` identify the signed-in account (user id or brand id)? */
+export function isSelfIdentity(user: AuthUser | null | undefined, candidateId?: string | null): boolean {
+  const candidate = typeof candidateId === 'string' ? candidateId.trim() : '';
+  if (!candidate) return false;
+  return getSelfIdentityIds(user).includes(candidate);
+}
+
 export function hasActiveBrandMembership(user?: AuthUser | null): boolean {
   return Boolean(getActiveBrandMembership(user));
 }
