@@ -318,7 +318,8 @@ check(
   'the pill is driven by a UI-thread shared value, not a React commit',
   /useSharedValue<string \| null>\(null\)/.test(island) &&
     /useAnimatedStyle\(\(\) => \{/.test(island) &&
-    /pressedKey\?\.value === itemKey/.test(island),
+    /const pressed = pressedKey\.value/.test(island) &&
+    !/pressedKey\?\.value/.test(island),
 );
 // Ordering, not adjacency. The invariant is that the shared value is written
 // before anything that needs a React commit — not that the two lines touch.
@@ -339,9 +340,11 @@ check(
 check(
   'the glyph and label brighten on the UI thread, not on React focus',
   /const glyphStyle = useAnimatedStyle\(/.test(island) &&
-    /const labelStyle = useAnimatedStyle\(/.test(island) &&
+    /const activeLabelStyle = useAnimatedStyle\(/.test(island) &&
+    /const inactiveLabelStyle = useAnimatedStyle\(/.test(island) &&
     /<Animated\.View style=\{\[styles\.tabEmojiWrap, glyphStyle\]\}>/.test(island) &&
-    /<Animated\.View style=\{\[styles\.tabLabelWrap, labelStyle\]\}>/.test(island),
+    /style=\{inactiveLabelStyle\}/.test(island) &&
+    /style=\{\[styles\.tabLabelActive, activeLabelStyle\]\}/.test(island),
 );
 check(
   'no focus cue is left behind on a React-driven opacity',
@@ -357,9 +360,7 @@ check(
 );
 check(
   'the pill still honours React-confirmed focus, so untapped routes light up',
-  /const isActive = focused \|\| \(!!itemKey && pressedKey\?\.value === itemKey\)/.test(
-    island,
-  ),
+  /pressed != null \? pressed === itemKey : focused/.test(island),
 );
 check(
   'the pill element can host an animated style',
@@ -466,6 +467,7 @@ check(
 check(
   'a tab jump from a drill-down pops instead of only re-focusing the tab',
   /TAB_ROOT_PATHS/.test(tabsLayout) &&
+    /popIslandTabStackToRoot\(tabName\)/.test(tabsLayout) &&
     /const atTabRoot = TAB_ROOT_PATHS\.has\(normCurrent\)/.test(tabsLayout) &&
     /if \(atTabRoot && dispatchTabNavigationAction\('JUMP_TO', tabName\)\)/.test(tabsLayout),
 );
@@ -473,7 +475,36 @@ check(
   'drill-down pushes are single-flight so queued taps cannot stack screens',
   /singleFlight\?: boolean/.test(mobileNav) &&
     /navigation_ignored_in_flight/.test(mobileNav) &&
+    /pushQuietUntil/.test(mobileNav) &&
+    /PUSH_QUIET_MAX_MS = 8_000/.test(mobileNav) &&
+    /noteDrillDownSettled/.test(mobileNav) &&
+    /armDrillDownQuiet\(\)/.test(mobileNav) &&
     /\{ singleFlight: true \}/.test(mobileNav),
+);
+
+const islandTabStack = read('src/navigation/islandTabStack.ts');
+check(
+  'a parked visitor catalogue is replaced, not only popped when it has history',
+  /type: 'POP_TO'/.test(islandTabStack) &&
+    /payload: \{ name: 'index', merge: false \}/.test(islandTabStack) &&
+    !/type: 'POP_TO_TOP'/.test(islandTabStack),
+);
+
+const islandNav = read('components/navigation/NativeIslandBottomNav.tsx');
+check(
+  'the island pill reads the pressed key directly and exclusively',
+  /const pressed = pressedKey\.value/.test(islandNav) &&
+    /pressed != null \? pressed === itemKey : focused/.test(islandNav) &&
+    !/pressedKey\?\.value/.test(islandNav) &&
+    !/item\.active \|\| immediateActiveKey/.test(islandNav),
+);
+
+const runwayFeed = read('src/features/feed/components/RunwayFeedScreen.tsx');
+check(
+  'opening your own runway card resets to the owner catalogue',
+  /isOwnCatalogueTarget\(user, normalizedBrandId, username\)/.test(runwayFeed) &&
+    /popIslandTabStackToRoot\('catalog'\)/.test(runwayFeed) &&
+    /topLevelNavigate\('\/catalog'/.test(runwayFeed),
 );
 
 // ----------------------------------------------------------------- report

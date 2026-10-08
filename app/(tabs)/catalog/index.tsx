@@ -22,14 +22,14 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, usePathname } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import Animated, { useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
-import { canManageCatalog, getActiveBrandId, isSelfIdentity } from '@/src/auth/brandAccess';
+import { canManageCatalog, getActiveBrandId, isBrandAccount, isSelfIdentity } from '@/src/auth/brandAccess';
 import { brandApi, type BrandProfileDto, type CollectionDto } from '@/src/api/BrandApi';
 import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
@@ -258,6 +258,30 @@ function buildCatalogUiStateKey(targetBrandId: string, isOwner: boolean) {
   return `catalog:${isOwner ? 'owner' : 'visitor'}:${targetBrandId}`;
 }
 
+function firstRouteParam(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+/**
+ * A held profile may be shown for this target only when it IS this target.
+ *
+ * The catalogue screen is one component for `/catalog` and `/catalog/[brandId]`.
+ * Its `profile` state survives a param change, and the queries then follow
+ * `profile.id`. That is how another brand's catalogue stayed on screen after
+ * the route had already moved on.
+ */
+function profileIsForTarget(
+  candidate: BrandProfileDto | null | undefined,
+  targetBrandId: string | null,
+  user: Parameters<typeof isSelfIdentity>[0],
+): boolean {
+  if (!candidate?.id) return false;
+  if (!targetBrandId) return isSelfIdentity(user, candidate.id);
+  if (candidate.id === targetBrandId) return true;
+  return isSelfIdentity(user, candidate.id) && isSelfIdentity(user, targetBrandId);
+}
+
 function CatalogLoadingSkeleton({ bottomPadding }: { bottomPadding: number }) {
   const { theme } = useTheme();
 
@@ -403,12 +427,26 @@ export default function CatalogScreen() {
     navPerf.firstVisibleUi(flowKey);
   }, []);
 
-  const { brandId: routeBrandId, tab: routeTabParam, visibility: routeVisibilityParam, productId: routeProductIdParam } = useLocalSearchParams<{
-    brandId?: string;
+  const pathname = usePathname();
+  const {
+    brandId: routeBrandIdParam,
+    tab: routeTabParam,
+    visibility: routeVisibilityParam,
+    productId: routeProductIdParam,
+  } = useLocalSearchParams<{
+    brandId?: string | string[];
     tab?: string | string[];
     visibility?: string | string[];
     productId?: string | string[];
   }>();
+  /*
+    `/catalog` is the owner's root. A `brandId` search param left over from
+    `/catalog/[brandId]` must not keep that root in visitor mode — expo-router
+    can hand the same component a param array, and `isSelfIdentity` rejects
+    anything that is not a string, which rendered the owner as a visitor.
+  */
+  const onOwnerCatalogRoot = pathname === '/catalog' || pathname === '/(tabs)/catalog';
+  const routeBrandId = onOwnerCatalogRoot ? undefined : firstRouteParam(routeBrandIdParam) || undefined;
   const { theme, scheme } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { standardScreenBottomPadding } = useScreenChrome();
@@ -429,7 +467,11 @@ export default function CatalogScreen() {
   // their own catalogue as a visitor: no owner controls, no drafts, no edit.
   // `isSelfIdentity` accepts any of the account's ids. `canManageCatalog` still
   // supplies the permission half, unchanged.
-  const isOwner = Boolean(canManageCatalog(user) && (!routeBrandId || isSelfIdentity(user, routeBrandId)));
+  const viewingSelf = !routeBrandId || isSelfIdentity(user, routeBrandId);
+  // A brand account is the owner of their own catalogue even before
+  // `activeBrandId` has been written onto the session. Permission still
+  // gates everyone else.
+  const isOwner = Boolean(viewingSelf && (canManageCatalog(user) || isBrandAccount(user)));
   const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
   const targetBrandId = routeBrandId || activeBrandId || null;
   const catalogUiStateKey = targetBrandId ? buildCatalogUiStateKey(targetBrandId, isOwner) : null;
@@ -645,13 +687,19 @@ export default function CatalogScreen() {
   });
 
   const getCollectionOwnerId = useCallback(
-    (sourceProfile?: BrandProfileDto | null) =>
-      sourceProfile?.id ?? profileRef.current?.id ?? (isOwner ? userId : targetBrandId),
-    [isOwner, targetBrandId, userId],
+    (sourceProfile?: BrandProfileDto | null) => {
+      if (profileIsForTarget(sourceProfile, targetBrandId, user)) return sourceProfile?.id ?? null;
+      if (profileIsForTarget(profileRef.current, targetBrandId, user)) return profileRef.current?.id ?? null;
+      return isOwner ? userId : targetBrandId;
+    },
+    [isOwner, targetBrandId, user, userId],
   );
 
   const profileQuery = useBrandProfileQuery(targetBrandId, { enabled: Boolean(targetBrandId) });
-  const collectionOwnerId = getCollectionOwnerId(profileQuery.data !== undefined ? profileQuery.data : profile);
+  const queriedProfile = profileQuery.data !== undefined ? profileQuery.data : null;
+  const heldProfile = profileIsForTarget(profile, targetBrandId, user) ? profile : null;
+  const effectiveProfile = queriedProfile ?? heldProfile;
+  const collectionOwnerId = getCollectionOwnerId(effectiveProfile);
   const reviewStatusFilter = REVIEW_VISIBILITY_STATUS[visibilityFilter];
   const collectionVisibility = visibilityFilter === 'Drafts' || reviewStatusFilter
     ? undefined
@@ -703,7 +751,6 @@ export default function CatalogScreen() {
     ownerId: collectionOwnerId,
     enabled: ownerBucketsEnabled,
   });
-  const effectiveProfile = profileQuery.data !== undefined ? profileQuery.data : profile;
   let effectiveCollections = collectionsQuery.data ?? EMPTY_COLLECTIONS;
   if (visibilityFilter === 'Drafts') {
     effectiveCollections = draftsQuery.data ?? EMPTY_COLLECTIONS;
@@ -732,7 +779,7 @@ export default function CatalogScreen() {
       if (!data) return null;
       profileRef.current = data;
       setProfile(data);
-      if (isOwner && data) {
+      if (isOwner && data && isSelfIdentity(user, data.id)) {
         updateUser({
           firstName: (data as any).firstName,
           lastName: (data as any).lastName,
@@ -754,7 +801,7 @@ export default function CatalogScreen() {
       // Don't show toast for profile errors on initial load - will show empty state
       return null;
     }
-  }, [isOwner, profileQuery.data, queryClient, targetBrandId, updateUser]);
+  }, [isOwner, profileQuery.data, queryClient, targetBrandId, updateUser, user]);
 
   // Fetch collections
   const fetchCollections = useCallback(async (
@@ -826,9 +873,10 @@ export default function CatalogScreen() {
   useEffect(() => {
     if (profileQuery.data === undefined) return;
     const data = profileQuery.data;
+    if (data && !profileIsForTarget(data, targetBrandId, user)) return;
     profileRef.current = data ?? null;
     setProfile(data ?? null);
-    if (isOwner && data) {
+    if (isOwner && data && isSelfIdentity(user, data.id)) {
       updateUser({
         firstName: (data as any).firstName,
         lastName: (data as any).lastName,
@@ -844,7 +892,7 @@ export default function CatalogScreen() {
         bannerImageFile: (data as any).bannerImageMeta,
       });
     }
-  }, [isOwner, profileQuery.data, updateUser]);
+  }, [isOwner, profileQuery.data, targetBrandId, updateUser, user]);
 
   useEffect(() => {
     if (profileQuery.error) {

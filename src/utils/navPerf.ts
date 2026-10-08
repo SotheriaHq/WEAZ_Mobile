@@ -272,6 +272,19 @@ function setNavContext(source?: string | null, target?: string | null, pathname?
   if (pathname) currentPathname = pathname;
 }
 
+/**
+ * Told when a drill-down screen's primary data is ready.
+ *
+ * Registered by `mobileNavigation` so a push's quiet window can end when the
+ * screen is actually showing content. Must run even when the timing log is
+ * off — the window is navigation behavior, not a measurement.
+ */
+let drillDownFlowReadyListener: ((flow: string) => void) | null = null;
+
+export function setDrillDownFlowReadyListener(listener: ((flow: string) => void) | null) {
+  drillDownFlowReadyListener = listener;
+}
+
 export const navPerf = {
   /** Record the moment the user taps a navigation control. */
   tap(flow: string) {
@@ -358,8 +371,9 @@ export const navPerf = {
   },
   /** Record when the destination's primary data is ready; ends the flow. */
   dataReady(flow?: string) {
-    if (!enabled()) return;
     const f = flow ?? activeFlow;
+    if (f) drillDownFlowReadyListener?.(f);
+    if (!enabled()) return;
     if (f) emit('data_ready', f);
     // Keep `tapAt` and `activeFlow` so post-data stages stay timed and
     // attributable; see `flowEnded` above. The next tap replaces both.

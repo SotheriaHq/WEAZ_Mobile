@@ -121,18 +121,16 @@ export function NativeIslandTabIcon({
    * The key the user last pressed, written straight to the UI thread.
    *
    * `focused` arrives through React, and React cannot deliver it before the
-   * destination's own render: expo-router keeps route state in a
-   * `useSyncExternalStore`, and React forces external-store updates to sync to
-   * avoid tearing — so `startTransition` cannot defer the navigation's render
-   * out of the pill's commit. Measured, the pill landed within a few ms of
-   * `screen_mount` every time, which on a cold heavy destination is over a
-   * second after the finger went down.
+   * destination's own render. Measured, that commit landed with `screen_mount`,
+   * so a pill that waited for `focused` did "press, then active" together with
+   * the screen. The shared value is written in the press handler and the UI
+   * thread reads `.value` directly — optional chaining here is not a shared
+   * value subscription, so the style would only rebuild when `focused` changed.
    *
-   * A shared value does not go through React at all. The write happens in the
-   * press handler and the UI thread picks it up on its next frame, whatever
-   * the JavaScript thread is doing afterwards.
+   * While a press is set, it is the ONLY active key. ORing it with `focused`
+   * lit the chip being left and the chip being pressed at the same time.
    */
-  pressedKey?: SharedValue<string | null>;
+  pressedKey: SharedValue<string | null>;
 }) {
   const { theme } = useTheme();
   // The chip must stay structurally IDENTICAL whether focused or not — only
@@ -167,7 +165,8 @@ export function NativeIslandTabIcon({
   const activeFill = theme.colors.navActiveSurface;
   const activeRing = theme.colors.focusRing;
   const pillStyle = useAnimatedStyle(() => {
-    const isActive = focused || (!!itemKey && pressedKey?.value === itemKey);
+    const pressed = pressedKey.value;
+    const isActive = pressed != null ? pressed === itemKey : focused;
     return {
       backgroundColor: isActive ? activeFill : 'transparent',
       borderColor: isActive ? activeRing : 'transparent',
@@ -186,15 +185,15 @@ export function NativeIslandTabIcon({
     snapped brighter a third of a second later, which reads as "press, pause,
     active" however fast the pill itself was.
 
-    Same `isActive` expression as the pill, same shared value, so all three
-    cues now land on one frame. The inactive values are the previous literals
-    unchanged, kept per-glyph: an avatar sat at 0.82 and an emoji at 0.76.
+    Same `isActive` expression as the pill, same shared value, so the glyph,
+    the label brightness, and the label hue land on one frame. The inactive
+    glyph values are the previous literals, kept per-glyph: an avatar sat at
+    0.82 and an emoji at 0.76.
 
-    `tone` on the label stays React-driven on purpose: AppText resolves colour
-    from variant/tone only and `sanitizeStyle` strips a colour override, so the
-    hue still settles on commit. Brightness is the dominant cue and it is now
-    immediate; the hue arriving later is not perceptible the way the old
-    opacity jump was.
+    AppText resolves colour from variant/tone only and `sanitizeStyle` strips
+    a colour override, so the hue cannot be animated on one text node. Two
+    tones are mounted and crossfaded by opacity. The press is the only thing
+    that decides which one is visible.
 
     Opacity only — nothing structural. The note above still applies: toggling
     `borderWidth`, `shadow*` or `fontSize` on focus re-clips the chip and blanks
@@ -202,13 +201,21 @@ export function NativeIslandTabIcon({
   */
   const inactiveGlyphOpacity = avatarUri ? 0.82 : 0.76;
   const glyphStyle = useAnimatedStyle(() => {
-    const isActive = focused || (!!itemKey && pressedKey?.value === itemKey);
+    const pressed = pressedKey.value;
+    const isActive = pressed != null ? pressed === itemKey : focused;
     return { opacity: isActive ? 1 : inactiveGlyphOpacity };
   }, [focused, inactiveGlyphOpacity, itemKey, pressedKey]);
 
-  const labelStyle = useAnimatedStyle(() => {
-    const isActive = focused || (!!itemKey && pressedKey?.value === itemKey);
-    return { opacity: isActive ? 1 : 0.9 };
+  const activeLabelStyle = useAnimatedStyle(() => {
+    const pressed = pressedKey.value;
+    const isActive = pressed != null ? pressed === itemKey : focused;
+    return { opacity: isActive ? 1 : 0 };
+  }, [focused, itemKey, pressedKey]);
+
+  const inactiveLabelStyle = useAnimatedStyle(() => {
+    const pressed = pressedKey.value;
+    const isActive = pressed != null ? pressed === itemKey : focused;
+    return { opacity: isActive ? 0 : 1 };
   }, [focused, itemKey, pressedKey]);
 
   const chipStyle = [styles.tabChip, compact && styles.tabChipCompact, pillStyle];
@@ -232,17 +239,33 @@ export function NativeIslandTabIcon({
                 </AppText>
               )}
             </Animated.View>
-            <Animated.View style={[styles.tabLabelWrap, labelStyle]}>
-              <AppText
-                variant="captionBold"
-                tone={focused ? 'primary' : 'secondary'}
-                numberOfLines={1}
-                style={styles.tabLabelBase}
-                maxFontSizeMultiplier={1.2}
+            <View style={styles.tabLabelWrap}>
+              <Animated.View style={inactiveLabelStyle}>
+                <AppText
+                  variant="captionBold"
+                  tone="secondary"
+                  numberOfLines={1}
+                  style={styles.tabLabelBase}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {label}
+                </AppText>
+              </Animated.View>
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.tabLabelActive, activeLabelStyle]}
               >
-                {label}
-              </AppText>
-            </Animated.View>
+                <AppText
+                  variant="captionBold"
+                  tone="primary"
+                  numberOfLines={1}
+                  style={styles.tabLabelBase}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {label}
+                </AppText>
+              </Animated.View>
+            </View>
           </View>
         </Animated.View>
         {typeof badge === 'number' && badge > 0 ? (
@@ -411,6 +434,10 @@ export function NativeIslandBottomNav({
         pressedKey.value = null;
         navPerf.mark('optimistic_active_expired', item.key);
       }
+      // Drop the React override with the shared value. A press that never
+      // becomes `item.active` must not keep a second chip lit.
+      setImmediateActiveKey((current) => (current === item.key ? null : current));
+      setImmediateActiveNavFlow((current) => (current === navFlow ? null : current));
     }, PRESSED_KEY_MAX_MS);
     setPressedItemKey(item.key);
     setImmediateActiveKey(item.key);
@@ -420,6 +447,9 @@ export function NativeIslandBottomNav({
     navPerf.tap(navFlow);
     navPerf.pressedFeedbackVisible(navFlow);
     navPerf.activeIndicatorIntent(navFlow);
+    // The pill reads `pressedKey` on the UI thread, written above. This is
+    // that paint, not the later React commit of `immediateActiveKey`.
+    navPerf.activeIndicatorVisible(navFlow);
   }, [pressedKey]);
 
   /**
@@ -560,6 +590,13 @@ export function NativeIslandBottomNav({
     return null;
   }
 
+  // One key. `item.active` is the route; `immediateActiveKey` is the press
+  // that has not been confirmed yet. ORing them lit both chips.
+  const settledKey =
+    immediateActiveKey ??
+    items.find((item) => item.active && !item.disabled)?.key ??
+    null;
+
   // The island is permanently fixed and fully expanded — there is no collapse
   // state. A previous design collapsed the bar to a pill (and reset that pill on
   // every route change), which made the nav links visually disappear when
@@ -601,7 +638,7 @@ export function NativeIslandBottomNav({
                   key={item.key}
                   accessibilityRole="tab"
                   accessibilityState={{
-                    selected: Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key) && !item.disabled),
+                    selected: item.key === settledKey && !item.disabled,
                     disabled: item.disabled,
                   }}
                   accessibilityLabel={item.label}
@@ -636,7 +673,7 @@ export function NativeIslandBottomNav({
                       label={item.label}
                       emoji={item.emoji}
                       avatarUri={item.avatarUri}
-                      focused={Boolean((item.active || immediateActiveKey === item.key) && !item.disabled)}
+                      focused={item.key === settledKey && !item.disabled}
                       itemKey={item.disabled ? undefined : item.key}
                       pressedKey={pressedKey}
                       badge={item.badge}
@@ -653,7 +690,7 @@ export function NativeIslandBottomNav({
                   key={item.key}
                   accessibilityRole="tab"
                   accessibilityState={{
-                    selected: Boolean((item.active || immediateActiveKey === item.key || pressedItemKey === item.key) && !item.disabled),
+                    selected: item.key === settledKey && !item.disabled,
                     disabled: item.disabled,
                   }}
                   accessibilityLabel={item.label}
@@ -670,7 +707,7 @@ export function NativeIslandBottomNav({
                       label={item.label}
                       emoji={item.emoji}
                       avatarUri={item.avatarUri}
-                      focused={Boolean((item.active || immediateActiveKey === item.key) && !item.disabled)}
+                      focused={item.key === settledKey && !item.disabled}
                       itemKey={item.disabled ? undefined : item.key}
                       pressedKey={pressedKey}
                       badge={item.badge}
@@ -861,6 +898,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
     width: '100%',
     paddingHorizontal: 2,
+  },
+  tabLabelActive: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    alignItems: 'center',
   },
   // Badge sits just outside the top-right of the chip but within the island's safe area.
   // top: 6, right: 8 keeps it safely inside the navWrap's borderRadius: 28 corner arc.

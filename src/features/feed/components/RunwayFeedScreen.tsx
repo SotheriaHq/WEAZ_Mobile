@@ -12,6 +12,7 @@ import { useFocusEffect } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
 
 import { useAuth } from '@/src/auth/AuthContext';
+import { isBrandAccount, isOwnCatalogueTarget } from '@/src/auth/brandAccess';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import {
@@ -66,6 +67,7 @@ import { perfMark } from '@/src/utils/perf';
 import { useScreenArrival, useSkeletonTiming } from '@/src/perf/usePerfStages';
 import { navPerf } from '@/src/utils/navPerf';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
+import { popIslandTabStackToRoot } from '@/src/navigation/islandTabStack';
 import { fetchMarketFilterChipsQuery } from '@/src/query/bootstrapQueries';
 import { RunwayFeedItem } from '@/src/features/feed/components/RunwayFeedItem';
 import { RunwayFeedList } from '@/src/features/feed/components/RunwayFeedList';
@@ -460,7 +462,7 @@ type FeedActionRailProps = {
   patchBusy: boolean;
   bottomClearance: number;
   onPatchBrand: (brandId?: string | null, brandName?: string | null) => void;
-  onOpenBrand: (brandId?: string | null) => void;
+  onOpenBrand: (brandId?: string | null, username?: string | null) => void;
   onSaveLook: (item: MarketItem) => void;
   onThreadPress: (
     mediaId: string | null | undefined,
@@ -609,8 +611,8 @@ const FeedActionRail = React.memo(function FeedActionRail({
   }, [brandName, item.brandId, onPatchBrand]);
 
   const handleBrandPress = useCallback(() => {
-    onOpenBrand(item.brandId);
-  }, [item.brandId, onOpenBrand]);
+    onOpenBrand(item.brandId, item.username);
+  }, [item.brandId, item.username, onOpenBrand]);
 
   const handleThreadActionPress = useCallback(() => {
     onThreadPress(currentMediaId, item.collectionId, isThreaded, threadCountRaw);
@@ -2264,16 +2266,30 @@ export function RunwayFeedScreen() {
     [requireAuth, toast],
   );
 
-  const handleOpenBrand = useCallback((brandId?: string | null) => {
+  const handleOpenBrand = useCallback((brandId?: string | null, username?: string | null) => {
     const normalizedBrandId = typeof brandId === 'string' ? brandId.trim() : '';
-    if (!normalizedBrandId) return;
+    if (!normalizedBrandId && !username) return;
     trackMobileEvent('brand_opened', {
       sourceScreen: 'runway_feed',
       brandId: normalizedBrandId,
       feedPosition: activePageIndex,
     });
+    // Your own card is the owner catalogue, not a public `[brandId]` screen.
+    // Pushing the public route is what left the owner looking at visitor
+    // controls, and it parked that screen for the next Me press.
+    if (isOwnCatalogueTarget(user, normalizedBrandId, username)) {
+      if (isBrandAccount(user)) {
+        popIslandTabStackToRoot('catalog');
+        topLevelNavigate('/catalog' as any);
+        return;
+      }
+      popIslandTabStackToRoot('me');
+      topLevelNavigate('/(tabs)/me' as any);
+      return;
+    }
+    if (!normalizedBrandId) return;
     drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: normalizedBrandId } } as any);
-  }, [activePageIndex]);
+  }, [activePageIndex, user]);
 
   const handleOpenSearch = useCallback(() => {
     perfMark('runway-search-tap');
@@ -2570,7 +2586,7 @@ export function RunwayFeedScreen() {
               feedPosition={entry.realIndex}
               bottomClearance={bottomClearance}
               visible={isMetaVisible}
-              onBrandPress={() => handleOpenBrand(item.brandId)}
+              onBrandPress={() => handleOpenBrand(item.brandId, item.username)}
             />
           }
         />

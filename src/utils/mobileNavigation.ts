@@ -1,6 +1,6 @@
 import { router, type Href } from 'expo-router';
 
-import { navPerf } from '@/src/utils/navPerf';
+import { navPerf, setDrillDownFlowReadyListener } from '@/src/utils/navPerf';
 
 /**
  * Intent-based navigation helpers — the system route verb contract.
@@ -35,6 +35,65 @@ import { navPerf } from '@/src/utils/navPerf';
 /** Switch to a persistent top-level destination, reusing any existing instance. */
 let inFlightTarget: string | null = null;
 let lockTimeoutId: ReturnType<typeof setTimeout> | null = null;
+/**
+ * Ignore further drill-down pushes until the one we just opened is showing
+ * its content, and at least through the burst that follows a stalled thread.
+ *
+ * The in-flight lock releases on `path_match`, which on these captures is
+ * 30–60ms after the press. The screen then stays blank for seconds
+ * (`market→section` T3→T4 was 7356ms, api window 8227ms). Presses during
+ * that wait each pushed, and the blocked thread painted them all at once.
+ * A 600ms window only covers the clump delivered at the unlock.
+ *
+ * The window opens when the push runs. It lasts until that screen reports
+ * `dataReady` (never shorter than the burst floor) or until the reader
+ * leaves it for a tab root. The cap is the longest content wait measured.
+ */
+let pushQuietUntil = 0;
+let drillQuietFloorUntil = 0;
+let lockIsSingleFlight = false;
+const PUSH_BURST_MS = 600;
+const PUSH_QUIET_MAX_MS = 8_000;
+const DRILL_DOWN_SETTLE_FLOWS = new Set([
+  'market→section',
+  'product_detail',
+  'collection_viewer',
+  'create_design',
+  'profile_detail',
+  'inbox→thread',
+  'bag→checkout',
+  'tabs→search',
+]);
+const DRILL_QUIET_CLEAR_PATHS = new Set([
+  '/',
+  '/discover',
+  '/inbox',
+  '/charts',
+  '/catalog',
+  '/me',
+  '/market',
+]);
+
+function armDrillDownQuiet() {
+  const now = Date.now();
+  drillQuietFloorUntil = now + PUSH_BURST_MS;
+  pushQuietUntil = now + PUSH_QUIET_MAX_MS;
+}
+
+function noteDrillDownSettled() {
+  if (pushQuietUntil === 0) return;
+  const now = Date.now();
+  const floor = Math.max(now, drillQuietFloorUntil);
+  pushQuietUntil = Math.min(pushQuietUntil, floor);
+  if (pushQuietUntil <= now) {
+    pushQuietUntil = 0;
+    drillQuietFloorUntil = 0;
+  }
+}
+
+setDrillDownFlowReadyListener((flow) => {
+  if (DRILL_DOWN_SETTLE_FLOWS.has(flow)) noteDrillDownSettled();
+});
 // Failsafe only — a successful navigation releases the lock early via the
 // path-match effect in app/(tabs)/_layout.tsx. It must outlast the slowest
 // screen mount we ship: under dev/SIT latency heavy screens take 1–2s to
@@ -77,12 +136,27 @@ function clearLock(reason: string) {
   }
   const prev = inFlightTarget;
   inFlightTarget = null;
+  lockIsSingleFlight = false;
   if (prev) {
     navPerf.navigation_lock_released?.(prev, reason);
   }
 }
 
 export function releaseNavigationLock(reason = 'manual') {
+  const landingSingleFlight = reason === 'path_match' && Boolean(inFlightTarget) && lockIsSingleFlight;
+  if (reason === 'path_match' && !landingSingleFlight && pushQuietUntil) {
+    const path = String((global as { __navCurrentPathname?: string }).__navCurrentPathname || '');
+    const norm = path.replace('/(tabs)', '').split('?')[0] || '/';
+    if (DRILL_QUIET_CLEAR_PATHS.has(norm)) {
+      const now = Date.now();
+      if (now >= drillQuietFloorUntil) {
+        pushQuietUntil = 0;
+        drillQuietFloorUntil = 0;
+      } else {
+        pushQuietUntil = drillQuietFloorUntil;
+      }
+    }
+  }
   clearLock(reason);
 }
 
@@ -104,6 +178,11 @@ export function withNavigationLock<T>(
     return undefined;
   }
 
+  if (!opts.force && opts.singleFlight && Date.now() < pushQuietUntil) {
+    navPerf.mark?.('navigation_ignored_in_flight', target);
+    return undefined;
+  }
+
   if (inFlightTarget && !opts.force && opts.singleFlight) {
     /*
       A push while a push is already in flight is a queued tap, not a decision.
@@ -115,10 +194,10 @@ export function withNavigationLock<T>(
       looked frozen, then four or five detail screens opened at once and had to
       be dismissed one by one.
 
-      Rejecting while a target is in flight collapses that burst. The window is
-      self-limiting rather than a fixed delay — the lock is released on
-      `path_match` as soon as the route actually moves (~400ms), so a
-      deliberate second tap after the screen has changed is unaffected.
+      Rejecting while a target is in flight collapses the burst that is already
+      queued. Presses that arrive after `path_match` — while the new screen is
+      still blank — are rejected by the quiet window armed in `drillDownPush`,
+      which stays up until that screen's data is ready.
     */
     navPerf.mark?.('navigation_ignored_in_flight', target);
     return undefined;
@@ -130,12 +209,14 @@ export function withNavigationLock<T>(
   }
 
   inFlightTarget = target;
+  lockIsSingleFlight = Boolean(opts.singleFlight);
   navPerf.mark?.('navigation_locked', target);
 
   if (lockTimeoutId) clearTimeout(lockTimeoutId);
   lockTimeoutId = setTimeout(() => {
     navPerf.navigation_lock_released?.(target, 'timeout');
     inFlightTarget = null;
+    lockIsSingleFlight = false;
     lockTimeoutId = null;
   }, LOCK_TIMEOUT_MS);
 
@@ -167,6 +248,7 @@ export function topLevelNavigate(href: Href) {
 export function drillDownPush(href: Href) {
   const target = normalizeTarget(href);
   const result = withNavigationLock(href, () => {
+    armDrillDownQuiet();
     navPerf.routeCallStart(undefined, { target });
     navPerf.navigationCalled();
     router.push(href as never);

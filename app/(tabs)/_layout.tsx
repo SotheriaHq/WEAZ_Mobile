@@ -47,6 +47,10 @@ import {
   type NativeIslandKey,
 } from '@/src/navigation/nativeIslandConfig';
 import { withNavigationLock, releaseNavigationLock } from '@/src/utils/mobileNavigation';
+import {
+  popIslandTabStackToRoot,
+  registerIslandTabNavigation,
+} from '@/src/navigation/islandTabStack';
 import { requestStudioInPlaceNav } from '@/src/features/studio/studioNavController';
 import { isStudioRouteKey } from '@/src/features/studio/studioRoutes';
 import {
@@ -286,6 +290,9 @@ export default function TabLayout() {
 
   const renderHiddenTabBar = useCallback((props: ExpoTabBarProps) => {
     tabNavigationRef.current = props.navigation;
+    registerIslandTabNavigation(
+      props.navigation as Parameters<typeof registerIslandTabNavigation>[0],
+    );
     return null;
   }, []);
 
@@ -323,13 +330,23 @@ export default function TabLayout() {
             JUMP_TO re-focused a tab underneath it and left the profile on
             screen, so the press appeared to do nothing at all.
 
-        So JUMP_TO is only used from a tab ROOT, where it is exactly right and
-        cheap. From anywhere deeper, `router.navigate` is what pops the nested
-        stack back to its root and dismisses anything stacked above it.
+        Pop the DESTINATION tab's nested stack first, then focus it. The screen
+        you are leaving being a tab root does not mean the tab you are opening
+        is at its root: Runway is `/`, and Catalogue can still be parked on
+        `[brandId]` — including when that visitor screen is the only route in
+        the stack, which is what Back leaves behind when it falls through to
+        Runway. `JUMP_TO` from there re-focused that visitor screen. The pop
+        is targeted at the nested stack, so it runs whether or not that tab
+        is the one on screen.
+
+        From anywhere that is not a tab root, `router.navigate` still has to
+        run afterwards. A root-stack screen such as `/profile/[id]` sits above
+        the tab shell, and `JUMP_TO` leaves it in place.
 
         `pathnameRef` is read instead of `pathname` so this callback stays
         stable and does not churn the island on every route change.
       */
+      popIslandTabStackToRoot(tabName);
       const normCurrent = String(pathnameRef.current ?? '').replace('/(tabs)', '');
       const atTabRoot = TAB_ROOT_PATHS.has(normCurrent);
       if (atTabRoot && dispatchTabNavigationAction('JUMP_TO', tabName)) {

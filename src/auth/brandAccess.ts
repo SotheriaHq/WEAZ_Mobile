@@ -105,6 +105,25 @@ export function isSelfIdentity(user: AuthUser | null | undefined, candidateId?: 
   return getSelfIdentityIds(user).includes(candidate);
 }
 
+/**
+ * Is this catalogue target the signed-in account?
+ *
+ * Feed rows carry an id and, separately, a username. The id is whichever of
+ * the account's ids the payload held; the username is the one the viewer
+ * actually recognises as theirs. Either match is the same person. A miss on
+ * both means somebody else.
+ */
+export function isOwnCatalogueTarget(
+  user: AuthUser | null | undefined,
+  candidateId?: string | null,
+  username?: string | null,
+): boolean {
+  if (isSelfIdentity(user, candidateId)) return true;
+  const theirs = typeof username === 'string' ? username.trim().toLowerCase() : '';
+  const mine = typeof user?.username === 'string' ? user.username.trim().toLowerCase() : '';
+  return theirs.length > 0 && theirs === mine;
+}
+
 export function hasActiveBrandMembership(user?: AuthUser | null): boolean {
   return Boolean(getActiveBrandMembership(user));
 }
