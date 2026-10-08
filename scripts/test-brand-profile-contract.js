@@ -236,7 +236,17 @@ async function main() {
 
   const catalogSource = fs.readFileSync(catalogPath, 'utf8');
   assert.match(catalogSource, /getBrandBadges\(/);
-  assert.match(catalogSource, /const effectiveProfile = profileQuery\.data !== undefined \? profileQuery\.data : profile/);
+  // The query still outranks held state. What changed is the FALLBACK: held
+  // `profile` state survives a param change on this one component (it serves
+  // both `/catalog` and `/catalog/[brandId]`), so falling back to it
+  // unconditionally kept another brand's catalogue on screen after the route
+  // had already moved on, and the queries then followed that stale `profile.id`.
+  // The old shape is asserted absent rather than merely replaced, because it is
+  // the bug and not a style preference.
+  assert.match(catalogSource, /const queriedProfile = profileQuery\.data !== undefined \? profileQuery\.data : null/);
+  assert.match(catalogSource, /const heldProfile = profileIsForTarget\(profile, targetBrandId, user\) \? profile : null/);
+  assert.match(catalogSource, /const effectiveProfile = queriedProfile \?\? heldProfile/);
+  assert.doesNotMatch(catalogSource, /profileQuery\.data !== undefined \? profileQuery\.data : profile\b/);
   assert.match(catalogSource, /effectiveProfile\?\.designsCount/);
   assert.match(catalogSource, /effectiveProfile\?\.collectionsCount/);
   assert.match(catalogSource, /effectiveProfile\?\.followersCount/);

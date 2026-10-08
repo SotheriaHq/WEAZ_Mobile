@@ -63,7 +63,41 @@ const DRILL_DOWN_SETTLE_FLOWS = new Set([
   'inbox→thread',
   'bag→checkout',
   'tabs→search',
+  // `/catalog/[brandId]` reports under the same flow as the owner's own
+  // catalogue tab, because `[brandId].tsx` re-exports that screen. Leaving it
+  // out meant the single most-pushed drill-down in the app — six call sites
+  // across Runway, Market and the suggestion blocks — never reported settling,
+  // so its quiet window ran the full cap with the content already on screen.
+  'tabs→catalog',
 ]);
+
+/**
+ * Targets whose screen is known to report `dataReady`.
+ *
+ * The long cap is only honest for these. A target that never reports cannot
+ * end its own window, so capping it at 8s means a screen that has visibly
+ * finished loading still swallows the next press — which is the symptom this
+ * whole investigation is about, reintroduced from the other side.
+ * `/collection-gallery`, `/notifications` and the legal screens are in that
+ * position today, and they push onward (`/collection-gallery` opens products).
+ *
+ * So: a target that can say when it is ready gets the long window; everything
+ * else gets the burst floor, which is all that is needed to collapse the clump
+ * of taps delivered when a stalled thread unblocks.
+ *
+ * Keep in step with the `dataReady` call sites.
+ */
+const DRILL_DOWN_SETTLE_PREFIXES = [
+  '/catalog/',
+  '/products/',
+  '/collection-viewer',
+  '/market-viewer',
+  '/market/sections/',
+  '/profile/',
+  '/messages/',
+  '/search',
+  '/checkout',
+];
 const DRILL_QUIET_CLEAR_PATHS = new Set([
   '/',
   '/discover',
@@ -74,10 +108,17 @@ const DRILL_QUIET_CLEAR_PATHS = new Set([
   '/market',
 ]);
 
-function armDrillDownQuiet() {
+function expectsSettleSignal(target: string): boolean {
+  return DRILL_DOWN_SETTLE_PREFIXES.some((prefix) => target.startsWith(prefix));
+}
+
+function armDrillDownQuiet(target: string) {
   const now = Date.now();
   drillQuietFloorUntil = now + PUSH_BURST_MS;
-  pushQuietUntil = now + PUSH_QUIET_MAX_MS;
+  // Only a screen that can report `dataReady` may hold the long window; see
+  // `DRILL_DOWN_SETTLE_PREFIXES`. Anything else is bounded by the burst floor
+  // so it cannot swallow a press after it has loaded.
+  pushQuietUntil = now + (expectsSettleSignal(target) ? PUSH_QUIET_MAX_MS : PUSH_BURST_MS);
 }
 
 function noteDrillDownSettled() {
@@ -248,7 +289,7 @@ export function topLevelNavigate(href: Href) {
 export function drillDownPush(href: Href) {
   const target = normalizeTarget(href);
   const result = withNavigationLock(href, () => {
-    armDrillDownQuiet();
+    armDrillDownQuiet(target);
     navPerf.routeCallStart(undefined, { target });
     navPerf.navigationCalled();
     router.push(href as never);

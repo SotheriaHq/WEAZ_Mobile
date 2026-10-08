@@ -158,6 +158,30 @@ export function isBrandAccount(user?: AuthUser | null): boolean {
   return user.type === 'BRAND' || hasActiveBrandMembership(user);
 }
 
+/**
+ * A BRAND account that has no membership rows to govern it yet.
+ *
+ * `getActiveBrandMembership` synthesizes an OWNER membership for a BRAND
+ * account only once `activeBrandId` is set, so a freshly verified brand has no
+ * membership at all and `canManageCatalog` is false — which rendered the owner
+ * their own catalogue in visitor mode, with no way to set it up.
+ *
+ * This closes that gap without substituting identity for capability, which the
+ * note on `isBrandAccount` forbids and for good reason: `isBrandAccount` is
+ * true for ANY active membership regardless of role, so using it as the
+ * permission would hand owner controls to a `VIEWER` or `SUPPORT_AGENT` staff
+ * member on somebody else's brand. The condition here is deliberately narrow —
+ * a BRAND principal with no memberships has no role to respect. The moment any
+ * membership exists, `CATALOG_WRITE_ROLES` governs again.
+ *
+ * Still a capability, so it is still paired with an identity check at the call
+ * site. It never says WHOSE catalogue is on screen.
+ */
+export function isUnprovisionedBrandPrincipal(user?: AuthUser | null): boolean {
+  if (user?.type !== 'BRAND') return false;
+  return getActiveMemberships(user).length === 0;
+}
+
 export function isBrandOwner(user?: AuthUser | null, brandId?: string | null): boolean {
   const membership = brandId
     ? getActiveMemberships(user).find((entry) => entry.brandId === brandId)

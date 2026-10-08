@@ -29,7 +29,12 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
-import { canManageCatalog, getActiveBrandId, isBrandAccount, isSelfIdentity } from '@/src/auth/brandAccess';
+import {
+  canManageCatalog,
+  getActiveBrandId,
+  isSelfIdentity,
+  isUnprovisionedBrandPrincipal,
+} from '@/src/auth/brandAccess';
 import { brandApi, type BrandProfileDto, type CollectionDto } from '@/src/api/BrandApi';
 import { ProfilePhotoViewApi } from '@/src/api/ProfilePhotoViewApi';
 import { SavedItemsApi } from '@/src/api/SavedItemsApi';
@@ -469,9 +474,15 @@ export default function CatalogScreen() {
   // supplies the permission half, unchanged.
   const viewingSelf = !routeBrandId || isSelfIdentity(user, routeBrandId);
   // A brand account is the owner of their own catalogue even before
-  // `activeBrandId` has been written onto the session. Permission still
-  // gates everyone else.
-  const isOwner = Boolean(viewingSelf && (canManageCatalog(user) || isBrandAccount(user)));
+  // `activeBrandId` has been written onto the session — but that is the ONLY
+  // extra case. `isBrandAccount` cannot be the permission here: it is true for
+  // any active membership regardless of role, so it would hand owner controls
+  // to a VIEWER or SUPPORT_AGENT staff member on a brand they cannot write to.
+  // `isUnprovisionedBrandPrincipal` is narrow — no memberships, so no role to
+  // respect. Once any membership exists, CATALOG_WRITE_ROLES governs again.
+  const isOwner = Boolean(
+    viewingSelf && (canManageCatalog(user) || isUnprovisionedBrandPrincipal(user)),
+  );
   const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
   const targetBrandId = routeBrandId || activeBrandId || null;
   const catalogUiStateKey = targetBrandId ? buildCatalogUiStateKey(targetBrandId, isOwner) : null;

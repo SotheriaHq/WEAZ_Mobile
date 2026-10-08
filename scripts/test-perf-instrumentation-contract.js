@@ -478,8 +478,32 @@ check(
     /pushQuietUntil/.test(mobileNav) &&
     /PUSH_QUIET_MAX_MS = 8_000/.test(mobileNav) &&
     /noteDrillDownSettled/.test(mobileNav) &&
-    /armDrillDownQuiet\(\)/.test(mobileNav) &&
+    /armDrillDownQuiet\(target\)/.test(mobileNav) &&
     /\{ singleFlight: true \}/.test(mobileNav),
+);
+
+check(
+  'the catalogue never uses brand IDENTITY as the owner PERMISSION',
+  // `isBrandAccount` is true for any active membership regardless of role, so
+  // using it as the permission hands owner controls to a VIEWER or
+  // SUPPORT_AGENT. The fresh-brand gap it was reaching for is covered by the
+  // narrow `isUnprovisionedBrandPrincipal` instead. brandAccess.ts states the
+  // rule outright: never substitute identity for capability.
+  /canManageCatalog\(user\) \|\| isUnprovisionedBrandPrincipal\(user\)/.test(catalogScreen) &&
+    !/canManageCatalog\(user\) \|\| isBrandAccount\(user\)/.test(catalogScreen) &&
+    /user\?\.type !== 'BRAND'/.test(brandAccess) &&
+    /getActiveMemberships\(user\)\.length === 0/.test(brandAccess),
+);
+check(
+  'the long quiet window is only given to screens that can end it',
+  // A target that never reports `dataReady` cannot close its own window, so
+  // capping it at 8s makes a loaded screen swallow the next press. The cap is
+  // conditional on the target, and the catalogue — the most-pushed drill-down,
+  // sharing its flow with the owner tab — is in the settle set.
+  /const DRILL_DOWN_SETTLE_PREFIXES = \[/.test(mobileNav) &&
+    /expectsSettleSignal\(target\) \? PUSH_QUIET_MAX_MS : PUSH_BURST_MS/.test(mobileNav) &&
+    /armDrillDownQuiet\(target\)/.test(mobileNav) &&
+    /'tabs→catalog',/.test(mobileNav),
 );
 
 const islandTabStack = read('src/navigation/islandTabStack.ts');
