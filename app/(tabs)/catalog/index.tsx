@@ -726,7 +726,17 @@ export default function CatalogScreen() {
   const queriedProfile = profileQuery.data !== undefined ? profileQuery.data : null;
   const heldProfile = profileIsForTarget(profile, targetBrandId, user) ? profile : null;
   const effectiveProfile = queriedProfile ?? heldProfile;
-  const collectionOwnerId = getCollectionOwnerId(effectiveProfile);
+  /*
+    The queried profile's own id wins, because it is the canonical one.
+
+    `targetBrandId` is whatever id the route carried, and a brand is reachable
+    under two (owner user id or brand id). The collections, products and
+    reviews endpoints all key on the brand's canonical owner id, so handing
+    them the route id works only when the route happened to carry that one —
+    which is why the Shop and Reviews tabs came up empty about half the time.
+    A profile fetched FOR this target resolves that ambiguity: take its id.
+  */
+  const collectionOwnerId = queriedProfile?.id ?? getCollectionOwnerId(effectiveProfile);
   const reviewStatusFilter = REVIEW_VISIBILITY_STATUS[visibilityFilter];
   const collectionVisibility = visibilityFilter === 'Drafts' || reviewStatusFilter
     ? undefined
@@ -900,7 +910,33 @@ export default function CatalogScreen() {
   useEffect(() => {
     if (profileQuery.data === undefined) return;
     const data = profileQuery.data;
-    if (data && !profileIsForTarget(data, targetBrandId, user)) return;
+    /*
+      No identity re-check on QUERIED data. It was rejecting valid profiles.
+
+      `useBrandProfileQuery` is keyed on `targetBrandId` and sets neither
+      `placeholderData` nor `keepPreviousData`, so `profileQuery.data` is the
+      data for the CURRENT key or it is `undefined` — it can never be the
+      previous brand's profile. The query key is the guarantee; an id
+      comparison adds nothing to it.
+
+      What it did add was a false negative. `/brands/:id` resolves by OWNER
+      USER id while the DTO's `id` is the canonical brand id (the dual-id note
+      in `src/auth/brandAccess.ts`), so for any brand reached by the other one
+      of its two ids, `candidate.id === targetBrandId` is false and both
+      `isSelfIdentity` legs are false too — because it is somebody else's
+      brand. So `setProfile` never ran, `profile` stayed null, and
+      `getCollectionOwnerId` fell through to the route id, which the
+      collections, products and reviews queries then used as an owner id. That
+      is the empty Shop tab and the empty Reviews tab, on other brands and on
+      your own.
+
+      The leak this predicate was added for is a different thing and is still
+      closed: it is the HELD `profile` state surviving a param change, and
+      `heldProfile` below is still gated on it. When the target moves and the
+      new key has no cache, this effect returns early on `undefined` and that
+      gate rejects the stale held value, so the screen shows a skeleton rather
+      than another brand's catalogue.
+    */
     profileRef.current = data ?? null;
     setProfile(data ?? null);
     if (isOwner && data && isSelfIdentity(user, data.id)) {

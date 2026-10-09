@@ -442,6 +442,46 @@ async function main() {
   // An unknown status must never lock out a brand whose store is live.
   assert.doesNotMatch(studioSource, /storeSetupComplete !== true/);
 
+  /*
+    The canonical owner id comes from the fetched profile, not from the route.
+
+    A brand is reachable under two ids — `/brands/:id` resolves by OWNER USER
+    id while the DTO's `id` is the brand id (the dual-id note in
+    `src/auth/brandAccess.ts`). The collections, products and reviews
+    endpoints key on the canonical one, so deriving the owner id from the route
+    param worked only when the route happened to carry that id, and the Shop
+    and Reviews tabs came up empty the rest of the time — on other brands and
+    on the account's own catalogue.
+  */
+  assert.match(
+    catalogSource,
+    /const collectionOwnerId = queriedProfile\?\.id \?\? getCollectionOwnerId\(effectiveProfile\)/,
+    'the canonical owner id must come from the profile fetched for this target',
+  );
+
+  /*
+    And the queried profile is never re-checked by id.
+
+    `useBrandProfileQuery` is keyed on `targetBrandId` with no
+    `placeholderData` and no `keepPreviousData`, so its data is for the current
+    key or it is `undefined`. An id comparison on top of that guarantee adds
+    nothing and rejects every brand reached by its other id, which is what
+    stopped `setProfile` from ever running for a visited brand.
+
+    The held-state gate is a different thing and must stay: that is the one
+    that can actually leak another brand's catalogue across a param change.
+  */
+  assert.doesNotMatch(
+    catalogSource,
+    /if \(data && !profileIsForTarget\(data, targetBrandId, user\)\) return;/,
+    'queried profile data must not be gated on an id comparison',
+  );
+  assert.match(
+    catalogSource,
+    /const heldProfile = profileIsForTarget\(profile, targetBrandId, user\) \? profile : null/,
+    'the held profile must still be gated, or another brand leaks across a param change',
+  );
+
   console.log('Brand profile contract tests passed.');
 }
 

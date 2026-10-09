@@ -21,7 +21,31 @@ const AnimatedFlatList = Animated.createAnimatedComponent(
   FlatList,
 ) as unknown as React.ComponentType<AnimatedRunwayListProps>;
 
-export const RunwayFeedList = React.forwardRef<FlatList<FeedListEntry>, RunwayFeedListProps>(function RunwayFeedList(
+/*
+  Memoized, because an unchanged re-render of this list is not cheap.
+
+  MEASURED on `636fec4`: `commits=RunwayList=8956.5ms×27` in a single flow —
+  twenty-seven commits at ~400ms each, accounting for that flow's entire
+  `blockedMs=8358`. On the same flows `FeedItem` is absent or at ×1-2, so the
+  rows were skipping correctly under their own comparator; it was the list
+  shell being re-rendered repeatedly by its parent. A windowed list with three
+  to five live cells has no business costing 400ms, but while it does, the
+  cheapest correct answer is to not run it when nothing it renders has changed.
+
+  `React.memo` rather than a hand-written dependency list on the caller's side:
+  this component takes some forty props, and enumerating them by hand is how a
+  memo silently stops matching one of them and either freezes the feed or
+  quietly does nothing. A shallow compare tracks whatever the list is actually
+  given — it skips when the props are equal and re-renders the moment one is
+  not, with no list to keep in step.
+
+  This only works while the caller keeps those props stable. The two that were
+  not — an inline `keyExtractor` arrow and an inline `refreshControl` element —
+  are hoisted in `RunwayFeedScreen`, and a contract check holds that line,
+  because either one alone defeats the comparison while leaving this memo
+  looking as though it works.
+*/
+const RunwayFeedListInner = React.forwardRef<FlatList<FeedListEntry>, RunwayFeedListProps>(function RunwayFeedList(
   props,
   ref,
 ) {
@@ -45,3 +69,5 @@ export const RunwayFeedList = React.forwardRef<FlatList<FeedListEntry>, RunwayFe
   useCommitCost('RunwayList');
   return <AnimatedFlatList ref={ref} {...props} />;
 });
+
+export const RunwayFeedList = React.memo(RunwayFeedListInner);

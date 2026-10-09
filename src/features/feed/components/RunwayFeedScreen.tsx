@@ -2745,6 +2745,24 @@ export function RunwayFeedScreen() {
     [pageHeight],
   );
 
+  /*
+    The list's last two unstable props.
+
+    MEASURED on `636fec4`: `commits=RunwayList=8956.5ms×27` — the list
+    committing twenty-seven times in one flow at ~400ms each, which accounts
+    for the whole of that flow's `blockedMs=8358`. `FeedItem` is absent or at
+    ×1-2 on those same flows, so the ROWS were memoizing correctly and the cost
+    was the list shell being re-rendered over and over.
+
+    `RunwayFeedList` is memoized now, which makes an unchanged re-render free.
+    But `React.memo` compares props shallowly, and an inline arrow and an inline
+    element are a fresh reference on every single render — either one alone
+    defeats the comparison completely and keeps the old behaviour while looking
+    like it was fixed. Every other prop on the list is already a `useCallback`,
+    a `useMemo` or a primitive; these two were the whole gap.
+  */
+  const feedKeyExtractor = useCallback((entry: FeedListEntry) => entry.listKey, []);
+
   const handleScrollToIndexFailed = useCallback(({ index }: { index: number }) => {
     correctionCountRef.current += 1;
     scrollDevLog('vertical-correction', {
@@ -2821,6 +2839,26 @@ export function RunwayFeedScreen() {
       setRefreshing(false);
     }
   }, [activeTag, items.length, status, user?.id]);
+
+  /*
+    Hoisted out of the list's props, where it was a fresh element every render.
+
+    `RunwayFeedList` is `React.memo`'d, and `React.memo` compares props
+    shallowly — so one inline element among forty props defeats the comparison
+    entirely and keeps the measured `RunwayList=...×27` behaviour while looking
+    as though it was fixed. See the note on the memo itself.
+  */
+  const feedRefreshControl = useMemo(
+    () => (
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        tintColor={theme.colors.primary}
+        enabled={activePageIndex === 0}
+      />
+    ),
+    [activePageIndex, onRefresh, refreshing, theme.colors.primary],
+  );
 
   useEffect(() => {
     // `loadFirstPage` is keyed on the auth identity (it rides in the feed cache
@@ -3025,7 +3063,7 @@ export function RunwayFeedScreen() {
             ref={feedListRef}
             key={feedListKey}
             data={feedItems}
-            keyExtractor={(entry) => entry.listKey}
+            keyExtractor={feedKeyExtractor}
             /* Native paging — NOT snapToInterval + disableIntervalMomentum.
                That combination is what made every swipe track the finger
                smoothly and then speed up and slam into the next page:
@@ -3090,14 +3128,7 @@ export function RunwayFeedScreen() {
                RefreshControl on a paging FlatList steals the start of many
                downward drags ("it drags, then scrolls"), which is the exact
                asymmetry vs the horizontal angle carousel that has no PTR. */
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={theme.colors.primary}
-                enabled={activePageIndex === 0}
-              />
-            }
+            refreshControl={feedRefreshControl}
             renderItem={renderFeedItem}
           />
           )}

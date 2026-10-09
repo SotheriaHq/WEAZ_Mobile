@@ -696,6 +696,48 @@ check(
 );
 
 /*
+  The measured fix for the feed: an unchanged re-render of the list is free.
+
+  `636fec4` measured `commits=RunwayList=8956.5ms×27` — the list committing
+  twenty-seven times in one flow at ~400ms each, which accounted for that
+  flow's whole `blockedMs=8358`. `FeedItem` was absent or at ×1-2 on the same
+  flows, so the rows were skipping correctly and it was the shell being
+  re-rendered by its parent over and over.
+
+  Both halves are asserted, because the memo alone is worthless: `React.memo`
+  compares shallowly, so a single inline arrow or inline element among the
+  list's ~40 props defeats it completely while leaving the memo plainly
+  visible in the source. Those two props are named here by the shape that
+  regressed, not just by the existence of a replacement.
+*/
+const runwayList = read('src/features/feed/components/RunwayFeedList.tsx');
+check(
+  'the feed list skips a re-render whose props have not changed',
+  /React\.memo\(RunwayFeedListInner\)/.test(runwayList),
+);
+/*
+  Scoped to the memoized list's own props.
+
+  The empty-feed branch renders a plain `ScrollView` with an inline
+  `RefreshControl`, which is fine — it is not memoized and only mounts when the
+  feed has no items. Asserting across the whole file conflated the two.
+*/
+const runwayListProps = (() => {
+  const start = runwayFeed.indexOf('<RunwayFeedList');
+  if (start < 0) return '';
+  const end = runwayFeed.indexOf('renderItem={renderFeedItem}', start);
+  return end < 0 ? '' : runwayFeed.slice(start, end);
+})();
+check(
+  'nothing inline is passed to the memoized feed list',
+  runwayListProps.length > 0 &&
+    /keyExtractor=\{feedKeyExtractor\}/.test(runwayListProps) &&
+    /refreshControl=\{feedRefreshControl\}/.test(runwayListProps) &&
+    !/=\{\(/.test(runwayListProps) &&
+    !/=\{\s*</.test(runwayListProps),
+);
+
+/*
   Counts must reach the summary line.
 
   Every capture in this investigation has been taken with `--summary`, which
