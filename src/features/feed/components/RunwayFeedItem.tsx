@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { Animated, StyleSheet } from 'react-native';
 
+import { useCommitCost } from '@/src/perf/commitCost';
 import { FeedMediaCarousel } from '@/src/features/feed/components/FeedMediaCarousel';
 import type { FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
 import {
@@ -48,6 +49,12 @@ function RunwayFeedItemComponent({
   onCarouselIndexChange,
   onContentPress,
 }: RunwayFeedItemProps) {
+  // Rows should skip on an unrelated feed re-render — every child here is
+  // memoized and the comparator below is explicit. This label is how we learn
+  // whether they actually do: the occurrence count in the `by=` breakdown says
+  // how many rows re-rendered, and a row appearing at all on a navigation away
+  // from the feed means the comparator is being defeated. See `RunwayFeedList`.
+  useCommitCost('FeedItem');
   const handleActiveIndexChange = useCallback(
     (nextIndex: number) => {
       onCarouselIndexChange(collectionId, nextIndex);

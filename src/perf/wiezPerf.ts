@@ -151,6 +151,18 @@ type Flow = {
    */
   worstCommit: { label: string; selfMs: number; inclusiveMs: number } | null;
   /**
+   * Self time per label for this flow, with occurrence counts.
+   *
+   * `worstCommit` names one commit; this names the shape of the whole flow,
+   * and the COUNT is often the finding rather than the duration — eight
+   * `FeedItem` commits on a navigation away from the feed says the row
+   * memoization is being defeated, which no single worst-commit figure can
+   * show. It lives on the summary line because that is the view actually being
+   * read: the `by=` breakdown in the RENDER notes carries the same information
+   * and has been filtered out of every capture so far by `--summary`.
+   */
+  commitTotals: Map<string, { selfMs: number; count: number }>;
+  /**
    * The longest synchronous block measured inside a press handler.
    *
    * Separate from `worstCommit` because it is not a commit: it is the whole
@@ -231,6 +243,16 @@ function intervalText(value: number | null): string {
   return value === null ? 'n/a' : `${fmt(value)}ms`;
 }
 
+/** Top labels by self time for one flow, heaviest first, with counts. */
+function commitBreakdown(flow: Flow, limit = 4): string {
+  if (flow.commitTotals.size === 0) return 'none';
+  return Array.from(flow.commitTotals.entries())
+    .sort((a, b) => b[1].selfMs - a[1].selfMs)
+    .slice(0, limit)
+    .map(([label, entry]) => `${label}=${fmt(entry.selfMs)}ms×${entry.count}`)
+    .join(',');
+}
+
 function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
   if (flow.closed) return;
   flow.closed = true;
@@ -290,6 +312,10 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
     // be seen until this returns, so it is the queueing delay a user feels as
     // "I pressed and nothing happened".
     `handlerMs=${flow.handlerMs === 0 ? 'n/a' : fmt(flow.handlerMs)}`,
+    // The flow's render shape, counts included. A count is frequently the
+    // finding: repeated commits of a memoized row mean its comparator is being
+    // defeated, and no single `worstCommit` figure can say that.
+    `commits=${commitBreakdown(flow)}`,
   ];
   if (flow.notes.length > 0) parts.push(`notes=${flow.notes.join(',')}`);
 
@@ -322,6 +348,7 @@ export function perfBeginFlow(label: string): void {
     blockedMs: 0,
     indicatorAt: null,
     worstCommit: null,
+    commitTotals: new Map(),
     handlerMs: 0,
     closed: false,
     watchdog: null,
@@ -435,6 +462,14 @@ export function perfRecordCommit(
   // component win by construction, which is how the first capture with this
   // instrument named the tab shell on all fifteen flows without yet having
   // shown the work was the shell's own.
+  const running = activeFlow.commitTotals.get(label);
+  if (running) {
+    running.selfMs += selfMs;
+    running.count += 1;
+  } else {
+    activeFlow.commitTotals.set(label, { selfMs, count: 1 });
+  }
+
   if (activeFlow.worstCommit !== null && activeFlow.worstCommit.selfMs >= selfMs) return;
   activeFlow.worstCommit = { label, selfMs, inclusiveMs };
 }

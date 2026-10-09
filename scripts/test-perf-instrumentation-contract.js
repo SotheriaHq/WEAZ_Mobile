@@ -676,6 +676,42 @@ check(
 );
 
 /*
+  The feed is decomposed three ways, and the row label is the important one.
+
+  `83c6d81` measured `Runway:self=386-624ms` on navigations whose destination
+  was Market or Catalogue. Static reading could not go further: every child is
+  `React.memo`, `renderItem`'s dependencies are all `useState`/`useMemo`/module
+  constants, and `rowRenderVersion` is content-derived, so on paper the rows
+  skip. The row label is what can disprove that.
+*/
+check(
+  'the feed screen, its list and its rows are separately attributable',
+  /useCommitCost\('Runway'\)/.test(runwayFeed) &&
+    /useCommitCost\('RunwayList'\)/.test(
+      read('src/features/feed/components/RunwayFeedList.tsx'),
+    ) &&
+    /useCommitCost\('FeedItem'\)/.test(
+      read('src/features/feed/components/RunwayFeedItem.tsx'),
+    ),
+);
+
+/*
+  Counts must reach the summary line.
+
+  Every capture in this investigation has been taken with `--summary`, which
+  filters out the RENDER notes where the `by=` breakdown lives. An occurrence
+  count is frequently the whole finding — repeated commits of a memoized row
+  mean its comparator is being defeated — so the view that is actually read has
+  to carry it.
+*/
+check(
+  'the flow summary carries per-label self time WITH occurrence counts',
+  /commits=\$\{commitBreakdown\(flow\)\}/.test(wiezPerf) &&
+    /\$\{label\}=\$\{fmt\(entry\.selfMs\)\}ms×\$\{entry\.count\}/.test(wiezPerf) &&
+    /running\.count \+= 1;/.test(wiezPerf),
+);
+
+/*
   The measured fix: the navigator subtree must not be rebuilt by a re-render of
   its parent. `TabShell` subscribes to `usePathname` and
   `useGlobalSearchParams` (which Expo Router re-runs on every url change
