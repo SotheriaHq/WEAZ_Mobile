@@ -591,8 +591,9 @@ check(
 check(
   'the flow summary keeps the worst single commit rather than a window total',
   /worstCommit=/.test(wiezPerf) &&
-    /activeFlow\.worstCommit\.ms >= ms\) return/.test(wiezPerf) &&
-    !/activeFlow\.worstCommit\.ms \+= ms/.test(wiezPerf),
+    /activeFlow\.worstCommit\.selfMs >= selfMs\) return/.test(wiezPerf) &&
+    !/activeFlow\.worstCommit\.selfMs \+=/.test(wiezPerf) &&
+    !/activeFlow\.worstCommit\.inclusiveMs \+=/.test(wiezPerf),
 );
 
 /*
@@ -638,10 +639,74 @@ check(
   the prime suspect for T1->T3 and has to be measurable either way. A suspect
   that cannot be cleared gets optimised on faith.
 */
+const tabLayoutSrc = read('app/(tabs)/_layout.tsx');
 check(
   'the tab shell and the island are both measurable, so neither is convicted on suspicion',
-  /useCommitCost\('TabShell'\)/.test(read('app/(tabs)/_layout.tsx')) &&
+  /useCommitCost\('TabShell'\)/.test(tabLayoutSrc) &&
     /useCommitCost\('Island'\)/.test(islandNav),
+);
+
+/*
+  Attribution must rank on SELF time.
+
+  The 2026-10-09 capture reported `worstCommit=TabShell` on all fifteen flows,
+  which inclusive time was always going to do: an ancestor's figure is >= every
+  descendant's by construction. That is a property of nesting, not a finding,
+  and it cannot separate a slow shell from a shell dragging a slow child.
+*/
+check(
+  'commit attribution ranks on self time, with inclusive kept alongside',
+  /activeFlow\.worstCommit\.selfMs >= selfMs\) return/.test(wiezPerf) &&
+    /self=\$\{fmt\(flow\.worstCommit\.selfMs\)\}ms/.test(wiezPerf) &&
+    /incl=\$\{fmt\(flow\.worstCommit\.inclusiveMs\)\}ms/.test(wiezPerf),
+);
+
+/*
+  Self time is inclusive minus the SELF times accumulated beneath it. Summing
+  descendants' inclusive values instead would count a grandchild twice and
+  over-subtract, which at two levels of nesting reports a parent as free.
+*/
+check(
+  'self time subtracts descendant self totals, not descendant inclusive totals',
+  /completedSelfTotal \+= self;/.test(commitCost) &&
+    /const descendants = completedSelfTotal - descendantSelfAtStart\.current;/.test(
+      commitCost,
+    ) &&
+    /Math\.max\(0, inclusive - descendants\)/.test(commitCost),
+);
+
+/*
+  The measured fix: the navigator subtree must not be rebuilt by a re-render of
+  its parent. `TabShell` subscribes to `usePathname` and
+  `useGlobalSearchParams` (which Expo Router re-runs on every url change
+  anywhere) and holds `optimisticActiveKey`, which every island press sets.
+  None of those change which screens the navigator has, but recreating the
+  element forced React to reconcile all ten of them — and `freezeOnBlur` keeps
+  every visited tab mounted, so that reached every screen the session opened.
+
+  The dep list is the assertion that matters. A per-press or per-route value
+  reappearing in it silently restores the whole cost, so those are named here
+  rather than only the presence of the memo.
+*/
+const tabTreeDeps = (() => {
+  const start = tabLayoutSrc.indexOf('const tabNavigatorTree = useMemo(');
+  if (start < 0) return null;
+  const end = tabLayoutSrc.indexOf('</Tabs>', start);
+  if (end < 0) return null;
+  const after = tabLayoutSrc.slice(end, end + 400);
+  const match = after.match(/\[([^\]]*)\]/);
+  return match ? match[1] : null;
+})();
+check(
+  'the navigator subtree keeps a stable element identity across shell re-renders',
+  tabTreeDeps !== null &&
+    /\{tabNavigatorTree\}/.test(tabLayoutSrc) &&
+    !/\bpathname\b/.test(tabTreeDeps) &&
+    !/optimisticActiveKey/.test(tabTreeDeps) &&
+    !/displayedActiveKey/.test(tabTreeDeps) &&
+    !/islandItems/.test(tabTreeDeps) &&
+    !/globalParams/.test(tabTreeDeps) &&
+    !/studioRouteKeyParam/.test(tabTreeDeps),
 );
 
 // ----------------------------------------------------------------- report

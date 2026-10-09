@@ -149,7 +149,7 @@ type Flow = {
    * Without the pair, a stall ranks but does not attribute, and the two fixes
    * it points at are opposite — see the header of `commitCost.ts`.
    */
-  worstCommit: { label: string; ms: number } | null;
+  worstCommit: { label: string; selfMs: number; inclusiveMs: number } | null;
   /**
    * The longest synchronous block measured inside a press handler.
    *
@@ -278,10 +278,13 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
     // What the thread was actually doing. `blockedMs` without this ranks
     // stalls; it cannot attribute them, and a flow left open by a missing
     // terminal stage reports ten seconds of unrelated work as its own.
+    // `self` attributes, `incl` shows what the subtree cost in total. Printing
+    // only one of them has already misled a reading of this instrument.
     `worstCommit=${
       flow.worstCommit === null
         ? 'n/a'
-        : `${flow.worstCommit.label}:${fmt(flow.worstCommit.ms)}ms`
+        : `${flow.worstCommit.label}:self=${fmt(flow.worstCommit.selfMs)}ms` +
+          `/incl=${fmt(flow.worstCommit.inclusiveMs)}ms`
     }`,
     // How long the press handler itself held the thread. The next press cannot
     // be seen until this returns, so it is the queueing delay a user feels as
@@ -421,11 +424,19 @@ export function perfAddBlockedMs(ms: number): void {
  * A single worst commit is a claim that can be checked — some one render took
  * this long — and it is the one that cost a visible frame.
  */
-export function perfRecordCommit(label: string, ms: number): void {
+export function perfRecordCommit(
+  label: string,
+  selfMs: number,
+  inclusiveMs: number,
+): void {
   if (!ENABLED) return;
   if (!activeFlow || activeFlow.closed) return;
-  if (activeFlow.worstCommit !== null && activeFlow.worstCommit.ms >= ms) return;
-  activeFlow.worstCommit = { label, ms };
+  // Ranked on SELF time. Ranking on inclusive makes the outermost measured
+  // component win by construction, which is how the first capture with this
+  // instrument named the tab shell on all fifteen flows without yet having
+  // shown the work was the shell's own.
+  if (activeFlow.worstCommit !== null && activeFlow.worstCommit.selfMs >= selfMs) return;
+  activeFlow.worstCommit = { label, selfMs, inclusiveMs };
 }
 
 /** Offer a synchronous press-handler duration; the longest one is kept. */

@@ -19,13 +19,20 @@
  * They cannot attribute it. This is the instrument that attributes it.
  *
  * WHAT IS MEASURED, precisely: render-start to layout-effect, for the labelled
- * component. That is INCLUSIVE — it contains the component's own render, every
- * child it renders, and the native commit that follows. It is deliberately not
- * self-time, because the question being asked is "how long did putting this
- * subtree on screen cost", and a parent whose children are the expensive part
- * is still the thing that scheduled them. Nested labels therefore overlap, and
- * a reader must treat an inner label as part of its outer one rather than
- * adding the two together.
+ * component, reported BOTH ways.
+ *
+ *   inclusive — the component's own render plus every measured child plus the
+ *     native commit. Answers "what did putting this subtree on screen cost".
+ *   self — inclusive minus the self time of everything measured beneath it.
+ *     Answers "whose work was it".
+ *
+ * Both are needed, and self is what attributes. The first capture with this
+ * instrument reported `worstCommit=TabShell` on all fifteen flows, which is
+ * what inclusive time must report: an ancestor's figure is greater than or
+ * equal to every descendant's by construction, so "the outermost label won" is
+ * a property of nesting rather than a finding. It cannot tell a slow shell
+ * apart from a shell dragging a slow child behind it, and those need different
+ * fixes. Ranking by self time can.
  *
  * WHAT IS NOT MEASURED: a render React threw away (an interrupted or suspended
  * render commits nothing, so no layout effect runs and the cost is invisible
@@ -67,6 +74,25 @@ type CostEntry = {
 };
 
 /**
+ * Running sum of SELF times completed so far, for subtracting descendants.
+ *
+ * The first capture with this instrument reported `worstCommit=TabShell` on
+ * every single flow — which it was always going to, because inclusive time
+ * makes an ancestor's number greater than or equal to every descendant's by
+ * construction. "The outermost label is the worst" is a property of nesting,
+ * not a finding, and it cannot distinguish a slow shell from a shell dragging
+ * a slow child behind it.
+ *
+ * Self time fixes that: since an inclusive measurement equals its own self
+ * time plus the self times of everything beneath it, subtracting the self time
+ * accumulated during a component's own window leaves exactly its own work.
+ * Accumulating SELF rather than inclusive is what makes this correct at more
+ * than one level of nesting — adding inclusive values would count a
+ * grandchild twice and over-subtract.
+ */
+let completedSelfTotal = 0;
+
+/**
  * Costs since the last drain, not since process start.
  *
  * The consumer is the drift sampler, which asks "what ran during the stall I
@@ -81,19 +107,19 @@ const now: () => number = (() => {
   return () => Date.now();
 })();
 
-function record(label: string, ms: number): void {
-  if (ms < MIN_RECORDED_MS) return;
+function record(label: string, selfMs: number, inclusiveMs: number): void {
+  if (selfMs < MIN_RECORDED_MS && inclusiveMs < MIN_RECORDED_MS) return;
   const existing = windowCosts.get(label);
   if (existing) {
-    existing.totalMs += ms;
+    existing.totalMs += selfMs;
     existing.count += 1;
-    if (ms > existing.worstMs) existing.worstMs = ms;
+    if (selfMs > existing.worstMs) existing.worstMs = selfMs;
   } else {
-    windowCosts.set(label, { totalMs: ms, worstMs: ms, count: 1 });
+    windowCosts.set(label, { totalMs: selfMs, worstMs: selfMs, count: 1 });
   }
   // Also give the open flow its worst single commit, so the summary line a
   // tester reads carries the attribution instead of only the `--perf` stream.
-  perfRecordCommit(label, ms);
+  perfRecordCommit(label, selfMs, inclusiveMs);
 }
 
 /**
@@ -105,15 +131,25 @@ function record(label: string, ms: number): void {
  */
 export function useCommitCost(label: string): void {
   const startedAt = useRef(0);
+  const descendantSelfAtStart = useRef(0);
   // Assigned during render on purpose. This is the current render's start, and
   // a ref is the only store that survives to the layout effect without itself
   // causing a render.
   startedAt.current = perfEnabled() ? now() : 0;
+  descendantSelfAtStart.current = completedSelfTotal;
 
   // No dependency array: every commit of this subtree is a measurement.
+  //
+  // Layout effects run child-first, so by the time this fires every measured
+  // descendant has already added its self time to `completedSelfTotal`. The
+  // difference is therefore exactly the work done beneath this component.
   useLayoutEffect(() => {
     if (!perfEnabled() || startedAt.current === 0) return;
-    record(label, now() - startedAt.current);
+    const inclusive = now() - startedAt.current;
+    const descendants = completedSelfTotal - descendantSelfAtStart.current;
+    const self = Math.max(0, inclusive - descendants);
+    completedSelfTotal += self;
+    record(label, self, inclusive);
   });
 }
 
@@ -136,7 +172,8 @@ export function measureSyncBlock<T>(label: string, run: () => T): T {
   try {
     return run();
   } finally {
-    record(label, now() - startedAt);
+    const elapsed = now() - startedAt;
+    record(label, elapsed, elapsed);
   }
 }
 
@@ -156,7 +193,7 @@ export function measurePressHandler<T>(run: () => T): T {
     return run();
   } finally {
     const elapsed = now() - startedAt;
-    record('PressHandler', elapsed);
+    record('PressHandler', elapsed, elapsed);
     perfRecordHandlerMs(elapsed);
   }
 }

@@ -902,8 +902,38 @@ export default function TabLayout() {
     return () => subscription.remove();
   }, [isRootTabPath, toast]);
 
-  return (
-    <>
+  /*
+    The navigator subtree, held stable across this component's own re-renders.
+
+    MEASURED, 2026-10-09 capture on `d1a7b65`: `worstCommit=TabShell` on all
+    fifteen flows at 406-683ms, tracking `T1->T3` (422-568ms) roughly 1:1, with
+    `requests=0` and `T5->T6=0.0ms` on half of them. Neither network nor cache.
+    `handlerMs` was 0.4-1.3ms, so the cost is not in the press handler either —
+    it lands in the commit React flushes straight after.
+
+    This component re-renders far more often than the navigator's contents
+    change. It subscribes to `usePathname` and `useGlobalSearchParams` (which
+    Expo Router re-runs on EVERY url change anywhere in the app), and it holds
+    `optimisticActiveKey`, which an island press sets on every tap. None of
+    those change which screens the navigator has. But a re-render recreated the
+    `<Tabs>` element and all ten `<Tabs.Screen>` children, so React reconciled
+    the entire navigator — and with `freezeOnBlur` keeping every visited tab
+    mounted, that reaches every screen the session has opened. An island
+    highlight was re-rendering Runway, Market, Catalogue and Inbox.
+
+    Holding the element identity stable is what stops that: React compares the
+    child element to the previous render's and skips the subtree when it is the
+    same reference. The navigator still updates from its OWN state — a real
+    navigation is its own store change, not a parent re-render — so nothing
+    about routing behaviour changes. Only the parent's ability to force
+    reconciliation for reasons that have nothing to do with it.
+
+    The dependency list is therefore the complete set of things inside the tree
+    that can actually differ: the hidden tab bar callback (stable, `[]`), the
+    scene background, and the Profile tab's title.
+  */
+  const tabNavigatorTree = useMemo(
+    () => (
       <Tabs
         // Render no default tab bar; the floating island owns the visible UI and
         // uses this hidden tabbar's navigation object for direct JUMP_TO/PRELOAD
@@ -1010,6 +1040,13 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
+    ),
+    [canOpenProfileMenu, renderHiddenTabBar, theme.colors.surface],
+  );
+
+  return (
+    <>
+      {tabNavigatorTree}
 
       {/* The island resolves the ambient scheme on every route. It used to be
           forced dark over the Runway, whose stage was black in both themes;
