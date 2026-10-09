@@ -6,6 +6,7 @@ import type { BagCount } from '@/src/api/StoreApi';
 import { queryClient, WIEZ_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { baggingService } from '@/src/services/bagging';
+import { useCommitCost } from '@/src/perf/commitCost';
 
 const EMPTY_BAG_COUNT: BagCount = {
   standardQuantity: 0,
@@ -22,6 +23,7 @@ type BagCountContextValue = {
 const BagCountContext = createContext<BagCountContextValue | null>(null);
 
 export function BagCountProvider({ children }: { children: React.ReactNode }) {
+  useCommitCost('P:BagCount');
   const { status, user } = useAuth();
   const bagCountQueryKey = useMemo(() => queryKeys.store.bagCount(user?.id), [user?.id]);
   const [count, setCount] = useState<BagCount>(

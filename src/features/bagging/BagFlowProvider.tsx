@@ -33,6 +33,7 @@ import {
   warmDeliveryAddressCache,
 } from '@/src/features/delivery/deliveryAddressCache';
 import type { BagFlowProductInput } from '@/src/features/bagging/BagFlowContext';
+import { useCommitCost } from '@/src/perf/commitCost';
 
 export { useBagFlow } from '@/src/features/bagging/BagFlowContext';
 
@@ -64,6 +65,7 @@ type PendingBagAction = {
 const PENDING_BAG_ACTION_KEY = 'wiez.pendingBagAction.v1';
 
 export function BagFlowProvider({ children }: { children: React.ReactNode }) {
+  useCommitCost('P:BagFlow');
   const pathname = usePathname();
   const { status: authStatus, user } = useAuth();
   /**

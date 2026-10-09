@@ -161,7 +161,7 @@ type Flow = {
    * read: the `by=` breakdown in the RENDER notes carries the same information
    * and has been filtered out of every capture so far by `--summary`.
    */
-  commitTotals: Map<string, { selfMs: number; count: number }>;
+  commitTotals: Map<string, { worstMs: number; count: number }>;
   /**
    * The longest synchronous block measured inside a press handler.
    *
@@ -243,13 +243,31 @@ function intervalText(value: number | null): string {
   return value === null ? 'n/a' : `${fmt(value)}ms`;
 }
 
-/** Top labels by self time for one flow, heaviest first, with counts. */
-function commitBreakdown(flow: Flow, limit = 4): string {
+/**
+ * Top labels for one flow: worst single commit, and how many commits.
+ *
+ * Worst, NOT the sum. The sum was wrong and it said so itself — the
+ * 2026-10-09 14:21 capture reported `RunwayList=8921.2ms×68` on a flow whose
+ * measured `blockedMs` was 577.6. Nine seconds of work cannot hide inside a
+ * ten second window that the drift sampler found busy for half a second.
+ *
+ * The cause is what a commit measurement actually spans. `useCommitCost` runs
+ * from render-start to layout-effect, and under React's time-slicing that
+ * window contains work on other trees and yields back to the event loop. Each
+ * figure is an elapsed span, not CPU, so overlapping spans double-count and
+ * adding them up produces a total with no physical meaning.
+ *
+ * A single worst span is still a real claim about one commit, and the COUNT is
+ * exact — one layout effect per commit, with nothing to overlap. Those two are
+ * what the capture is read for: sixty-eight commits of a list in ten seconds
+ * is the finding, whatever each one cost.
+ */
+function commitBreakdown(flow: Flow, limit = 6): string {
   if (flow.commitTotals.size === 0) return 'none';
   return Array.from(flow.commitTotals.entries())
-    .sort((a, b) => b[1].selfMs - a[1].selfMs)
+    .sort((a, b) => b[1].count - a[1].count || b[1].worstMs - a[1].worstMs)
     .slice(0, limit)
-    .map(([label, entry]) => `${label}=${fmt(entry.selfMs)}ms×${entry.count}`)
+    .map(([label, entry]) => `${label}=worst${fmt(entry.worstMs)}ms×${entry.count}`)
     .join(',');
 }
 
@@ -464,10 +482,12 @@ export function perfRecordCommit(
   // shown the work was the shell's own.
   const running = activeFlow.commitTotals.get(label);
   if (running) {
-    running.selfMs += selfMs;
+    // Worst, not accumulated — see `commitBreakdown`. Summing elapsed spans
+    // that overlap produced a figure fifteen times the measured stall.
+    if (selfMs > running.worstMs) running.worstMs = selfMs;
     running.count += 1;
   } else {
-    activeFlow.commitTotals.set(label, { selfMs, count: 1 });
+    activeFlow.commitTotals.set(label, { worstMs: selfMs, count: 1 });
   }
 
   if (activeFlow.worstCommit !== null && activeFlow.worstCommit.selfMs >= selfMs) return;

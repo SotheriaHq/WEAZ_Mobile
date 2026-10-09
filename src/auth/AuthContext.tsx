@@ -27,6 +27,7 @@ import {
   ACTIVE_BRAND_STORAGE_KEY,
   clearMobilePrivateSessionState,
 } from '@/src/auth/sessionCleanup';
+import { useCommitCost } from '@/src/perf/commitCost';
 import {
   AuthRequestError,
   extractAuthErrorCode,
@@ -453,6 +454,7 @@ function normalizeAuthErrorMessage(error: unknown, fallbackMessage: string): str
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  useCommitCost('P:Auth');
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [localSessionReady, setLocalSessionReady] = useState(false);
   /**

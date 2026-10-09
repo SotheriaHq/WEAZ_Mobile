@@ -8,6 +8,7 @@ import {
   type ThemePreference,
 } from '@/src/types/theme';
 import { tokens, type ThemeScheme } from '@/src/styles/tokens';
+import { useCommitCost } from '@/src/perf/commitCost';
 
 export type ThemeMode = ThemePreference;
 
@@ -50,6 +51,7 @@ export function ThemeProvider({
   initialMode?: ThemeMode;
   bootstrapped?: boolean;
 }) {
+  useCommitCost('P:Theme');
   const [mode, setModeState] = useState<ThemeMode>(initialMode);
   const [ready, setReady] = useState(bootstrapped);
   const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(

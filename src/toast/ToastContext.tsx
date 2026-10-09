@@ -9,6 +9,7 @@ import { Animated, Dimensions, Easing, Pressable, StyleSheet, View } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
+import { useCommitCost } from '@/src/perf/commitCost';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -177,6 +178,7 @@ function normalizeToastOptions(options?: ToastOptions) {
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
+  useCommitCost('P:Toast');
   const [toasts, setToasts] = useState<ToastData[]>([]);
 
   const addToast = useCallback((type: ToastType, message: string, options?: ToastOptions) => {

@@ -747,10 +747,72 @@ check(
   to carry it.
 */
 check(
-  'the flow summary carries per-label self time WITH occurrence counts',
+  'the flow summary carries per-label commit counts',
   /commits=\$\{commitBreakdown\(flow\)\}/.test(wiezPerf) &&
-    /\$\{label\}=\$\{fmt\(entry\.selfMs\)\}ms×\$\{entry\.count\}/.test(wiezPerf) &&
+    /\$\{label\}=worst\$\{fmt\(entry\.worstMs\)\}ms×\$\{entry\.count\}/.test(wiezPerf) &&
     /running\.count \+= 1;/.test(wiezPerf),
+);
+
+/*
+  And it reports the WORST commit per label, never a sum.
+
+  The sum refuted itself: `RunwayList=8921.2ms×68` on a flow whose measured
+  `blockedMs` was 577.6. Nine seconds of work cannot hide in a ten second
+  window the drift sampler found busy for half a second. `useCommitCost` spans
+  render-start to layout-effect, which under time-slicing includes work on
+  other trees and yields to the event loop — so each figure is an elapsed
+  span, not CPU, and adding overlapping spans gives a number with no physical
+  meaning. The count is exact and the worst span is a real claim about one
+  commit; only the total was fiction.
+*/
+check(
+  'per-label commit time is the worst single span, not an accumulated total',
+  /if \(selfMs > running\.worstMs\) running\.worstMs = selfMs;/.test(wiezPerf) &&
+    !/running\.selfMs \+=/.test(wiezPerf),
+);
+
+/*
+  The provider chain is attributable.
+
+  `TabShell`, `Runway`, `RunwayList` and `Market` committed ×68 with identical
+  counts in one ten second window. Feed-local state cannot do that — it would
+  reach Runway alone — and element memoization cannot stop a CONTEXT update
+  from reaching every consumer. The one dependency all of those share is
+  `useScreenChrome`, so every provider above them is labelled and the next
+  capture names the source instead of it being inferred a third time.
+*/
+check(
+  'every context provider above the tab tree is attributable',
+  /useCommitCost\('P:ScreenChrome'\)/.test(read('src/system/ScreenChrome.tsx')) &&
+    /useCommitCost\('P:Theme'\)/.test(read('src/theme/ThemeProvider.tsx')) &&
+    /useCommitCost\('P:Auth'\)/.test(read('src/auth/AuthContext.tsx')) &&
+    /useCommitCost\('P:BagCount'\)/.test(
+      read('src/features/bagging/BagCountContext.tsx'),
+    ) &&
+    /useCommitCost\('P:BagFlow'\)/.test(
+      read('src/features/bagging/BagFlowProvider.tsx'),
+    ) &&
+    /useCommitCost\('P:Toast'\)/.test(read('src/toast/ToastContext.tsx')),
+);
+
+/*
+  The widest-reaching context must not be bustable by a parent re-render.
+
+  `ScreenChromeProvider`'s value memo listed `insets` — an object from
+  `useSafeAreaInsets()`, so only as stable as that hook, on a provider that
+  re-renders whenever anything above it does. A fresh reference with unchanged
+  contents is enough to publish a new context value and re-render the shell,
+  the island, Runway, Market, Catalogue and Inbox at once. Depending on the
+  four numbers makes that impossible.
+*/
+check(
+  'the screen-chrome context depends on inset numbers, not the insets object',
+  /\[insetBottom, insetLeft, insetRight, insetTop, windowHeight, windowWidth\]/.test(
+    read('src/system/ScreenChrome.tsx'),
+  ) &&
+    !/\[bottomSystemInset, insets, windowHeight, windowWidth\]/.test(
+      read('src/system/ScreenChrome.tsx'),
+    ),
 );
 
 /*
