@@ -64,6 +64,7 @@ import { useUnreadNotificationCount } from '@/src/realtime/notifications';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { perfMark } from '@/src/utils/perf';
+import { useCommitCost } from '@/src/perf/commitCost';
 import { useScreenArrival, useSkeletonTiming } from '@/src/perf/usePerfStages';
 import { navPerf } from '@/src/utils/navPerf';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
@@ -904,6 +905,7 @@ const FeedSkeleton = ({
  * is dark in either theme.
  */
 export function RunwayFeedScreen() {
+  useCommitCost('Runway');
   const flowKey = 'runway';
   // Phase 1 instrumentation - safe, gated, no behavior change
   React.useEffect(() => {

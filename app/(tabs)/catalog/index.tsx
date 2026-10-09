@@ -84,6 +84,8 @@ import { routeForDesignTarget } from '@/src/utils/mobileRouting';
 import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { perfMark } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
+import { useCommitCost } from '@/src/perf/commitCost';
+import { useScreenArrival } from '@/src/perf/usePerfStages';
 import {
   refreshBrandCollectionsQuery,
   refreshBrandDraftsQuery,
@@ -418,6 +420,20 @@ const CreateMenuWrapper = forwardRef<{ open: (e?: any) => void }, { options: Flo
 });
 
 export default function CatalogScreen() {
+  useCommitCost('Catalog');
+  /*
+    T3 on a REVISIT, which is the only kind of visit this screen usually gets.
+
+    `navPerf.screenMounted` below sits in a `[]` effect, and this tab is kept
+    alive by `freezeOnBlur` with `detachInactiveScreens={false}` — so after the
+    first open that effect never runs again and T3 could not fire at all. Every
+    `tabs→catalog` flow in the 2026-10-09 capture reported `mounted=no` with
+    `requests=0`, which reads as "the navigation never happened" and is not what
+    it meant: the screen was arriving and the instrument could not see it. A
+    missing probe and a failed navigation are opposite diagnoses, so the probe
+    exists now rather than the ambiguity being left in place.
+  */
+  useScreenArrival('tabs→catalog');
   const flowKey = 'catalog';
   // Phase 1 instrumentation
   React.useEffect(() => {

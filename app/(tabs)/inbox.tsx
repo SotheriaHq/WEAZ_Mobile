@@ -37,6 +37,8 @@ import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { navPerf } from '@/src/utils/navPerf';
+import { useCommitCost } from '@/src/perf/commitCost';
+import { useScreenArrival } from '@/src/perf/usePerfStages';
 import type { ConversationListResponse, ConversationSummary } from '@/src/types/messaging';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { MuseLoader } from '@/components/ui/MuseLoader';
@@ -370,6 +372,10 @@ function MessagesSkeleton({ bottomPadding }: { bottomPadding: number }) {
 }
 
 export default function InboxScreen() {
+  useCommitCost('Inbox');
+  // Same missing-probe gap as Catalogue — see the note there. Every
+  // `tabs→inbox` flow in the capture reported `mounted=no` for want of this.
+  useScreenArrival('tabs→inbox');
   const flowKey = 'inbox';
   // Phase 1 nav perf markers (gated, no behavior change)
   React.useEffect(() => {

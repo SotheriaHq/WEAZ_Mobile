@@ -142,6 +142,25 @@ type Flow = {
    * the app was the one number absent from the view a tester reads.
    */
   indicatorAt: number | null;
+  /**
+   * The most expensive single labelled commit observed during this flow.
+   *
+   * `blockedMs` says the thread was unavailable; this says what was on it.
+   * Without the pair, a stall ranks but does not attribute, and the two fixes
+   * it points at are opposite — see the header of `commitCost.ts`.
+   */
+  worstCommit: { label: string; ms: number } | null;
+  /**
+   * The longest synchronous block measured inside a press handler.
+   *
+   * Separate from `worstCommit` because it is not a commit: it is the whole
+   * handler turn, navigation dispatch included. It is the stall the NEXT press
+   * queues behind, and it is the only number in this instrument that can
+   * explain "I pressed and nothing happened for a second" — the T-spine starts
+   * at T0, which is recorded inside the handler and therefore after the
+   * queueing delay has already been paid.
+   */
+  handlerMs: number;
   closed: boolean;
   watchdog: ReturnType<typeof setTimeout> | null;
 };
@@ -256,6 +275,18 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
     `mounted=${flow.stages.has('screen_mount') ? 'yes' : 'no'}`,
     // Press -> the active pill on screen. Reported as very obviously late.
     `indicatorMs=${flow.indicatorAt === null ? 'n/a' : fmt(flow.indicatorAt)}`,
+    // What the thread was actually doing. `blockedMs` without this ranks
+    // stalls; it cannot attribute them, and a flow left open by a missing
+    // terminal stage reports ten seconds of unrelated work as its own.
+    `worstCommit=${
+      flow.worstCommit === null
+        ? 'n/a'
+        : `${flow.worstCommit.label}:${fmt(flow.worstCommit.ms)}ms`
+    }`,
+    // How long the press handler itself held the thread. The next press cannot
+    // be seen until this returns, so it is the queueing delay a user feels as
+    // "I pressed and nothing happened".
+    `handlerMs=${flow.handlerMs === 0 ? 'n/a' : fmt(flow.handlerMs)}`,
   ];
   if (flow.notes.length > 0) parts.push(`notes=${flow.notes.join(',')}`);
 
@@ -287,6 +318,8 @@ export function perfBeginFlow(label: string): void {
     notes: [],
     blockedMs: 0,
     indicatorAt: null,
+    worstCommit: null,
+    handlerMs: 0,
     closed: false,
     watchdog: null,
   };
@@ -377,6 +410,29 @@ export function perfAddBlockedMs(ms: number): void {
   if (!ENABLED) return;
   if (!activeFlow || activeFlow.closed) return;
   activeFlow.blockedMs += ms;
+}
+
+/**
+ * Offer a labelled commit cost to the open flow; the worst one is kept.
+ *
+ * Worst rather than total on purpose. Totals across a flow window have already
+ * misled one capture: a flow left open by a missing terminal stage accumulates
+ * ten seconds of unrelated work, and a sum presents that as the press's cost.
+ * A single worst commit is a claim that can be checked — some one render took
+ * this long — and it is the one that cost a visible frame.
+ */
+export function perfRecordCommit(label: string, ms: number): void {
+  if (!ENABLED) return;
+  if (!activeFlow || activeFlow.closed) return;
+  if (activeFlow.worstCommit !== null && activeFlow.worstCommit.ms >= ms) return;
+  activeFlow.worstCommit = { label, ms };
+}
+
+/** Offer a synchronous press-handler duration; the longest one is kept. */
+export function perfRecordHandlerMs(ms: number): void {
+  if (!ENABLED) return;
+  if (!activeFlow || activeFlow.closed) return;
+  if (ms > activeFlow.handlerMs) activeFlow.handlerMs = ms;
 }
 
 /** Attach a short fact to the open flow's summary line. */

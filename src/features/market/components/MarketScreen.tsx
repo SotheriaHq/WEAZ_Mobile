@@ -73,6 +73,7 @@ import {
   startMarketSignalRuntime,
   trackMarketSignal,
 } from '@/src/services/marketSignals';
+import { useCommitCost } from '@/src/perf/commitCost';
 import { useScreenArrival, useSkeletonTiming } from '@/src/perf/usePerfStages';
 import { navPerf } from '@/src/utils/navPerf';
 import { prefetchMedia } from '@/src/prefetch/navPrefetch';
@@ -1279,6 +1280,7 @@ function EditorialCard({
 }
 
 export function MarketScreen() {
+  useCommitCost('Market');
   const flowKey = 'market';
   // Phase 1 instrumentation (gated)
   React.useEffect(() => {

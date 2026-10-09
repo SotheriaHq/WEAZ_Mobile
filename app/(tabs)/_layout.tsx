@@ -27,6 +27,7 @@ import { resolveProfileImageSource } from '@/src/utils/profileImage';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { navPerf } from '@/src/utils/navPerf';
+import { useCommitCost } from '@/src/perf/commitCost';
 import {
   getRunwayFirstMediaVisible,
   subscribeRunwayFirstMediaVisible,
@@ -133,6 +134,18 @@ function getIslandNavFlow(item: NativeIslandNavItem, isBrand: boolean, isAuthent
 }
 
 export default function TabLayout() {
+  /*
+    First, so the measurement covers this whole render.
+
+    This component is the prime suspect for T1->T3 and has to be able to clear
+    itself or be convicted. It holds `optimisticActiveKey` in state AND renders
+    the `<Tabs>` navigator with all ten screens, so every island press sets
+    state on the owner of the navigator — in the same batch as the navigation
+    dispatch, which expo-router forces synchronous. If that is where the time
+    goes, this label carries it. If it does not, the number says so and the
+    suspicion is dropped rather than acted on.
+  */
+  useCommitCost('TabShell');
   const { theme } = useTheme();
   const { status, token, user } = useAuth();
   const toast = useToast();

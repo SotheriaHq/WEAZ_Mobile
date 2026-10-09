@@ -330,12 +330,37 @@ const paintCandidateBody = (() => {
   const end = island.indexOf('}, [pressedKey]);', start);
   return end < 0 ? '' : island.slice(start, end);
 })();
+/*
+  Named-setter-free on purpose.
+
+  This check used to assert the ordering against `setPressedItemKey` by name,
+  and broke the moment that state was removed for being write-only — failing
+  on a change that strictly improved the thing it was protecting. The invariant
+  was never about that one setter: it is that the shared value is written
+  before ANY React state in the press path, because a React write cannot paint
+  without a commit and the commit is what the press is waiting for. Asserting
+  it against whichever setter comes first survives renames and removals and
+  still rejects a reordering.
+*/
+const firstReactSetterAt = (() => {
+  const match = /\bset[A-Z]\w*\(/.exec(paintCandidateBody);
+  return match ? match.index : -1;
+})();
 check(
   'the pressed key is written before any React state in the press path',
   paintCandidateBody.includes('pressedKey.value = item.key;') &&
-    paintCandidateBody.includes('setPressedItemKey(item.key);') &&
-    paintCandidateBody.indexOf('pressedKey.value = item.key;') <
-      paintCandidateBody.indexOf('setPressedItemKey(item.key);'),
+    firstReactSetterAt > -1 &&
+    paintCandidateBody.indexOf('pressedKey.value = item.key;') < firstReactSetterAt,
+);
+/*
+  Asserted on code shape, not on the bare identifier: the note explaining why
+  the state was removed names it, and a prose mention is not a reintroduction.
+*/
+check(
+  'the island keeps no write-only React copy of the pressed key',
+  !/const \[pressedItemKey/.test(island) &&
+    !/setPressedItemKey\(/.test(island) &&
+    !/onPressOut=\{clearPressedItem\}/.test(island),
 );
 check(
   'the glyph and label brighten on the UI thread, not on React focus',
@@ -529,6 +554,94 @@ check(
   /isOwnCatalogueTarget\(user, normalizedBrandId, username\)/.test(runwayFeed) &&
     /popIslandTabStackToRoot\('catalog'\)/.test(runwayFeed) &&
     /topLevelNavigate\('\/catalog'/.test(runwayFeed),
+);
+
+// ------------------------------------------------- blocked-time attribution
+
+const commitCost = read('src/perf/commitCost.ts');
+
+/*
+  `blockedMs` alone sent the 2026-10-09 reading astray, and these four checks
+  are each a guard on the way it did.
+
+  A flow that never reaches a terminal stage stays open for the full
+  `FLOW_WATCHDOG_MS`, so its `blockedMs` is every stall from every source in a
+  ten second window — presented, on the summary line, as though the press had
+  caused it. Figures of 7-9 seconds read as per-press costs and were not. The
+  fix is not a smaller window; it is naming the work, so a reader never has to
+  infer the cause from a duration again.
+*/
+check(
+  'a stall names the work inside it, not just its duration',
+  /drainCommitAttribution\(drift\)/.test(threadMonitor) &&
+    /by=\$\{drainCommitAttribution/.test(threadMonitor),
+);
+
+check(
+  'work the ledger cannot account for is reported, not hidden',
+  /unattributed=/.test(commitCost) &&
+    /Math\.max\(0, observedMs - accounted\)/.test(commitCost),
+);
+
+/*
+  Worst, never total. A sum over a flow window is exactly the mistake that
+  produced the misleading figures above, so the summary field is a single
+  commit that can be checked against a claim.
+*/
+check(
+  'the flow summary keeps the worst single commit rather than a window total',
+  /worstCommit=/.test(wiezPerf) &&
+    /activeFlow\.worstCommit\.ms >= ms\) return/.test(wiezPerf) &&
+    !/activeFlow\.worstCommit\.ms \+= ms/.test(wiezPerf),
+);
+
+/*
+  The press handler's duration is the only figure that can explain "I pressed
+  and nothing happened": there is no gesture-handler in this project, so a
+  touch is observable only from JavaScript, and expo-router forces the
+  navigation render synchronous inside the handler. The T-spine cannot see it —
+  T0 is recorded inside the handler.
+*/
+check(
+  'the synchronous press handler is measured and published as handlerMs',
+  /measurePressHandler\(\(\) => \{/.test(islandNav) &&
+    /perfRecordHandlerMs\(elapsed\)/.test(commitCost) &&
+    /handlerMs=/.test(wiezPerf),
+);
+
+check(
+  'the attribution probe is inert when tracing is off',
+  /if \(!perfEnabled\(\)\) return run\(\)/.test(commitCost) &&
+    /startedAt\.current = perfEnabled\(\) \? now\(\) : 0/.test(commitCost),
+);
+
+/*
+  Catalogue and Inbox report `screenMounted` from a `[]` effect, and
+  `freezeOnBlur` with `detachInactiveScreens={false}` keeps the tab mounted —
+  so after the first open, T3 could never fire again. Every `tabs→catalog` and
+  `tabs→inbox` flow in the capture read `mounted=no` with `requests=0`, which
+  looks exactly like a navigation that never happened. It was a missing probe.
+  Those are opposite diagnoses and this is what keeps them distinguishable.
+*/
+check(
+  'every island tab destination can report T3 on a revisit, not only a cold mount',
+  /useScreenArrival\('tabs→catalog'\)/.test(read('app/(tabs)/catalog/index.tsx')) &&
+    /useScreenArrival\('tabs→inbox'\)/.test(read('app/(tabs)/inbox.tsx')) &&
+    /useScreenArrival\('tabs→runway'\)/.test(runwayFeed) &&
+    /useScreenArrival\('tabs→market'\)/.test(
+      read('src/features/market/components/MarketScreen.tsx'),
+    ),
+);
+
+/*
+  The tab shell holds `optimisticActiveKey` AND renders the navigator, so it is
+  the prime suspect for T1->T3 and has to be measurable either way. A suspect
+  that cannot be cleared gets optimised on faith.
+*/
+check(
+  'the tab shell and the island are both measurable, so neither is convicted on suspicion',
+  /useCommitCost\('TabShell'\)/.test(read('app/(tabs)/_layout.tsx')) &&
+    /useCommitCost\('Island'\)/.test(islandNav),
 );
 
 // ----------------------------------------------------------------- report

@@ -19,6 +19,7 @@ import Animated, {
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { measurePressHandler, useCommitCost } from '@/src/perf/commitCost';
 import { navPerf } from '@/src/utils/navPerf';
 import { tokens } from '@/src/styles/tokens';
 import {
@@ -345,6 +346,7 @@ export function NativeIslandBottomNav({
   onSelect,
   onPressIn,
 }: NativeIslandBottomNavProps) {
+  useCommitCost('Island');
   const { scheme, theme } = useTheme();
   const { windowWidth, islandLayout } = useScreenChrome();
   const { bottomOffset, sideOffset, islandWidth } = islandLayout;
@@ -359,7 +361,18 @@ export function NativeIslandBottomNav({
   // `items.length >= 6` branch) and was simply unreachable.
   const scrollableDock = items.length > 6;
   const compact = !scrollableDock && (items.length >= 6 || windowWidth < 380);
-  const [pressedItemKey, setPressedItemKey] = React.useState<string | null>(null);
+  /*
+    `pressedItemKey` used to live here. It was write-only — set on press-in,
+    cleared on press-out, cleared again on a swipe-cancel, and read by nothing:
+    not a style, not a render branch, not a dependency array. The pill paints
+    from the UI-thread `pressedKey` shared value below, which is what made the
+    React copy redundant.
+
+    It was not free. `onPressOut` was wired to its setter on both pressables, so
+    every finger-lift committed a fresh render of the whole dock to store a
+    value no one consumed — on a thread whose saturation is the latency being
+    investigated. Removed rather than left in looking load-bearing.
+  */
   const [immediateActiveKey, setImmediateActiveKey] = React.useState<string | null>(null);
   const [immediateActiveNavFlow, setImmediateActiveNavFlow] = React.useState<string | null>(null);
   /**
@@ -415,10 +428,6 @@ export function NativeIslandBottomNav({
     };
   }, []);
 
-  const clearPressedItem = React.useCallback(() => {
-    setPressedItemKey(null);
-  }, []);
-
   const paintCandidate = React.useCallback((item: NativeIslandNavItem) => {
     const navFlow = item.navFlow ?? item.key;
     const targetRoute = item.targetRoute ?? undefined;
@@ -439,7 +448,6 @@ export function NativeIslandBottomNav({
       setImmediateActiveKey((current) => (current === item.key ? null : current));
       setImmediateActiveNavFlow((current) => (current === navFlow ? null : current));
     }, PRESSED_KEY_MAX_MS);
-    setPressedItemKey(item.key);
     setImmediateActiveKey(item.key);
     setImmediateActiveNavFlow(navFlow);
     navPerf.tapPressIn(navFlow, { target: targetRoute });
@@ -485,7 +493,24 @@ export function NativeIslandBottomNav({
       // landed within a few ms of `screen_mount` on every single flow — and the
       // indirection is removed rather than left in looking load-bearing.
       paintCandidate(item);
-      commitSelection(item);
+      /*
+        Timed, because its duration is the latency being investigated.
+
+        `commitSelection` runs the navigation dispatch, and expo-router holds
+        route state in a `useSyncExternalStore`, which React must update
+        synchronously to avoid tearing. So the navigator's re-render and the
+        destination's first render happen INSIDE this call, before the handler
+        returns. There is no gesture-handler in this project, so a touch is
+        observable only from JavaScript — which means the next press cannot be
+        seen until this returns. This number is that blind window.
+
+        Nothing in the T0-T10 spine can measure it: T0 is recorded inside the
+        handler, so the spine starts after the queueing delay has been paid and
+        ends before the block it causes.
+      */
+      measurePressHandler(() => {
+        commitSelection(item);
+      });
     },
     [commitSelection, paintCandidate],
   );
@@ -511,7 +536,6 @@ export function NativeIslandBottomNav({
     gesture.moved = true;
     clearScrollTimer(gesture);
     const key = gesture.key;
-    setPressedItemKey((current) => (current === key ? null : current));
     setImmediateActiveKey((current) => (current === key ? null : current));
     setImmediateActiveNavFlow(null);
     // The highlight painted on touch-down is being taken back, because this
@@ -646,7 +670,6 @@ export function NativeIslandBottomNav({
                   onPressIn={item.disabled ? undefined : (event) => beginScrollDockPress(item, event)}
                   onTouchMove={item.disabled ? undefined : (event) => trackScrollDockMove(item, event)}
                   onTouchCancel={item.disabled ? undefined : () => cancelScrollCandidate()}
-                  onPressOut={clearPressedItem}
                   onPress={item.disabled ? undefined : () => commitScrollDockTap(item)}
                   /**
                    * No `android_ripple`. A bounded ripple fills the PRESSABLE,
@@ -696,7 +719,6 @@ export function NativeIslandBottomNav({
                   accessibilityLabel={item.label}
                   disabled={item.disabled}
                   onPressIn={item.disabled ? undefined : () => handleFixedPressIn(item)}
-                  onPressOut={clearPressedItem}
                   onPress={item.disabled ? undefined : () => handleFixedPress(item)}
                   // No `android_ripple` — see the scrolling dock above: a
                   // bounded ripple paints a rectangle across a pill chip.

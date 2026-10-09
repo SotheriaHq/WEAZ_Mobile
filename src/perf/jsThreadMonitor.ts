@@ -26,6 +26,7 @@
  * logged unless a sample exceeds `BLOCK_THRESHOLD_MS`, so a healthy session is
  * silent. Fully inert when the debug flag is absent.
  */
+import { drainCommitAttribution } from '@/src/perf/commitCost';
 import {
   perfAddBlockedMs,
   perfAnnotate,
@@ -70,7 +71,16 @@ export function startJsThreadMonitor(): () => void {
     blockEvents += 1;
     if (drift > worstBlockMs) worstBlockMs = drift;
 
-    perfNote('RENDER', 'js_thread_blocked', `${drift.toFixed(0)}ms`);
+    // Name the work inside the stall. A bare duration says the thread was
+    // gone; it does not say whether the destination's own render took it or
+    // something else re-rendered on the same commit, and those call for
+    // opposite fixes. `unattributed` in this string is itself a finding: it
+    // means the cost was not in any React commit we instrument.
+    perfNote(
+      'RENDER',
+      'js_thread_blocked',
+      `${drift.toFixed(0)}ms by=${drainCommitAttribution(drift)}`,
+    );
     // So the flow's own summary says the thread stalled during it. A reader
     // comparing T3->T4 across runs needs to know which runs were contended.
     //
