@@ -153,20 +153,55 @@ check('see more and going back are links, never buttons', () => {
   }
 });
 
-check('the island active chip has an edge', () => {
+/*
+  This check was failing before it was rewritten, and had been for a while,
+  because this file is not in `ci:phase8` — so nothing ran it. It asserted
+  `borderColor: focused ? theme.colors.focusRing : 'transparent'` and went stale
+  the moment the pill moved into a Reanimated worklet, where the expression is
+  `isActive ? ... ` against a shared value. It is wired into CI now.
+
+  Its premise is also deliberately reversed: the active chip no longer HAS an
+  edge, because it is frosted glass and the density change is the edge. What
+  still matters is what the original check was really protecting — that the
+  chip's box does not change on focus, which is what blanks the glyph on
+  Android — plus the new requirement that the fill stay translucent, since an
+  opaque fill covers the island's blur and brings back the shapeless lozenge
+  the ring existed to outline.
+*/
+check('the island active chip is frosted glass, not an outlined lozenge', () => {
   const island = read('components/navigation/NativeIslandBottomNav.tsx');
-  assert.match(
-    island,
-    /borderColor: focused \? theme\.colors\.focusRing : 'transparent'/,
-    'the ring must not be the fill colour',
-  );
-  assert.doesNotMatch(
-    island,
-    /borderColor: focused \? theme\.colors\.navActiveSurface/,
-    'ring and fill were the same value — no visible edge',
-  );
+  const tokens = read('src/styles/tokens.ts');
+
+  assert.match(island, /backgroundColor: activeGlass/, 'the chip fills with the glass token');
+  assert.doesNotMatch(island, /borderColor: isActive/, 'no ring is drawn on focus any more');
+  assert.doesNotMatch(island, /borderWidth: 1,\s*\n\s*borderColor: 'transparent'/, 'the chip border is gone from the box entirely');
+
+  // Translucent in BOTH themes, or the blur cannot read through and the chip is
+  // a sticker again. Asserted on the alpha, which is the whole design.
+  const glassValues = tokens.match(/navActiveGlass: '([^']+)'/g) ?? [];
+  assert.equal(glassValues.length, 2, 'both themes define the glass token');
+  for (const declaration of glassValues) {
+    const alpha = Number(/,([0-9.]+)\)/.exec(declaration)?.[1]);
+    assert.ok(alpha > 0 && alpha < 1, `${declaration} must be translucent`);
+  }
+
   // The box may not change on focus: that is what blanks the glyph on Android.
   assert.doesNotMatch(island, /borderWidth: focused/, 'border width must not depend on focus');
+  assert.doesNotMatch(island, /fontSize: isActive|fontSize: focused/, 'the glyph scales by transform, never by font size');
+  assert.match(island, /scale: withTiming\(isActive \? ACTIVE_GLYPH_SCALE : 1/, 'the active glyph scales on the UI thread');
+});
+
+check('every island state transition runs on one curve, off the JS thread', () => {
+  const island = read('components/navigation/NativeIslandBottomNav.tsx');
+  // The fill, the glyph opacity, the glyph scale and both label tones. If any
+  // one of them snaps while the others ease, the chip stops reading as a single
+  // gesture — which is the whole point of the shared curve.
+  const timed = island.match(/withTiming\([^)]*ACTIVE_TRANSITION\)/g) ?? [];
+  assert.ok(timed.length >= 5, `expected every chip state to be timed, found ${timed.length}`);
+  assert.match(island, /const ACTIVE_TRANSITION = \{ duration: \d+, easing: /, 'one shared curve');
+  // Inside worklets, so none of it can be delayed by render pressure — and
+  // none of it adds any.
+  assert.doesNotMatch(island, /Animated\.timing\(/, 'no JS-driven animation in the dock');
 });
 
 check('every section grid uses the system card', () => {

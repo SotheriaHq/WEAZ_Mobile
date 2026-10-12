@@ -11,8 +11,10 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 
@@ -72,6 +74,35 @@ const COMMIT_DEDUPE_MS = 400;
  * 1200ms comfortably covers the 345-428ms shell render measured on device.
  */
 const PRESSED_KEY_MAX_MS = 1200;
+
+/**
+ * How the chip crosses between states.
+ *
+ * Every state the chip has — frosted fill, glyph brightness, glyph scale, and
+ * both label tones — runs on this one curve, so a tap moves them as a single
+ * gesture instead of as four things that happen to start together. Decelerating,
+ * because the chip is arriving rather than leaving.
+ *
+ * 170ms is under the ~200ms at which a transition starts being perceived as a
+ * wait in its own right, which matters more here than anywhere else in the app:
+ * this is the acknowledgement that a press registered, and the whole point of
+ * driving it from a shared value is that it cannot be made to wait for React.
+ *
+ * All of it is UI-thread work inside a worklet. None of it touches the JS
+ * thread, so none of it can be delayed by the render pressure being
+ * investigated — and none of it adds to that pressure either.
+ */
+const ACTIVE_TRANSITION = { duration: 170, easing: Easing.out(Easing.cubic) } as const;
+
+/**
+ * The selected glyph, slightly larger than its neighbours.
+ *
+ * 1.09 is the brief's "obvious but not too obvious" measured against the chip:
+ * below about 1.05 it reads as a rendering inconsistency rather than a choice,
+ * and past roughly 1.12 the emoji meets the pill's edge at this chip height.
+ * Applied as a transform, so it changes no layout box — see `glyphStyle`.
+ */
+const ACTIVE_GLYPH_SCALE = 1.09;
 
 type ScrollDockGesture = {
   key: string;
@@ -146,38 +177,47 @@ export function NativeIslandTabIcon({
   // "link disappears when navigating" bug. So: border width is always present
   // (transparent when inactive), no dynamic shadow, and a constant emoji size.
   /*
-    The active chip is a PILL: a tint with a ring around it.
+    The active chip is frosted glass. No ring.
 
-    `borderColor` was set to `navActiveSurface` — the same value as the fill —
-    so the ring rendered invisible and the active state was a bare tinted blob
-    with nothing defining its edge. On the frosted island, over whatever
-    photograph happens to be behind it, that blob has no shape: it reads as a
-    smudge rather than as the selected tab. The browser build has had the ring
-    all along, which is why the same bar looks finished there and unfinished
-    here.
+    It previously needed one. The fill was `navActiveSurface`, which is opaque,
+    so the selected chip covered the island's blur and sat on the glass as a
+    flat lozenge — and a flat lozenge over an arbitrary photograph has no shape,
+    which is why an edge had to be drawn around it to look deliberate.
 
-    `focusRing` is the one token for "this is the selected thing" and it is the
-    same lilac in both themes, so the pill keeps its edge on dark chrome too.
-    Colour is the ONLY thing that may change on focus here — see the note above
-    about Android re-clipping the glyph.
+    A translucent fill removes the cause instead of outlining it. The island's
+    blur reads THROUGH the chip, so it looks like a thicker piece of the same
+    glass, and a piece of glass does not need a border to have an edge — the
+    density change is the edge. `navActiveGlass` carries the alpha per theme;
+    see its note in `tokens.ts`.
+
+    The border is gone from the box entirely rather than made transparent. That
+    is still safe under the Android rule above: the rule is that the box must
+    not CHANGE on focus, and a border that no longer exists in either state
+    cannot change. Removing it also returns 2dp of inner height, which is what
+    pays for the glyph scale below.
+
+    `focused` stays in every condition so the chip is correct once React catches
+    up, and so a chip that was never pressed — deep link, back, restored route —
+    still lights. The shared value only ever makes it EARLIER.
   */
+  const activeGlass = theme.colors.navActiveGlass;
   /*
-    Colour only, and evaluated on the UI thread.
+    Opacity, not a colour interpolation.
 
-    `focused` stays in the condition so the pill is still correct once React
-    catches up, and so a chip that was never pressed (deep link, back, restored
-    route) lights up normally. The shared value only ever makes it EARLIER.
+    Fading a translucent fill in and out is one GPU property on a layer that is
+    always mounted, so there is no colour maths on the UI thread and nothing
+    structural moves. Interpolating `backgroundColor` from `'transparent'`
+    instead would have travelled through transparent BLACK and dirtied the
+    lilac on the way in.
   */
-  const activeFill = theme.colors.navActiveSurface;
-  const activeRing = theme.colors.focusRing;
   const pillStyle = useAnimatedStyle(() => {
     const pressed = pressedKey.value;
     const isActive = pressed != null ? pressed === itemKey : focused;
     return {
-      backgroundColor: isActive ? activeFill : 'transparent',
-      borderColor: isActive ? activeRing : 'transparent',
+      backgroundColor: activeGlass,
+      opacity: withTiming(isActive ? 1 : 0, ACTIVE_TRANSITION),
     };
-  }, [activeFill, activeRing, focused, itemKey, pressedKey]);
+  }, [activeGlass, focused, itemKey, pressedKey]);
 
   /*
     The glyph and the label brighten on the UI thread too.
@@ -206,30 +246,52 @@ export function NativeIslandTabIcon({
     the glyph. These wrappers are always present and only their alpha changes.
   */
   const inactiveGlyphOpacity = avatarUri ? 0.82 : 0.76;
+  /*
+    The selected glyph is slightly larger. `transform`, never `fontSize`.
+
+    `fontSize` would re-measure the text node and reflow the stack inside a
+    chip with `overflow: hidden` — the exact thing that blanks the glyph on
+    Android, per the note at the top of this component. A transform is applied
+    at paint and changes no layout box at all, so the chip's geometry is as
+    constant as it was before.
+
+    `ACTIVE_GLYPH_SCALE` is 1.09 because the brief is "obvious but not too
+    obvious": at 1.05 it reads as a rendering artefact next to the other chips,
+    and much past 1.12 it clips against the pill at this chip height.
+  */
   const glyphStyle = useAnimatedStyle(() => {
     const pressed = pressedKey.value;
     const isActive = pressed != null ? pressed === itemKey : focused;
-    return { opacity: isActive ? 1 : inactiveGlyphOpacity };
+    return {
+      opacity: withTiming(isActive ? 1 : inactiveGlyphOpacity, ACTIVE_TRANSITION),
+      transform: [{ scale: withTiming(isActive ? ACTIVE_GLYPH_SCALE : 1, ACTIVE_TRANSITION) }],
+    };
   }, [focused, inactiveGlyphOpacity, itemKey, pressedKey]);
 
   const activeLabelStyle = useAnimatedStyle(() => {
     const pressed = pressedKey.value;
     const isActive = pressed != null ? pressed === itemKey : focused;
-    return { opacity: isActive ? 1 : 0 };
+    return { opacity: withTiming(isActive ? 1 : 0, ACTIVE_TRANSITION) };
   }, [focused, itemKey, pressedKey]);
 
   const inactiveLabelStyle = useAnimatedStyle(() => {
     const pressed = pressedKey.value;
     const isActive = pressed != null ? pressed === itemKey : focused;
-    return { opacity: isActive ? 0 : 1 };
+    return { opacity: withTiming(isActive ? 0 : 1, ACTIVE_TRANSITION) };
   }, [focused, itemKey, pressedKey]);
 
-  const chipStyle = [styles.tabChip, compact && styles.tabChipCompact, pillStyle];
+  // Static now: the chip's box never changes, and the only animated thing
+  // inside it is the frosted fill below.
+  const chipStyle = [styles.tabChip, compact && styles.tabChipCompact];
 
   return (
     <View style={styles.tabIconWrap}>
       <View style={styles.tabGlyphWrap}>
-        <Animated.View style={chipStyle}>
+        <View style={chipStyle}>
+          {/* The frosted fill, always mounted and crossfaded underneath the
+              glyph. Absolutely filled so it cannot affect the stack's layout,
+              and clipped to the pill by the chip's own radius. */}
+          <Animated.View style={[styles.tabChipFill, pillStyle]} pointerEvents="none" />
           <View style={styles.tabGlyphStack}>
             <Animated.View style={[styles.tabEmojiWrap, glyphStyle]}>
               {avatarUri ? (
@@ -273,7 +335,7 @@ export function NativeIslandTabIcon({
               </Animated.View>
             </View>
           </View>
-        </Animated.View>
+        </View>
         {typeof badge === 'number' && badge > 0 ? (
           <View style={styles.badgeWrap} pointerEvents="none">
             <View style={[styles.badge, { backgroundColor: theme.colors.badgeRed }]}>
@@ -863,13 +925,9 @@ const styles = StyleSheet.create({
     minWidth: 50,
     height: 38,
     borderRadius: 9999,
-    // Border is always present (transparent when inactive) so the chip's box
-    // model never changes on focus — prevents Android re-clipping the glyph.
-    // A hairline ring disappears at this size on a busy backdrop; 1pt is the
-    // thinnest that still draws an edge on a 3x screen. Constant in both
-    // states, so the chip's box never changes on focus.
-    borderWidth: 1,
-    borderColor: 'transparent',
+    // No border in either state. The active chip is frosted glass now, and a
+    // density change is its own edge — see the note on `pillStyle`. Dropping it
+    // also returns the 2dp of inner height that the active glyph's scale uses.
     // Was 5. The pill hugged the cell instead of its contents, so the tint ran
     // edge to edge and the label had nowhere to breathe.
     paddingHorizontal: 9,
@@ -884,8 +942,16 @@ const styles = StyleSheet.create({
     height: 42,
     paddingHorizontal: 2,
   },
-  tabChipInactive: {
-    backgroundColor: 'transparent',
+  // The frosted pane. Absolutely filled so it is outside the glyph stack's
+  // layout entirely, and radius-matched to the chip so the crossfade is clipped
+  // to the pill rather than showing its square corners.
+  tabChipFill: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: 9999,
   },
   tabEmoji: {
     textAlign: 'center',

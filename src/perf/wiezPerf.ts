@@ -189,6 +189,14 @@ type Flow = {
    * a programmatic navigation rather than a finger.
    */
   touchQueueMs: number | null;
+  /**
+   * Why each labelled component rendered, counted per distinct cause.
+   *
+   * `commitTotals` counts renders; this names what scheduled them. The value
+   * `parent` means nothing the component reads had changed, so the render was
+   * forced from above — see `useRenderCause`.
+   */
+  renderCauses: Map<string, number>;
   closed: boolean;
   watchdog: ReturnType<typeof setTimeout> | null;
 };
@@ -278,6 +286,19 @@ function intervalText(value: number | null): string {
  * what the capture is read for: sixty-eight commits of a list in ten seconds
  * is the finding, whatever each one cost.
  */
+/**
+ * Render causes, most frequent first. Ordered by count because the question is
+ * what is driving the volume, not what is unusual.
+ */
+function causeBreakdown(flow: Flow, limit = 6): string {
+  if (flow.renderCauses.size === 0) return 'none';
+  return Array.from(flow.renderCauses.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([key, count]) => `${key}×${count}`)
+    .join(',');
+}
+
 function commitBreakdown(flow: Flow, limit = 6): string {
   if (flow.commitTotals.size === 0) return 'none';
   return Array.from(flow.commitTotals.entries())
@@ -356,6 +377,9 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
     // finding: repeated commits of a memoized row mean its comparator is being
     // defeated, and no single `worstCommit` figure can say that.
     `commits=${commitBreakdown(flow)}`,
+    // What SCHEDULED those commits. `X:parent` means nothing X reads changed,
+    // so the render was forced from above and the cause is one level up.
+    `causes=${causeBreakdown(flow)}`,
   ];
   if (flow.notes.length > 0) parts.push(`notes=${flow.notes.join(',')}`);
 
@@ -391,6 +415,7 @@ export function perfBeginFlow(label: string): void {
     commitTotals: new Map(),
     handlerMs: 0,
     touchQueueMs: null,
+    renderCauses: new Map(),
     closed: false,
     watchdog: null,
   };
@@ -586,6 +611,26 @@ export function perfRecordTouchQueue(ms: number | null): void {
   if (activeFlow.touchQueueMs === null || ms > activeFlow.touchQueueMs) {
     activeFlow.touchQueueMs = ms;
   }
+}
+
+/**
+ * Record why a labelled component rendered. Cheap enough to call on every
+ * render: one Map read and one increment, and the key space is bounded by the
+ * number of labels times the number of distinct input combinations.
+ */
+export function perfRecordRenderCause(label: string, cause: string): void {
+  if (!ENABLED) return;
+  if (!activeFlow || activeFlow.closed) return;
+  const key = `${label}:${cause}`;
+  const running = activeFlow.renderCauses.get(key);
+  if (running === undefined) {
+    // A pathological cause set (many inputs churning in different
+    // combinations) must not grow this without bound.
+    if (activeFlow.renderCauses.size >= 24) return;
+    activeFlow.renderCauses.set(key, 1);
+    return;
+  }
+  activeFlow.renderCauses.set(key, running + 1);
 }
 
 /** Attach a short fact to the open flow's summary line. */

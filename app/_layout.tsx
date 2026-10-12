@@ -67,6 +67,7 @@ import {
 } from '@/src/system/AndroidSystemBars';
 import { ScreenChromeProvider } from '@/src/system/ScreenChrome';
 import { QueryProvider } from '@/src/query/QueryProvider';
+import { useCommitCost } from '@/src/perf/commitCost';
 import { useAndroidDoubleBackExit } from '@/src/hooks/useAndroidDoubleBackExit';
 import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { tokens } from '@/src/styles/tokens';
@@ -484,6 +485,17 @@ function RootBootstrap({
 }: {
   fontsReady: boolean;
 }) {
+  /*
+    The gap in the attribution.
+
+    Everything between the providers and the tab shell was unlabelled, so a
+    re-render originating HERE looked exactly like the context broadcast that
+    was inferred — and wrongly — from identical per-screen counts. This renders
+    `<RootStack />` as a fresh element on every render of its own, so a single
+    re-render here reconciles the entire app below it: the stack, the tab shell,
+    the navigator, and with `freezeOnBlur` every tab the session has visited.
+  */
+  useCommitCost('P:RootBootstrap');
   const { ready: themeReady, scheme, theme } = useTheme();
   const { localSessionReady, status } = useAuth();
   const bootReady = fontsReady && themeReady && localSessionReady;
@@ -706,6 +718,7 @@ function RootLayoutNav({
 }
 
 function RootStack() {
+  useCommitCost('P:RootStack');
   const { theme } = useTheme();
 
   return (

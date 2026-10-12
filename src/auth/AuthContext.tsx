@@ -27,7 +27,7 @@ import {
   ACTIVE_BRAND_STORAGE_KEY,
   clearMobilePrivateSessionState,
 } from '@/src/auth/sessionCleanup';
-import { useCommitCost } from '@/src/perf/commitCost';
+import { useCommitCost, useRenderCause } from '@/src/perf/commitCost';
 import {
   AuthRequestError,
   extractAuthErrorCode,
@@ -1127,6 +1127,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }),
     [status, localSessionReady, sessionSettled, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, selectedActiveBrandId, setActiveBrandId, updateUser, validateToken, signIn, signUp, signInWithGoogle, signOut],
   );
+
+  /*
+    The 2026-10-12 capture put `P:Auth` at the same count as every screen —
+    7, 16, 20 on separate flows — with nothing above it (`P:Theme`, `P:Toast`)
+    recording anything. That makes this provider the top of the churn, and the
+    mechanism is not in doubt: `{children}` is one element reference, so a bare
+    re-render here would bail out, but a new CONTEXT VALUE reaches every
+    consumer directly and no element identity is consulted.
+    `useAuth()` is read by the tab shell, Runway, Market, Catalogue and Me —
+    the exact set that re-renders.
+
+    Which leaves two separate questions, and the ledger could answer neither:
+    what re-renders this provider, and whether the value identity then moves.
+    So both are reported. `value` and `sessionValue` are passed alongside the
+    state they are built from — if they appear as changed on renders where no
+    state did, the memo is being defeated and the propagation is the bug; if
+    `user` appears, the cause is upstream in whatever called `setUser`, which
+    hands every validation a FRESH object that no bailout can stop.
+
+    `P:Auth:parent` would mean this provider is itself being re-rendered from
+    above, and the search moves to `RootLayoutNav`.
+  */
+  useRenderCause('P:Auth', {
+    status,
+    localSessionReady,
+    sessionSettled,
+    token,
+    user,
+    selectedActiveBrandId,
+    refreshTokenState,
+    value,
+    sessionValue,
+  });
 
   return (
     <AuthSessionContext.Provider value={sessionValue}>

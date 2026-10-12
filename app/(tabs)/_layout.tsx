@@ -27,7 +27,7 @@ import { resolveProfileImageSource } from '@/src/utils/profileImage';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { navPerf } from '@/src/utils/navPerf';
-import { useCommitCost } from '@/src/perf/commitCost';
+import { useCommitCost, useRenderCause } from '@/src/perf/commitCost';
 import {
   getRunwayFirstMediaVisible,
   subscribeRunwayFirstMediaVisible,
@@ -189,6 +189,41 @@ export default function TabLayout() {
   const tabNavigationRef = useRef<HiddenTabNavigation | null>(null);
   const preloadedTabNamesRef = useRef<Set<string>>(new Set());
   const [optimisticActiveKey, setOptimisticActiveKey] = useState<AnyIslandKey | null>(null);
+  /*
+    Every input this component reads, compared against the last render.
+
+    The 2026-10-12 capture put `TabShell`, `Runway` and `Market` at identical
+    counts — 18, 21, 24 on separate flows — with no `P:*` provider label
+    recording anything at all. That combination disproved the context-broadcast
+    reading twice inferred from it, and left no candidate, because the ledger
+    cannot tell a component that re-rendered on its own input from one an
+    ancestor re-rendered. This names which.
+
+    `TabShell:parent` would mean nothing below is at fault and the cause is
+    above this file; any other key names the input to stabilise. The list is
+    deliberately exhaustive — a missing input would be silently misreported as
+    `parent` and send the search one level too high.
+  */
+  useRenderCause('TabShell', {
+    pathname,
+    routeKey: studioRouteKeyParam,
+    surface: studioSurfaceParam,
+    theme,
+    authStatus: status,
+    token,
+    user,
+    toast,
+    bagFlow,
+    bagCount,
+    windowWidth,
+    islandLayout,
+    notifCount: unreadNotificationCount,
+    msgCount: unreadMessageCount,
+    notifReady: notificationCountReady,
+    msgReady: messageCountReady,
+    storeSetupComplete,
+    optimisticActiveKey,
+  });
   // Pathname the current prediction was made from — see `predictActiveKey`.
   const optimisticFromPathnameRef = useRef<string | null>(null);
   const optimisticExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null);

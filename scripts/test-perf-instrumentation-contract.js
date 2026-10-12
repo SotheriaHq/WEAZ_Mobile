@@ -450,9 +450,44 @@ check(
   'the pill still honours React-confirmed focus, so untapped routes light up',
   /pressed != null \? pressed === itemKey : focused/.test(island),
 );
+/*
+  The animated element moved, and the invariant moved with it.
+
+  This asserted the CHIP hosted the animated style. The chip is static now: its
+  box must never change on focus, and making the one element whose geometry is
+  fixed also the one that animates invited exactly that. The frosted fill is a
+  separate, absolutely-positioned layer, so it can crossfade without any
+  possibility of affecting layout. What still has to hold — and is what this
+  check was always really for — is that the pill's appearance is driven by a
+  shared value on the UI thread rather than by a React prop.
+*/
+/*
+  Scoped to `pillStyle`'s own body.
+
+  Written file-wide first, and a mutation test caught it: `glyphStyle` also
+  reads `pressedKey.value` and also calls `withTiming`, so a file-wide match
+  stayed green with the pill reverted to a React prop. The sibling satisfied the
+  assertion on the pill's behalf.
+*/
+const pillStyleBody = (() => {
+  const start = island.indexOf('const pillStyle = useAnimatedStyle(');
+  if (start < 0) return '';
+  const end = island.indexOf('const inactiveGlyphOpacity', start);
+  return end < 0 ? '' : island.slice(start, end);
+})();
 check(
-  'the pill element can host an animated style',
-  /<Animated\.View style=\{chipStyle\}>/.test(island),
+  'the pill is painted by an animated style on the UI thread',
+  /<Animated\.View style=\{\[styles\.tabChipFill, pillStyle\]\}/.test(island) &&
+    pillStyleBody.length > 0 &&
+    // Reading the shared value, not a React prop, or the pill is back to
+    // waiting for the navigation commit it was moved off.
+    /const pressed = pressedKey\.value;/.test(pillStyleBody) &&
+    /opacity: withTiming\(isActive \? 1 : 0, ACTIVE_TRANSITION\)/.test(pillStyleBody),
+);
+check(
+  'the chip box itself no longer animates',
+  /const chipStyle = \[styles\.tabChip, compact && styles\.tabChipCompact\];/.test(island) &&
+    !/const chipStyle = \[[^\]]*pillStyle\]/.test(island),
 );
 check(
   'only colour changes on focus (borderWidth toggling re-clips the glyph)',

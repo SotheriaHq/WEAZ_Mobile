@@ -53,6 +53,7 @@ import {
   perfEnabled,
   perfRecordCommit,
   perfRecordHandlerMs,
+  perfRecordRenderCause,
 } from '@/src/perf/wiezPerf';
 
 /**
@@ -241,4 +242,56 @@ export function drainCommitAttribution(
 /** Drop everything without reporting — used when a capture resets. */
 export function resetCommitAttribution(): void {
   windowCosts.clear();
+}
+
+/**
+ * WHY did this component render?
+ *
+ * `useCommitCost` says what a commit cost and `commitTotals` says how many
+ * commits there were. Neither can say what scheduled them, and three successive
+ * captures have been read by ELIMINATION instead — a context broadcast was
+ * inferred twice from identical per-label counts, and the provider labels added
+ * to confirm it then recorded nothing at all, which disproved it without
+ * naming a replacement.
+ *
+ * Elimination keeps failing because it cannot distinguish the one case that
+ * matters: a component that re-rendered because something it reads changed,
+ * versus a component that re-rendered because an ANCESTOR did. Those have
+ * opposite fixes — memoize the input, or stop the parent — and the existing
+ * ledger looks identical in both.
+ *
+ * So this compares every input a component reads against the previous render
+ * and reports the ones that differ. A render where NOTHING a component reads
+ * changed is reported as `parent`, and that is the decisive reading: it means
+ * the work was forced from above, and the search moves up one level on evidence
+ * rather than on another inference.
+ *
+ * HONEST LIMITS. The comparison is `Object.is` on whatever the caller passes,
+ * so an unstable object identity reads as a change even when the contents are
+ * equal — which is usually the finding, but it is a finding about identity, not
+ * about values. The previous-input snapshot is written during render, so a
+ * render React discards (interrupted, suspended, or the second pass of StrictMode)
+ * still advances the baseline and can misattribute the NEXT render's cause. That
+ * is the same tradeoff `useCommitCost` already makes by timing from render start,
+ * and it is acceptable for a diagnostic that is absent from release builds. It
+ * would not be acceptable in anything behaviour depends on.
+ */
+export function useRenderCause(label: string, inputs: Record<string, unknown>): void {
+  const previous = useRef<Record<string, unknown> | null>(null);
+
+  if (perfEnabled()) {
+    const prior = previous.current;
+    if (prior === null) {
+      perfRecordRenderCause(label, 'mount');
+    } else {
+      let changed = '';
+      for (const key in inputs) {
+        if (Object.is(inputs[key], prior[key])) continue;
+        changed = changed === '' ? key : `${changed}+${key}`;
+      }
+      // Nothing this component reads moved, so the render came from above.
+      perfRecordRenderCause(label, changed === '' ? 'parent' : changed);
+    }
+    previous.current = { ...inputs };
+  }
 }

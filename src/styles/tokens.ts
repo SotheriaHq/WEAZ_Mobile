@@ -75,6 +75,24 @@ type Theme = {
      */
     navActiveSurface: string;
     /**
+     * The active island chip, as frosted glass rather than a solid tint.
+     *
+     * Separate from `navActiveSurface` because it is doing a different job.
+     * That token is opaque: it covers the island's blur, so the selected chip
+     * became a flat lozenge sitting ON the glass and needed a ring drawn round
+     * it to have any shape at all. This one is translucent, so the island's own
+     * blur reads THROUGH the chip — which is what makes it look like a thicker
+     * piece of the same glass instead of a sticker, and is why the ring is no
+     * longer needed to define its edge.
+     *
+     * Alpha is the whole design. Too low and the selection disappears into the
+     * chrome; too high and it is `navActiveSurface` again with extra steps.
+     * Light sits near-opaque because it has to separate from frosted WHITE;
+     * dark sits much lower because a violet at any real weight glows on dark
+     * glass and only needs a hint to register.
+     */
+    navActiveGlass: string;
+    /**
      * The two stops of the faint brand wash laid over a tile or a card.
      *
      * Cards that are only a fill and a hairline read as bare, and a screen of
@@ -143,6 +161,10 @@ export const tokens = {
         // One shade deeper than `primarySoft` (#F3E8FF), which disappeared into
         // the island's frosted white. Same family, enough weight to register.
         navActiveSurface: '#E4D2FA',
+        // `navActiveSurface` at 0.9: the island behind it is frosted WHITE, so
+        // the chip needs most of its weight to separate, and the remaining
+        // tenth is what lets the blur through and keeps it glass.
+        navActiveGlass: 'rgba(228,210,250,0.90)',
         // Roughly a 3% purple over white at the top, clearing to plain surface.
         surfaceTintGradient: ['#F8F3FE', '#FFFFFF'] as readonly [string, string],
         focusRing: '#C084FC',
@@ -198,6 +220,11 @@ export const tokens = {
         // Same one-step-deeper treatment applied to the dark tint (#2B1742),
         // which had the same "is that selected?" problem on dark chrome.
         navActiveSurface: '#3B2260',
+        // Far lower alpha than light, and deliberately a brighter violet than
+        // `navActiveSurface`: on dark glass a lit chip has to read as light
+        // coming through, not as a darker patch. 0.34 registers at a glance
+        // and still lets the blur carry.
+        navActiveGlass: 'rgba(167,112,247,0.34)',
         // The same lift, mirrored: a touch of violet INTO the surface rather
         // than a wash over it, so the card warms without going grey.
         surfaceTintGradient: ['#191430', '#111620'] as readonly [string, string],
