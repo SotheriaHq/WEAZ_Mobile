@@ -20,6 +20,11 @@ import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { measurePressHandler, useCommitCost } from '@/src/perf/commitCost';
+// Direct, not via `navPerf`: that facade reaches wiezPerf through
+// `navPerfBridge` and deals only in named T-spine stages. The pre-handler queue
+// is not a stage — it is the gap before the first one — so routing it through
+// the bridge would mean teaching the stage vocabulary a non-stage.
+import { perfRecordTouchQueue, perfTouchQueueMs } from '@/src/perf/wiezPerf';
 import { navPerf } from '@/src/utils/navPerf';
 import { tokens } from '@/src/styles/tokens';
 import {
@@ -480,7 +485,12 @@ export function NativeIslandBottomNav({
   );
 
   const handleFixedPressIn = React.useCallback(
-    (item: NativeIslandNavItem) => {
+    (item: NativeIslandNavItem, event?: GestureResponderEvent) => {
+      // First statement in the handler, deliberately: it reads the clock, so
+      // every line above it would be counted as queueing that JS actually
+      // spent. The flow does not exist yet, so the reading is recorded a few
+      // lines down once `paintCandidate` has opened it.
+      const queuedMs = perfTouchQueueMs(event?.nativeEvent?.timestamp);
       // `paintCandidate` writes `pressedKey` before anything else, and the pill
       // reads that on the UI thread, so the highlight no longer depends on this
       // commit at all.
@@ -493,6 +503,7 @@ export function NativeIslandBottomNav({
       // landed within a few ms of `screen_mount` on every single flow — and the
       // indirection is removed rather than left in looking load-bearing.
       paintCandidate(item);
+      perfRecordTouchQueue(queuedMs);
       /*
         Timed, because its duration is the latency being investigated.
 
@@ -565,6 +576,8 @@ export function NativeIslandBottomNav({
 
   const beginScrollDockPress = React.useCallback(
     (item: NativeIslandNavItem, event: GestureResponderEvent) => {
+      // Read before anything else, for the reason given in `handleFixedPressIn`.
+      const queuedMs = perfTouchQueueMs(event.nativeEvent.timestamp);
       const previous = scrollGestureRef.current;
       if (previous && !previous.committed) clearScrollTimer(previous);
       const { pageX, pageY } = event.nativeEvent;
@@ -581,6 +594,7 @@ export function NativeIslandBottomNav({
         passes the slop. A route is not, which is why only the route is gated.
       */
       paintCandidate(item);
+      perfRecordTouchQueue(queuedMs);
       const timer = setTimeout(() => {
         commitScrollDockTap(item);
       }, SCROLL_DOCK_COMMIT_DELAY_MS);
@@ -718,7 +732,7 @@ export function NativeIslandBottomNav({
                   }}
                   accessibilityLabel={item.label}
                   disabled={item.disabled}
-                  onPressIn={item.disabled ? undefined : () => handleFixedPressIn(item)}
+                  onPressIn={item.disabled ? undefined : (event) => handleFixedPressIn(item, event)}
                   onPress={item.disabled ? undefined : () => handleFixedPress(item)}
                   // No `android_ripple` — see the scrolling dock above: a
                   // bounded ripple paints a rectangle across a pill chip.

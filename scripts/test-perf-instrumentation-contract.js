@@ -353,6 +353,69 @@ check(
     paintCandidateBody.indexOf('pressedKey.value = item.key;') < firstReactSetterAt,
 );
 /*
+  The pre-handler queue probe.
+
+  Its whole value rests on WHERE the clock is read. Taken after `paintCandidate`
+  it would measure nothing, because the queueing has already been paid and the
+  work above it would be silently folded into the reading. So the ordering is
+  pinned, not trusted: the clock read must come before the paint in both touch
+  entry points.
+*/
+const fixedPressInBody = (() => {
+  const start = island.indexOf('const handleFixedPressIn = React.useCallback(');
+  if (start < 0) return '';
+  const end = island.indexOf('const handleFixedPress =', start);
+  return end < 0 ? '' : island.slice(start, end);
+})();
+const scrollPressInBody = (() => {
+  const start = island.indexOf('const beginScrollDockPress = React.useCallback(');
+  if (start < 0) return '';
+  const end = island.indexOf('const trackScrollDockMove =', start);
+  return end < 0 ? '' : island.slice(start, end);
+})();
+for (const [name, body] of [
+  ['the fixed press path', fixedPressInBody],
+  ['the scroll-dock press path', scrollPressInBody],
+]) {
+  const readAt = body.indexOf('perfTouchQueueMs(');
+  const paintAt = body.indexOf('paintCandidate(item);');
+  check(
+    `${name} reads the touch clock before it paints`,
+    body.length > 0 && readAt > -1 && paintAt > -1 && readAt < paintAt,
+  );
+  check(
+    `${name} records the queue reading onto the flow`,
+    /perfRecordTouchQueue\(queuedMs\)/.test(body),
+  );
+}
+check(
+  'the fixed press handler receives the gesture event it needs for the timestamp',
+  /\(event\) => handleFixedPressIn\(item, event\)/.test(island) &&
+    /handleFixedPressIn = React\.useCallback\(\s*\(item: NativeIslandNavItem, event\?: GestureResponderEvent\)/.test(
+      island,
+    ),
+);
+/*
+  The offset estimator is a relative baseline, and the summary must carry the
+  sample count or a reading taken off a one-sample baseline looks as trustworthy
+  as a settled one.
+*/
+check(
+  'the touch-queue reading travels with its baseline sample count',
+  /touchQueueMs=\$\{/.test(wiezPerf) && /baseN=\$\{touchClockSamples\}/.test(wiezPerf),
+);
+check(
+  'the touch clock keeps the minimum offset seen, not the first or the latest',
+  /if \(offset < touchClockOffset\) \{/.test(wiezPerf) &&
+    /touchClockOffset = offset;/.test(wiezPerf) &&
+    !/touchClockOffset = now\(\)/.test(wiezPerf),
+);
+check(
+  'a flow with no finger touch reports the queue as n/a rather than zero',
+  /touchQueueMs: null,/.test(wiezPerf) &&
+    /flow\.touchQueueMs === null \? 'n\/a'/.test(wiezPerf),
+);
+/*
   Asserted on code shape, not on the bare identifier: the note explaining why
   the state was removed names it, and a prose mention is not a reintroduction.
 */
@@ -399,11 +462,27 @@ check(
   'the disproven React-transition indirection is gone',
   !/React\.startTransition\(/.test(island),
 );
+/*
+  Ordering, not adjacency.
+
+  This asserted that the paint and the slop timer were textually consecutive,
+  which failed the moment a queue reading was recorded between them — a line
+  that cannot affect the highlight. Adjacency was never the invariant. The
+  invariant is that the highlight is painted on touch-down while only the ROUTE
+  waits out the slop, and an index comparison states exactly that: a
+  `paintCandidate` that had been moved inside the timer would sort after it.
+*/
+const scrollPaintAt = scrollPressInBody.indexOf('paintCandidate(item);');
+const scrollTimerAt = scrollPressInBody.indexOf('const timer = setTimeout(');
 check(
   'the scrolling dock highlights on touch-down instead of after the slop timer',
-  /paintCandidate\(item\);\s*\n\s*const timer = setTimeout\(\(\) => \{\s*\n\s*commitScrollDockTap\(item\);\s*\n\s*\}, SCROLL_DOCK_COMMIT_DELAY_MS\);/.test(
-    island,
-  ),
+  scrollPressInBody.length > 0 &&
+    scrollPaintAt > -1 &&
+    scrollTimerAt > -1 &&
+    scrollPaintAt < scrollTimerAt &&
+    /setTimeout\(\(\) => \{\s*\n\s*commitScrollDockTap\(item\);\s*\n\s*\}, SCROLL_DOCK_COMMIT_DELAY_MS\);/.test(
+      scrollPressInBody,
+    ),
 );
 check(
   'a cancelled scroll candidate clears the UI-thread key too',

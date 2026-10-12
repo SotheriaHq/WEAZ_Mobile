@@ -173,6 +173,22 @@ type Flow = {
    * queueing delay has already been paid.
    */
   handlerMs: number;
+  /**
+   * How long the touch waited between the OS dispatching it and JS running the
+   * handler. The worst of the flow, as `handlerMs` is.
+   *
+   * This is the one window the T0-T10 spine was built blind to, and the
+   * arithmetic says it is where the complaint lives: from handler entry to the
+   * pill painting measures ~2ms end to end (`handlerMs` 0.4-1.7, `T0->T1`
+   * 0.1-1.3, `indicatorMs` 0.1-0.4), while a press on a Galaxy A17 visibly
+   * waits hundreds of ms. Everything after the handler starts is fast, so the
+   * wait is before it starts, and nothing in the instrument could see that.
+   *
+   * Null when no touch in the flow carried a usable native timestamp, which is
+   * the honest reading for a flow that began from an accessibility activate or
+   * a programmatic navigation rather than a finger.
+   */
+  touchQueueMs: number | null;
   closed: boolean;
   watchdog: ReturnType<typeof setTimeout> | null;
 };
@@ -330,6 +346,12 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
     // be seen until this returns, so it is the queueing delay a user feels as
     // "I pressed and nothing happened".
     `handlerMs=${flow.handlerMs === 0 ? 'n/a' : fmt(flow.handlerMs)}`,
+    // How long the touch waited BEFORE the handler ran. `handlerMs` is the
+    // block this press causes the next one; this is the block this press paid
+    // for the last one. Relative to the session's best touch — see
+    // `perfTouchQueueMs` — hence the baseline sample count travelling with it.
+    `touchQueueMs=${flow.touchQueueMs === null ? 'n/a' : fmt(flow.touchQueueMs)}`,
+    `baseN=${touchClockSamples}`,
     // The flow's render shape, counts included. A count is frequently the
     // finding: repeated commits of a memoized row mean its comparator is being
     // defeated, and no single `worstCommit` figure can say that.
@@ -368,6 +390,7 @@ export function perfBeginFlow(label: string): void {
     worstCommit: null,
     commitTotals: new Map(),
     handlerMs: 0,
+    touchQueueMs: null,
     closed: false,
     watchdog: null,
   };
@@ -499,6 +522,70 @@ export function perfRecordHandlerMs(ms: number): void {
   if (!ENABLED) return;
   if (!activeFlow || activeFlow.closed) return;
   if (ms > activeFlow.handlerMs) activeFlow.handlerMs = ms;
+}
+
+/*
+  The pre-handler queue.
+
+  Android stamps `nativeEvent.timestamp` from `SystemClock.uptimeMillis()`.
+  `performance.now()` has a different origin, so the raw difference between them
+  carries an unknown constant offset and only the CHANGE in that difference
+  means anything. The smallest difference seen in the process is kept as the
+  offset estimate — the least-delayed touch of the session is the closest thing
+  to zero queueing this process has observed — and every reading is reported
+  relative to it.
+
+  So these are LOWER BOUNDS against the session's best case, not absolute
+  queueing times, and the first touch of a session necessarily reads 0 because
+  it defines the baseline. `baseN=` on the summary line carries the sample count
+  so a reading taken off a one-sample baseline is identifiable rather than
+  trusted. Known failure mode: `uptimeMillis()` excludes deep sleep while the
+  JS clock does not, so suspending the device mid-capture inflates every
+  subsequent reading. Capture in one sitting.
+
+  That is a weaker claim than the rest of the instrument makes, and it is stated
+  here rather than discovered later. It is still enough to settle the only
+  question being asked of it — whether the wait before the handler runs is 5ms
+  or 500ms.
+*/
+let touchClockOffset = Number.POSITIVE_INFINITY;
+let touchClockSamples = 0;
+
+/**
+ * Milliseconds this touch waited before JS could run, relative to the best
+ * touch of the session. Call FIRST in the handler, before any other work: the
+ * reading is taken at call time, so anything above it is counted as queueing.
+ *
+ * Returns null when the event carries no usable timestamp. Recording is a
+ * separate call because this must run before the flow exists — see
+ * `perfRecordTouchQueue`.
+ */
+export function perfTouchQueueMs(nativeTimestamp: number | undefined): number | null {
+  if (!ENABLED) return null;
+  if (typeof nativeTimestamp !== 'number') return null;
+  if (!Number.isFinite(nativeTimestamp) || nativeTimestamp <= 0) return null;
+  const offset = now() - nativeTimestamp;
+  if (!Number.isFinite(offset)) return null;
+  touchClockSamples += 1;
+  if (offset < touchClockOffset) {
+    touchClockOffset = offset;
+    return 0;
+  }
+  return offset - touchClockOffset;
+}
+
+/**
+ * Attach a queue reading to the open flow. Split from `perfTouchQueueMs`
+ * because the flow does not exist yet when the reading has to be taken: the
+ * press handler opens the flow, so the measurement precedes its own home.
+ */
+export function perfRecordTouchQueue(ms: number | null): void {
+  if (!ENABLED) return;
+  if (ms === null) return;
+  if (!activeFlow || activeFlow.closed) return;
+  if (activeFlow.touchQueueMs === null || ms > activeFlow.touchQueueMs) {
+    activeFlow.touchQueueMs = ms;
+  }
 }
 
 /** Attach a short fact to the open flow's summary line. */
