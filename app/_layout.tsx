@@ -10,7 +10,7 @@ import { useFonts } from 'expo-font';
 import { router, Stack, usePathname } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import 'react-native-reanimated';
@@ -498,6 +498,31 @@ function RootBootstrap({
   useCommitCost('P:RootBootstrap');
   const { ready: themeReady, scheme, theme } = useTheme();
   const { localSessionReady, status } = useAuth();
+
+  /*
+    The routed app, held stable across this component's re-renders.
+
+    This component calls `useAuth()`, so it re-renders whenever the auth context
+    value changes — and it rendered `<RootStack />` inline, which made a fresh
+    element every time and forced React to reconcile the ENTIRE routed tree.
+    With `freezeOnBlur` keeping every visited tab mounted, that reaches every
+    screen the session has opened. The 2026-10-12 capture shows the shape
+    exactly: `P:Auth`, `P:RootBootstrap`, `P:RootStack`, `TabShell` and the
+    screens all at the same count.
+
+    Holding one element reference stops it: React compares the child to the
+    previous render's and skips the subtree when it is identical. `RootStack`
+    takes no props and subscribes to the theme itself, so a theme change still
+    reaches it through its own context — nothing about routing or theming
+    changes, only this component's ability to force reconciliation for reasons
+    the routed tree does not care about.
+
+    An amplifier fix, and worth having on its own terms even though the loop
+    driving it is fixed in `updateUser`: signing in, editing a profile and
+    switching brand all legitimately change the auth value, and none of them
+    should reconcile every mounted screen.
+  */
+  const routedApp = useMemo(() => <RootStack />, []);
   const bootReady = fontsReady && themeReady && localSessionReady;
   const hasLoggedReadyRef = useRef(false);
   useAndroidDoubleBackExit();
@@ -548,7 +573,7 @@ function RootBootstrap({
       <NetworkTraceRouteSync />
       <PushTokenRegistrationGate />
       <ForegroundMessagingSetup />
-      <RootStack />
+      {routedApp}
       <RouteRestorationGate />
     </View>
   );

@@ -473,6 +473,10 @@ export default function CatalogScreen() {
   const { standardScreenBottomPadding } = useScreenChrome();
   const deferredWorkReady = useDeferredScreenWork();
   const { user } = useAuth();
+  // Latest user, readable from callbacks that must not be rebuilt when it
+  // changes. See the note at the `updateUser` call in `fetchProfile`.
+  const userRef = useRef(user);
+  userRef.current = user;
   const { status, userId, userType, userEmailVerified, updateUser } = useAuthSession();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -816,7 +820,15 @@ export default function CatalogScreen() {
       if (!data) return null;
       profileRef.current = data;
       setProfile(data);
-      if (isOwner && data && isSelfIdentity(user, data.id)) {
+      // `userRef`, not `user`. Listing `user` in this callback's dependencies
+      // while calling `updateUser` inside it closed a loop: the update replaced
+      // the user, which rebuilt this callback, which re-fired and updated
+      // again. `updateUser` now bails out on a patch that changes nothing,
+      // which breaks the loop at the other end — but a patch that legitimately
+      // differs each run would restart it, so the cycle is opened here too.
+      // The identity check wants the LATEST user either way, which is what the
+      // ref gives it.
+      if (isOwner && data && isSelfIdentity(userRef.current, data.id)) {
         updateUser({
           firstName: (data as any).firstName,
           lastName: (data as any).lastName,
@@ -838,7 +850,7 @@ export default function CatalogScreen() {
       // Don't show toast for profile errors on initial load - will show empty state
       return null;
     }
-  }, [isOwner, profileQuery.data, queryClient, targetBrandId, updateUser, user]);
+  }, [isOwner, profileQuery.data, queryClient, targetBrandId, updateUser]);
 
   // Fetch collections
   const fetchCollections = useCallback(async (

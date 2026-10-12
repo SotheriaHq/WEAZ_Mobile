@@ -963,6 +963,70 @@ check(
     !/studioRouteKeyParam/.test(tabTreeDeps),
 );
 
+// ------------------------------------------- the render loop, and its amplifier
+/*
+  All three of these were measured, not reasoned about. The 2026-10-12 capture
+  on `93cfac7` reported, for one ten second flow window:
+
+    causes=P:Auth:user+value+sessionValue×6, TabShell:user×3
+    commits=Runway×6 TabShell×6 P:RootStack×6 P:Auth×6 P:RootBootstrap×6
+
+  The auth user's identity changed six times, rebuilt both context values each
+  time, and re-rendered every consumer plus the entire routed tree. Each of the
+  three links below can close that loop on its own, so each is pinned on its
+  own.
+*/
+const authContext = read('src/auth/AuthContext.tsx');
+const catalogIndex = read('app/(tabs)/catalog/index.tsx');
+
+/*
+  Scoped to `updateUser`'s body: `setActiveBrandId` sits directly below it and
+  also calls `setUser` with a spread, so a file-wide assertion would be
+  satisfied by the wrong setter.
+*/
+const updateUserBody = (() => {
+  const start = authContext.indexOf('const updateUser = useCallback(');
+  if (start < 0) return '';
+  const end = authContext.indexOf('const setActiveBrandId = useCallback(', start);
+  return end < 0 ? '' : authContext.slice(start, end);
+})();
+const bailoutAt = updateUserBody.indexOf('if (!changesSomething) return current;');
+const spreadAt = updateUserBody.indexOf('const nextUser: AuthUser = { ...current };');
+check(
+  'a no-op patch does not replace the auth user',
+  updateUserBody.length > 0 &&
+    bailoutAt > -1 &&
+    spreadAt > -1 &&
+    // Before the spread, or the fresh object is already built and the bailout
+    // is decoration.
+    bailoutAt < spreadAt &&
+    /Object\.is\(\(current as Record<string, unknown>\)\[key\], value\)/.test(updateUserBody),
+);
+check(
+  'the bailout returns the EXISTING user, never a copy of it',
+  // `return { ...current }` would defeat the entire point: React bails out on
+  // Object.is, so a copy is still a new context value for every consumer.
+  bailoutAt > -1 && !/if \(!changesSomething\) return \{ \.\.\.current \}/.test(updateUserBody),
+);
+check(
+  'the routed tree is held stable across root re-renders',
+  /const routedApp = useMemo\(\(\) => <RootStack \/>, \[\]\);/.test(rootLayout) &&
+    /\{routedApp\}/.test(rootLayout) &&
+    // The inline form is what forced whole-tree reconciliation on every auth
+    // change; it must not come back alongside the memo.
+    !/^\s*<RootStack \/>\s*$/m.test(rootLayout),
+);
+check(
+  'the catalogue profile fetch cannot be rebuilt by the user it updates',
+  // The loop needs BOTH halves: `user` out of the dependency list, and the
+  // identity check reading the ref instead.
+  /isSelfIdentity\(userRef\.current, data\.id\)/.test(catalogIndex) &&
+    /\}, \[isOwner, profileQuery\.data, queryClient, targetBrandId, updateUser\]\);/.test(
+      catalogIndex,
+    ) &&
+    /const userRef = useRef\(user\);/.test(catalogIndex),
+);
+
 // ----------------------------------------------------------------- report
 
 if (failures.length > 0) {

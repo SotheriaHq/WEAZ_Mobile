@@ -561,6 +561,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser((current) => {
       if (!current) return current;
 
+      /*
+        A patch that changes nothing must not replace the user.
+
+        MEASURED, 2026-10-12 capture on `93cfac7`:
+        `causes=P:Auth:user+value+sessionValue×6` — the auth user's identity
+        changed six times inside one ten second flow window, rebuilding both
+        context values each time and re-rendering every `useAuth()` consumer
+        in the app.
+
+        This setter was the mechanism. It built `{ ...current }` and returned a
+        fresh object unconditionally, so React could never bail out — a patch
+        asking for values the user already had still produced a brand new
+        reference, and a new context value reaches every consumer directly
+        without consulting element identity.
+
+        That turned one caller into a loop. `loadProfile` in
+        `app/(tabs)/catalog/index.tsx` lists `user` in its dependencies and
+        calls this inside, so: new user, new `loadProfile`, the effect re-fires,
+        this is called again. Nothing terminated it except how long a whole-app
+        re-render took — about 450ms, which is the six.
+
+        The patch in that caller is a no-op after its first application: the
+        values come off a stable `profileQuery.data`, so each one is already
+        `Object.is`-equal to what the user holds. Bailing out ends the loop at
+        one iteration.
+
+        Deliberately conservative: it bails ONLY when every defined patch value
+        is already identical by reference. An object or array rebuilt with equal
+        contents still counts as a change, so this can do redundant work but
+        cannot skip a real one.
+      */
+      let changesSomething = false;
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === undefined) continue;
+        if (Object.is((current as Record<string, unknown>)[key], value)) continue;
+        changesSomething = true;
+        break;
+      }
+      if (!changesSomething) return current;
+
       const nextUser: AuthUser = { ...current };
       for (const [key, value] of Object.entries(patch)) {
         if (value !== undefined) {
