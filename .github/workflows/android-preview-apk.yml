@@ -1,0 +1,98 @@
+# Build the instrumented preview APK in CI.
+#
+# EAS free-plan Android builds run out monthly, and a latency investigation that
+# needs a device capture per hypothesis runs out of them quickly. This repo is
+# public, so GitHub-hosted runners are free and unmetered, and they already ship
+# the JDK and Android SDK that a React Native release build needs.
+#
+# Manual by default (`workflow_dispatch`): a build should happen because someone
+# wants to test something, not on every push.
+#
+# SIGNING. No keystore is supplied, so Expo's generated `release` config falls
+# back to the debug key. The APK installs and runs, but its signature differs
+# from the EAS-signed one — Android refuses to update across signatures, so the
+# existing app must be uninstalled once before the first install from here.
+# To avoid that, export the EAS keystore (`eas credentials`) into the secrets
+# below and this workflow will use it instead.
+name: Android preview APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      debug_nav:
+        description: 'Enable [WIEZ-PERF] instrumentation in the build'
+        type: boolean
+        default: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Expo SDK 56 / React Native require JDK 17; the runner has several.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Gate the build on the same checks a local change is held to, so a
+      # broken bundle never reaches a device and burns a capture.
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Contract tests
+        run: |
+          node scripts/test-auth-user-equality.js
+          node scripts/test-perf-instrumentation-contract.js
+          node scripts/test-clipping-and-market-chrome-contract.js
+          node scripts/check-perf-regressions.cjs
+
+      # `android/` is gitignored and generated here, so the committed tree stays
+      # managed-workflow and this cannot drift from app.config.js.
+      - name: Prebuild Android project
+        run: npx expo prebuild --platform android --no-install
+
+      # EXPO_PUBLIC_* values are inlined into the bundle at build time. They are
+      # read from repository secrets rather than written here: this repo is
+      # public, and a value pasted into a workflow file is published with it.
+      # A missing secret does not fail the build — the app simply falls back to
+      # its default, which is fine for a latency capture but will break Google
+      # sign-in.
+      - name: Build release APK
+        working-directory: android
+        env:
+          EXPO_PUBLIC_DEBUG_NAV: ${{ inputs.debug_nav && '1' || '' }}
+          EXPO_PUBLIC_API_BASE_URL: ${{ secrets.EXPO_PUBLIC_API_BASE_URL }}
+          EXPO_PUBLIC_WEB_APP_URL: ${{ secrets.EXPO_PUBLIC_WEB_APP_URL }}
+          EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+          SENTRY_DISABLE_AUTO_UPLOAD: '1'
+        run: ./gradlew assembleRelease --no-daemon --console=plain
+
+      # Named with the commit so a tester can tell two downloads apart — the
+      # EAS builds were all versionCode 1, which made a stale install look
+      # current and cost one wasted round of debugging.
+      - name: Name the artifact after its commit
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/*.apk \
+             "dist/wiez-preview-${GITHUB_SHA::7}.apk"
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wiez-preview-apk-${{ github.sha }}
+          path: dist/*.apk
+          retention-days: 14
+          if-no-files-found: error
