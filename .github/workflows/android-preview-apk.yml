@@ -100,7 +100,17 @@ jobs:
           EXPO_PUBLIC_WEB_APP_URL: ${{ secrets.EXPO_PUBLIC_WEB_APP_URL }}
           EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID }}
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
-          SENTRY_DISABLE_AUTO_UPLOAD: '1'
+          # Exactly 'true', and not '1'.
+          #
+          # `sentry.gradle` line 11 reads
+          #   System.getenv('SENTRY_DISABLE_AUTO_UPLOAD') != 'true'
+          # which is a strict string comparison, so '1' left uploads ENABLED and
+          # the build died at `createBundleReleaseJsAndAssets_SentryUpload` with
+          # "An organization ID or slug is required" — nine minutes in, after the
+          # bundle had already been built successfully. The EAS environment has
+          # this as 'true'; copying the value approximately rather than exactly
+          # cost one build.
+          SENTRY_DISABLE_AUTO_UPLOAD: 'true'
         run: ./gradlew assembleRelease --no-daemon --console=plain
 
       # Named with the commit so a tester can tell two downloads apart — the
