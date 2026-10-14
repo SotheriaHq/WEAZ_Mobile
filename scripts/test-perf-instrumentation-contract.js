@@ -1027,6 +1027,44 @@ check(
     /const userRef = useRef\(user\);/.test(catalogIndex),
 );
 
+/*
+  The request tally.
+
+  `requests=45` in one ten second window, against one to nine on every other
+  flow in the same capture, is a loop — and a bare count cannot name the
+  endpoint looping, which is the same gap `commitTotals` closed on the render
+  side. The path is already handed to `perfMark` as its detail, so this is a
+  Map write.
+*/
+check(
+  'a request count that looks like a loop can name the endpoint',
+  /requestPaths: Map<string, number>;/.test(wiezPerf) &&
+    /stage === 'request_begin' && meta\?\.detail/.test(wiezPerf) &&
+    /paths=\$\{pathBreakdown\(flow\)\}/.test(wiezPerf),
+);
+/*
+  Scoped to `pathBreakdown`'s body. Written file-wide first and a mutation test
+  caught it: `causeBreakdown` sorts with an identical expression, so removing
+  the sort from `pathBreakdown` left the assertion green on its sibling's
+  behalf. Third time this exact shape has slipped through today.
+*/
+const pathBreakdownBody = (() => {
+  const start = wiezPerf.indexOf('function pathBreakdown(');
+  if (start < 0) return '';
+  const end = wiezPerf.indexOf('function causeBreakdown(', start);
+  return end < 0 ? '' : wiezPerf.slice(start, end);
+})();
+check(
+  'the request tally is bounded and ordered by frequency',
+  // Unbounded, a flow hitting many distinct paths would grow this without
+  // limit; unordered, the loop would not be the first thing read.
+  /flow\.requestPaths\.size < 24/.test(wiezPerf) &&
+    pathBreakdownBody.length > 0 &&
+    /\.sort\(\(a, b\) => b\[1\] - a\[1\] \|\| a\[0\]\.localeCompare\(b\[0\]\)\)/.test(
+      pathBreakdownBody,
+    ),
+);
+
 // ----------------------------------------------------------------- report
 
 if (failures.length > 0) {

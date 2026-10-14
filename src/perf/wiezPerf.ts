@@ -197,6 +197,17 @@ type Flow = {
    * forced from above — see `useRenderCause`.
    */
   renderCauses: Map<string, number>;
+  /**
+   * Which endpoints the flow's requests went to, counted per path.
+   *
+   * `requests=` has always carried the VOLUME, and the 2026-10-14 capture put
+   * it at 45 in a single ten second window where every other flow managed one
+   * to nine. A count that size is a loop, and the count alone cannot say which
+   * endpoint is looping — the same unanswerable shape `commitTotals` was added
+   * for on the render side. The path is already passed to `perfMark` as its
+   * detail, so it costs a Map write to keep it.
+   */
+  requestPaths: Map<string, number>;
   closed: boolean;
   watchdog: ReturnType<typeof setTimeout> | null;
 };
@@ -286,6 +297,18 @@ function intervalText(value: number | null): string {
  * what the capture is read for: sixty-eight commits of a list in ten seconds
  * is the finding, whatever each one cost.
  */
+/**
+ * Request paths, most frequent first — the endpoint driving the volume.
+ */
+function pathBreakdown(flow: Flow, limit = 5): string {
+  if (flow.requestPaths.size === 0) return 'none';
+  return Array.from(flow.requestPaths.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([path, count]) => `${path}×${count}`)
+    .join(',');
+}
+
 /**
  * Render causes, most frequent first. Ordered by count because the question is
  * what is driving the volume, not what is unusual.
@@ -380,6 +403,9 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
     // What SCHEDULED those commits. `X:parent` means nothing X reads changed,
     // so the render was forced from above and the cause is one level up.
     `causes=${causeBreakdown(flow)}`,
+    // WHICH endpoints, not just how many. A high `requests=` with one path
+    // dominating is a refetch loop; spread evenly it is a fan-out.
+    `paths=${pathBreakdown(flow)}`,
   ];
   if (flow.notes.length > 0) parts.push(`notes=${flow.notes.join(',')}`);
 
@@ -416,6 +442,7 @@ export function perfBeginFlow(label: string): void {
     handlerMs: 0,
     touchQueueMs: null,
     renderCauses: new Map(),
+    requestPaths: new Map(),
     closed: false,
     watchdog: null,
   };
@@ -446,6 +473,18 @@ export function perfMark(
   if (!ENABLED) return;
   const flow = activeFlow;
   if (!flow || flow.closed) return;
+
+  // Tally the endpoint behind a request, so a request count that looks like a
+  // loop can name the endpoint that is looping.
+  if (stage === 'request_begin' && meta?.detail) {
+    const path = meta.detail;
+    const seen = flow.requestPaths.get(path);
+    if (seen !== undefined) {
+      flow.requestPaths.set(path, seen + 1);
+    } else if (flow.requestPaths.size < 24) {
+      flow.requestPaths.set(path, 1);
+    }
+  }
 
   const at = now() - flow.startedAt;
   const existing = flow.stages.get(stage);
