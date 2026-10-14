@@ -28,6 +28,7 @@ import {
   clearMobilePrivateSessionState,
 } from '@/src/auth/sessionCleanup';
 import { useCommitCost, useRenderCause } from '@/src/perf/commitCost';
+import { perfRecordUserMutation } from '@/src/perf/wiezPerf';
 import {
   AuthRequestError,
   extractAuthErrorCode,
@@ -527,6 +528,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setApiRefreshToken(null);
     setToken(null);
     setRefreshTokenState(null);
+    perfRecordUserMutation('signOut');
     setUser(null);
     setSelectedActiveBrandId(null);
     selectedActiveBrandIdRef.current = null;
@@ -599,7 +601,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         changesSomething = true;
         break;
       }
-      if (!changesSomething) return current;
+      if (!changesSomething) {
+        perfRecordUserMutation('updateUser:nochange');
+        return current;
+      }
 
       const nextUser: AuthUser = { ...current };
       for (const [key, value] of Object.entries(patch)) {
@@ -612,6 +617,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const selectedUser = applyActiveBrandSelection(normalized);
       queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
       cacheAuthenticatedUser(token, selectedUser);
+      perfRecordUserMutation('updateUser:patched');
       return selectedUser;
     });
   }, [applyActiveBrandSelection, cacheAuthenticatedUser, token]);
@@ -632,6 +638,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const nextUser = { ...current, activeBrandId: nextActiveBrandId };
       queryClient.setQueryData(queryKeys.auth.profile(), nextUser);
       cacheAuthenticatedUser(token, nextUser);
+      perfRecordUserMutation('setActiveBrandId');
       return nextUser;
     });
   }, [cacheAuthenticatedUser, token]);
@@ -671,6 +678,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const selectedUser = applyActiveBrandSelection(mappedUser);
       queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
+      perfRecordUserMutation('validate');
       setUser(selectedUser);
       setToken(currentToken);
       setStatus('authenticated');
@@ -790,6 +798,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (mappedUser?.id) {
       const selectedUser = applyActiveBrandSelection(mappedUser);
       queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
+      perfRecordUserMutation('authResponse');
       setUser(selectedUser);
       setStatus('authenticated');
       // This user came back IN the sign-in response — already server-proven.
@@ -807,6 +816,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setApiRefreshToken(null);
       setToken(null);
       setRefreshTokenState(null);
+      perfRecordUserMutation('authResponse:cleared');
       setUser(null);
       setSelectedActiveBrandId(null);
       selectedActiveBrandIdRef.current = null;
@@ -1011,6 +1021,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setStatus('unauthenticated');
           setToken(null);
           setRefreshTokenState(null);
+          perfRecordUserMutation('bootstrap:unauth');
           setUser(null);
           setLocalSessionReady(true);
           devAuthLog('local-session-ready', { outcome: 'unauthenticated' });
@@ -1034,6 +1045,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (cachedUser?.id) {
             const selectedUser = applyActiveBrandSelection(cachedUser);
             queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
+            perfRecordUserMutation('bootstrap:cached');
             setUser(selectedUser);
             setStatus('authenticated');
           }

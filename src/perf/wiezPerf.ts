@@ -208,6 +208,24 @@ type Flow = {
    * detail, so it costs a Map write to keep it.
    */
   requestPaths: Map<string, number>;
+  /**
+   * Which setter replaced the auth user, counted per call site.
+   *
+   * MEASURED, 2026-10-14 on `c959521`: one flow reported
+   * `causes=P:Auth:user+value+sessionValue×55` with `requests=0 responses=0`
+   * and `paths=none`. Fifty-five replacements of the auth user and not one
+   * network request, which rules out the refetch loop the request tally was
+   * added to find, and rules out anything that needs data to arrive.
+   *
+   * `AuthContext` has eight `setUser` sites. The cause field says the user
+   * changed; it cannot say which of the eight did it, and the three previous
+   * attempts to answer a question of that shape by reading the code were wrong.
+   * So each site reports itself, and `updateUser` distinguishes a patch it
+   * applied from one it bailed out of — if the bailout added in `3259c6f` is
+   * firing and the user is STILL being replaced, the caller is not `updateUser`
+   * and the search moves on with that settled.
+   */
+  userMutations: Map<string, number>;
   closed: boolean;
   watchdog: ReturnType<typeof setTimeout> | null;
 };
@@ -297,6 +315,18 @@ function intervalText(value: number | null): string {
  * what the capture is read for: sixty-eight commits of a list in ten seconds
  * is the finding, whatever each one cost.
  */
+/**
+ * Auth-user mutations, most frequent first — the call site driving the churn.
+ */
+function userSetBreakdown(flow: Flow, limit = 5): string {
+  if (flow.userMutations.size === 0) return 'none';
+  return Array.from(flow.userMutations.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([source, count]) => `${source}×${count}`)
+    .join(',');
+}
+
 /**
  * Request paths, most frequent first — the endpoint driving the volume.
  */
@@ -406,6 +436,9 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
     // WHICH endpoints, not just how many. A high `requests=` with one path
     // dominating is a refetch loop; spread evenly it is a fan-out.
     `paths=${pathBreakdown(flow)}`,
+    // WHICH setter replaced the auth user. `causes=P:Auth:user` says it
+    // happened; this says who did it.
+    `userSet=${userSetBreakdown(flow)}`,
   ];
   if (flow.notes.length > 0) parts.push(`notes=${flow.notes.join(',')}`);
 
@@ -443,6 +476,7 @@ export function perfBeginFlow(label: string): void {
     touchQueueMs: null,
     renderCauses: new Map(),
     requestPaths: new Map(),
+    userMutations: new Map(),
     closed: false,
     watchdog: null,
   };
@@ -650,6 +684,28 @@ export function perfRecordTouchQueue(ms: number | null): void {
   if (activeFlow.touchQueueMs === null || ms > activeFlow.touchQueueMs) {
     activeFlow.touchQueueMs = ms;
   }
+}
+
+/**
+ * Record that a named call site replaced (or declined to replace) the auth user.
+ *
+ * Called from inside React state updaters, which is deliberate — the question
+ * is which site produced a NEW object, and only the updater knows that. The
+ * cost is that an updater React runs twice (StrictMode in development, or a
+ * re-entrant update) double counts. Preview builds do not run StrictMode, and
+ * the figure being read is "which site, by an order of magnitude" rather than
+ * an exact tally, so that is an acceptable trade and not a silent one.
+ */
+export function perfRecordUserMutation(source: string): void {
+  if (!ENABLED) return;
+  if (!activeFlow || activeFlow.closed) return;
+  const seen = activeFlow.userMutations.get(source);
+  if (seen !== undefined) {
+    activeFlow.userMutations.set(source, seen + 1);
+    return;
+  }
+  if (activeFlow.userMutations.size >= 12) return;
+  activeFlow.userMutations.set(source, 1);
 }
 
 /**

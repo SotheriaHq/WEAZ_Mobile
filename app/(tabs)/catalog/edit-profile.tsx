@@ -852,6 +852,15 @@ export default function BrandProfileEditScreen() {
               placeholder="Building, street, area"
               containerStyle={styles.group}
               variant="underline"
+              /*
+                Wraps. A single-line `TextInput` scrolls its content sideways
+                instead, so an address longer than the field could only be read
+                by dragging it left and right — and the one field on this form
+                where that is guaranteed to happen is the one asking for
+                "Building, street, area". An address is multi-line data; the Bio
+                field above already takes the same treatment.
+              */
+              multiline
             />
             <AppText variant="caption" tone="muted">
               Optional. Follows your “Show location” privacy setting — turn that off

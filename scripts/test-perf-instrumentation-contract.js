@@ -990,8 +990,21 @@ const updateUserBody = (() => {
   const end = authContext.indexOf('const setActiveBrandId = useCallback(', start);
   return end < 0 ? '' : authContext.slice(start, end);
 })();
-const bailoutAt = updateUserBody.indexOf('if (!changesSomething) return current;');
+/*
+  Matched on the guard, not on the whole statement.
+
+  These pinned `if (!changesSomething) return current;` as one line, and the
+  mutation probe turned it into a block so the bailout could report itself. The
+  invariant never moved — bail before the spread, and return `current` itself —
+  so the assertions are rebuilt around the guard and the `return` that follows
+  it, which holds for either shape.
+*/
+const bailoutAt = updateUserBody.indexOf('if (!changesSomething) {');
 const spreadAt = updateUserBody.indexOf('const nextUser: AuthUser = { ...current };');
+const bailoutReturn =
+  bailoutAt > -1
+    ? updateUserBody.slice(bailoutAt, updateUserBody.indexOf('}', bailoutAt) + 1)
+    : '';
 check(
   'a no-op patch does not replace the auth user',
   updateUserBody.length > 0 &&
@@ -1006,7 +1019,9 @@ check(
   'the bailout returns the EXISTING user, never a copy of it',
   // `return { ...current }` would defeat the entire point: React bails out on
   // Object.is, so a copy is still a new context value for every consumer.
-  bailoutAt > -1 && !/if \(!changesSomething\) return \{ \.\.\.current \}/.test(updateUserBody),
+  // Scoped to the guard's own body so a `return current` elsewhere in
+  // `updateUser` cannot satisfy this on its behalf.
+  bailoutReturn.includes('return current;') && !/return \{ \.\.\.current \}/.test(bailoutReturn),
 );
 check(
   'the routed tree is held stable across root re-renders',
@@ -1063,6 +1078,85 @@ check(
     /\.sort\(\(a, b\) => b\[1\] - a\[1\] \|\| a\[0\]\.localeCompare\(b\[0\]\)\)/.test(
       pathBreakdownBody,
     ),
+);
+
+/*
+  Every `setUser` site reports itself.
+
+  A capture put the auth user at 55 replacements with zero network requests, so
+  the request tally could not explain it and neither could reading the code —
+  three attempts to answer a question of this shape by inspection have been
+  wrong. The point of labelling is completeness: ONE unlabelled site and the
+  next capture blames whichever labelled site happens to fire, which is worse
+  than no label at all.
+*/
+/*
+  Per site, not a count.
+
+  This was `labelledCount >= setUserCount`, and a mutation test walked straight
+  through it: `updateUser` contributes TWO labels for one `setUser`, so the
+  totals carry slack and dropping a label from any other site still satisfied
+  the inequality. A count cannot express "each one of them", which is the
+  actual requirement — one unlabelled site and the next capture blames
+  whichever labelled site happens to fire, which is worse than no label at all.
+
+  So each `setUser` is located and checked individually. The two functional
+  forms report from inside their updater, because only the updater knows
+  whether a new object was produced; the bare forms report on the line above.
+*/
+const setUserSites = (() => {
+  const out = [];
+  const re = /^([ \t]*)setUser\((null|selectedUser|\(current\))/gm;
+  let m;
+  while ((m = re.exec(authContext)) !== null) {
+    out.push({ at: m.index, updater: m[2] === '(current)' });
+  }
+  return out;
+})();
+const unlabelledSites = setUserSites.filter(({ at, updater }) => {
+  if (updater) {
+    // The label lives inside the updater body, below this line. Bounded by
+    // the enclosing `useCallback`'s dependency list rather than a fixed
+    // window: a fixed one was tried at 1400 characters and reported
+    // `updateUser` unlabelled, because its body carries a long comment and
+    // the label sits 2038 characters in. A window wide enough today is a
+    // window that silently narrows the next time a comment is added.
+    const bodyEnd = authContext.indexOf('  }, [', at);
+    const body = bodyEnd < 0 ? authContext.slice(at) : authContext.slice(at, bodyEnd);
+    return !body.includes('perfRecordUserMutation(');
+  }
+  // The label is the statement immediately above.
+  return !authContext.slice(Math.max(0, at - 90), at).includes('perfRecordUserMutation(');
+});
+check(
+  'every setUser site in AuthContext is labelled',
+  setUserSites.length >= 8 && unlabelledSites.length === 0,
+);
+
+check(
+  'the updateUser bailout is distinguishable from an applied patch',
+  // Without both, a capture cannot tell "the bailout works and something else
+  // is the culprit" from "the bailout never fires".
+  /perfRecordUserMutation\('updateUser:nochange'\)/.test(authContext) &&
+    /perfRecordUserMutation\('updateUser:patched'\)/.test(authContext),
+);
+check(
+  'no setUser site is labelled unknown',
+  !/perfRecordUserMutation\('unknown'\)/.test(authContext),
+);
+const userSetBody = (() => {
+  const start = wiezPerf.indexOf('function userSetBreakdown(');
+  if (start < 0) return '';
+  const end = wiezPerf.indexOf('function pathBreakdown(', start);
+  return end < 0 ? '' : wiezPerf.slice(start, end);
+})();
+check(
+  'the mutation tally is bounded, ordered, and on the summary line',
+  /userMutations: Map<string, number>;/.test(wiezPerf) &&
+    /activeFlow\.userMutations\.size >= 12/.test(wiezPerf) &&
+    wiezPerf.includes('userSet=${userSetBreakdown(flow)}') &&
+    userSetBody.length > 0 &&
+    userSetBody.includes('.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))'),
 );
 
 // ----------------------------------------------------------------- report
