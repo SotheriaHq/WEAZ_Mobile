@@ -433,7 +433,7 @@ export default function BrandProfileEditScreen() {
             profileImage: updated.profileImage ?? user?.profileImage,
             profileImageId: updated.profileImageId ?? user?.profileImageId,
             profileImageFile: updated.profileImageFile ?? user?.profileImageFile,
-          });
+          }, 'tabs/catalog/edit-profile');
         }
         return true;
       } catch (error) {
@@ -569,7 +569,7 @@ export default function BrandProfileEditScreen() {
         profileImage: uploaded.url,
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
-      });
+      }, 'tabs/catalog/edit-profile');
       // The catalogue renders the brand avatar from the cached `brand.profile`
       // query, not from auth state, so `updateUser` alone never reached it.
       // Write through rather than only invalidating: the new image is already

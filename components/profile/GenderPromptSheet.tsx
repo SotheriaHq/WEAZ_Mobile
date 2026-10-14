@@ -64,7 +64,7 @@ export function GenderPromptSheet() {
           username: user?.username ?? '',
           gender,
         });
-        updateUser({ gender: updated?.gender ?? gender });
+        updateUser({ gender: updated?.gender ?? gender }, 'profile/GenderPromptSheet');
       } catch {
         toast.error('Unable to save that just now. Please try again.');
       } finally {

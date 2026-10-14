@@ -207,11 +207,30 @@ export function measurePressHandler<T>(run: () => T): T {
  * none of it was a React commit we instrumented" is a different diagnosis from
  * "the destination render is slow" and must not be allowed to look like one.
  */
+/**
+ * How much of a drift sample no React commit can account for.
+ *
+ * Set as a side effect of draining, because the drain is destructive and
+ * computing it a second time would report zero. Read immediately after.
+ *
+ * This is the figure that separates "React is slow" from "something that is not
+ * React is slow" — image decode, JSON parsing in a promise continuation, a
+ * native module callback, garbage collection. Four captures have had it
+ * available and thrown it away, because it only ever appeared in a RENDER note
+ * and `--summary` drops those.
+ */
+let lastUnattributedMs = 0;
+
+export function lastDrainUnattributedMs(): number {
+  return lastUnattributedMs;
+}
+
 export function drainCommitAttribution(
   observedMs: number,
   limit: number = DEFAULT_REPORT_LIMIT,
 ): string {
   if (windowCosts.size === 0) {
+    lastUnattributedMs = observedMs;
     return `unattributed=${observedMs.toFixed(0)}ms`;
   }
 
@@ -235,6 +254,7 @@ export function drainCommitAttribution(
   // sample. Clamp at zero rather than printing a negative remainder that would
   // read as an instrument fault.
   const unattributed = Math.max(0, observedMs - accounted);
+  lastUnattributedMs = unattributed;
   top.push(`unattributed=${unattributed.toFixed(0)}ms`);
   return top.join(',');
 }

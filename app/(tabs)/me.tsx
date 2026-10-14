@@ -1011,7 +1011,7 @@ export default function BuyerProfileScreen() {
           : null;
         await validateToken({ forceRefresh: true });
         if (outcome?.status === 'verified') {
-          updateUser({ isEmailVerified: true });
+          updateUser({ isEmailVerified: true }, 'tabs/me');
           toast.success('Email verified.');
         }
       })(),
@@ -1083,7 +1083,7 @@ export default function BuyerProfileScreen() {
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
         profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
-      });
+      }, 'tabs/me');
       setState((current) => {
         const nextProfile = current.profile ?? profileRecord;
         if (!nextProfile) return current;

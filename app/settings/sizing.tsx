@@ -301,7 +301,7 @@ export default function SizingSettingsScreen() {
                         username: user?.username ?? '',
                         gender: option.value as ProfileGender,
                       });
-                      updateUser({ gender: updated?.gender ?? option.value });
+                      updateUser({ gender: updated?.gender ?? option.value }, 'settings/sizing');
                       toast.success('Saved.');
                     } catch (error) {
                       toast.error(extractErrorMessage(error, 'Unable to save that just now.'));

@@ -26,7 +26,7 @@
  * logged unless a sample exceeds `BLOCK_THRESHOLD_MS`, so a healthy session is
  * silent. Fully inert when the debug flag is absent.
  */
-import { drainCommitAttribution } from '@/src/perf/commitCost';
+import { drainCommitAttribution, lastDrainUnattributedMs } from '@/src/perf/commitCost';
 import {
   perfAddBlockedMs,
   perfAnnotate,
@@ -89,7 +89,13 @@ export function startJsThreadMonitor(): () => void {
     // them, and it has to be on the summary line, not only in these notes,
     // because the summary is the view a tester reads.
     perfAnnotate('js_thread_blocked');
-    perfAddBlockedMs(drift);
+    // The drain above has just computed how much of this sample no React commit
+    // explains. The flow gets all three figures: the accumulated stall, the
+    // worst SINGLE stall, and the part that is not React at all. One number
+    // could not distinguish "lost in one long commit" from "lost to a thousand
+    // small ones" from "lost to something outside React entirely", and those
+    // are three different fixes.
+    perfAddBlockedMs(drift, lastDrainUnattributedMs());
   }, SAMPLE_MS);
 
   return () => {

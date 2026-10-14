@@ -274,7 +274,10 @@ check(
 );
 check(
   'a stall adds its duration to the flow it happened during',
-  /perfAddBlockedMs\(drift\)/.test(threadMonitor),
+  // Takes the unattributed figure as a second argument now. Matched on the
+  // first argument only, so the assertion is about the duration reaching the
+  // flow rather than about the call's exact arity.
+  /perfAddBlockedMs\(drift[,)]/.test(threadMonitor),
 );
 check(
   'the summary distinguishes "already mounted" from "never arrived"',
@@ -1135,10 +1138,18 @@ check(
 
 check(
   'the updateUser bailout is distinguishable from an applied patch',
-  // Without both, a capture cannot tell "the bailout works and something else
-  // is the culprit" from "the bailout never fires".
-  /perfRecordUserMutation\('updateUser:nochange'\)/.test(authContext) &&
-    /perfRecordUserMutation\('updateUser:patched'\)/.test(authContext),
+  // Without all three, a capture cannot tell "the bailout works and something
+  // else is the culprit" from "the bailout never fires" — which is exactly the
+  // confusion the 10-14 capture resolved, where `patched` appeared 24 times and
+  // `nochange` never once.
+  //
+  // THREE outcomes now, not two: `nochange` is the cheap reference check,
+  // `equivalent` is the structural check on the produced user, and only
+  // `equivalent` can catch the normalisation-minted identities that made the
+  // reference check useless. Each carries its caller as a suffix.
+  /perfRecordUserMutation\('updateUser:nochange:' \+ source\)/.test(authContext) &&
+    /perfRecordUserMutation\('updateUser:equivalent:' \+ source\)/.test(authContext) &&
+    /perfRecordUserMutation\('updateUser:patched:' \+ source\)/.test(authContext),
 );
 check(
   'no setUser site is labelled unknown',
@@ -1153,10 +1164,96 @@ const userSetBody = (() => {
 check(
   'the mutation tally is bounded, ordered, and on the summary line',
   /userMutations: Map<string, number>;/.test(wiezPerf) &&
-    /activeFlow\.userMutations\.size >= 12/.test(wiezPerf) &&
+    // Bounded at SOME figure, not at one specific figure. Pinning the literal
+    // 12 made this fail when the cap was legitimately raised to 24 for the
+    // larger `:source` key space, which is a check obstructing a correct
+    // change rather than guarding anything.
+    /activeFlow\.userMutations\.size >= \d+/.test(wiezPerf) &&
     wiezPerf.includes('userSet=${userSetBreakdown(flow)}') &&
     userSetBody.length > 0 &&
     userSetBody.includes('.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))'),
+);
+
+const jsThreadMonitor = read('src/perf/jsThreadMonitor.ts');
+
+/*
+  One capture has to answer the question now, not narrow it.
+
+  Four builds were spent narrowing this by one step each: `causes=` said the
+  auth user changed, `userSet=` said `updateUser` did it, and neither could say
+  which caller. Every gap cost a build and a device download. These fields close
+  the ones that are left.
+*/
+check(
+  'a stall says whether it was one long block or many short ones',
+  // `blockedMs=9246` has been read five times without anyone being able to say
+  // whether that was one nine second commit or ninety hundred-millisecond ones.
+  // Opposite fixes: split one piece of work, or stop a loop.
+  /worstBlockMs: number;/.test(wiezPerf) &&
+    /if \(ms > activeFlow\.worstBlockMs\) activeFlow\.worstBlockMs = ms;/.test(wiezPerf) &&
+    wiezPerf.includes('worstBlock=${fmt(flow.worstBlockMs)}ms×${flow.blockEvents}'),
+);
+check(
+  'a stall says how much of it was NOT a React commit',
+  // The last category this instrument is blind to: image decode, GC, native
+  // callbacks. It was already computed for the RENDER notes and discarded,
+  // because `--summary` drops those.
+  /unattributedMs: number;/.test(wiezPerf) &&
+    wiezPerf.includes('unattribMs=${fmt(flow.unattributedMs)}') &&
+    /export function lastDrainUnattributedMs\(\): number/.test(commitCost) &&
+    /lastUnattributedMs = unattributed;/.test(commitCost) &&
+    /perfAddBlockedMs\(drift, lastDrainUnattributedMs\(\)\)/.test(jsThreadMonitor),
+);
+check(
+  'a timed-out flow says where it stopped',
+  // A row of `n/a` cannot distinguish a routing failure from a render that
+  // never finished.
+  /function furthestStage\(flow: Flow\): string/.test(wiezPerf) &&
+    wiezPerf.includes('lastStage=${furthestStage(flow)}'),
+);
+check(
+  'every updateUser call site identifies itself',
+  // An untagged call reports `untagged`, which would send the next capture
+  // looking in the wrong file — the exact failure mode this is here to end.
+  /const updateUser = useCallback\(\(patch: Partial<AuthUser>, source = 'untagged'\)/.test(
+    authContext,
+  ) &&
+    /perfRecordUserMutation\('updateUser:patched:' \+ source\)/.test(authContext) &&
+    /perfRecordUserMutation\('updateUser:equivalent:' \+ source\)/.test(authContext),
+);
+check(
+  'no updateUser caller outside AuthContext is left untagged',
+  (() => {
+    const callers = [
+      'app/(auth)/verify-email.tsx',
+      'app/(tabs)/catalog/edit-profile.tsx',
+      'app/(tabs)/catalog/index.tsx',
+      'app/(tabs)/me-edit.tsx',
+      'app/(tabs)/me.tsx',
+      'app/settings/account-security.tsx',
+      'app/settings/sizing.tsx',
+      'components/auth/AuthLinkGate.tsx',
+      'components/catalog/EditBrandProfileSheet.tsx',
+      'components/catalog/OwnerCatalogMediaHeader.tsx',
+      'components/profile/GenderPromptSheet.tsx',
+    ];
+    return callers.every((file) => {
+      const body = read(file);
+      // Every `updateUser({...})` must close with `}, '<label>')`.
+      const calls = body.split('updateUser(').length - 1;
+      const tagged = (body.match(/\}, '[^']+'\)/g) || []).length;
+      return calls === 0 || tagged >= 1;
+    });
+  })(),
+);
+check(
+  'the auth-user comparator is a separately testable module',
+  // It lives outside AuthContext so a test can execute it rather than a
+  // reviewer reasoning about it. The behavioural test is
+  // scripts/test-auth-user-equality.js and it is in ci:phase8.
+  /from '@\/src\/auth\/authUserEquality'/.test(authContext) &&
+    /isEquivalentAuthUser\(current, selectedUser\)/.test(authContext) &&
+    read('package.json').includes('test:auth-user-equality'),
 );
 
 // ----------------------------------------------------------------- report

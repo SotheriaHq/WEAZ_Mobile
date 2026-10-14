@@ -29,6 +29,7 @@ import {
 } from '@/src/auth/sessionCleanup';
 import { useCommitCost, useRenderCause } from '@/src/perf/commitCost';
 import { perfRecordUserMutation } from '@/src/perf/wiezPerf';
+import { isEquivalentAuthUser } from '@/src/auth/authUserEquality';
 import {
   AuthRequestError,
   extractAuthErrorCode,
@@ -127,7 +128,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   token: string | null;
   user: AuthUser | null;
-  updateUser: (patch: Partial<AuthUser>) => void;
+  updateUser: (patch: Partial<AuthUser>, source?: string) => void;
   setActiveBrandId: (brandId: string | null) => Promise<void>;
   validateToken: (options?: { forceRefresh?: boolean }) => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
@@ -148,7 +149,7 @@ type AuthSessionContextValue = {
   activeBrandId: string | null;
   hasActiveBrandMembership: boolean;
   setActiveBrandId: (brandId: string | null) => Promise<void>;
-  updateUser: (patch: Partial<AuthUser>) => void;
+  updateUser: (patch: Partial<AuthUser>, source?: string) => void;
   validateToken: (options?: { forceRefresh?: boolean }) => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
   signUp: (params: SignUpParams) => Promise<void>;
@@ -559,7 +560,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const updateUser = useCallback((patch: Partial<AuthUser>) => {
+  /*
+    `source` names the CALLER, and it is not decoration.
+
+    Four captures narrowed this down one step at a time: `causes=` said the auth
+    user changed, `userSet=` said `updateUser` changed it, and neither could say
+    WHO called `updateUser`. That cost a build and a device capture each time.
+    Sixteen call sites now identify themselves, so one capture answers the
+    question instead of one capture per hypothesis.
+  */
+  const updateUser = useCallback((patch: Partial<AuthUser>, source = 'untagged') => {
     setUser((current) => {
       if (!current) return current;
 
@@ -602,7 +612,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         break;
       }
       if (!changesSomething) {
-        perfRecordUserMutation('updateUser:nochange');
+        perfRecordUserMutation('updateUser:nochange:' + source);
         return current;
       }
 
@@ -615,9 +625,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const normalized = normalizeAuthUser(nextUser) ?? nextUser;
       const selectedUser = applyActiveBrandSelection(normalized);
+
+      /*
+        Compared against the RESULT, not against the patch.
+
+        The reference check above cannot work on its own, and the 2026-10-14
+        capture proved it: `userSet=updateUser:patched×24` on every affected
+        flow with `updateUser:nochange` never appearing once. Twenty-four calls,
+        and the patch "differed" every single time.
+
+        It differed because normalisation guarantees it. `normalizeAuthFile`
+        returns a fresh `{ id, s3Url, url }` literal and
+        `normalizeBrandMemberships` a fresh array of fresh objects, so
+        `current.profileImageFile` is always the NORMALISED object while the
+        patch carries the RAW one off the query. Those two are never
+        `Object.is`-equal no matter how many times they are compared, so
+        `changesSomething` was permanently true — and each call produced a new
+        user, which republished the context, which rebuilt the caller, which
+        called again. The bailout was comparing the wrong pair.
+
+        Comparing the output is immune to that: a patch that changes nothing
+        normalises to something equivalent to `current`, whatever identities
+        the normalisers mint along the way.
+
+        `setQueryData` and `cacheAuthenticatedUser` are deliberately BELOW this
+        return. They are writes, and a cache write with observers is its own
+        feedback path — there is no reason to perform either for a user that
+        did not change.
+      */
+      if (isEquivalentAuthUser(current, selectedUser)) {
+        perfRecordUserMutation('updateUser:equivalent:' + source);
+        return current;
+      }
+
       queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
       cacheAuthenticatedUser(token, selectedUser);
-      perfRecordUserMutation('updateUser:patched');
+      perfRecordUserMutation('updateUser:patched:' + source);
       return selectedUser;
     });
   }, [applyActiveBrandSelection, cacheAuthenticatedUser, token]);

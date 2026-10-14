@@ -226,6 +226,29 @@ type Flow = {
    * and the search moves on with that settled.
    */
   userMutations: Map<string, number>;
+  /**
+   * The longest SINGLE stall in this flow, against `blockedMs`'s accumulation.
+   *
+   * `blockedMs=9246` has been read five times without anyone being able to say
+   * whether that is one unbroken nine second commit or ninety separate hundred
+   * millisecond ones. Those are opposite problems: the first is a single piece
+   * of work to split, the second is a loop to stop. `blockEvents` gives the
+   * divisor, so the two readings can finally be told apart.
+   */
+  worstBlockMs: number;
+  /** How many drift samples crossed the threshold during this flow. */
+  blockEvents: number;
+  /**
+   * Stall time that no instrumented React commit accounts for.
+   *
+   * The one remaining category of cost this whole instrument is blind to:
+   * image decode, JSON parsing in a promise continuation, a native module
+   * callback, garbage collection — on a 4GB device with ten tab screens kept
+   * mounted, that last one is not hypothetical. A high `blockedMs` with a high
+   * `unattribMs` means the render ledger is looking in the wrong place
+   * entirely, and no amount of memoisation would help.
+   */
+  unattributedMs: number;
   closed: boolean;
   watchdog: ReturnType<typeof setTimeout> | null;
 };
@@ -316,6 +339,27 @@ function intervalText(value: number | null): string {
  * is the finding, whatever each one cost.
  */
 /**
+ * The furthest stage this flow actually reached.
+ *
+ * A `reason=timeout` flow prints `n/a` for most of the spine, and the reader is
+ * left to work out from a row of `n/a`s where it stopped. This names it
+ * directly: a flow that dies at `route_call` is a routing failure, one that
+ * dies at `screen_mount` is a render that never finished, and those have
+ * nothing to do with each other.
+ */
+function furthestStage(flow: Flow): string {
+  let furthest: string | null = null;
+  let furthestAt = -1;
+  for (const [stage, record] of flow.stages.entries()) {
+    if (record.lastAt <= furthestAt) continue;
+    furthestAt = record.lastAt;
+    furthest = stage;
+  }
+  if (furthest === null) return 'none';
+  return `${furthest}@${fmt(furthestAt)}ms`;
+}
+
+/**
  * Auth-user mutations, most frequent first — the call site driving the churn.
  */
 function userSetBreakdown(flow: Flow, limit = 5): string {
@@ -398,6 +442,15 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
     // means the gaps were not network. This is the number that says so
     // directly instead of by inference.
     `blockedMs=${fmt(flow.blockedMs)}`,
+    // One long stall or many short ones? Opposite fixes, and `blockedMs` alone
+    // could never say which.
+    `worstBlock=${fmt(flow.worstBlockMs)}ms×${flow.blockEvents}`,
+    // How much of it was NOT a React commit: image decode, GC, native work.
+    // High here means the render ledger is looking in the wrong place.
+    `unattribMs=${fmt(flow.unattributedMs)}`,
+    // The furthest stage this flow reached. Every `reason=timeout` flow so far
+    // has been unreadable past `T1->T3` without this.
+    `lastStage=${furthestStage(flow)}`,
     // A tab kept alive by `freezeOnBlur` does not remount, so its mount effect
     // never re-runs and T3 cannot fire from a mount. Without this field a
     // revisit's `T1->T3=n/a` is ambiguous between "already mounted" and "never
@@ -477,6 +530,9 @@ export function perfBeginFlow(label: string): void {
     renderCauses: new Map(),
     requestPaths: new Map(),
     userMutations: new Map(),
+    worstBlockMs: 0,
+    blockEvents: 0,
+    unattributedMs: 0,
     closed: false,
     watchdog: null,
   };
@@ -575,10 +631,13 @@ export function perfRecordIndicatorVisible(): void {
 }
 
 /** Add an observed JS-thread stall to the open flow's total. */
-export function perfAddBlockedMs(ms: number): void {
+export function perfAddBlockedMs(ms: number, unattributedMs = 0): void {
   if (!ENABLED) return;
   if (!activeFlow || activeFlow.closed) return;
   activeFlow.blockedMs += ms;
+  if (ms > activeFlow.worstBlockMs) activeFlow.worstBlockMs = ms;
+  activeFlow.unattributedMs += unattributedMs;
+  activeFlow.blockEvents += 1;
 }
 
 /**
@@ -704,7 +763,10 @@ export function perfRecordUserMutation(source: string): void {
     activeFlow.userMutations.set(source, seen + 1);
     return;
   }
-  if (activeFlow.userMutations.size >= 12) return;
+  // Raised from 12 when the labels gained a `:source` suffix: three outcomes
+  // across sixteen call sites is a much larger key space, and a cap that fills
+  // with noise would evict the dominant entry the breakdown exists to show.
+  if (activeFlow.userMutations.size >= 24) return;
   activeFlow.userMutations.set(source, 1);
 }
 

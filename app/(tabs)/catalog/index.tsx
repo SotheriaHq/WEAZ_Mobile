@@ -842,7 +842,7 @@ export default function CatalogScreen() {
           bannerImage: (data as any).bannerImage,
           bannerImageId: (data as any).bannerImageId,
           bannerImageFile: (data as any).bannerImageMeta,
-        });
+        }, 'tabs/catalog/index');
       }
       return data;
     } catch (error) {
@@ -965,7 +965,7 @@ export default function CatalogScreen() {
         bannerImage: (data as any).bannerImage,
         bannerImageId: (data as any).bannerImageId,
         bannerImageFile: (data as any).bannerImageMeta,
-      });
+      }, 'tabs/catalog/index');
     }
   }, [isOwner, profileQuery.data, targetBrandId, updateUser, user]);
 

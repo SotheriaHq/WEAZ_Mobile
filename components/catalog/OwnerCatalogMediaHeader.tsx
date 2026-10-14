@@ -195,7 +195,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
         profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
-      });
+      }, 'catalog/OwnerCatalogMediaHeader');
       if (profileId) {
         brandApi.invalidateBrandProfileCache(profileId);
         queryClient.setQueryData(queryKeys.brand.profile(profileId), (current: BrandProfileDto | null | undefined) => {
@@ -272,7 +272,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
         bannerImage: uploaded.url,
         bannerImageId: uploaded.id,
         bannerImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
-      });
+      }, 'catalog/OwnerCatalogMediaHeader');
       const profileId = profile?.id ?? user?.id ?? null;
       if (profileId) {
         brandApi.invalidateBrandProfileCache(profileId);

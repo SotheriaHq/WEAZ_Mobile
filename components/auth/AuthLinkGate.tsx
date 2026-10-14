@@ -139,7 +139,7 @@ export function AuthLinkGate() {
     setVerified(null);
     void (async () => {
       await validateToken({ forceRefresh: true }).catch(() => false);
-      updateUser({ isEmailVerified: true });
+      updateUser({ isEmailVerified: true }, 'auth/AuthLinkGate');
       if (announce) toast.success('Email verified.');
     })();
   }, [status, toast, updateUser, validateToken, verified]);

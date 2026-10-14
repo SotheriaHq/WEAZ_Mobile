@@ -102,7 +102,7 @@ export default function VerifyEmailScreen() {
       if (outcome?.status === 'verified') {
         if (isAuthenticated) {
           await validateToken({ forceRefresh: true }).catch(() => false);
-          updateUser({ isEmailVerified: true });
+          updateUser({ isEmailVerified: true }, 'auth/verify-email');
         }
         setState('success');
         setMessage(outcome.message);

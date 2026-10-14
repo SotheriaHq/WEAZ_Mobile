@@ -267,7 +267,7 @@ export default function MeEditScreen() {
           profileImage: updated.profileImage,
           profileImageId: updated.profileImageId,
           profileImageFile: updated.profileImageFile,
-        });
+        }, 'tabs/me-edit');
         return true;
       } catch (error) {
         setSaveState('error');
@@ -422,7 +422,7 @@ export default function MeEditScreen() {
         profileImage: uploaded.url,
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
-      });
+      }, 'tabs/me-edit');
       setSaveState('saved');
       setLastSavedAt(new Date());
       toast.success('Profile image updated.');

@@ -291,7 +291,7 @@ export default function AccountSecuritySettingsScreen() {
     setPhoneBusy(true);
     try {
       const response = await confirmPhoneChange(code);
-      updateUser({ phoneNumber: response.phoneNumber ?? newPhone.trim() });
+      updateUser({ phoneNumber: response.phoneNumber ?? newPhone.trim() }, 'settings/account-security');
       setPhoneCodeSent(false);
       setNewPhone('');
       setPhoneCode('');

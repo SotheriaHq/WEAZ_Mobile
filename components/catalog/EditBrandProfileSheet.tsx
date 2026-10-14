@@ -423,7 +423,7 @@ export function EditBrandProfileSheet({
             }
           : user?.bannerImageFile,
         updatedAt: new Date().toISOString(),
-      });
+      }, 'catalog/EditBrandProfileSheet');
       toast.success('Profile updated!');
       onSaved(updated);
       onClose();
