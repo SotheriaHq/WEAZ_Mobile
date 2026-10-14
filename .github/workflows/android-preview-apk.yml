@@ -16,13 +16,24 @@
 # below and this workflow will use it instead.
 name: Android preview APK
 
+# TRIGGERS, and why there are two.
+#
+# `workflow_dispatch` — the "Run workflow" button — only works when the
+# workflow file exists on the repository's DEFAULT branch. This repo's default
+# is `main` and the work happens on `SIT`, so the button alone was unusable: the
+# API answered "not found on the default branch" and nothing could be started.
+#
+# A tag push is evaluated against the workflow file in the ref being PUSHED, so
+# it works from `SIT` without putting anything on `main`. It also keeps the
+# property that made this manual in the first place: a build happens because
+# someone asked for one, by pushing a tag, not on every commit.
+#
+# The dispatch trigger stays, so the button works if this ever lands on `main`.
 on:
   workflow_dispatch:
-    inputs:
-      debug_nav:
-        description: 'Enable [WIEZ-PERF] instrumentation in the build'
-        type: boolean
-        default: true
+  push:
+    tags:
+      - 'apk-*'
 
 jobs:
   apk:
@@ -72,7 +83,15 @@ jobs:
       - name: Build release APK
         working-directory: android
         env:
-          EXPO_PUBLIC_DEBUG_NAV: ${{ inputs.debug_nav && '1' || '' }}
+          # Always on, not an input.
+          #
+          # This was `${{ inputs.debug_nav && '1' || '' }}`, which is empty for
+          # any trigger that is not a dispatch — so a tag-triggered build would
+          # have produced an APK with the instrumentation silently OFF, and the
+          # capture it exists to serve would have come back empty. The whole
+          # purpose of this artifact is the [WIEZ-PERF] trace; a build without
+          # it is not a thing worth making.
+          EXPO_PUBLIC_DEBUG_NAV: '1'
           EXPO_PUBLIC_API_BASE_URL: ${{ secrets.EXPO_PUBLIC_API_BASE_URL }}
           EXPO_PUBLIC_WEB_APP_URL: ${{ secrets.EXPO_PUBLIC_WEB_APP_URL }}
           EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID }}
