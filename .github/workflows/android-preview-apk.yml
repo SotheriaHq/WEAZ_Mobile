@@ -92,6 +92,10 @@ jobs:
           # purpose of this artifact is the [WIEZ-PERF] trace; a build without
           # it is not a thing worth making.
           EXPO_PUBLIC_DEBUG_NAV: '1'
+          # Stamped into the bundle so every captured log names the build that
+          # produced it. A capture was once attributed to a build that had never
+          # reached the device, and establishing that cost a full round trip.
+          EXPO_PUBLIC_BUILD_SHA: ${{ github.sha }}
           EXPO_PUBLIC_API_BASE_URL: ${{ secrets.EXPO_PUBLIC_API_BASE_URL }}
           EXPO_PUBLIC_WEB_APP_URL: ${{ secrets.EXPO_PUBLIC_WEB_APP_URL }}
           EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID }}

@@ -417,6 +417,26 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
   const t0t4 = interval(flow, 'tap', 'first_meaningful_render');
   const parts = [
     `[WIEZ-PERF][SUMMARY] flow=${flow.label}`,
+    /*
+      Which build produced this line.
+
+      The 2026-10-13 capture was read as evidence that a fix had not worked,
+      and it turned out to have been taken on the build BEFORE the fix — the
+      APK had been queued but never delivered. That cost a full round trip to
+      establish, and it was only settled by noticing that one label's counts
+      were inconsistent with the fix being present. A log that names its own
+      build cannot be misattributed that way.
+
+      `build` separates a release bundle from a debug one, which matters more
+      than provenance: a debug build runs unminified with dev-only checks
+      active, so its latency figures are not comparable to a release build's
+      and must never be read as if they were.
+
+      `sha` is injected at build time. `unknown` means the APK was not built by
+      the workflow — a local or EAS build — which is itself worth knowing.
+    */
+    `build=${__DEV__ ? 'DEBUG-numbers-not-comparable' : 'release'}`,
+    `sha=${process.env.EXPO_PUBLIC_BUILD_SHA || 'unknown'}`,
     `id=${flow.id}`,
     `reason=${reason}`,
     // The brief's four intervals, in its order.
