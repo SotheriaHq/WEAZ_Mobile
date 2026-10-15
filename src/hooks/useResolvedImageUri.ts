@@ -4,7 +4,10 @@ import { Platform } from 'react-native';
 
 import { brandApi, type SignedFileUrlDebugContext } from '@/src/api/BrandApi';
 import { mediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
-import { queryClient } from '@/src/query/queryClient';
+import {
+  queryClient,
+  WIEZ_MEDIA_URL_GC_TIME_MS,
+} from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 
 type UseResolvedImageUriArgs = {
@@ -281,7 +284,7 @@ export const resolveImageUri = async ({
               fileId: debugContext?.fileId ?? normalizedFileId,
             }),
           staleTime: SIGNED_URI_TTL_MS - SIGNED_URI_REFRESH_SKEW_MS,
-          gcTime: SIGNED_URI_TTL_MS,
+          gcTime: WIEZ_MEDIA_URL_GC_TIME_MS,
         });
         if (publicUrl) {
           setCachedUri(cacheKey, publicUrl);
@@ -314,7 +317,7 @@ export const resolveImageUri = async ({
               fileId: debugContext?.fileId ?? normalizedFileId,
             }),
           staleTime: SIGNED_URI_TTL_MS - SIGNED_URI_REFRESH_SKEW_MS,
-          gcTime: SIGNED_URI_TTL_MS,
+          gcTime: WIEZ_MEDIA_URL_GC_TIME_MS,
         });
         if (signedUrl) {
           setCachedUri(cacheKey, signedUrl);
@@ -366,18 +369,43 @@ export const resolveImageUri = async ({
   return promise;
 };
 
+// Prefetch decodes at thumbnail size: the point is the disk entry, which Glide
+// writes from the original bytes whatever size is decoded. Decoding a 1440px
+// bitmap per neighbour page would just be memory pressure on low-RAM phones.
+const PREFETCH_DECODE_PX = 64;
+
 export const prefetchResolvedImageAsset = async ({
   src,
   fileId,
   allowSignedFallback = true,
   debugContext,
-}: UseResolvedImageUriArgs) => {
+  cacheKey,
+}: UseResolvedImageUriArgs & {
+  /**
+   * The `cacheKey` the rendering `<Image>` passes. Required whenever it passes
+   * one: `ExpoImage.prefetch` caches under the raw URL, which a custom-keyed
+   * image never reads, so the prefetch would be a wasted second download.
+   */
+  cacheKey?: string | null;
+}) => {
   const uri = await resolveImageUri({ src, fileId, allowSignedFallback, debugContext });
   if (!uri || !isHttpUrl(uri)) {
     return false;
   }
 
   try {
+    if (cacheKey) {
+      // `loadAsync` builds the same custom-key Glide model the view does, so
+      // the source bytes land in the disk entry the visible image reads.
+      const ref = await ExpoImage.loadAsync(
+        { uri, cacheKey },
+        Platform.OS === 'android'
+          ? { maxWidth: PREFETCH_DECODE_PX, maxHeight: PREFETCH_DECODE_PX }
+          : undefined,
+      );
+      ref.release();
+      return true;
+    }
     return await ExpoImage.prefetch(uri, 'memory-disk');
   } catch {
     mediaDevWarn('prefetch-image-failed', {
@@ -443,7 +471,13 @@ export function useResolvedImageUri({
       resolvedKeyRef.current = activeKey;
       lastSuccessfulRef.current = { key: activeKey, uri: cached };
       setResolvedUri(cached);
+      return;
     }
+
+    // Never carry a URI across source identities. Callers that want stale-while-
+    // revalidate rendering keep their own identity-bound preview layer.
+    resolvedKeyRef.current = null;
+    setResolvedUri(null);
   }, [activeKey, cacheKey, directSrc]);
 
   useEffect(() => {

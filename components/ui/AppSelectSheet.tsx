@@ -1,5 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+  ScrollView,
+  useWindowDimensions,
+} from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
@@ -9,12 +21,20 @@ import { Input } from '@/components/ui/Input';
 import TagsApi, { type TagSuggestion } from '@/src/api/TagsApi';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import {
+  isValidTagValue,
+  normalizeTagList,
+  normalizeTagValue,
+  TAG_MAX_LENGTH,
+  TAG_MIN_LENGTH,
+} from '@/src/utils/tagNormalization';
 
 export type SelectSheetOption = {
   value: string;
   label: string;
   disabled?: boolean;
   description?: string;
+  pending?: boolean;
 };
 
 type BaseProps = {
@@ -32,6 +52,20 @@ type BaseProps = {
 type SingleProps = BaseProps & {
   value: string | null;
   onChange: (value: string) => void;
+  /**
+   * Filter box above the list. Off by default, so every existing caller is
+   * unchanged.
+   *
+   * Turn it on for lists a thumb cannot reasonably reach the end of — the
+   * country picker is 245 rows, and scrolling to "Nigeria" past two hundred
+   * cards is not a picker, it is a punishment. A short curated list (business
+   * type, sort order) is better WITHOUT it: a search box over six options adds
+   * a keyboard and a step to a decision that was one tap.
+   */
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  /** Shown when the filter matches nothing, as opposed to an empty list. */
+  searchEmptyMessage?: string;
 };
 
 type MultiProps = BaseProps & {
@@ -44,15 +78,89 @@ type MultiProps = BaseProps & {
   searchEmptyMessage?: string;
   customInputLabel?: string;
   customPlaceholder?: string;
+  doneLabel?: string;
 };
 
-const normalizeCustomTagValue = (value: string) =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/^#+/, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+function AnimatedOptionCard({
+  option,
+  selected,
+  onPress,
+}: {
+  option: SelectSheetOption;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { theme } = useTheme();
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Pressable
+      disabled={option.disabled}
+      onPress={onPress}
+      onPressIn={() => {
+        scale.value = withSpring(0.97, { stiffness: 300, damping: 20 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { stiffness: 300, damping: 20 });
+      }}
+    >
+      <Animated.View
+        style={[
+          styles.optionCard,
+          animatedStyle,
+          {
+            backgroundColor: selected
+              ? theme.colors.primarySoft
+              : theme.colors.surfaceAlt,
+            borderColor: selected
+              ? theme.colors.primary
+              : option.pending
+                ? theme.colors.warning
+                : theme.colors.border,
+          },
+          option.disabled && styles.optionDisabled,
+        ]}
+      >
+        {/*
+          One row per option, always. A label that breaks — "Women's tops &" on
+          one line and "dresses" on the next — reads as two options. It shrinks
+          to fit (down to 80%) before it would wrap. The selected marker is a
+          tick rather than the word "Selected", which took a fifth of the row and
+          was the main reason labels ran out of room.
+        */}
+        <View style={styles.optionCopy}>
+          <AppText
+            variant="bodyBold"
+            tone={selected ? 'primary' : option.pending ? 'warning' : 'default'}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+          >
+            {option.label}
+          </AppText>
+          {option.description ? (
+            <AppText variant="captionRegular" tone="muted" numberOfLines={2}>
+              {option.description}
+            </AppText>
+          ) : null}
+        </View>
+        {selected || option.pending ? (
+          <AppText
+            variant="bodyBold"
+            tone={selected ? 'primary' : 'warning'}
+            accessibilityLabel={selected ? 'Selected' : 'Pending review'}
+          >
+            {selected ? '✓' : '⏳'}
+          </AppText>
+        ) : null}
+      </Animated.View>
+    </Pressable>
+  );
+}
 
 export function AppSelectSheet({
   visible,
@@ -65,59 +173,104 @@ export function AppSelectSheet({
   loading,
   errorMessage,
   emptyMessage = 'No options available.',
+  searchable = false,
+  searchPlaceholder = 'Search…',
+  searchEmptyMessage = 'Nothing matches that.',
 }: SingleProps) {
-  const { theme } = useTheme();
+  const pendingValueRef = useRef<string | null>(null);
+  /** The option just tapped, highlighted while the sheet slides away. */
+  const [pickedValue, setPickedValue] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      pendingValueRef.current = null;
+      setPickedValue(null);
+      // Cleared on OPEN rather than on close: clearing on close re-renders the
+      // list to its full length during the exit animation, which is visible.
+      setQuery('');
+    }
+  }, [visible]);
+
+  /*
+    Matches the label AND the value. The country picker's label carries a flag
+    emoji and its value is the bare name, so a reader typing "nigeria" has to
+    match through whichever of the two the caller chose to make searchable —
+    and neither is reliably the other.
+  */
+  const visibleOptions = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!searchable || !needle) return options;
+    return options.filter(
+      (option) =>
+        option.label.toLowerCase().includes(needle) ||
+        option.value.toLowerCase().includes(needle) ||
+        (option.description ?? '').toLowerCase().includes(needle),
+    );
+  }, [options, query, searchable]);
 
   return (
-    <AppBottomSheet visible={visible} title={title} subtitle={subtitle} onClose={onClose}>
-      <SelectSheetState loading={loading} errorMessage={errorMessage} empty={options.length === 0} emptyMessage={emptyMessage} />
-      <View style={styles.optionWrap}>
-        {options.map((option) => (
-          option.description ? (
-            <Pressable
-              key={option.value}
-              disabled={option.disabled}
-              onPress={() => {
-                if (option.disabled) return;
-                onChange(option.value);
-                onClose();
-              }}
-              style={({ pressed }) => [
-                styles.optionCard,
-                {
-                  backgroundColor:
-                    option.value === value || pressed
-                      ? theme.colors.primarySoft
-                      : theme.colors.surfaceAlt,
-                  borderColor:
-                    option.value === value || pressed
-                      ? theme.colors.primary
-                      : theme.colors.border,
-                },
-                option.disabled && styles.optionDisabled,
-                pressed && !option.disabled && styles.optionPressed,
-              ]}
-            >
-              <AppText variant="bodyBold" tone={option.value === value ? 'primary' : 'default'}>
-                {option.label}
-              </AppText>
-              <AppText variant="captionRegular" tone="muted">
-                {option.description}
-              </AppText>
-            </Pressable>
-          ) : (
-            <Chip
-              key={option.value}
-              label={option.label}
-              selected={option.value === value}
-              disabled={option.disabled}
-              onPress={() => {
-                if (option.disabled) return;
-                onChange(option.value);
-                onClose();
-              }}
-            />
-          )
+    <AppBottomSheet
+      visible={visible}
+      title={title}
+      subtitle={subtitle}
+      onClose={onClose}
+      onDismiss={() => {
+        const nextValue = pendingValueRef.current;
+        pendingValueRef.current = null;
+        if (nextValue !== null) onChange(nextValue);
+      }}
+      keyboardBehavior="none"
+    >
+      {searchable ? (
+        <Input
+          label={searchPlaceholder}
+          hideLabel
+          value={query}
+          onChangeText={setQuery}
+          placeholder={searchPlaceholder}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          containerStyle={styles.searchField}
+        />
+      ) : null}
+      <SelectSheetState
+        loading={loading}
+        errorMessage={errorMessage}
+        empty={visibleOptions.length === 0}
+        emptyMessage={
+          query.trim() && options.length > 0 ? searchEmptyMessage : emptyMessage
+        }
+      />
+      <View style={styles.optionWrapSingle}>
+        {visibleOptions.map((option) => (
+          <AnimatedOptionCard
+            key={option.value}
+            option={option}
+            selected={option.value === (pickedValue ?? value)}
+            onPress={() => {
+              if (option.disabled) return;
+              /*
+                Highlight now, commit after the sheet has gone.
+
+                Committing on tap re-rendered the whole form behind the sheet
+                while the sheet was still animating out — new value, new layout,
+                sometimes a new dependent list (pick a country, the state list
+                reloads) — and that work landed on the same frames as the close.
+                That is the stutter on every selector. The value now lands in
+                `onDismiss`, once the slide has finished.
+
+                This was once immediate because a cancelled close animation could
+                skip `finishDismiss`, stranding the value. The sheet now always
+                runs `finishDismiss` (on the slide's completion, with a timed
+                fallback), so the deferred commit always arrives.
+              */
+              setPickedValue(option.value);
+              pendingValueRef.current = option.value;
+              onClose();
+            }}
+          />
         ))}
       </View>
     </AppBottomSheet>
@@ -143,36 +296,110 @@ export function AppMultiSelectSheet({
   searchEmptyMessage = 'No suggestions found. Type a tag and tap Add.',
   customInputLabel = 'Custom tag',
   customPlaceholder = 'Add custom tag',
+  doneLabel = 'Done',
 }: MultiProps) {
   const [draft, setDraft] = useState<string[]>(values);
   const [customTag, setCustomTag] = useState('');
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<TagSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const selectedSet = useMemo(() => new Set(draft), [draft]);
+  const [focusedInput, setFocusedInput] = useState<'search' | 'custom' | null>(
+    null,
+  );
+  const { height: windowHeight } = useWindowDimensions();
+  /**
+   * How much of the sheet the tag list may claim.
+   *
+   * The catalogue is 20 tags. The whole point of a fixed, curated list that
+   * short is that the user can see all of it and pick — so the cap has to be
+   * generous enough to render the full set on a normal phone (20 chips wrap to
+   * roughly seven rows) rather than showing four rows and leaving the rest
+   * below a fold with nothing to indicate it exists. That was the "user does
+   * not see all the available tags" report, and raising the flat 280 to a
+   * window-relative cap is the fix; the sheet itself is capped at 88% of the
+   * screen, so this claims spare room without pushing the search field,
+   * selected chips or Add row off screen. The list collapses again while an
+   * input is focused so the keyboard never buries the Add row.
+   */
+  const tagListMaxHeight = focusedInput
+    ? 200
+    : Math.max(360, Math.round(windowHeight * 0.5));
+  // Tags the user just created via "Add" this session. They are usable on this
+  // post immediately and are sent to admin for global approval when the design is
+  // submitted (the backend creates them with status PENDING). Tracked only to show
+  // the distinct "pending review" chip treatment — not a separate API call.
+  const [pendingTags, setPendingTags] = useState<string[]>([]);
+  const pendingValuesRef = useRef<string[] | null>(null);
+  const selectedSet = useMemo(
+    () => new Set(draft.map(normalizeTagValue)),
+    [draft],
+  );
+  const knownOptionValues = useMemo(
+    () =>
+      new Set(
+        options
+          .map((option) => normalizeTagValue(option.value))
+          .filter(Boolean),
+      ),
+    [options],
+  );
+  const pendingOptionValues = useMemo(
+    () =>
+      new Set(
+        options
+          .filter((option) => option.pending)
+          .map((option) => normalizeTagValue(option.value)),
+      ),
+    [options],
+  );
+  const pendingSet = useMemo(
+    () =>
+      new Set([
+        ...draft
+          .map(normalizeTagValue)
+          .filter(
+            (value) =>
+              !knownOptionValues.has(value) || pendingOptionValues.has(value),
+          ),
+        ...pendingTags.map(normalizeTagValue),
+      ]),
+    [draft, knownOptionValues, pendingOptionValues, pendingTags],
+  );
   const optionLabelByValue = useMemo(() => {
     const labels = new Map<string, string>();
-    options.forEach((option) => labels.set(option.value, option.label));
+    options.forEach((option) =>
+      labels.set(normalizeTagValue(option.value), option.label),
+    );
     return labels;
   }, [options]);
   const selectedOptions = useMemo(
     () =>
       draft.map((value) => ({
-        value,
-        label: optionLabelByValue.get(value) ?? `#${value}`,
+        value: normalizeTagValue(value),
+        label:
+          optionLabelByValue.get(normalizeTagValue(value)) ??
+          `#${normalizeTagValue(value)}`,
       })),
     [draft, optionLabelByValue],
   );
 
   useEffect(() => {
     if (visible) {
-      setDraft(values);
+      const normalizedValues = normalizeTagList(values, maxSelected ?? 10);
+      setDraft(normalizedValues);
       setCustomTag('');
       setSearchText('');
       setSearchResults([]);
       setIsSearching(false);
+      setFocusedInput(null);
+      setPendingTags((current) =>
+        current.filter((tag) =>
+          normalizedValues.includes(normalizeTagValue(tag)),
+        ),
+      );
+      pendingValuesRef.current = null;
     }
-  }, [values, visible]);
+  }, [maxSelected, values, visible]);
 
   useEffect(() => {
     const trimmed = searchText.trim();
@@ -183,53 +410,107 @@ export function AppMultiSelectSheet({
     }
 
     setIsSearching(true);
+    let active = true;
     const timeout = setTimeout(async () => {
       try {
         const results = await TagsApi.searchTags(trimmed, 20);
-        setSearchResults(results);
+        if (active) setSearchResults(results);
       } catch {
-        setSearchResults([]);
+        if (active) setSearchResults([]);
       } finally {
-        setIsSearching(false);
+        if (active) setIsSearching(false);
       }
     }, 300);
 
-    return () => clearTimeout(timeout);
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+    };
   }, [searchText]);
 
   const toggle = (value: string) => {
+    const normalized = normalizeTagValue(value);
+    if (!normalized) return;
     setDraft((current) => {
-      if (current.includes(value)) {
-        return current.filter((entry) => entry !== value);
+      if (current.includes(normalized)) {
+        return current.filter((entry) => entry !== normalized);
       }
       if (typeof maxSelected === 'number' && current.length >= maxSelected) {
         return current;
       }
-      return [...current, value];
+      return [...current, normalized];
     });
+    // Deselecting a pending custom tag clears its pending marker too.
+    setPendingTags((current) =>
+      current.includes(normalized)
+        ? current.filter((entry) => entry !== normalized)
+        : current,
+    );
   };
 
   const displayedOptions = useMemo(() => {
-    const baseOptions = searchText.trim() ? searchResults : options;
-    return baseOptions
-      .map((opt) => {
-        if ('name' in opt) { // TagSuggestion
-          return { value: opt.name, label: `#${opt.name}`, usageCount: opt.usageCount, disabled: false };
-        } else { // SelectSheetOption
-          return { value: opt.value, label: opt.label, usageCount: (opt as any).usageCount ?? 0, disabled: opt.disabled };
-        }
-      })
-      .filter((opt) => !selectedSet.has(opt.value));
+    const trimmed = searchText.trim().toLowerCase();
+    let mappedOptions = [];
+
+    if (!trimmed) {
+      mappedOptions = options.map((opt) => ({
+        value: normalizeTagValue(opt.value),
+        label: opt.label,
+        usageCount: (opt as any).usageCount ?? 0,
+        disabled: opt.disabled,
+        pending: opt.pending,
+      }));
+    } else {
+      const localFiltered = options
+        .filter((opt) => opt.label.toLowerCase().includes(trimmed) || opt.value.toLowerCase().includes(trimmed))
+        .map((opt) => ({
+          value: normalizeTagValue(opt.value),
+          label: opt.label,
+          usageCount: (opt as any).usageCount ?? 0,
+          disabled: opt.disabled,
+          pending: opt.pending,
+        }));
+        
+      const localValues = new Set(localFiltered.map((o) => normalizeTagValue(o.value)));
+      const networkMapped = searchResults
+        .filter((opt) => !localValues.has(normalizeTagValue(opt.name)))
+        .map((opt) => ({
+          value: normalizeTagValue(opt.name),
+          label: `#${normalizeTagValue(opt.name)}`,
+          usageCount: opt.usageCount,
+          disabled: false,
+          pending: opt.status === 'PENDING',
+        }));
+        
+      mappedOptions = [...localFiltered, ...networkMapped];
+    }
+
+    return mappedOptions.filter((opt) => opt.value && !selectedSet.has(normalizeTagValue(opt.value)));
   }, [searchText, searchResults, options, selectedSet]);
 
   const addCustomTag = () => {
-    const normalized = normalizeCustomTagValue(customTag);
-    if (!normalized || draft.includes(normalized) || (typeof maxSelected === 'number' && draft.length >= maxSelected)) {
+    const normalized = normalizeTagValue(customTag);
+    if (!isValidTagValue(normalized) || draft.includes(normalized) || (typeof maxSelected === 'number' && draft.length >= maxSelected)) {
       return;
     }
     setDraft((current) => [...current, normalized]);
+    const knownOption = options.find((option) => normalizeTagValue(option.value) === normalized);
+    const knownSearchResult = searchResults.find((result) => normalizeTagValue(result.name) === normalized);
+    const isKnownApprovedTag = Boolean(knownOption && !knownOption.pending) || knownSearchResult?.status === 'APPROVED';
+    if (!isKnownApprovedTag) {
+      setPendingTags((current) => (current.includes(normalized) ? current : [...current, normalized]));
+    }
     setCustomTag('');
   };
+
+  const normalizedCustomTag = normalizeTagValue(customTag);
+  const customTagIsDuplicate = draft.includes(normalizedCustomTag);
+  const customTagError =
+    customTag.trim() && !isValidTagValue(normalizedCustomTag)
+      ? `Use at least ${TAG_MIN_LENGTH} letters or numbers.`
+      : customTagIsDuplicate
+        ? 'This hashtag is already selected.'
+        : undefined;
 
   return (
     <AppBottomSheet
@@ -237,14 +518,34 @@ export function AppMultiSelectSheet({
       title={title}
       subtitle={subtitle}
       onClose={onClose}
-      onDone={() => {
-        onChange(draft);
-        onClose();
+      /*
+        Closing SAVES, however the sheet was closed.
+
+        Committing only via Done meant a swipe-down — the natural way to put a
+        bottom sheet away — silently threw the selection out. Every tap in here
+        is already an explicit choice reflected in the UI; there is nothing for
+        a second confirmation to protect, and no Cancel affordance was ever
+        offered to imply otherwise. `onDismiss` fires after the close animation
+        and reads the live `draft` through a ref, so this is the same commit
+        Done performed, just no longer conditional on which exit was used.
+      */
+      onDismiss={() => {
+        pendingValuesRef.current = null;
+        onChange(normalizeTagList(draft, maxSelected ?? 10));
       }}
-      doneLabel="Done"
+      onDone={onClose}
+      scrollable={false}
+      doneLabel={doneLabel}
+      keyboardBehavior="auto"
+      keyboardActive={focusedInput !== null}
+      headerMeta={
+        typeof maxSelected === 'number'
+          ? `${draft.length}/${maxSelected}`
+          : `${draft.length} selected`
+      }
     >
       <SelectSheetState
-        loading={loading || isSearching}
+        loading={(loading || isSearching) && displayedOptions.length === 0}
         errorMessage={errorMessage}
         onRetry={onRetry}
         empty={displayedOptions.length === 0 && selectedOptions.length === 0}
@@ -257,43 +558,64 @@ export function AppMultiSelectSheet({
         onChangeText={setSearchText}
         placeholder={searchPlaceholder}
         containerStyle={styles.searchInput}
+        onFocus={() => setFocusedInput('search')}
+        onBlur={() =>
+          setFocusedInput((current) => (current === 'search' ? null : current))
+        }
       />
-      {typeof maxSelected === 'number' ? (
-        <AppText variant="captionRegular" tone="muted">
-          {draft.length}/{maxSelected} selected
-        </AppText>
-      ) : null}
       {selectedOptions.length > 0 ? (
         <View style={styles.selectedSection}>
-          <AppText variant="bodyBold" style={styles.sectionTitle}>Selected</AppText>
+          <AppText variant="bodyBold" style={styles.sectionTitle}>
+            Selected
+          </AppText>
           <View style={styles.optionWrap}>
             {selectedOptions.map((option) => (
               <Chip
                 key={option.value}
                 label={option.label}
                 selected
+                pending={pendingSet.has(option.value)}
                 onPress={() => toggle(option.value)}
               />
             ))}
           </View>
+          {selectedOptions.some((option) => pendingSet.has(option.value)) ? (
+            <AppText variant="captionRegular" tone="muted">
+              Pending tags are available on this design now while global review
+              continues.
+            </AppText>
+          ) : null}
         </View>
       ) : null}
-      {!searchText.trim() && options.length > 0 ? (
-        <AppText variant="bodyBold" style={styles.sectionTitle}>{popularLabel}</AppText>
-      ) : null}
-      <View style={styles.optionWrap}>
-        {displayedOptions.map((option) => (
-          <Chip
-            key={option.value}
-            label={option.label}
-            selected={selectedSet.has(option.value)}
-            disabled={option.disabled}
-            onPress={() => {
-              if (!option.disabled) toggle(option.value);
-            }}
-          />
-        ))}
-      </View>
+
+      <ScrollView
+        style={[styles.scrollArea, { maxHeight: tagListMaxHeight }]}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+      >
+        {!searchText.trim() && options.length > 0 ? (
+          <AppText variant="bodyBold" style={styles.sectionTitle}>
+            {popularLabel}
+          </AppText>
+        ) : null}
+        <View style={styles.optionWrap}>
+          {displayedOptions.map((option) => (
+            <Chip
+              key={option.value}
+              label={option.label}
+              selected={selectedSet.has(option.value)}
+              pending={option.pending}
+              disabled={option.disabled}
+              onPress={() => {
+                if (!option.disabled) toggle(option.value);
+              }}
+            />
+          ))}
+        </View>
+      </ScrollView>
       <View style={styles.customTagRow}>
         <Input
           label={customInputLabel}
@@ -302,12 +624,25 @@ export function AppMultiSelectSheet({
           onChangeText={setCustomTag}
           placeholder={customPlaceholder}
           containerStyle={styles.customTagInput}
+          maxLength={TAG_MAX_LENGTH}
+          error={customTagError}
+          onFocus={() => setFocusedInput('custom')}
+          onBlur={() =>
+            setFocusedInput((current) =>
+              current === 'custom' ? null : current,
+            )
+          }
         />
         <Button
           title="Add"
           size="sm"
-          disabled={!normalizeCustomTagValue(customTag) || draft.includes(normalizeCustomTagValue(customTag))}
+          disabled={
+            !isValidTagValue(normalizedCustomTag) ||
+            customTagIsDuplicate ||
+            (typeof maxSelected === 'number' && draft.length >= maxSelected)
+          }
           onPress={addCustomTag}
+          style={styles.addButton}
         />
       </View>
     </AppBottomSheet>
@@ -327,20 +662,45 @@ function SelectSheetState({
   empty: boolean;
   emptyMessage: string;
 }) {
-  if (loading) return <AppText variant="body" tone="muted">Loading options...</AppText>;
+  if (loading)
+    return (
+      <AppText variant="body" tone="muted">
+        Loading options...
+      </AppText>
+    );
   if (errorMessage) {
     return (
       <View style={styles.stateBlock}>
-        <AppText variant="body" tone="danger">{errorMessage}</AppText>
-        {onRetry ? <Button title="Retry" size="sm" variant="secondary" onPress={onRetry} /> : null}
+        <AppText variant="body" tone="danger">
+          {errorMessage}
+        </AppText>
+        {onRetry ? (
+          <Button
+            title="Retry"
+            size="sm"
+            variant="secondary"
+            onPress={onRetry}
+          />
+        ) : null}
       </View>
     );
   }
-  if (empty) return <AppText variant="body" tone="muted">{emptyMessage}</AppText>;
+  if (empty)
+    return (
+      <AppText variant="body" tone="muted">
+        {emptyMessage}
+      </AppText>
+    );
   return null;
 }
 
 const styles = StyleSheet.create({
+  searchField: {
+    marginBottom: tokens.spacing.md,
+  },
+  optionWrapSingle: {
+    gap: tokens.spacing.sm,
+  },
   optionWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -350,20 +710,23 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: tokens.spacing.sm,
   },
+  optionCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: tokens.spacing.xs,
+  },
   optionCard: {
     width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
     borderWidth: 1,
-    borderColor: 'transparent',
     borderRadius: tokens.radius.md,
-    gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.md,
   },
   optionDisabled: {
     opacity: 0.5,
-  },
-  optionPressed: {
-    opacity: 0.78,
   },
   searchInput: {
     marginBottom: tokens.spacing.sm,
@@ -379,9 +742,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: tokens.spacing.sm,
     alignItems: 'flex-end',
+    marginTop: tokens.spacing.md,
   },
   customTagInput: {
     flex: 1,
+  },
+  addButton: {
+    height: 52,
+  },
+  scrollArea: {
+    flexShrink: 1,
+    // Bounded height so the tag list always scrolls when tags overflow instead of
+    // relying on flex propagation through the sheet (which left it unscrollable on
+    // Android). The cap itself is computed per render from the window height —
+    // see `tagListMaxHeight`; the parent sheet still owns layout.
+    marginTop: tokens.spacing.sm,
+  },
+  scrollContent: {
+    paddingBottom: tokens.spacing.xs,
   },
 });
 

@@ -3,27 +3,38 @@ import * as SecureStore from 'expo-secure-store';
 
 import {
   apiClient,
+  markApiAuthHydrated,
   setApiAuthToken,
   setApiRefreshToken,
   setUnauthorizedHandler,
 } from '@/src/api/httpClient';
 import {
   getAccessToken,
+  getCachedAuthUser,
   getRefreshToken,
   setAccessToken,
+  setCachedAuthUser,
   setRefreshToken,
 } from '@/src/storage/secureStorage';
 import { googleAuth, type GoogleAuthParams } from '@/src/api/AuthApi';
 import type { LegalAcceptancePayload } from '@/src/api/LegalApi';
-import { queryClient, THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryClient, WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
-import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import {
   ACTIVE_BRAND_STORAGE_KEY,
   clearMobilePrivateSessionState,
 } from '@/src/auth/sessionCleanup';
+import { useCommitCost, useRenderCause } from '@/src/perf/commitCost';
+import { perfRecordUserMutation } from '@/src/perf/wiezPerf';
+import { isEquivalentAuthUser } from '@/src/auth/authUserEquality';
+import {
+  AuthRequestError,
+  extractAuthErrorCode,
+  GENERIC_AUTH_ERROR_MESSAGE,
+} from '@/src/auth/authErrors';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -49,8 +60,15 @@ export type AuthUser = {
   isEmailVerified?: boolean | null;
   themePreference: ThemePreference;
   type?: 'BRAND' | 'REGULAR' | string;
+  /**
+   * `Role` from the backend — SuperAdmin | Admin | User. Distinct from `type`,
+   * which is the account KIND (brand or shopper). Surfaces here so shopper-only
+   * prompts can skip console operators.
+   */
+  role?: 'SuperAdmin' | 'Admin' | 'User' | string | null;
   firstName?: string | null;
   lastName?: string | null;
+  gender?: 'MALE' | 'FEMALE' | 'NON_BINARY' | 'UNSPECIFIED' | null;
   username?: string | null;
   brandFullName?: string | null;
   brandDescription?: string | null;
@@ -89,7 +107,8 @@ export type AuthUser = {
 
 type SignInParams = {
   email: string;
-  password: string;
+  password?: string;
+  tokenPayload?: any;
 };
 
 type SignUpParams = {
@@ -104,12 +123,14 @@ type SignUpParams = {
 
 type AuthContextValue = {
   status: AuthStatus;
+  localSessionReady: boolean;
+  sessionSettled: boolean;
   isAuthenticated: boolean;
   token: string | null;
   user: AuthUser | null;
-  updateUser: (patch: Partial<AuthUser>) => void;
+  updateUser: (patch: Partial<AuthUser>, source?: string) => void;
   setActiveBrandId: (brandId: string | null) => Promise<void>;
-  validateToken: () => Promise<boolean>;
+  validateToken: (options?: { forceRefresh?: boolean }) => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
   signUp: (params: SignUpParams) => Promise<void>;
   signInWithGoogle: (params: GoogleAuthParams) => Promise<void>;
@@ -118,6 +139,8 @@ type AuthContextValue = {
 
 type AuthSessionContextValue = {
   status: AuthStatus;
+  localSessionReady: boolean;
+  sessionSettled: boolean;
   isAuthenticated: boolean;
   token: string | null;
   userId: string | null;
@@ -126,8 +149,8 @@ type AuthSessionContextValue = {
   activeBrandId: string | null;
   hasActiveBrandMembership: boolean;
   setActiveBrandId: (brandId: string | null) => Promise<void>;
-  updateUser: (patch: Partial<AuthUser>) => void;
-  validateToken: () => Promise<boolean>;
+  updateUser: (patch: Partial<AuthUser>, source?: string) => void;
+  validateToken: (options?: { forceRefresh?: boolean }) => Promise<boolean>;
   signIn: (params: SignInParams) => Promise<void>;
   signUp: (params: SignUpParams) => Promise<void>;
   signInWithGoogle: (params: GoogleAuthParams) => Promise<void>;
@@ -145,7 +168,7 @@ const CONTROL_CHAR_REGEX = /[\u0000-\u001F\u007F]/;
 let authBootstrapCompletionCount = 0;
 
 function devAuthLog(event: string, details?: Record<string, unknown>) {
-  if (!isThreadlyDebugEnabled('auth')) return;
+  if (!isWiezDebugEnabled('auth')) return;
   console.log('[auth-bootstrap]', details ? { event, ...details } : { event });
 }
 
@@ -289,8 +312,10 @@ function normalizeAuthUser(raw: unknown): AuthUser | null {
         : null,
     themePreference: normalizeThemePreference(source.themePreference ?? nestedUser?.themePreference),
     type: source.type ?? nestedUser?.type ?? null,
+    role: source.role ?? nestedUser?.role ?? null,
     firstName: source.firstName ?? nestedUser?.firstName ?? null,
     lastName: source.lastName ?? nestedUser?.lastName ?? null,
+    gender: source.gender ?? nestedUser?.gender ?? null,
     username: source.username ?? nestedUser?.username ?? null,
     brandFullName: source.brandFullName ?? nestedUser?.brandFullName ?? null,
     brandDescription:
@@ -431,7 +456,31 @@ function normalizeAuthErrorMessage(error: unknown, fallbackMessage: string): str
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  useCommitCost('P:Auth');
   const [status, setStatus] = useState<AuthStatus>('loading');
+  const [localSessionReady, setLocalSessionReady] = useState(false);
+  /**
+   * Has the session been through a server round-trip yet?
+   *
+   * Cold start restores a CACHED user and reports `authenticated` immediately,
+   * on purpose: the Runway must paint at once rather than block on the network.
+   * But that means `status === 'authenticated'` can be a guess, and for 3-5s
+   * (a request timing out against a dead or unreachable API) a screen full of
+   * private data renders off a session that is about to be rejected — then
+   * swaps to the guest state under the reader.
+   *
+   * `localSessionReady` cannot answer this: it means "local storage was read",
+   * which is true precisely when the guess is made.
+   *
+   * SETTLED, not "verified", is deliberate. A non-401 failure keeps the cached
+   * session on purpose (see `validateTokenImpl`'s catch) so the app works
+   * offline — so a flag meaning "the server confirmed this" would never turn
+   * true offline, and anything waiting on it would hang forever. This turns
+   * true when the validation attempt FINISHES, whatever the outcome, so a
+   * screen holding private data can wait for the answer without risking a
+   * permanent spinner.
+   */
+  const [sessionSettled, setSessionSettled] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [refreshTokenState, setRefreshTokenState] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -439,6 +488,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const bootstrappedRef = useRef(false);
   const selectedActiveBrandIdRef = useRef<string | null>(null);
+
+  const cacheAuthenticatedUser = useCallback((accessToken: string | null, nextUser: AuthUser) => {
+    if (!accessToken) return;
+    void setCachedAuthUser(accessToken, nextUser).catch(() => undefined);
+  }, []);
 
   const applyActiveBrandSelection = useCallback((nextUser: AuthUser): AuthUser => {
     return {
@@ -450,17 +504,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signOut = useCallback(async (options?: { notifyServer?: boolean }) => {
+  const signOutImpl = useCallback(async (options?: { notifyServer?: boolean }) => {
     const notifyServer = options?.notifyServer ?? true;
-    const refreshToken = refreshTokenState ?? (await getRefreshToken());
+    const revokeOnServer = (refreshToken: string | null) => {
+      // Local sign-out must never be held hostage by a slow or offline API.
+      // The request is created while this account's credentials are still
+      // present; local tokens and private data are cleared immediately after.
+      void apiClient
+        .post('/auth/logout', { refreshToken: refreshToken ?? undefined })
+        .catch(() => undefined);
+    };
 
     if (notifyServer) {
-      try {
-        await apiClient.post('/auth/logout', {
-          refreshToken: refreshToken ?? undefined,
-        });
-      } catch {
-        // best-effort server logout only
+      if (refreshTokenState) {
+        revokeOnServer(refreshTokenState);
+      } else {
+        // A missing in-memory refresh token is unusual but recoverable. Do not
+        // await SecureStore before clearing the account from the visible app.
+        void getRefreshToken().then(revokeOnServer).catch(() => undefined);
       }
     }
 
@@ -468,16 +529,92 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setApiRefreshToken(null);
     setToken(null);
     setRefreshTokenState(null);
+    perfRecordUserMutation('signOut');
     setUser(null);
     setSelectedActiveBrandId(null);
     selectedActiveBrandIdRef.current = null;
     setStatus('unauthenticated');
-    await clearMobilePrivateSessionState({ client: queryClient });
+    // Signed out is a settled answer — nothing private left to wait on.
+    setSessionSettled(true);
+    // This performs all in-memory isolation before its first await. Durable
+    // storage and push cleanup continue safely after the guest UI is visible.
+    void clearMobilePrivateSessionState({ client: queryClient });
   }, [refreshTokenState]);
 
-  const updateUser = useCallback((patch: Partial<AuthUser>) => {
+  /**
+   * Stable `signOut`, for the same reason as `validateToken` below.
+   *
+   * The implementation depends on `refreshTokenState`, and the session-restore
+   * effect both DEPENDS on `signOut` and CALLS `setRefreshTokenState`. So
+   * restoring a session gave `signOut` a new identity, which re-ran the whole
+   * restore — re-reading SecureStore, re-setting the API token and firing
+   * `validateToken` again. Combined with the unstable `validateToken` it
+   * compounded into the repeated bootstrap visible in the device logs, and is
+   * a large part of why authenticated requests were going out before the token
+   * had settled and coming back 401.
+   */
+  const signOutImplRef = useRef(signOutImpl);
+  signOutImplRef.current = signOutImpl;
+  const signOut = useCallback(
+    (options?: { notifyServer?: boolean }): Promise<void> => signOutImplRef.current(options),
+    [],
+  );
+
+  /*
+    `source` names the CALLER, and it is not decoration.
+
+    Four captures narrowed this down one step at a time: `causes=` said the auth
+    user changed, `userSet=` said `updateUser` changed it, and neither could say
+    WHO called `updateUser`. That cost a build and a device capture each time.
+    Sixteen call sites now identify themselves, so one capture answers the
+    question instead of one capture per hypothesis.
+  */
+  const updateUser = useCallback((patch: Partial<AuthUser>, source = 'untagged') => {
     setUser((current) => {
       if (!current) return current;
+
+      /*
+        A patch that changes nothing must not replace the user.
+
+        MEASURED, 2026-10-12 capture on `93cfac7`:
+        `causes=P:Auth:user+value+sessionValue×6` — the auth user's identity
+        changed six times inside one ten second flow window, rebuilding both
+        context values each time and re-rendering every `useAuth()` consumer
+        in the app.
+
+        This setter was the mechanism. It built `{ ...current }` and returned a
+        fresh object unconditionally, so React could never bail out — a patch
+        asking for values the user already had still produced a brand new
+        reference, and a new context value reaches every consumer directly
+        without consulting element identity.
+
+        That turned one caller into a loop. `loadProfile` in
+        `app/(tabs)/catalog/index.tsx` lists `user` in its dependencies and
+        calls this inside, so: new user, new `loadProfile`, the effect re-fires,
+        this is called again. Nothing terminated it except how long a whole-app
+        re-render took — about 450ms, which is the six.
+
+        The patch in that caller is a no-op after its first application: the
+        values come off a stable `profileQuery.data`, so each one is already
+        `Object.is`-equal to what the user holds. Bailing out ends the loop at
+        one iteration.
+
+        Deliberately conservative: it bails ONLY when every defined patch value
+        is already identical by reference. An object or array rebuilt with equal
+        contents still counts as a change, so this can do redundant work but
+        cannot skip a real one.
+      */
+      let changesSomething = false;
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === undefined) continue;
+        if (Object.is((current as Record<string, unknown>)[key], value)) continue;
+        changesSomething = true;
+        break;
+      }
+      if (!changesSomething) {
+        perfRecordUserMutation('updateUser:nochange:' + source);
+        return current;
+      }
 
       const nextUser: AuthUser = { ...current };
       for (const [key, value] of Object.entries(patch)) {
@@ -487,10 +624,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const normalized = normalizeAuthUser(nextUser) ?? nextUser;
-      queryClient.setQueryData(queryKeys.auth.profile(), normalized);
-      return applyActiveBrandSelection(normalized);
+      const selectedUser = applyActiveBrandSelection(normalized);
+
+      /*
+        Compared against the RESULT, not against the patch.
+
+        The reference check above cannot work on its own, and the 2026-10-14
+        capture proved it: `userSet=updateUser:patched×24` on every affected
+        flow with `updateUser:nochange` never appearing once. Twenty-four calls,
+        and the patch "differed" every single time.
+
+        It differed because normalisation guarantees it. `normalizeAuthFile`
+        returns a fresh `{ id, s3Url, url }` literal and
+        `normalizeBrandMemberships` a fresh array of fresh objects, so
+        `current.profileImageFile` is always the NORMALISED object while the
+        patch carries the RAW one off the query. Those two are never
+        `Object.is`-equal no matter how many times they are compared, so
+        `changesSomething` was permanently true — and each call produced a new
+        user, which republished the context, which rebuilt the caller, which
+        called again. The bailout was comparing the wrong pair.
+
+        Comparing the output is immune to that: a patch that changes nothing
+        normalises to something equivalent to `current`, whatever identities
+        the normalisers mint along the way.
+
+        `setQueryData` and `cacheAuthenticatedUser` are deliberately BELOW this
+        return. They are writes, and a cache write with observers is its own
+        feedback path — there is no reason to perform either for a user that
+        did not change.
+      */
+      if (isEquivalentAuthUser(current, selectedUser)) {
+        perfRecordUserMutation('updateUser:equivalent:' + source);
+        return current;
+      }
+
+      queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
+      cacheAuthenticatedUser(token, selectedUser);
+      perfRecordUserMutation('updateUser:patched:' + source);
+      return selectedUser;
     });
-  }, [applyActiveBrandSelection]);
+  }, [applyActiveBrandSelection, cacheAuthenticatedUser, token]);
 
   const setActiveBrandId = useCallback(async (brandId: string | null) => {
     const normalizedBrandId = String(brandId ?? '').trim() || null;
@@ -507,15 +680,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const nextActiveBrandId = resolveSelectableActiveBrandId(current, normalizedBrandId);
       const nextUser = { ...current, activeBrandId: nextActiveBrandId };
       queryClient.setQueryData(queryKeys.auth.profile(), nextUser);
+      cacheAuthenticatedUser(token, nextUser);
+      perfRecordUserMutation('setActiveBrandId');
       return nextUser;
     });
-  }, []);
+  }, [cacheAuthenticatedUser, token]);
 
-  const validateToken = useCallback(async (): Promise<boolean> => {
+  const validateTokenImpl = useCallback(async (options?: { forceRefresh?: boolean }): Promise<boolean> => {
     const currentToken = token ?? (await getAccessToken());
+    const forceRefresh = options?.forceRefresh ?? false;
+    const startedAt = Date.now();
+
+    devAuthLog('validation-start', {
+      forceRefresh,
+      hasToken: Boolean(currentToken),
+    });
 
     if (!currentToken) {
-      await signOut();
+      // No token at all → already logged out. Clear local state only; do NOT
+      // POST /auth/logout (there is no session to revoke and it just 401s).
+      await signOut({ notifyServer: false });
+      devAuthLog('validation-end', { outcome: 'missing-token', durationMs: Date.now() - startedAt });
       return false;
     }
 
@@ -527,7 +712,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const response = await apiClient.get('/auth/profile');
           return unwrapData<any>(response.data);
         },
-        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+        staleTime: forceRefresh ? 0 : WIEZ_QUERY_STALE_TIME_MS,
       });
 
       const mappedUser = normalizeAuthUser(profile);
@@ -536,19 +721,101 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const selectedUser = applyActiveBrandSelection(mappedUser);
       queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
+      perfRecordUserMutation('validate');
       setUser(selectedUser);
       setToken(currentToken);
       setStatus('authenticated');
+      setSessionSettled(true);
+      cacheAuthenticatedUser(currentToken, selectedUser);
+      devAuthLog('validation-end', { outcome: 'authenticated', durationMs: Date.now() - startedAt });
       return true;
     } catch (error) {
       const statusCode = Number((error as any)?.response?.status ?? 0);
       if (statusCode === 403) {
+        await signOut({ notifyServer: false });
+        devAuthLog('validation-end', { outcome: 'forbidden', durationMs: Date.now() - startedAt });
         return false;
       }
-      await signOut();
+      if (statusCode !== 401) {
+        // A transient profile refresh failure must preserve the last authenticated
+        // snapshot. Only an explicit 401/403 proves that the local session is invalid.
+        devAuthLog('validation-end', { outcome: 'offline-or-transient', durationMs: Date.now() - startedAt });
+        return false;
+      }
+      await signOut({ notifyServer: false });
+      devAuthLog('validation-end', { outcome: 'unauthorized', durationMs: Date.now() - startedAt });
       return false;
     }
-  }, [applyActiveBrandSelection, signOut, token]);
+  }, [applyActiveBrandSelection, cacheAuthenticatedUser, signOut, token]);
+
+  /**
+   * A STABLE `validateToken`. This closed an infinite request loop.
+   *
+   * The implementation above legitimately depends on `token` and on callbacks
+   * derived from `user` — and it CALLS `setToken`/`setUser`. So every
+   * successful run gave itself a new identity. Any `useEffect` listing
+   * `validateToken` in its dependencies therefore re-ran, called it again, got
+   * another new identity, and re-ran again: `EmailVerificationNotice` and
+   * `verify-email.tsx` both do exactly that, which is the wall of back-to-back
+   * `GET /auth/profile` calls in the device logs — dozens per second, each one
+   * `forceRefresh` so nothing could be served from cache.
+   *
+   * Consumers get this wrapper, whose identity never changes, while the ref
+   * always points at the current implementation. Nothing else about the
+   * behaviour moves; the callback simply stops being a dependency that
+   * mutates itself.
+   */
+  const validateTokenImplRef = useRef(validateTokenImpl);
+  validateTokenImplRef.current = validateTokenImpl;
+
+  /**
+   * Concurrent validations share ONE round trip.
+   *
+   * The stable identity above stopped the self-retriggering loop, but not
+   * genuine pile-ups: `EmailVerificationNotice` mounts on both the catalog and
+   * me tabs and both stay attached, `me.tsx` validates on its own refresh, and
+   * `verify-email.tsx` validates on open — so several callers routinely ask at
+   * the same moment. Each passes `forceRefresh: true`, which sets `staleTime:
+   * 0` and so deliberately defeats the React Query cache, and the axios
+   * dedupe window is far shorter than the poll interval. Every caller became
+   * its own `GET /auth/profile`.
+   *
+   * Sharing is safe when the caller did not ask to bypass the cache. A
+   * `forceRefresh` arriving while a NON-forced validation is in flight is
+   * deliberately NOT shared — it asked to bypass the cache and would otherwise
+   * be answered by the very read it was trying to skip. A `forceRefresh` that
+   * arrives while another forced read is already on the wire waits for that
+   * read and then fetches again: the in-flight one may have started before
+   * the inbox link confirmed the email, and returning it is why a pull to
+   * refresh still showed the banner.
+   */
+  const inFlightValidationRef = useRef<{
+    promise: Promise<boolean>;
+    forceRefresh: boolean;
+  } | null>(null);
+
+  const validateToken = useCallback(
+    (options?: { forceRefresh?: boolean }): Promise<boolean> => {
+      const forceRefresh = Boolean(options?.forceRefresh);
+      const inFlight = inFlightValidationRef.current;
+      if (inFlight && forceRefresh && inFlight.forceRefresh) {
+        return inFlight.promise.then(() => validateToken({ forceRefresh: true }));
+      }
+      if (inFlight && !forceRefresh) {
+        return inFlight.promise;
+      }
+
+      const promise = validateTokenImplRef.current(options).finally(() => {
+        if (inFlightValidationRef.current?.promise === promise) {
+          inFlightValidationRef.current = null;
+        }
+      });
+
+      inFlightValidationRef.current = { promise, forceRefresh };
+      return promise;
+    },
+    [],
+  );
 
   const applyAuthResponse = useCallback(async (rawData: unknown) => {
     const data = unwrapData<any>(rawData);
@@ -562,7 +829,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await setAccessToken(accessToken);
     setApiAuthToken(accessToken);
     setToken(accessToken);
-    setStatus('authenticated');
 
     if (refreshToken) {
       await setRefreshToken(refreshToken);
@@ -575,18 +841,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (mappedUser?.id) {
       const selectedUser = applyActiveBrandSelection(mappedUser);
       queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
+      perfRecordUserMutation('authResponse');
       setUser(selectedUser);
+      setStatus('authenticated');
+      // This user came back IN the sign-in response — already server-proven.
+      setSessionSettled(true);
+      cacheAuthenticatedUser(accessToken, selectedUser);
     } else {
+      setStatus('loading');
       await validateToken();
     }
-  }, [applyActiveBrandSelection, validateToken]);
+  }, [applyActiveBrandSelection, cacheAuthenticatedUser, validateToken]);
 
-  const signIn = useCallback(async ({ email, password }: SignInParams) => {
+  const signIn = useCallback(async ({ email, password, tokenPayload }: SignInParams) => {
     try {
       setApiAuthToken(null);
       setApiRefreshToken(null);
       setToken(null);
       setRefreshTokenState(null);
+      perfRecordUserMutation('authResponse:cleared');
       setUser(null);
       setSelectedActiveBrandId(null);
       selectedActiveBrandIdRef.current = null;
@@ -595,13 +868,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         deactivatePushToken: false,
       });
 
+      if (tokenPayload) {
+        await applyAuthResponse(tokenPayload);
+        return;
+      }
+
       const rawIdentifier = String(email ?? '');
       const rawPassword = String(password ?? '');
       const normalizedIdentifier = sanitizeLoginIdentifier(email);
-      const sanitizedPassword = sanitizeLoginPassword(password);
+      const sanitizedPassword = sanitizeLoginPassword(password ?? '');
       const looksLikeEmail = normalizedIdentifier.includes('@');
 
-      if (isThreadlyDebugEnabled('auth')) {
+      if (isWiezDebugEnabled('auth')) {
         console.log('[auth] login submit diagnostics', {
           rawIdentifierMeta: summarizeIdentifier(rawIdentifier),
           normalizedIdentifierMeta: summarizeIdentifier(normalizedIdentifier),
@@ -620,7 +898,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         candidatePayload: { email: string; password: string } | { identifier: string; password: string },
         label: string,
       ) => {
-        if (isThreadlyDebugEnabled('auth')) {
+        if (isWiezDebugEnabled('auth')) {
           console.log('[auth] /auth/login payload', {
             attempt: label,
             payload: {
@@ -635,7 +913,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         return apiClient.post('/auth/login', candidatePayload).catch((error) => {
-          if (isThreadlyDebugEnabled('auth')) {
+          if (isWiezDebugEnabled('auth')) {
             console.log('[auth] login attempt failed', {
               attempt: label,
               status: (error as any)?.response?.status,
@@ -659,7 +937,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 password: candidatePassword,
               },
         ).catch((error) => {
-          if (isThreadlyDebugEnabled('auth')) {
+          if (isWiezDebugEnabled('auth')) {
             console.log('[auth] login attempt failed', {
               attempt: label,
               status: (error as any)?.response?.status,
@@ -749,7 +1027,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await googleAuth(params);
       await applyAuthResponse(data);
     } catch (error: any) {
-      throw new Error(extractAuthErrorMessage(error) ?? 'Google sign-in could not be completed. Please try again.');
+      // Keep the `code`. `GOOGLE_NO_ACCOUNT` and `EMAIL_ALREADY_EXISTS` are how
+      // the API tells the screen to send the user to the *other* auth screen;
+      // flattening this to `new Error(message)` threw that away and left login
+      // with a dead end where a redirect to signup belongs.
+      throw new AuthRequestError(
+        extractAuthErrorMessage(error) ?? GENERIC_AUTH_ERROR_MESSAGE,
+        {
+          code: extractAuthErrorCode(error),
+          status: Number(error?.response?.status) || undefined,
+        },
+      );
     }
   }, [applyAuthResponse]);
 
@@ -761,11 +1049,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const run = async () => {
       try {
-        const storedActiveBrandId = await SecureStore.getItemAsync(ACTIVE_BRAND_STORAGE_KEY).catch(() => null);
+        const [storedActiveBrandId, stored, storedRefresh] = await Promise.all([
+          SecureStore.getItemAsync(ACTIVE_BRAND_STORAGE_KEY).catch(() => null),
+          getAccessToken(),
+          getRefreshToken(),
+        ]);
         selectedActiveBrandIdRef.current = storedActiveBrandId;
         setSelectedActiveBrandId(storedActiveBrandId);
-        const stored = await getAccessToken();
-        const storedRefresh = await getRefreshToken();
         if (!mounted) return;
 
         if (!stored && !storedRefresh) {
@@ -774,7 +1064,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setStatus('unauthenticated');
           setToken(null);
           setRefreshTokenState(null);
+          perfRecordUserMutation('bootstrap:unauth');
           setUser(null);
+          setLocalSessionReady(true);
+          devAuthLog('local-session-ready', { outcome: 'unauthenticated' });
           await clearMobilePrivateSessionState({
             client: queryClient,
             deactivatePushToken: false,
@@ -790,6 +1083,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (stored) {
           setApiAuthToken(stored);
           setToken(stored);
+
+          const cachedUser = normalizeAuthUser(await getCachedAuthUser(stored));
+          if (cachedUser?.id) {
+            const selectedUser = applyActiveBrandSelection(cachedUser);
+            queryClient.setQueryData(queryKeys.auth.profile(), selectedUser);
+            perfRecordUserMutation('bootstrap:cached');
+            setUser(selectedUser);
+            setStatus('authenticated');
+          }
+
+          setLocalSessionReady(true);
+          devAuthLog('local-session-ready', {
+            outcome: 'access-token-restored',
+            cachedUser: Boolean(cachedUser?.id),
+          });
+        } else {
+          setLocalSessionReady(true);
+          devAuthLog('local-session-ready', { outcome: 'refresh-token-only' });
         }
 
         // If access token is missing but refresh token exists, bootstrap a new access token.
@@ -823,9 +1134,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Validate against protected endpoint; on failure, sign out.
         await validateToken();
       } finally {
+        // Backstop for the API auth gate: `setApiAuthToken` opens it on every
+        // normal path, but a restore that threw before reaching one would
+        // otherwise leave every request waiting out the timeout.
+        markApiAuthHydrated();
         if (mounted) {
+          setLocalSessionReady(true);
           // validateToken sets status; ensure loading doesn't persist.
           setStatus((prev) => (prev === 'loading' ? 'unauthenticated' : prev));
+          /*
+            The bootstrap has now had its one chance at the server. Whatever it
+            concluded — authenticated, signed out, or offline-so-keep-the-cache —
+            the question is answered, and screens waiting on it must be released
+            here. This is the only place that guarantees it, which is why it
+            lives in the `finally` and not on any success path.
+          */
+          setSessionSettled(true);
           authBootstrapCompletionCount += 1;
           devAuthLog('complete', {
             authBootstrapCompletionCount,
@@ -840,7 +1164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [signOut, validateToken]);
+  }, [applyActiveBrandSelection, signOut, validateToken]);
 
   useEffect(() => {
     // Global 401 handler: clear token on unauthorized.
@@ -856,6 +1180,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
+      localSessionReady,
+      sessionSettled,
       isAuthenticated: status === 'authenticated',
       token,
       user,
@@ -867,12 +1193,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithGoogle,
       signOut,
     }),
-    [status, token, user, updateUser, setActiveBrandId, validateToken, signIn, signUp, signInWithGoogle, signOut],
+    [status, localSessionReady, sessionSettled, token, user, updateUser, setActiveBrandId, validateToken, signIn, signUp, signInWithGoogle, signOut],
   );
 
   const sessionValue = useMemo<AuthSessionContextValue>(
     () => ({
       status,
+      localSessionReady,
+      sessionSettled,
       isAuthenticated: status === 'authenticated',
       token,
       userId: user?.id ?? null,
@@ -892,8 +1220,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithGoogle,
       signOut,
     }),
-    [status, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, selectedActiveBrandId, setActiveBrandId, updateUser, validateToken, signIn, signUp, signInWithGoogle, signOut],
+    [status, localSessionReady, sessionSettled, token, user?.id, user?.type, user?.isEmailVerified, user?.activeBrandId, user?.brandMemberships, selectedActiveBrandId, setActiveBrandId, updateUser, validateToken, signIn, signUp, signInWithGoogle, signOut],
   );
+
+  /*
+    The 2026-10-12 capture put `P:Auth` at the same count as every screen —
+    7, 16, 20 on separate flows — with nothing above it (`P:Theme`, `P:Toast`)
+    recording anything. That makes this provider the top of the churn, and the
+    mechanism is not in doubt: `{children}` is one element reference, so a bare
+    re-render here would bail out, but a new CONTEXT VALUE reaches every
+    consumer directly and no element identity is consulted.
+    `useAuth()` is read by the tab shell, Runway, Market, Catalogue and Me —
+    the exact set that re-renders.
+
+    Which leaves two separate questions, and the ledger could answer neither:
+    what re-renders this provider, and whether the value identity then moves.
+    So both are reported. `value` and `sessionValue` are passed alongside the
+    state they are built from — if they appear as changed on renders where no
+    state did, the memo is being defeated and the propagation is the bug; if
+    `user` appears, the cause is upstream in whatever called `setUser`, which
+    hands every validation a FRESH object that no bailout can stop.
+
+    `P:Auth:parent` would mean this provider is itself being re-rendered from
+    above, and the search moves to `RootLayoutNav`.
+  */
+  useRenderCause('P:Auth', {
+    status,
+    localSessionReady,
+    sessionSettled,
+    token,
+    user,
+    selectedActiveBrandId,
+    refreshTokenState,
+    value,
+    sessionValue,
+  });
 
   return (
     <AuthSessionContext.Provider value={sessionValue}>

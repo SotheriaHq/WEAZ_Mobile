@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { getRangeError } from '@/src/utils/rangeValidation';
 import { DEFAULT_MARKET_FILTERS } from '@/src/features/market/marketUtils';
 import type { MarketAvailabilityKey, MarketFilters, MarketSortKey } from '@/src/features/market/types';
 
@@ -77,6 +78,18 @@ export function MarketFilterSheet({
   onClear,
 }: Props) {
   const [draft, setDraft] = useState<MarketFilters>(filters);
+  /**
+   * An inverted price range used to apply silently and return nothing.
+   *
+   * `MarketScreen` filters with `price < minPrice || price > maxPrice`, so
+   * asking for 50,000-1,000 matched no product on earth and the shopper got an
+   * empty grid with no reason given — they read it as "this brand has nothing".
+   * Same rule and same wording as the design composer now.
+   */
+  const priceRangeError = useMemo(
+    () => getRangeError(draft.minPrice, draft.maxPrice, { label: 'price' }),
+    [draft.maxPrice, draft.minPrice],
+  );
 
   useEffect(() => {
     if (visible) {
@@ -101,6 +114,7 @@ export function MarketFilterSheet({
           <Button
             title={`Show ${resultCount} results`}
             size="md"
+            disabled={priceRangeError.summary !== null}
             onPress={() => onApply(draft)}
             style={styles.footerButton}
           />
@@ -148,6 +162,7 @@ export function MarketFilterSheet({
             onChangeText={(minPrice) => setDraft((current) => ({ ...current, minPrice }))}
             placeholder="Min"
             containerStyle={styles.priceInput}
+            error={priceRangeError.min ?? undefined}
           />
           <Input
             label="Maximum price"
@@ -157,6 +172,7 @@ export function MarketFilterSheet({
             onChangeText={(maxPrice) => setDraft((current) => ({ ...current, maxPrice }))}
             placeholder="Max"
             containerStyle={styles.priceInput}
+            error={priceRangeError.max ?? undefined}
           />
         </View>
       </View>

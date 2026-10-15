@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   ScrollView,
@@ -13,8 +12,10 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
+import { BackLink } from '@/components/ui/InlineNavLink';
 import { Button } from '@/components/ui/Button';
 import { StableImage } from '@/components/ui/StableImage';
+import CollectionCommentsSheet from '@/components/catalog/CollectionCommentsSheet';
 import {
   MobileStoreApi,
   type CollectionBagProductStatus,
@@ -28,19 +29,30 @@ import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
+import { CLIP_REMOVED_TOAST, clipActionLabel } from '@/src/constants/clipping';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
-import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { useShopperOnlyAction } from '@/src/features/bagging/useShopperOnlyAction';
+import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
+import { navPerf } from '@/src/utils/navPerf';
 import MobileMarketSuggestionBlocks from './MobileMarketSuggestionBlocks';
+import { formatMoney } from '@/src/utils/money';
+import { contentReferenceToParams } from '@/src/features/messaging/contentReference';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type CollectionCommerceViewerProps = {
   collectionId: string;
   fallbackHref?: string;
+  /** Open the comments sheet on arrival — see the sheet at the end of render. */
+  openComments?: boolean;
+  /** Scroll to and highlight one comment (a reply notification's target). */
+  initialCommentId?: string | null;
 };
 
 const shouldLogCollectionTiming = () =>
-  isThreadlyDebugEnabled('network') ||
+  isWiezDebugEnabled('network') ||
   process.env.EXPO_PUBLIC_BAGGING_OBSERVABILITY === 'true';
 
 const logCollectionTiming = (event: string, startedAt: number, context: Record<string, unknown>) => {
@@ -56,15 +68,7 @@ const statusBarContrast = (value: 'light' | 'dark') => (value === 'dark' ? 'ligh
 
 const formatPrice = (amount?: number | null, currency = 'NGN') => {
   if (typeof amount !== 'number' || !Number.isFinite(amount)) return null;
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${Math.round(amount).toLocaleString('en-NG')}`;
-  }
+  return formatMoney(amount, currency);
 };
 
 const formatPriceRange = (status: CollectionBagStatus | null) => {
@@ -133,16 +137,20 @@ function ProductThumb({ product }: { product: CollectionBagProductStatus }) {
 export function CollectionCommerceViewer({
   collectionId,
   fallbackHref = '/(tabs)/discover',
+  openComments = false,
+  initialCommentId = null,
 }: CollectionCommerceViewerProps) {
   const { theme, scheme } = useTheme();
   const chrome = useScreenChrome();
   const toast = useToast();
+  const { refuseIfBrand } = useShopperOnlyAction();
   const { status: authStatus, user } = useAuth();
   const { refreshGlobalBagCount } = useBagCount();
   const { bagProduct } = useMobileBagging();
   const [status, setStatus] = useState<CollectionBagStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [commentsOpen, setCommentsOpen] = useState(openComments);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selections, setSelections] = useState<Record<string, CollectionBagSelection>>({});
   const [staleAccepted, setStaleAccepted] = useState(false);
@@ -172,11 +180,13 @@ export function CollectionCommerceViewer({
         }
         return new Set(nextStatus.products.filter((product) => product.canBag).map((product) => product.productId));
       });
+      setLoading(false);
       if (authStatus === 'authenticated') {
-        const savedMap = await SavedItemsApi.checkBatch('COLLECTION', [normalizedCollectionId]).catch(
-          (): Record<string, boolean> => ({}),
-        );
-        setSaved(Boolean(savedMap[normalizedCollectionId]));
+        void SavedItemsApi.checkBatch('COLLECTION', [normalizedCollectionId])
+          .then((savedMap: Record<string, boolean>) => {
+            setSaved(Boolean(savedMap[normalizedCollectionId]));
+          })
+          .catch(() => undefined);
       } else {
         setSaved(false);
       }
@@ -189,8 +199,20 @@ export function CollectionCommerceViewer({
   }, [authStatus, normalizedCollectionId]);
 
   useEffect(() => {
+    navPerf.screenMounted('collection_viewer');
+    navPerf.shellVisible('collection_viewer');
+    navPerf.firstVisibleUi('collection_viewer');
+  }, []);
+
+  useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!loading && status) {
+      navPerf.dataReady('collection_viewer');
+    }
+  }, [loading, status]);
 
   const selectedProducts = useMemo(
     () => status?.products.filter((product) => selectedIds.has(product.productId)) ?? [],
@@ -209,16 +231,12 @@ export function CollectionCommerceViewer({
   const requireAuth = useCallback((message: string) => {
     if (authStatus === 'authenticated') return true;
     toast.info(message);
-    router.push({ pathname: '/(auth)/login', params: { next: routePath } } as any);
+    drillDownPush({ pathname: '/(auth)/login', params: { next: routePath } } as any);
     return false;
   }, [authStatus, routePath, toast]);
 
   const goBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace(fallbackHref as any);
+    backOrNavigate(fallbackHref as any);
   }, [fallbackHref]);
 
   const reloadAfterMutation = useCallback(async () => {
@@ -311,6 +329,7 @@ export function CollectionCommerceViewer({
   }, []);
 
   const handleSave = useCallback(async () => {
+    if (refuseIfBrand('saving collections')) return;
     if (!requireAuth('Sign in to save collections.')) return;
     setBusy('save');
     const previous = saved;
@@ -318,7 +337,7 @@ export function CollectionCommerceViewer({
     try {
       if (previous) {
         await SavedItemsApi.unsaveCatalogTarget({ targetType: 'COLLECTION', collectionId: normalizedCollectionId });
-        toast.success('Removed from saved collections.');
+        toast.success(CLIP_REMOVED_TOAST);
       } else {
         await SavedItemsApi.saveCatalogTarget({ targetType: 'COLLECTION', collectionId: normalizedCollectionId });
         toast.success('Collection saved.');
@@ -337,7 +356,7 @@ export function CollectionCommerceViewer({
     try {
       await Share.share({
         title: status.collection.title,
-        message: `${status.collection.title}\n${status.collection.brandName ?? 'WEAZ'}\n${routePath}`,
+        message: `${status.collection.title}\n${status.collection.brandName ?? 'WIEZ'}\n${routePath}`,
       });
     } catch (nextError) {
       toast.error(nextError instanceof Error ? nextError.message : 'Unable to share this collection.');
@@ -356,15 +375,42 @@ export function CollectionCommerceViewer({
       toast.info('Messaging is disabled for your own brand.');
       return;
     }
-    router.push({ pathname: '/messages/[threadId]', params: { threadId: 'brand', brandId: status.collection.brandId } } as any);
-  }, [isOwnBrand, requireAuth, status?.collection.brandId, toast]);
+    /*
+      Carry the collection with the tap. Messaging a brand FROM a piece of
+      content is a remark about that content — sending it bare left the brand
+      reading a sentence with no subject.
+    */
+    drillDownPush({
+      pathname: '/messages/[threadId]',
+      params: {
+        threadId: 'resolve',
+        brandId: status.collection.brandId,
+        ...contentReferenceToParams({
+          kind: 'DESIGN',
+          id: status.collection.id,
+          title: status.collection.title,
+          coverUrl: status.collection.coverImage,
+          coverFileId: status.collection.coverImageId,
+        }),
+      },
+    } as any);
+  }, [
+    isOwnBrand,
+    requireAuth,
+    status?.collection.brandId,
+    status?.collection.coverImage,
+    status?.collection.coverImageId,
+    status?.collection.id,
+    status?.collection.title,
+    toast,
+  ]);
 
   const renderProduct = ({ item }: { item: CollectionBagProductStatus }) => {
     const selected = selectedIds.has(item.productId);
     const selection = selections[item.productId] ?? {};
     return (
       <Pressable
-        onPress={() => router.push({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
+        onPress={() => drillDownPush({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
         style={({ pressed }) => [
           styles.productCard,
           { backgroundColor: theme.colors.surface, borderColor: selected ? theme.colors.primary : theme.colors.border },
@@ -464,7 +510,7 @@ export function CollectionCommerceViewer({
               title="View"
               size="sm"
               variant="outline"
-              onPress={() => router.push({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
+              onPress={() => drillDownPush({ pathname: '/products/[productId]', params: { productId: item.productId, returnTo: routePath } } as any)}
             />
           </View>
         </View>
@@ -477,7 +523,7 @@ export function CollectionCommerceViewer({
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: chrome.insets.top }]}>
         <StatusBar style={statusBarContrast(scheme)} />
         <View style={styles.centerState}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="bodyBold">Loading collection</AppText>
         </View>
       </SafeAreaView>
@@ -492,7 +538,8 @@ export function CollectionCommerceViewer({
           <AppText variant="subtitle">Collection unavailable</AppText>
           <AppText variant="body" tone="secondary">{error ?? 'Try again later.'}</AppText>
           <Button title="Retry" onPress={() => void load()} />
-          <Button title="Back to Market" variant="outline" onPress={goBack} />
+          {/* A way back is not a decision — see InlineNavLink. */}
+          <BackLink label="Market" onPress={goBack} />
         </View>
       </SafeAreaView>
     );
@@ -520,13 +567,13 @@ export function CollectionCommerceViewer({
               </Pressable>
               <View style={styles.topActions}>
                 <Button title="Share" size="sm" variant="outline" onPress={handleShare} loading={busy === 'share'} />
-                <Button title={saved ? 'Saved' : 'Save'} size="sm" variant="outline" onPress={handleSave} loading={busy === 'save'} />
+                <Button title={clipActionLabel(saved)} size="sm" variant="outline" onPress={handleSave} loading={busy === 'save'} />
               </View>
             </View>
 
             <CollectionCover status={status} />
             <View style={styles.titleStack}>
-              <AppText variant="captionBold" tone="primary" numberOfLines={1}>{status.collection.brandName ?? 'WEAZ brand'}</AppText>
+              <AppText variant="captionBold" tone="primary" numberOfLines={1}>{status.collection.brandName ?? 'WIEZ brand'}</AppText>
               <AppText variant="h2" numberOfLines={2}>{status.collection.title}</AppText>
               <AppText variant="body" tone="secondary">{status.collection.description ?? 'Curated products from this brand.'}</AppText>
               <View style={styles.metaRow}>
@@ -557,7 +604,7 @@ export function CollectionCommerceViewer({
             </View>
 
             <View style={styles.headerActions}>
-              <Button title="Open gallery" variant="outline" onPress={() => router.push({ pathname: '/collection-gallery', params: { collectionId: normalizedCollectionId } } as any)} />
+              <Button title="Open gallery" variant="outline" onPress={() => drillDownPush({ pathname: '/collection-gallery', params: { collectionId: normalizedCollectionId } } as any)} />
               <Button title="Message brand" variant="outline" onPress={handleMessage} disabled={!status.collection.brandId || isOwnBrand} />
             </View>
 
@@ -617,6 +664,19 @@ export function CollectionCommerceViewer({
           <Button title="Bag all" size="sm" onPress={handleBagAll} disabled={Boolean(busy) || isOwnBrand} loading={busy === 'bag-all'} />
         </View>
       </View>
+
+      {/* Comment notifications targeting a store collection used to open the
+          retired `CollectionDetailViewer`, which is where the comments lived.
+          Consolidating onto this viewer means the comments come with it —
+          otherwise those notifications would open a screen with no comments on
+          it and no sign that any exist. */}
+      <CollectionCommentsSheet
+        visible={commentsOpen}
+        collectionId={collectionId}
+        collectionTitle={status.collection.title ?? null}
+        initialCommentId={initialCommentId}
+        onClose={() => setCommentsOpen(false)}
+      />
     </SafeAreaView>
   );
 }

@@ -1,17 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, Stack } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
+import { DeliveryAddressBook } from '@/components/delivery/DeliveryAddressBook';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Input } from '@/components/ui/Input';
 import {
   createMobileCheckoutIdempotencyKey,
   paymentApi,
   type ShippingAddress,
 } from '@/src/api/PaymentApi';
+import type { SavedDeliveryAddress } from '@/src/api/ProfileApi';
+import { displayNameOf } from '@/src/features/delivery/deliveryAddressBook';
 import { useAuth } from '@/src/auth/AuthContext';
 import { queryClient } from '@/src/query/queryClient';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
@@ -25,11 +29,17 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { navPerf } from '@/src/utils/navPerf';
 import {
   getRequiredLegalAcceptances,
   LEGAL_PAYMENT_DOCUMENT_KEYS,
   type LegalAcceptancePayload,
 } from '@/src/api/LegalApi';
+import {
+  isEmptyPhone,
+  isValidPhone,
+  normalizePhoneToE164,
+} from '@/src/utils/phoneNumber';
 
 type CheckoutForm = {
   firstName: string;
@@ -72,16 +82,15 @@ function toShippingAddress(form: CheckoutForm): ShippingAddress {
     state: form.state,
     ...(form.postalCode ? { postalCode: form.postalCode } : {}),
     country: form.country,
-    phone: form.phone,
+    phone: normalizePhoneToE164(form.phone) ?? form.phone.trim(),
   };
 }
 
 function missingRequiredFields(form: CheckoutForm): string[] {
-  return [
+  const missing = [
     ['firstName', form.firstName],
     ['lastName', form.lastName],
     ['email', form.email],
-    ['phone', form.phone],
     ['street', form.street],
     ['city', form.city],
     ['state', form.state],
@@ -89,10 +98,12 @@ function missingRequiredFields(form: CheckoutForm): string[] {
   ]
     .filter(([, value]) => !String(value ?? '').trim())
     .map(([key]) => String(key));
-}
 
-function fieldError(field: keyof CheckoutForm, errors: string[]) {
-  return errors.includes(field) ? 'Required for checkout' : undefined;
+  if (isEmptyPhone(form.phone) || !isValidPhone(form.phone)) {
+    missing.push('phone');
+  }
+
+  return missing;
 }
 
 export function MobileCheckoutScreen() {
@@ -101,7 +112,6 @@ export function MobileCheckoutScreen() {
   const auth = useAuth();
   const { count, refreshGlobalBagCount } = useBagCount();
   const [form, setForm] = useState<CheckoutForm>(() => emptyForm(auth.user));
-  const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [paymentPolicyAccepted, setPaymentPolicyAccepted] = useState(false);
@@ -113,13 +123,56 @@ export function MobileCheckoutScreen() {
     [form.firstName, form.lastName],
   );
 
-  const updateField = useCallback(
-    (field: keyof CheckoutForm, value: string) => {
-      setForm((current) => ({ ...current, [field]: value }));
-      setErrors((current) => current.filter((entry) => entry !== field));
-    },
-    [],
+  /*
+    Delivery comes from the shared address book — the same one web and the
+    custom-order sheet use. It replaced a nine-field form that silently copied
+    the FIRST saved address in, with no way to choose another, edit it, or add a
+    new one, plus its own copy of the country/state/city pickers. The chosen
+    address becomes the checkout details below.
+  */
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [addressEditing, setAddressEditing] = useState(false);
+  const addressDefaults = useMemo(
+    () => ({
+      customerName: [auth.user?.firstName, auth.user?.lastName].filter(Boolean).join(' ').trim(),
+      contactEmail: auth.user?.email?.trim() ?? '',
+      phone: auth.user?.phoneNumber?.trim() ?? '',
+    }),
+    [auth.user?.email, auth.user?.firstName, auth.user?.lastName, auth.user?.phoneNumber],
   );
+
+  const handleSelectAddress = useCallback(
+    (address: SavedDeliveryAddress | null) => {
+      setSelectedAddressId(address?.id ?? null);
+      if (!address) {
+        setForm(emptyForm(auth.user));
+        return;
+      }
+      const name = displayNameOf(address);
+      const [first = '', ...rest] = name.split(' ');
+      setForm({
+        firstName: address.firstName || first,
+        lastName: address.lastName || rest.join(' '),
+        // A saved address may predate contact fields; the account fills gaps.
+        email: address.contactEmail || auth.user?.email || '',
+        phone: address.phone || auth.user?.phoneNumber || '',
+        street: address.street,
+        apartment: address.apartment,
+        city: address.city,
+        state: address.state,
+        postalCode: address.postalCode,
+        country: address.country || 'Nigeria',
+      });
+    },
+    [auth.user],
+  );
+
+  // Dev-only nav timing for bag→checkout. The checkout shell + form render at
+  // mount; data is ready once the required legal acceptances load settles.
+  useEffect(() => {
+    navPerf.screenMounted('bag→checkout');
+    navPerf.firstVisibleUi('bag→checkout');
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -129,6 +182,9 @@ export function MobileCheckoutScreen() {
       })
       .catch(() => {
         if (active) setPaymentLegalAcceptances([]);
+      })
+      .finally(() => {
+        if (active) navPerf.dataReady('bag→checkout');
       });
     return () => {
       active = false;
@@ -142,15 +198,24 @@ export function MobileCheckoutScreen() {
     }
     if (auth.status !== 'authenticated' || !auth.user) {
       toast.info('Sign in before checkout.');
-      router.push('/(tabs)/me' as never);
+      drillDownPush('/(tabs)/me' as never);
       return;
     }
 
     const trimmed = trimForm(form);
+    if (addressEditing) {
+      toast.error('Save the address you are editing first.');
+      return;
+    }
     const missing = missingRequiredFields(trimmed);
-    if (missing.length > 0) {
-      setErrors(missing);
-      toast.error('Complete the required delivery details.');
+    if (!selectedAddressId || missing.length > 0) {
+      // The book validates on save, so a gap here means an older saved address
+      // is missing something. Editing it is the fix.
+      toast.error(
+        selectedAddressId
+          ? 'This address is missing details. Tap Edit on it to complete it.'
+          : 'Choose or add a delivery address.',
+      );
       return;
     }
     if (!paymentPolicyAccepted) {
@@ -173,13 +238,13 @@ export function MobileCheckoutScreen() {
         customerName: fullName || `${trimmed.firstName} ${trimmed.lastName}`,
         shippingAddress,
         contactInfo: {
-          phone: trimmed.phone,
+          phone: normalizePhoneToE164(trimmed.phone) ?? trimmed.phone,
           email: trimmed.email,
           billingSameAsShipping: true,
           channel: 'CARD',
         },
         paymentData: {
-          phone: trimmed.phone,
+          phone: normalizePhoneToE164(trimmed.phone) ?? trimmed.phone,
           email: trimmed.email,
           consentAccepted: paymentPolicyAccepted,
           legalAcceptances: paymentLegalAcceptances,
@@ -253,11 +318,15 @@ export function MobileCheckoutScreen() {
     <>
       <Stack.Screen options={{ title: 'Checkout' }} />
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.bg }]}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.header}>
             <AppText variant="title">Secure checkout</AppText>
             <AppText variant="body" tone="muted">
-              WEAZ recalculates the amount from your saved bag and verifies payment with the backend before any order is marked paid.
+              WIEZ recalculates the amount from your saved bag and verifies payment with the backend before any order is marked paid.
             </AppText>
           </View>
 
@@ -278,77 +347,19 @@ export function MobileCheckoutScreen() {
             />
           </Card>
 
-          <Card style={styles.card}>
-            <AppText variant="subtitle">Delivery details</AppText>
-            <View style={styles.fieldGrid}>
-              <Input
-                label="First name"
-                value={form.firstName}
-                onChangeText={(value) => updateField('firstName', value)}
-                error={fieldError('firstName', errors)}
-              />
-              <Input
-                label="Last name"
-                value={form.lastName}
-                onChangeText={(value) => updateField('lastName', value)}
-                error={fieldError('lastName', errors)}
-              />
-              <Input
-                label="Email"
-                value={form.email}
-                onChangeText={(value) => updateField('email', value)}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                error={fieldError('email', errors)}
-              />
-              <Input
-                label="Phone"
-                value={form.phone}
-                onChangeText={(value) => updateField('phone', value)}
-                keyboardType="phone-pad"
-                error={fieldError('phone', errors)}
-              />
-              <Input
-                label="Street address"
-                value={form.street}
-                onChangeText={(value) => updateField('street', value)}
-                error={fieldError('street', errors)}
-              />
-              <Input
-                label="Apartment"
-                value={form.apartment}
-                onChangeText={(value) => updateField('apartment', value)}
-              />
-              <Input
-                label="City"
-                value={form.city}
-                onChangeText={(value) => updateField('city', value)}
-                error={fieldError('city', errors)}
-              />
-              <Input
-                label="State"
-                value={form.state}
-                onChangeText={(value) => updateField('state', value)}
-                error={fieldError('state', errors)}
-              />
-              <Input
-                label="Postal code"
-                value={form.postalCode}
-                onChangeText={(value) => updateField('postalCode', value)}
-              />
-              <Input
-                label="Country"
-                value={form.country}
-                onChangeText={(value) => updateField('country', value)}
-                error={fieldError('country', errors)}
-              />
-            </View>
-          </Card>
+          <DeliveryAddressBook
+            title="Delivery details"
+            subtitle="Choose where this order goes, or add another address."
+            selectedId={selectedAddressId}
+            onSelect={handleSelectAddress}
+            defaults={addressDefaults}
+            onEditingChange={setAddressEditing}
+          />
 
           <Card style={styles.card}>
             <AppText variant="subtitle">Payment</AppText>
             <AppText variant="body" tone="muted">
-              Card checkout opens in the secure provider page. Returning to WEAZ only triggers backend verification; it never marks payment as complete locally.
+              Card checkout opens in the secure provider page. Returning to WIEZ only triggers backend verification; it never marks payment as complete locally.
             </AppText>
             {message ? (
               <AppText variant="caption" tone={message.includes('Unable') ? 'danger' : 'muted'}>
@@ -382,7 +393,7 @@ export function MobileCheckoutScreen() {
               </View>
             </Pressable>
             <Pressable
-              onPress={() => router.push('/legal/payment-policy' as never)}
+              onPress={() => drillDownPush('/legal/payment-policy' as never)}
               accessibilityRole="button"
               accessibilityLabel="View Payment Policy"
             >
@@ -391,7 +402,7 @@ export function MobileCheckoutScreen() {
             <Button
               title={submitting ? 'Initializing...' : 'Continue to secure payment'}
               loading={submitting}
-              disabled={!hasBagItems || submitting || !paymentPolicyAccepted}
+              disabled={!hasBagItems || submitting || !paymentPolicyAccepted || addressEditing}
               onPress={() => {
                 void beginCheckout();
               }}
@@ -405,6 +416,7 @@ export function MobileCheckoutScreen() {
           </Card>
         </ScrollView>
       </SafeAreaView>
+
     </>
   );
 }

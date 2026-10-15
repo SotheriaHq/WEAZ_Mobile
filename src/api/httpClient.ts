@@ -3,8 +3,22 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 import { env } from '@/src/config/env';
-import { apiHostDevLog, apiHostDevWarn, isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { apiHostDevLog, apiHostDevWarn, isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
 import { finishNetworkTrace, startNetworkTrace } from './networkTrace';
+import { perfEnabled, perfNote } from '@/src/perf/wiezPerf';
+import { createRequestId } from '@/src/utils/requestId';
+import {
+  getCachedDeviceId,
+  getDeviceId,
+  WIEZ_DEVICE_ID_HEADER,
+} from '@/src/utils/deviceId';
+
+/** Monotonic, for the pre-transport gate above the request interceptor. */
+const perfGateNow: () => number = (() => {
+  const perf = (globalThis as { performance?: { now?: () => number } }).performance;
+  if (perf && typeof perf.now === 'function') return () => perf.now!();
+  return () => Date.now();
+})();
 
 const DEFAULT_PORT = 3040;
 const MOBILE_PLATFORM_HEADER = 'x-client-platform';
@@ -65,7 +79,9 @@ function normalizeApiBaseUrl(
     }
 
     if (!parsed.port) {
-      parsed.port = String(DEFAULT_PORT);
+      if (isPrivateOrLoopbackHost(parsed.hostname)) {
+        parsed.port = String(DEFAULT_PORT);
+      }
     }
 
     return parsed.toString().replace(/\/$/, '');
@@ -102,7 +118,13 @@ function buildBaseUrlWithHost(baseUrl: string, hostname: string): string | null 
     const parsed = new URL(baseUrl);
     parsed.hostname = hostname;
     if (!parsed.port) {
-      parsed.port = String(DEFAULT_PORT);
+      if (isPrivateOrLoopbackHost(parsed.hostname)) {
+        parsed.port = String(DEFAULT_PORT);
+      }
+    }
+    // Downgrade SSL protocol to http for private/loopback failover hosts
+    if (isPrivateOrLoopbackHost(parsed.hostname) && parsed.protocol === 'https:') {
+      parsed.protocol = 'http:';
     }
     return parsed.toString().replace(/\/$/, '');
   } catch {
@@ -141,11 +163,19 @@ function getDefaultBaseUrl() {
     );
   }
 
-  // Physical devices cannot use localhost/10.0.2.2 to reach the dev machine.
+  // Physical devices cannot use localhost or 10.0.2.2 to reach the dev machine.
+  // `10.0.2.2` is an Android-emulator-only alias. Starting a real phone there
+  // makes every initial request wait for the full Axios timeout before host
+  // failover can try the LAN address Metro already supplied.
   if (isPhysicalDevice()) {
+    const expoHost = getExpoHostHint();
+    if (expoHost) {
+      return `http://${expoHost}:${DEFAULT_PORT}`;
+    }
+
     if (__DEV__) {
       console.warn(
-        '[api] Running on physical device without EXPO_PUBLIC_API_URL set.\n' +
+        '[api] Running on a physical device without an Expo host or EXPO_PUBLIC_API_URL set.\n' +
         'Set it to your machine\'s local IP, e.g.:\n' +
         'EXPO_PUBLIC_API_URL=http://192.168.x.x:3040 npx expo start'
       );
@@ -184,7 +214,20 @@ function getBaseUrlCandidates(): string[] {
         pushUniqueCandidate(candidates, buildBaseUrlWithHost(configuredUrl, expoHost));
       }
 
-      if (!runningOnPhysicalDevice) {
+      /*
+        Loopback fallbacks are for reaching a LOCAL dev server, so they only
+        make sense when the configured URL is itself local.
+
+        Without the `privateOrLoopback` guard, pointing the app at
+        `https://api.weaz.me` on an emulator produced the candidate list
+        [api.weaz.me, https://10.0.2.2, https://127.0.0.1, https://localhost] —
+        three hosts that cannot possibly serve this API. One transient failure
+        on the real host then walked the client down that list, and with a 15s
+        timeout each, a single request could burn 45 seconds before giving up.
+        That is the 23s `/bag/count` in the device log, and it gets worse the
+        flakier the network is: exactly when the app can least afford it.
+      */
+      if (!runningOnPhysicalDevice && privateOrLoopback) {
         pushUniqueCandidate(
           candidates,
           buildBaseUrlWithHost(configuredUrl, '10.0.2.2'),
@@ -205,7 +248,11 @@ function getBaseUrlCandidates(): string[] {
       if (expoHost && expoHost !== primaryHost && privateOrLoopback) {
         pushUniqueCandidate(candidates, buildBaseUrlWithHost(configuredUrl, expoHost));
       }
-      pushUniqueCandidate(candidates, buildBaseUrlWithHost(configuredUrl, 'localhost'));
+      // Same reasoning as the Android branch: never rewrite a remote host to
+      // localhost.
+      if (privateOrLoopback) {
+        pushUniqueCandidate(candidates, buildBaseUrlWithHost(configuredUrl, 'localhost'));
+      }
     }
   } catch {
     // Keep the configured URL only.
@@ -253,6 +300,70 @@ export const apiClient: AxiosInstance = axios.create({
   },
 });
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Transport-level GET coalescing.
+
+   `coalesceRequest` already exists, but it only helps a call site that opts in
+   — so every screen written since, and every screen that forgot, still issues
+   its own duplicate. A cold start as a brand showed the result plainly:
+
+     GET /collections/market                          x2
+     GET /designs/user/:id?limit=50                   x2
+     GET /store-collections/user/:id?limit=50         x2
+
+   Three redundant round trips that no single call site could see, because the
+   duplication is BETWEEN independent screens warming at the same moment.
+
+   Moving the dedupe into the adapter fixes the whole class at once: any two GETs
+   with the same URL and params, issued while the first is still in flight, share
+   one response. A short settle window also collapses the remount bursts that a
+   tab preloader produces, without behaving like a cache — nobody should see data
+   older than a few seconds from this.
+
+   Scope is deliberately narrow:
+   - GET only. Anything that mutates is never shared.
+   - Requests carrying an AbortSignal opt out, because one caller aborting must
+     not cancel another caller's work.
+   - Failures are never retained; the next caller retries for real.
+   ══════════════════════════════════════════════════════════════════════════ */
+const GET_DEDUPE_WINDOW_MS = 4_000;
+
+type DedupeEntry = {
+  inFlight: Promise<any> | null;
+  response?: any;
+  settledAt?: number;
+};
+
+const getDedupeEntries = new Map<string, DedupeEntry>();
+
+function buildDedupeKey(config: InternalAxiosRequestConfig): string | null {
+  const method = String(config.method ?? 'get').toUpperCase();
+  if (method !== 'GET') return null;
+  if (config.signal) return null;
+  if (config.headers?.['x-no-dedupe']) return null;
+
+  let params = '';
+  try {
+    params = config.params ? JSON.stringify(config.params) : '';
+  } catch {
+    // Unserializable params (a Map, a circular object) mean we cannot prove two
+    // requests are the same, so we do not claim they are.
+    return null;
+  }
+  return `${config.baseURL ?? ''}|${config.url ?? ''}|${params}`;
+}
+
+/** Drop coalesced GETs so the next read goes to the network. */
+export function invalidateGetDedupe(urlFragment?: string) {
+  if (!urlFragment) {
+    getDedupeEntries.clear();
+    return;
+  }
+  for (const key of Array.from(getDedupeEntries.keys())) {
+    if (key.includes(urlFragment)) getDedupeEntries.delete(key);
+  }
+}
+
 const refreshClient: AxiosInstance = axios.create({
   baseURL,
   timeout: 15000,
@@ -284,6 +395,21 @@ let currentAuthToken: string | null = null;
 let currentRefreshToken: string | null = null;
 let unauthorizedHandler: (() => void) | null = null;
 let refreshPromise: Promise<string | null> | null = null;
+
+/**
+ * Set once the server has told us this session is definitively dead (the refresh
+ * token itself was rejected), as opposed to a network blip.
+ *
+ * Without this latch every wave of 401s starts a *fresh* `/auth/refresh` round
+ * trip, because `refreshPromise` clears in its own `finally`. A boot that fans
+ * out ~15 authenticated calls against a dead session therefore pays for several
+ * serial refresh attempts against a slow API — one `bag/count` was measured at
+ * 10.5s. It also cannot succeed: a rejected refresh token stays rejected until
+ * the user signs in again.
+ *
+ * Cleared by `setApiRefreshToken` whenever a real token arrives (sign-in).
+ */
+let refreshTokenRejected = false;
 
 type RetryableConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
@@ -317,7 +443,7 @@ function promoteActiveHostTo(index: number, reason: string) {
   const next = getActiveBaseUrl();
   applyBaseUrl(next);
 
-  if (isThreadlyDebugEnabled('network')) {
+  if (isWiezDebugEnabled('network')) {
     apiHostDevWarn('active-host-pinned', { baseURL: next, reason });
   }
 }
@@ -386,6 +512,8 @@ function summarizeLoginPayload(payload: Record<string, unknown> | null) {
 
 async function refreshAccessToken(): Promise<string | null> {
   if (!currentRefreshToken) return null;
+  // Already told "no" by the server — fail fast instead of re-asking per request.
+  if (refreshTokenRejected) return null;
 
   if (!refreshPromise) {
     refreshPromise = (async () => {
@@ -407,7 +535,13 @@ async function refreshAccessToken(): Promise<string | null> {
         }
 
         return accessToken;
-      } catch {
+      } catch (error) {
+        // Only latch on an explicit rejection. A timeout or offline device must
+        // stay retryable, or a tunnel blip would strand a valid session.
+        const refreshStatus = Number((error as any)?.response?.status ?? 0);
+        if (refreshStatus === 401 || refreshStatus === 403) {
+          refreshTokenRejected = true;
+        }
         return null;
       } finally {
         refreshPromise = null;
@@ -418,7 +552,68 @@ async function refreshAccessToken(): Promise<string | null> {
   return refreshPromise;
 }
 
+/**
+ * Cold-start auth gate.
+ *
+ * The access token lives in SecureStore, so restoring it is asynchronous — but
+ * every screen mounts and starts fetching immediately, and this interceptor
+ * attached whatever `currentAuthToken` happened to be at that instant, which
+ * on a cold start is `null`. The result was a burst of ~15 authenticated
+ * requests going out unauthenticated, all 401-ing, all retried after the token
+ * landed: the entire authenticated cold-start payload, twice, plus a round of
+ * server work spent rejecting requests. One `/bag/count` was measured at
+ * 10.1 seconds because of it.
+ *
+ * Requests now wait for the token state to be KNOWN (which includes knowing
+ * there isn't one). The wait is bounded so a failed restore degrades to the old
+ * behaviour rather than hanging the app, and the unauthenticated `/auth/*`
+ * endpoints are exempt — `/auth/refresh` is what OPENS the gate during a
+ * refresh-token-only restore, so gating it would deadlock.
+ */
+let authHydrated = false;
+let openAuthGate: (() => void) | null = null;
+const authHydrationPromise = new Promise<void>((resolve) => {
+  openAuthGate = resolve;
+});
+const AUTH_HYDRATION_TIMEOUT_MS = 4000;
+
+/** Paths that must never wait on the gate — they run before a token exists. */
+const AUTH_GATE_EXEMPT_PREFIXES = [
+  '/auth/refresh',
+  '/auth/login',
+  '/auth/register',
+  '/auth/google',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/verify-email',
+  '/auth/resend',
+];
+
+export function markApiAuthHydrated() {
+  if (authHydrated) return;
+  authHydrated = true;
+  openAuthGate?.();
+}
+
+function isAuthGateExempt(url?: string): boolean {
+  if (!url) return false;
+  return AUTH_GATE_EXEMPT_PREFIXES.some((prefix) => url.startsWith(prefix));
+}
+
+async function waitForAuthHydration(url?: string): Promise<void> {
+  if (authHydrated || isAuthGateExempt(url)) return;
+  await Promise.race([
+    authHydrationPromise,
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, AUTH_HYDRATION_TIMEOUT_MS);
+    }),
+  ]);
+}
+
 export function setApiAuthToken(token: string | null) {
+  // Any call here means the token state is now known — including `null`, which
+  // is a real answer ("signed out"), not an absence of one.
+  markApiAuthHydrated();
   currentAuthToken = token;
   if (token) {
     apiClient.defaults.headers.common.Authorization = `Bearer ${token}`;
@@ -429,14 +624,127 @@ export function setApiAuthToken(token: string | null) {
 
 export function setApiRefreshToken(token: string | null) {
   currentRefreshToken = token;
+  // A new refresh token means a new session — the previous rejection no longer
+  // applies. Clearing the token (sign-out) also resets the latch so the next
+  // sign-in starts clean.
+  refreshTokenRejected = false;
 }
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler;
 }
 
-apiClient.interceptors.request.use((config) => {
+/*
+  Installed as an adapter rather than an interceptor because an interceptor
+  cannot stop a request from being sent — it can only observe it. The adapter IS
+  the send step, so returning a shared promise here means the second request
+  never touches the network.
+
+  `defaults.adapter` is NOT a function. Since Axios v1 it holds an adapter NAME
+  or a list of them — `["xhr","http","fetch"]` — which Axios resolves at send
+  time. Calling it directly throws `TypeError: Object is not a function` on
+  EVERY request, which is precisely what it did: the whole app lost its API.
+  `axios.getAdapter` turns that list into the real function.
+
+  Resolution is guarded. If Axios ever changes this shape again, the dedupe
+  silently switches itself off rather than taking the transport down with it —
+  losing an optimization is survivable, losing every request is not.
+*/
+let resolvedBaseAdapter: ((config: any) => Promise<any>) | null = null;
+try {
+  const candidate = (axios as any).getAdapter?.(
+    apiClient.defaults.adapter ?? axios.defaults.adapter,
+  );
+  resolvedBaseAdapter = typeof candidate === 'function' ? candidate : null;
+} catch {
+  resolvedBaseAdapter = null;
+}
+
+if (resolvedBaseAdapter) {
+  const send = resolvedBaseAdapter;
+
+  apiClient.defaults.adapter = async function dedupingAdapter(config: any) {
+    const key = buildDedupeKey(config as InternalAxiosRequestConfig);
+    if (!key) return send(config);
+
+    const entry = getDedupeEntries.get(key);
+    if (entry?.inFlight) {
+      if (isWiezDebugEnabled('network')) {
+        console.log(`[api] ⇄ coalesced (in-flight) ${config.url}`);
+      }
+      return entry.inFlight;
+    }
+    if (
+      entry?.settledAt != null &&
+      entry.response !== undefined &&
+      Date.now() - entry.settledAt < GET_DEDUPE_WINDOW_MS
+    ) {
+      if (isWiezDebugEnabled('network')) {
+        console.log(`[api] ⇄ coalesced (settled) ${config.url}`);
+      }
+      return entry.response;
+    }
+
+    if (isWiezDebugEnabled('network')) {
+      // Without this the network log is misleading in the one way that
+      // matters: `[api] GET ...` is printed by the REQUEST INTERCEPTOR, which
+      // runs before this adapter, so a coalesced call still logs a line. Two
+      // identical lines therefore prove two call SITES, not two round trips —
+      // and reading them as round trips sends you optimising a duplicate that
+      // was already being shared. Only lines without a matching `coalesced`
+      // are real network traffic.
+      console.log(`[api] → SEND ${config.method?.toUpperCase()} ${config.url}`);
+    }
+
+    const promise = send(config)
+      .then((response: any) => {
+        getDedupeEntries.set(key, {
+          inFlight: null,
+          response,
+          settledAt: Date.now(),
+        });
+        return response;
+      })
+      .catch((error: unknown) => {
+        // Never retain a failure — the next caller must be free to retry.
+        getDedupeEntries.delete(key);
+        throw error;
+      });
+
+    getDedupeEntries.set(key, { inFlight: promise });
+    return promise;
+  };
+}
+
+apiClient.interceptors.request.use(async (config) => {
   const retryableConfig = config as RetryableConfig;
+
+  /*
+    Everything between here and `startNetworkTrace` below happens BEFORE the
+    request reaches the transport, so it is latency the user pays and T7 does
+    not see. On a cold start `waitForAuthHydration` is the big one: every
+    request in the app queues behind a SecureStore read, and the first screen's
+    whole fan-out therefore cannot start until that resolves. Measuring it
+    separately is what distinguishes "the API is slow" from "we did not ask it
+    anything for 400ms".
+  */
+  const gateStartedAt = perfEnabled() ? perfGateNow() : 0;
+
+  // Hold until the restored token (or its confirmed absence) is known.
+  await waitForAuthHydration(retryableConfig.url);
+
+  if (perfEnabled()) {
+    const waited = perfGateNow() - gateStartedAt;
+    // Sub-millisecond means it was already hydrated; that is the common case
+    // and logging it would drown the cold-start case that matters.
+    if (waited >= 1) {
+      perfNote(
+        'API',
+        'auth_hydration_wait',
+        `${waited.toFixed(1)}ms ${String(retryableConfig.url ?? '').split('?')[0]}`,
+      );
+    }
+  }
 
   const requestBaseUrl =
     retryableConfig.baseURL ?? apiClient.defaults.baseURL ?? getActiveBaseUrl();
@@ -460,10 +768,21 @@ apiClient.interceptors.request.use((config) => {
   if (currentAuthToken) {
     headers.set('Authorization', `Bearer ${currentAuthToken}`);
   }
+  if (!headers.get('x-request-id')) {
+    headers.set('x-request-id', createRequestId());
+  }
+  // Durable install id. The server uses it for exactly one thing — suppressing
+  // a duplicate view count — so it never carries authority. It is what keeps a
+  // view from being counted twice when the same person views something signed
+  // out, signs in, and views it again.
+  if (!headers.get(WIEZ_DEVICE_ID_HEADER)) {
+    const deviceId = getCachedDeviceId() ?? (await getDeviceId());
+    if (deviceId) headers.set(WIEZ_DEVICE_ID_HEADER, deviceId);
+  }
   headers.set(MOBILE_PLATFORM_HEADER, MOBILE_PLATFORM_VALUE);
   retryableConfig.headers = headers;
 
-  if (isThreadlyDebugEnabled('network')) {
+  if (isWiezDebugEnabled('network')) {
     const activeRequestBaseUrl = retryableConfig.baseURL ?? apiClient.defaults.baseURL ?? '';
     console.log(
       `[api] ${retryableConfig.method?.toUpperCase()} ${activeRequestBaseUrl}${retryableConfig.url}`,
@@ -481,19 +800,39 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (res) => {
     finishNetworkTrace(res.config, res);
+
+    /*
+      A successful write invalidates the read cache. All of it.
+
+      `invalidateGetDedupe` was exported and never called from anywhere, so the
+      4-second settle window could answer a read that happened AFTER a write
+      with pre-write data. That is how a shopper types their measurements into
+      the bag fittings sheet, has them saved, and is then asked for the same
+      measurements again by the custom-order composer, whose fields seed from a
+      profile fetched moments earlier.
+
+      Clearing everything rather than guessing which reads a write affects: a
+      resource-scoped guess is wrong the first time a write changes something
+      under a different path — an order that changes a bag count, a save that
+      changes a saved-items list. The window is seconds, so the cost is a
+      handful of redundant reads right after a mutation.
+    */
+    const method = String(res.config?.method ?? 'get').toUpperCase();
+    if (method !== 'GET') invalidateGetDedupe();
+
     const successfulIndex = findCandidateIndex(res.config?.baseURL);
     if (successfulIndex >= 0) {
       promoteActiveHostTo(successfulIndex, `HTTP ${res.status}`);
     }
 
-    if (isThreadlyDebugEnabled('network')) {
+    if (isWiezDebugEnabled('network')) {
       console.log(`[api] ? ${res.status} ${res.config.url}`);
     }
     return res;
   },
   async (error: AxiosError) => {
     finishNetworkTrace(error.config, error.response, error);
-    if (isThreadlyDebugEnabled('network')) {
+    if (isWiezDebugEnabled('network')) {
       console.log(`[api] ? ${error.message}`, {
         url: error.config?.url,
         status: error.response?.status,

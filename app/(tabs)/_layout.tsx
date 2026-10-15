@@ -1,20 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, BackHandler, Platform } from 'react-native';
-import { Tabs, router, usePathname } from 'expo-router';
+import { Tabs, router, useGlobalSearchParams, usePathname, type Href } from 'expo-router';
 
 import {
   NativeIslandBottomNav,
-  NATIVE_ISLAND_NAV,
   type NativeIslandNavItem,
 } from '@/components/navigation/NativeIslandBottomNav';
-import { ProfileMenuDropup } from '@/components/navigation/ProfileMenuDropup';
-import { subscribeToNativeIslandCollapse } from '@/components/navigation/nativeIslandEvents';
 import { useAuth } from '@/src/auth/AuthContext';
-import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
+import { isBrandAccount } from '@/src/auth/brandAccess';
+import { useTheme } from '@/src/theme/ThemeProvider';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { useBagFlow } from '@/src/features/bagging/BagFlowProvider';
-import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
 import {
   refreshUnreadNotificationCount as refreshSharedUnreadNotificationCount,
   useNotificationRealtimeChannel,
@@ -25,44 +23,280 @@ import {
   useMessagingRealtimeChannel,
   useUnreadMessageCount,
 } from '@/src/realtime/messaging';
+import { resolveProfileImageSource } from '@/src/utils/profileImage';
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { navDevLog } from '@/src/features/feed/utils/feedDiagnostics';
-import { applyAndroidSystemBarsPolicy } from '@/src/system/AndroidSystemBars';
+import { navPerf } from '@/src/utils/navPerf';
+import { useCommitCost, useRenderCause } from '@/src/perf/commitCost';
+import {
+  getRunwayFirstMediaVisible,
+  subscribeRunwayFirstMediaVisible,
+} from '@/src/features/feed/utils/runwayReadiness';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { WIEZ_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import {
   NATIVE_ISLAND_ICONS,
   NATIVE_ISLAND_KEYS,
   buildNativeIslandItems,
+  buildStudioIslandItems,
   getNativeIslandRoute,
+  isStudioIslandKey,
+  isStudioIslandPath,
   mapPathnameToIslandKey,
+  mapPathnameToStudioIslandKey,
+  type AnyIslandKey,
   type NativeIslandKey,
 } from '@/src/navigation/nativeIslandConfig';
+import { withNavigationLock, releaseNavigationLock } from '@/src/utils/mobileNavigation';
+import {
+  popIslandTabStackToRoot,
+  registerIslandTabNavigation,
+} from '@/src/navigation/islandTabStack';
+import { requestStudioInPlaceNav } from '@/src/features/studio/studioNavController';
+import { isStudioRouteKey } from '@/src/features/studio/studioRoutes';
+import {
+  fetchShopperProfileWarmState,
+  shopperProfileWarmStateKey,
+} from '@/src/profile/shopperProfileWarmup';
+import { persistScreenState } from '@/src/state/persistentScreenCache';
+import { freezeHiddenTabLayout } from '@/src/navigation/freezeHiddenTabs';
 
-const PROFILE_TAB_DOUBLE_TAP_WINDOW_MS = 260;
+// Keep Runway (`index`) as the tab shell's anchor route now that Catalogue is
+// also a (hidden) tab — without this, adding sibling screens can shift Expo
+// Router's default/initial tab.
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
+// Focused catalogue sub-flows are full-screen editors/viewers that must not be
+// covered by the floating island (matches the pre-migration behaviour when
+// catalogue rendered its own island and hid it for these routes). `/catalog`
+// and the visitor `/catalog/[brandId]` keep the island.
+const FOCUSED_CATALOG_FLOW = /^\/catalog\/(view|create-design|create-collection|edit-profile)(\/|$)/;
+
+type ExpoTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
+type HiddenTabNavigation = ExpoTabBarProps['navigation'];
+type TabNavigationActionType = 'JUMP_TO' | 'PRELOAD';
+
+// Route preload mounts an entire hidden screen and begins its own queries. On a
+// constrained phone, doing that while the first Runway image is decoding turns
+// startup into a CPU, memory, and network contention storm. Market is the only
+// automatic warm target, and only after the reader has seen Runway; every other
+// island tab mounts on the tap that opens it.
+const TAB_PRELOAD_FALLBACK_DELAY_MS = 8_000;
+
+/**
+ * The root path of every island destination, with `/(tabs)` stripped.
+ *
+ * `JUMP_TO` is only safe from one of these — see the note in
+ * `jumpToIslandTab`. Keep in step with `getNativeIslandRoute`.
+ */
+const TAB_ROOT_PATHS = new Set(['/', '/(tabs)', '/discover', '/inbox', '/charts', '/catalog', '/me']);
+
+function createTabNavigationAction(type: TabNavigationActionType, name: string) {
+  return {
+    type,
+    payload: { name },
+  };
+}
+
+function getFocusedTabName(navigation: HiddenTabNavigation | null) {
+  const state = navigation?.getState();
+  if (!state) return null;
+  return state.routes[state.index]?.name ?? null;
+}
+
+function hasTabRoute(navigation: HiddenTabNavigation | null, name: string) {
+  const state = navigation?.getState();
+  if (!state) return false;
+  return state.routeNames.includes(name) || state.routes.some((route) => route.name === name);
+}
+
+function getIslandTabRouteName(key: string, isBrand: boolean) {
+  if (key === NATIVE_ISLAND_KEYS.designs) return 'index';
+  if (key === NATIVE_ISLAND_KEYS.market) return 'discover';
+  if (key === NATIVE_ISLAND_KEYS.inbox) return 'inbox';
+  if (key === NATIVE_ISLAND_KEYS.charts) return 'charts';
+  if (key === NATIVE_ISLAND_KEYS.profile) return isBrand ? 'catalog' : 'me';
+  return null;
+}
+
+function getIslandNavFlow(item: NativeIslandNavItem, isBrand: boolean, isAuthenticated: boolean) {
+  if (item.key === NATIVE_ISLAND_KEYS.designs) return 'tabs→runway';
+  if (item.key === NATIVE_ISLAND_KEYS.market) return 'tabs→market';
+  if (item.key === NATIVE_ISLAND_KEYS.inbox) return 'tabs→inbox';
+  if (item.key === NATIVE_ISLAND_KEYS.bag) return 'tabs→bag';
+  if (item.key === NATIVE_ISLAND_KEYS.charts) return 'tabs→charts';
+  if (item.key === NATIVE_ISLAND_KEYS.profile) {
+    if (!isAuthenticated) return 'tabs→login';
+    return isBrand ? 'tabs→catalog' : 'tabs→me';
+  }
+  return `tabs→${item.key}`;
+}
 
 export default function TabLayout() {
-  const { scheme, theme } = useTheme();
+  /*
+    First, so the measurement covers this whole render.
+
+    This component is the prime suspect for T1->T3 and has to be able to clear
+    itself or be convicted. It holds `optimisticActiveKey` in state AND renders
+    the `<Tabs>` navigator with all ten screens, so every island press sets
+    state on the owner of the navigator — in the same batch as the navigation
+    dispatch, which expo-router forces synchronous. If that is where the time
+    goes, this label carries it. If it does not, the number says so and the
+    suspicion is dropped rather than acted on.
+  */
+  useCommitCost('TabShell');
+  const { theme } = useTheme();
   const { status, token, user } = useAuth();
   const toast = useToast();
   const bagFlow = useBagFlow();
-  const { count: bagCount, refreshGlobalBagCount } = useBagCount();
+  const { count: bagCount } = useBagCount();
   const pathname = usePathname();
+  const globalParams = useGlobalSearchParams<{
+    routeKey?: string | string[];
+    surface?: string | string[];
+  }>();
+  const studioRouteKeyParam = Array.isArray(globalParams.routeKey)
+    ? globalParams.routeKey[0]
+    : globalParams.routeKey;
+  /**
+   * Set by `getStudioIslandTarget` when a Studio chip leads to a native screen
+   * that does not live under `/studio/...` — currently Messages. It is what
+   * keeps the Studio dock on screen instead of the shopper one.
+   */
+  const studioSurfaceParam = Array.isArray(globalParams.surface)
+    ? globalParams.surface[0]
+    : globalParams.surface;
   const { windowWidth, islandLayout } = useScreenChrome();
-  const [profileMenuVisible, setProfileMenuVisible] = useState(false);
-  const [isIslandExpanded, setIsIslandExpanded] = useState(false);
   const unreadNotificationCount = useUnreadNotificationCount();
   const unreadMessageCount = useUnreadMessageCount();
   const [notificationCountReady, setNotificationCountReady] = useState(false);
   const [messageCountReady, setMessageCountReady] = useState(false);
+  const inStudioIsland = isStudioIslandPath(pathname, studioSurfaceParam);
+  const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
+  /**
+   * The Studio's setup routes. Being on one is proof setup is unfinished and
+   * needs no network to establish — `storeSetupComplete` is null for as long as
+   * /store/status is in flight, which is exactly the window a brand spends
+   * walking through setup with every dock chip live.
+   */
+  const inStoreSetupRoute =
+    studioRouteKeyParam === 'setup' || studioRouteKeyParam === 'essentials';
   const lastBackPressAtRef = useRef(0);
-  const lastProfileTabPressAtRef = useRef(0);
-  const profileTabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [optimisticActiveKey, setOptimisticActiveKey] = useState<NativeIslandKey | null>(null);
+  const lastNotificationRefreshAttemptAtRef = useRef(0);
+  const lastMessageRefreshAttemptAtRef = useRef(0);
+  const pendingRouteFrameRef = useRef<number | null>(null);
+  const tabNavigationRef = useRef<HiddenTabNavigation | null>(null);
+  const preloadedTabNamesRef = useRef<Set<string>>(new Set());
+  const [optimisticActiveKey, setOptimisticActiveKey] = useState<AnyIslandKey | null>(null);
+  /*
+    Every input this component reads, compared against the last render.
 
-  const isBrand = hasActiveBrandMembership(user);
+    The 2026-10-12 capture put `TabShell`, `Runway` and `Market` at identical
+    counts — 18, 21, 24 on separate flows — with no `P:*` provider label
+    recording anything at all. That combination disproved the context-broadcast
+    reading twice inferred from it, and left no candidate, because the ledger
+    cannot tell a component that re-rendered on its own input from one an
+    ancestor re-rendered. This names which.
+
+    `TabShell:parent` would mean nothing below is at fault and the cause is
+    above this file; any other key names the input to stabilise. The list is
+    deliberately exhaustive — a missing input would be silently misreported as
+    `parent` and send the search one level too high.
+  */
+  useRenderCause('TabShell', {
+    pathname,
+    routeKey: studioRouteKeyParam,
+    surface: studioSurfaceParam,
+    theme,
+    authStatus: status,
+    token,
+    user,
+    toast,
+    bagFlow,
+    bagCount,
+    windowWidth,
+    islandLayout,
+    notifCount: unreadNotificationCount,
+    msgCount: unreadMessageCount,
+    notifReady: notificationCountReady,
+    msgReady: messageCountReady,
+    storeSetupComplete,
+    optimisticActiveKey,
+  });
+  // Pathname the current prediction was made from — see `predictActiveKey`.
+  const optimisticFromPathnameRef = useRef<string | null>(null);
+  const optimisticExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest pathname, readable from stable callbacks without making them churn.
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+
+  /**
+   * Record WHERE the prediction was made from, alongside the prediction.
+   *
+   * `optimisticActiveKey` outranks the pathname-derived key so a tapped chip
+   * lights up before its screen mounts. That is only safe while the prediction
+   * is still pending, and "pending" is exactly "the route has not moved yet" —
+   * which needs the origin pathname to detect. Without it, a prediction that
+   * turns out WRONG is indistinguishable from one still in flight.
+   */
+  const predictActiveKey = useCallback((key: AnyIslandKey) => {
+    optimisticFromPathnameRef.current = pathnameRef.current;
+    setOptimisticActiveKey(key);
+  }, []);
+
+  /*
+    Identity, not capability. The Profile chip picks between `/catalog` and
+    `/(tabs)/me` from this, and `hasActiveBrandMembership` is false until a
+    store exists — so a brand that had just verified its email was sent to the
+    shopper screen, which then requested buyer-only endpoints and got
+    `400 Endpoint requires user type REGULAR`.
+  */
+  const isBrand = isBrandAccount(user);
+
+  /**
+   * A freshly signed-in shopper has no on-disk snapshot (it was deliberately
+   * cleared on the previous sign-out). Warm the complete Me payload from the
+   * tab shell, before they tap the profile island item. The cancellation guard
+   * is an account-isolation boundary: an old request may finish, but it can
+   * never repopulate the cache after its owner signs out or switches account.
+   */
+  useEffect(() => {
+    if (status !== 'authenticated' || !user?.id || isBrand) return undefined;
+
+    let active = true;
+    const userId = user.id;
+    void fetchShopperProfileWarmState(userId)
+      .then((snapshot) => {
+        if (!active || !snapshot) return;
+        persistScreenState(shopperProfileWarmStateKey(userId), snapshot);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, [isBrand, status, user?.id]);
+
   const canOpenProfileMenu = status === 'authenticated';
-  const profileNavLabel = canOpenProfileMenu ? 'Me' : 'Sign In';
-  const profileNavEmoji = canOpenProfileMenu ? NATIVE_ISLAND_ICONS.profile : NATIVE_ISLAND_ICONS.signIn;
-  const { bottomOffset: islandBottomOffset, islandWidth } = islandLayout;
+  const profileNavLabel = status === 'loading' || canOpenProfileMenu ? 'Me' : 'Sign In';
+  const profileNavEmoji = status === 'loading' || canOpenProfileMenu
+    ? NATIVE_ISLAND_ICONS.profile
+    : NATIVE_ISLAND_ICONS.signIn;
+  // Resolve the signed-in user's profile photo so the "Me" island item shows the
+  // real avatar instead of the default 👤 emoji. Falls back to the emoji when no
+  // image is available or while it resolves.
+  const profileAvatarSource = resolveProfileImageSource(user);
+  const { uri: profileAvatarResolvedUri } = useResolvedImageAsset({
+    src: profileAvatarSource.src,
+    fileId: profileAvatarSource.fileId,
+    enabled: canOpenProfileMenu && Boolean(profileAvatarSource.src || profileAvatarSource.fileId),
+  });
+  const profileNavAvatarUri = canOpenProfileMenu
+    ? profileAvatarResolvedUri ?? profileAvatarSource.src ?? null
+    : null;
+  const { islandWidth } = islandLayout;
   const isRootTabPath =
     pathname === '/' ||
     pathname === '/discover' ||
@@ -71,11 +305,18 @@ export default function TabLayout() {
     pathname === '/(tabs)';
 
   const activeIslandKey = useMemo(() => {
+    if (inStudioIsland) {
+      return mapPathnameToStudioIslandKey(pathname, studioRouteKeyParam);
+    }
     return mapPathnameToIslandKey(pathname);
-  }, [pathname]);
-  const displayedActiveKey = optimisticActiveKey ?? activeIslandKey;
+  }, [inStudioIsland, pathname, studioRouteKeyParam]);
+  const displayedActiveKey = bagFlow?.isMyBagOpen && !inStudioIsland
+    ? NATIVE_ISLAND_KEYS.bag
+    : optimisticActiveKey ?? activeIslandKey;
+  const hideIslandForFocusedFlow = FOCUSED_CATALOG_FLOW.test(pathname);
 
   const refreshUnreadNotificationCount = useCallback(async () => {
+    lastNotificationRefreshAttemptAtRef.current = Date.now();
     const ready = await refreshSharedUnreadNotificationCount({
       authenticated: status === 'authenticated',
     });
@@ -83,100 +324,290 @@ export default function TabLayout() {
   }, [status]);
 
   const refreshUnreadMessageCount = useCallback(async () => {
+    lastMessageRefreshAttemptAtRef.current = Date.now();
     const ready = await refreshSharedUnreadMessageCount({
       authenticated: status === 'authenticated',
     });
     setMessageCountReady(ready);
   }, [status]);
 
-  const clearProfileTabTimer = useCallback(() => {
-    if (profileTabTimerRef.current) {
-      clearTimeout(profileTabTimerRef.current);
-      profileTabTimerRef.current = null;
-    }
+  const cancelPendingRouteFrame = useCallback(() => {
+    if (pendingRouteFrameRef.current === null) return;
+    cancelAnimationFrame(pendingRouteFrameRef.current);
+    pendingRouteFrameRef.current = null;
   }, []);
 
+  const renderHiddenTabBar = useCallback((props: ExpoTabBarProps) => {
+    tabNavigationRef.current = props.navigation;
+    registerIslandTabNavigation(
+      props.navigation as Parameters<typeof registerIslandTabNavigation>[0],
+    );
+    return null;
+  }, []);
+
+  const dispatchTabNavigationAction = useCallback((type: TabNavigationActionType, name: string) => {
+    const navigation = tabNavigationRef.current;
+    if (!hasTabRoute(navigation, name)) {
+      return false;
+    }
+
+    if (type === 'PRELOAD' && getFocusedTabName(navigation) === name) {
+      return true;
+    }
+
+    navigation?.dispatch(createTabNavigationAction(type, name));
+    return true;
+  }, []);
+
+  const jumpToIslandTab = useCallback(
+    (tabName: string, fallbackRoute: string) => {
+      navPerf.routeCallStart(tabName, { target: fallbackRoute });
+      /*
+        JUMP_TO changes which TAB is focused. That is all it does.
+
+        It does not pop the focused tab's own nested stack, and it does not
+        dismiss a root-stack screen sitting on top of the whole tab shell. Both
+        of those are reachable in one tap and both made the island lie:
+
+          - Catalogue is a nested Stack (`index` + `[brandId]`). Open another
+            brand from the Runway, then press the island's own chip: JUMP_TO
+            focused the catalogue tab, which was still parked on `[brandId]`.
+            The chip read "me" and the screen was somebody else's catalogue in
+            visitor mode. Pressing again did the same thing, so there was no way
+            out but a relaunch.
+          - `/profile/[id]` is a ROOT-stack route, above the tab shell entirely.
+            JUMP_TO re-focused a tab underneath it and left the profile on
+            screen, so the press appeared to do nothing at all.
+
+        Pop the DESTINATION tab's nested stack first, then focus it. The screen
+        you are leaving being a tab root does not mean the tab you are opening
+        is at its root: Runway is `/`, and Catalogue can still be parked on
+        `[brandId]` — including when that visitor screen is the only route in
+        the stack, which is what Back leaves behind when it falls through to
+        Runway. `JUMP_TO` from there re-focused that visitor screen. The pop
+        is targeted at the nested stack, so it runs whether or not that tab
+        is the one on screen.
+
+        From anywhere that is not a tab root, `router.navigate` still has to
+        run afterwards. A root-stack screen such as `/profile/[id]` sits above
+        the tab shell, and `JUMP_TO` leaves it in place.
+
+        `pathnameRef` is read instead of `pathname` so this callback stays
+        stable and does not churn the island on every route change.
+      */
+      popIslandTabStackToRoot(tabName);
+      const normCurrent = String(pathnameRef.current ?? '').replace('/(tabs)', '');
+      const atTabRoot = TAB_ROOT_PATHS.has(normCurrent);
+      if (atTabRoot && dispatchTabNavigationAction('JUMP_TO', tabName)) {
+        navPerf.routeCallEnd(tabName, { target: fallbackRoute });
+        return;
+      }
+      if (!atTabRoot) {
+        navPerf.mark?.('tab_jump_needs_pop', normCurrent);
+      }
+
+      router.navigate(fallbackRoute as any);
+      navPerf.routeCallEnd(tabName, { target: fallbackRoute });
+    },
+    [dispatchTabNavigationAction],
+  );
+
+  const preloadIslandTab = useCallback(
+    (tabName: string) => {
+      if (preloadedTabNamesRef.current.has(tabName)) {
+        navDevLog('tab-preload-skipped', { tabName, reason: 'already-preloaded' });
+        return false;
+      }
+
+      if (dispatchTabNavigationAction('PRELOAD', tabName)) {
+        preloadedTabNamesRef.current.add(tabName);
+        navDevLog('tab-preload-start', { tabName, startedAt: Date.now() });
+        return true;
+      }
+      navDevLog('tab-preload-skipped', { tabName, reason: 'tab-navigation-not-ready' });
+      return false;
+    },
+    [dispatchTabNavigationAction],
+  );
+
+  const scheduleRouteAfterFrame = useCallback((navFlow: string, run: () => void) => {
+    // Run in the tap turn. Yielding a frame let the pill paint on the screen
+    // being left — Me stayed lit on Runway for as long as the feed kept the
+    // JavaScript thread busy, which on device was many seconds.
+    cancelPendingRouteFrame();
+    navPerf.routeScheduled(navFlow);
+    navPerf.frameYieldBeforeRoute(navFlow);
+    run();
+  }, [cancelPendingRouteFrame]);
+
+  useEffect(() => cancelPendingRouteFrame, [cancelPendingRouteFrame]);
+
+  useEffect(() => {
+    // Only Market. Mounting Inbox, Me, and Charts beside a live Runway feed
+    // saturated the JavaScript thread, so a tap's route could not run and the
+    // pill sat on the screen being left. Those tabs mount on the tap itself.
+    const nextTabsToWarm = ['discover'];
+
+    let cancelled = false;
+    let preloadTimers: Array<ReturnType<typeof setTimeout>> = [];
+    let earlyTimer: ReturnType<typeof setTimeout> | null = null;
+    let scheduled = false;
+
+    const schedulePreloads = (reason: string, firstMediaAt?: number) => {
+      if (cancelled || scheduled || preloadTimers.length > 0) return;
+      scheduled = true;
+      if (earlyTimer) {
+        clearTimeout(earlyTimer);
+        earlyTimer = null;
+      }
+      navDevLog('tab-preload-scheduled', {
+        scheduledAt: Date.now(),
+        reason,
+        firstMediaAt: firstMediaAt ?? null,
+        tabNames: nextTabsToWarm,
+      });
+      // Stagger lightly but do not wait for InteractionManager — that API can
+      // delay many seconds while Runway carousels keep interactions busy.
+      preloadTimers = nextTabsToWarm.map((tabName, index) =>
+        setTimeout(() => {
+          if (!cancelled) preloadIslandTab(tabName);
+        }, 80 + index * 180),
+      );
+    };
+
+    const firstMedia = getRunwayFirstMediaVisible();
+    const unsubscribe = firstMedia
+      ? (() => {
+          schedulePreloads('first-media-visible', firstMedia.timestamp);
+          return () => undefined;
+        })()
+      : subscribeRunwayFirstMediaVisible((event) => {
+          schedulePreloads('first-media-visible', event.timestamp);
+        });
+
+    // An empty or offline Runway still receives a bounded, delayed warm.
+    earlyTimer = setTimeout(() => {
+      schedulePreloads('early-warm');
+    }, TAB_PRELOAD_FALLBACK_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      if (earlyTimer) clearTimeout(earlyTimer);
+      preloadTimers.forEach((timer) => clearTimeout(timer));
+    };
+  }, [preloadIslandTab]);
+
   const navigateToProfile = useCallback(() => {
-    clearProfileTabTimer();
-    lastProfileTabPressAtRef.current = 0;
-    setProfileMenuVisible(false);
-    setOptimisticActiveKey(NATIVE_ISLAND_KEYS.profile);
-    router.push((isBrand ? '/catalog' : '/(tabs)/me') as any);
-  }, [clearProfileTabTimer, isBrand]);
+    const target = isBrand ? '/catalog' : '/(tabs)/me';
+
+    // The `profile` key returns early in `handleSelect`, so it never reached the
+    // same-target check or the navigation lock that every other island key gets.
+    // Tapping Profile while already on Profile re-navigated, and rapid taps were
+    // not deduped at all — the one island key exempt from both protections.
+    const normTarget = target.replace('/(tabs)', '');
+    const normCurrent = String(pathname).replace('/(tabs)', '');
+    if (normTarget === normCurrent) {
+      navPerf.mark?.('navigation_same_target_ignored', target);
+      return;
+    }
+
+    predictActiveKey(NATIVE_ISLAND_KEYS.profile);
+    // navigate (not push) so an already-mounted Catalogue/Me instance is reused
+    // instead of mounting a fresh copy on every visit.
+    const navFlow = isBrand ? 'tabs→catalog' : 'tabs→me';
+    navPerf.setContext(pathname, target, pathname);
+    const locked = withNavigationLock(target as Href, () => {
+      scheduleRouteAfterFrame(navFlow, () => {
+        navPerf.navigationCalled(navFlow);
+        navPerf.routeCallStart(navFlow, { target });
+        jumpToIslandTab(isBrand ? 'catalog' : 'me', target);
+        navPerf.routeCallEnd(navFlow, { target });
+      });
+      return true;
+    }, { force: false });
+    if (!locked) {
+      navPerf.mark?.('navigation_ignored_duplicate', target);
+    }
+  }, [isBrand, jumpToIslandTab, pathname, predictActiveKey, scheduleRouteAfterFrame]);
 
   const handleProfilePress = useCallback(
     () => {
       if (!canOpenProfileMenu) {
-        clearProfileTabTimer();
-        lastProfileTabPressAtRef.current = 0;
-        router.replace({ pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as any);
+        const navFlow = 'tabs→login';
+        scheduleRouteAfterFrame(navFlow, () => {
+          navPerf.navigationCalled(navFlow);
+          navPerf.routeCallStart(navFlow, { target: '/(auth)/login' });
+          router.replace({ pathname: '/(auth)/login', params: { next: '/(tabs)/me' } } as any);
+          navPerf.routeCallEnd(navFlow, { target: '/(auth)/login' });
+        });
         return;
       }
 
-      const now = Date.now();
-      const isDoubleTap = now - lastProfileTabPressAtRef.current <= PROFILE_TAB_DOUBLE_TAP_WINDOW_MS;
-      clearProfileTabTimer();
-
-      if (isDoubleTap) {
-        navigateToProfile();
-        return;
-      }
-
-      lastProfileTabPressAtRef.current = now;
-      profileTabTimerRef.current = setTimeout(() => {
-        profileTabTimerRef.current = null;
-        lastProfileTabPressAtRef.current = 0;
-        setProfileMenuVisible(true);
-      }, PROFILE_TAB_DOUBLE_TAP_WINDOW_MS);
+      navigateToProfile();
     },
-    [canOpenProfileMenu, clearProfileTabTimer, navigateToProfile],
+    [canOpenProfileMenu, navigateToProfile, scheduleRouteAfterFrame],
   );
 
   const clearSelectionState = useCallback(() => {
+    optimisticFromPathnameRef.current = null;
     setOptimisticActiveKey(null);
   }, []);
 
   const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
-    if (!item.disabled && item.key !== NATIVE_ISLAND_KEYS.bag && item.key !== NATIVE_ISLAND_KEYS.profile) {
-      setOptimisticActiveKey(item.key as NativeIslandKey);
+    if (item.disabled) return;
+    predictActiveKey(item.key);
+  }, [predictActiveKey]);
+
+  const islandItems = useMemo<NativeIslandNavItem[]>(() => {
+    // Inside Studio the dock must show Studio destinations (Dashboard, Store,
+    // Orders, …) — same contract as web StudioSidebar / IslandBottomNav. Leaving
+    // the main WIEZ island up made the surface look like the brand never left
+    // the consumer app.
+    if (inStudioIsland) {
+      return buildStudioIslandItems({
+        activeKey: String(displayedActiveKey),
+        messagesBadge:
+          canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
+        storeSetupComplete,
+        isOnSetupRoute: inStoreSetupRoute,
+      });
     }
-  }, []);
 
-  const islandItems = useMemo<NativeIslandNavItem[]>(
-    () =>
-      buildNativeIslandItems({
-        activeKey: displayedActiveKey,
-        isBrand,
-        profileLabel: profileNavLabel,
-        profileIcon: profileNavEmoji,
-        profileBadge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
-        inboxBadge: canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
-        bagBadge: bagCount.combinedCount,
-      }),
-    [
-      bagCount.combinedCount,
-      canOpenProfileMenu,
-      displayedActiveKey,
+    return buildNativeIslandItems({
+      activeKey: displayedActiveKey as NativeIslandKey,
       isBrand,
-      messageCountReady,
-      notificationCountReady,
-      profileNavEmoji,
-      profileNavLabel,
-      unreadMessageCount,
-      unreadNotificationCount,
-    ],
-  );
-
-  useEffect(() => {
-    const unsubscribe = subscribeToNativeIslandCollapse(() => {
-      setIsIslandExpanded(false);
-    });
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    return () => clearProfileTabTimer();
-  }, [clearProfileTabTimer]);
+      profileLabel: profileNavLabel,
+      profileIcon: profileNavEmoji,
+      profileAvatarUri: profileNavAvatarUri,
+      profileBadge: canOpenProfileMenu && notificationCountReady ? unreadNotificationCount : undefined,
+      inboxBadge: canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
+      bagBadge: bagCount.combinedCount,
+    }).map((item) => ({
+      ...item,
+      disabled:
+        status === 'loading' &&
+        (item.key === NATIVE_ISLAND_KEYS.inbox || item.key === NATIVE_ISLAND_KEYS.profile),
+      navFlow: getIslandNavFlow(item, isBrand, canOpenProfileMenu),
+      targetRoute: getNativeIslandRoute(item.key, isBrand),
+    }));
+  }, [
+    bagCount.combinedCount,
+    canOpenProfileMenu,
+    displayedActiveKey,
+    inStoreSetupRoute,
+    inStudioIsland,
+    isBrand,
+    messageCountReady,
+    storeSetupComplete,
+    notificationCountReady,
+    profileNavAvatarUri,
+    profileNavEmoji,
+    profileNavLabel,
+    status,
+    unreadMessageCount,
+    unreadNotificationCount,
+  ]);
 
   useEffect(() => {
     navDevLog('island-layout', {
@@ -186,71 +617,260 @@ export default function TabLayout() {
       labels: islandItems.map((item) => item.label),
       activeKey: displayedActiveKey,
       compact: islandItems.length >= 6 || windowWidth < 380,
-      collapsed: !isIslandExpanded,
       windowWidth,
       islandWidth,
     });
-  }, [displayedActiveKey, isIslandExpanded, islandItems, islandWidth, pathname, windowWidth]);
+  }, [displayedActiveKey, islandItems, islandWidth, pathname, windowWidth]);
 
   useEffect(() => {
-    clearProfileTabTimer();
-    lastProfileTabPressAtRef.current = 0;
-    setIsIslandExpanded(false);
-  }, [clearProfileTabTimer, pathname]);
+    navPerf.setContext(null, null, pathname);
+    navPerf.pathChanged(pathname);
+    // Sync for central guard same-target check.
+    //
+    // Inside Studio the destination identity is (pathname + routeKey), not the
+    // pathname alone — every section lives at `/studio`. Publishing the bare
+    // pathname made the guard compare `/studio?routeKey=store` against
+    // `/studio` for section chips (always different, so they worked) but
+    // `/studio` against `/studio` for the Dashboard chip (always equal, so it
+    // never fired). Carry the routeKey so both sides describe the same thing.
+    (global as any).__navCurrentPathname =
+      inStudioIsland && studioRouteKeyParam ? `${pathname}?routeKey=${studioRouteKeyParam}` : pathname;
+    // Release lock if matches pending target.
+    //
+    // `studioRouteKeyParam` is in the deps on purpose: a Studio section switch
+    // keeps `pathname` at `/studio` and only swaps `?routeKey=`, so a
+    // pathname-only effect never fired and the lock sat until its 1100ms
+    // timeout — making consecutive dock taps feel dead.
+    releaseNavigationLock('path_match');
+  }, [inStudioIsland, pathname, studioRouteKeyParam]);
 
   const handleSelect = useCallback(
     (item: NativeIslandNavItem) => {
+      // Studio dock: WebView sections switch in-place; Finance/Messages leave
+      // the WebView. Going through `router.navigate` for a WebView chip waited
+      // a React commit before the injector ran, and mashed taps stacked reloads.
+      if (isStudioIslandKey(item.key) || inStudioIsland) {
+        const nextPath = item.targetRoute;
+        if (!nextPath) return;
+        const nextHref = item.targetParams
+          ? ({ pathname: nextPath, params: item.targetParams } as Href)
+          : (nextPath as Href);
+        const lockKey = item.targetParams
+          ? `${nextPath}?${Object.entries(item.targetParams)
+              .map(([k, v]) => `${k}=${v}`)
+              .join('&')}`
+          : nextPath;
+        const activeNow = mapPathnameToStudioIslandKey(pathname, studioRouteKeyParam);
+        if (activeNow === item.key) {
+          navPerf.mark?.('navigation_same_target_ignored', lockKey);
+          return;
+        }
+        const navFlow = item.navFlow ?? `studio→${item.key}`;
+        navPerf.setContext(pathname, lockKey, pathname);
+
+        const webviewRouteKey = item.targetParams?.routeKey
+          ?? (item.key === 'overview' ? 'overview' : undefined);
+        const onStudioWebView =
+          pathname === '/studio' ||
+          pathname === '/studio/webview' ||
+          (pathname.startsWith('/studio') &&
+            !pathname.startsWith('/studio/finance') &&
+            !pathname.startsWith('/studio/staff') &&
+            !pathname.startsWith('/studio/resolve-alias'));
+        const canInjectWebView =
+          Boolean(webviewRouteKey && isStudioRouteKey(webviewRouteKey)) &&
+          item.key !== 'finance' &&
+          item.key !== 'messages';
+
+        const locked = withNavigationLock(lockKey as Href, () => {
+          navPerf.navigationCalled(navFlow);
+          navPerf.routeCallStart(navFlow, { target: lockKey });
+
+          if (canInjectWebView && isStudioRouteKey(webviewRouteKey)) {
+            const injected = requestStudioInPlaceNav(webviewRouteKey);
+            if (injected && onStudioWebView) {
+              router.setParams({
+                routeKey: webviewRouteKey === 'overview' ? '' : webviewRouteKey,
+              } as any);
+              releaseNavigationLock('studio_in_place');
+              navPerf.routeCallEnd(navFlow, { target: lockKey });
+              return true;
+            }
+            if (injected) {
+              // WebView already received the hop. Focus the Studio tab / pop
+              // Finance without minting a second WebView (singular index).
+              router.navigate(nextHref as any);
+              releaseNavigationLock('studio_in_place_focus');
+              navPerf.routeCallEnd(navFlow, { target: lockKey });
+              return true;
+            }
+          }
+
+          router.navigate(nextHref as any);
+          navPerf.routeCallEnd(navFlow, { target: lockKey });
+          return true;
+        }, { force: false });
+        if (!locked) {
+          navPerf.mark?.('navigation_ignored_duplicate', lockKey);
+        }
+        return;
+      }
+
       if (item.key === 'profile') {
         handleProfilePress();
         return;
       }
 
-      if (item.key !== NATIVE_ISLAND_KEYS.bag) {
-        setOptimisticActiveKey(item.key as NativeIslandKey);
-      }
-
       if (item.key === 'bag') {
-        clearProfileTabTimer();
-        lastProfileTabPressAtRef.current = 0;
-        setProfileMenuVisible(false);
+        cancelPendingRouteFrame();
         bagFlow?.openMyBag();
-        void refreshGlobalBagCount();
+        navPerf.bagSheetOpened();
         return;
       }
 
-      clearProfileTabTimer();
-      lastProfileTabPressAtRef.current = 0;
-      setProfileMenuVisible(false);
-
-      const nextRoute = getNativeIslandRoute(item.key, isBrand);
+      const nextRoute = item.targetRoute ?? getNativeIslandRoute(item.key, isBrand);
       if (nextRoute) {
-        router.replace(nextRoute as any);
+        const normNext = String(nextRoute).replace('/(tabs)', '');
+        const normCurrent = String(pathname).replace('/(tabs)', '');
+        if (normNext === normCurrent && item.key !== 'bag') {
+          navPerf.mark?.('navigation_same_target_ignored', String(nextRoute));
+          return;
+        }
+        const navFlow = item.navFlow ?? getIslandNavFlow(item, isBrand, canOpenProfileMenu);
+        const tabRouteName = getIslandTabRouteName(item.key, isBrand);
+        // Always seed the nav-perf context so every event in this flow carries
+        // source/target/pathname (Phase 2: "ensure setContext is always passed").
+        navPerf.setContext(pathname, String(nextRoute), pathname);
+        // Phase 2: use the central lock to dedupe rapid island taps. The action
+        // returns a truthy sentinel so a successful dispatch is distinguishable
+        // from a deduped tap (which returns undefined) — without it the duplicate
+        // marker would fire on every successful navigation.
+        const locked = withNavigationLock(nextRoute as Href, () => {
+          scheduleRouteAfterFrame(navFlow, () => {
+            navPerf.navigationCalled(navFlow);
+            navPerf.routeCallStart(navFlow, { target: nextRoute });
+            if (tabRouteName) {
+              jumpToIslandTab(tabRouteName, nextRoute);
+              releaseNavigationLock('tab_jump');
+              navPerf.routeCallEnd(navFlow, { target: nextRoute });
+              return;
+            }
+
+            router.navigate(nextRoute as any);
+            navPerf.routeCallEnd(navFlow, { target: nextRoute });
+          });
+          return true;
+        }, { force: false });
+        if (!locked) {
+          navPerf.mark?.('navigation_ignored_duplicate', String(nextRoute));
+        }
       }
     },
-    [bagFlow, clearProfileTabTimer, handleProfilePress, isBrand, refreshGlobalBagCount],
+    [
+      bagFlow,
+      cancelPendingRouteFrame,
+      canOpenProfileMenu,
+      handleProfilePress,
+      inStudioIsland,
+      isBrand,
+      jumpToIslandTab,
+      pathname,
+      scheduleRouteAfterFrame,
+      studioRouteKeyParam,
+    ],
   );
 
+  /*
+    Retire the prediction once the route has actually moved.
+
+    This used to clear ONLY on `resolved === optimisticActiveKey` — i.e. only
+    when the guess came true. A guess that came out wrong was never retired, so
+    the stale chip kept outranking the real one for the rest of the session.
+
+    That is not a corner case. Tap Me with an expired session: the prediction
+    says `profile`, the screen resolves to the guest state, and its "Back to
+    Runway" lands on `designs`. Runway is on screen with Me still lit, and
+    every later navigation stays wrong too, because nothing clears it.
+
+    A prediction is pending only while the route has not moved. Once `pathname`
+    differs from where the guess was made, the answer is in — whether or not it
+    is the answer we predicted.
+  */
   useEffect(() => {
-    if (optimisticActiveKey && mapPathnameToIslandKey(pathname) === optimisticActiveKey) {
+    if (!optimisticActiveKey) return;
+    const resolved = inStudioIsland
+      ? mapPathnameToStudioIslandKey(pathname, studioRouteKeyParam)
+      : mapPathnameToIslandKey(pathname);
+    if (resolved === optimisticActiveKey) {
+      clearSelectionState();
+      return;
+    }
+    const predictedFrom = optimisticFromPathnameRef.current;
+    if (predictedFrom !== null && pathname !== predictedFrom) {
       clearSelectionState();
     }
-  }, [clearSelectionState, optimisticActiveKey, pathname]);
+  }, [clearSelectionState, inStudioIsland, optimisticActiveKey, pathname, studioRouteKeyParam]);
+
+  /*
+    Backstop for a navigation that never happens at all — bounced by a guard,
+    swallowed by the navigation lock, or landing back on the route it started
+    from. Those leave the route unmoved, so the check above cannot fire, and
+    the chip would stay wrong indefinitely.
+
+    The window is deliberately far longer than any real tab mount (a cold lazy
+    scene can take seconds) so this never cuts a legitimate prediction short.
+    It only exists so that "wrong forever" is not reachable.
+  */
+  useEffect(() => {
+    if (!optimisticActiveKey) return undefined;
+    optimisticExpiryRef.current = setTimeout(clearSelectionState, 5000);
+    return () => {
+      if (optimisticExpiryRef.current === null) return;
+      clearTimeout(optimisticExpiryRef.current);
+      optimisticExpiryRef.current = null;
+    };
+  }, [clearSelectionState, optimisticActiveKey]);
 
   useEffect(() => {
-    if (!canOpenProfileMenu) {
-      clearProfileTabTimer();
-      lastProfileTabPressAtRef.current = 0;
-      setProfileMenuVisible(false);
+    if (optimisticActiveKey === NATIVE_ISLAND_KEYS.bag && bagFlow?.isMyBagOpen === false) {
+      clearSelectionState();
     }
-  }, [canOpenProfileMenu, clearProfileTabTimer]);
+  }, [bagFlow?.isMyBagOpen, clearSelectionState, optimisticActiveKey]);
+
+  /*
+    A count is blanked only when it belongs to somebody else.
+
+    Both of these used to call `setXCountReady(false)` on every run, and the
+    badges render as `ready ? count : undefined` — so the badge VANISHED and
+    stayed gone until the refresh resolved. The effects re-run whenever their
+    refresh callback's identity changes (it depends on `status`), which happens
+    around auth settling and tab transitions, so the counts blinked out exactly
+    when the screen was busiest and came back once it settled.
+
+    Nothing about the number was uncertain during that window. The shared count
+    is module-scoped and still held the last known value; only the flag saying
+    "we know it" was being thrown away. Revalidation is not ignorance — the badge
+    keeps showing what it knows and moves when a real number arrives.
+
+    The one case that IS ignorance is a different account, so the flag resets on
+    an actual `user.id` change and nowhere else. `undefined` (signed out, id
+    unchanged at null) does not count as a change.
+  */
+  const countsOwnerRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const owner = user?.id ?? null;
+    if (countsOwnerRef.current !== owner) {
+      countsOwnerRef.current = owner;
+      setNotificationCountReady(false);
+      setMessageCountReady(false);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
-    setNotificationCountReady(false);
     void refreshUnreadNotificationCount();
   }, [refreshUnreadNotificationCount, user?.id]);
 
   useEffect(() => {
-    setMessageCountReady(false);
     void refreshUnreadMessageCount();
   }, [refreshUnreadMessageCount, user?.id]);
 
@@ -259,6 +879,9 @@ export default function TabLayout() {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
+        if (Date.now() - lastNotificationRefreshAttemptAtRef.current < WIEZ_COUNT_STALE_TIME_MS) {
+          return;
+        }
         void refreshUnreadNotificationCount();
       }
     });
@@ -271,19 +894,15 @@ export default function TabLayout() {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
+        if (Date.now() - lastMessageRefreshAttemptAtRef.current < WIEZ_COUNT_STALE_TIME_MS) {
+          return;
+        }
         void refreshUnreadMessageCount();
       }
     });
 
     return () => subscription.remove();
   }, [refreshUnreadMessageCount, status]);
-
-  useEffect(() => {
-    if (profileMenuVisible) {
-      void refreshUnreadNotificationCount();
-    }
-    void applyAndroidSystemBarsPolicy(scheme, profileMenuVisible ? 'profile-dropup-open' : 'profile-dropup-closed');
-  }, [profileMenuVisible, refreshUnreadNotificationCount, scheme]);
 
   useNotificationRealtimeChannel({
     enabled: status === 'authenticated' && Boolean(user?.id),
@@ -301,11 +920,6 @@ export default function TabLayout() {
     if (Platform.OS !== 'android') return;
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (profileMenuVisible) {
-        setProfileMenuVisible(false);
-        return true;
-      }
-
       if (!isRootTabPath) {
         return false;
       }
@@ -322,16 +936,62 @@ export default function TabLayout() {
     });
 
     return () => subscription.remove();
-  }, [isRootTabPath, profileMenuVisible, toast]);
+  }, [isRootTabPath, toast]);
 
-  return (
-    <>
+  /*
+    The navigator subtree, held stable across this component's own re-renders.
+
+    MEASURED, 2026-10-09 capture on `d1a7b65`: `worstCommit=TabShell` on all
+    fifteen flows at 406-683ms, tracking `T1->T3` (422-568ms) roughly 1:1, with
+    `requests=0` and `T5->T6=0.0ms` on half of them. Neither network nor cache.
+    `handlerMs` was 0.4-1.3ms, so the cost is not in the press handler either —
+    it lands in the commit React flushes straight after.
+
+    This component re-renders far more often than the navigator's contents
+    change. It subscribes to `usePathname` and `useGlobalSearchParams` (which
+    Expo Router re-runs on EVERY url change anywhere in the app), and it holds
+    `optimisticActiveKey`, which an island press sets on every tap. None of
+    those change which screens the navigator has. But a re-render recreated the
+    `<Tabs>` element and all ten `<Tabs.Screen>` children, so React reconciled
+    the entire navigator — and with `freezeOnBlur` keeping every visited tab
+    mounted, that reaches every screen the session has opened. An island
+    highlight was re-rendering Runway, Market, Catalogue and Inbox.
+
+    Holding the element identity stable is what stops that: React compares the
+    child element to the previous render's and skips the subtree when it is the
+    same reference. The navigator still updates from its OWN state — a real
+    navigation is its own store change, not a parent re-render — so nothing
+    about routing behaviour changes. Only the parent's ability to force
+    reconciliation for reasons that have nothing to do with it.
+
+    The dependency list is therefore the complete set of things inside the tree
+    that can actually differ: the hidden tab bar callback (stable, `[]`), the
+    scene background, and the Profile tab's title.
+  */
+  const tabNavigatorTree = useMemo(
+    () => (
       <Tabs
+        // Render no default tab bar; the floating island owns the visible UI and
+        // uses this hidden tabbar's navigation object for direct JUMP_TO/PRELOAD
+        // actions.
+        tabBar={renderHiddenTabBar}
+        // Keep visited tabs attached. The default (`true` on iOS and Android)
+        // detaches the native view on blur, so a return to Market/Inbox/Me/Studio
+        // rebuilt the scene — including destroying the Studio WebView and
+        // forcing a cold handoff. NOTE: with detaching off, `freezeOnBlur` below
+        // does NOTHING (react-native-screens only freezes enabled screens) —
+        // `screenLayout` is what actually stops hidden tabs re-rendering.
+        detachInactiveScreens={false}
+        screenLayout={freezeHiddenTabLayout}
         screenOptions={{
           headerShown: false,
+          lazy: true,
+          freezeOnBlur: true,
+          animation: 'none',
           tabBarStyle: {
             display: 'none',
           },
+          sceneStyle: { backgroundColor: theme.colors.surface },
         }}
       >
         <Tabs.Screen
@@ -377,57 +1037,66 @@ export default function TabLayout() {
           }}
         />
 
+        {/* Size charts. Reached from the island, so it lives in (tabs) to keep
+            the island on screen and survive a round trip to /fittings with its
+            state intact. URL stays /charts; hidden from any tab bar. */}
+        <Tabs.Screen
+          name="charts"
+          options={{
+            href: null,
+          }}
+        />
+
         <Tabs.Screen
           name="me-edit"
           options={{
             href: null,
           }}
         />
+
+        {/* Catalogue is a first-class, persistent top-level destination but is
+            navigated to programmatically via the island (brand "Profile"), so it
+            is hidden from the tab bar with href: null. Living inside (tabs) gives
+            it tab-level lifetime while keeping the public /catalog URL (the
+            (tabs) route group is omitted from the path). */}
+        <Tabs.Screen
+          name="catalog"
+          options={{
+            href: null,
+          }}
+        />
+
+        {/* Studio follows the Catalogue pattern: it lives inside (tabs) so it
+            keeps the floating island (its own island bar used to vanish the
+            moment Studio opened) and gets tab-level lifetime, so returning to
+            Store does not re-run the handoff and reload the whole web bundle.
+            The /studio URL is unchanged — route groups are omitted from the
+            path — and it stays out of the visible bar via href: null. */}
+        <Tabs.Screen
+          name="studio"
+          options={{
+            href: null,
+          }}
+        />
       </Tabs>
+    ),
+    [canOpenProfileMenu, renderHiddenTabBar, theme.colors.surface],
+  );
 
-      <NativeIslandBottomNav
-        items={islandItems}
-        onSelect={handleSelect}
-        onPressIn={markOptimisticActive}
-        collapsed={!isIslandExpanded}
-        onCollapsedPress={() => setIsIslandExpanded(true)}
-      />
+  return (
+    <>
+      {tabNavigatorTree}
 
-      <ProfileMenuDropup
-        visible={profileMenuVisible}
-        onClose={() => {
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
-          setProfileMenuVisible(false);
-          clearSelectionState();
-        }}
-        onOpenProfile={navigateToProfile}
-        onOpenNotifications={() => {
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
-          setProfileMenuVisible(false);
-          clearSelectionState();
-          router.push('/notifications' as any);
-        }}
-        onOpenStudio={() => {
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
-          setProfileMenuVisible(false);
-          clearSelectionState();
-          router.push('/studio' as any);
-        }}
-        onOpenSettings={() => {
-          clearProfileTabTimer();
-          lastProfileTabPressAtRef.current = 0;
-          setProfileMenuVisible(false);
-          clearSelectionState();
-          router.push('/settings' as any);
-        }}
-        scheme={scheme}
-        theme={theme}
-        bottomOffset={NATIVE_ISLAND_NAV.height + islandBottomOffset + 4}
-        user={user}
-      />
+      {/* The island resolves the ambient scheme on every route. It used to be
+          forced dark over the Runway, whose stage was black in both themes;
+          the stage is themed now, so a themed island matches it. */}
+      {hideIslandForFocusedFlow ? null : (
+        <NativeIslandBottomNav
+          items={islandItems}
+          onSelect={handleSelect}
+          onPressIn={markOptimisticActive}
+        />
+      )}
     </>
   );
 }

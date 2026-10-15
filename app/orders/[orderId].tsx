@@ -1,8 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
+import { OrderConversationButton } from '@/components/messaging/OrderConversationButton';
+import {
+  OrderAttentionPanel,
+  type AttentionItem,
+} from '@/components/orders/OrderAttentionPanel';
+import { OrderScheduleBadge } from '@/components/orders/OrderScheduleBadge';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -11,21 +18,19 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { BuyerOrdersApi, type BuyerOrderDetail, type BuyerOrderItem } from '@/src/api/BuyerOrdersApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { useCachedQuery, cachePolicies } from '@/src/cache';
+import { queryKeys } from '@/src/query/queryKeys';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { formatMeasurementLabel } from '@/src/features/sizing/measurementCatalog';
 import { readRecommendationSnapshot } from '@/src/utils/sizeRecommendation';
+import { formatMoney } from '@/src/utils/money';
 
 function formatCurrency(amount: number, currency = 'NGN') {
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${amount}`;
-  }
+  // `formatMoney` returns null for an unformattable amount; the tiles need a
+  // string, and an em dash is the honest rendering of "no figure".
+  return formatMoney(amount, currency) ?? '—';
 }
 
 function formatDate(value?: string | null) {
@@ -41,6 +46,103 @@ function statusTone(status: string) {
   if (upper.includes('DISPUT') || upper.includes('CANCEL') || upper.includes('REJECT') || upper.includes('REFUND')) return 'danger';
   if (upper.includes('PENDING') || upper.includes('PROCESS') || upper.includes('TRANSIT') || upper.includes('READY')) return 'warning';
   return 'neutral';
+}
+
+/** `IN_PRODUCTION` is a database value, not a sentence. */
+function humanizeToken(value?: string | null) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '—';
+  if (!/[_A-Z]/.test(raw) || /\s/.test(raw)) return raw;
+  return raw
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/^\w/, (character) => character.toUpperCase());
+}
+
+/** The stages a buyer sees, in order, so progress can be drawn as a fraction. */
+const BUYER_STAGE_ORDER = [
+  'ORDER_PLACED',
+  'ORDER_RECEIVED',
+  'FABRIC_AND_PIECE_PURCHASE_GATHERING',
+  'DESIGN_MODE',
+  'FINAL_TOUCHES_AND_PACKAGING',
+  'READY_FOR_DELIVERY',
+];
+
+function stageFraction(stage?: string | null) {
+  const index = BUYER_STAGE_ORDER.indexOf(String(stage ?? '').toUpperCase());
+  if (index < 0) return null;
+  return (index + 1) / BUYER_STAGE_ORDER.length;
+}
+
+/**
+ * One metric, as an object on the card rather than a line of text on it.
+ *
+ * The fill, the edge and the radius are what stop four numbers in a row reading
+ * as a paragraph — the "everything is flat" complaint. `progress` draws the
+ * stage as a bar under the label, because a stage name alone never says how far
+ * through it is.
+ */
+function StatTile({
+  label,
+  value,
+  tone = 'default',
+  emphasis = false,
+  marker,
+  progress,
+  money = false,
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'primary';
+  emphasis?: boolean;
+  marker?: string;
+  progress?: number | null;
+  /** Render the value in the money tier: heavier, tighter, tabular figures. */
+  money?: boolean;
+}) {
+  const { theme } = useTheme();
+
+  return (
+    /*
+      `tinted`, not a grey fill.
+
+      These tiles were `surfaceAlt` — a blue-grey plate inside a white card,
+      which is both the "some containers are grey and some are white" problem
+      and, on its own, a flat rectangle with a number on it. The tinted variant
+      gives each tile a faint vertical wash of the brand purple: not enough to
+      read as a coloured box, enough that the tile has a surface rather than
+      being a hole cut in the card.
+    */
+    <Card variant="tinted" padding="md" style={styles.statTile}>
+      <AppText variant="statLabel" tone="muted">
+        {label.toUpperCase()}
+      </AppText>
+      <View style={styles.statValueRow}>
+        {marker ? <AppText variant="small">{marker}</AppText> : null}
+        <AppText
+          variant={money ? 'moneyLarge' : emphasis ? 'h3' : 'bodyBold'}
+          tone={tone === 'primary' ? 'primary' : 'default'}
+          style={styles.statValueText}
+        >
+          {value}
+        </AppText>
+      </View>
+      {progress != null ? (
+        <View style={[styles.progressTrack, { backgroundColor: theme.colors.primarySoft }]}>
+          <View
+            style={[
+              styles.progressFill,
+              {
+                backgroundColor: theme.colors.primary,
+                width: `${Math.round(Math.min(1, Math.max(0.08, progress)) * 100)}%`,
+              },
+            ]}
+          />
+        </View>
+      ) : null}
+    </Card>
+  );
 }
 
 function canConfirmDelivery(order: BuyerOrderDetail) {
@@ -66,7 +168,7 @@ function DetailItemRow({ item }: { item: BuyerOrderItem }) {
         />
       </View>
       <View style={styles.itemCopy}>
-        <AppText variant="bodyBold" numberOfLines={1}>{item.productName}</AppText>
+        <AppText variant="bodyBold">{item.productName}</AppText>
         <AppText variant="captionRegular" tone="muted">
           {[`Qty ${item.quantity}`, item.selectedSize ? `Size ${item.selectedSize}` : null, item.selectedColor ? `Color ${item.selectedColor}` : null]
             .filter(Boolean)
@@ -90,42 +192,388 @@ export default function BuyerOrderDetailScreen() {
   const toast = useToast();
   const { status } = useAuth();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ orderId?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    orderId?: string | string[];
+    kind?: string | string[];
+  }>();
   const orderId = Array.isArray(params.orderId) ? params.orderId[0] : params.orderId;
+  const kindParam = Array.isArray(params.kind) ? params.kind[0] : params.kind;
+  const preferKind =
+    kindParam === 'CUSTOM' || kindParam === 'STANDARD'
+      ? kindParam
+      : undefined;
 
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [order, setOrder] = useState<BuyerOrderDetail | null>(null);
 
-  const load = useCallback(async () => {
-    if (!orderId) {
-      setError('Order not found.');
-      setLoading(false);
-      return;
-    }
+  // Cache-first: a previously viewed order paints instantly, then revalidates.
+  // `prefer` avoids a guaranteed 404 RTT when the notification already knows the kind.
+  const orderQuery = useCachedQuery<BuyerOrderDetail>({
+    key: queryKeys.orders.detail(orderId, preferKind),
+    fetcher: () =>
+      BuyerOrdersApi.getById(orderId as string, preferKind ? { prefer: preferKind } : undefined),
+    policy: cachePolicies.defaultQuery,
+    enabled: status === 'authenticated' && Boolean(orderId),
+  });
+  const order = orderQuery.data ?? null;
+  const loading = orderQuery.isLoading;
+  const error = !orderId
+    ? 'Order not found.'
+    : orderQuery.error
+      ? orderQuery.error.message || 'Unable to load this order right now.'
+      : null;
+  const refetchOrder = orderQuery.refetch;
+  const mutateOrder = orderQuery.mutate;
+  const load = useCallback(() => {
+    void refetchOrder({ forceRefresh: true });
+  }, [refetchOrder]);
 
-    setLoading(true);
-    setError(null);
+  /**
+   * A request for more time waiting on this shopper.
+   *
+   * Nothing on this screen mentioned extensions before, which is why tapping
+   * "your maker needs more time" landed somewhere with no answer to give.
+   */
+  const openExtension = useMemo(() => {
+    if (!order || order.kind !== 'CUSTOM') return null;
+    return (
+      order.extensionRequests.find((entry) => entry.buyerResponseStatus === 'OPEN') ??
+      null
+    );
+  }, [order]);
 
+  /** WIEZ's own notes on the order — read-only, no reply path. */
+  const adminNotices = useMemo(() => {
+    if (!order || order.kind !== 'CUSTOM') return [];
+    return order.timelineEvents
+      .filter((event) => {
+        if (event.actorType.toUpperCase() !== 'ADMIN') return false;
+        const type = event.eventType.toUpperCase();
+        if (type === 'ADMIN_NOTICE_SENT') {
+          const audience = String(event.payload.audience ?? '').toUpperCase();
+          // A note written to the brand alone is not the shopper's to read.
+          return audience === 'BUYER' || audience === 'BOTH';
+        }
+        return type === 'ADMIN_INTERVENTION_RESOLVED';
+      })
+      .slice(0, 5);
+  }, [order]);
+
+  const interventionOpen = Boolean(
+    order?.kind === 'CUSTOM' &&
+      order.adminInterventionAt &&
+      !order.adminInterventionResolvedAt,
+  );
+
+  /** The shopper's own open lateness complaint — the only kind they can close. */
+  const openDelayDispute = useMemo(() => {
+    if (!order || order.kind !== 'CUSTOM') return null;
+    return (
+      order.disputes.find(
+        (entry) =>
+          (entry.reasonType === 'UNREASONABLE_DELAY' ||
+            entry.reasonType === 'NON_DELIVERY') &&
+          entry.status !== 'CLOSED' &&
+          entry.status !== 'RESOLVED',
+      ) ?? null
+    );
+  }, [order]);
+
+  const handleReportDelay = useCallback(async () => {
+    if (!order || order.kind !== 'CUSTOM' || saving) return;
+    setSaving(true);
     try {
-      const detail = await BuyerOrdersApi.getById(orderId);
-      setOrder(detail);
-    } catch (nextError) {
-      setOrder(null);
-      setError(nextError instanceof Error ? nextError.message : 'Unable to load this order right now.');
+      const updated = await BuyerOrdersApi.reportDelay(order.id, {
+        basis: order.delayDispute.basis,
+        description:
+          order.delayDispute.basis === 'DELIVERY'
+            ? 'This order has passed its delivery date and has not arrived.'
+            : 'This order has passed its production date without an update.',
+      });
+      mutateOrder(() => updated);
+      toast.success('Reported. WIEZ is reviewing this with your maker.');
+    } catch (reportError: any) {
+      toast.error(
+        reportError?.response?.data?.message ||
+          'That report could not be sent. Please try again.',
+      );
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
-  }, [orderId]);
+  }, [order, saving, toast, mutateOrder]);
 
-  useEffect(() => {
-    if (status !== 'authenticated') {
-      setLoading(false);
-      return;
+  /**
+   * A settlement this shopper has been asked to agree to.
+   *
+   * Only one that binds the BUYER: a proposal awaiting the brand is not this
+   * screen's business, and offering it here would put a decision in front of
+   * someone it does not belong to.
+   */
+  const proposalDispute = useMemo(() => {
+    if (!order || order.kind !== 'CUSTOM') return null;
+    return (
+      order.disputes.find(
+        (entry) =>
+          entry.status === 'AWAITING_PARTY_CONSENT' &&
+          entry.proposal != null &&
+          (entry.proposal.consentBy === 'BUYER' ||
+            entry.proposal.consentBy === 'BOTH') &&
+          !entry.proposal.buyerConsentAt &&
+          !entry.proposal.buyerDeclinedAt,
+      ) ?? null
+    );
+  }, [order]);
+
+  const handleRespondToProposal = useCallback(
+    async (accept: boolean) => {
+      if (!order || order.kind !== 'CUSTOM' || !proposalDispute || saving) return;
+      setSaving(true);
+      try {
+        const updated = await BuyerOrdersApi.respondToDisputeProposal(
+          order.id,
+          proposalDispute.id,
+          accept,
+        );
+        mutateOrder(() => updated);
+        toast.success(
+          accept
+            ? 'Agreed. We have told your maker.'
+            : 'Thanks — WIEZ is picking this back up with your maker.',
+        );
+      } catch (respondError: any) {
+        toast.error(
+          respondError?.response?.data?.message ||
+            'That answer could not be saved. Please try again.',
+        );
+      } finally {
+        setSaving(false);
+      }
+    },
+    [order, proposalDispute, saving, toast, mutateOrder],
+  );
+
+  const handleCloseDelayDispute = useCallback(async () => {
+    if (!order || order.kind !== 'CUSTOM' || !openDelayDispute || saving) return;
+    setSaving(true);
+    try {
+      const updated = await BuyerOrdersApi.closeDelayDispute(
+        order.id,
+        openDelayDispute.id,
+      );
+      mutateOrder(() => updated);
+      toast.success('Closed. Thanks for letting us know.');
+    } catch (closeError: any) {
+      toast.error(
+        closeError?.response?.data?.message ||
+          'That could not be closed right now. Please try again.',
+      );
+    } finally {
+      setSaving(false);
     }
-    void load();
-  }, [load, status]);
+  }, [order, openDelayDispute, saving, toast, mutateOrder]);
+
+  const handleAckNotices = useCallback(async () => {
+    if (!order || order.kind !== 'CUSTOM' || saving) return;
+    setSaving(true);
+    try {
+      const updated = await BuyerOrdersApi.ackAdminNotices(order.id);
+      mutateOrder(() => updated);
+    } catch {
+      toast.error('Could not update these notices. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }, [order, saving, toast, mutateOrder]);
+
+  /**
+   * Everything waiting on the shopper, in one list, worst first.
+   *
+   * Assembled here rather than rendered inline so the screen shows a single
+   * summary row instead of a column of outlined boxes, and so the severity
+   * ordering lives in one place. The panel sorts by tone; this decides what
+   * each state's tone, wording and action are.
+   */
+  const attentionItems = useMemo<AttentionItem[]>(() => {
+    if (!order) return [];
+    const items: AttentionItem[] = [];
+
+    if (openExtension) {
+      items.push({
+        id: `extension:${openExtension.id}`,
+        tone: 'primary',
+        marker: '⏳',
+        title: `${order.brandName} needs ${openExtension.requestedExtraDays} more day${
+          openExtension.requestedExtraDays === 1 ? '' : 's'
+        }`,
+        body: openExtension.reason || 'Your maker has asked for more time.',
+        meta: openExtension.respondByAt
+          ? `Answer by ${formatDate(openExtension.respondByAt)}`
+          : undefined,
+        action: {
+          label: 'Review the request',
+          onPress: () =>
+            drillDownPush(
+              `/orders/extension/${openExtension.id}?orderId=${order.id}` as never,
+            ),
+        },
+      });
+    }
+
+    /*
+      A proposed settlement outranks everything else.
+
+      It is the only item in this list where WIEZ is waiting on the SHOPPER
+      rather than the other way round, so it carries the top tone and sits
+      above the delay states that would otherwise just say "we're on it".
+    */
+    if (proposalDispute?.proposal) {
+      const { proposal } = proposalDispute;
+      const days = proposal.extraDays ?? 0;
+      items.push({
+        id: `proposal:${proposalDispute.id}`,
+        tone: 'primary',
+        marker: '🤝',
+        title: 'A way to settle this',
+        body:
+          proposal.resolution === 'MEDIATED_EXTENSION'
+            ? `WIEZ suggests giving your maker ${days} more day${days === 1 ? '' : 's'}. Your delivery date moves by the same amount. Saying no does not close your dispute — it goes back to the person handling it.`
+            : proposal.resolution === 'REMAKE'
+              ? 'WIEZ suggests your maker remakes the piece. Saying no does not close your dispute — it goes back to the person handling it.'
+              : 'WIEZ has proposed a way to settle this order. Saying no does not close your dispute.',
+        meta: proposal.note ? `“${proposal.note}” — WIEZ` : undefined,
+        action: {
+          label: 'Yes, that works',
+          loading: saving,
+          onPress: () => void handleRespondToProposal(true),
+        },
+        secondaryAction: {
+          label: 'No — keep looking at it',
+          loading: saving,
+          onPress: () => void handleRespondToProposal(false),
+        },
+      });
+    }
+
+    if (order.kind === 'CUSTOM') {
+      if (openDelayDispute) {
+        items.push({
+          id: `delay:${openDelayDispute.id}`,
+          tone: 'warning',
+          marker: '🛟',
+          title: 'Delay reported',
+          body:
+            'Your order is still live and your maker has been told to keep working. WIEZ will be in touch here.',
+          action: {
+            label: 'It arrived — close this',
+            loading: saving,
+            onPress: () => void handleCloseDelayDispute(),
+          },
+        });
+      } else if (order.delayDispute.eligible) {
+        items.push({
+          id: 'delay:eligible',
+          tone: 'danger',
+          marker: '🚩',
+          title:
+            order.delayDispute.basis === 'DELIVERY'
+              ? 'This order is past its delivery date'
+              : 'This order is past its production date',
+          // The reassurance goes BEFORE the button, every time. Without it
+          // "report a problem" reads as "cancel my order", which it is not.
+          body:
+            'If your maker has not explained the delay, bring WIEZ in. This does not cancel or refund your order — it freezes their payment and puts a person on it.',
+          action: {
+            label: 'Report the delay',
+            loading: saving,
+            onPress: () => void handleReportDelay(),
+          },
+        });
+      } else if (order.delayDispute.reason === 'WITHIN_GRACE') {
+        items.push({
+          id: 'delay:grace',
+          tone: 'neutral',
+          marker: '⏳',
+          title: 'Running a little late',
+          body:
+            'Your maker is just past the production date. Message them first — you can bring WIEZ in shortly if nothing moves.',
+        });
+      }
+    }
+
+    if (interventionOpen) {
+      items.push({
+        id: 'intervention',
+        tone: 'warning',
+        marker: '🛟',
+        title: 'WIEZ is reviewing this order',
+        body:
+          'Someone at WIEZ is working on this with your maker. You will hear from us here.',
+      });
+    }
+
+    adminNotices.forEach((notice) => {
+      const body = typeof notice.payload.note === 'string' ? notice.payload.note : '';
+      items.push({
+        id: `notice:${notice.id}`,
+        tone: 'neutral',
+        marker: '📣',
+        title: 'Note from WIEZ',
+        body: body || 'WIEZ updated this order.',
+        meta: formatDate(notice.createdAt),
+      });
+    });
+
+    if (
+      order.kind === 'CUSTOM' &&
+      order.hasUnreadBuyerAdminNotice &&
+      adminNotices.length > 0
+    ) {
+      items.push({
+        id: 'notice:ack',
+        tone: 'neutral',
+        marker: '✅',
+        title: 'Mark these as read',
+        body: 'This is a read-only channel — you do not need to reply.',
+        action: {
+          label: 'Mark as read',
+          loading: saving,
+          onPress: () => void handleAckNotices(),
+        },
+      });
+    }
+
+    return items;
+  }, [
+    order,
+    openExtension,
+    openDelayDispute,
+    proposalDispute,
+    handleRespondToProposal,
+    interventionOpen,
+    adminNotices,
+    saving,
+    handleCloseDelayDispute,
+    handleReportDelay,
+    handleAckNotices,
+  ]);
+
+  /** The measurement snapshot, as labelled tiles. Six fit a phone comfortably. */
+  const measurementTiles = useMemo(() => {
+    if (!order || order.kind !== 'CUSTOM') return [];
+    return Object.entries(order.measurementSnapshot)
+      .filter(([, value]) => value !== null && value !== undefined && value !== '')
+      .map(([key, value]) => ({
+        key,
+        label: formatMeasurementLabel(key),
+        value: `${value} in`,
+      }));
+  }, [order]);
+
+  const progressFraction = useMemo(
+    () => (order?.kind === 'CUSTOM' ? stageFraction(order.currentProgressStage) : null),
+    [order],
+  );
+
+  const paymentSettled = Boolean(order && order.paymentStatus.toUpperCase() === 'PAID');
 
   const confirmable = useMemo(() => Boolean(order && canConfirmDelivery(order)), [order]);
   const heroThumbnail = order?.kind === 'STANDARD'
@@ -138,14 +586,14 @@ export default function BuyerOrderDetailScreen() {
     setSaving(true);
     try {
       const updated = await BuyerOrdersApi.confirmDelivery(order);
-      setOrder(updated);
+      mutateOrder(() => updated);
       toast.success('Delivery confirmation submitted.');
     } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Could not confirm delivery.');
+      toast.error('Could not confirm delivery. Please try again.');
     } finally {
       setSaving(false);
     }
-  }, [order, saving, toast]);
+  }, [order, saving, toast, mutateOrder]);
 
   if (status !== 'authenticated') {
     return (
@@ -160,7 +608,7 @@ export default function BuyerOrderDetailScreen() {
             <AppText variant="body" tone="muted" style={styles.centerText}>
               Open your order history after you sign in.
             </AppText>
-            <Button title="Sign in" onPress={() => router.push('/(auth)/login' as any)} />
+            <Button title="Sign in" onPress={() => drillDownPush('/(auth)/login' as any)} />
           </Card>
         </View>
       </SafeAreaView>
@@ -240,7 +688,7 @@ export default function BuyerOrderDetailScreen() {
             <AppText variant="subtitle">Could not load order</AppText>
             <AppText variant="body" tone="muted" style={styles.centerText}>{error || 'This order is unavailable.'}</AppText>
             <Button title="Retry" onPress={() => void load()} />
-            <Button title="Back to orders" variant="secondary" onPress={() => router.replace('/orders' as any)} />
+            <Button title="Back to orders" variant="secondary" onPress={() => backOrNavigate('/orders' as any)} />
           </Card>
         </View>
       </SafeAreaView>
@@ -248,6 +696,16 @@ export default function BuyerOrderDetailScreen() {
   }
 
   const tone = statusTone(order.status);
+  const statusDotColor =
+    tone === 'danger'
+      ? theme.colors.danger
+      : tone === 'success'
+        ? theme.colors.success
+        : tone === 'warning'
+          ? theme.colors.warning
+          : theme.colors.primary;
+  const statusTextTone =
+    tone === 'danger' ? 'danger' : tone === 'success' ? 'success' : 'default';
   const summaryLabel = order.kind === 'STANDARD' ? 'Standard order' : 'Custom order';
   const progressLabel = order.kind === 'STANDARD' ? order.status : order.currentProgressStage || order.status;
 
@@ -262,23 +720,48 @@ export default function BuyerOrderDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
-        <Card padding="lg" style={styles.heroCard}>
+        {/*
+          One row, not a stack of bordered boxes. Everything waiting on the
+          shopper — a request for more time, a lateness state, WIEZ's notes —
+          is collected and summarised here, and the detail opens in a sheet.
+          See `OrderAttentionPanel` for why.
+        */}
+        <OrderAttentionPanel items={attentionItems} />
+
+        {/*
+          The overview, as one card with depth rather than four flat rows.
+
+          Three things carry the weight: the piece's own image at a size worth
+          looking at, a status pill that states the stage instead of printing a
+          raw enum in caption grey, and four metric TILES — each with its own
+          fill and edge, so the numbers read as objects on the card instead of
+          text floating on it.
+        */}
+        <Card variant="elevated" padding="lg" style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View style={styles.badgeRow}>
-              <View style={[styles.pill, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}>
-                <AppText variant="captionBold" tone="muted">{order.kind === 'STANDARD' ? 'Standard' : 'Custom'}</AppText>
+              <View style={[styles.pill, { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }]}>
+                <AppText variant="badgeLabel" tone="primary">{order.kind === 'STANDARD' ? 'Standard' : 'Custom'}</AppText>
               </View>
               <View style={[styles.pill, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}>
-                <AppText variant="captionBold" tone="muted">Buyer view</AppText>
+                <AppText variant="badgeLabel" tone="muted">Buyer view</AppText>
               </View>
             </View>
-            <AppText variant="captionBold" tone={tone === 'danger' ? 'danger' : tone === 'warning' ? 'primary' : 'secondary'}>
-              {order.status}
-            </AppText>
+            <View
+              style={[
+                styles.statusPill,
+                { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt },
+              ]}
+            >
+              <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
+              <AppText variant="badgeLabel" tone={statusTextTone}>
+                {humanizeToken(order.status)}
+              </AppText>
+            </View>
           </View>
 
           <View style={styles.heroTitleRow}>
-            <View style={[styles.heroThumb, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}>
+            <View style={[styles.heroThumb, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.primary }]}>
               <StableImage
                 uri={heroThumbnail ?? undefined}
                 containerStyle={styles.heroThumbFill}
@@ -291,42 +774,53 @@ export default function BuyerOrderDetailScreen() {
               />
             </View>
             <View style={styles.heroCopy}>
-              <AppText variant="title" numberOfLines={2}>{order.title}</AppText>
-              <AppText variant="body" tone="muted" numberOfLines={1}>{order.brandName}</AppText>
+              <AppText variant="h2">{order.title}</AppText>
+              <AppText variant="small" tone="muted">{order.brandName}</AppText>
             </View>
           </View>
 
           <View style={styles.summaryGrid}>
-            <View style={styles.summaryCell}>
-              <AppText variant="captionRegular" tone="muted">Amount</AppText>
-              <AppText variant="subtitle">{formatCurrency(order.amount, order.currency)}</AppText>
-            </View>
-            <View style={styles.summaryCell}>
-              <AppText variant="captionRegular" tone="muted">Placed</AppText>
-              <AppText variant="subtitle">{formatDate(order.createdAt) || '—'}</AppText>
-            </View>
-            <View style={styles.summaryCell}>
-              <AppText variant="captionRegular" tone="muted">Progress</AppText>
-              <AppText variant="subtitle">{progressLabel || 'Placed'}</AppText>
-            </View>
-            <View style={styles.summaryCell}>
-              <AppText variant="captionRegular" tone="muted">Payment</AppText>
-              <AppText variant="subtitle">{order.paymentStatus}</AppText>
-            </View>
+            <StatTile label="Amount" value={formatCurrency(order.amount, order.currency)} money />
+            <StatTile label="Placed" value={formatDate(order.createdAt) || '—'} />
+            <StatTile
+              label="Progress"
+              value={humanizeToken(progressLabel ?? 'Placed')}
+              tone="primary"
+              progress={progressFraction}
+            />
+            <StatTile
+              label="Payment"
+              value={humanizeToken(order.paymentStatus)}
+              marker={paymentSettled ? '✅' : '⏳'}
+            />
           </View>
         </Card>
+
+        <OrderConversationButton orderId={order.id} kind={order.kind} brandName={order.brandName} />
 
         {confirmable ? (
           <Button title={saving ? 'Confirming…' : 'Confirm delivery'} onPress={() => void handleConfirmDelivery()} disabled={saving} />
         ) : null}
 
-        <Card padding="lg" style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <AppText variant="bodyBold">Order items</AppText>
-            <AppText variant="captionRegular" tone="muted">
-              {order.kind === 'STANDARD' ? order.itemCount : order.measurementCount} {order.kind === 'STANDARD' ? 'item' : 'measurement'}{(order.kind === 'STANDARD' ? order.itemCount : order.measurementCount) === 1 ? '' : 's'}
-            </AppText>
+        <Card variant="elevated" padding="lg" style={styles.sectionCard}>
+          <View style={[styles.sectionHeader, styles.sectionHeaderRule, { borderBottomColor: theme.colors.border }]}>
+            <View style={styles.sectionHeaderCopy}>
+              <AppText variant="cardTitle">Order items</AppText>
+              {order.kind === 'CUSTOM' ? (
+                <AppText variant="captionRegular" tone="muted">
+                  Source: {order.sourceType} · {order.sourceId}
+                </AppText>
+              ) : null}
+            </View>
+            <View style={[styles.countChip, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+              <AppText variant="badgeLabel" tone="muted">
+                {order.kind === 'STANDARD' ? order.itemCount : order.measurementCount}{' '}
+                {order.kind === 'STANDARD' ? 'item' : 'measurement'}
+                {(order.kind === 'STANDARD' ? order.itemCount : order.measurementCount) === 1 ? '' : 's'}
+              </AppText>
+            </View>
           </View>
+
           {order.kind === 'STANDARD' ? (
             order.items.length > 0 ? (
               <View style={styles.sectionList}>
@@ -336,20 +830,65 @@ export default function BuyerOrderDetailScreen() {
               <AppText variant="body" tone="muted">This order does not include line items in the mobile payload.</AppText>
             )
           ) : (
-            <View style={styles.sectionList}>
-              <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
-                <AppText variant="captionRegular" tone="muted">Source</AppText>
-                <AppText variant="bodyBold">{order.sourceType} · {order.sourceId}</AppText>
+            <>
+              {/*
+                The measurements themselves, not a count of them.
+                `measurementSnapshot` has been in the payload all along and the
+                screen only ever said "6 points" — the one thing a shopper
+                opening a bespoke order wants to check is what the maker is
+                cutting to.
+              */}
+              {measurementTiles.length > 0 ? (
+                <View style={styles.measurementGrid}>
+                  {measurementTiles.map((entry) => (
+                    <View
+                      key={entry.key}
+                      style={[
+                        styles.measurementTile,
+                        { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                      ]}
+                    >
+                      <AppText variant="statLabel" tone="muted">
+                        {entry.label.toUpperCase()}
+                      </AppText>
+                      <AppText variant="bodyBold">{entry.value}</AppText>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <AppText variant="body" tone="muted">
+                  No measurement values are stored on this order.
+                </AppText>
+              )}
+
+              <View
+                style={[
+                  styles.promiseRow,
+                  { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                ]}
+              >
+                <View style={styles.promiseCopy}>
+                  <AppText variant="statLabel" tone="muted">DELIVERY PROMISE</AppText>
+                  <AppText variant="bodyBold">
+                    {formatDate(
+                      order.promisedDeliveryAt ?? order.schedule.expectedDeliveryAt,
+                    ) || 'Pending'}
+                  </AppText>
+                  {order.originalPromisedDeliveryAt ? (
+                    <AppText variant="captionRegular" tone="muted">
+                      Originally {formatDate(order.originalPromisedDeliveryAt)}
+                    </AppText>
+                  ) : order.schedule.deliveryEstimated ? (
+                    // A date worked out from the brand's published lead times
+                    // is not a promise they made on this order. Say which it is.
+                    <AppText variant="captionRegular" tone="muted">
+                      Estimated from this brand's stated turnaround
+                    </AppText>
+                  ) : null}
+                </View>
+                <OrderScheduleBadge schedule={order.schedule} variant="detail" />
               </View>
-              <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
-                <AppText variant="captionRegular" tone="muted">Measurements</AppText>
-                <AppText variant="bodyBold">{order.measurementCount} point{order.measurementCount === 1 ? '' : 's'}</AppText>
-              </View>
-              <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
-                <AppText variant="captionRegular" tone="muted">Delivery promise</AppText>
-                <AppText variant="bodyBold">{formatDate(order.promisedDeliveryAt) || 'Pending'}</AppText>
-              </View>
-            </View>
+            </>
           )}
         </Card>
 
@@ -361,7 +900,7 @@ export default function BuyerOrderDetailScreen() {
           <View style={styles.sectionList}>
             <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
               <AppText variant="captionRegular" tone="muted">Order ID</AppText>
-              <AppText variant="bodyBold">#{order.id.slice(0, 8).toUpperCase()}</AppText>
+              <AppText variant="bodyBold">#{order.id.toUpperCase()}</AppText>
             </View>
             <View style={[styles.metaBlock, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
               <AppText variant="captionRegular" tone="muted">Payment status</AppText>
@@ -413,6 +952,71 @@ const styles = StyleSheet.create({
   heroCard: {
     gap: tokens.spacing.md,
   },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    maxWidth: '55%',
+  },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statTile: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    minWidth: 0,
+    // Border, radius and padding now come from ; only the layout is
+    // the tile's own business.
+    gap: tokens.spacing.xs,
+  },
+  statValueRow: { flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs },
+  statValueText: { flexShrink: 1 },
+  progressTrack: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginTop: tokens.spacing.xs,
+  },
+  progressFill: { height: '100%', borderRadius: 2 },
+  sectionHeaderCopy: { flex: 1, minWidth: 0, gap: 2 },
+  sectionHeaderRule: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: tokens.spacing.md,
+  },
+  countChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+  },
+  measurementGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  measurementTile: {
+    flexBasis: '31%',
+    flexGrow: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.sm,
+    paddingVertical: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.xs,
+    gap: 2,
+  },
+  promiseRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.md,
+    padding: tokens.spacing.md,
+  },
+  promiseCopy: { flex: 1, minWidth: 0, gap: 2 },
   heroTop: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -465,7 +1069,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     padding: tokens.spacing.sm,
     borderRadius: tokens.radius.lg,
-    backgroundColor: 'rgba(0,0,0,0.03)',
+    backgroundColor: tokens.scrim(0.03),
   },
   sectionCard: {
     gap: tokens.spacing.md,

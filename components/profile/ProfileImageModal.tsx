@@ -6,6 +6,7 @@ import { StableImage } from '@/components/ui/StableImage';
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
+import { tokens } from '@/src/styles/tokens';
 
 type ProfileImageModalProps = {
   visible: boolean;
@@ -62,7 +63,7 @@ export function ProfileImageModal({ visible, imageUrl, onClose }: ProfileImageMo
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: tokens.scrim(0.75),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -78,9 +79,9 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    padding: 10,
-    backgroundColor: 'rgba(18, 18, 24, 0.78)',
+    borderColor: tokens.tintLight(0.22),
+    padding: 12,
+    backgroundColor: tokens.colors.glassPlateDark,
   },
   closeButton: {
     alignSelf: 'flex-end',
@@ -89,10 +90,10 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: tokens.tintLight(0.14),
   },
   imageWrap: {
-    marginTop: 6,
+    marginTop: 4,
     width: '100%',
     height: '92%',
     borderRadius: 18,
@@ -104,7 +105,7 @@ const styles = StyleSheet.create({
   },
   fallback: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: tokens.tintLight(0.06),
   },
 });
 

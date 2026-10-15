@@ -3,12 +3,13 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import React, { useEffect } from 'react';
 import { AppState } from 'react-native';
 
+import { CacheRestoreProbe } from '@/src/perf/CacheRestoreProbe';
 import { queryClient } from '@/src/query/queryClient';
 import {
-  THREADLY_QUERY_CACHE_BUSTER,
-  THREADLY_QUERY_CACHE_MAX_AGE_MS,
-  shouldDehydrateThreadlyQuery,
-  threadlyQueryPersister,
+  WIEZ_QUERY_CACHE_BUSTER,
+  WIEZ_QUERY_CACHE_MAX_AGE_MS,
+  shouldDehydrateWiezQuery,
+  wiezQueryPersister,
 } from '@/src/query/queryPersistor';
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
@@ -25,14 +26,17 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     <PersistQueryClientProvider
       client={queryClient}
       persistOptions={{
-        persister: threadlyQueryPersister,
-        maxAge: THREADLY_QUERY_CACHE_MAX_AGE_MS,
-        buster: THREADLY_QUERY_CACHE_BUSTER,
+        persister: wiezQueryPersister,
+        maxAge: WIEZ_QUERY_CACHE_MAX_AGE_MS,
+        buster: WIEZ_QUERY_CACHE_BUSTER,
         dehydrateOptions: {
-          shouldDehydrateQuery: shouldDehydrateThreadlyQuery,
+          shouldDehydrateQuery: shouldDehydrateWiezQuery,
         },
       }}
     >
+      {/* Inert without EXPO_PUBLIC_DEBUG_NAV; must sit INSIDE the provider so
+          it can read `useIsRestoring`. */}
+      <CacheRestoreProbe />
       {children}
     </PersistQueryClientProvider>
   );

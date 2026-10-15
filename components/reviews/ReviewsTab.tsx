@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import DeleteReviewConfirmSheet from '@/components/reviews/DeleteReviewConfirmSheet';
@@ -14,8 +14,9 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
-import { THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 const emptySummary: ReviewSummaryDto = {
   averageRating: 0,
@@ -97,7 +98,7 @@ export default function ReviewsTab({ brandId, productId, compact = false, enable
           productId
             ? reviewApi.getProductReviews(productId, { limit: reviewLimit }, currentUserId)
             : reviewApi.getBrandReviews(brandId as string, { limit: reviewLimit }, currentUserId),
-        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+        staleTime: WIEZ_QUERY_STALE_TIME_MS,
       });
       applyList(response);
     } catch (nextError) {
@@ -114,9 +115,17 @@ export default function ReviewsTab({ brandId, productId, compact = false, enable
     }
   }, [applyList, brandId, currentUserId, enabled, productId, queryClient, reviewLimit, reviewQueryKey]);
 
+  // Load once per identity. Depending on the whole `load` callback re-fired on
+  // every parent re-render (MarketCommerceViewer sheet churn) and, when the
+  // request 401'd, never filled the query cache so each fire hit the network.
+  const loadIdentity = `${enabled ? 1 : 0}:${productId ?? ''}:${brandId ?? ''}:${currentUserId ?? ''}:${reviewLimit}`;
+  const lastLoadIdentityRef = useRef<string | null>(null);
   useEffect(() => {
+    if (!enabled) return;
+    if (lastLoadIdentityRef.current === loadIdentity) return;
+    lastLoadIdentityRef.current = loadIdentity;
     void load();
-  }, [load]);
+  }, [enabled, load, loadIdentity]);
 
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
@@ -174,7 +183,7 @@ export default function ReviewsTab({ brandId, productId, compact = false, enable
   if (loading) {
     return (
       <View style={[styles.loading, compact ? styles.compactWrap : styles.wrap]}>
-        <ActivityIndicator color={theme.colors.primary} />
+        <MuseLoader size={20} />
         <AppText variant="body" tone="muted">Loading reviews...</AppText>
       </View>
     );

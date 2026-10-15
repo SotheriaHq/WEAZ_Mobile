@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -8,11 +7,12 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { router } from 'expo-router';
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 
 import { AppText } from '@/components/ui/AppText';
 import { Card } from '@/components/ui/Card';
 import { StableImage } from '@/components/ui/StableImage';
+import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import {
   createMarketSuppression,
   getMarketSuggestions,
@@ -32,6 +32,8 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { formatMoney } from '@/src/utils/money';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type Props = {
   context: MarketSuggestionContext;
@@ -75,15 +77,26 @@ const formatPrice = (item: MarketSectionItem) => {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     return item.category?.name ?? item.brand?.name ?? 'Market pick';
   }
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return `${currency} ${Math.round(value).toLocaleString('en-NG')}`;
-  }
+  return formatMoney(value, currency);
+};
+
+/**
+ * Types a card can OPEN as a piece of content.
+ *
+ * A `PRODUCT_DETAIL` response is not all pieces: "New Designers to Watch" is a
+ * BRAND block and "Category" cards are searches. Those are legitimate rows, but
+ * they are not what a card press means to a shopper who has just been shown
+ * "Similar pieces" — pressing one took them to a catalogue with no way to tell
+ * beforehand, which is the "some cards go to the brand instead" report. Cards
+ * that are pieces open the piece; cards that are not say what they are.
+ */
+const CONTENT_TARGET_TYPES = new Set(['PRODUCT', 'COLLECTION', 'DESIGN']);
+
+const isContentSuggestion = (item: MarketSectionItem) =>
+  CONTENT_TARGET_TYPES.has(String(item.target?.type ?? item.entityType));
+
+const navigateToBrand = (brandId: string) => {
+  drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId } } as any);
 };
 
 const navigateToSuggestion = (item: MarketSectionItem) => {
@@ -92,24 +105,26 @@ const navigateToSuggestion = (item: MarketSectionItem) => {
   if (!targetId) return;
 
   if (targetType === 'PRODUCT') {
-    router.push({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
+    drillDownPush({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
     return;
   }
   if (targetType === 'COLLECTION') {
-    router.push({ pathname: '/collection-viewer', params: { collectionId: targetId } } as any);
+    drillDownPush({ pathname: '/collection-viewer', params: { collectionId: targetId } } as any);
     return;
   }
   if (targetType === 'DESIGN') {
-    router.push({ pathname: '/designs/[designId]', params: { designId: targetId } } as any);
+    // Shop context opens the shop viewer — /designs/[designId] is the
+    // comment-anchored detail viewer reserved for notification/comment links.
+    drillDownPush({ pathname: '/market-viewer', params: { sourceType: 'DESIGN', sourceId: targetId } } as any);
     return;
   }
   if (targetType === 'BRAND') {
-    router.push({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
+    drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
     return;
   }
   if (targetType === 'CATEGORY') {
     const query = item.category?.name ?? item.category?.slug ?? item.target?.key ?? item.title;
-    router.push({ pathname: '/search', params: { q: query, autoSubmit: '1' } } as any);
+    drillDownPush({ pathname: '/search', params: { q: query, autoSubmit: '1' } } as any);
   }
 };
 
@@ -133,7 +148,23 @@ function SuggestionCard({
   onHide,
 }: SuggestionCardProps) {
   const { theme } = useTheme();
-  const image = item.media?.thumbnailUrl ?? item.media?.url ?? null;
+  const rawImage = item.media?.thumbnailUrl ?? item.media?.url ?? null;
+  const image = useResolvedImageUri({
+    src: rawImage,
+    fileId: item.media?.fileId ?? null,
+    enabled: Boolean(rawImage || item.media?.fileId),
+  });
+
+  const opensContent = isContentSuggestion(item);
+  const brandId = item.brand?.id?.trim() || null;
+  const brandName = item.brand?.name?.trim() || null;
+  /*
+    The brand line is only its own control on a CONTENT card. On a brand card
+    the whole card already goes to that brand, so a second control inside it
+    doing the same thing is just a smaller target for the same destination.
+  */
+  const showBrandLink = opensContent && Boolean(brandId && brandName);
+  const caption = showBrandLink ? null : item.subtitle?.trim() || null;
 
   const handlePress = useCallback(() => {
     trackMarketSignal({
@@ -149,6 +180,10 @@ function SuggestionCard({
     navigateToSuggestion(item);
   }, [blockKey, item, position, screenContext, surface]);
 
+  const handleBrandPress = useCallback(() => {
+    if (brandId) navigateToBrand(brandId);
+  }, [brandId]);
+
   return (
     <View
       style={[
@@ -163,7 +198,7 @@ function SuggestionCard({
         onPress={handlePress}
         style={({ pressed }) => [styles.cardTapTarget, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={`Open ${item.title}`}
+        accessibilityLabel={opensContent ? `Open ${item.title}` : `Open ${item.title}'s catalogue`}
       >
         <View style={[styles.imageWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
           {image ? (
@@ -180,14 +215,31 @@ function SuggestionCard({
               </AppText>
             </View>
           )}
+          {/*
+            A card that is NOT a piece says so on its face. These sit in the
+            same rail as the pieces and used to look identical to them, so the
+            only way to find out a press led somewhere else was to press it.
+          */}
+          {opensContent ? null : (
+            <View
+              style={[
+                styles.kindBadge,
+                { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder },
+              ]}
+            >
+              <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+                {getItemTargetType(item) === 'BRAND' ? 'Brand' : 'Browse'}
+              </AppText>
+            </View>
+          )}
         </View>
         <View style={styles.cardCopy}>
           <AppText variant="captionBold" numberOfLines={2}>
             {item.title}
           </AppText>
-          {item.subtitle ? (
+          {caption ? (
             <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-              {item.subtitle}
+              {caption}
             </AppText>
           ) : null}
           <AppText variant="captionBold" tone="primary" numberOfLines={1}>
@@ -195,6 +247,28 @@ function SuggestionCard({
           </AppText>
         </View>
       </Pressable>
+      {/*
+        Outside the card's own Pressable, not nested inside it: the brand name
+        is the ONE place on a piece that goes to the brand, and the rest of the
+        card goes to the piece. Nesting the two would leave the boundary between
+        them to the touch system.
+      */}
+      {showBrandLink ? (
+        <Pressable
+          onPress={handleBrandPress}
+          style={({ pressed }) => [
+            styles.brandLink,
+            { borderTopColor: theme.colors.border },
+            pressed && styles.pressed,
+          ]}
+          accessibilityRole="link"
+          accessibilityLabel={`View ${brandName}'s catalogue`}
+        >
+          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+            {brandName}
+          </AppText>
+        </Pressable>
+      ) : null}
       <Pressable
         onPress={() => onHide(item, blockKey, position)}
         disabled={hiddenBusy}
@@ -427,7 +501,7 @@ export function MobileMarketSuggestionBlocks({
   if (loading && !loaded) {
     return (
       <Card padding="md" style={[styles.loadingCard, style]}>
-        <ActivityIndicator size="small" color={theme.colors.primary} />
+        <MuseLoader size={20} />
         <AppText variant="body" tone="muted">
           Loading market picks...
         </AppText>
@@ -490,6 +564,20 @@ const styles = StyleSheet.create({
   imageWrap: {
     height: 172,
     width: '100%',
+  },
+  kindBadge: {
+    position: 'absolute',
+    top: tokens.spacing.xs,
+    left: tokens.spacing.xs,
+    borderRadius: tokens.radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 2,
+  },
+  brandLink: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.sm,
   },
   image: {
     height: '100%',

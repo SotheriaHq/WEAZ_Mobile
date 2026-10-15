@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
 import { contentIntegrityApi, type ContentReviewDecision } from '@/src/api/ContentIntegrityApi';
 import { getContentStatusLabel } from '@/src/features/design-editor/designCreationRules';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 interface ContentReviewDecisionSheetProps {
   open: boolean;
@@ -64,25 +66,49 @@ export function ContentReviewDecisionSheet({
   const missingSlots = decision?.slotCompleteness?.missing ?? [];
 
   return (
-    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[styles.sheet, { backgroundColor: theme.colors.surface }]}>
-          <AppText variant="title" tone={isRejected ? 'danger' : 'primary'}>
-            {isRejected ? 'Rejected' : 'Changes requested'}
-          </AppText>
-          <AppText variant="body" tone="secondary" style={styles.copy}>
-            {isRejected
-              ? 'This submission was not approved.'
-              : 'Please update the highlighted media and resubmit.'}
-          </AppText>
+    // The app's sheet. It was a transparent Modal on the platform's own slide,
+    // so a brand reading why their submission was rejected got a panel that
+    // opened unlike every other panel in the studio, and could not be swiped
+    // away.
+    <AppBottomSheet
+      visible={open}
+      title={isRejected ? 'Rejected' : 'Changes requested'}
+      subtitle={
+        isRejected
+          ? 'This submission was not approved.'
+          : 'Please update the highlighted media and resubmit.'
+      }
+      onClose={onClose}
+      showCloseButton
+      footer={
+        <View style={styles.actions}>
+          <Pressable
+            onPress={onClose}
+            style={[styles.secondaryButton, { borderColor: theme.colors.border }]}
+          >
+            <AppText variant="bodyBold" tone="primary">Close</AppText>
+          </Pressable>
+          {onEdit ? (
+            <Pressable
+              onPress={() => {
+                onClose();
+                onEdit();
+              }}
+              style={[styles.primaryButton, { backgroundColor: theme.colors.primary }]}
+            >
+              <AppText variant="bodyBold" tone="inverse">Edit and Resubmit</AppText>
+            </Pressable>
+          ) : null}
+        </View>
+      }
+    >
           <AppText variant="caption" tone="muted">
             {title || 'This item'} is marked as {getContentStatusLabel(normalizedStatus)}.
           </AppText>
 
           {loading ? (
             <View style={styles.loading}>
-              <ActivityIndicator color={theme.colors.primary} />
+              <MuseLoader size={20} />
             </View>
           ) : (
             <View style={[styles.reasonBox, { borderColor: theme.colors.border }]}>
@@ -105,43 +131,11 @@ export function ContentReviewDecisionSheet({
             </View>
           )}
 
-          <View style={styles.actions}>
-            <Pressable
-              onPress={onClose}
-              style={[styles.secondaryButton, { borderColor: theme.colors.border }]}
-            >
-              <AppText variant="bodyBold" tone="primary">Close</AppText>
-            </Pressable>
-            {onEdit ? (
-              <Pressable
-                onPress={() => {
-                  onClose();
-                  onEdit();
-                }}
-                style={[styles.primaryButton, { backgroundColor: theme.colors.primary }]}
-              >
-                <AppText variant="bodyBold" tone="inverse">Edit and Resubmit</AppText>
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
-      </View>
-    </Modal>
+    </AppBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.48)',
-  },
-  sheet: {
-    borderTopLeftRadius: tokens.radius.xl,
-    borderTopRightRadius: tokens.radius.xl,
-    padding: tokens.spacing.lg,
-    gap: tokens.spacing.sm,
-  },
   copy: {
     marginTop: tokens.spacing.xs,
   },

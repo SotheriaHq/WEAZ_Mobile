@@ -213,6 +213,40 @@ assert.match(marketSuggestions, /getMarketSuggestions/);
 assert.doesNotMatch(marketSuggestions, /SearchApi\.search/);
 assert.doesNotMatch(marketSuggestions, /SearchApi\.suggest/);
 
+// SEARCH-CORE-4/5: Runway search-pinned feed contract parity (mobile).
+const marketApiSource = read('src/api/MarketApi.ts');
+const marketTypesSource = read('src/types/market.ts');
+assert.match(
+  marketApiSource,
+  /export async function getRunwayPinnedFeed/,
+  'mobile MarketApi must expose getRunwayPinnedFeed',
+);
+assert.match(
+  marketApiSource,
+  /feedMode: 'searchPinned'/,
+  'pinned feed must request feedMode=searchPinned',
+);
+assert.match(
+  marketApiSource,
+  /anchorDesignId: params\.anchorDesignId/,
+  'pinned feed must forward anchorDesignId',
+);
+assert.match(
+  marketApiSource,
+  /exhaustedReason:/,
+  'pinned feed must surface exhaustedReason',
+);
+assert.match(
+  marketTypesSource,
+  /export type RunwayPinnedFeedResponse/,
+  'mobile market types must define RunwayPinnedFeedResponse',
+);
+assert.match(
+  marketTypesSource,
+  /anchorIncluded: boolean/,
+  'pinned response type must include anchorIncluded',
+);
+
 async function runSearchApiNormalizationChecks() {
   const calls = [];
   const apiClient = {

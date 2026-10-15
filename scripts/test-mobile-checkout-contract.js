@@ -72,7 +72,13 @@ assertIncludes(paymentScreen, "finalStatus === 'PAID'", 'payment screen success 
 assertNotIncludes(paymentScreen, 'markPaid', 'payment screen must not mark paid locally');
 
 const myBagSheet = read('components/bagging/MyBagSheet.tsx');
-assertIncludes(myBagSheet, "router.push('/checkout'", 'my bag checkout route');
+// The DESTINATION is the contract. `drillDownPush` replaced `router.push` to add
+// the navigation lock that dedupes rapid double taps on the checkout CTA.
+assertMatches(
+  myBagSheet,
+  /(?:router\.push|drillDownPush)\('\/checkout'/,
+  'my bag checkout route',
+);
 assertIncludes(myBagSheet, 'mobile-checkout-cta', 'my bag checkout cta');
 assertNotIncludes(myBagSheet, 'mobile-checkout-disabled-cta', 'my bag sheet');
 

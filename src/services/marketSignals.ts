@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { getCachedDeviceId, getDeviceId } from '@/src/utils/deviceId';
+
 import {
   sendMarketSignalBatch,
   type MarketSignalEvent,
@@ -14,11 +16,11 @@ export const MARKET_SIGNAL_EVENT_TTL_MS = 24 * 60 * 60 * 1000;
 export const MARKET_SIGNAL_MAX_RETRIES = 5;
 export const MARKET_SIGNAL_RETRY_BASE_MS = 2_000;
 export const MARKET_SIGNAL_RETRY_MAX_MS = 60_000;
-export const MARKET_SIGNAL_QUEUE_STORAGE_KEY = 'threadly.market.signalQueue.v1';
-export const MARKET_SIGNAL_RECENT_STORAGE_KEY = 'threadly.market.signalRecent.v1';
-export const MARKET_SIGNAL_IDENTITY_STORAGE_KEY = 'threadly.market.signalIdentity.v1';
+export const MARKET_SIGNAL_QUEUE_STORAGE_KEY = 'wiez.market.signalQueue.v1';
+export const MARKET_SIGNAL_RECENT_STORAGE_KEY = 'wiez.market.signalRecent.v1';
+export const MARKET_SIGNAL_IDENTITY_STORAGE_KEY = 'wiez.market.signalIdentity.v1';
 export const MARKET_SIGNAL_LAST_CLEARED_STORAGE_KEY =
-  'threadly.market.signalLastClearedAt.v1';
+  'wiez.market.signalLastClearedAt.v1';
 
 type QueuedMarketSignal = {
   event: MarketSignalEvent & { clientEventId: string };
@@ -199,8 +201,22 @@ function compactQueue() {
   }
 }
 
+/**
+ * Prefers the shared device id so signal batches and the `x-wiez-device-id`
+ * request header carry the SAME value. View dedupe spans both paths, and two
+ * different ids would count the same person twice.
+ */
 export function getMarketSignalAnonymousSessionId() {
   void hydrateMarketSignalState();
+  void getDeviceId();
+  const shared = getCachedDeviceId();
+  if (shared) {
+    if (anonymousSessionId !== shared) {
+      anonymousSessionId = shared;
+      persistMarketSignalState();
+    }
+    return shared;
+  }
   if (!anonymousSessionId) {
     anonymousSessionId = createClientId('anon');
     persistMarketSignalState();

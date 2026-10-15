@@ -2,15 +2,16 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
-import { useTheme } from '@/src/theme/ThemeProvider';
 import { FeedImage } from '@/src/features/feed/components/FeedImage';
 import type { FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
+import { useTheme } from '@/src/theme/ThemeProvider';
 
 type FeedMediaSlideProps = {
   media: FeedViewerMedia | null;
   imageIndex: number;
   viewportWidth?: number | null;
   viewportHeight?: number | null;
+  allowDetailUpgrade?: boolean;
   onPress?: () => void;
 };
 
@@ -44,10 +45,13 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
   imageIndex,
   viewportWidth,
   viewportHeight,
+  allowDetailUpgrade = true,
   onPress,
 }: FeedMediaSlideProps) {
-  const { scheme, theme } = useTheme();
-  const placeholderSurface = scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt;
+  const { theme } = useTheme();
+  // Must be the same token the screen root and the inter-page scrim use, or a
+  // slide edge shows as a different shade the moment media letterboxes.
+  const placeholderSurface = theme.colors.runwayStage;
   const aspectRatio = getMediaAspectRatio(media);
   const aspectClass = getAspectClass(aspectRatio);
 
@@ -55,7 +59,9 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
     return (
       <View style={[StyleSheet.absoluteFill, styles.emptySlide, { backgroundColor: placeholderSurface }]}>
         <AppText variant="display">Image</AppText>
-        <AppText variant="subtitle" tone="inverse">No views yet</AppText>
+        {/* Default tone, not `inverse`: these sit on the stage, which is a light
+            surface in the light theme — white-on-light was unreadable. */}
+        <AppText variant="subtitle">No views yet</AppText>
         <AppText variant="body" tone="secondary" style={styles.slideBody}>
           This design does not have any media to browse.
         </AppText>
@@ -67,7 +73,7 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
     return (
       <View style={[StyleSheet.absoluteFill, styles.videoSlide, { backgroundColor: placeholderSurface }]}>
         <AppText variant="display">Video</AppText>
-        <AppText variant="subtitle" tone="inverse">Video view</AppText>
+        <AppText variant="subtitle">Video view</AppText>
         <AppText variant="body" tone="secondary" numberOfLines={2} style={styles.slideBody}>
           {media.label || 'Swipe to another view'}
         </AppText>
@@ -95,7 +101,6 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
         style={styles.pageImage}
         sourceType={media.fileId ? 'feed-media-file' : 'feed-media-url'}
         imageIndex={imageIndex}
-        contentFit="contain"
         viewportWidth={viewportWidth}
         viewportHeight={viewportHeight}
         naturalWidth={media.width}
@@ -103,6 +108,7 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
         aspectRatio={aspectRatio}
         aspectClass={aspectClass}
         frostedBackdrop
+        allowDetailUpgrade={allowDetailUpgrade}
       />
     </Pressable>
   );
@@ -126,7 +132,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   slideBody: {
-    marginTop: 6,
+    marginTop: 4,
     textAlign: 'center',
   },
 });

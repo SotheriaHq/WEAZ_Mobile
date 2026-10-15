@@ -12,10 +12,16 @@ export type MobileAuthRoute =
       };
     };
 
-const RESET_PASSWORD_ROUTE = '/reset-password';
 const GROUPED_RESET_PASSWORD_ROUTE = '/(auth)/reset-password';
-const VERIFY_EMAIL_ROUTE = '/verify-email';
 const GROUPED_VERIFY_EMAIL_ROUTE = '/(auth)/verify-email';
+
+/**
+ * `/verify-email`, `/verify-email/<token>`, and the grouped route forms.
+ * The token lives in the path because an Android intent URL drops `?token=`
+ * on the way into the app. The query form is still accepted.
+ */
+const AUTH_ROUTE_PATTERN =
+  /^\/(?:\(auth\)\/)?(verify-email|reset-password)(?:\/([^/?#]+))?$/;
 
 const normalizePath = (value: string): string => {
   const trimmed = String(value ?? '').trim();
@@ -43,27 +49,20 @@ export function resolveMobileAuthRoute(url: string | null | undefined): MobileAu
 
   try {
     const parsed = new URL(url);
-    const routePath = getRoutePath(parsed);
+    const match = getRoutePath(parsed).match(AUTH_ROUTE_PATTERN);
+    if (!match) return null;
 
-    if (routePath === RESET_PASSWORD_ROUTE || routePath === GROUPED_RESET_PASSWORD_ROUTE) {
-      const token = getQueryValue(parsed.searchParams, 'token');
+    const pathToken = match[2] ? decodeURIComponent(match[2]) : '';
+    const token = getQueryValue(parsed.searchParams, 'token') || pathToken;
+    const pathname =
+      match[1] === 'reset-password'
+        ? GROUPED_RESET_PASSWORD_ROUTE
+        : GROUPED_VERIFY_EMAIL_ROUTE;
 
-      return {
-        pathname: GROUPED_RESET_PASSWORD_ROUTE,
-        ...(token ? { params: { token } } : null),
-      };
-    }
-
-    if (routePath === VERIFY_EMAIL_ROUTE || routePath === GROUPED_VERIFY_EMAIL_ROUTE) {
-      const token = getQueryValue(parsed.searchParams, 'token');
-
-      return {
-        pathname: GROUPED_VERIFY_EMAIL_ROUTE,
-        ...(token ? { params: { token } } : null),
-      };
-    }
-
-    return null;
+    return {
+      pathname,
+      ...(token ? { params: { token } } : null),
+    };
   } catch {
     return null;
   }

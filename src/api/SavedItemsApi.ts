@@ -1,10 +1,12 @@
 import { apiClient } from '@/src/api/httpClient';
 import {
   mapCatalogTargetForLegacyApi,
+  toSavedItemRequest,
   type CatalogTargetInput,
 } from '@/src/features/catalog/catalogTarget';
-import { queryClient, THREADLY_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryClient, WIEZ_SAVED_STATUS_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
+import { markClipsChanged } from '@/src/features/clipping/clipRevision';
 
 export type SavedItemTargetType = 'COLLECTION' | 'COLLECTION_MEDIA';
 
@@ -20,7 +22,8 @@ const savedPayloadForCatalogTarget = (target: CatalogTargetInput) => {
   if (legacyTarget.targetType === 'PRODUCT') {
     throw new Error('Product favorites use the wishlist API, not /saved.');
   }
-  return legacyTarget;
+  // Two fields, never the mapper's breadcrumbs — see `toSavedItemRequest`.
+  return toSavedItemRequest(legacyTarget);
 };
 
 const getLifecycleUserId = () => {
@@ -39,21 +42,25 @@ export const SavedItemsApi = {
   async saveItem(targetType: SavedItemTargetType, targetId: string): Promise<void> {
     await apiClient.post('/saved', { targetType, targetId });
     await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
+    markClipsChanged();
   },
 
   async saveCatalogTarget(target: CatalogTargetInput): Promise<void> {
     await apiClient.post('/saved', savedPayloadForCatalogTarget(target));
     await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
+    markClipsChanged();
   },
 
   async unsaveItem(targetType: SavedItemTargetType, targetId: string): Promise<void> {
     await apiClient.delete('/saved', { data: { targetType, targetId } });
     await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
+    markClipsChanged();
   },
 
   async unsaveCatalogTarget(target: CatalogTargetInput): Promise<void> {
     await apiClient.delete('/saved', { data: savedPayloadForCatalogTarget(target) });
     await queryClient.invalidateQueries({ queryKey: savedRootQueryKey() });
+    markClipsChanged();
   },
 
   async checkBatch(targetType: SavedItemTargetType, targetIds: string[]): Promise<Record<string, boolean>> {
@@ -78,7 +85,7 @@ export const SavedItemsApi = {
           return acc;
         }, {});
       },
-      staleTime: THREADLY_SAVED_STATUS_STALE_TIME_MS,
+      staleTime: WIEZ_SAVED_STATUS_STALE_TIME_MS,
     });
   },
 

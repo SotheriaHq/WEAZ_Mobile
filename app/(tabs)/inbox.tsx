@@ -1,6 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   AppState,
   FlatList,
   Pressable,
@@ -9,13 +8,20 @@ import {
   View,
   type ListRenderItemInfo,
 } from 'react-native';
+import {
+  STUDIO_SURFACE_PARAM,
+  STUDIO_SURFACE_PARAM_VALUE,
+} from '@/src/navigation/nativeIslandConfig';
 import { useFocusEffect } from 'expo-router';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { CollapsibleSearch } from '@/components/ui/CollapsibleSearch';
+import { ScreenState } from '@/components/ui/ScreenState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { Tabs } from '@/components/catalog/Tabs';
@@ -26,14 +32,26 @@ import {
   refreshUnreadMessageCount,
   useMessagingRealtimeChannel,
 } from '@/src/realtime/messaging';
+import { readWarmScreenState, writeWarmScreenState } from '@/src/state/screenWarmState';
+import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { navPerf } from '@/src/utils/navPerf';
+import { useCommitCost } from '@/src/perf/commitCost';
+import { useScreenArrival } from '@/src/perf/usePerfStages';
 import type { ConversationListResponse, ConversationSummary } from '@/src/types/messaging';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type FilterKey = 'all' | 'unread' | 'orders';
 type InboxCursor = ConversationListResponse['endCursor'];
 type LoadMode = 'reset' | 'refresh' | 'more' | 'realtime';
+
+type InboxWarmSnapshot = {
+  conversations: ConversationSummary[];
+  cursor: InboxCursor;
+  hasNextPage: boolean;
+};
 
 const PAGE_SIZE = 50;
 const REALTIME_REFRESH_DEBOUNCE_MS = 400;
@@ -89,19 +107,57 @@ function getConversationName(item: ConversationSummary) {
   return item.participant?.name ?? item.participant?.username ?? item.title ?? 'Conversation';
 }
 
-function getConversationPreview(item: ConversationSummary) {
-  return item.subtitle ?? 'No messages yet';
+function getConversationInitials(item: ConversationSummary) {
+  const source =
+    item.participant?.name ??
+    item.participant?.username ??
+    item.title ??
+    '';
+  const initials = source
+    .replace(/^(conversation with|inquiry with)\s+/i, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  return initials || '💬';
 }
 
+/**
+ * `[Attachment]` is a PLACEHOLDER the API stores when a message has no text
+ * (`messaging.service.ts`), not a line anybody wrote. It was being printed
+ * verbatim, square brackets and all — the list read like a log file where a
+ * photo had arrived.
+ *
+ * The value is persisted per conversation, so old rows carry it whatever the
+ * API stores next; translating it here covers those too.
+ */
+const ATTACHMENT_PLACEHOLDER = /^\[attachments?\]$/i;
+
+function getConversationPreview(item: ConversationSummary) {
+  const subtitle = item.subtitle?.trim();
+  if (!subtitle) return 'No messages yet';
+  if (ATTACHMENT_PLACEHOLDER.test(subtitle)) return '📎 Photo';
+  return subtitle;
+}
+
+/**
+ * Only labels that tell the reader something they could not otherwise know.
+ *
+ * An order number does: it says which of several conversations with the same
+ * brand this one is about. "Inquiry" did not — every thread that is not about
+ * an order is an inquiry, so the label was on most rows, said the same thing
+ * on all of them, and was a piece of internal vocabulary at that. The context
+ * type still exists and the backend still routes on it; it is just not news.
+ */
 function getContextLabel(item: ConversationSummary) {
   if (item.customOrderId) {
     return `Custom #${item.customOrderId.slice(0, 8).toUpperCase()}`;
   }
   if (item.orderId) {
     return `Order #${item.orderId.slice(0, 8).toUpperCase()}`;
-  }
-  if (item.contextType === 'INQUIRY') {
-    return 'Inquiry';
   }
   return null;
 }
@@ -149,6 +205,13 @@ function buildThreadParams(item: ConversationSummary) {
     ...(item.orderId ? { orderId: item.orderId } : null),
     ...(item.customOrderId ? { customOrderId: item.customOrderId } : null),
     ...(item.context.messageId ? { messageId: item.context.messageId } : null),
+    // Pass the known participant identity through to the chat screen so the
+    // header shows the real name/avatar immediately — before (and even when)
+    // message contents are unavailable (empty or own-only threads).
+    ...(item.participant?.name ? { participantName: item.participant.name } : null),
+    ...(item.participant?.username ? { participantUsername: item.participant.username } : null),
+    ...(item.participant?.avatarUrl ? { participantAvatarUrl: item.participant.avatarUrl } : null),
+    ...(item.participant?.id ? { participantId: item.participant.id } : null),
   };
 }
 
@@ -161,7 +224,7 @@ function ConversationAvatar({ item }: { item: ConversationSummary }) {
 
   const fallback = (
     <View style={[styles.avatarFallback, { backgroundColor: theme.colors.primarySoft }]}>
-      <AppText variant="captionBold" tone="primary">DM</AppText>
+      <AppText variant="captionBold" tone="primary">{getConversationInitials(item)}</AppText>
     </View>
   );
 
@@ -197,15 +260,39 @@ const ConversationRow = memo(function ConversationRow({
   }, [item, onPress]);
 
   return (
+    /*
+      Unread has to LOOK unread.
+
+      Read and unread rows used to share a surface and differ only by the TONE
+      of the timestamp and the preview — so finding what still needed answering
+      meant reading the whole list. Messenger, Instagram DMs and WhatsApp all
+      separate the two with a filled surface plus a solid marker, and they carry
+      the signal on three channels at once (surface, weight, dot) so it survives
+      colour-blindness and a dimmed screen outdoors.
+
+      `primarySoft` rather than a hand-mixed alpha, so the wash tracks the theme
+      in both schemes.
+    */
     <Pressable
       onPress={handlePress}
       style={({ pressed }) => [
         styles.rowPressable,
+        unread ? { backgroundColor: theme.colors.primarySoft } : null,
         pressed ? { backgroundColor: theme.colors.surfaceAlt } : null,
       ]}
       accessibilityRole="button"
-      accessibilityLabel={`Open conversation with ${name}`}
+      accessibilityLabel={
+        unread
+          ? `Open unread conversation with ${name}`
+          : `Open conversation with ${name}`
+      }
     >
+      {unread ? (
+        <View
+          style={[styles.unreadEdge, { backgroundColor: theme.colors.primary }]}
+          pointerEvents="none"
+        />
+      ) : null}
       <View style={styles.row}>
         <ConversationAvatar item={item} />
         <View style={[styles.rowBody, { borderBottomColor: theme.colors.border }]}>
@@ -227,7 +314,16 @@ const ConversationRow = memo(function ConversationRow({
 
           <View style={styles.rowBottom}>
             <View style={styles.previewWrap}>
-              <AppText variant="small" tone={unread ? 'secondary' : 'muted'} numberOfLines={1}>
+              {/*
+                An unread preview is the line that says whether this needs
+                answering now, so it gets the emphatic variant rather than a
+                slightly less grey tone.
+              */}
+              <AppText
+                variant={unread ? 'captionBold' : 'small'}
+                tone={unread ? 'default' : 'muted'}
+                numberOfLines={1}
+              >
                 {getConversationPreview(item)}
               </AppText>
               {contextLabel ? (
@@ -243,6 +339,10 @@ const ConversationRow = memo(function ConversationRow({
                   {item.unreadCount > 99 ? '99+' : String(item.unreadCount)}
                 </AppText>
               </View>
+            ) : unread ? (
+              /* Unread with no count from the server — the dot is the honest
+                 form of "there is something here". */
+              <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} />
             ) : null}
           </View>
         </View>
@@ -272,14 +372,52 @@ function MessagesSkeleton({ bottomPadding }: { bottomPadding: number }) {
 }
 
 export default function InboxScreen() {
+  useCommitCost('Inbox');
+  // Same missing-probe gap as Catalogue — see the note there. Every
+  // `tabs→inbox` flow in the capture reported `mounted=no` for want of this.
+  useScreenArrival('tabs→inbox');
+  const flowKey = 'inbox';
+  // Phase 1 nav perf markers (gated, no behavior change)
+  React.useEffect(() => {
+    navPerf.screenMounted(flowKey);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible(flowKey);
+  }, []);
+
+  React.useEffect(() => {
+    navPerf.firstVisibleUi(flowKey);
+  }, []);
+
   const { theme } = useTheme();
+  /**
+   * `surface=studio` means the brand arrived here from the Studio dock's
+   * Messages chip, and the island is showing the Studio dock rather than the
+   * shopper one. Opening a conversation has to carry that forward or the dock
+   * changes under the brand mid-flow — see `isStudioIslandPath`.
+   */
+  const localParams = useLocalSearchParams<{ surface?: string | string[] }>();
+  const surfaceParam = Array.isArray(localParams.surface)
+    ? localParams.surface[0]
+    : localParams.surface;
+  const studioSurfaceParams = useMemo(
+    () =>
+      surfaceParam === STUDIO_SURFACE_PARAM_VALUE
+        ? { [STUDIO_SURFACE_PARAM]: STUDIO_SURFACE_PARAM_VALUE }
+        : {},
+    [surfaceParam],
+  );
   const { standardScreenBottomPadding } = useScreenChrome();
   const { status, token, user } = useAuth();
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const deferredWorkReady = useDeferredScreenWork();
+  const inboxWarmStateKey = user?.id ? `inbox:${user.id}` : null;
+  const initialWarmInboxSnapshot = inboxWarmStateKey ? readWarmScreenState<InboxWarmSnapshot>(inboxWarmStateKey) : null;
+  const [conversations, setConversations] = useState<ConversationSummary[]>(() => initialWarmInboxSnapshot?.conversations ?? []);
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchExpanded, setSearchExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => status === 'authenticated' && !initialWarmInboxSnapshot);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasNextPage, setHasNextPage] = useState(false);
@@ -301,6 +439,41 @@ export default function InboxScreen() {
   const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleRealtimeRefreshRef = useRef<() => void>(() => undefined);
   const skipInitialFocusRefreshRef = useRef(true);
+  const conversationsRef = useRef<ConversationSummary[]>(initialWarmInboxSnapshot?.conversations ?? []);
+  const [warmInboxSnapshot, setWarmInboxSnapshot] = useState<InboxWarmSnapshot | null>(() => initialWarmInboxSnapshot);
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  useEffect(() => {
+    if (!inboxWarmStateKey) {
+      setConversations([]);
+      setWarmInboxSnapshot(null);
+      setLoading(false);
+      hasNextPageRef.current = true;
+      setHasNextPage(false);
+      return;
+    }
+
+    const cachedSnapshot = readWarmScreenState<InboxWarmSnapshot>(inboxWarmStateKey);
+    if (cachedSnapshot) {
+      setConversations(cachedSnapshot.conversations);
+      setWarmInboxSnapshot(cachedSnapshot);
+      setLoading(false);
+      cursorRef.current = cachedSnapshot.cursor;
+      hasNextPageRef.current = cachedSnapshot.hasNextPage;
+      setHasNextPage(cachedSnapshot.hasNextPage);
+      return;
+    }
+
+    setConversations([]);
+    setWarmInboxSnapshot(null);
+    setLoading(status === 'authenticated');
+    cursorRef.current = null;
+    hasNextPageRef.current = true;
+    setHasNextPage(false);
+  }, [inboxWarmStateKey, status]);
 
   const filteredConversations = useMemo(
     () => conversations.filter((item) => matchesFilter(item, activeFilter) && matchesSearch(item, searchQuery)),
@@ -317,6 +490,8 @@ export default function InboxScreen() {
       }
 
       const isReset = mode !== 'more';
+      const cachedSnapshot = isReset && inboxWarmStateKey ? readWarmScreenState<InboxWarmSnapshot>(inboxWarmStateKey) : null;
+      const isBackgroundRefresh = mode === 'reset' && Boolean(cachedSnapshot);
       if (fetchInFlightRef.current) {
         if (isReset) {
           pendingReloadRef.current = true;
@@ -326,8 +501,11 @@ export default function InboxScreen() {
       if (!isReset && !hasNextPageRef.current) return;
 
       fetchInFlightRef.current = true;
+      if (isBackgroundRefresh) {
+        navPerf.mark('background_refresh_started', 'tabs→inbox');
+      }
       if (mode === 'reset') {
-        setLoading(true);
+        setLoading(!cachedSnapshot);
         setError(null);
       } else if (mode === 'refresh') {
         setRefreshing(true);
@@ -349,7 +527,17 @@ export default function InboxScreen() {
         cursorRef.current = response.endCursor;
         hasNextPageRef.current = response.hasNextPage;
         setHasNextPage(response.hasNextPage);
-        setConversations((current) => (isReset ? response.items : mergeConversationPages(current, response.items)));
+        const nextConversations = isReset ? response.items : mergeConversationPages(conversationsRef.current, response.items);
+        setConversations(nextConversations);
+        if (inboxWarmStateKey) {
+          const nextSnapshot = {
+            conversations: nextConversations,
+            cursor: response.endCursor,
+            hasNextPage: response.hasNextPage,
+          };
+          setWarmInboxSnapshot(nextSnapshot);
+          writeWarmScreenState(inboxWarmStateKey, nextSnapshot);
+        }
       } catch (nextError) {
         setError(getErrorMessage(nextError));
       } finally {
@@ -357,6 +545,9 @@ export default function InboxScreen() {
         setLoading(false);
         setRefreshing(false);
         setLoadingMore(false);
+        if (isBackgroundRefresh) {
+          navPerf.mark('background_refresh_completed', 'tabs→inbox');
+        }
 
         if (pendingReloadRef.current) {
           pendingReloadRef.current = false;
@@ -364,7 +555,7 @@ export default function InboxScreen() {
         }
       }
     },
-    [status],
+    [inboxWarmStateKey, status],
   );
 
   const scheduleRealtimeRefresh = useCallback(() => {
@@ -391,16 +582,29 @@ export default function InboxScreen() {
     cursorRef.current = null;
     hasNextPageRef.current = true;
     setHasNextPage(false);
-    setConversations([]);
     setError(null);
     setSearchQuery('');
     setSearchExpanded(false);
     setActiveFilter('all');
 
+    const cachedSnapshot = inboxWarmStateKey ? readWarmScreenState<InboxWarmSnapshot>(inboxWarmStateKey) : null;
+    if (cachedSnapshot) {
+      setConversations(cachedSnapshot.conversations);
+      setWarmInboxSnapshot(cachedSnapshot);
+      cursorRef.current = cachedSnapshot.cursor;
+      hasNextPageRef.current = cachedSnapshot.hasNextPage;
+      setHasNextPage(cachedSnapshot.hasNextPage);
+      setLoading(false);
+    } else {
+      setConversations([]);
+      setWarmInboxSnapshot(null);
+      if (status === 'authenticated') {
+        setLoading(true);
+      }
+    }
+
     if (status === 'authenticated') {
-      setLoading(true);
       void loadConversations('reset');
-      void refreshUnreadMessageCount({ authenticated: true });
       return;
     }
 
@@ -445,7 +649,7 @@ export default function InboxScreen() {
   }, [scheduleRealtimeRefresh]);
 
   useMessagingRealtimeChannel({
-    enabled: status === 'authenticated' && Boolean(user?.id),
+    enabled: deferredWorkReady && status === 'authenticated' && Boolean(user?.id),
     token: token ?? null,
     userId: user?.id ?? null,
     onMessageCreated: handleRealtimeMessageEvent,
@@ -453,26 +657,51 @@ export default function InboxScreen() {
     onMessageRead: handleRealtimeMessageEvent,
   });
 
+  useEffect(() => {
+    navPerf.screenMounted('tabs→inbox');
+    navPerf.shellVisible('tabs→inbox');
+    navPerf.firstVisibleUi('tabs→inbox');
+    if (initialWarmInboxSnapshot) {
+      navPerf.mark('cache_hit', 'tabs→inbox');
+      navPerf.mark('stale_ui_rendered', 'tabs→inbox');
+    } else {
+      navPerf.mark('cache_miss', 'tabs→inbox');
+      if (status === 'authenticated') navPerf.mark('cold_skeleton_rendered', 'tabs→inbox');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!deferredWorkReady) return;
+    void refreshUnreadMessageCount({ authenticated: status === 'authenticated' });
+  }, [deferredWorkReady, status]);
+
+  useEffect(() => {
+    if (!loading) {
+      navPerf.mark('cached_or_empty_state_visible', 'tabs→inbox');
+      navPerf.dataReady('tabs→inbox');
+    }
+  }, [loading]);
+
   // Handle pending navigation after authentication
   useEffect(() => {
     if (status === 'authenticated' && pendingNavigation) {
       const { params } = pendingNavigation;
-      // Small delay to ensure conversations are loaded
-      setTimeout(() => {
-        if (params?.threadId || params?.conversationId) {
-          router.push({
-            pathname: '/messages/[threadId]',
-            params: {
-              threadId: params.threadId || params.conversationId,
-              conversationId: params.conversationId || params.threadId,
-              ...(params.messageId ? { messageId: params.messageId } : {}),
-              ...(params.orderId ? { orderId: params.orderId } : {}),
-              ...(params.customOrderId ? { customOrderId: params.customOrderId } : {}),
-            },
-          } as any);
-        }
-        setPendingNavigation(null);
-      }, 500);
+      if (params?.threadId || params?.conversationId) {
+        navPerf.tap('inbox→pending_thread');
+        navPerf.navigationCalled();
+        drillDownPush({
+          pathname: '/messages/[threadId]',
+          params: {
+            threadId: params.threadId || params.conversationId,
+            conversationId: params.conversationId || params.threadId,
+            ...(params.messageId ? { messageId: params.messageId } : {}),
+            ...(params.orderId ? { orderId: params.orderId } : {}),
+            ...(params.customOrderId ? { customOrderId: params.customOrderId } : {}),
+            ...studioSurfaceParams,
+          },
+        } as any);
+      }
+      setPendingNavigation(null);
     }
   }, [status, pendingNavigation]);
 
@@ -488,12 +717,17 @@ export default function InboxScreen() {
     void loadConversations('more');
   }, [hasNextPage, loadConversations, loading, loadingMore, refreshing]);
 
-  const handlePressConversation = useCallback((item: ConversationSummary) => {
-    router.push({
-      pathname: '/messages/[threadId]',
-      params: buildThreadParams(item),
-    } as any);
-  }, []);
+  const handlePressConversation = useCallback(
+    (item: ConversationSummary) => {
+      navPerf.tap('inbox→thread');
+      navPerf.navigationCalled();
+      drillDownPush({
+        pathname: '/messages/[threadId]',
+        params: { ...buildThreadParams(item), ...studioSurfaceParams },
+      } as any);
+    },
+    [studioSurfaceParams],
+  );
 
   const handleFilterChange = useCallback((key: string) => {
     if (key === 'all' || key === 'unread' || key === 'orders') {
@@ -514,7 +748,7 @@ export default function InboxScreen() {
     () => (
       loadingMore ? (
         <View style={styles.footerLoader}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <MuseLoader size={20} />
         </View>
       ) : null
     ),
@@ -550,7 +784,7 @@ export default function InboxScreen() {
             containerStyle={[styles.searchControl, searchExpanded ? styles.searchControlExpanded : null]}
           />
         </View>
-        <Tabs tabs={FILTER_TABS} activeTab={activeFilter} onTabChange={handleFilterChange} scrollable />
+        <Tabs tabs={FILTER_TABS} activeTab={activeFilter} onTabChange={handleFilterChange} scrollable align="start" />
       </View>
 
       {status !== 'authenticated' ? (
@@ -561,29 +795,35 @@ export default function InboxScreen() {
           </AppText>
           <Button
             title="Sign in"
-            onPress={() => router.push({ pathname: '/(auth)/login', params: { next: '/(tabs)/inbox' } } as any)}
+            onPress={() => drillDownPush({ pathname: '/(auth)/login', params: { next: '/(tabs)/inbox' } } as any)}
           />
         </View>
-      ) : loading ? (
+      ) : loading && !warmInboxSnapshot ? (
         <MessagesSkeleton bottomPadding={bottomPadding} />
-      ) : error && !hasLoadedConversations ? (
-        <View style={stateContainerStyle}>
-          <AppText variant="subtitle">Could not load messages</AppText>
-          <AppText variant="body" tone="muted" style={styles.stateText}>{error}</AppText>
-          <Button title="Retry" size="sm" onPress={() => void loadConversations('reset')} />
-        </View>
+      ) : error && !hasLoadedConversations && !warmInboxSnapshot ? (
+        <ScreenState
+          kind="server"
+          title="Could not load messages"
+          message={error}
+          onAction={() => void loadConversations('reset')}
+        />
       ) : filteredConversations.length === 0 ? (
         <View style={stateContainerStyle}>
-          <AppText variant="subtitle">
-            {isSearching ? 'No matching messages' : activeFilter === 'unread' ? 'No unread messages' : activeFilter === 'orders' ? 'No order messages' : 'No messages yet'}
-          </AppText>
-          <AppText variant="body" tone="muted" style={styles.stateText}>
-            {isSearching
-              ? 'Try another real name, message preview, or order reference.'
-              : activeFilter === 'all'
-                ? 'Conversations will appear here after a real message is started.'
-                : 'This filter only uses real conversation data already returned by messaging.'}
-          </AppText>
+          {/* Searching/filtering to nothing is `noResults` (change the query);
+              a genuinely empty inbox is `empty` (nothing to change). */}
+          <ScreenState
+            compact
+            kind={isSearching || activeFilter !== 'all' ? 'noResults' : 'empty'}
+            emoji={isSearching ? '⌕' : '💬'}
+            title={isSearching ? 'No matching messages' : activeFilter === 'unread' ? 'No unread messages' : activeFilter === 'orders' ? 'No order messages' : 'No messages yet'}
+            message={
+              isSearching
+                ? 'Try another real name, message preview, or order reference.'
+                : activeFilter === 'all'
+                  ? 'Conversations will appear here after a real message is started.'
+                  : 'This filter only uses real conversation data already returned by messaging.'
+            }
+          />
           {error ? (
             <Button title="Retry" size="sm" onPress={() => void loadConversations('reset')} />
           ) : null}
@@ -653,6 +893,24 @@ const styles = StyleSheet.create({
   },
   rowPressable: {
     minHeight: 76,
+    position: 'relative',
+  },
+  /**
+   * The accent edge on an unread row. Absolutely positioned so switching a row
+   * between read and unread never changes its width — a list that reflows as
+   * read receipts land is worse than one with a weak indicator.
+   */
+  unreadEdge: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+  },
+  unreadDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   row: {
     flexDirection: 'row',

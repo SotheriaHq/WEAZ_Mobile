@@ -1,7 +1,13 @@
 const marks = new Map<string, number>();
 
-const addPerfBreadcrumb = (_message: string): void => {
-  // noop: @sentry/react-native is not installed in this app.
+import { Sentry } from '@/src/observability/sentry';
+
+const addPerfBreadcrumb = (message: string): void => {
+  try {
+    Sentry.addBreadcrumb({ category: 'perf', message, level: 'info' });
+  } catch {
+    // Sentry optional when DSN is not configured.
+  }
 };
 
 export const perfMark = (name: string): void => {

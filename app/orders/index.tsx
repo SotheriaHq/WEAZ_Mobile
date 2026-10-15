@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -8,52 +9,46 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { ErrorScreenState, ScreenState } from '@/components/ui/ScreenState';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { StableImage } from '@/components/ui/StableImage';
+import { SegmentedTabs } from '@/components/ui/SegmentedTabs';
+import { OrderListRow } from '@/components/orders/OrderListRow';
 import ReviewFormSheet from '@/components/reviews/ReviewFormSheet';
 import ReviewPromptCard from '@/components/reviews/ReviewPromptCard';
 import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
 import reviewApi, { type ReviewPromptDto, type SubmitReviewPayload } from '@/src/api/ReviewApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { useCachedQuery, cachePolicies } from '@/src/cache';
+import { queryClient } from '@/src/query/queryClient';
+import { queryKeys } from '@/src/query/queryKeys';
+import {
+  applyOrderSummaryUpdate,
+  subscribeOrderChanges,
+} from '@/src/features/orders/orderRevision';
+import { prefetchDetailOnPress, prefetchQuery } from '@/src/prefetch/navPrefetch';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
+/**
+ * Two INDEPENDENT axes, and the screen used to confuse them.
+ *
+ * `status` is where an order is in its life; `kind` is what sort of order it
+ * is. The header carried the status axis twice — a row of count pills and a
+ * row of chips, both writing `statusFilter`, both looking like controls, so a
+ * press on one silently changed the other. Now the counts ARE the status
+ * control (a number is a better label for a filter than a word alone), and the
+ * tab rail carries the kind, which nothing offered before.
+ */
 type StatusFilter = 'all' | 'pending' | 'active' | 'completed' | 'cancelled';
+type KindFilter = 'all' | 'STANDARD' | 'CUSTOM';
 
-const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
-  { key: 'all', label: 'All' },
-  { key: 'pending', label: 'Pending' },
-  { key: 'active', label: 'Active' },
-  { key: 'completed', label: 'Completed' },
-  { key: 'cancelled', label: 'Cancelled' },
+const KIND_FILTERS: Array<{ key: KindFilter; label: string }> = [
+  { key: 'all', label: 'All orders' },
+  { key: 'STANDARD', label: 'Standard' },
+  { key: 'CUSTOM', label: 'Custom' },
 ];
-
-function formatCurrency(amount: number, currency = 'NGN') {
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${amount}`;
-  }
-}
-
-function formatDate(value: string) {
-  const timestamp = new Date(value).getTime();
-  if (Number.isNaN(timestamp)) return '';
-  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function getStatusTone(status: string) {
-  const upper = status.toUpperCase();
-  if (upper.includes('COMPLET') || upper.includes('DELIVERED')) return 'success';
-  if (upper.includes('DISPUT') || upper.includes('CANCEL') || upper.includes('REJECT') || upper.includes('REFUND')) return 'danger';
-  if (upper.includes('PENDING') || upper.includes('PROCESS') || upper.includes('TRANSIT') || upper.includes('READY')) return 'warning';
-  return 'neutral';
-}
 
 function isPendingOrder(order: BuyerOrderSummary) {
   const status = order.status.toUpperCase();
@@ -84,114 +79,65 @@ function matchesStatusFilter(order: BuyerOrderSummary, filter: StatusFilter) {
   return isCancelledOrder(order);
 }
 
+function matchesKindFilter(order: BuyerOrderSummary, filter: KindFilter) {
+  return filter === 'all' || order.kind === filter;
+}
+
 function matchesSearch(order: BuyerOrderSummary, query: string) {
   if (!query.trim()) return true;
   const haystack = [order.id, order.title, order.brandName, order.status, order.sourceLabel].join(' ').toLowerCase();
   return haystack.includes(query.trim().toLowerCase());
 }
 
+// Shaped like the row it stands in for, so the list does not re-flow when the
+// real orders arrive.
 function OrderSkeleton() {
+  const { theme } = useTheme();
   return (
-    <Card padding="md" style={styles.card}>
-      <View style={styles.rowTop}>
-        <Skeleton width={120} height={16} borderRadius={6} />
-        <Skeleton width={60} height={18} borderRadius={9} />
+    <View style={[styles.skeletonRow, { borderBottomColor: theme.colors.border }]}>
+      <Skeleton width={52} height={66} borderRadius={tokens.radius.sm} />
+      <View style={styles.skeletonCopy}>
+        <Skeleton width="70%" height={18} borderRadius={6} />
+        <Skeleton width="45%" height={14} borderRadius={6} />
+        <Skeleton width="35%" height={12} borderRadius={6} />
       </View>
-      <View style={styles.titleRow}>
-        <Skeleton width={44} height={44} borderRadius={14} />
-        <View style={styles.titleCopy}>
-          <Skeleton width="70%" height={20} borderRadius={6} />
-          <Skeleton width="50%" height={14} borderRadius={6} />
-        </View>
-      </View>
-      <Skeleton width="58%" height={14} borderRadius={6} />
-    </Card>
+    </View>
   );
 }
 
-function EmptyState({ onRetry }: { onRetry: () => void }) {
-  const { theme } = useTheme();
+/**
+ * Two different nothings.
+ *
+ * An empty history is a fact and shopping is the useful next step. A filter
+ * that matched nothing is not — telling a shopper with forty orders that they
+ * have none, and offering to send them to the market, is the screen arguing
+ * with the counts directly above it.
+ */
+function EmptyState({ filtered, onClear }: { filtered: boolean; onClear: () => void }) {
+  if (filtered) {
+    return (
+      <ScreenState
+        kind="empty"
+        emoji="🔍"
+        title="No orders match"
+        message="Nothing in your history matches these filters."
+        actionLabel="Clear filters"
+        onAction={onClear}
+      />
+    );
+  }
+
+  // No "Retry" here: an empty order history is a fact, not a failure, and
+  // offering to retry it implies the list might be wrong.
   return (
-    <Card padding="lg" style={styles.emptyCard}>
-      <AppText variant="display">📦</AppText>
-      <AppText variant="subtitle">No orders yet</AppText>
-      <AppText variant="body" tone="muted" style={styles.centerText}>
-        Your standard and custom purchase history will appear here.
-      </AppText>
-      <Button title="Retry" onPress={onRetry} fullWidth />
-      <View style={[styles.emptyHint, { borderColor: theme.colors.border }]}>
-        <AppText variant="captionRegular" tone="muted" style={styles.centerText}>
-          This native screen combines the buyer order sources that the web app already exposes.
-        </AppText>
-      </View>
-    </Card>
-  );
-}
-
-function OrderRow({ item }: { item: BuyerOrderSummary }) {
-  const { theme } = useTheme();
-  const tone = getStatusTone(item.status);
-
-  return (
-    <Pressable
-      onPress={() => router.push({ pathname: '/orders/[orderId]', params: { orderId: item.id } } as any)}
-      style={({ pressed }) => [pressed ? styles.pressed : null]}
-    >
-      <Card padding="md" style={[styles.card, { borderColor: theme.colors.border }]}>
-        <View style={styles.rowTop}>
-          <View style={styles.pillRow}>
-            <View style={[styles.kindPill, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
-              <AppText variant="captionBold" tone="muted">{item.kind === 'STANDARD' ? 'Standard' : 'Custom'}</AppText>
-            </View>
-            <View style={[styles.kindPill, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
-              <AppText variant="captionBold" tone="muted">{item.sourceLabel}</AppText>
-            </View>
-          </View>
-          <AppText
-            variant="captionBold"
-            tone={tone === 'danger' ? 'danger' : tone === 'warning' ? 'primary' : 'secondary'}
-          >
-            {item.status}
-          </AppText>
-        </View>
-
-        <View style={styles.titleRow}>
-          <View style={[styles.previewThumb, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}>
-            <StableImage
-              uri={item.thumbnail ?? undefined}
-              containerStyle={styles.previewThumbFill}
-              imageStyle={styles.previewThumbFill}
-              fallback={
-                <View style={[StyleSheet.absoluteFill, styles.previewFallback]}>
-                  <AppText variant="subtitle">{item.kind === 'STANDARD' ? '🧵' : '✂️'}</AppText>
-                </View>
-              }
-            />
-          </View>
-          <View style={styles.titleCopy}>
-            <AppText variant="bodyBold" numberOfLines={1}>{item.title}</AppText>
-            <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-              {item.brandName} · {formatDate(item.createdAt)}
-            </AppText>
-          </View>
-          <View style={styles.amountCopy}>
-            <AppText variant="bodyBold" numberOfLines={1}>{formatCurrency(item.amount, item.currency)}</AppText>
-            <AppText variant="captionRegular" tone="muted">
-              {item.itemCount} item{item.itemCount === 1 ? '' : 's'}
-            </AppText>
-          </View>
-        </View>
-
-        <View style={styles.detailLine}>
-          <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
-            {item.progressLabel || 'Open for review'}
-          </AppText>
-          <AppText variant="captionRegular" tone="muted">
-            #{item.id.slice(0, 8).toUpperCase()}
-          </AppText>
-        </View>
-      </Card>
-    </Pressable>
+    <ScreenState
+      kind="empty"
+      emoji="📦"
+      title="No orders yet"
+      message="Your standard and custom purchase history will appear here."
+      actionLabel="Browse the market"
+      onAction={() => topLevelNavigate({ pathname: '/(tabs)/discover' } as any)}
+    />
   );
 }
 
@@ -208,40 +154,65 @@ function OrdersLoadingState() {
 export default function OrdersScreen() {
   const { theme } = useTheme();
   const toast = useToast();
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const insets = useSafeAreaInsets();
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [items, setItems] = useState<BuyerOrderSummary[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [reviewPrompts, setReviewPrompts] = useState<ReviewPromptDto[]>([]);
   const [activeReviewPrompt, setActiveReviewPrompt] = useState<ReviewPromptDto | null>(null);
   const [skippingPromptId, setSkippingPromptId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const orders = await BuyerOrdersApi.list();
-      setItems(orders);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to load orders right now.');
-      setItems([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  // Cache-first: render the last known orders immediately, revalidate in the
+  // background. Skeleton only shows on a true cold load (no cached data).
+  const ordersQuery = useCachedQuery<BuyerOrderSummary[]>({
+    key: queryKeys.orders.list(user?.id),
+    fetcher: () => BuyerOrdersApi.list(),
+    policy: cachePolicies.defaultQuery,
+    enabled: status === 'authenticated',
+  });
+  const items = ordersQuery.data ?? [];
+  const loading = ordersQuery.isLoading;
+  const refreshing = ordersQuery.isRefreshing;
+  const error = ordersQuery.error
+    ? ordersQuery.error.message || 'Unable to load orders right now.'
+    : null;
+  const refetchOrders = ordersQuery.refetch;
+  const load = useCallback(() => {
+    void refetchOrders({ forceRefresh: true });
+  }, [refetchOrders]);
 
+  // A mutation returns the newly resolved schedule. Patch the mounted history
+  // directly, rather than making an approved extension wait for a route change
+  // or the list query's next refetch before the day count becomes truthful.
   useEffect(() => {
-    if (status !== 'authenticated') {
-      setLoading(false);
-      return;
-    }
-    void load();
-  }, [load, status]);
+    if (status !== 'authenticated' || !user?.id) return undefined;
+
+    return subscribeOrderChanges((change) => {
+      const summary = change.summary;
+      if (!summary) return;
+      queryClient.setQueryData<BuyerOrderSummary[]>(
+        queryKeys.orders.list(user.id),
+        (current) => (current ? applyOrderSummaryUpdate(current, summary) : current),
+      );
+    });
+  }, [status, user?.id]);
+
+  // Phase 5 scroll-proximity: warm the detail query for on-screen orders so a
+  // tap opens instantly. Bounded by the prefetch budget (query lane) + dedupe.
+  const handleViewableOrders = useRef(
+    ({ viewableItems }: { viewableItems: Array<{ item: BuyerOrderSummary }> }) => {
+      viewableItems.forEach(({ item }) => {
+        prefetchQuery({
+          key: queryKeys.orders.detail(item.id),
+          fetcher: () => BuyerOrdersApi.getById(item.id),
+          policy: cachePolicies.defaultQuery,
+          priority: 'near',
+        });
+      });
+    },
+  ).current;
+  const orderViewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   const loadReviewPrompts = useCallback(async () => {
     if (status !== 'authenticated') {
@@ -254,7 +225,7 @@ export default function OrdersScreen() {
     } catch (nextError) {
       const responseStatus = (nextError as { status?: number })?.status;
       if (responseStatus !== 401 && responseStatus !== 403) {
-        toast.error(nextError instanceof Error ? nextError.message : 'Could not load review prompts.');
+        toast.error('Could not load review prompts.');
       }
     }
   }, [status, toast]);
@@ -277,7 +248,7 @@ export default function OrdersScreen() {
       setReviewPrompts((current) => current.filter((item) => item.id !== prompt.id));
       toast.success('Review prompt skipped.');
     } catch (nextError) {
-      toast.error(nextError instanceof Error ? nextError.message : 'Could not skip review prompt.');
+      toast.error('Could not skip review prompt. Please try again.');
     } finally {
       setSkippingPromptId(null);
     }
@@ -286,22 +257,61 @@ export default function OrdersScreen() {
   const filteredItems = useMemo(
     () =>
       items.filter((item) => {
+        if (!matchesKindFilter(item, kindFilter)) return false;
         if (!matchesStatusFilter(item, statusFilter)) return false;
         return matchesSearch(item, search);
       }),
-    [items, search, statusFilter],
+    [items, kindFilter, search, statusFilter],
   );
 
-  const stats = useMemo(() => {
-    const total = items.length;
-    return {
-      total,
-      pending: items.filter((item) => isPendingOrder(item)).length,
-      active: items.filter((item) => isActiveOrder(item)).length,
-      completed: items.filter((item) => isCompletedOrder(item)).length,
-      cancelled: items.filter((item) => isCancelledOrder(item)).length,
-    };
-  }, [items]);
+  // The counts describe whichever kind is on screen — showing "3 active" over a
+  // list filtered to Custom, when two of those three are standard orders, is a
+  // number that contradicts the rows underneath it.
+  const kindScopedItems = useMemo(
+    () => items.filter((item) => matchesKindFilter(item, kindFilter)),
+    [items, kindFilter],
+  );
+
+  const statItems = useMemo(
+    () => [
+      { key: 'all' as const, label: 'Total', value: kindScopedItems.length, tint: 'primary' as const },
+      {
+        key: 'pending' as const,
+        label: 'Pending',
+        value: kindScopedItems.filter(isPendingOrder).length,
+        tint: 'warning' as const,
+      },
+      {
+        key: 'active' as const,
+        label: 'Active',
+        value: kindScopedItems.filter(isActiveOrder).length,
+        tint: 'primary' as const,
+      },
+      {
+        key: 'completed' as const,
+        label: 'Done',
+        value: kindScopedItems.filter(isCompletedOrder).length,
+        tint: 'success' as const,
+      },
+      {
+        key: 'cancelled' as const,
+        label: 'Closed',
+        value: kindScopedItems.filter(isCancelledOrder).length,
+        tint: 'danger' as const,
+      },
+    ],
+    [kindScopedItems],
+  );
+
+  const kindTabs = useMemo(
+    () =>
+      KIND_FILTERS.map((option) => ({
+        key: option.key,
+        label: option.label,
+        count: option.key === 'all' ? items.length : items.filter((item) => item.kind === option.key).length,
+      })),
+    [items],
+  );
 
   if (status !== 'authenticated') {
     return (
@@ -319,7 +329,7 @@ export default function OrdersScreen() {
             <AppText variant="body" tone="muted" style={styles.centerText}>
               Open your buyer order history after you sign in.
             </AppText>
-            <Button title="Sign in" onPress={() => router.push('/(auth)/login' as any)} />
+            <Button title="Sign in" onPress={() => drillDownPush('/(auth)/login' as any)} />
           </Card>
         </View>
       </SafeAreaView>
@@ -337,16 +347,33 @@ export default function OrdersScreen() {
       </View>
 
       <FlatList
+        showsVerticalScrollIndicator={false}
         data={filteredItems}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <OrderRow item={item} />}
-        ItemSeparatorComponent={() => <View style={{ height: tokens.spacing.sm }} />}
+        renderItem={({ item, index }) => (
+          <OrderListRow
+            order={item}
+            last={index === filteredItems.length - 1}
+            onPressIn={() =>
+              prefetchDetailOnPress({
+                href: { pathname: '/orders/[orderId]', params: { orderId: item.id } },
+                hero: { src: item.thumbnail },
+              })
+            }
+            onPress={() =>
+              drillDownPush({ pathname: '/orders/[orderId]', params: { orderId: item.id } } as any)
+            }
+          />
+        )}
+        onViewableItemsChanged={handleViewableOrders}
+        viewabilityConfig={orderViewabilityConfig}
+        // No separator view: each row draws its own rule, so the last one can
+        // leave it off rather than ending the list on a line to nowhere.
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => {
-              setRefreshing(true);
               void load();
               void loadReviewPrompts();
             }}
@@ -373,37 +400,56 @@ export default function OrdersScreen() {
               </View>
             ) : null}
 
-            <View style={styles.statsGrid}>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Total</AppText><AppText variant="subtitle">{stats.total}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Pending</AppText><AppText variant="subtitle">{stats.pending}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Active</AppText><AppText variant="subtitle">{stats.active}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Completed</AppText><AppText variant="subtitle">{stats.completed}</AppText></Card>
-              <Card padding="md" style={styles.statCard}><AppText variant="captionRegular" tone="muted">Cancelled</AppText><AppText variant="subtitle">{stats.cancelled}</AppText></Card>
-            </View>
-
-            <View style={styles.filtersRow}>
-              {STATUS_FILTERS.map((option) => {
-                const selected = statusFilter === option.key;
+            {/* Counts ARE the status filter. A number reads faster than a word,
+                and a second control saying the same thing is a second control to
+                keep in sync. Square, divided by hairlines, one band. */}
+            <View style={[styles.statBand, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
+              {statItems.map((stat, index) => {
+                const selected = statusFilter === stat.key;
+                // The cap is a View and takes the colour; the numeral takes the
+                // matching AppText tone.
+                const capColor =
+                  stat.tint === 'success'
+                    ? theme.colors.success
+                    : stat.tint === 'danger'
+                      ? theme.colors.danger
+                      : stat.tint === 'warning'
+                        ? theme.colors.warning
+                        : theme.colors.primary;
                 return (
                   <Pressable
-                    key={option.key}
-                    onPress={() => setStatusFilter(option.key)}
+                    key={stat.key}
+                    onPress={() => setStatusFilter(stat.key)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={`${stat.label}, ${stat.value}`}
                     style={({ pressed }) => [
-                      styles.statusChip,
-                      {
-                        borderColor: selected ? theme.colors.primary : theme.colors.border,
-                        backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
-                      },
+                      styles.statCell,
+                      index > 0 ? { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: theme.colors.border } : null,
+                      selected ? { backgroundColor: theme.colors.surfaceAlt } : null,
                       pressed ? styles.pressed : null,
                     ]}
                   >
-                    <AppText variant="captionBold" tone={selected ? 'primary' : 'muted'} numberOfLines={1}>
-                      {option.label}
+                    {/* The selected cell is capped by its own tint, so the band
+                        shows which slice of the history is on screen. */}
+                    <View style={[styles.statCap, { backgroundColor: selected ? capColor : 'transparent' }]} />
+                    <AppText variant="h2" tone={stat.value > 0 ? stat.tint : 'muted'} numberOfLines={1}>
+                      {stat.value}
+                    </AppText>
+                    <AppText variant="statLabel" tone={selected ? 'default' : 'muted'} numberOfLines={1}>
+                      {stat.label}
                     </AppText>
                   </Pressable>
                 );
               })}
             </View>
+
+            <SegmentedTabs
+              items={kindTabs}
+              value={kindFilter}
+              onChange={setKindFilter}
+              style={styles.kindTabs}
+            />
 
             <Input label="Search orders" hideLabel placeholder="Search orders, brands, or IDs" value={search} onChangeText={setSearch} />
           </View>
@@ -412,19 +458,28 @@ export default function OrdersScreen() {
           loading ? (
             <OrdersLoadingState />
           ) : error ? (
-            <Card padding="lg" style={styles.errorCard}>
-              <AppText variant="subtitle">Could not load orders</AppText>
-              <AppText variant="body" tone="muted" style={styles.centerText}>{error}</AppText>
-              <Button title="Retry" onPress={() => void load()} />
-            </Card>
+            // Classified from the raw error so an offline device is told it is
+            // offline, rather than "could not load orders".
+            <ErrorScreenState
+              error={ordersQuery.error}
+              message={error}
+              onRetry={() => void load()}
+            />
           ) : (
-            <EmptyState onRetry={() => void load()} />
+            <EmptyState
+              filtered={items.length > 0}
+              onClear={() => {
+                setStatusFilter('all');
+                setKindFilter('all');
+                setSearch('');
+              }}
+            />
           )
         }
         ListFooterComponent={
           loading && filteredItems.length > 0 ? (
             <View style={styles.footerLoading}>
-              <ActivityIndicator color={theme.colors.primary} />
+              <MuseLoader size={20} />
             </View>
           ) : null
         }
@@ -469,98 +524,51 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     marginBottom: tokens.spacing.sm,
   },
-  statsGrid: {
+  /**
+   * A BAND, not a row of cards. Five counts that belong to one history read as
+   * one object divided into parts; five rounded pills read as five things.
+   * Square corners and shared hairlines are what make the difference.
+   */
+  statBand: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
-  },
-  statCard: {
-    flexBasis: '48%',
-    flexGrow: 1,
-    minWidth: 0,
-  },
-  filtersRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
-  },
-  filterPill: {
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.full,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
-  },
-  statusChip: {
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.full,
-  },
-  card: {
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  rowTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.sm,
-  },
-  pillRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.xs,
-    flex: 1,
-  },
-  kindPill: {
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: 4,
-    borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-    marginTop: tokens.spacing.sm,
-  },
-  previewThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
     overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
   },
-  previewThumbFill: {
-    width: '100%',
-    height: '100%',
-  },
-  previewFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  titleCopy: {
+  statCell: {
     flex: 1,
     minWidth: 0,
-  },
-  amountCopy: {
-    alignItems: 'flex-end',
-  },
-  detailLine: {
-    marginTop: tokens.spacing.sm,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: tokens.spacing.sm,
+    justifyContent: 'center',
+    paddingTop: tokens.spacing.md,
+    paddingBottom: tokens.spacing.sm,
+    gap: 2,
+  },
+  /** The 2px rule along the top edge of the selected cell. */
+  statCap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+  },
+  kindTabs: {
+    marginHorizontal: -tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.md,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+    paddingVertical: tokens.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  skeletonCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: tokens.spacing.xs,
   },
   skeletonList: {
-    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.xs,
   },
   emptyCard: {
     alignItems: 'center',

@@ -3,6 +3,10 @@ import type { Href } from 'expo-router';
 import { env } from '@/src/config/env';
 import { getTrustedStudioOrigins } from '@/src/features/studio/studioRoutes';
 import {
+  STUDIO_SURFACE_PARAM,
+  STUDIO_SURFACE_PARAM_VALUE,
+} from '@/src/navigation/nativeIslandConfig';
+import {
   getMessageNotificationTarget,
   routeForDesignTarget,
   routeForStoreCollectionTarget,
@@ -14,7 +18,31 @@ export type StudioWebNavigationClassification =
   | { type: 'external'; url: string }
   | { type: 'blocked'; reason: string; path?: string };
 
-const STUDIO_TAB_VALUES = new Set(['orders', 'customers', 'analytics', 'finance']);
+/**
+ * Every `?tab=` value `StudioHome` (web) can render, MINUS `finance`, which is
+ * a native screen.
+ *
+ * This list is a contract with `fthreadly/src/pages/studio/StudioHome.tsx` — a
+ * tab missing here is not a small gap. `StudioHome` writes the tab with
+ * `setSearchParams(..., { replace: true })`, the injected history shim reports
+ * every replaceState as `ROUTE_CHANGED`, and anything that classified as
+ * `blocked` used to raise "Open this from the WIEZ app" at a user who was
+ * already inside the app and had gone nowhere. `overview` and `store` were both
+ * absent, so the Dashboard and Manage Store tabs — the two most-used screens in
+ * Studio — each fired that toast on arrival.
+ */
+const STUDIO_TAB_VALUES = new Set([
+  'overview',
+  'dashboard',
+  'store',
+  'shop',
+  'products',
+  'orders',
+  'customers',
+  'analytics',
+  'messages',
+  'reviews',
+]);
 const UUID_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STATIC_STUDIO_PATHS = new Set([
   '/studio',
@@ -26,6 +54,7 @@ const STATIC_STUDIO_PATHS = new Set([
   '/studio/verification/submitted',
   '/studio/custom-orders',
   '/studio/messages',
+  '/studio/staff',
   '/studio/store/setup',
   '/studio/store/essentials',
 ]);
@@ -57,7 +86,20 @@ function isAllowedStudioRoute(url: URL): boolean {
   const pathname = url.pathname.replace(/\/+$/g, '') || '/';
   if (pathname === '/studio') {
     const tab = url.searchParams.get('tab');
+    // finance is native-owned; do not keep it inside the Studio WebView.
+    if (tab === 'finance') return false;
     return !tab || STUDIO_TAB_VALUES.has(tab);
+  }
+
+  // Store-management settings (store-general, store-hours, store-policies,
+  // store-payments, …) are web-app screens owned by the studio. Render them
+  // inside the studio WebView rather than bouncing to the NATIVE user-settings
+  // screen (which the generic `/settings` block would do). This is what makes
+  // the Business Hours capture — and the working-hours hard-gate redirect —
+  // reachable on mobile without a separate native screen.
+  if (pathname === '/settings') {
+    const tab = url.searchParams.get('tab');
+    if (tab && tab.startsWith('store-')) return true;
   }
 
   if (STATIC_STUDIO_PATHS.has(pathname)) return true;
@@ -72,11 +114,19 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
   const pathname = url.pathname.replace(/\/+$/g, '') || '/';
   const path = pathWithSearch(url);
 
+  // Native brand finance (held funds, incoming, payouts) — not WebView.
+  if (pathname === '/studio/finance') {
+    return { type: 'native', path, nativeRoute: '/studio/finance' as Href };
+  }
+  if (pathname === '/studio' && url.searchParams.get('tab') === 'finance') {
+    return { type: 'native', path, nativeRoute: '/studio/finance' as Href };
+  }
+
   if (pathname === '/') {
     return { type: 'native', path, nativeRoute: '/(tabs)' as Href };
   }
 
-  if (pathname === '/market' || pathname === '/market-place' || pathname === '/marketplace') {
+  if (pathname === '/market' || pathname === '/market' || pathname === '/marketplace') {
     return { type: 'native', path, nativeRoute: '/(tabs)/discover' as Href };
   }
 
@@ -179,7 +229,6 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
       type: 'native',
       path,
       nativeRoute: routeForDesignTarget(designId, {
-        legacyCollectionId: url.searchParams.get('legacyCollectionId'),
         openComments: Boolean(url.searchParams.get('commentId') || url.searchParams.get('openComments')),
         commentId: url.searchParams.get('commentId'),
       }),
@@ -324,11 +373,27 @@ function classifyMessagePath(url: URL): StudioWebNavigationClassification | null
     }
   }
 
+  /**
+   * A messaging link that came from inside Studio is still Studio.
+   *
+   * The native inbox doubles as the shopper's inbox, so the island picks its
+   * dock from this flag rather than from the pathname (which cannot tell the
+   * two apart). Without it, following "Messages" out of Studio silently swapped
+   * the Studio dock for the shopper one.
+   */
+  const fromStudio = pathname === '/studio' || pathname.startsWith('/studio/');
+  const surfaceParams = fromStudio
+    ? { [STUDIO_SURFACE_PARAM]: STUDIO_SURFACE_PARAM_VALUE }
+    : {};
+  const inboxRoute = (
+    fromStudio ? { pathname: '/(tabs)/inbox', params: surfaceParams } : '/(tabs)/inbox'
+  ) as Href;
+
   // If it's a message list path or has params, intercept
   if (messageListPaths.has(pathname) || Object.keys(params).length > 0) {
     const target = getMessageNotificationTarget(params);
     if (!target) {
-      return { type: 'native', path, nativeRoute: '/(tabs)/inbox' as Href };
+      return { type: 'native', path, nativeRoute: inboxRoute };
     }
 
     if (target.type === 'thread') {
@@ -345,12 +410,15 @@ function classifyMessagePath(url: URL): StudioWebNavigationClassification | null
       return {
         type: 'native',
         path,
-        nativeRoute: { pathname: '/messages/[threadId]', params: routeParams } as Href,
+        nativeRoute: {
+          pathname: '/messages/[threadId]',
+          params: { ...routeParams, ...surfaceParams },
+        } as Href,
       };
     }
 
     if (target.type === 'inbox' || target.type === 'unsupported') {
-      return { type: 'native', path, nativeRoute: '/(tabs)/inbox' as Href };
+      return { type: 'native', path, nativeRoute: inboxRoute };
     }
   }
 

@@ -14,6 +14,7 @@ export type BagFlowProductInput = {
 type BagDefaultAction = ProductBagStatus['ui']['defaultAction'];
 
 export type BagFlowContextValue = {
+  isMyBagOpen: boolean;
   openSelector: (product: BagFlowProductInput, status: ProductBagStatus) => void;
   openCustomFlow: (product: BagFlowProductInput, status: ProductBagStatus) => void;
   openFittings: (product: BagFlowProductInput, status: ProductBagStatus) => void;

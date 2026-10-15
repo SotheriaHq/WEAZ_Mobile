@@ -1,14 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
 
+import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
 
 type ThreadRailActionProps = {
@@ -19,16 +21,48 @@ type ThreadRailActionProps = {
 };
 
 const THREAD_EMOJI = String.fromCodePoint(0x1f9f5);
-const THREAD_SPIN_DURATION_MS = 420;
-const THREAD_COUNT_REVEAL_DELAY_MS = 280;
 
-function formatThreadCountLabel(count: string) {
-  const value = count.trim();
-  if (value.length === 0) return '0 threads';
-  if (/\bthreads?\b/i.test(value)) return value;
-  return `${value} ${value === '1' ? 'thread' : 'threads'}`;
+/** One full turn while the request is in flight. */
+const SPIN_TURN_DURATION_MS = 760;
+/** Easing the spool to rest on a whole turn once the server answers. */
+const SPIN_SETTLE_DURATION_MS = 320;
+
+/**
+ * "30" over "threads" — one phrase, stacked so it fits.
+ *
+ * The label arrives pre-formatted ("30", "30 threads", "1.2k threads"), and a
+ * single line of it was squeezed into a 56pt column at `numberOfLines={1}`, so
+ * anything past a single digit clipped to "30 thre...". Splitting the number
+ * from its noun fits the column at any count and never ellipsises, and the two
+ * lines still read as the one thing they are.
+ */
+function splitThreadCountLabel(count: string): { value: string; caption: string } {
+  // Callers may pass "30", "30 threads" or "1.2k threads" - take the leading token.
+  const leading = count.trim().split(/\s+/)[0] || '0';
+  return {
+    value: leading,
+    caption: leading === '1' ? 'thread' : 'threads',
+  };
 }
 
+/**
+ * The spool spins while the thread is being made, and the count is live.
+ *
+ * What this replaces was neither. The "spin" was `rotation: -8deg -> +8deg -> 0`
+ * — a sixteen-degree wiggle, which is a shake by any other name; a spool of
+ * thread that rocks back and forth is not doing anything a spool does. And the
+ * count was deliberately WITHHELD: a `setTimeout` chain
+ * (`revealCountAfterFeedback`, `countRevealAtRef`, a 280ms
+ * `THREAD_COUNT_REVEAL_DELAY_MS`) held the new number back until the wiggle had
+ * finished, so the one piece of real information arrived late on purpose and
+ * the tap felt unacknowledged.
+ *
+ * Now: `busy` drives a continuous full rotation, so the motion means "your
+ * thread is being made" and lasts exactly as long as that takes. When the
+ * server answers, the spool eases to rest on a whole turn — never mid-angle —
+ * with a small scale pop, and the count renders from props with no delay at
+ * all. Reduce Motion gets the pop and no rotation.
+ */
 export default function ThreadRailAction({
   threaded,
   count,
@@ -39,24 +73,16 @@ export default function ThreadRailAction({
 
   const pressScale = useSharedValue(1);
   const feedbackScale = useSharedValue(1);
-  const rotation = useSharedValue(0);
+  // Whole turns, not degrees — so "settle on a whole turn" is Math.round.
+  const turns = useSharedValue(0);
 
-  const previousThreadedRef = useRef(threaded);
-  const previousBusyRef = useRef(busy);
-  const pendingAddRequestRef = useRef(false);
-  const countRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countRevealAtRef = useRef(0);
-
-  const countLabel = useMemo(() => formatThreadCountLabel(count), [count]);
-  const [displayedCountLabel, setDisplayedCountLabel] = useState(countLabel);
+  const wasBusyRef = useRef(busy);
 
   useEffect(() => {
     let mounted = true;
 
     void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
-      if (mounted) {
-        setReduceMotion(Boolean(enabled));
-      }
+      if (mounted) setReduceMotion(Boolean(enabled));
     });
 
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', (enabled) => {
@@ -65,128 +91,73 @@ export default function ThreadRailAction({
 
     return () => {
       mounted = false;
-      if (countRevealTimerRef.current) {
-        clearTimeout(countRevealTimerRef.current);
-        countRevealTimerRef.current = null;
-      }
       subscription?.remove?.();
     };
   }, []);
 
-  const stopAnimations = useCallback(() => {
-    cancelAnimation(pressScale);
+  const popScale = useCallback(() => {
     cancelAnimation(feedbackScale);
-    cancelAnimation(rotation);
-  }, [feedbackScale, pressScale, rotation]);
+    feedbackScale.value = withSequence(
+      withTiming(1.22, { duration: 130, easing: Easing.bezier(0.16, 0.95, 0.28, 1.12) }),
+      withTiming(1, { duration: 190, easing: Easing.out(Easing.quad) }),
+    );
+  }, [feedbackScale]);
 
-  const revealCountAfterFeedback = useCallback((nextCountLabel: string) => {
-    if (countRevealTimerRef.current) {
-      clearTimeout(countRevealTimerRef.current);
-    }
+  useEffect(() => {
+    const wasBusy = wasBusyRef.current;
+    wasBusyRef.current = busy;
 
-    const remainingDelay = Math.max(0, countRevealAtRef.current - Date.now());
-
-    countRevealTimerRef.current = setTimeout(() => {
-      countRevealTimerRef.current = null;
-      setDisplayedCountLabel(nextCountLabel);
-    }, remainingDelay);
-  }, []);
-
-  const runAddRequestFeedback = useCallback(() => {
-    stopAnimations();
-    countRevealAtRef.current = Date.now() + (reduceMotion ? 180 : THREAD_COUNT_REVEAL_DELAY_MS);
-
-    rotation.value = 0;
-    pressScale.value = 1;
-    feedbackScale.value = 1;
-
-    if (reduceMotion) {
-      feedbackScale.value = withSequence(
-        withTiming(1.28, {
-          duration: 100,
-          easing: Easing.out(Easing.quad),
+    if (busy && !wasBusy) {
+      if (reduceMotion) return;
+      cancelAnimation(turns);
+      // `false` = do not reverse. A spool that unwinds every other turn is the
+      // wiggle again, one revolution at a time.
+      turns.value = withRepeat(
+        withTiming(turns.value + 1, {
+          duration: SPIN_TURN_DURATION_MS,
+          easing: Easing.linear,
         }),
-        withTiming(1, {
-          duration: 120,
-          easing: Easing.out(Easing.quad),
-        }),
+        -1,
+        false,
       );
       return;
     }
 
-    rotation.value = withSequence(
-      withTiming(-8, { duration: 90, easing: Easing.out(Easing.quad) }),
-      withTiming(8, { duration: THREAD_SPIN_DURATION_MS - 180, easing: Easing.bezier(0.16, 0.86, 0.2, 1) }),
-      withTiming(0, { duration: 90, easing: Easing.out(Easing.quad) }),
-    );
-    feedbackScale.value = withSequence(
-      withTiming(1.24, {
-        duration: 120,
-        easing: Easing.bezier(0.16, 0.95, 0.28, 1.12),
-      }),
-      withTiming(1, {
-        duration: 180,
-        easing: Easing.out(Easing.quad),
-      }),
-    );
-  }, [feedbackScale, pressScale, reduceMotion, rotation, stopAnimations]);
-
-  useEffect(() => {
-    const wasThreaded = previousThreadedRef.current;
-    const wasBusy = previousBusyRef.current;
-
-    if (!wasBusy && busy && !threaded) {
-      pendingAddRequestRef.current = true;
-      runAddRequestFeedback();
+    if (!busy && wasBusy) {
+      popScale();
+      if (reduceMotion) return;
+      cancelAnimation(turns);
+      // Land on a whole turn so the spool never stops at an angle.
+      turns.value = withTiming(Math.round(turns.value) + 1, {
+        duration: SPIN_SETTLE_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+      });
     }
+  }, [busy, popScale, reduceMotion, turns]);
 
-    if (wasThreaded && !threaded) {
-      pendingAddRequestRef.current = false;
-      countRevealAtRef.current = 0;
-      if (countRevealTimerRef.current) {
-        clearTimeout(countRevealTimerRef.current);
-        countRevealTimerRef.current = null;
-      }
-      setDisplayedCountLabel(countLabel);
-    }
-
-    if (!wasThreaded && threaded && pendingAddRequestRef.current) {
-      revealCountAfterFeedback(countLabel);
-      pendingAddRequestRef.current = false;
-    }
-
-    if (wasBusy && !busy && !threaded) {
-      pendingAddRequestRef.current = false;
-    }
-
-    previousThreadedRef.current = threaded;
-    previousBusyRef.current = busy;
-  }, [busy, countLabel, revealCountAfterFeedback, runAddRequestFeedback, threaded]);
-
-  useEffect(() => {
-    if (!countRevealTimerRef.current) {
-      setDisplayedCountLabel(countLabel);
-    }
-  }, [countLabel]);
+  useEffect(
+    () => () => {
+      cancelAnimation(pressScale);
+      cancelAnimation(feedbackScale);
+      cancelAnimation(turns);
+    },
+    [feedbackScale, pressScale, turns],
+  );
 
   const handlePressIn = useCallback(() => {
-    pressScale.value = withTiming(0.92, {
-      duration: 70,
-      easing: Easing.out(Easing.quad),
-    });
+    pressScale.value = withTiming(0.92, { duration: 70, easing: Easing.out(Easing.quad) });
   }, [pressScale]);
 
   const handlePressOut = useCallback(() => {
-    pressScale.value = withTiming(1, {
-      duration: 90,
-      easing: Easing.out(Easing.quad),
-    });
+    pressScale.value = withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) });
   }, [pressScale]);
+
+  const countLabel = splitThreadCountLabel(count);
 
   const iconStyle = useAnimatedStyle(() => ({
     transform: [
       { scale: pressScale.value * feedbackScale.value },
-      { rotate: `${rotation.value}deg` },
+      { rotate: `${turns.value * 360}deg` },
     ],
   }));
 
@@ -205,27 +176,62 @@ export default function ThreadRailAction({
         ]}
         accessibilityRole="button"
         accessibilityLabel={threaded ? 'Remove thread' : 'Thread this design'}
-        accessibilityState={{ selected: threaded, disabled: busy }}
+        accessibilityState={{ selected: threaded, disabled: busy, busy }}
       >
         <Animated.View style={[styles.iconWrap, iconStyle]}>
-          <Text style={[styles.threadEmoji, threaded && styles.threadEmojiActive]}>
+          <AppText
+            variant="display"
+            tone="inverse"
+            style={[styles.threadEmoji, threaded && styles.threadEmojiActive]}
+          >
             {THREAD_EMOJI}
-          </Text>
+          </AppText>
         </Animated.View>
       </Pressable>
-      <Text
-        style={[styles.count, threaded && styles.countActive]}
-        numberOfLines={1}
-      >
-        {displayedCountLabel}
-      </Text>
+      {/*
+        Straight from props. There is no local mirror of the count and no timer
+        gating it, so it changes the instant the parent's optimistic update or
+        the server response lands — which is what "real time" has to mean here.
+      */}
+      {/*
+        White text and a shadow, not a plate and not a tint.
+
+        The plate this replaces was a rounded scrim behind the count. It made
+        the number legible, but it also drew a small grey tile onto the artwork
+        that never belonged there, and it read as a chip on bright stages. The
+        threaded state additionally switched the text to brand purple, which is
+        the least reliable colour available for this job: it pops on a dark
+        jacket and vanishes on a lilac dress, and it changed the count colour
+        for a state the emoji above already reports.
+
+        The rail sits over arbitrary photography, so the count now carries its
+        own contrast the way rail glyphs do everywhere else — white, with a
+        shadow dark and wide enough to hold an edge against a white background.
+        One colour in both states, nothing painted onto the image.
+      */}
+      <View style={styles.countBlock}>
+        <AppText variant="bodyBold" tone="inverse" style={styles.count}>
+          {countLabel.value}
+        </AppText>
+        <AppText variant="navLabel" tone="inverse" style={styles.count}>
+          {countLabel.caption}
+        </AppText>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  /**
+   * Column width, not inset, is what set this rail off the screen edge.
+   *
+   * A 52pt control centred in an 88pt column left 18pt of empty column on each
+   * side, so every glyph floated ~30pt in from the edge no matter what `right`
+   * the rail used. Matches `railItem` in RunwayFeedScreen — the two have to
+   * agree or the thread action sits out of line with its neighbours.
+   */
   item: {
-    width: 88,
+    width: 56,
     alignItems: 'center',
     gap: 2,
   },
@@ -249,30 +255,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   threadEmoji: {
-    color: '#fff',
-    fontSize: 32,
-    lineHeight: 38,
+    // No `color` here: AppText strips it, and these two declarations were being
+    // silently discarded on every render. The glyph is an emoji, so losing it
+    // cost nothing — but the count's did (see below).
     textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.45)',
+    textShadowColor: tokens.scrim(0.45),
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
   threadEmojiActive: {
-    textShadowColor: 'rgba(126, 34, 206, 0.55)',
+    textShadowColor: tokens.colors.threadRailGlow,
+  },
+  countBlock: {
+    alignItems: 'center',
+    width: 56,
   },
   count: {
-    width: 88,
-    color: '#fff',
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '900',
-    fontFamily: tokens.fontFamily.bold,
+    width: 56,
     textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.55)',
+    /*
+     * Opaque and wide, because this shadow is the only thing between white
+     * text and a white photograph. The old value (0.55 alpha, 3pt radius) was
+     * tuned to sit on top of the scrim plate that used to be behind it; with
+     * the plate gone it has to do the whole job on its own.
+     */
+    textShadowColor: tokens.scrim(0.92),
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    textShadowRadius: 6,
   },
-  countActive: {
-    color: '#F5D0FE',
-  },
+  /*
+   * `countActive` is gone. It set `color` on an AppText, which is stripped, so
+   * the threaded state never actually tinted the count — threaded and
+   * unthreaded rendered identically and the only cue left was the emoji's
+   * glow. The state now comes through `tone`, which is where colour is allowed
+   * to come from.
+   */
 });

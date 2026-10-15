@@ -12,6 +12,70 @@ type PatchCacheEntry = {
 const patchStatusCache = new Map<string, PatchCacheEntry>();
 const inFlightStatusRequests = new Map<string, Promise<boolean>>();
 
+// Cross-instance subscription so a patch toggled on one screen (catalog header)
+// is instantly reflected on every other mounted screen (design viewer, feed)
+// without a refetch — the native equivalent of the web BrandPatchContext.
+type PatchStatusListener = (value: boolean) => void;
+const patchStatusListeners = new Map<string, Set<PatchStatusListener>>();
+
+// Global listeners receive EVERY brand's patch change — used by surfaces that
+// track many brands at once (e.g. the market feed's patched-brand Set) so they
+// stay in sync with per-brand screens without their own refetch.
+type GlobalPatchStatusListener = (brandId: string, value: boolean) => void;
+const globalPatchStatusListeners = new Set<GlobalPatchStatusListener>();
+
+export const subscribeAllBrandPatchStatus = (
+  listener: GlobalPatchStatusListener,
+): (() => void) => {
+  globalPatchStatusListeners.add(listener);
+  return () => {
+    globalPatchStatusListeners.delete(listener);
+  };
+};
+
+/**
+ * Write a known patch value into the shared cache from a surface that toggles
+ * patch through its own API path (e.g. the market feed). Broadcasts to every
+ * mounted `useBrandPatchStatus` instance and global subscriber so the whole app
+ * stays consistent.
+ */
+export const setBrandPatchStatus = (
+  brandId: string | null | undefined,
+  value: boolean,
+): void => {
+  const normalized = normalizeBrandId(brandId);
+  if (!normalized) return;
+  writeCachedPatchStatus(normalized, value);
+};
+
+const subscribePatchStatus = (
+  brandId: string,
+  listener: PatchStatusListener,
+): (() => void) => {
+  let listeners = patchStatusListeners.get(brandId);
+  if (!listeners) {
+    listeners = new Set();
+    patchStatusListeners.set(brandId, listeners);
+  }
+  listeners.add(listener);
+  return () => {
+    const current = patchStatusListeners.get(brandId);
+    if (!current) return;
+    current.delete(listener);
+    if (current.size === 0) {
+      patchStatusListeners.delete(brandId);
+    }
+  };
+};
+
+const notifyPatchStatusListeners = (brandId: string, value: boolean) => {
+  const listeners = patchStatusListeners.get(brandId);
+  if (listeners) {
+    listeners.forEach((listener) => listener(value));
+  }
+  globalPatchStatusListeners.forEach((listener) => listener(brandId, value));
+};
+
 const normalizeBrandId = (value?: string | null) => {
   const normalized = typeof value === 'string' ? value.trim() : '';
   return normalized.length > 0 ? normalized : null;
@@ -32,6 +96,7 @@ const writeCachedPatchStatus = (brandId: string, value: boolean) => {
     value,
     expiresAt: Date.now() + PATCH_STATUS_TTL_MS,
   });
+  notifyPatchStatusListeners(brandId, value);
 };
 
 const fetchPatchStatus = async (brandId: string, force = false) => {
@@ -65,6 +130,18 @@ type UseBrandPatchStatusOptions = {
   brandId?: string | null;
   enabled?: boolean;
 };
+
+/**
+ * Thrown when the viewer cannot patch at all — a brand account, the owner, or a
+ * signed-out visitor. Distinct from a network failure so the UI can say
+ * something true instead of "please try again".
+ */
+export class BrandPatchUnavailableError extends Error {
+  constructor() {
+    super('Patching is only available to shopper accounts.');
+    this.name = 'BrandPatchUnavailableError';
+  }
+}
 
 export function useBrandPatchStatus({ brandId, enabled = true }: UseBrandPatchStatusOptions) {
   const normalizedBrandId = useMemo(() => normalizeBrandId(brandId), [brandId]);
@@ -101,7 +178,18 @@ export function useBrandPatchStatus({ brandId, enabled = true }: UseBrandPatchSt
   );
 
   const toggle = useCallback(async () => {
-    if (!normalizedBrandId || !isEnabled) return false;
+    /**
+     * Refuse loudly, not with a value that reads as success.
+     *
+     * This used to `return false` when patching was unavailable — and the
+     * caller treats `false` as "now unpatched", so it toasted "Unpatched
+     * brand." at someone who had just been silently refused and whose patch
+     * state had not changed at all. A disabled action must not report an
+     * outcome it did not produce.
+     */
+    if (!normalizedBrandId || !isEnabled) {
+      throw new BrandPatchUnavailableError();
+    }
 
     const previous = isPatched;
     const optimistic = !previous;
@@ -145,6 +233,15 @@ export function useBrandPatchStatus({ brandId, enabled = true }: UseBrandPatchSt
 
     void refresh({ silent: true });
   }, [isEnabled, normalizedBrandId, refresh]);
+
+  // Stay in sync with any other mounted instance that toggles this brand.
+  useEffect(() => {
+    if (!normalizedBrandId) return;
+    const unsubscribe = subscribePatchStatus(normalizedBrandId, (value) => {
+      setIsPatched(value);
+    });
+    return unsubscribe;
+  }, [normalizedBrandId]);
 
   return {
     isPatched,

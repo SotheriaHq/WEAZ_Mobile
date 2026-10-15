@@ -19,9 +19,11 @@ assert.match(queueSource, /MARKET_SIGNAL_BATCH_LIMIT\s*=\s*25/);
 assert.match(queueSource, /MARKET_SIGNAL_FLUSH_INTERVAL_MS\s*=\s*5000/);
 assert.match(queueSource, /MARKET_SIGNAL_EVENT_TTL_MS\s*=\s*24 \* 60 \* 60 \* 1000/);
 assert.match(queueSource, /MARKET_SIGNAL_MAX_RETRIES\s*=\s*5/);
-assert.match(queueSource, /MARKET_SIGNAL_QUEUE_STORAGE_KEY\s*=\s*['"]threadly\.market\.signalQueue\.v1['"]/);
-assert.match(queueSource, /MARKET_SIGNAL_RECENT_STORAGE_KEY\s*=\s*['"]threadly\.market\.signalRecent\.v1['"]/);
-assert.match(queueSource, /MARKET_SIGNAL_IDENTITY_STORAGE_KEY\s*=\s*['"]threadly\.market\.signalIdentity\.v1['"]/);
+// Renamed `threadly.` -> `wiez.` with the rebrand; one declaration serves both
+// the writer and the logout purge, so they cannot drift apart.
+assert.match(queueSource, /MARKET_SIGNAL_QUEUE_STORAGE_KEY\s*=\s*['"]wiez\.market\.signalQueue\.v1['"]/);
+assert.match(queueSource, /MARKET_SIGNAL_RECENT_STORAGE_KEY\s*=\s*['"]wiez\.market\.signalRecent\.v1['"]/);
+assert.match(queueSource, /MARKET_SIGNAL_IDENTITY_STORAGE_KEY\s*=\s*['"]wiez\.market\.signalIdentity\.v1['"]/);
 assert.match(queueSource, /MARKET_SIGNAL_LAST_CLEARED_STORAGE_KEY\s*=/);
 assert.match(queueSource, /AsyncStorage\.getItem\(MARKET_SIGNAL_QUEUE_STORAGE_KEY\)/);
 assert.match(queueSource, /AsyncStorage\.multiSet\(/);

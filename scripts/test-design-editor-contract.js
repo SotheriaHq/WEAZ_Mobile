@@ -9,9 +9,12 @@ const repoRoot = path.resolve(__dirname, '..');
 const designApiPath = path.join(repoRoot, 'src', 'api', 'DesignApi.ts');
 const brandApiPath = path.join(repoRoot, 'src', 'api', 'BrandApi.ts');
 const providerPath = path.join(repoRoot, 'src', 'features', 'design-editor', 'DesignEditorProvider.tsx');
-const composerPath = path.join(repoRoot, 'app', 'catalog', 'create-design', 'composer.tsx');
+const composerPath = path.join(repoRoot, 'app', '(tabs)', 'catalog', 'create-design', 'composer.tsx');
+const catalogPath = path.join(repoRoot, 'app', '(tabs)', 'catalog', 'index.tsx');
 const productRoutePath = path.join(repoRoot, 'app', 'products', '[productId].tsx');
 const marketCommerceViewerPath = path.join(repoRoot, 'src', 'features', 'market', 'components', 'MarketCommerceViewer.tsx');
+const collectionCommerceViewerPath = path.join(repoRoot, 'src', 'features', 'market', 'components', 'CollectionCommerceViewer.tsx');
+const messageThreadPath = path.join(repoRoot, 'app', 'messages', '[threadId].tsx');
 
 function loadDesignApi() {
   const module = { exports: {} };
@@ -58,6 +61,13 @@ function main() {
   const designApiSource = fs.readFileSync(designApiPath, 'utf8');
   assert.match(designApiSource, /apiClient\.post\('\/designs\/initialize'/);
   assert.match(designApiSource, /draftOnly:\s*payload\.action === 'draft'/);
+  // The backend DesignMetadataDto does not include isAvailableInStore and runs a
+  // whitelist ValidationPipe, so the field must never be sent on initialize.
+  assert.doesNotMatch(
+    designApiSource,
+    /isAvailableInStore:\s*(false|true)/,
+    'Design initialize payload must not send isAvailableInStore (backend rejects unknown fields).',
+  );
   assert.ok(designApiSource.includes('`/designs/${designId}/finalize`'));
   assert.match(designApiSource, /designMetadata:\s*buildMetadata\(payload\)/);
   assert.match(designApiSource, /viewSlot:\s*toBackendMediaViewSlot\(asset\.viewSlot\)/);
@@ -82,6 +92,14 @@ function main() {
   assert.equal(resolveDesignIdFromInitializeResponse({ collectionId: 'collection-1' }), 'collection-1');
 
   const providerSource = fs.readFileSync(providerPath, 'utf8');
+  const creationRulesSource = fs.readFileSync(
+    path.join(repoRoot, 'src', 'features', 'design-editor', 'designCreationRules.ts'),
+    'utf8',
+  );
+  const backgroundTasksSource = fs.readFileSync(
+    path.join(repoRoot, 'src', 'features', 'design-editor', 'designEditorBackgroundTasks.ts'),
+    'utf8',
+  );
   assert.doesNotMatch(
     providerSource,
     /subCategoryId:\s*selectedCategory\.subCategories\[0\]\?\.id/,
@@ -107,12 +125,82 @@ function main() {
     /visibility:\s*targetVisibility/,
     'Design saves should route to the matching public, private, or draft catalog filter.',
   );
+  // Go Live must route by the design's resolved publication status so newly
+  // submitted (IN_REVIEW) designs land on the In Review tab, not Public.
+  assert.match(
+    providerSource,
+    /case 'IN_REVIEW':\s*\n\s*return 'In Review';/,
+    'Go Live must route IN_REVIEW designs to the In Review tab.',
+  );
+  assert.match(
+    providerSource,
+    /resolvePublishVisibility\(result\.detail\.status\)/,
+    'Publish routing must be derived from the saved design publication status.',
+  );
+  assert.match(
+    providerSource,
+    /invalidateQueries\(\{\s*queryKey:\s*\['brand',\s*'collections'\]/,
+    'Go Live must invalidate the owner brand collections cache.',
+  );
+  const optimisticInReviewRouteIndex = providerSource.indexOf("visibility: action === 'publish' ? 'In Review' : 'Drafts'");
+  const backendSaveIndex = providerSource.indexOf('const result = await saveDesignEditor');
   assert.ok(
-    providerSource.indexOf('const result = await saveDesignEditor') <
-      providerSource.indexOf("pathname: '/catalog'"),
-    'Mobile design editor must wait for the backend save before routing back to catalog.',
+    optimisticInReviewRouteIndex >= 0 &&
+      backendSaveIndex >= 0 &&
+      optimisticInReviewRouteIndex < backendSaveIndex,
+    'Mobile design editor must route publish and draft saves to their catalog task cards before upload completion.',
+  );
+  assert.match(
+    providerSource,
+    /recoverySnapshot:\s*\{[\s\S]*ownerUserId:\s*user\.id[\s\S]*form:\s*\{ \.\.\.form \}[\s\S]*assets:\s*assets\.map/,
+    'Pre-ID tasks must persist a user-scoped form and media snapshot before upload.',
+  );
+  assert.match(
+    providerSource,
+    /readDesignEditorRecoverySnapshot\([\s\S]*normalizedRecoveryTaskId,[\s\S]*user\.id/,
+    'Failed pre-ID retries must rehydrate only the current user snapshot.',
+  );
+  assert.match(
+    providerSource,
+    /recoverySnapshot:\s*null/,
+    'Successful saves must clear persisted recovery payloads.',
   );
   assert.match(providerSource, /getMissingRequiredMediaSlots/);
+  assert.match(
+    providerSource,
+    /getMissingRequiredImageMediaSlots/,
+    'Publish validation must require front/back/left/right slots to be image assets, not just present slots.',
+  );
+  assert.match(
+    creationRulesSource,
+    /String\(asset\.mediaKind \?\? ''\)\.toLowerCase\(\)/,
+    'Required image validation must inspect media kind.',
+  );
+  assert.match(
+    creationRulesSource,
+    /mimeType\.startsWith\('image\/'\)/,
+    'Required image validation must fall back to MIME type for local assets.',
+  );
+  assert.match(
+    backgroundTasksSource,
+    /DESIGN_EDITOR_FAILED_TASK_TTL_MS = 24 \* 60 \* 60 \* 1000/,
+    'Failed publish cards must keep a 24-hour cleanup clock.',
+  );
+  assert.match(
+    backgroundTasksSource,
+    /touchDesignEditorBackgroundTask/,
+    'Failed publish card interactions must reset the 24-hour cleanup clock.',
+  );
+  assert.match(
+    backgroundTasksSource,
+    /task\.ownerUserId === ownerUserId/,
+    'Background tasks and recovery payloads must be scoped to the authenticated user.',
+  );
+  assert.match(
+    backgroundTasksSource,
+    /schedulePersistTasks/,
+    'Frequent upload progress ticks must coalesce AsyncStorage persistence.',
+  );
   assert.doesNotMatch(
     providerSource,
     /routeForDesignTarget\(result\.id/,
@@ -123,14 +211,101 @@ function main() {
   assert.doesNotMatch(composerSource, />Left<\/AppText>/);
   assert.doesNotMatch(composerSource, />Right<\/AppText>/);
   assert.match(composerSource, /draftCategoryId/);
-  assert.match(composerSource, /Use selection/);
+  assert.match(composerSource, /categoryStep === 'category' \? 'Next' : 'Done'/);
+  assert.match(composerSource, /doneLabel="Save tags"/);
   assert.match(composerSource, /loading=\{tagsLoading\}/);
+  // Tags must render/select from a cached query and feed the multi-select sheet.
+  assert.match(
+    composerSource,
+    /queryKeys\.tags\.popular\(50\)/,
+    'Hashtags must load through the cached tags query key.',
+  );
+  assert.match(
+    composerSource,
+    /options=\{tagOptions\}/,
+    'Hashtag sheet must be fed the resolved tag options so suggestions render.',
+  );
+  // Required indicators must be inline asterisks, not spelled-out "Required" values.
+  assert.doesNotMatch(
+    composerSource,
+    /:\s*'Required'/,
+    'Composer must not display the literal "Required" text as a field value.',
+  );
+
+  const requiredLabelSource = fs.readFileSync(
+    path.join(repoRoot, 'components', 'ui', 'RequiredFieldLabel.tsx'),
+    'utf8',
+  );
+  assert.match(
+    requiredLabelSource,
+    /tone="danger">\s*\*/,
+    'RequiredFieldLabel must render an inline red asterisk, not the word "Required".',
+  );
+  assert.doesNotMatch(
+    requiredLabelSource,
+    />\s*Required\s*</,
+    'RequiredFieldLabel must not spell out "Required".',
+  );
+
+  // Image compression must degrade gracefully when the native module is missing.
+  const compressionSource = fs.readFileSync(
+    path.join(repoRoot, 'src', 'utils', 'imageCompression.ts'),
+    'utf8',
+  );
+  assert.match(
+    compressionSource,
+    /function getManipulator\(\)/,
+    'Image compression must guard native module availability.',
+  );
+  assert.match(
+    compressionSource,
+    /if \(!manipulator\) \{\s*\n\s*return originalImage\(/,
+    'Image compression must fall back to the original image when the native module is unavailable.',
+  );
+  assert.match(
+    compressionSource,
+    /catch \{\s*\n\s*return originalImage\(/,
+    'Image compression must never throw — it returns the original image on failure.',
+  );
 
   const brandApiSource = fs.readFileSync(brandApiPath, 'utf8');
+  const catalogSource = fs.readFileSync(catalogPath, 'utf8');
   assert.match(
     brandApiSource,
     /apiClient\.post\('\/store-collections\/initialize'/,
     'Mobile collection creation should use store collection initialization.',
+  );
+  assert.match(
+    brandApiSource,
+    /clientFailureReason\?: string \| null/,
+    'Catalog cards must receive an additive failure reason for client-side publish failures.',
+  );
+  assert.match(
+    catalogSource,
+    /task\.status === 'failed' \? 'publish-failed' : 'publishing'/,
+    'Failed publish tasks must render as failed cards instead of disappearing.',
+  );
+  assert.match(
+    catalogSource,
+    /visibilityFilter === 'In Review'[\s\S]*task\.status === 'failed'/,
+    'In Review must keep failed publish cards visible for retry/edit.',
+  );
+  assert.match(
+    catalogSource,
+    /params:\s*\{ recoveryTaskId: task\.id, blank: '1' \}/,
+    'Pre-ID failed tasks must reopen the composer with the persisted task snapshot.',
+  );
+  assert.match(
+    catalogSource,
+    /backgroundTaskCollectionCacheRef/,
+    'Progress mapping must preserve object identity for unaffected task cards.',
+  );
+
+  const catalogQueriesSource = fs.readFileSync(path.join(repoRoot, 'src', 'query', 'catalogQueries.ts'), 'utf8');
+  assert.doesNotMatch(
+    catalogQueriesSource,
+    /refetchInterval:\s*options\?\.isFocused/,
+    'Catalog review tabs must not poll on focus because it causes visible card flicker.',
   );
   assert.match(
     brandApiSource,
@@ -155,6 +330,8 @@ function main() {
   assert.match(productRouteSource, /fallbackHref="\/\(tabs\)\/discover"/);
 
   const marketCommerceViewerSource = fs.readFileSync(marketCommerceViewerPath, 'utf8');
+  const collectionCommerceViewerSource = fs.readFileSync(collectionCommerceViewerPath, 'utf8');
+  const messageThreadSource = fs.readFileSync(messageThreadPath, 'utf8');
   assert.match(
     marketCommerceViewerSource,
     /productId:\s*sourceType === 'PRODUCT' \? sourceId : undefined/,
@@ -166,6 +343,26 @@ function main() {
     'Design media debug context should identify design ids only for design sources.',
   );
   assert.match(marketCommerceViewerSource, /mediaIndex:\s*index/);
+  assert.doesNotMatch(
+    `${catalogSource}\n${marketCommerceViewerSource}\n${collectionCommerceViewerSource}`,
+    /threadId:\s*'brand'/,
+    'Direct brand messaging routes must use resolver context, not a fake brand thread id.',
+  );
+  assert.match(
+    `${catalogSource}\n${marketCommerceViewerSource}\n${collectionCommerceViewerSource}`,
+    /threadId:\s*'resolve'/,
+    'Direct brand messaging routes must route through the thread resolver sentinel.',
+  );
+  assert.match(
+    messageThreadSource,
+    /normalizePathThreadId/,
+    'Message route must strip resolver sentinel path params before calling the backend.',
+  );
+  assert.match(
+    messageThreadSource,
+    /MessagingApi\.startConversation/,
+    'Brand entry messages must start a conversation on first send when no thread exists yet.',
+  );
   assert.doesNotMatch(
     marketCommerceViewerSource,
     /designId:\s*sourceType === 'PRODUCT'/,

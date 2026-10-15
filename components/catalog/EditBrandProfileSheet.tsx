@@ -1,24 +1,110 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
-  KeyboardAvoidingView,
   PanResponder,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { AppSelectSheet, type SelectSheetOption } from '@/components/ui/AppSelectSheet';
 import { brandApi, type BrandProfileDto, type UpdateBrandProfilePayload } from '@/src/api/BrandApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import {
+  locationService,
+  type CountryOption,
+  type StateOption,
+} from '@/src/services/locationService';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import {
+  isEmptyPhone,
+  isValidPhone,
+  normalizePhoneToE164,
+  PHONE_INVALID_MESSAGE,
+  sanitizePhoneInput,
+} from '@/src/utils/phoneNumber';
+
+type LocationSheet = 'country' | 'state' | 'city' | null;
+
+const LOCATION_LABELS = {
+  country: 'Country',
+  state: 'State / Province',
+  city: 'City / LGA',
+} as const;
+
+function withCurrentOption(
+  options: SelectSheetOption[],
+  currentValue: string,
+): SelectSheetOption[] {
+  const trimmed = currentValue.trim();
+  if (!trimmed || options.some((option) => option.value === trimmed)) {
+    return options;
+  }
+  return [{ value: trimmed, label: trimmed }, ...options];
+}
+
+function getOptionLabel(options: SelectSheetOption[], value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return options.find((option) => option.value === trimmed)?.label ?? trimmed;
+}
+
+function LocationSelectField({
+  label,
+  value,
+  placeholder,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  const { theme } = useTheme();
+  return (
+    <View style={styles.locationField}>
+      <AppText variant="captionBold" tone="muted">
+        {label}
+      </AppText>
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={({ pressed }) => [
+          styles.locationSelect,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+          },
+          disabled && styles.locationSelectDisabled,
+          pressed && !disabled && styles.locationSelectPressed,
+        ]}
+      >
+        <AppText
+          variant="body"
+          tone={value ? 'default' : 'muted'}
+          style={styles.locationSelectValue}
+        >
+          {value || placeholder}
+        </AppText>
+        <AppText variant="captionBold" tone={disabled ? 'muted' : 'primary'}>
+          Choose
+        </AppText>
+      </Pressable>
+    </View>
+  );
+}
 
 interface EditBrandProfileSheetProps {
   visible: boolean;
@@ -120,6 +206,13 @@ export function EditBrandProfileSheet({
   const [phoneNumber, setPhoneNumber] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [locationSheet, setLocationSheet] = useState<LocationSheet>(null);
+  const [countries, setCountries] = useState<CountryOption[]>([]);
+  const [states, setStates] = useState<StateOption[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+
   const slideY = useRef(new Animated.Value(800)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
@@ -137,6 +230,7 @@ export function EditBrandProfileSheet({
       setSocialTwitter(profile.socialTwitter ?? '');
       setSocialWebsite(profile.socialWebsite ?? '');
       setPhoneNumber(profile.phoneNumber ?? '');
+      setLocationSheet(null);
 
       Animated.parallel([
         Animated.spring(slideY, {
@@ -144,11 +238,13 @@ export function EditBrandProfileSheet({
           damping: 24,
           stiffness: 220,
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(backdropOpacity, {
           toValue: 1,
           duration: 240,
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]).start();
     } else {
@@ -158,15 +254,100 @@ export function EditBrandProfileSheet({
           duration: 260,
           easing: Easing.in(Easing.cubic),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(backdropOpacity, {
           toValue: 0,
           duration: 200,
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]).start();
     }
   }, [visible, profile, backdropOpacity, slideY]);
+
+  // Load countries when sheet opens (same service as catalog edit-profile)
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    setLocationLoading(true);
+    setLocationError(null);
+    void locationService.getCountries().then((nextCountries) => {
+      if (cancelled) return;
+      setCountries(nextCountries);
+      if (nextCountries.length === 0) {
+        setLocationError('Location options are unavailable. Your saved location is preserved.');
+      }
+      setLocationLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
+  // Cascade states when country changes
+  useEffect(() => {
+    const country = brandCountry.trim();
+    if (!visible || !country) {
+      setStates([]);
+      return;
+    }
+    let cancelled = false;
+    setLocationLoading(true);
+    void locationService.getStates(country).then((nextStates) => {
+      if (cancelled) return;
+      setStates(nextStates);
+      setLocationLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [brandCountry, visible]);
+
+  // Cascade cities / LGAs when state changes
+  useEffect(() => {
+    const country = brandCountry.trim();
+    const state = brandState.trim();
+    if (!visible || !country || !state) {
+      setCities([]);
+      return;
+    }
+    let cancelled = false;
+    setLocationLoading(true);
+    void locationService.getCities(country, state).then((nextCities) => {
+      if (cancelled) return;
+      setCities(nextCities);
+      setLocationLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [brandCountry, brandState, visible]);
+
+  const countryOptions = useMemo(
+    () =>
+      withCurrentOption(
+        countries.map((country) => ({ label: country.name, value: country.name })),
+        brandCountry,
+      ),
+    [countries, brandCountry],
+  );
+  const stateOptions = useMemo(
+    () =>
+      withCurrentOption(
+        states.map((state) => ({ label: state.name, value: state.name })),
+        brandState,
+      ),
+    [states, brandState],
+  );
+  const cityOptions = useMemo(
+    () =>
+      withCurrentOption(
+        cities.map((city) => ({ label: city, value: city })),
+        brandCity,
+      ),
+    [cities, brandCity],
+  );
 
   if (!visible) return null;
 
@@ -178,6 +359,12 @@ export function EditBrandProfileSheet({
     const resolvedBrandFullName = brandFullName.trim() || profile.brandFullName?.trim() || '';
     if (!resolvedBrandFullName) {
       toast.error('Brand name is required.');
+      return;
+    }
+
+    const rawPhone = phoneNumber.trim();
+    if (!isEmptyPhone(rawPhone) && !isValidPhone(rawPhone)) {
+      toast.error(PHONE_INVALID_MESSAGE);
       return;
     }
 
@@ -195,7 +382,9 @@ export function EditBrandProfileSheet({
       socialFacebook: socialFacebook.trim() || undefined,
       socialTwitter: socialTwitter.trim() || undefined,
       socialWebsite: socialWebsite.trim() || undefined,
-      phoneNumber: phoneNumber.trim() || undefined,
+      phoneNumber: isEmptyPhone(rawPhone)
+        ? undefined
+        : (normalizePhoneToE164(rawPhone) ?? undefined),
     };
 
     try {
@@ -234,7 +423,7 @@ export function EditBrandProfileSheet({
             }
           : user?.bannerImageFile,
         updatedAt: new Date().toISOString(),
-      });
+      }, 'catalog/EditBrandProfileSheet');
       toast.success('Profile updated!');
       onSaved(updated);
       onClose();
@@ -277,12 +466,10 @@ export function EditBrandProfileSheet({
           <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
         </Animated.View>
 
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardRoot}>
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
+        <KeyboardAwareFormScroll
+          style={styles.keyboardRoot}
+          contentContainerStyle={styles.scrollContent}
+        >
             <AppText variant="title">Edit Brand Profile</AppText>
             <AppText variant="caption" tone="muted" style={styles.subtitle}>
               Update your brand information visible to shoppers
@@ -316,31 +503,31 @@ export function EditBrandProfileSheet({
               />
 
               <SectionHeader label="Location" />
-              <View style={styles.twoColumnRow}>
-                <Input
-                  label="City"
-                  value={brandCity}
-                  onChangeText={setBrandCity}
-                  placeholder="Lagos"
-                  returnKeyType="next"
-                  containerStyle={styles.fieldColumn}
-                />
-                <Input
-                  label="State"
-                  value={brandState}
-                  onChangeText={setBrandState}
-                  placeholder="Lagos State"
-                  returnKeyType="next"
-                  containerStyle={styles.fieldColumn}
-                />
-              </View>
-              <Input
-                label="Country"
-                value={brandCountry}
-                onChangeText={setBrandCountry}
-                placeholder="Nigeria"
-                returnKeyType="next"
+              <LocationSelectField
+                label={LOCATION_LABELS.country}
+                value={getOptionLabel(countryOptions, brandCountry)}
+                placeholder="Select country"
+                onPress={() => setLocationSheet('country')}
               />
+              <LocationSelectField
+                label={LOCATION_LABELS.state}
+                value={getOptionLabel(stateOptions, brandState)}
+                placeholder={brandCountry ? 'Select state / province' : 'Select country first'}
+                onPress={() => setLocationSheet('state')}
+                disabled={!brandCountry.trim()}
+              />
+              <LocationSelectField
+                label={LOCATION_LABELS.city}
+                value={getOptionLabel(cityOptions, brandCity)}
+                placeholder={brandState ? 'Select city / LGA' : 'Select state first'}
+                onPress={() => setLocationSheet('city')}
+                disabled={!brandState.trim()}
+              />
+              {locationError ? (
+                <AppText variant="caption" tone="warning">
+                  {locationError}
+                </AppText>
+              ) : null}
 
               <SectionHeader label="Specialties (max 10)" />
               <TagsInput tags={brandTags} onChange={setBrandTags} />
@@ -387,8 +574,8 @@ export function EditBrandProfileSheet({
               <Input
                 label="Phone"
                 value={phoneNumber}
-                onChangeText={setPhoneNumber}
-                placeholder="+234 800 000 0000"
+                onChangeText={(value) => setPhoneNumber(sanitizePhoneInput(value))}
+                placeholder="080XXXXXXXX or +234..."
                 returnKeyType="done"
                 keyboardType="phone-pad"
               />
@@ -406,9 +593,49 @@ export function EditBrandProfileSheet({
                 style={styles.saveButton}
               />
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAwareFormScroll>
       </Animated.View>
+
+      <AppSelectSheet
+        visible={locationSheet === 'country'}
+        title={LOCATION_LABELS.country}
+        subtitle="Choose the country shown on your public brand profile."
+        options={countryOptions}
+        value={brandCountry.trim() || null}
+        loading={locationLoading && countries.length === 0}
+        emptyMessage="No countries available right now."
+        onChange={(value) => {
+          setBrandCountry(value);
+          setBrandState('');
+          setBrandCity('');
+        }}
+        onClose={() => setLocationSheet(null)}
+      />
+      <AppSelectSheet
+        visible={locationSheet === 'state'}
+        title={LOCATION_LABELS.state}
+        subtitle="Choose the state or province for this brand."
+        options={stateOptions}
+        value={brandState.trim() || null}
+        loading={locationLoading && states.length === 0}
+        emptyMessage="No states available for the selected country."
+        onChange={(value) => {
+          setBrandState(value);
+          setBrandCity('');
+        }}
+        onClose={() => setLocationSheet(null)}
+      />
+      <AppSelectSheet
+        visible={locationSheet === 'city'}
+        title={LOCATION_LABELS.city}
+        subtitle="Choose the city or LGA for this brand."
+        options={cityOptions}
+        value={brandCity.trim() || null}
+        loading={locationLoading && cities.length === 0}
+        emptyMessage="No cities available for the selected state."
+        onChange={setBrandCity}
+        onClose={() => setLocationSheet(null)}
+      />
     </View>
   );
 }
@@ -423,7 +650,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: tokens.radius.xl,
     borderTopWidth: 1,
     maxHeight: '92%',
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.28,
     shadowRadius: 24,
@@ -459,12 +686,28 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: -tokens.spacing.md,
   },
-  twoColumnRow: {
-    flexDirection: 'row',
-    gap: tokens.spacing.md,
+  locationField: {
+    gap: tokens.spacing.xs,
   },
-  fieldColumn: {
+  locationSelect: {
+    minHeight: 52,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.lg,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.md,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: tokens.spacing.sm,
+  },
+  locationSelectDisabled: {
+    opacity: 0.56,
+  },
+  locationSelectPressed: {
+    opacity: 0.88,
+  },
+  locationSelectValue: {
     flex: 1,
+    flexShrink: 1,
   },
   tagsInputSection: {
     gap: tokens.spacing.sm,

@@ -10,7 +10,8 @@ const brandApiPath = path.join(repoRoot, 'src', 'api', 'BrandApi.ts');
 const messagingApiPath = path.join(repoRoot, 'src', 'api', 'MessagingApi.ts');
 const meRoutePath = path.join(repoRoot, 'app', '(tabs)', 'me.tsx');
 const meEditRoutePath = path.join(repoRoot, 'app', '(tabs)', 'me-edit.tsx');
-const catalogEditProfilePath = path.join(repoRoot, 'app', 'catalog', 'edit-profile.tsx');
+// Catalogue lives in the `(tabs)` route GROUP — the /catalog URL is unchanged.
+const catalogEditProfilePath = path.join(repoRoot, 'app', '(tabs)', 'catalog', 'edit-profile.tsx');
 const ownerCatalogHeaderPath = path.join(repoRoot, 'components', 'catalog', 'OwnerCatalogMediaHeader.tsx');
 
 const read = (filePath) => fs.readFileSync(filePath, 'utf8');

@@ -64,6 +64,21 @@ export type PushTokenDevice = {
   maskedToken?: string | null;
 };
 
+export type EmailNotificationSettings = {
+  globalEnabled: boolean;
+  securityCriticalEnabled: boolean;
+  scenarios: Record<string, boolean>;
+  securityCriticalScenarios: string[];
+};
+
+export type EmailNotificationSettingsPatch = {
+  globalEnabled?: boolean;
+  securityCriticalEnabled?: boolean;
+  scenarios?: Record<string, boolean>;
+  complianceAcknowledged?: boolean;
+  stepUpPassword?: string;
+};
+
 function unwrap<T>(payload: unknown): T {
   if (payload && typeof payload === 'object' && 'data' in (payload as any)) {
     return (payload as any).data as T;
@@ -118,6 +133,23 @@ export const NotificationsApi = {
   async updateSettings(settingsPatch: NotificationSettingsPatch): Promise<NotificationSettings> {
     const response = await apiClient.patch('/notifications/settings', settingsPatch);
     return unwrap<NotificationSettings>(response.data);
+  },
+
+  async getEmailSettings(): Promise<EmailNotificationSettings> {
+    const response = await apiClient.get('/notifications/email-settings');
+    return unwrap<EmailNotificationSettings>(response.data);
+  },
+
+  async updateEmailSettings(
+    settingsPatch: EmailNotificationSettingsPatch,
+  ): Promise<EmailNotificationSettings> {
+    const response = await apiClient.patch('/notifications/email-settings', settingsPatch);
+    return unwrap<EmailNotificationSettings>(response.data);
+  },
+
+  async resetEmailSettings(): Promise<EmailNotificationSettings> {
+    const response = await apiClient.post('/notifications/email-settings/reset-defaults');
+    return unwrap<EmailNotificationSettings>(response.data);
   },
 
   async registerPushToken(payload: RegisterPushTokenPayload): Promise<{ success: boolean }> {

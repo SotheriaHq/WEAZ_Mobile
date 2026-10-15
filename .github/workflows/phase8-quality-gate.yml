@@ -29,6 +29,50 @@ jobs:
       - name: Typecheck
         run: npm exec tsc -- --noEmit
 
+      # Runway gates run first: they are pure-logic and fast, and a failing step
+      # skips every step after it. `test:aspect-aware-media` below has been red
+      # since the 2026-07-27 detail-first tiering change (its expectations still
+      # describe the old progressive card->detail path), which would otherwise
+      # mask these entirely.
+      - name: Runway responsiveness contract
+        run: npm run test:runway-responsiveness-contract
+
+      - name: Runway transit curves
+        run: npm run test:runway-transit-curves
+
+      # Pure-logic too, and guarding a failure nobody can see: the server stores
+      # one measurement under several keys on purpose, so a missing alias here
+      # renders a shopper's body twice on their own profile and drops a point
+      # out of the "6/8 sizing points" total. Also checks the alias table
+      # against the backend's, which is where the two actually drift.
+      - name: Measurement catalog contract
+        run: npm run test:measurement-catalog-contract
+
+      # Where a user lives. Three things are duplicated across repos here and
+      # all three have already broken: the bundled region fallback (an empty
+      # option list renders a DISABLED dropdown, so a third-party outage becomes
+      # a form nobody can finish), the countriesnow endpoint shape (web moved to
+      # the GET form when POST started 301-ing; mobile was left on the dead one
+      # and failed silently for months), and the "City / LGA" label, which has
+      # to name the same administrative level for both readers.
+      - name: Location cascade contract
+        run: npm run test:location-cascade-contract
+
+      # Who gets asked how to size their clothes. The web and native copies of
+      # this rule have drifted twice already — console operators were excluded
+      # on one surface before the other, and the auth-route skip lists diverged
+      # so the prompt opened over /verify-email after being fixed elsewhere.
+      # Runs the real function from both repos over the same accounts.
+      - name: Profile gender prompt contract
+        run: npm run test:profile-gender-contract
+
+      # Whose UI is this? Identity (isBrandAccount) versus capability
+      # (hasActiveBrandMembership). Collapsing the two sent a freshly verified
+      # brand to the shopper profile on BOTH surfaces, so this also asserts
+      # they stay distinct for a brand that has not finished store setup.
+      - name: Brand identity contract
+        run: npm run test:brand-identity-contract
+
       - name: Aspect-aware media contract
         run: npm run test:aspect-aware-media
 
@@ -40,6 +84,18 @@ jobs:
 
       - name: Store API contract
         run: npm run test:store-api-contract
+
+      # Guards the Runway vertical feed. The responsiveness contract is what stops
+      # the boosted interval-snapping props being "restored" (they were the cause
+      # of the settle slamming into the next page); the transit curve tests cover
+      # the scroll-linked scrim/scale/chrome geometry. Neither was wired into CI
+      # when it was written, so both were enforceable only by remembering to run
+      # them locally.
+      - name: Runway responsiveness contract
+        run: npm run test:runway-responsiveness-contract
+
+      - name: Runway transit curves
+        run: npm run test:runway-transit-curves
 
       - name: Performance regression guard
         run: npm run check:perf-regressions

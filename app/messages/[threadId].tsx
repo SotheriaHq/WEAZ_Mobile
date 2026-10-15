@@ -1,30 +1,41 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Animated,
   AppState,
   FlatList,
-  KeyboardAvoidingView,
+  Keyboard,
   PanResponder,
   Platform,
+  Pressable,
   RefreshControl,
   StyleSheet,
   TouchableOpacity,
   View,
+  useWindowDimensions,
   type ListRenderItemInfo,
 } from 'react-native';
+import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { useFocusEffect } from 'expo-router';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Header } from '@/components/ui/Header';
+import { IconButton } from '@/components/ui/IconButton';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
+import { AppFloatingMenu, type FloatingMenuOption } from '@/components/ui/AppFloatingMenu';
+import EmojiPickerPanel from '@/components/messaging/EmojiPickerPanel';
+import { MessageReceiptTicks } from '@/components/messaging/MessageReceiptTicks';
 import { MessagingApi, createMessageClientId } from '@/src/api/MessagingApi';
+import { brandApi } from '@/src/api/BrandApi';
+import { compressPickedImage } from '@/src/utils/imageCompression';
+import { getMobileUploadValidationMessage } from '@/src/utils/uploadValidation';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import {
@@ -35,11 +46,22 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { navPerf } from '@/src/utils/navPerf';
+import {
+  contentReferenceFromMetadata,
+  contentReferenceFromParams,
+  contentReferenceLabel,
+  contentReferenceRoute,
+  contentReferenceToSendFields,
+  type MessageContentReference,
+} from '@/src/features/messaging/contentReference';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 import type {
   ConversationParticipant,
   ConversationThread,
   MessageAttachment,
   MessageContextParams,
+  MessageDeliveredRealtimeEvent,
   MessageReadRealtimeEvent,
   MessageItem,
   QuotedMessage,
@@ -54,6 +76,22 @@ const PAGE_SIZE = 50;
 const REALTIME_REFRESH_DEBOUNCE_MS = 300;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const MAX_PENDING_ATTACHMENTS = 4;
+// Lightweight curated emoji set inserted into the composer — no extra dependency
+// and no heavy picker. Opens an inline row the user can tap to append an emoji.
+
+// A locally-picked attachment in the composer. `fileId` is set once the upload
+// to the existing /uploads/message-image contract succeeds; only uploaded
+// attachments (real ids) are ever sent — never fabricated.
+type PendingAttachment = {
+  localId: string;
+  uri: string;
+  name: string;
+  mimeType: string;
+  status: 'uploading' | 'ready' | 'error';
+  fileId: string | null;
+};
+
 function firstParam(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
   const trimmed = typeof raw === 'string' ? raw.trim() : '';
@@ -62,6 +100,16 @@ function firstParam(value: string | string[] | undefined) {
 
 function validId(value: string | null | undefined) {
   return value && UUID_PATTERN.test(value) ? value : null;
+}
+
+function normalizePathThreadId(value: string | null | undefined) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'resolve' || normalized === 'brand' || normalized === 'new') return null;
+  return value ?? null;
+}
+
+function getErrorStatus(error: unknown) {
+  return (error as { response?: { status?: number } })?.response?.status ?? null;
 }
 
 function hasResolverContext(context: MessageContextParams) {
@@ -88,7 +136,7 @@ function getErrorMessage(error: unknown) {
 }
 
 function classifyError(error: unknown, context: MessageContextParams) {
-  const status = (error as { response?: { status?: number } })?.response?.status ?? null;
+  const status = getErrorStatus(error);
   const message = getErrorMessage(error);
   const lower = message.toLowerCase();
 
@@ -145,6 +193,77 @@ function classifyError(error: unknown, context: MessageContextParams) {
   };
 }
 
+/**
+ * Everything needed to send a message, and to send it AGAIN if it fails.
+ *
+ * Held whole rather than rebuilt from the rendered bubble: attachments resolve
+ * to file ids the bubble does not carry, and the content reference is not
+ * visible in the text at all, so a retry assembled from the UI would silently
+ * drop both.
+ */
+type OutgoingDraft = {
+  clientMessageId: string;
+  bodyText: string;
+  attachmentFileIds: string[];
+  replyToMessageId: string | null;
+  contentFields: Record<string, string>;
+  targetThreadId: string | null;
+  targetBrandId: string | null;
+};
+
+/**
+ * The bubble shown while a message is in flight.
+ *
+ * Keyed by `clientMessageId` so the server's row can replace it exactly, and
+ * shaped as a full `MessageItem` so every renderer — sorting, ticks, the
+ * reference card — treats it like any other message with no special cases.
+ */
+function buildOptimisticMessage(input: {
+  draft: OutgoingDraft;
+  currentUserId: string | null;
+  /* A brand account writing from the native app is not a BUYER. */
+  senderRole: MessageItem['senderRole'];
+  threadId: string;
+  reference: MessageContentReference | null;
+  attachments: PendingAttachment[];
+  quoted: QuotedMessage | null;
+}): MessageItem {
+  const { draft, currentUserId, senderRole, threadId, reference, attachments, quoted } = input;
+
+  return {
+    id: draft.clientMessageId,
+    threadId,
+    conversationId: threadId,
+    senderUserId: currentUserId,
+    senderRole,
+    kind: 'USER',
+    visibilityState: 'VISIBLE',
+    bodyText: draft.bodyText || null,
+    createdAt: new Date().toISOString(),
+    deliveryStatus: 'SENDING',
+    sender: null,
+    attachments: attachments
+      .filter((entry) => entry.status === 'ready' && entry.fileId)
+      .map((entry) => ({
+        id: entry.fileId as string,
+        kind: entry.mimeType?.startsWith('image/') ? 'IMAGE' : 'DOCUMENT',
+        file: {
+          id: entry.fileId ?? null,
+          // The LOCAL uri, so the picture the sender chose is on screen
+          // immediately instead of waiting on a signed remote URL.
+          url: entry.uri ?? null,
+          originalName: entry.name ?? null,
+          mimeType: entry.mimeType ?? null,
+          size: null,
+        },
+      })),
+    metadataJson: reference
+      ? (contentReferenceToSendFields(reference) as MessageItem['metadataJson'])
+      : null,
+    quotedMessage: quoted,
+  };
+}
+
 function mergeMessages(current: MessageItem[], incoming: MessageItem[]) {
   const byId = new Map<string, MessageItem>();
   [...current, ...incoming].forEach((message) => {
@@ -194,6 +313,46 @@ function applyReadReceipt(
   return changed ? nextMessages : current;
 }
 
+/**
+ * One tick → two, the moment the recipient's device has the message.
+ *
+ * Delivery used to be inferred only when the recipient opened the thread and
+ * fetched it, and the sender only found out on their next refetch — so a
+ * message sat on a single tick long after it had arrived, then jumped to two
+ * and to read almost together. The server now reports arrival directly, and
+ * this applies it to the bubbles it names.
+ *
+ * READ is further along than DELIVERED, so a delivery event that arrives late
+ * (or out of order) is ignored rather than being allowed to walk a read tick
+ * backwards.
+ */
+function applyDeliveryReceipt(
+  current: MessageItem[],
+  payload: MessageDeliveredRealtimeEvent,
+  currentUserId: string | null,
+) {
+  if (!currentUserId) return current;
+  const deliveredIds = new Set(
+    (Array.isArray(payload.messageIds) ? payload.messageIds : [])
+      .map((id) => validId(id))
+      .filter((id): id is string => Boolean(id)),
+  );
+  if (deliveredIds.size === 0) return current;
+
+  let changed = false;
+  const nextMessages = current.map((message) => {
+    if (!deliveredIds.has(message.id)) return message;
+    if (message.senderUserId !== currentUserId) return message;
+    if (message.deliveryStatus === 'READ' || message.deliveryStatus === 'DELIVERED') {
+      return message;
+    }
+    changed = true;
+    return { ...message, deliveryStatus: 'DELIVERED' as const };
+  });
+
+  return changed ? nextMessages : current;
+}
+
 function formatMessageTime(value: string | null) {
   if (!value) return '';
   const timestamp = Date.parse(value);
@@ -202,6 +361,87 @@ function formatMessageTime(value: string | null) {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function startOfDay(timestamp: number) {
+  const date = new Date(timestamp);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+/**
+ * A thread with no day markers is a wall of times that all look equally
+ * recent: "17:05" reads as this afternoon whether it was today or in March.
+ * The bubbles keep their clock time; the marker says which day that clock
+ * belongs to, and only where the day actually changes.
+ */
+function formatDayLabel(timestamp: number) {
+  const day = startOfDay(timestamp);
+  const elapsedDays = Math.round((startOfDay(Date.now()) - day) / DAY_MS);
+  if (elapsedDays === 0) return 'Today';
+  if (elapsedDays === 1) return 'Yesterday';
+
+  const date = new Date(timestamp);
+  if (elapsedDays > 1 && elapsedDays < 7) {
+    return date.toLocaleDateString(undefined, { weekday: 'long' });
+  }
+  const thisYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString(
+    undefined,
+    thisYear
+      ? { month: 'short', day: 'numeric' }
+      : { month: 'short', day: 'numeric', year: 'numeric' },
+  );
+}
+
+type ThreadRow =
+  | { kind: 'message'; key: string; message: MessageItem }
+  | { kind: 'day'; key: string; label: string };
+
+/**
+ * Interleave day markers into the message list.
+ *
+ * `messages` is newest-first and the list is INVERTED, so a marker for day D
+ * belongs AFTER the oldest message of day D in array order — that is where it
+ * renders above the day's first bubble on screen. Getting this backwards puts
+ * every date under the day it labels.
+ */
+function buildThreadRows(messages: MessageItem[]): ThreadRow[] {
+  const rows: ThreadRow[] = [];
+
+  messages.forEach((message, index) => {
+    rows.push({ kind: 'message', key: message.id, message });
+
+    const timestamp = Date.parse(message.createdAt ?? '');
+    if (!Number.isFinite(timestamp)) return;
+
+    const next = messages[index + 1];
+    const nextTimestamp = next ? Date.parse(next.createdAt ?? '') : NaN;
+    const opensTheDay =
+      !Number.isFinite(nextTimestamp) || startOfDay(nextTimestamp) !== startOfDay(timestamp);
+
+    if (opensTheDay) {
+      const day = startOfDay(timestamp);
+      rows.push({ kind: 'day', key: `day-${day}`, label: formatDayLabel(day) });
+    }
+  });
+
+  return rows;
+}
+
+function DayDivider({ label }: { label: string }) {
+  const { theme } = useTheme();
+  return (
+    <View style={styles.dayDivider}>
+      <View style={[styles.dayRule, { backgroundColor: theme.colors.border }]} />
+      <AppText variant="small" tone="muted">
+        {label}
+      </AppText>
+      <View style={[styles.dayRule, { backgroundColor: theme.colors.border }]} />
+    </View>
+  );
 }
 
 function formatOrderLabel(order: ThreadOrderItem | null, context: MessageContextParams) {
@@ -265,14 +505,39 @@ function AttachmentPreview({ attachment, mine }: { attachment: MessageAttachment
 
 const SWIPE_REPLY_THRESHOLD = 56;
 
+/*
+  One tick means the server has it; two means the other device has it; two in
+  the success tone means it was read. Sending shows a clock rather than a
+  premature tick — claiming "sent" before the request resolves is the one thing
+  a delivery indicator must never do.
+
+  The glyphs themselves live in `MessageReceiptTicks`, which draws the pair
+  STACKED rather than side by side; the labels stay here because they are also
+  the accessibility strings used elsewhere in this screen.
+*/
+const DELIVERY_STATUS_LABEL: Record<
+  NonNullable<MessageItem['deliveryStatus']>,
+  string
+> = {
+  SENDING: 'Sending',
+  SENT: 'Sent',
+  DELIVERED: 'Delivered',
+  READ: 'Read',
+  FAILED: 'Not sent',
+};
+
 const MessageBubble = memo(function MessageBubble({
   item,
   currentUserId,
   onReply,
+  onRetry,
+  onDiscard,
 }: {
   item: MessageItem;
   currentUserId: string | null;
   onReply?: (msg: MessageItem) => void;
+  onRetry?: (messageId: string) => void;
+  onDiscard?: (messageId: string) => void;
 }) {
   const { theme } = useTheme();
   const mine = Boolean(item.senderUserId && item.senderUserId === currentUserId);
@@ -294,17 +559,27 @@ const MessageBubble = memo(function MessageBubble({
     },
     onPanResponderRelease: () => {
       triggeredRef.current = false;
-      Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4 }).start();
+      Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4, isInteraction: false }).start();
     },
     onPanResponderTerminate: () => {
       triggeredRef.current = false;
-      Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4 }).start();
+      Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 4, isInteraction: false }).start();
     },
   }), [item, onReply, swipeAnim]);
 
-  const designTitle = item.metadataJson?.contextDesignTitle;
-  const designCoverUrl = item.metadataJson?.contextDesignCoverUrl as string | undefined;
-  const hasDesignCard = Boolean(designTitle);
+  const contentReference = useMemo(
+    () => contentReferenceFromMetadata(item.metadataJson),
+    [item.metadataJson],
+  );
+  const contentRoute = useMemo(
+    () => contentReferenceRoute(contentReference),
+    [contentReference],
+  );
+  const contentCoverUrl = contentReference?.coverUrl ?? null;
+  const onOpenContent = useCallback(() => {
+    if (!contentRoute) return;
+    drillDownPush(contentRoute as any);
+  }, [contentRoute]);
   const replyIconOpacity = swipeAnim.interpolate({ inputRange: [0, SWIPE_REPLY_THRESHOLD], outputRange: [0, 1] });
 
   if (system) {
@@ -335,19 +610,40 @@ const MessageBubble = memo(function MessageBubble({
         ]}
         pointerEvents="none"
       >
-        <AppText style={{ fontSize: 18 }}>↩️</AppText>
+        <AppText variant="subtitle">↩️</AppText>
       </Animated.View>
 
       <Animated.View
         style={[styles.bubbleColumn, mine ? styles.bubbleColumnMine : styles.bubbleColumnOther, { transform: [{ translateX: swipeAnim }] }]}
         {...panResponder.panHandlers}
       >
-        {/* Design context card — sits above the bubble, no fill */}
-        {hasDesignCard && (
-          <View style={[styles.designCard, { borderColor: theme.colors.border }]}>
-            {designCoverUrl ? (
+        {/*
+          The content this message is about — design or product — above the
+          bubble, and PRESSABLE.
+
+          It used to be a flat label, which named the piece but still left the
+          reader to go and find it. The whole reason to reference content is so
+          the other party can look at the thing being discussed, so the card
+          opens the content itself — not the brand's tab of contents, where
+          finding it again is the reader's problem all over again.
+        */}
+        {contentReference ? (
+          <Pressable
+            onPress={contentRoute ? onOpenContent : undefined}
+            disabled={!contentRoute}
+            accessibilityRole={contentRoute ? 'link' : undefined}
+            accessibilityLabel={
+              contentRoute ? `Open ${contentReferenceLabel(contentReference)}` : undefined
+            }
+            style={({ pressed }) => [
+              styles.designCard,
+              { borderColor: theme.colors.border },
+              pressed && contentRoute ? styles.designCardPressed : null,
+            ]}
+          >
+            {contentCoverUrl ? (
               <StableImage
-                uri={designCoverUrl}
+                uri={contentCoverUrl}
                 containerStyle={styles.designCoverImage}
                 imageStyle={styles.designCoverImage}
                 resizeMode="cover"
@@ -356,11 +652,13 @@ const MessageBubble = memo(function MessageBubble({
             ) : null}
             <View style={[styles.designCardTitle, { backgroundColor: theme.colors.surface }]}>
               <AppText variant="captionBold" tone="default" numberOfLines={1}>
-                🎨 {String(designTitle)}
+                {contentReference.kind === 'PRODUCT' ? '🛍️' : '🎨'}{' '}
+                {contentReferenceLabel(contentReference)}
+                {contentRoute ? ' ›' : ''}
               </AppText>
             </View>
-          </View>
-        )}
+          </Pressable>
+        ) : null}
 
         {/* Quoted reply reference */}
         {item.quotedMessage ? (
@@ -406,25 +704,93 @@ const MessageBubble = memo(function MessageBubble({
                 {timestamp}
               </AppText>
             ) : null}
+            {/*
+              Read is a COLOUR change, which is what the setting promises.
+
+              The messaging preference is labelled "Read receipts (colored ✓✓)"
+              and these ticks were not coloured at all — read and delivered
+              differed only by font weight on the same inverse tone, a
+              distinction most people will never notice at caption size and one
+              that disappears entirely at a glance. The one state worth
+              signalling was the one state you could not see.
+
+              Sent (✓) and delivered (✓✓) stay in the bubble's own ink; read
+              flips to `success`, which is a tone the design system already
+              defines and which carries on the sent-bubble fill. Weight still
+              steps up with it, so the cue is not colour-only.
+            */}
             {mine && item.deliveryStatus ? (
-              <AppText
-                variant="captionRegular"
-                style={item.deliveryStatus === 'READ'
-                  ? { color: theme.colors.primarySoft, fontWeight: '700' }
-                  : { color: theme.colors.onPrimary }}
-              >
-                {item.deliveryStatus === 'READ' ? '✓✓' : item.deliveryStatus === 'DELIVERED' ? '✓✓' : '✓'}
-              </AppText>
+              <MessageReceiptTicks
+                state={item.deliveryStatus}
+                color={theme.colors.textInverse}
+                readColor={theme.colors.success}
+              />
             ) : null}
           </View>
+
+          {/*
+            A failed message stays put and offers the two things worth doing.
+
+            Nothing about a send failure is the writer's fault, and silently
+            dropping the bubble would take the text with it — so the message
+            remains, visibly not sent, with the choice to try again or let it
+            go.
+          */}
+          {mine && item.deliveryStatus === 'FAILED' ? (
+            <View style={styles.failedActions}>
+              <AppText variant="captionRegular" tone="danger">
+                Not sent
+              </AppText>
+              <Pressable
+                onPress={() => onRetry?.(item.id)}
+                accessibilityRole="button"
+                hitSlop={8}
+              >
+                <AppText variant="captionBold" tone="inverse">
+                  Resend
+                </AppText>
+              </Pressable>
+              <Pressable
+                onPress={() => onDiscard?.(item.id)}
+                accessibilityRole="button"
+                hitSlop={8}
+              >
+                <AppText variant="captionBold" tone="danger">
+                  Delete
+                </AppText>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </Animated.View>
     </View>
   );
 });
 
-function ThreadAvatar({ participant }: { participant: ConversationParticipant | null }) {
+/**
+ * The header avatar, and the menu behind it.
+ *
+ * The avatar used to be decoration: it showed you who you were talking to and
+ * did nothing when pressed, so a shopper mid-conversation about a piece had no
+ * way back to the brand's catalogue except leaving the thread, going to
+ * Runway/Market and finding them again. The one control that already identifies
+ * the other party is the obvious place to put "go to them".
+ *
+ * A menu rather than a direct tap, for two reasons: an avatar that navigates on
+ * a single tap is easy to hit by accident while reaching for the header, and
+ * this is the natural home for the next per-conversation action (mute, report,
+ * view shared content) rather than a second control appearing beside it.
+ */
+function ThreadAvatar({
+  participant,
+  onViewProfile,
+}: {
+  participant: ConversationParticipant | null;
+  onViewProfile: (participantId: string) => void;
+}) {
   const { theme } = useTheme();
+  const anchorRef = useRef<View | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const avatarUri = useResolvedImageUri({
     src: participant?.avatarUrl,
     debugContext: { sourceField: 'messaging.thread.participant.avatarUrl' },
@@ -433,12 +799,15 @@ function ThreadAvatar({ participant }: { participant: ConversationParticipant | 
   const label = getParticipantName(participant);
   const initials = label
     ? label
+        .replace(/^(conversation with|inquiry with)\s+/i, '')
+        .trim()
         .split(/\s+/)
+        .filter(Boolean)
         .map((part) => part[0])
         .join('')
         .slice(0, 2)
-        .toUpperCase()
-    : 'DM';
+        .toUpperCase() || '💬'
+    : '💬';
 
   const fallback = (
     <View style={[styles.headerAvatarFallback, { backgroundColor: theme.colors.primarySoft }]}>
@@ -448,15 +817,56 @@ function ThreadAvatar({ participant }: { participant: ConversationParticipant | 
     </View>
   );
 
-  if (!avatarUri) return fallback;
+  const participantId = participant?.id ?? null;
+  const menuOptions: FloatingMenuOption[] = participantId
+    ? [
+        {
+          key: 'view-profile',
+          icon: '🏬',
+          title: 'View profile',
+          onPress: () => {
+            setMenuOpen(false);
+            onViewProfile(participantId);
+          },
+        },
+      ]
+    : [];
 
-  return (
+  const avatar = avatarUri ? (
     <StableImage
       uri={avatarUri}
       containerStyle={styles.headerAvatar}
       imageStyle={styles.headerAvatar}
       fallback={fallback}
     />
+  ) : (
+    fallback
+  );
+
+  // With no id there is nowhere to go, so the avatar stays inert rather than
+  // opening a menu with nothing in it.
+  if (menuOptions.length === 0) return avatar;
+
+  return (
+    <>
+      <View ref={anchorRef} collapsable={false}>
+        <Pressable
+          onPress={() => setMenuOpen(true)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: menuOpen }}
+          accessibilityLabel={`Options for ${label ?? 'this conversation'}`}
+        >
+          {avatar}
+        </Pressable>
+      </View>
+      <AppFloatingMenu
+        visible={menuOpen}
+        anchorRef={anchorRef}
+        options={menuOptions}
+        onClose={() => setMenuOpen(false)}
+      />
+    </>
   );
 }
 
@@ -508,7 +918,7 @@ export default function ChatThreadScreen() {
   const toast = useToast();
   const { status, token, user } = useAuth();
   const params = useLocalSearchParams();
-  const paramThreadId = firstParam(params.threadId);
+  const paramThreadId = normalizePathThreadId(firstParam(params.threadId));
   const paramConversationId = firstParam(params.conversationId);
   const paramMessageId = firstParam(params.messageId);
   const paramOrderId = firstParam(params.orderId);
@@ -517,6 +927,27 @@ export default function ChatThreadScreen() {
   const paramCustomerId = firstParam(params.customerId);
   const paramDesignId = firstParam(params.designId);
   const paramProductId = firstParam(params.productId);
+  const paramParticipantName = firstParam(params.participantName);
+  const paramParticipantUsername = firstParam(params.participantUsername);
+  const paramParticipantAvatarUrl = firstParam(params.participantAvatarUrl);
+  const paramParticipantId = firstParam(params.participantId);
+
+  // Participant identity handed down from the inbox row (when navigated from the
+  // list). Used as an immediate, reliable header source so the chat never shows
+  // "Conversation / Participant unavailable" when the identity is already known.
+  const routeParticipant = useMemo<ConversationParticipant | null>(() => {
+    if (!paramParticipantName && !paramParticipantUsername && !paramParticipantAvatarUrl) {
+      return null;
+    }
+    return {
+      id: paramParticipantId,
+      username: paramParticipantUsername,
+      firstName: null,
+      lastName: null,
+      name: paramParticipantName ?? paramParticipantUsername,
+      avatarUrl: paramParticipantAvatarUrl,
+    };
+  }, [paramParticipantAvatarUrl, paramParticipantId, paramParticipantName, paramParticipantUsername]);
 
   const routeContext = useMemo<MessageContextParams>(() => ({
     threadId: paramThreadId,
@@ -544,6 +975,14 @@ export default function ChatThreadScreen() {
   const [stateTitle, setStateTitle] = useState('Loading conversation');
   const [stateBody, setStateBody] = useState('Preparing the thread.');
   const [activeContext, setActiveContext] = useState<MessageContextParams | null>(null);
+  /*
+    Read by `dispatchSend`, which a retry can invoke long after the send that
+    captured it — reading the ref means a retry uses the context the thread is
+    in NOW (it may have gained a real threadId in between) rather than a stale
+    copy closed over at first attempt.
+  */
+  const activeContextRef = useRef<MessageContextParams | null>(null);
+  activeContextRef.current = activeContext;
   const [resolvedRoute, setResolvedRoute] = useState<ResolvedConversationRoute | null>(null);
   const [thread, setThread] = useState<ConversationThread | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
@@ -552,10 +991,56 @@ export default function ChatThreadScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [composerText, setComposerText] = useState('');
-  const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [readWarning, setReadWarning] = useState<string | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<QuotedMessage | null>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const { width: windowWidth } = useWindowDimensions();
+  /*
+    The emoji panel opens at the KEYBOARD's height, so the two swap without the
+    transcript moving.
+
+    Seeded from `Keyboard.metrics()` because listeners only report future
+    transitions: opening the panel from an already-raised keyboard would
+    otherwise use the fallback height on the very first toggle, which is the one
+    toggle where the difference is visible as a jump. Same rule the keyboard
+    primitives in `components/ui/` follow.
+  */
+  const [lastKeyboardHeight, setLastKeyboardHeight] = useState<number>(
+    () => Keyboard.metrics()?.height ?? 0,
+  );
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+    const subscription = Keyboard.addListener(showEvent as 'keyboardDidShow', (event) => {
+      const height = event?.endCoordinates?.height ?? 0;
+      if (height > 0) setLastKeyboardHeight(height);
+    });
+    return () => subscription.remove();
+  }, []);
+  /*
+    The content this screen was opened from, waiting to be attached to the next
+    message. Seeded once from the route params — arriving here from a design or
+    a product IS the statement that the message is about it — and cleared when
+    that message is sent, so the second message in the thread is not silently
+    tagged with the first one's subject.
+  */
+  const [pendingContentReference, setPendingContentReference] =
+    useState<MessageContentReference | null>(() =>
+      contentReferenceFromParams(params as Record<string, string | string[]>),
+    );
+  /** Payloads for messages that failed, keyed by `clientMessageId`. */
+  const failedDraftsRef = useRef<Map<string, OutgoingDraft>>(new Map());
+
+  // Dev-only nav timing for inbox→thread. Shell (header + skeleton) renders at
+  // mount; primary data is ready when the load phase settles to 'ready'.
+  useEffect(() => {
+    navPerf.screenMounted('inbox→thread');
+    navPerf.firstVisibleUi('inbox→thread');
+  }, []);
+  useEffect(() => {
+    if (phase === 'ready') navPerf.dataReady('inbox→thread');
+  }, [phase]);
 
   const cursorRef = useRef<ConversationThread['endCursor']>(null);
   const requestIdRef = useRef(0);
@@ -568,10 +1053,64 @@ export default function ChatThreadScreen() {
 
   const directThreadId = validId(routeContext.threadId) ?? validId(routeContext.conversationId);
   const activeThreadId = validId(activeContext?.threadId) ?? validId(activeContext?.conversationId) ?? directThreadId;
-  const participant = useMemo(
+  const messageParticipant = useMemo(
     () => resolveParticipantFromMessages(messages, user?.id ?? null),
     [messages, user?.id],
   );
+
+  /**
+   * Identity for a brand conversation that has no messages yet.
+   *
+   * Fetched only when we have a `brandId` and nothing better — an existing
+   * thread supplies its own participant from the messages, so this never runs
+   * for the common case. `getProfileById` is cached and deduped.
+   */
+  const [brandParticipant, setBrandParticipant] = useState<ConversationParticipant | null>(null);
+  const headerBrandId = validId(activeContext?.brandId) ?? validId(routeContext.brandId);
+
+  useEffect(() => {
+    if (!headerBrandId) {
+      setBrandParticipant(null);
+      return;
+    }
+
+    let active = true;
+    void brandApi
+      .getProfileById(headerBrandId)
+      .then((profile) => {
+        if (!active || !profile) return;
+        const name = profile.brandFullName?.trim() || profile.username?.trim() || null;
+        if (!name) return;
+        setBrandParticipant({
+          id: profile.id ?? headerBrandId,
+          username: profile.username ?? null,
+          firstName: null,
+          lastName: null,
+          name,
+          avatarUrl: profile.logoImage ?? profile.profileImage ?? null,
+        });
+      })
+      .catch(() => {
+        // Leave the placeholder title rather than surfacing an error for a
+        // header decoration — the conversation itself still works.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [headerBrandId]);
+  // Header identity priority: the actual message sender (most authoritative,
+  // carries the real avatar) → the participant passed from the inbox row →
+  // the brand we were asked to message → null.
+  //
+  // That third source is why this screen looked "random". Opening a brand
+  // conversation that does not exist yet gives us a `brandId` and nothing
+  // else: there are no messages to derive a sender from, and no inbox row was
+  // involved, so the header fell through to the literal string "Message brand".
+  // The user could not tell WHICH brand they were about to write to — the one
+  // fact the screen exists to establish. The brand profile is already cached by
+  // `getProfileById`, so naming it costs nothing on the common path.
+  const participant = messageParticipant ?? routeParticipant ?? brandParticipant;
   const participantName = getParticipantName(participant);
   const firstOrder = orders[0] ?? null;
   const orderLabel = formatOrderLabel(firstOrder, {
@@ -579,10 +1118,33 @@ export default function ChatThreadScreen() {
     ...resolvedRoute?.context,
     threadId: activeContext?.threadId ?? directThreadId,
   });
-  const title = participantName ?? 'Conversation';
-  const subtitle = orderLabel ?? (participant ? undefined : 'Participant unavailable');
-  const canSend = phase === 'ready' && !sending && !['READ_ONLY', 'ARCHIVED', 'BLOCKED'].includes(thread?.status ?? '');
-  const sendDisabled = !canSend || composerText.trim().length === 0;
+  // "Message brand" survives only as the brief gap before the brand profile
+  // resolves — never as the resting state of an identified conversation.
+  const title = participantName ?? (validId(activeContext?.brandId) && !activeThreadId ? 'Message brand' : 'Conversation');
+  const subtitle =
+    orderLabel ??
+    (participant ? undefined : validId(activeContext?.brandId) && !activeThreadId ? 'Start the conversation' : 'Participant unavailable');
+  /*
+    Nothing here is "a send is in flight".
+
+    There WAS a `sending` flag in this expression. It was never once set — dead
+    since the composer went optimistic — and it is just as well, because a
+    composer that locks itself until the last message is acknowledged is the
+    behaviour being complained about. Messages queue; the thread shows each
+    one's own state on its own bubble.
+  */
+  const canSend =
+    phase === 'ready' &&
+    Boolean(activeThreadId || validId(activeContext?.brandId)) &&
+    !['READ_ONLY', 'ARCHIVED', 'BLOCKED'].includes(thread?.status ?? '');
+  const attachmentsUploading = pendingAttachments.some((entry) => entry.status === 'uploading');
+  const readyAttachmentIds = pendingAttachments
+    .filter((entry) => entry.status === 'ready' && entry.fileId)
+    .map((entry) => entry.fileId as string);
+  const sendDisabled =
+    !canSend ||
+    attachmentsUploading ||
+    (composerText.trim().length === 0 && readyAttachmentIds.length === 0);
 
   const markRead = useCallback(async (target: MessageContextParams, latestMessageId?: string | null) => {
     const threadId = validId(target.threadId) ?? validId(target.conversationId);
@@ -617,7 +1179,7 @@ export default function ChatThreadScreen() {
     } else if (mode !== 'realtime') {
       setPhase('loading');
       setStateTitle('Loading conversation');
-      setStateBody('Fetching real messages from WEAZ.');
+      setStateBody('Fetching real messages from WIEZ.');
     }
 
     try {
@@ -637,7 +1199,29 @@ export default function ChatThreadScreen() {
       hasNextPageRef.current = response.hasNextPage;
       setHasNextPage(response.hasNextPage);
       setThread(response);
-      setMessages((current) => (isReset ? response.messages : mergeMessages(current, response.messages)));
+      /*
+        A reset replaces the server's messages but must KEEP the local ones.
+
+        Sending no longer triggers one — see `dispatchSend` — but a pull to
+        refresh, a screen focus or a retry still does, and any of those can
+        land while a message is in flight. Dropping it then would wipe the
+        bubble off the screen mid-send; its request would carry on and the
+        message would arrive seconds later out of nowhere.
+
+        Messages still in flight, or failed and waiting to be retried, exist
+        only on this device: nothing the server sends can contain them, so they
+        are carried across every reset until they resolve.
+      */
+      setMessages((current) => {
+        if (!isReset) return mergeMessages(current, response.messages);
+        const localOnly = current.filter(
+          (message) =>
+            message.deliveryStatus === 'SENDING' || message.deliveryStatus === 'FAILED',
+        );
+        return localOnly.length > 0
+          ? mergeMessages(localOnly, response.messages)
+          : response.messages;
+      });
       setPhase('ready');
 
       if (isReset) {
@@ -743,6 +1327,16 @@ export default function ChatThreadScreen() {
     [isRealtimeEventForActiveThread, status, user?.id],
   );
 
+  const handleRealtimeMessageDelivered = useCallback(
+    (payload: MessageDeliveredRealtimeEvent) => {
+      if (!isRealtimeEventForActiveThread(payload.threadId)) return;
+      setMessages((current) => applyDeliveryReceipt(current, payload, user?.id ?? null));
+      // Deliberately no unread-count refresh: this is a tick on our OWN
+      // outgoing message, and nothing about what we have left to read moved.
+    },
+    [isRealtimeEventForActiveThread, user?.id],
+  );
+
   useEffect(() => {
     requestIdRef.current += 1;
     const requestId = requestIdRef.current;
@@ -764,6 +1358,8 @@ export default function ChatThreadScreen() {
     setSendError(null);
     setComposerText('');
     setReplyToMessage(null);
+    setPendingAttachments([]);
+    setEmojiOpen(false);
 
     if (status === 'loading') {
       setPhase('loading');
@@ -801,7 +1397,32 @@ export default function ChatThreadScreen() {
     setStateTitle('Resolving conversation');
     setStateBody('Finding the authorized message thread for this context.');
 
-    MessagingApi.resolveConversationFromContext(routeContext)
+    /*
+      An order context OPENS its conversation rather than looking one up.
+
+      The resolver only matches a thread already linked to the order, so an
+      order nobody had written about — every custom order paid through unified
+      checkout — resolved to 404 "Conversation not found", even with a live chat
+      with that brand. `openOrderConversation` reuses the one buyer<->brand
+      thread (creating it only if none exists) and links the order into it.
+      A 403 falls back to the resolver: brand staff can read a thread they are
+      a participant of without being the order's buyer or brand owner.
+    */
+    const orderRef = validId(routeContext.messageId)
+      ? null
+      : validId(routeContext.orderId)
+        ? { orderId: routeContext.orderId as string }
+        : validId(routeContext.customOrderId)
+          ? { customOrderId: routeContext.customOrderId as string }
+          : null;
+    const resolution = orderRef
+      ? MessagingApi.openOrderConversation(orderRef).catch((error) => {
+          if (getErrorStatus(error) === 403) return MessagingApi.resolveConversationFromContext(routeContext);
+          throw error;
+        })
+      : MessagingApi.resolveConversationFromContext(routeContext);
+
+    resolution
       .then((resolved) => {
         if (requestId !== requestIdRef.current) return;
         if (!resolved?.threadId) {
@@ -815,6 +1436,25 @@ export default function ChatThreadScreen() {
       })
       .catch((error) => {
         if (requestId !== requestIdRef.current) return;
+        if (
+          getErrorStatus(error) === 404 &&
+          validId(routeContext.brandId) &&
+          !validId(routeContext.messageId) &&
+          !validId(routeContext.orderId) &&
+          !validId(routeContext.customOrderId) &&
+          !validId(routeContext.customerId)
+        ) {
+          setResolvedRoute(null);
+          setActiveContext({ brandId: routeContext.brandId });
+          setThread(null);
+          setMessages([]);
+          setOrders([]);
+          setHasNextPage(false);
+          setPhase('ready');
+          setStateTitle('New message');
+          setStateBody('Send the first message to start this brand conversation.');
+          return;
+        }
         const classified = classifyError(error, routeContext);
         setPhase(classified.phase);
         setStateTitle(classified.title);
@@ -861,6 +1501,7 @@ export default function ChatThreadScreen() {
     onMessageCreated: handleRealtimeMessageCreated,
     onThreadUpdated: handleRealtimeThreadUpdated,
     onMessageRead: handleRealtimeMessageRead,
+    onMessageDelivered: handleRealtimeMessageDelivered,
   });
 
   const handleRefresh = useCallback(() => {
@@ -885,54 +1526,313 @@ export default function ChatThreadScreen() {
     });
   }, []);
 
-  const handleSend = useCallback(async () => {
-    const targetThreadId = validId(activeContext?.threadId) ?? validId(activeContext?.conversationId);
-    const bodyText = composerText.trim();
-    if (!targetThreadId || !bodyText || sending) return;
+  /**
+   * Put the message in the thread, THEN send it.
+   *
+   * The composer used to clear only after the round trip resolved, so pressing
+   * send did nothing visible for as long as the network took — on a slow
+   * connection people press again, and the text sits in the box looking unsent.
+   * Every app people already use does the opposite: the bubble appears at once
+   * and its state is reported from inside the thread.
+   *
+   * The optimistic bubble is a real `MessageItem` carrying the `clientMessageId`
+   * as its id, so it sorts, renders and keys like any other. When the server
+   * answers, `reconcileSentMessage` swaps it for the persisted row; when the
+   * send fails it flips to `FAILED` and offers Resend / Delete rather than
+   * vanishing, because a message that disappears takes the writing with it.
+   */
+  const dispatchSend = useCallback(
+    async (draft: OutgoingDraft) => {
+      const {
+        clientMessageId,
+        bodyText,
+        attachmentFileIds,
+        replyToMessageId,
+        contentFields,
+        targetThreadId,
+        targetBrandId,
+      } = draft;
 
-    setSending(true);
-    setSendError(null);
-
-    try {
-      const response = await MessagingApi.sendMessage(
-        { threadId: targetThreadId },
-        {
-          bodyText,
-          clientMessageId: createMessageClientId(),
-          ...(replyToMessage ? { replyToMessageId: replyToMessage.id } : {}),
-        },
+      setSendError(null);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === clientMessageId
+            ? { ...message, deliveryStatus: 'SENDING' as const }
+            : message,
+        ),
       );
 
-      setComposerText('');
-      setReplyToMessage(null);
-      if (response.message) {
-        setMessages((current) => mergeMessages([response.message as MessageItem], current));
-        setThread((current) => current ? { ...current, threadId: targetThreadId, conversationId: targetThreadId } : current);
-      } else {
-        await loadThread({ ...activeContext, threadId: targetThreadId }, 'refresh');
-      }
-    } catch (error) {
-      const message = getErrorMessage(error);
-      setSendError(message);
-      toast.error(message);
-    } finally {
-      setSending(false);
-    }
-  }, [activeContext, composerText, loadThread, replyToMessage, sending, toast]);
+      try {
+        const response = targetThreadId
+          ? await MessagingApi.sendMessage(
+              { threadId: targetThreadId },
+              {
+                ...(bodyText ? { bodyText } : {}),
+                clientMessageId,
+                ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),
+                ...(replyToMessageId ? { replyToMessageId } : {}),
+                ...contentFields,
+              },
+            )
+          : await MessagingApi.startConversation({
+              brandId: targetBrandId,
+              ...(bodyText ? { bodyText } : {}),
+              clientMessageId,
+              ...(attachmentFileIds.length > 0 ? { attachmentFileIds } : {}),
+              ...contentFields,
+            });
 
-  const renderMessage = useCallback(
-    ({ item }: ListRenderItemInfo<MessageItem>) => (
-      <MessageBubble item={item} currentUserId={user?.id ?? null} onReply={handleReply} />
-    ),
-    [handleReply, user?.id],
+        const nextThreadId = validId(response.threadId) ?? targetThreadId ?? null;
+
+        /*
+          Replace the placeholder rather than merging alongside it — they are
+          the same message under two ids, and merging shows it twice.
+        */
+        setMessages((current) => {
+          const withoutDraft = current.filter(
+            (message) => message.id !== clientMessageId,
+          );
+          if (!response.message) return withoutDraft;
+          /*
+            A tick must survive the swap from draft to persisted row.
+
+            `deliveryStatus` is computed server-side from the receipt table and
+            was historically only present on the LIST response, so the row
+            returned by a send could arrive without it — and the bubble renders
+            a tick only when the field is set, so the message landed with no
+            indicator at all. The server now says SENT explicitly; this keeps the
+            tick for any build that does not, since a row that came back from a
+            successful send IS, at minimum, sent.
+          */
+          const persisted = response.message as MessageItem;
+          const sent: MessageItem = persisted.deliveryStatus
+            ? persisted
+            : { ...persisted, deliveryStatus: 'SENT' };
+          return mergeMessages([sent], withoutDraft);
+        });
+
+        /*
+          A send does NOT reload the thread.
+
+          It used to, on both branches, and that is what made writing two
+          messages in a row feel like waiting your turn. The refetch replaces
+          `messages` wholesale a beat after the bubble has already settled, so
+          the list re-renders under the caret — and the composer is inside that
+          same tree, so the keystrokes typed during the swap compete with it.
+          Nothing was ever "blocked"; the screen was just busy re-drawing a
+          conversation it already had.
+
+          It is also redundant. `response.message` IS the persisted row and is
+          merged above; receipts arrive on their own channel. The one thing a
+          send can genuinely change about the thread is its IDENTITY — the
+          first message to a brand creates the conversation — so that case
+          updates the context and nothing else.
+        */
+        if (nextThreadId && nextThreadId !== targetThreadId) {
+          setThread((current) =>
+            current
+              ? { ...current, threadId: nextThreadId, conversationId: nextThreadId }
+              : current,
+          );
+          setActiveContext({
+            ...activeContextRef.current,
+            threadId: nextThreadId,
+            conversationId: nextThreadId,
+          });
+        }
+      } catch (error) {
+        const message = getErrorMessage(error);
+        setSendError(message);
+        /*
+          The draft is KEPT and marked failed. Retry needs the payload — the
+          attachments and the content reference included — and re-deriving it
+          from the bubble would lose both.
+        */
+        failedDraftsRef.current.set(clientMessageId, draft);
+        setMessages((current) =>
+          current.map((entry) =>
+            entry.id === clientMessageId
+              ? { ...entry, deliveryStatus: 'FAILED' as const }
+              : entry,
+          ),
+        );
+      }
+    },
+    [loadThread],
   );
 
-  const keyExtractor = useCallback((item: MessageItem) => item.id, []);
+  const handleSend = useCallback(async () => {
+    const targetThreadId = validId(activeContext?.threadId) ?? validId(activeContext?.conversationId);
+    const targetBrandId = validId(activeContext?.brandId);
+    const bodyText = composerText.trim();
+    const attachmentFileIds = pendingAttachments
+      .filter((entry) => entry.status === 'ready' && entry.fileId)
+      .map((entry) => entry.fileId as string);
+    // Block while any attachment is still uploading; require either text or at
+    // least one successfully-uploaded attachment.
+    if (
+      (!targetThreadId && !targetBrandId) ||
+      pendingAttachments.some((entry) => entry.status === 'uploading') ||
+      (!bodyText && attachmentFileIds.length === 0)
+    ) {
+      return;
+    }
+
+    const clientMessageId = createMessageClientId();
+    const draft: OutgoingDraft = {
+      clientMessageId,
+      bodyText,
+      attachmentFileIds,
+      replyToMessageId: replyToMessage?.id ?? null,
+      /*
+        The content this thread was opened from rides along with the FIRST
+        message that follows, which is the one actually remarking on it.
+      */
+      contentFields: contentReferenceToSendFields(pendingContentReference),
+      targetThreadId,
+      targetBrandId,
+    };
+
+    setMessages((current) =>
+      mergeMessages(
+        [
+          buildOptimisticMessage({
+            draft,
+            currentUserId: user?.id ?? null,
+            senderRole: user?.type === 'BRAND' ? 'BRAND_OWNER' : 'BUYER',
+            threadId: targetThreadId ?? '',
+            reference: pendingContentReference,
+            attachments: pendingAttachments,
+            quoted: replyToMessage,
+          }),
+        ],
+        current,
+      ),
+    );
+
+    // Cleared on dispatch, not on success: the writing is now in the thread,
+    // and a failed send keeps it there rather than in the box.
+    setComposerText('');
+    setReplyToMessage(null);
+    setPendingAttachments([]);
+    setEmojiOpen(false);
+    setPendingContentReference(null);
+
+    await dispatchSend(draft);
+  }, [
+    activeContext,
+    composerText,
+    dispatchSend,
+    pendingAttachments,
+    pendingContentReference,
+    replyToMessage,
+    user?.id,
+  ]);
+
+  /** Try a failed message again, from the bubble it failed in. */
+  const handleRetryMessage = useCallback(
+    (messageId: string) => {
+      const draft = failedDraftsRef.current.get(messageId);
+      if (!draft) return;
+      failedDraftsRef.current.delete(messageId);
+      void dispatchSend(draft);
+    },
+    [dispatchSend],
+  );
+
+  /** Discard a failed message. Only ever reachable on a message that never sent. */
+  const handleDiscardMessage = useCallback((messageId: string) => {
+    failedDraftsRef.current.delete(messageId);
+    setMessages((current) => current.filter((entry) => entry.id !== messageId));
+  }, []);
+
+  const handleInsertEmoji = useCallback((emoji: string) => {
+    setComposerText((current) => `${current}${emoji}`);
+  }, []);
+
+  const handleRemoveAttachment = useCallback((localId: string) => {
+    setPendingAttachments((current) => current.filter((entry) => entry.localId !== localId));
+  }, []);
+
+  const handlePickAttachment = useCallback(async () => {
+    if (pendingAttachments.length >= MAX_PENDING_ATTACHMENTS) {
+      toast.info(`You can attach up to ${MAX_PENDING_ATTACHMENTS} images per message.`);
+      return;
+    }
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      toast.error('Allow photo access to attach an image.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: false,
+      quality: 0.9,
+      base64: false,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const raw = result.assets[0];
+    let asset = { uri: raw.uri, fileName: raw.fileName ?? `attachment-${Date.now()}.jpg`, mimeType: raw.mimeType ?? 'image/jpeg' };
+    try {
+      const compressed = await compressPickedImage(raw.uri, raw.width ?? 0, raw.height ?? 0, raw.fileName, 'messageImage');
+      asset = { uri: compressed.uri, fileName: compressed.fileName, mimeType: compressed.mimeType };
+    } catch {
+      // Compression is best-effort; upload validation still guards the original.
+    }
+
+    const localId = createMessageClientId();
+    setPendingAttachments((current) => [
+      ...current,
+      { localId, uri: asset.uri, name: asset.fileName, mimeType: asset.mimeType, status: 'uploading', fileId: null },
+    ]);
+    setEmojiOpen(false);
+
+    try {
+      const uploaded = await MessagingApi.uploadMessageAttachment({
+        uri: asset.uri,
+        name: asset.fileName,
+        type: asset.mimeType,
+      });
+      setPendingAttachments((current) =>
+        current.map((entry) =>
+          entry.localId === localId ? { ...entry, status: 'ready', fileId: uploaded.id } : entry,
+        ),
+      );
+    } catch (error) {
+      setPendingAttachments((current) => current.map((entry) =>
+        entry.localId === localId ? { ...entry, status: 'error' } : entry,
+      ));
+      toast.error(getMobileUploadValidationMessage(error));
+    }
+  }, [pendingAttachments.length, toast]);
+
+  const threadRows = useMemo(() => buildThreadRows(messages), [messages]);
+
+  const renderMessage = useCallback(
+    ({ item }: ListRenderItemInfo<ThreadRow>) =>
+      item.kind === 'day' ? (
+        <DayDivider label={item.label} />
+      ) : (
+        <MessageBubble
+          item={item.message}
+          currentUserId={user?.id ?? null}
+          onReply={handleReply}
+          onRetry={handleRetryMessage}
+          onDiscard={handleDiscardMessage}
+        />
+      ),
+    [handleDiscardMessage, handleReply, handleRetryMessage, user?.id],
+  );
+
+  const keyExtractor = useCallback((item: ThreadRow) => item.key, []);
 
   const listFooter = useMemo(
     () => loadingMore ? (
       <View style={styles.footerLoader}>
-        <ActivityIndicator size="small" color={theme.colors.primary} />
+        <MuseLoader size={20} />
       </View>
     ) : null,
     [loadingMore, theme.colors.primary],
@@ -948,23 +1848,32 @@ export default function ChatThreadScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <KeyboardAvoidingView
+      <KeyboardAvoider
         style={styles.keyboardRoot}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+        offset={Platform.OS === 'ios' ? insets.top : 0}
       >
         <Header
           title={title}
           subtitle={subtitle}
           left={<AppBackButton fallbackHref="/(tabs)/inbox" />}
-          right={<ThreadAvatar participant={participant} />}
+          right={
+            <ThreadAvatar
+              participant={participant}
+              onViewProfile={(participantId) =>
+                drillDownPush({
+                  pathname: '/catalog/[brandId]',
+                  params: { brandId: participantId },
+                } as any)
+              }
+            />
+          }
         />
 
         {phase === 'loading' || phase === 'resolving' ? (
           <View style={styles.loadingWrap}>
             {phase === 'resolving' ? (
               <View style={[styles.resolvingBanner, { backgroundColor: theme.colors.surfaceAlt }]}>
-                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <MuseLoader size={20} />
                 <AppText variant="captionRegular" tone="muted">
                   Resolving conversation context
                 </AppText>
@@ -977,7 +1886,7 @@ export default function ChatThreadScreen() {
             title={stateTitle}
             body={stateBody}
             actionTitle="Sign in"
-            onAction={() => router.push({ pathname: '/(auth)/login', params: { next: '/(tabs)/inbox' } } as any)}
+            onAction={() => drillDownPush({ pathname: '/(auth)/login', params: { next: '/(tabs)/inbox' } } as any)}
           />
         ) : phase === 'invalid' || phase === 'unsupported' || phase === 'error' ? (
           <StateBlock
@@ -986,7 +1895,7 @@ export default function ChatThreadScreen() {
             actionTitle={phase === 'error' && activeContext ? 'Retry' : 'Back to Messages'}
             onAction={phase === 'error' && activeContext
               ? () => void loadThread(activeContext, 'reset')
-              : () => router.replace('/(tabs)/inbox' as any)}
+              : () => backOrNavigate('/(tabs)/inbox' as any)}
           />
         ) : (
           <>
@@ -999,7 +1908,7 @@ export default function ChatThreadScreen() {
             ) : null}
 
             <FlatList
-              data={messages}
+              data={threadRows}
               keyExtractor={keyExtractor}
               renderItem={renderMessage}
               inverted
@@ -1020,7 +1929,9 @@ export default function ChatThreadScreen() {
                     No messages yet
                   </AppText>
                   <AppText variant="body" tone="muted" style={styles.centerText}>
-                    This thread is real, but it has no visible messages yet.
+                    {thread
+                      ? 'This thread is real, but it has no visible messages yet.'
+                      : 'Send the first message to start this brand conversation.'}
                   </AppText>
                 </View>
               }
@@ -1047,6 +1958,41 @@ export default function ChatThreadScreen() {
                   {sendError}
                 </AppText>
               ) : null}
+              {/*
+                What this message will be about.
+
+                Shown before sending so the reference is never a surprise — the
+                sender can see the piece is attached, and drop it if they meant
+                to change the subject.
+              */}
+              {pendingContentReference ? (
+                <View
+                  style={[
+                    styles.composerReference,
+                    { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt },
+                  ]}
+                >
+                  <AppText variant="captionBold" tone="primary">
+                    {pendingContentReference.kind === 'PRODUCT' ? '🛍️' : '🎨'}
+                  </AppText>
+                  <View style={styles.composerReferenceLabel}>
+                    <AppText variant="captionBold" tone="default" numberOfLines={1}>
+                      {contentReferenceLabel(pendingContentReference)}
+                    </AppText>
+                    <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+                      Your message will link to this
+                    </AppText>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setPendingContentReference(null)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove content reference"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <AppText variant="body" tone="muted">✕</AppText>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
               {/* Reply preview */}
               {replyToMessage ? (
                 <View style={[styles.replyPreview, { borderLeftColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }]}>
@@ -1059,40 +2005,148 @@ export default function ChatThreadScreen() {
                     </AppText>
                   </View>
                   <TouchableOpacity onPress={() => setReplyToMessage(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <AppText style={{ fontSize: 16, color: theme.colors.textMuted }}>✕</AppText>
+                    <AppText variant="body" tone="muted">✕</AppText>
                   </TouchableOpacity>
                 </View>
               ) : null}
-              <View style={styles.composerRow}>
-                <Input
-                  label="Message"
-                  hideLabel
-                  value={composerText}
-                  onChangeText={setComposerText}
-                  placeholder="Write a message"
-                  autoCorrect
-                  returnKeyType="send"
-                  onSubmitEditing={() => {
-                    if (!sendDisabled) {
-                      void handleSend();
-                    }
-                  }}
-                  editable={canSend}
-                  containerStyle={styles.composerInput}
-                />
-                <Button
-                  title="Send"
-                  size="md"
+              {/* Pending attachment previews — only uploaded ids are ever sent */}
+              {pendingAttachments.length > 0 ? (
+                <View style={styles.attachmentPreviewRow}>
+                  {pendingAttachments.map((attachment) => (
+                    <View key={attachment.localId} style={[styles.attachmentPreview, { borderColor: theme.colors.border }]}>
+                      <StableImage
+                        uri={attachment.uri}
+                        containerStyle={styles.attachmentPreviewImage}
+                        imageStyle={styles.attachmentPreviewImage}
+                        resizeMode="cover"
+                        fallback={<View style={[styles.attachmentPreviewImage, { backgroundColor: theme.colors.surfaceAlt }]} />}
+                      />
+                      {attachment.status !== 'ready' ? (
+                        <View style={[styles.attachmentPreviewOverlay, { backgroundColor: theme.colors.overlay }]} pointerEvents="none">
+                          {attachment.status === 'uploading' ? (
+                            <MuseLoader size={20} />
+                          ) : (
+                            <AppText variant="captionBold" tone="danger">!</AppText>
+                          )}
+                        </View>
+                      ) : null}
+                      <TouchableOpacity
+                        onPress={() => handleRemoveAttachment(attachment.localId)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={[styles.attachmentRemoveButton, { backgroundColor: theme.colors.backdropStrong }]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Remove attachment"
+                      >
+                        <AppText variant="captionBold" tone="inverse">✕</AppText>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              <EmojiPickerPanel
+                visible={emojiOpen}
+                keyboardHeight={lastKeyboardHeight}
+                width={windowWidth}
+                onSelect={handleInsertEmoji}
+              />
+
+              {/*
+                ONE ROW, one pill.
+
+                The attachment and emoji controls now sit INSIDE the field's
+                pill rather than beside it, which is what every messenger does
+                and is not only a look: three separate boxes on a row each need
+                their own padding, and the row ends up as tall as the tallest
+                of them plus every gap. Inside the pill they share its height.
+
+                The field itself is `bare` — no chrome of its own. The pill
+                draws one hairline in the border colour instead of the form
+                field's 1.5pt brand-coloured focus ring, which on this screen
+                was the loudest thing on it: a bright box around an empty
+                composer competes with the conversation for attention, and
+                the keyboard already says where the caret is.
+              */}
+              <View style={styles.composerBar}>
+                <View
+                  style={[
+                    styles.composerRow,
+                    { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                  ]}
+                >
+                  <TouchableOpacity
+                    onPress={handlePickAttachment}
+                    disabled={!canSend}
+                    style={[styles.composerIconButton, !canSend ? styles.composerIconButtonDisabled : null]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Add image attachment"
+                  >
+                    <AppText variant="body">📎</AppText>
+                  </TouchableOpacity>
+                  {/*
+                    `multiline` so a long message grows to a few lines instead of
+                    scrolling sideways through itself. Enter stays a newline —
+                    that is the platform default for a multiline field, and the
+                    only way to make it send is `blurOnSubmit`, which closes the
+                    keyboard after every message.
+                  */}
+                  <Input
+                    label="Message"
+                    hideLabel
+                    variant="bare"
+                    density="compact"
+                    multiline
+                    value={composerText}
+                    onChangeText={setComposerText}
+                    placeholder="Write a message"
+                    autoCorrect
+                    editable={canSend}
+                    containerStyle={styles.composerInput}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setEmojiOpen((current) => !current)}
+                    disabled={!canSend}
+                    style={[
+                      styles.composerIconButton,
+                      emojiOpen ? { backgroundColor: theme.colors.primarySoft } : null,
+                      !canSend ? styles.composerIconButtonDisabled : null,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: emojiOpen }}
+                    accessibilityLabel="Insert emoji"
+                  >
+                    <AppText variant="body">😊</AppText>
+                  </TouchableOpacity>
+                </View>
+                {/*
+                  Send is a mark, not a word. "Send" at button size took a
+                  sixth of the row for a label that says what the arrow already
+                  says, and it is pressed after every message — the one control
+                  here that never needs reading.
+                */}
+                <IconButton
+                  size={44}
                   onPress={() => void handleSend()}
                   disabled={sendDisabled}
-                  loading={sending}
-                  style={styles.sendButton}
-                />
+                  style={{
+                    backgroundColor: sendDisabled
+                      ? theme.colors.disabledSurface
+                      : theme.colors.primary,
+                  }}
+                >
+                  <AppText
+                    variant="subtitle"
+                    tone={sendDisabled ? 'disabled' : 'inverse'}
+                    accessibilityLabel="Send message"
+                  >
+                    ➤
+                  </AppText>
+                </IconButton>
               </View>
             </View>
           </>
         )}
-      </KeyboardAvoidingView>
+      </KeyboardAvoider>
     </SafeAreaView>
   );
 }
@@ -1171,6 +2225,16 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
   },
+  dayDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  dayRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+  },
   emptyThread: {
     alignItems: 'center',
     gap: tokens.spacing.md,
@@ -1204,7 +2268,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(128,128,128,0.15)',
+    backgroundColor: tokens.colors.neutralWash,
   },
   replyIndicatorMine: {
     left: 0,
@@ -1219,9 +2283,33 @@ const styles = StyleSheet.create({
     marginBottom: tokens.spacing.xs,
     maxWidth: 240,
   },
+  designCardPressed: {
+    opacity: 0.72,
+  },
   designCoverImage: {
     width: '100%',
     height: 120,
+  },
+  failedActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+    marginTop: tokens.spacing.xs,
+  },
+  /* The "about this piece" chip the composer shows before the message is sent. */
+  composerReference: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    marginBottom: tokens.spacing.sm,
+  },
+  composerReferenceLabel: {
+    flex: 1,
+    minWidth: 0,
   },
   designCardTitle: {
     paddingHorizontal: tokens.spacing.md,
@@ -1295,19 +2383,77 @@ const styles = StyleSheet.create({
   },
   composerShell: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.md,
+    // Was `md` top with an `sm` gap around a 52pt field and 40pt buttons: about
+    // 100pt of message bar under every conversation. The bar is chrome; the
+    // conversation is the screen.
+    paddingTop: tokens.spacing.sm,
+    gap: tokens.spacing.sm,
+  },
+  composerBar: {
+    flexDirection: 'row',
+    // `flex-end` so a composer that has grown to three lines keeps Send on the
+    // last one, level with the caret, instead of floating at the middle.
+    alignItems: 'flex-end',
     gap: tokens.spacing.sm,
   },
   composerRow: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
+    alignItems: 'flex-end',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.xl,
+    paddingHorizontal: tokens.spacing.xs,
+    minHeight: 44,
   },
   composerInput: {
     flex: 1,
+    minWidth: 0,
+    // The field's own left padding is what put a gap between the pill edge and
+    // the first character; `bare` removes it and the pill's icons set the
+    // rhythm instead.
+    justifyContent: 'center',
   },
-  sendButton: {
-    minWidth: 76,
+  composerIconButton: {
+    width: 36,
+    height: 40,
+    borderRadius: tokens.radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  composerIconButtonDisabled: {
+    opacity: 0.4,
+  },
+  attachmentPreviewRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  attachmentPreview: {
+    width: 64,
+    height: 64,
+    borderRadius: tokens.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  attachmentPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  attachmentPreviewOverlay: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentRemoveButton: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

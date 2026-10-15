@@ -7,8 +7,10 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Linking } from 'react-native';
+import { Linking, LayoutAnimation } from 'react-native';
 import { router } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 
 import {
   getDesignDetail,
@@ -26,7 +28,7 @@ import {
   type FilterDimensionOption,
   type MeasurementPointOption,
 } from '@/src/api/DesignApi';
-import { useAuthSession } from '@/src/auth/AuthContext';
+import { useAuth, useAuthSession } from '@/src/auth/AuthContext';
 import {
   fetchDesignCategoriesQuery,
   fetchDesignFilterDimensionsQuery,
@@ -40,6 +42,7 @@ import {
   isLegacyDiscoveryDimensionSlug,
   mapCreatorMetadataError,
 } from '@/src/utils/creatorMetadata';
+import { getRangeError } from '@/src/utils/rangeValidation';
 import {
   consumeDesignEditorAssetBundle,
   DESIGN_EDITOR_MAX_MEDIA,
@@ -50,6 +53,7 @@ import {
   DESIGN_REQUIRED_MEDIA_COUNT,
   MEDIA_VIEW_SLOT_OPTIONS,
   getMediaViewSlotLabel,
+  getMissingRequiredImageMediaSlots,
   getMissingRequiredMediaSlots,
   normalizeDesignCreationSizingMode,
   normalizeMediaViewSlot,
@@ -57,8 +61,15 @@ import {
 } from './designCreationRules';
 import {
   createDesignEditorBackgroundTask,
+  readDesignEditorRecoverySnapshot,
+  removeDesignEditorBackgroundTask,
   updateDesignEditorBackgroundTask,
+  type DesignEditorRecoverySnapshot,
 } from './designEditorBackgroundTasks';
+import {
+  readDraftSessionToken,
+  writeDraftSessionToken,
+} from './designDraftSessionStore';
 
 type Visibility = 'PUBLIC' | 'PRIVATE';
 type Audience = 'MALE' | 'FEMALE' | 'EVERYBODY';
@@ -90,8 +101,13 @@ type FormState = {
   defectPolicy: string;
   fabricSourcingMode: 'BRAND_SOURCED' | 'BUYER_SUPPLIED' | 'EITHER';
   fallbackOutputYards: string;
+  averageBaseYards: string;
   fitPreference: FitPreference;
   targetAgeGroup: TargetAgeGroup;
+  rushEnabled: boolean;
+  rushFee: string;
+  rushProductionLeadDays: string;
+  notes: string;
 };
 
 type SaveAction = 'draft' | 'publish';
@@ -140,6 +156,32 @@ type ContextValue = {
   takeOverDraftConflict: () => Promise<void>;
 };
 
+/**
+ * Custom-order values the platform falls back to.
+ *
+ * These are DEFAULTS, not initial values, and the difference is the whole bug.
+ * Every one of them used to be seeded straight into `FormState`, so the field
+ * opened already holding the value — while ALSO declaring the same string as
+ * its `placeholder`. Delivery min literally rendered `value="2"` under
+ * `placeholder="2"`, and the value wins, so what looked like a hint was real
+ * text with the caret parked after it: typing 3 gave you 23, and the only way
+ * out was backspacing first. That is the placeholder complaint, exactly.
+ *
+ * The fields now open EMPTY and show these as placeholders, which is what a
+ * placeholder is for — it disappears the moment you type. Nothing about what
+ * gets saved changes: every consumer below substitutes the same value for a
+ * blank field, so a brand who leaves them alone publishes identical terms.
+ */
+export const DESIGN_CUSTOM_ORDER_DEFAULTS = {
+  deliveryMinDays: '2',
+  deliveryMaxDays: '5',
+  fallbackOutputYards: '4',
+  deliveryScope: 'Nigeria',
+  revisionPolicy: 'One revision after delivery confirmation.',
+  returnPolicy: 'Custom orders are not returnable except where required by policy.',
+  defectPolicy: 'Defects and material faults are reviewed through support.',
+} as const;
+
 const INITIAL_FORM: FormState = {
   title: '',
   description: '',
@@ -156,19 +198,38 @@ const INITIAL_FORM: FormState = {
   buyerInstructionText: '',
   baseProductionCharge: '',
   fabricCostPerYard: '',
-  deliveryMinDays: '2',
-  deliveryMaxDays: '5',
-  deliveryScope: 'Nigeria',
-  revisionPolicy: 'One revision after delivery confirmation.',
-  returnPolicy: 'Custom orders are not returnable except where required by policy.',
-  defectPolicy: 'Defects and material faults are reviewed through support.',
+  deliveryMinDays: '',
+  deliveryMaxDays: '',
+  deliveryScope: '',
+  revisionPolicy: '',
+  returnPolicy: '',
+  defectPolicy: '',
   fabricSourcingMode: 'BRAND_SOURCED',
-  fallbackOutputYards: '4',
+  fallbackOutputYards: '',
+  averageBaseYards: '',
   fitPreference: 'REGULAR',
   targetAgeGroup: 'ADULT',
+  rushEnabled: false,
+  rushFee: '',
+  rushProductionLeadDays: '',
+  notes: '',
 };
 
+function restoreRecoveryForm(value: Record<string, unknown>): FormState {
+  const restored = { ...INITIAL_FORM };
+  (Object.keys(INITIAL_FORM) as Array<keyof FormState>).forEach((key) => {
+    const candidate = value[key];
+    if (typeof candidate === typeof INITIAL_FORM[key]) {
+      (restored as Record<keyof FormState, unknown>)[key] = candidate;
+    }
+  });
+  return restored;
+}
+
 const DesignEditorContext = createContext<ContextValue | null>(null);
+const DEFAULT_PRODUCTION_LEAD_DAYS = 7;
+const MAX_PRODUCTION_LEAD_DAYS = 7;
+const MAX_RUSH_LEAD_DAYS = 3;
 
 function parseTags(input: string): string[] {
   const tags = input
@@ -195,16 +256,21 @@ function syncFormFromDetail(detail: DesignDetail): FormState {
     buyerInstructionText: '',
     baseProductionCharge: '',
     fabricCostPerYard: '',
-    deliveryMinDays: '2',
-    deliveryMaxDays: '5',
-    deliveryScope: 'Nigeria',
-    revisionPolicy: 'One revision after delivery confirmation.',
-    returnPolicy: 'Custom orders are not returnable except where required by policy.',
-    defectPolicy: 'Defects and material faults are reviewed through support.',
+    deliveryMinDays: '',
+    deliveryMaxDays: '',
+    deliveryScope: '',
+    revisionPolicy: '',
+    returnPolicy: '',
+    defectPolicy: '',
     fabricSourcingMode: 'BRAND_SOURCED',
-    fallbackOutputYards: '4',
+    fallbackOutputYards: '',
+    averageBaseYards: '',
     fitPreference: detail.fitPreference ?? 'REGULAR',
     targetAgeGroup: detail.targetAgeGroup ?? 'ADULT',
+    rushEnabled: false,
+    rushFee: '',
+    rushProductionLeadDays: '',
+    notes: '',
   };
 }
 
@@ -252,6 +318,86 @@ function hasMeaningfulDraftContent(form: FormState, tags: string[], filterSelect
   return Object.values(filterSelection).some((values) => values.length > 0);
 }
 
+function getCustomOrderProductionValidationMessage(form: FormState): string | null {
+  if (!form.customOrderEnabled) return null;
+
+  const productionLeadDays = form.productionLeadDays.trim()
+    ? Number(form.productionLeadDays)
+    : DEFAULT_PRODUCTION_LEAD_DAYS;
+
+  if (
+    !Number.isInteger(productionLeadDays) ||
+    productionLeadDays < 1 ||
+    productionLeadDays > MAX_PRODUCTION_LEAD_DAYS
+  ) {
+    return 'Set standard production time between 1 and 7 days.';
+  }
+
+  return null;
+}
+
+// Mirrors the backend custom-order rush rules so the creator gets clear inline
+// guidance instead of a raw 400 from POST /custom-order-configurations. Returns
+// null when custom orders or rush are disabled (rush fields are then ignored).
+function getCustomOrderRushValidationMessage(form: FormState): string | null {
+  if (!form.customOrderEnabled || !form.rushEnabled) return null;
+
+  const rushFee = Number(form.rushFee);
+  if (!form.rushFee.trim() || !Number.isFinite(rushFee) || rushFee <= 0) {
+    return 'Add a rush fee greater than 0, or turn off rush orders.';
+  }
+
+  const rushLeadDays = Number(form.rushProductionLeadDays);
+  if (
+    !form.rushProductionLeadDays.trim() ||
+    !Number.isInteger(rushLeadDays) ||
+    rushLeadDays < 1 ||
+    rushLeadDays > MAX_RUSH_LEAD_DAYS
+  ) {
+    return 'Set rush production lead time between 1 and 3 days (72 hours max).';
+  }
+
+  const standardLeadDays = form.productionLeadDays.trim()
+    ? Number(form.productionLeadDays)
+    : DEFAULT_PRODUCTION_LEAD_DAYS;
+  if (rushLeadDays >= standardLeadDays) {
+    return 'Rush production lead time must be shorter than the standard production lead time.';
+  }
+
+  return null;
+}
+
+// Phase 2B: delivery/production range is locked to 1-7 days (web/native/backend
+// must agree). Mirrors the backend custom-order-configurations guardrails.
+function getCustomOrderDeliveryValidationMessage(form: FormState): string | null {
+  if (!form.customOrderEnabled) return null;
+
+  // Blank means "use the default", not "invalid" — the fields show the default
+  // as their placeholder now, so leaving one alone is a deliberate choice.
+  const min = Number(
+    form.deliveryMinDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMinDays,
+  );
+  const max = Number(
+    form.deliveryMaxDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMaxDays,
+  );
+  const isValidDay = (value: number) =>
+    Number.isInteger(value) && value >= 1 && value <= 7;
+
+  if (!isValidDay(min)) {
+    return 'Set the minimum delivery time between 1 and 7 days.';
+  }
+  if (!isValidDay(max)) {
+    return 'Set the maximum delivery time between 1 and 7 days.';
+  }
+  return getRangeError(min, max, { label: 'delivery time', unit: 'days' }).summary;
+}
+
+// Phase 2B: enforce minPrice <= maxPrice before Preview so the creator never
+// hits a backend PRICE_RANGE_INVALID at submit time.
+function getPriceRangeValidationMessage(form: FormState): string | null {
+  return getRangeError(form.minPrice, form.maxPrice, { label: 'price' }).summary;
+}
+
 function getPublishValidationMessage({
   assets,
   form,
@@ -266,9 +412,13 @@ function getPublishValidationMessage({
   customMeasurementKeys: string[];
 }) {
   const missingRequiredSlots = getMissingRequiredMediaSlots(assets);
+  const missingRequiredImageSlots = getMissingRequiredImageMediaSlots(assets);
   if (assets.length === 0) return 'Add Front, Back, Left Side, and Right Side media before previewing.';
   if (missingRequiredSlots.length > 0) {
     return `Add ${missingRequiredSlots.map(getMediaViewSlotLabel).join(', ')} media before previewing.`;
+  }
+  if (missingRequiredImageSlots.length > 0) {
+    return `${missingRequiredImageSlots.map(getMediaViewSlotLabel).join(', ')} must be image uploads before previewing. Replace videos or unsupported files in those views.`;
   }
   if (assets.length < DESIGN_REQUIRED_MEDIA_COUNT) return 'Add Front, Back, Left Side, and Right Side media before previewing.';
   if (assets.length > DESIGN_EDITOR_MAX_MEDIA) return 'Remove extra media before previewing.';
@@ -279,53 +429,96 @@ function getPublishValidationMessage({
   if (!form.targetAgeGroup) return 'Choose an age group.';
   if (filterValueIds.length === 0) return 'Add at least one style detail.';
   if (tags.length === 0) return 'Add at least one hashtag.';
+  const priceRangeMessage = getPriceRangeValidationMessage(form);
+  if (priceRangeMessage) return priceRangeMessage;
   if (form.customOrderEnabled && customMeasurementKeys.length === 0) return 'Choose required custom-order fields.';
   if (
     form.customOrderEnabled &&
-    (!form.baseProductionCharge.trim() || !form.fabricCostPerYard.trim() || !form.fallbackOutputYards.trim())
+    // `fallbackOutputYards` is intentionally absent: it has a platform default
+    // and shows it as a placeholder, so blank is a valid answer.
+    (!form.baseProductionCharge.trim() || !form.fabricCostPerYard.trim())
   ) {
     return 'Add custom-order pricing before previewing.';
   }
+  const productionMessage = getCustomOrderProductionValidationMessage(form);
+  if (productionMessage) return productionMessage;
+  const deliveryMessage = getCustomOrderDeliveryValidationMessage(form);
+  if (deliveryMessage) return deliveryMessage;
+  const rushMessage = getCustomOrderRushValidationMessage(form);
+  if (rushMessage) return rushMessage;
   return null;
+}
+
+// Generic technical/transport noise that must never reach the user. Field-level
+// validation text (e.g. "categoryId should not be empty") is intentionally NOT
+// listed here so mapCreatorMetadataError can still turn it into friendly guidance.
+const TECHNICAL_ERROR_NOISE = [
+  'network',
+  'formdata',
+  'timeout',
+  'unsupported',
+  'json',
+  'axios',
+  'request failed',
+  'status code',
+  'validation failed',
+  'internal server error',
+  'native module',
+  'undefined is not',
+  'is not a function',
+  'cannot read',
+  'null is not',
+  'socket',
+  'econn',
+];
+
+function isTechnicalErrorNoise(message: string) {
+  const normalized = message.toLowerCase();
+  return TECHNICAL_ERROR_NOISE.some((keyword) => normalized.includes(keyword));
 }
 
 function extractApiErrorMessage(error: any, fallback: string) {
   const responseData = error?.response?.data;
   const responseMessage = responseData?.message;
 
+  let candidate: string | null = null;
   if (Array.isArray(responseMessage)) {
-    return responseMessage.join(', ');
+    candidate = responseMessage.join(', ');
+  } else if (typeof responseMessage === 'string') {
+    candidate = responseMessage;
+  } else if (
+    responseMessage &&
+    typeof responseMessage === 'object' &&
+    typeof responseMessage.message === 'string'
+  ) {
+    candidate = responseMessage.message;
+  } else if (typeof responseData?.error === 'string') {
+    candidate = responseData.error;
+  } else if (error instanceof Error && error.message) {
+    candidate = error.message;
   }
 
-  if (typeof responseMessage === 'string') {
-    return responseMessage;
+  // Any transport/runtime noise (Axios, FormData, native module, undefined-is-not-
+  // a-function, generic "Validation failed", etc.) is replaced by the safe fallback.
+  if (!candidate || isTechnicalErrorNoise(candidate)) {
+    return fallback;
   }
-
-  if (responseMessage && typeof responseMessage === 'object' && typeof responseMessage.message === 'string') {
-    return responseMessage.message;
-  }
-
-  if (typeof responseData?.error === 'string') {
-    return responseData.error;
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return fallback;
+  return candidate;
 }
 
 export function DesignEditorProvider({
   designId,
   assetHandoffToken,
+  recoveryTaskId,
   children,
 }: {
   designId?: string;
   assetHandoffToken?: string;
+  recoveryTaskId?: string;
   children: React.ReactNode;
 }) {
   const toast = useToast();
+  const { user } = useAuth();
   const { hasActiveBrandMembership, userEmailVerified } = useAuthSession();
   const [booting, setBooting] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
@@ -339,9 +532,34 @@ export function DesignEditorProvider({
   const [measurementPoints, setMeasurementPoints] = useState<MeasurementPointOption[]>([]);
   const [customOrderConfigurations, setCustomOrderConfigurations] = useState<DesignCustomOrderConfiguration[]>([]);
   const [selectedCustomOrderConfigurationId, setSelectedCustomOrderConfigurationId] = useState('');
+  const [loadedRules, setLoadedRules] = useState<DesignCustomOrderConfiguration['rules'] | null>(null);
+  const [loadedSizeExtraYards, setLoadedSizeExtraYards] = useState<any[] | null>(null);
+  const [loadedFabricRuleBasisId, setLoadedFabricRuleBasisId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
-  const [assets, setAssets] = useState<DesignEditorAsset[]>([]);
-  const [coverAssetId, setCoverAssetIdState] = useState<string | null>(null);
+
+  // Eagerly consume staged assets so they are instantly visible during the route transition,
+  // instead of waiting for categories/metadata to load.
+  const initialStagedAssets = useMemo(() => {
+    const token = assetHandoffToken?.trim();
+    if (!designId && token) {
+      return consumeDesignEditorAssetBundle(token);
+    }
+    return null;
+  }, [assetHandoffToken, designId]);
+
+  const [assets, setAssets] = useState<DesignEditorAsset[]>(() => {
+    if (initialStagedAssets?.length) {
+      return initialStagedAssets.slice(0, DESIGN_EDITOR_MAX_MEDIA);
+    }
+    return [];
+  });
+
+  const [coverAssetId, setCoverAssetIdState] = useState<string | null>(() => {
+    if (initialStagedAssets?.length) {
+      return initialStagedAssets[0]?.id ?? null;
+    }
+    return null;
+  });
   const [filterSelection, setFilterSelection] = useState<DesignFilterSelection>({});
   const [customMeasurementKeys, setCustomMeasurementKeys] = useState<string[]>([]);
   const [originalMediaIds, setOriginalMediaIds] = useState<string[]>([]);
@@ -356,11 +574,14 @@ export function DesignEditorProvider({
 
   const bootstrappedRef = useRef(false);
   const mountedRef = useRef(true);
+  const isSavingRef = useRef(false);
+  const lastAutoBaseChargeRef = useRef('');
   // Tracks the last measurement-point gender we requested so the bootstrap call
   // and the audience-change effect never fire a duplicate request for the same
   // gender during creator bootstrapping.
   const lastMeasurementGenderRef = useRef<string | null>(null);
   const normalizedAssetHandoffToken = assetHandoffToken?.trim() || undefined;
+  const normalizedRecoveryTaskId = recoveryTaskId?.trim() || undefined;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -379,6 +600,33 @@ export function DesignEditorProvider({
     setDraftVersion(detail.draftVersion);
     setActiveDesignId(detail.id);
     setActiveDesignStatus(detail.status);
+  }, []);
+
+  const hydrateFromRecoverySnapshot = useCallback((snapshot: DesignEditorRecoverySnapshot) => {
+    const recoveredForm = restoreRecoveryForm(snapshot.form);
+    const recoveredAssets = Array.isArray(snapshot.assets)
+      ? snapshot.assets.slice(0, DESIGN_EDITOR_MAX_MEDIA)
+      : [];
+    const recoveredAssetIds = new Set(recoveredAssets.map((asset) => asset.id));
+
+    setForm(recoveredForm);
+    setFilterSelection(snapshot.filterSelection ?? {});
+    setCustomMeasurementKeys(
+      Array.isArray(snapshot.customMeasurementKeys) ? snapshot.customMeasurementKeys : [],
+    );
+    setAssets(recoveredAssets);
+    setCoverAssetIdState(
+      snapshot.coverAssetId && recoveredAssetIds.has(snapshot.coverAssetId)
+        ? snapshot.coverAssetId
+        : recoveredAssets[0]?.id ?? null,
+    );
+    setOriginalMediaIds(
+      Array.isArray(snapshot.originalMediaIds) ? snapshot.originalMediaIds : [],
+    );
+    setSelectedCustomOrderConfigurationId(snapshot.selectedCustomOrderConfigurationId ?? '');
+    setDraftSessionToken(snapshot.draftSessionToken);
+    setDraftVersion(snapshot.draftVersion);
+    return recoveredForm;
   }, []);
 
   const loadMeasurementPoints = useCallback(async (audience: Audience) => {
@@ -448,12 +696,18 @@ export function DesignEditorProvider({
 
         setCustomOrderConfigurations([]);
 
-        if (!activeDesignId && normalizedAssetHandoffToken) {
-          const stagedAssets = consumeDesignEditorAssetBundle(normalizedAssetHandoffToken);
-          if (stagedAssets?.length) {
-            setAssets(stagedAssets.slice(0, DESIGN_EDITOR_MAX_MEDIA));
-            setCoverAssetIdState(stagedAssets[0]?.id ?? null);
-            setOriginalMediaIds([]);
+        // Staged assets are now consumed eagerly during state initialization (see initialStagedAssets above).
+
+        let recoveredForm: FormState | null = null;
+        if (!activeDesignId && normalizedRecoveryTaskId && user?.id) {
+          const snapshot = await readDesignEditorRecoverySnapshot(
+            normalizedRecoveryTaskId,
+            user.id,
+          );
+          if (snapshot) {
+            recoveredForm = hydrateFromRecoverySnapshot(snapshot);
+          } else {
+            toast.error('This failed upload no longer has recoverable local data. Start a new design instead.');
           }
         }
 
@@ -483,8 +737,16 @@ export function DesignEditorProvider({
                 activeCustomConfiguration.fabricSourcingMode === 'EITHER'
                   ? activeCustomConfiguration.fabricSourcingMode
                   : 'BRAND_SOURCED',
-              fallbackOutputYards: activeCustomConfiguration.rules.find((rule) => rule.isFallback)?.outputYards ?? '4',
+              fallbackOutputYards:
+                activeCustomConfiguration.rules.find((rule) => rule.isFallback)?.outputYards ??
+                DESIGN_CUSTOM_ORDER_DEFAULTS.fallbackOutputYards,
+              averageBaseYards: activeCustomConfiguration.yardProfile?.averageBaseYards != null
+                ? String(activeCustomConfiguration.yardProfile.averageBaseYards)
+                : '',
             }));
+            setLoadedRules(activeCustomConfiguration.rules);
+            setLoadedSizeExtraYards(activeCustomConfiguration.yardProfile?.sizeExtraYards ?? null);
+            setLoadedFabricRuleBasisId(activeCustomConfiguration.fabricRuleBasisId ?? null);
             setCustomOrderConfigurations((prev) => {
               if (prev.some((entry) => entry.id === activeCustomConfiguration.id)) return prev;
               return [activeCustomConfiguration, ...prev];
@@ -494,22 +756,49 @@ export function DesignEditorProvider({
           }
 
           if (detail.status === 'DRAFT') {
-            const session = await startDesignDraftSession(activeDesignId, {
+            /**
+             * Resume this device's own session, and take over rather than block.
+             *
+             * Two things used to go wrong here. The token lived only in this
+             * provider's state, so any reroute that unmounted the editor lost
+             * it and the next mount asked for a session as if it were a
+             * stranger — the server then found the session this same phone had
+             * opened moments earlier and reported a conflict. And a conflict
+             * was a dead end: it set `draftConflict`, which `save()` refuses to
+             * write through, but mobile renders no take-over UI at all, so the
+             * owner got "Another device still owns this draft" with nothing on
+             * screen able to release it.
+             *
+             * The token now persists per owner+design, so ordinary
+             * back-and-forth reuses the session it already holds. Anything
+             * still reported as a conflict is the same account genuinely open
+             * elsewhere — the owner, with the same rights to the same draft —
+             * so we take the draft over and say so, instead of locking them out
+             * of their own work.
+             */
+            const resumeToken =
+              draftSessionToken ??
+              (await readDraftSessionToken(user?.id, activeDesignId));
+            let session = await startDesignDraftSession(activeDesignId, {
               forceNew: forceTakeOver,
-              existingToken: draftSessionToken,
-              deviceName: 'WEAZ mobile',
+              existingToken: resumeToken,
+              deviceName: 'WIEZ mobile',
             });
             if (session.hasConflict) {
-              setDraftConflict(session);
-            } else {
-              setDraftConflict(null);
-              setDraftSessionToken(session.sessionToken);
+              session = await startDesignDraftSession(activeDesignId, {
+                forceNew: true,
+                deviceName: 'WIEZ mobile',
+              });
+              toast.info('This draft was open in another session. You are editing it here now.');
             }
+            setDraftConflict(null);
+            setDraftSessionToken(session.sessionToken);
+            void writeDraftSessionToken(user?.id, activeDesignId, session.sessionToken);
           }
 
           await loadMeasurementPoints(detail.type);
         } else {
-          await loadMeasurementPoints(INITIAL_FORM.audience);
+          await loadMeasurementPoints(recoveredForm?.audience ?? INITIAL_FORM.audience);
         }
 
         bootstrappedRef.current = true;
@@ -525,7 +814,17 @@ export function DesignEditorProvider({
         setBooting(false);
       }
     },
-    [activeDesignId, draftSessionToken, hydrateFromDetail, loadMeasurementPoints, normalizedAssetHandoffToken],
+    [
+      activeDesignId,
+      draftSessionToken,
+      hydrateFromDetail,
+      hydrateFromRecoverySnapshot,
+      loadMeasurementPoints,
+      normalizedAssetHandoffToken,
+      normalizedRecoveryTaskId,
+      toast,
+      user?.id,
+    ],
   );
 
   useEffect(() => {
@@ -564,8 +863,21 @@ export function DesignEditorProvider({
       }),
     [assets, customMeasurementKeys, form, selectedFilterValueIds, tags],
   );
+  /**
+   * A title is the one thing a draft cannot be saved without.
+   *
+   * Everything else on this form can be filled in later — that is what a draft
+   * is for — but the title is how the draft is identified afterwards, in the
+   * Drafts list, in the expiry warnings and in the publish-failure
+   * notifications. Untitled drafts came back to their owner as a row of
+   * indistinguishable "Untitled draft" cards with no way to tell which was
+   * which, and `saveDesignEditor` was quietly substituting that string rather
+   * than refusing. The title can still be changed right up to publish.
+   */
+  const draftTitle = form.title.trim();
   const canSaveDraft =
-    assets.length > 0 || hasMeaningfulDraftContent(form, tags, filterSelection);
+    draftTitle.length > 0 &&
+    (assets.length > 0 || hasMeaningfulDraftContent(form, tags, filterSelection));
   const canPublish = publishValidationMessage === null;
 
   useEffect(() => {
@@ -580,7 +892,44 @@ export function DesignEditorProvider({
   }, [categories.length, form.subCategoryId, selectedCategory]);
 
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next: FormState = { ...prev, [key]: value };
+
+      if (key === 'minPrice') {
+        const nextDefaultBaseCharge = String(value ?? '').trim();
+        const previousDefaultBaseCharge = lastAutoBaseChargeRef.current;
+        const shouldSyncBaseCharge =
+          prev.customOrderEnabled &&
+          nextDefaultBaseCharge.length > 0 &&
+          (prev.baseProductionCharge.trim().length === 0 ||
+            prev.baseProductionCharge.trim() === previousDefaultBaseCharge);
+
+        if (shouldSyncBaseCharge) {
+          next.baseProductionCharge = nextDefaultBaseCharge;
+          lastAutoBaseChargeRef.current = nextDefaultBaseCharge;
+        } else if (
+          // Parity with web: clearing min price clears the base charge only when
+          // it was auto-populated (still equal to the last auto value) and the
+          // user never manually overrode it.
+          nextDefaultBaseCharge.length === 0 &&
+          previousDefaultBaseCharge.length > 0 &&
+          prev.customOrderEnabled &&
+          prev.baseProductionCharge.trim() === previousDefaultBaseCharge
+        ) {
+          next.baseProductionCharge = '';
+          lastAutoBaseChargeRef.current = '';
+        } else if (nextDefaultBaseCharge.length > 0 && previousDefaultBaseCharge.length === 0) {
+          lastAutoBaseChargeRef.current = nextDefaultBaseCharge;
+        }
+      }
+
+      if (key === 'customOrderEnabled' && Boolean(value) && !prev.baseProductionCharge.trim() && prev.minPrice.trim()) {
+        next.baseProductionCharge = prev.minPrice.trim();
+        lastAutoBaseChargeRef.current = prev.minPrice.trim();
+      }
+
+      return next;
+    });
   }, []);
 
   const toggleFilterValue = useCallback((dimensionId: string, valueId: string, isMulti: boolean) => {
@@ -642,6 +991,7 @@ export function DesignEditorProvider({
 
     setPermissionIssue(null);
 
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setAssets((prev) => {
       return [...prev, ...result.assets].slice(0, DESIGN_EDITOR_MAX_MEDIA);
     });
@@ -665,6 +1015,7 @@ export function DesignEditorProvider({
   }, []);
 
   const removeAsset = useCallback((assetId: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setAssets((prev) => {
       const next = prev.filter((asset) => asset.id !== assetId);
       if (coverAssetId === assetId) {
@@ -682,11 +1033,17 @@ export function DesignEditorProvider({
 
   const save = useCallback(
     async (action: SaveAction) => {
-      if (saveAction) {
+      if (saveAction || isSavingRef.current) {
         return;
       }
-      if (draftConflict?.hasConflict) {
-        toast.error('Another device still owns this draft. Take over the draft before saving.');
+      // No draft-conflict gate here any more. Bootstrap resolves ownership
+      // before the editor is usable — it resumes this device's own session, or
+      // takes the draft over from the same account elsewhere and says so. There
+      // is nothing left for a save to refuse: this branch could only ever fire
+      // against the owner, and it told them to "take over the draft" through a
+      // control mobile does not have.
+      if (!user?.id) {
+        toast.error('Sign in with a brand account before saving designs.');
         return;
       }
       if (!activeDesignId && !hasActiveBrandMembership) {
@@ -702,13 +1059,59 @@ export function DesignEditorProvider({
         return;
       }
       if (!canSaveDraft) {
-        toast.error('Add at least one change before saving.');
+        toast.error(
+          draftTitle.length === 0
+            ? 'Give this design a title before saving it as a draft.'
+            : 'Add at least one change before saving.',
+        );
+        return;
+      }
+      // Rush config is sent for both draft and publish when custom orders are on,
+      // so guard both paths against the backend rush rules (publish is also gated
+      // earlier via publishValidationMessage, this catches draft saves too).
+      const productionValidationMessage = getCustomOrderProductionValidationMessage(form);
+      if (productionValidationMessage) {
+        toast.error(productionValidationMessage);
+        return;
+      }
+      const rushValidationMessage = getCustomOrderRushValidationMessage(form);
+      if (rushValidationMessage) {
+        toast.error(rushValidationMessage);
+        return;
+      }
+      // Delivery + price-range are sent on both draft and publish, so guard both
+      // paths against the backend DELIVERY_RANGE_INVALID / PRICE_RANGE_INVALID
+      // contracts (publish is also gated earlier via publishValidationMessage).
+      const deliveryValidationMessage = getCustomOrderDeliveryValidationMessage(form);
+      if (deliveryValidationMessage) {
+        toast.error(deliveryValidationMessage);
+        return;
+      }
+      const priceRangeValidationMessage = getPriceRangeValidationMessage(form);
+      if (priceRangeValidationMessage) {
+        toast.error(priceRangeValidationMessage);
         return;
       }
 
       setSaveAction(action);
       setSaveProgress(0);
       setSaveMessage(action === 'publish' ? 'Preparing to go live...' : 'Preparing draft...');
+      isSavingRef.current = true;
+
+      /**
+       * Let the button paint its spinner before the heavy work starts.
+       *
+       * Everything below — payload assembly, the recovery snapshot that copies
+       * every picked asset — runs synchronously in this same tick, so React
+       * batched the `setSaveAction` above into a render that never got a frame
+       * to commit. The button stayed idle and the screen sat still for what
+       * looked like a hang, with nothing to say the press had registered; users
+       * pressed Create a second time. One yield is enough to commit the loading
+       * state first, and it costs a frame.
+       */
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
 
       try {
         const allowedFilterDimensionIds = new Set(filterDimensions.map((dimension) => dimension.id));
@@ -719,6 +1122,30 @@ export function DesignEditorProvider({
               (filterSelection[dimension.id] ?? []).includes(valueId),
           ),
         );
+        let rulesPayload: DesignCustomOrderConfigurationInput['rules'] = [
+          {
+            priority: 1,
+            conditionsJson: {},
+            outputYards:
+              form.fallbackOutputYards.trim() ||
+              DESIGN_CUSTOM_ORDER_DEFAULTS.fallbackOutputYards,
+            isFallback: true,
+          },
+        ];
+        if (loadedRules && loadedRules.length > 0) {
+          rulesPayload = loadedRules.map((rule) => {
+            if (rule.isFallback) {
+              return {
+                ...rule,
+                outputYards:
+              form.fallbackOutputYards.trim() ||
+              DESIGN_CUSTOM_ORDER_DEFAULTS.fallbackOutputYards,
+              };
+            }
+            return rule;
+          });
+        }
+
         const customOrderConfiguration: DesignCustomOrderConfigurationInput | undefined = form.customOrderEnabled
           ? {
               title: form.title.trim() || 'Design custom order',
@@ -727,23 +1154,30 @@ export function DesignEditorProvider({
               requiredFreeformPointIds: [],
               baseProductionCharge: form.baseProductionCharge,
               fabricCostPerYard: form.fabricCostPerYard,
-              rushEnabled: false,
-              productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : 7,
-              deliveryMinDays: form.deliveryMinDays ? Number(form.deliveryMinDays) : 2,
-              deliveryMaxDays: form.deliveryMaxDays ? Number(form.deliveryMaxDays) : 5,
-              deliveryScope: form.deliveryScope.trim() || 'Nigeria',
-              revisionPolicy: form.revisionPolicy.trim() || 'One revision after delivery confirmation.',
-              returnPolicy: form.returnPolicy.trim() || 'Custom orders are not returnable except where required by policy.',
-              defectPolicy: form.defectPolicy.trim() || 'Defects and material faults are reviewed through support.',
+              rushEnabled: form.rushEnabled,
+              rushFee: form.rushFee || undefined,
+              rushProductionLeadDays: form.rushProductionLeadDays ? Number(form.rushProductionLeadDays) : undefined,
+              notes: form.notes || undefined,
+              productionLeadDays: form.productionLeadDays ? Number(form.productionLeadDays) : DEFAULT_PRODUCTION_LEAD_DAYS,
+              deliveryMinDays: Number(
+                form.deliveryMinDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMinDays,
+              ),
+              deliveryMaxDays: Number(
+                form.deliveryMaxDays.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryMaxDays,
+              ),
+              deliveryScope:
+                form.deliveryScope.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.deliveryScope,
+              revisionPolicy:
+                form.revisionPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.revisionPolicy,
+              returnPolicy:
+                form.returnPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.returnPolicy,
+              defectPolicy:
+                form.defectPolicy.trim() || DESIGN_CUSTOM_ORDER_DEFAULTS.defectPolicy,
               fabricSourcingMode: form.fabricSourcingMode,
-              rules: [
-                {
-                  priority: 1,
-                  conditionsJson: {},
-                  outputYards: form.fallbackOutputYards,
-                  isFallback: true,
-                },
-              ],
+              averageBaseYards: form.averageBaseYards.trim() ? Number(form.averageBaseYards) : undefined,
+              sizeExtraYards: loadedSizeExtraYards || undefined,
+              fabricRuleBasisId: loadedFabricRuleBasisId || undefined,
+              rules: rulesPayload,
             }
           : undefined;
         const payload = {
@@ -779,18 +1213,68 @@ export function DesignEditorProvider({
           assets[0]?.uri ??
           null;
         const task = createDesignEditorBackgroundTask({
+          ownerUserId: user.id,
           action,
           title: titleForTask,
           visibility: form.visibility,
           previewUri: coverPreviewUri,
           designId: activeDesignId,
           message: action === 'publish' ? 'Going live...' : 'Saving draft...',
+          recoverySnapshot: {
+            ownerUserId: user.id,
+            form: { ...form },
+            assets: assets.map((asset) => ({ ...asset })),
+            coverAssetId,
+            filterSelection: Object.fromEntries(
+              Object.entries(filterSelection).map(([key, value]) => [key, [...value]]),
+            ),
+            customMeasurementKeys: [...customMeasurementKeys],
+            originalMediaIds: [...originalMediaIds],
+            selectedCustomOrderConfigurationId,
+            draftSessionToken,
+            draftVersion,
+            capturedAt: Date.now(),
+          },
         });
-        const targetVisibility = action === 'draft'
-          ? 'Drafts'
-          : form.visibility === 'PRIVATE'
-            ? 'Private'
-            : 'Public';
+        if (normalizedRecoveryTaskId && normalizedRecoveryTaskId !== task.id) {
+          removeDesignEditorBackgroundTask(normalizedRecoveryTaskId);
+        }
+        router.replace({
+          pathname: '/catalog',
+          params: {
+            tab: 'Collections',
+            visibility: action === 'publish' ? 'In Review' : 'Drafts',
+          },
+        } as any);
+        const resolvePublishVisibility = (status?: string | null) => {
+          /**
+           * Route by the design's RESOLVED status, and default to review.
+           *
+           * The default arm used to return Public/Private — the same as
+           * PUBLISHED — so any status this switch did not name (PROCESSING, or
+           * an absent field on a slow write) sent the owner to the Public tab
+           * for a design that had only just been submitted. The design was not
+           * there, because it was in review. Submission does not publish
+           * anything, so "unrecognized" must mean review, never live: the only
+           * way to land on Public is the server explicitly saying PUBLISHED.
+           */
+          switch (String(status ?? '').toUpperCase()) {
+            case 'IN_REVIEW':
+              return 'In Review';
+            case 'PUBLISHED':
+              return form.visibility === 'PRIVATE' ? 'Private' : 'Public';
+            case 'CHANGES_REQUESTED':
+            case 'REJECTED':
+            case 'FAILED':
+            case 'PROCESSING':
+              // All merged into the one bucket that means "this needs you".
+              return 'Needs Attention';
+            case 'DRAFT':
+              return 'Drafts';
+            default:
+              return 'In Review';
+          }
+        };
 
         try {
           const result = await saveDesignEditor(
@@ -805,15 +1289,29 @@ export function DesignEditorProvider({
                 setSaveMessage(message);
               }
             },
+            (id) => {
+              updateDesignEditorBackgroundTask(task.id, { designId: id });
+              if (mountedRef.current) {
+                setActiveDesignId(id);
+              }
+            },
           );
+
+          const targetVisibility =
+            action === 'draft' ? 'Drafts' : resolvePublishVisibility(result.detail.status);
+          const publishCompleteMessage =
+            targetVisibility === 'Public' || targetVisibility === 'Private'
+              ? 'Design is live.'
+              : 'Submitted for review.';
 
           updateDesignEditorBackgroundTask(task.id, {
             status: 'complete',
             progress: 1,
             designId: result.id,
-            message: action === 'publish' ? 'Design is live.' : 'Draft saved.',
+            message: action === 'publish' ? publishCompleteMessage : 'Draft saved.',
+            recoverySnapshot: null,
           });
-          toast.success(action === 'publish' ? 'Design is live.' : 'Draft saved.');
+          toast.success(action === 'publish' ? publishCompleteMessage : 'Draft saved.');
 
           if (mountedRef.current) {
             hydrateFromDetail(result.detail);
@@ -821,14 +1319,36 @@ export function DesignEditorProvider({
             setDraftVersion(result.detail.draftVersion);
           }
 
+          // Invalidate owner content caches so the new/updated item appears in the
+          // correct tab (e.g. In Review) and is removed from any stale Public list.
+          //
+          // refetchType: 'all' is load-bearing, not defensive. The default is
+          // 'active', which only refetches queries that have a mounted observer
+          // at THIS instant — and the owner catalog tabs are lazy, so the tab the
+          // new design belongs to (In Review / Drafts) usually has none yet. Those
+          // queries were then merely marked invalidated, and because the client
+          // sets `refetchOnMount: false` globally (a deliberate perf policy,
+          // pinned by scripts/check-perf-regressions.cjs), mounting the tab did
+          // NOT fetch either: it rendered the stale cached list. Net effect was
+          // that a freshly created design stayed invisible until the user
+          // pull-to-refreshed — which worked only because pull-to-refresh
+          // invalidates while the screen IS active. 'all' refetches inactive
+          // queries too, so the list is already correct when the tab mounts.
+          const refetchEverywhere = { refetchType: 'all' } as const;
+          void queryClient.invalidateQueries({ queryKey: ['brand', 'collections'], ...refetchEverywhere });
+          void queryClient.invalidateQueries({ queryKey: ['designs', 'user'], ...refetchEverywhere });
+          void queryClient.invalidateQueries({ queryKey: ['design', 'detail', result.id], ...refetchEverywhere });
+
           router.replace({
             pathname: '/catalog',
             params: { tab: 'Collections', visibility: targetVisibility },
           } as any);
         } catch (error: any) {
+          const draftFallback = 'We couldn’t save this draft. Please try again.';
+          const publishFallback = 'We couldn’t publish this design. Please try again.';
           const message = extractApiErrorMessage(
             error,
-            action === 'publish' ? 'Failed to publish design.' : 'Failed to save draft.',
+            action === 'publish' ? publishFallback : draftFallback,
           );
           updateDesignEditorBackgroundTask(task.id, {
             status: 'failed',
@@ -836,19 +1356,41 @@ export function DesignEditorProvider({
             message: action === 'publish' ? 'Publish failed.' : 'Draft save failed.',
             error: message,
           });
-          toast.error(action === 'publish' ? mapCreatorMetadataError(message, 'Failed to publish design.') : message);
+          if (action === 'publish') {
+            const username = user?.username || user?.firstName || user?.brandFullName || 'there';
+            toast.error(`Hello ${username}, your upload ${titleForTask || 'design'} was not successful. Tap to review.`, {
+              duration: 9000,
+              actionLabel: 'Review',
+              onPress: () => {
+                drillDownPush({
+                  pathname: '/catalog',
+                  params: { tab: 'Collections', visibility: 'In Review' },
+                } as any);
+              },
+            });
+          } else {
+            toast.error(message);
+          }
         } finally {
+          isSavingRef.current = false;
           if (mountedRef.current) {
             setSaveAction(null);
           }
         }
       } catch (error: any) {
+        const draftFallback = 'We couldn’t save this draft. Please try again.';
+        const publishFallback = 'We couldn’t publish this design. Please try again.';
         const message = extractApiErrorMessage(
           error,
-          action === 'publish' ? 'Failed to publish design.' : 'Failed to save draft.',
+          action === 'publish' ? publishFallback : draftFallback,
         );
-        toast.error(action === 'publish' ? mapCreatorMetadataError(message, 'Failed to publish design.') : message);
-        setSaveAction(null);
+        toast.error(
+          action === 'publish' ? mapCreatorMetadataError(message, publishFallback) : message,
+        );
+        isSavingRef.current = false;
+        if (mountedRef.current) {
+          setSaveAction(null);
+        }
       }
     },
     [
@@ -856,26 +1398,33 @@ export function DesignEditorProvider({
       assets,
       canSaveDraft,
       customMeasurementKeys,
-      draftConflict,
       draftSessionToken,
+      draftTitle,
       draftVersion,
       filterDimensions,
       filterSelection,
       form,
       hydrateFromDetail,
       originalMediaIds,
+      normalizedRecoveryTaskId,
       publishValidationMessage,
       saveAction,
       selectedCustomOrderConfigurationId,
       selectedFilterValueIds,
       tags,
       toast,
+      user,
       userEmailVerified,
       hasActiveBrandMembership,
     ],
   );
 
   const deleteDraft = useCallback(async () => {
+    // Synchronous ref guard prevents a double-press from firing two deletes
+    // before the async saveAction state has a chance to disable the button.
+    if (saveAction || isSavingRef.current) {
+      return;
+    }
     if (!activeDesignId) {
       toast.error('No draft is open.');
       return;
@@ -885,6 +1434,7 @@ export function DesignEditorProvider({
       return;
     }
 
+    isSavingRef.current = true;
     setSaveAction('draft');
     setSaveProgress(0);
     setSaveMessage('Deleting draft...');
@@ -899,11 +1449,12 @@ export function DesignEditorProvider({
       const responseMessage = error?.response?.data?.message;
       toast.error(typeof responseMessage === 'string' ? responseMessage : 'Failed to delete draft.');
     } finally {
+      isSavingRef.current = false;
       setSaveAction(null);
       setSaveMessage('');
       setSaveProgress(0);
     }
-  }, [activeDesignId, activeDesignStatus, toast]);
+  }, [activeDesignId, activeDesignStatus, saveAction, toast]);
 
   const retryBootstrap = useCallback(async () => {
     bootstrappedRef.current = false;

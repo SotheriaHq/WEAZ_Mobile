@@ -1,0 +1,172 @@
+const fs = require('fs');
+const path = require('path');
+const assert = require('assert');
+
+const root = path.resolve(__dirname, '..');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+const exists = (file) => fs.existsSync(path.join(root, file));
+
+const settingsIndex = read('app/settings.tsx');
+const profile = read('app/(tabs)/me.tsx');
+const verifyEmail = read('app/(auth)/verify-email.tsx');
+const authContext = read('src/auth/AuthContext.tsx');
+const authApi = read('src/api/AuthApi.ts');
+const notificationsApi = read('src/api/NotificationsApi.ts');
+const profileApi = read('src/api/ProfileApi.ts');
+const bottomSheet = read('components/ui/AppBottomSheet.tsx');
+const selectSheet = read('components/ui/AppSelectSheet.tsx');
+
+assert.doesNotMatch(
+  profile,
+  /More settings are coming soon/,
+  'profile settings action must not show the old placeholder toast',
+);
+// Verb-agnostic: the navigation refactor moved every call site onto the
+// intent helpers in `mobileNavigation`, so pinning the raw `router.push` here
+// asserted an implementation detail that no longer exists.
+assert.match(
+  profile,
+  /drillDownPush\('\/settings' as any\)|router\.push\('\/settings' as any\)/,
+  'profile settings action must route to the Settings screen',
+);
+
+assert.match(
+  verifyEmail,
+  /updateUser\(\{ isEmailVerified: true \}\)/,
+  'email verification success must update local auth state immediately',
+);
+assert.match(
+  verifyEmail,
+  /validateToken\(\{ forceRefresh: true \}\)/,
+  'email verification success must bypass stale auth profile cache',
+);
+assert.match(
+  authContext,
+  // Constant renamed THREADLY_→WIEZ_ with the brand; the behaviour asserted is
+  // the `forceRefresh ? 0 : <stale time>` bypass, not the identifier.
+  /staleTime:\s*forceRefresh \? 0 : WIEZ_QUERY_STALE_TIME_MS/,
+  'AuthContext validateToken must support force-refreshing the backend profile',
+);
+
+assert.doesNotMatch(
+  settingsIndex,
+  /comingSoon\(|will open when that settings screen is ready|coming soon/i,
+  'Settings index must not wire shopper rows to coming-soon placeholders',
+);
+
+[
+  'app/settings/account-security.tsx',
+  'app/settings/email-preferences.tsx',
+  'app/settings/privacy.tsx',
+  'app/settings/sizing.tsx',
+  'app/settings/payment.tsx',
+  'app/settings/upload-preferences.tsx',
+  'app/settings/support.tsx',
+  'app/settings/notifications.tsx',
+  'app/settings/market-preferences.tsx',
+  'app/settings/theme.tsx',
+  'app/settings/delete-account.tsx',
+].forEach((file) => {
+  assert.ok(exists(file), `${file} must exist as a concrete shopper settings route`);
+});
+
+[
+  '/settings/account-security',
+  '/settings/email-preferences',
+  '/settings/privacy',
+  '/settings/sizing',
+  '/settings/payment',
+  '/settings/upload-preferences',
+  '/settings/support',
+].forEach((route) => {
+  assert.match(settingsIndex, new RegExp(route.replace(/[/-]/g, (match) => `\\${match}`)), `${route} must be linked from Settings`);
+});
+
+assert.ok(!exists('app/settings/storage.tsx'), 'user-facing cache controls must be removed');
+// Location is a bio field, not a settings destination. It had its own screen
+// carrying one input plus a "Device access" card that only opened OS settings —
+// two taps of indirection for something that belongs beside the user's name.
+assert.ok(!exists('app/settings/location.tsx'), 'location must live in Your bio, not its own settings screen');
+assert.doesNotMatch(settingsIndex, /settings\/location|Device access/i, 'Settings must not link a standalone location screen');
+assert.match(settingsIndex, /title: 'Your bio'/, 'the profile editor row must read as Your bio');
+assert.match(
+  settingsIndex,
+  /pathname: '\/\(tabs\)\/me-edit',\s*\n\s*params: \{ from: '\/settings' \}/,
+  'Your bio must state its return route so back lands on Settings, not the default tab',
+);
+assert.doesNotMatch(settingsIndex, /FontAwesome|Media cache|settings\/storage/, 'Settings must use emoji markers and expose no cache controls');
+assert.match(settingsIndex, /emoji:\s*'👤'/, 'Settings must use the shared colored emoji vocabulary');
+assert.doesNotMatch(
+  profileApi,
+  /isEmailVerified:\s*Boolean\(s\.isEmailVerified\)/,
+  'profile normalization must not manufacture an unverified state when the endpoint omits it',
+);
+assert.match(profile, /useUnreadNotificationCount\(\)/, 'shopper profile must render the shared unread notification count');
+assert.match(profile, /refreshUnreadNotificationCount/, 'shopper profile must refresh unread notifications from the backend');
+/*
+  The backdrop's two jobs run at two different moments, and both are load-bearing.
+
+  Dismissing the keyboard on touch-DOWN is why this was ever `onPressIn`: the
+  backdrop has to answer the first touch rather than swallow it while the IME is
+  up. Closing the sheet on touch-down, though, makes dismissal uncancellable —
+  a thumb that clips the sheet edge, or lands just outside one the keyboard has
+  pushed to an unfamiliar height, discards whatever the user had typed with no
+  warning and no undo. That is the "I entered my fittings, closed the form, and
+  nothing was saved" report.
+
+  So: keyboard on `onPressIn`, close on `onPress` (which completes on lift and
+  cancels if the finger leaves the bounds). Asserted separately, because
+  collapsing them back into one handler silently reintroduces whichever half is
+  dropped.
+*/
+assert.match(
+  bottomSheet,
+  /onPressIn=\{\(\) => \{\s*Keyboard\.dismiss\(\);\s*\}\}/,
+  'sheet backdrop must dismiss the keyboard on touch-down, so the first touch is not swallowed',
+);
+assert.match(
+  bottomSheet,
+  /onPress=\{\(\) => \{\s*(?:if \(Date\.now\(\) < suppressDismissUntilRef\.current\) return;\s*)?onClose\(\);\s*\}\}/,
+  'sheet backdrop must close on RELEASE, so a stray touch on a form sheet can be taken back',
+);
+const backdropPressIn = bottomSheet.match(/onPressIn=\{\(\) => \{([\s\S]*?)\}\}/);
+assert.ok(backdropPressIn, 'sheet backdrop must keep an onPressIn handler');
+assert.doesNotMatch(
+  backdropPressIn[1],
+  /onClose\(\)/,
+  'closing on touch-down makes backdrop dismissal uncancellable and loses typed input',
+);
+assert.match(bottomSheet, /onPanResponderMove/, 'selector sheets must support interactive swipe-down dismissal');
+assert.match(selectSheet, /onDismiss=\{\(\) => \{/, 'selector values must commit after the close animation');
+assert.doesNotMatch(selectSheet, /requestAnimationFrame\(\(\) => onChange/, 'selector values must not relayout the form during close');
+
+[
+  'changePassword',
+  'requestEmailChange',
+  'listSecuritySessions',
+  'revokeSecuritySession',
+  'logoutOtherSecuritySessions',
+].forEach((method) => {
+  assert.match(authApi, new RegExp(`export async function ${method}\\(`), `AuthApi must expose ${method}`);
+});
+
+[
+  'getEmailSettings',
+  'updateEmailSettings',
+  'resetEmailSettings',
+].forEach((method) => {
+  assert.match(notificationsApi, new RegExp(`async ${method}\\(`), `NotificationsApi must expose ${method}`);
+});
+
+assert.match(
+  profileApi,
+  /updateProfileVisibility\(profileVisibility:/,
+  'ProfileApi must expose backend profile visibility updates',
+);
+assert.match(
+  profileApi,
+  /updateSizeFitSettings\(payload:/,
+  'ProfileApi must expose backend size-fit settings updates',
+);
+
+console.log('shopper settings contract passed');

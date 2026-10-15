@@ -30,8 +30,10 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local env files — ignore ALL variants, keep the template
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -40,6 +42,23 @@ yarn-error.*
 /ios
 /android
 
-.env
-.env.local
-.env.*.local
+# AI agent workspace files — never commit (enforced by .github/workflows/agent-hygiene.yml)
+CLAUDE.md
+**/CLAUDE.md
+AGENTS.md
+CODEMAP.md
+LAST_SESSION.md
+GEMINI.md
+.cursorrules
+.windsurfrules
+.clinerules*
+.mcp.json
+.claude/
+.cursor/
+.windsurf/
+.gemini/
+.kilo/
+.ai/
+.aider*
+project-memory/
+memory-bank/

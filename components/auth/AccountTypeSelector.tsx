@@ -28,6 +28,7 @@ function TypeCard({ type, selected, onSelect, emoji, title }: TypeCardProps) {
     Animated.spring(scaleAnim, {
       toValue: 0.96,
       useNativeDriver: true,
+      isInteraction: false,
       damping: 15,
       stiffness: 300,
     }).start();
@@ -37,6 +38,7 @@ function TypeCard({ type, selected, onSelect, emoji, title }: TypeCardProps) {
     Animated.spring(scaleAnim, {
       toValue: 1,
       useNativeDriver: true,
+      isInteraction: false,
       damping: 8,
       stiffness: 200,
     }).start();

@@ -2,14 +2,13 @@ import React, { useEffect, useRef } from 'react';
 import {
   Animated,
   Dimensions,
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   View,
   Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 
@@ -46,29 +45,19 @@ export function GlassBottomSheet({
         stiffness: 90,
         mass: 1,
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(opacityAnim, {
         toValue: 1,
         duration: 400,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
     ]).start();
   }, []);
 
   const sheetHeight = SCREEN_HEIGHT * heightRatio;
-
-  const ContentWrapper = scrollable ? ScrollView : View;
-  const contentProps = scrollable
-    ? {
-        showsVerticalScrollIndicator: false,
-        contentContainerStyle: [
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + 20 },
-        ],
-        keyboardShouldPersistTaps: 'handled' as const,
-      }
-    : {};
 
   return (
     <Animated.View
@@ -100,16 +89,20 @@ export function GlassBottomSheet({
           </View>
         )}
 
-        {/* Content */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.kavContainer}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        >
-          <ContentWrapper style={styles.content} {...contentProps}>
+        {/* Content — keyboard-aware so focused fields stay above the IME */}
+        {scrollable ? (
+          <KeyboardAwareFormScroll
+            style={styles.kavContainer}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: insets.bottom + 20 },
+            ]}
+          >
             {children}
-          </ContentWrapper>
-        </KeyboardAvoidingView>
+          </KeyboardAwareFormScroll>
+        ) : (
+          <View style={[styles.content, styles.kavContainer]}>{children}</View>
+        )}
       </View>
     </Animated.View>
   );
@@ -144,7 +137,7 @@ const styles = StyleSheet.create({
   },
   handleContainer: {
     alignItems: 'center',
-    paddingTop: 14,
+    paddingTop: 16,
     paddingBottom: 8,
   },
   handle: {

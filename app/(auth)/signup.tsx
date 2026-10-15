@@ -11,26 +11,33 @@
  * - Gold gradient CTA for Brand, Purple for Shopper
  * - Staggered entrance with same timing curve as Login
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, LayoutAnimation, Platform, Pressable, StyleSheet, UIManager, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { router, useLocalSearchParams } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
-import { WeazLogo } from '@/components/ui/WeazLogo';
+import WiezMark from '@/src/brand/WiezMark';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
-import { GoogleMark } from '@/components/auth/GoogleMark';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { AccountTypeSelector } from '@/components/auth/AccountTypeSelector';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
-import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { Button } from '@/components/ui/Button';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
+import { useAuthFlowLock } from '@/src/auth/useAuthFlowLock';
+import {
+  AuthRequestError,
+  getAuthErrorMessage,
+  GoogleSignInError,
+} from '@/src/auth/authErrors';
 import {
   getRequiredLegalAcceptances,
   LEGAL_SIGNUP_DOCUMENT_KEYS,
@@ -61,7 +68,7 @@ function clearError(
 export default function SignupScreen() {
   const { theme, scheme } = useTheme();
   const isDark = scheme === 'dark';
-  const { signUp, signInWithGoogle, status, user } = useAuth();
+  const { signUp, signInWithGoogle, status } = useAuth();
   const toast = useToast();
   const params = useLocalSearchParams<{ next?: string }>();
   const insets = useSafeAreaInsets();
@@ -77,6 +84,9 @@ export default function SignupScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const googleTokenRequest = useGoogleIdTokenRequest();
+
+  /** Same app-wide exclusion the login screen uses — see `authFlowLock.ts`. */
+  const authFlow = useAuthFlowLock();
 
   // Field errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -96,6 +106,7 @@ export default function SignupScreen() {
         delay: 0,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(headlineOpacity, {
         toValue: 1,
@@ -103,6 +114,7 @@ export default function SignupScreen() {
         delay: 80,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(headlineSlide, {
         toValue: 0,
@@ -110,6 +122,7 @@ export default function SignupScreen() {
         delay: 80,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(formOpacity, {
         toValue: 1,
@@ -117,6 +130,7 @@ export default function SignupScreen() {
         delay: 200,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(formSlide, {
         toValue: 0,
@@ -124,6 +138,7 @@ export default function SignupScreen() {
         delay: 200,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
     ]).start();
   }, []);
@@ -145,6 +160,7 @@ export default function SignupScreen() {
       duration: 280,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
+      isInteraction: false,
     }).start();
   }, [userType]);
 
@@ -153,18 +169,19 @@ export default function SignupScreen() {
     return next || '/(tabs)/me';
   }, [params.next]);
 
-  const [pendingNavigation, setPendingNavigation] = useState(false);
-
-  useEffect(() => {
-    if (pendingNavigation && status === 'authenticated' && user) {
-      if (hasActiveBrandMembership(user)) {
-        router.replace('/catalog' as any);
-      } else {
-        router.replace(nextPath as any);
-      }
-      setPendingNavigation(false);
-    }
-  }, [pendingNavigation, status, user, nextPath]);
+  // Route the instant the session is established (signUp/Google resolve only
+  // after the auth context has set the token + user), so the destination paints
+  // its own skeleton immediately and the welcome toast lands over it — instead
+  // of leaving the user on the signup form waiting for a status-driven effect.
+  const navigateAfterAuth = useCallback(() => {
+    // A brand-new account always lands on its own home surface, never on
+    // `next`. `next` is a "return to what you were doing" hint carried in from
+    // an auth guard, and for a first-time signup there is nothing to return to
+    // — it dropped users onto transient screens like /notifications, which is
+    // an empty, contextless first impression of the app. Login still honours it.
+    const target = userType === 'BRAND' ? '/catalog' : '/(tabs)/me';
+    router.replace(target as any);
+  }, [userType]);
 
   const onSubmit = async () => {
     const newErrors: Record<string, string> = {};
@@ -219,8 +236,8 @@ export default function SignupScreen() {
         ...(userType === 'BRAND' ? { brandFullName: trimmedBrandName } : {}),
         legalAcceptances,
       });
-      toast.success('Welcome to WEAZ! 🎉');
-      setPendingNavigation(true);
+      navigateAfterAuth();
+      toast.success('Welcome to WIEZ! 🎉');
     } catch (e: any) {
       const message =
         typeof e?.message === 'string' ? e.message : 'Signup failed. Please try again.';
@@ -257,29 +274,46 @@ export default function SignupScreen() {
     setErrors({});
     setGoogleSubmitting(true);
     try {
-      const idToken = await googleTokenRequest.requestGoogleIdToken();
+      const idToken = await googleTokenRequest.requestGoogleIdToken({
+        intent: 'SIGNUP',
+        type: userType ?? 'REGULAR',
+        ...(userType === 'BRAND' ? { brandFullName: trimmedBrandName } : {}),
+      });
       const legalAcceptances = await getRequiredLegalAcceptances(
         LEGAL_SIGNUP_DOCUMENT_KEYS,
       );
       await signInWithGoogle({
         idToken,
+        intent: 'SIGNUP',
         type: userType ?? 'REGULAR',
         ...(userType === 'BRAND' ? { brandFullName: trimmedBrandName } : {}),
         legalAcceptances,
       });
-      toast.success('Welcome to WEAZ!');
-      setPendingNavigation(true);
-    } catch (e: any) {
-      const message =
-        typeof e?.message === 'string' ? e.message : 'Google signup could not be completed.';
-      toast.error(message);
+      navigateAfterAuth();
+      toast.success('Welcome to WIEZ!');
+    } catch (error) {
+      // Backing out of the Google sheet is a decision, not a failure.
+      if (error instanceof GoogleSignInError && error.reason === 'cancelled') {
+        return;
+      }
+
+      // The mirror of login's `GOOGLE_NO_ACCOUNT`: this email already has a
+      // WIEZ account, and signup will never quietly log into it. Send them to
+      // the screen that can actually get them in.
+      if (error instanceof AuthRequestError && error.code === 'EMAIL_ALREADY_EXISTS') {
+        toast.info('That email already has a WIEZ account — log in to continue.');
+        router.replace('/(auth)/login');
+        return;
+      }
+
+      toast.error(getAuthErrorMessage(error));
     } finally {
       setGoogleSubmitting(false);
     }
   };
 
   const isBrand = userType === 'BRAND';
-  const ctaTitle = isBrand ? 'CREATE BRAND' : 'JOIN WEAZ';
+  const ctaTitle = isBrand ? 'CREATE BRAND' : 'JOIN WIEZ';
 
   // Theme-derived colors
   const bgGradient = [theme.colors.bg, theme.colors.bg, theme.colors.bg] as const;
@@ -303,26 +337,35 @@ export default function SignupScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      <KeyboardAwareScrollView
-        enableOnAndroid={true}
-        extraScrollHeight={tokens.spacing['2xl']}
-        enableResetScrollToCoords={false}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAwareFormScroll
+        bottomOffset={tokens.spacing['2xl']}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + tokens.spacing.lg, paddingBottom: insets.bottom + tokens.spacing['3xl'] },
+          {
+            paddingTop: insets.top + tokens.spacing.lg,
+            // Floor the inset before padding on top of it. Android edge-to-edge
+            // with gesture nav reports a bottom inset of ~16 while the swipe
+            // handle occupies more than that, so `insets.bottom + 3xl` left the
+            // "SIGN IN" link sitting in the gesture strip — tappable in theory,
+            // swipe-to-home in practice.
+            paddingBottom: Math.max(insets.bottom, tokens.spacing.xl) + tokens.spacing['3xl'],
+          },
         ]}
       >
         {/* ── Logo — icon only, top left ── */}
         <Animated.View style={[styles.logoRow, { opacity: logoOpacity }]}>
           <Pressable
-            onPress={() => router.replace('/')}
-            style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+            onPress={authFlow.guard(() => router.replace('/'))}
+            disabled={authFlow.busy}
+            style={({ pressed }) => [
+              pressed && { opacity: 0.7 },
+              authFlow.busy && styles.linkBlocked,
+            ]}
             accessibilityRole="button"
             accessibilityLabel="Go to home"
+            accessibilityState={{ disabled: authFlow.busy }}
           >
-            <WeazLogo size={36} />
+            <WiezMark size={36} />
           </Pressable>
         </Animated.View>
 
@@ -497,16 +540,22 @@ export default function SignupScreen() {
             </Pressable>
             <View style={styles.legalLinksRow}>
               <Pressable
-                onPress={() => router.push('/legal/terms' as never)}
+                onPress={authFlow.guard(() => drillDownPush('/legal/terms' as never))}
+                disabled={authFlow.busy}
+                style={authFlow.busy ? styles.linkBlocked : undefined}
                 accessibilityRole="button"
                 accessibilityLabel="View Terms of Service"
+                accessibilityState={{ disabled: authFlow.busy }}
               >
                 <AppText variant="captionBold" tone="primary">View Terms</AppText>
               </Pressable>
               <Pressable
-                onPress={() => router.push('/legal/privacy' as never)}
+                onPress={authFlow.guard(() => drillDownPush('/legal/privacy' as never))}
+                disabled={authFlow.busy}
+                style={authFlow.busy ? styles.linkBlocked : undefined}
                 accessibilityRole="button"
                 accessibilityLabel="View Privacy Policy"
+                accessibilityState={{ disabled: authFlow.busy }}
               >
                 <AppText variant="captionBold" tone="primary">View Privacy</AppText>
               </Pressable>
@@ -521,26 +570,25 @@ export default function SignupScreen() {
             <View style={{ marginTop: tokens.spacing.xl }}>
               <PrimaryAuthButton
                 title={ctaTitle}
-                onPress={onSubmit}
+                onPress={() => authFlow.run('signup', onSubmit)}
                 loading={submitting || status === 'loading'}
-                disabled={submitting || status === 'loading'}
+                disabled={authFlow.busy || submitting || status === 'loading'}
               />
             </View>
 
             <View style={styles.googleAction}>
-              <Button
-                title="Continue with Google"
-                variant="outline"
-                onPress={onGoogleSignup}
+              <GoogleSignInButton
+                onPress={() => authFlow.run('google', onGoogleSignup)}
                 loading={googleSubmitting}
-                disabled={!googleTokenRequest.configured || !googleTokenRequest.ready || googleSubmitting}
-                fullWidth
-                left={<GoogleMark />}
+                disabled={authFlow.busy && !googleSubmitting}
+                label="Sign up with Google"
                 testID="signup-google-button"
               />
-              {__DEV__ && !googleTokenRequest.configured ? (
+              {/* See the twin in login.tsx — deliberately not __DEV__-gated. */}
+              {!googleTokenRequest.configured ? (
                 <AppText variant="caption" tone="warning" style={styles.googleConfigText}>
-                  Google signup needs public Google client IDs in this build.
+                  Google sign-up isn&apos;t available in this version of the app.
+                  {__DEV__ ? ' Set EXPO_PUBLIC_GOOGLE_*_CLIENT_ID and restart Metro.' : ''}
                 </AppText>
               ) : null}
             </View>
@@ -549,16 +597,21 @@ export default function SignupScreen() {
             <View style={styles.footerRow}>
               <AppText variant="body" tone="muted">Already a member?</AppText>
               <Pressable
-                onPress={() => router.replace({ pathname: '/(auth)/login', params: { next: nextPath } })}
+                onPress={authFlow.guard(() =>
+                  router.replace({ pathname: '/(auth)/login', params: { next: nextPath } }),
+                )}
+                disabled={authFlow.busy}
+                style={authFlow.busy ? styles.linkBlocked : undefined}
                 accessibilityRole="button"
                 accessibilityLabel="Sign in to existing account"
+                accessibilityState={{ disabled: authFlow.busy }}
               >
                 <AppText variant="bodyBold" tone="primary" style={styles.footerLink}>{'  '}SIGN IN →</AppText>
               </Pressable>
             </View>
           </View>
         </Animated.View>
-      </KeyboardAwareScrollView>
+      </KeyboardAwareFormScroll>
     </View>
   );
 }
@@ -594,7 +647,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     marginTop: tokens.spacing.xs,
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.40,
     shadowRadius: 24,
@@ -672,6 +725,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexWrap: 'wrap',
+  },
+  /** See the twin in `login.tsx` — the visible half of `authFlow.guard`. */
+  linkBlocked: {
+    opacity: 0.4,
   },
   footerLink: {
     letterSpacing: 0.5,

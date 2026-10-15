@@ -97,6 +97,7 @@ export function StableImage({
       toValue: 1,
       duration: fadeDuration,
       useNativeDriver: true,
+      isInteraction: false,
     }).start();
   }, [displayOpacity, fadeDuration]);
 
@@ -108,6 +109,7 @@ export function StableImage({
       toValue: 1,
       duration: fadeDuration,
       useNativeDriver: true,
+      isInteraction: false,
     }).start(({ finished }) => {
       if (!finished) return;
       setDisplayUri(nextUri);

@@ -2,26 +2,56 @@ const fs = require('fs');
 const path = require('path');
 const ts = require('typescript');
 
-const strategyPath = path.join(__dirname, '..', 'src', 'components', 'media', 'aspectAwareMediaStrategy.ts');
-const source = fs.readFileSync(strategyPath, 'utf8');
-const transpiled = ts.transpileModule(source, {
-  compilerOptions: {
-    module: ts.ModuleKind.CommonJS,
-    target: ts.ScriptTarget.ES2020,
-    strict: true,
-  },
-  fileName: strategyPath,
-});
+const projectRoot = path.join(__dirname, '..');
+const moduleCache = new Map();
 
-const moduleShim = { exports: {} };
-const evaluate = new Function('exports', 'require', 'module', '__filename', '__dirname', transpiled.outputText);
-evaluate(moduleShim.exports, require, moduleShim, strategyPath, path.dirname(strategyPath));
+function loadTsModule(filePath) {
+  const resolvedPath = path.resolve(filePath);
+  if (moduleCache.has(resolvedPath)) return moduleCache.get(resolvedPath).exports;
+
+  const source = fs.readFileSync(resolvedPath, 'utf8');
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      strict: true,
+    },
+    fileName: resolvedPath,
+  });
+  const moduleShim = { exports: {} };
+  moduleCache.set(resolvedPath, moduleShim);
+  const localRequire = (request) => {
+    if (request.startsWith('@/')) {
+      return loadTsModule(path.join(projectRoot, request.slice(2) + '.ts'));
+    }
+    if (request.startsWith('.')) {
+      return loadTsModule(path.join(path.dirname(resolvedPath), request + '.ts'));
+    }
+    return require(request);
+  };
+  const evaluate = new Function('exports', 'require', 'module', '__filename', '__dirname', transpiled.outputText);
+  evaluate(moduleShim.exports, localRequire, moduleShim, resolvedPath, path.dirname(resolvedPath));
+  return moduleShim.exports;
+}
+
+const strategyPath = path.join(projectRoot, 'src', 'components', 'media', 'aspectAwareMediaStrategy.ts');
+const moduleShim = { exports: loadTsModule(strategyPath) };
 
 const {
   getContainerAspectBucket,
   getImageAspectClass,
   resolveMediaStrategy,
 } = moduleShim.exports;
+const {
+  RUNWAY_FILL_MAX_ASPECT,
+  RUNWAY_SAFE_COVER_CROP_TOLERANCE,
+  resolveRunwayMediaStrategy,
+  shouldRunwayMediaFill,
+} = loadTsModule(path.join(projectRoot, 'src', 'features', 'feed', 'media', 'runwayMediaStrategy.ts'));
+const {
+  buildFeedImageCacheKey,
+  resolveFeedImageSourcePolicy,
+} = loadTsModule(path.join(projectRoot, 'src', 'features', 'feed', 'media', 'feedImageSourcePolicy.ts'));
 
 const bucketAspects = {
   'ultra-tall': 0.4,
@@ -42,55 +72,62 @@ const imageAspects = {
   'ultra-wide': 2,
 };
 
+// Phase 10 contract: square media must never share landscape's treatment.
+//   • edge        → immersive cover (crop <= 0.28 of the image)
+//   • letter-solid → contained image on a clean dominant-color matte (square / non-fitting portrait)
+//   • letter-blur  → contained image on a subtle, image-reflective blur (landscape / ultra-wide)
 const matrix = {
+  // Portrait media only edge-fills when the cover crop stays within tolerance
+  // (<= 0.28). Beyond that it contains on the solid matte — cover-filling badly
+  // mismatched portrait media hid 30%+ of near-square shots off-screen.
   'ultra-portrait': {
     'ultra-tall': 'edge',
     tall: 'edge',
-    'standard-tall': 'contain-blur',
-    'near-square-portrait': 'contain-blur',
-    'square-ish': 'contain-blur',
-    'near-square-landscape': 'contain-blur',
-    wide: 'contain-blur',
-    'ultra-wide': 'contain-blur',
+    'standard-tall': 'letter-solid',
+    'near-square-portrait': 'letter-solid',
+    'square-ish': 'letter-solid',
+    'near-square-landscape': 'letter-solid',
+    wide: 'letter-solid',
+    'ultra-wide': 'letter-solid',
   },
   portrait: {
-    'ultra-tall': 'edge',
-    tall: 'edge',
+    'ultra-tall': 'letter-solid',
+    tall: 'letter-solid',
     'standard-tall': 'edge',
-    'near-square-portrait': 'contain-blur',
-    'square-ish': 'contain-blur',
-    'near-square-landscape': 'contain-blur',
-    wide: 'contain-blur',
-    'ultra-wide': 'contain-blur',
+    'near-square-portrait': 'edge',
+    'square-ish': 'letter-solid',
+    'near-square-landscape': 'letter-solid',
+    wide: 'letter-solid',
+    'ultra-wide': 'letter-solid',
   },
   square: {
     'ultra-tall': 'letter-soft',
     tall: 'letter-soft',
-    'standard-tall': 'contain-blur',
+    'standard-tall': 'letter-soft',
     'near-square-portrait': 'edge',
     'square-ish': 'edge',
-    'near-square-landscape': 'contain-blur',
-    wide: 'contain-blur',
-    'ultra-wide': 'contain-blur',
+    'near-square-landscape': 'edge',
+    wide: 'letter-soft',
+    'ultra-wide': 'letter-soft',
   },
   landscape: {
-    'ultra-tall': 'letter-solid',
-    tall: 'letter-solid',
-    'standard-tall': 'letter-solid',
+    'ultra-tall': 'letter-blur',
+    tall: 'letter-blur',
+    'standard-tall': 'letter-blur',
     'near-square-portrait': 'letter-blur',
     'square-ish': 'letter-blur',
     'near-square-landscape': 'edge',
     wide: 'edge',
-    'ultra-wide': 'contain-blur',
+    'ultra-wide': 'letter-blur',
   },
   'ultra-wide': {
-    'ultra-tall': 'letter-solid',
-    tall: 'letter-solid',
-    'standard-tall': 'letter-solid',
-    'near-square-portrait': 'letter-solid',
+    'ultra-tall': 'letter-blur',
+    tall: 'letter-blur',
+    'standard-tall': 'letter-blur',
+    'near-square-portrait': 'letter-blur',
     'square-ish': 'letter-blur',
     'near-square-landscape': 'letter-blur',
-    wide: 'letter-blur',
+    wide: 'edge',
     'ultra-wide': 'edge',
   },
 };
@@ -127,18 +164,31 @@ for (const [imageClass, byBucket] of Object.entries(matrix)) {
 check(
   'unknown image aspect with known container',
   resolveMediaStrategy({ containerWidth: 400, containerHeight: 600 }),
-  'contain-blur',
+  'letter-solid',
 );
 check(
   'invalid image dimensions with known container',
   resolveMediaStrategy({ containerWidth: 400, containerHeight: 600, imageWidth: 0, imageHeight: 800 }),
-  'contain-blur',
+  'letter-solid',
 );
 check(
   'missing all dimensions',
   resolveMediaStrategy({ containerWidth: 0, containerHeight: 0 }),
+  'letter-solid',
+);
+check(
+  'known portrait image before container is measured stays immersive',
+  resolveMediaStrategy({ containerWidth: 0, containerHeight: 0, imageAspectRatio: 0.7 }),
   'edge',
 );
+// Square and landscape must resolve to DIFFERENT strategies (subtle vs stronger ambient).
+const squareRunway = resolveMediaStrategy({ containerWidth: 500, containerHeight: 1000, imageAspectRatio: 1 });
+const landscapeRunway = resolveMediaStrategy({ containerWidth: 500, containerHeight: 1000, imageAspectRatio: 1.4 });
+check('square media in a tall runway container uses the subtle ambient', squareRunway, 'letter-soft');
+check('landscape media in a tall runway container uses the stronger ambient', landscapeRunway, 'letter-blur');
+if (squareRunway === landscapeRunway) {
+  failures.push('square and landscape must not share the same strategy value');
+}
 check(
   'override strategy',
   resolveMediaStrategy({
@@ -148,6 +198,177 @@ check(
     override: 'letter-solid',
   }),
   'letter-solid',
+);
+
+const unknownRunway = resolveRunwayMediaStrategy({ viewportWidth: 400, viewportHeight: 800 });
+check('runway unknown stays unknown', unknownRunway.imageClass, 'unknown');
+check('runway unknown uses safe matte', unknownRunway.strategy, 'letter-solid');
+check('runway unknown has no fake aspect', unknownRunway.imageAspectRatio, null);
+
+const safePortraitRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 400,
+  viewportHeight: 800,
+  imageAspectRatio: 0.55,
+});
+check('runway portrait within crop tolerance uses edge', safePortraitRunway.strategy, 'edge');
+if (safePortraitRunway.coverCropFraction > RUNWAY_SAFE_COVER_CROP_TOLERANCE) {
+  failures.push('runway edge strategy exceeded the safe crop tolerance');
+}
+
+// RUNWAY FIT POLICY (2026-08-04) — decided by image SHAPE, not crop percentage.
+//
+//   tall (aspect < RUNWAY_FILL_MAX_ASPECT)  → 'edge', fills the screen
+//   square-favouring (3:4, 4:5, 1:1)        → 'letter-solid', padded uncropped
+//   landscape / wide                        → 'letter-solid', padded uncropped
+//
+// This supersedes the old 0.12/0.20 crop caps, which put a cliff in the middle
+// of the common phone-photo range (0.5235 filled, 0.5625 letterboxed — the
+// "inconsistent rendering" report). Blur/soft ambient backdrops stay banned.
+//
+// The SAME numbers are duplicated in the web twin,
+// fthreadly/src/components/runway/runwayMediaFit.ts. Change both together.
+const nearSquarePortraitRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 400,
+  viewportHeight: 800,
+  imageAspectRatio: 0.75, // 3:4 — "favours square", must stay whole
+});
+const tallPortraitRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 400,
+  viewportHeight: 800,
+  imageAspectRatio: 2 / 3, // 0.667 — a vertical shot, must fill
+});
+const tallPhonePortraitRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 450,
+  viewportHeight: 1000,
+  imageAspectRatio: 9 / 16,
+});
+const squareSpecificRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 400,
+  viewportHeight: 800,
+  imageAspectRatio: 1,
+});
+const landscapeSpecificRunway = resolveRunwayMediaStrategy({
+  viewportWidth: 400,
+  viewportHeight: 800,
+  imageAspectRatio: 1.4,
+});
+check('runway 3:4 pads rather than crops', nearSquarePortraitRunway.strategy, 'letter-solid');
+check('runway 2:3 fills the stage', tallPortraitRunway.strategy, 'edge');
+check('runway 9:16 on a 20:9 phone stays immersive', tallPhonePortraitRunway.strategy, 'edge');
+check('runway square uses the solid black matte', squareSpecificRunway.strategy, 'letter-solid');
+check('runway landscape uses the solid black matte', landscapeSpecificRunway.strategy, 'letter-solid');
+
+// The cliff regression guard: the two neighbouring shots that used to land on
+// opposite sides of the old 0.20 crop cap must now agree. Both are tall.
+const cliffLow = resolveRunwayMediaStrategy({
+  viewportWidth: 411,
+  viewportHeight: 937,
+  imageAspectRatio: 0.5235,
+});
+const cliffHigh = resolveRunwayMediaStrategy({
+  viewportWidth: 411,
+  viewportHeight: 937,
+  imageAspectRatio: 0.5625,
+});
+check('runway neighbouring tall shots agree (low)', cliffLow.strategy, 'edge');
+check('runway neighbouring tall shots agree (high)', cliffHigh.strategy, 'edge');
+
+// Shape decision must be viewport-independent, so the pre-layout paint and the
+// settled paint agree and no image visibly re-fits after measurement.
+for (const aspect of [9 / 16, 2 / 3, 0.75, 1, 1.4]) {
+  const measured = resolveRunwayMediaStrategy({
+    viewportWidth: 411,
+    viewportHeight: 937,
+    imageAspectRatio: aspect,
+  }).strategy;
+  const unmeasured = resolveRunwayMediaStrategy({ imageAspectRatio: aspect }).strategy;
+  if (measured !== unmeasured) {
+    failures.push(
+      `runway aspect ${aspect} re-fits after measurement (${unmeasured} → ${measured})`,
+    );
+  }
+  const expectedFill = shouldRunwayMediaFill(aspect);
+  if ((measured === 'edge') !== expectedFill) {
+    failures.push(`runway aspect ${aspect} disagrees with shouldRunwayMediaFill`);
+  }
+}
+
+if (!(RUNWAY_FILL_MAX_ASPECT > 2 / 3 && RUNWAY_FILL_MAX_ASPECT <= 0.75)) {
+  failures.push(
+    'RUNWAY_FILL_MAX_ASPECT must keep 2:3 filling and 3:4 padded; the web twin ' +
+      'fthreadly/src/components/runway/runwayMediaFit.ts must carry the same value',
+  );
+}
+
+for (const [label, result] of [
+  ['near-square portrait', nearSquarePortraitRunway],
+  ['square', squareSpecificRunway],
+  ['landscape', landscapeSpecificRunway],
+]) {
+  if (result.strategy === 'letter-blur' || result.strategy === 'letter-soft') {
+    failures.push(`runway ${label} must never use a blurred/soft ambient backdrop`);
+  }
+}
+
+// Feed image tiering is DETAIL-FIRST as of 2026-07-27. These assertions used to
+// describe the older progressive path (start on the card tier, upgrade to detail
+// once the page went active) and were left behind when the policy changed, so
+// this file had been failing ever since.
+//
+// The upgrade was removed on purpose: swapping tiers after activation changed the
+// ExpoImage recyclingKey + cacheKey and remounted the image every time a page
+// became active — the per-scroll "blink", which also repeated on revisit when
+// windowSize-evicted rows remounted. A lower tier still rides along as the
+// placeholder so the decode gap shows a soft image rather than a black frame.
+//
+// `hasDetailUpgrade === false` is the anti-blink invariant. If it ever reads true
+// again, the blink is back.
+const progressiveSources = resolveFeedImageSourcePolicy({
+  displayUrl: 'https://cdn.threadly.test/look-detail.webp',
+  previewUrl: 'https://cdn.threadly.test/look-card.webp',
+  thumbnailUrl: 'https://cdn.threadly.test/look-thumb.webp',
+});
+check('feed source starts at the detail tier', progressiveSources.initialUrl, 'https://cdn.threadly.test/look-detail.webp');
+check('feed source reports the detail tier', progressiveSources.initialTier, 'detail');
+check('feed source detail target equals the initial url', progressiveSources.detailUrl, 'https://cdn.threadly.test/look-detail.webp');
+check('feed source uses the best sub-tier as placeholder', progressiveSources.placeholderUrl, 'https://cdn.threadly.test/look-card.webp');
+check('feed source must not re-introduce a per-activation upgrade', progressiveSources.hasDetailUpgrade, false);
+
+// Degradation path: the policy has to start at the best tier that actually
+// exists, and must never hand back a placeholder identical to the image it is
+// standing in for (that would render the same decode twice).
+const previewOnlySources = resolveFeedImageSourcePolicy({
+  displayUrl: null,
+  previewUrl: 'https://cdn.threadly.test/look-card.webp',
+  thumbnailUrl: 'https://cdn.threadly.test/look-thumb.webp',
+});
+check('preview-only source starts at the preview tier', previewOnlySources.initialUrl, 'https://cdn.threadly.test/look-card.webp');
+check('preview-only source reports the preview tier', previewOnlySources.initialTier, 'preview');
+check('preview-only source falls back to the thumbnail placeholder', previewOnlySources.placeholderUrl, 'https://cdn.threadly.test/look-thumb.webp');
+check('preview-only source has no upgrade', previewOnlySources.hasDetailUpgrade, false);
+
+const thumbnailOnlySources = resolveFeedImageSourcePolicy({
+  displayUrl: '   ',
+  previewUrl: null,
+  thumbnailUrl: 'https://cdn.threadly.test/look-thumb.webp',
+});
+check('blank display url is treated as absent', thumbnailOnlySources.initialUrl, 'https://cdn.threadly.test/look-thumb.webp');
+check('thumbnail-only source reports the thumbnail tier', thumbnailOnlySources.initialTier, 'thumbnail');
+check('thumbnail-only source has no duplicate placeholder', thumbnailOnlySources.placeholderUrl, null);
+
+const singleTierSources = resolveFeedImageSourcePolicy({
+  displayUrl: 'https://cdn.threadly.test/look-detail.webp',
+  previewUrl: 'https://cdn.threadly.test/look-detail.webp',
+  thumbnailUrl: null,
+});
+check('placeholder must not repeat the initial url', singleTierSources.placeholderUrl, null);
+check(
+  'signed URL query does not fragment cache key',
+  buildFeedImageCacheKey({
+    url: 'https://cdn.threadly.test/look-card.webp?X-Amz-Signature=one',
+    tier: 'preview',
+  }),
+  'runway:preview:https://cdn.threadly.test/look-card.webp',
 );
 
 if (failures.length > 0) {

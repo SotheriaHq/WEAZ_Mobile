@@ -1,19 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions, Linking, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import QRCode from 'react-native-qrcode-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
+import { ContactMarker } from '@/components/ui/PlatformMark';
 import { BrandBadgeRail, type ProfileBadgeModel } from '@/components/catalog/ProfileBadge';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import type { ProfilePhotoViewState } from '@/src/types/profilePhoto';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 const BRAND_DESCRIPTION_PREVIEW_LINES = 2;
 const BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH = 120;
@@ -27,6 +29,16 @@ export type BrandHeaderContactItem = {
   label: string;
   value: string;
 };
+
+/**
+ * Horizontal space the banner's edit control occupies, plus breathing room.
+ *
+ * Derived from `bannerEditControl` (right: spacing.lg) and `bannerEditButton`
+ * (width 34). Keep this in step with those two, or the brand name starts
+ * sliding under the button again on narrow screens.
+ */
+const BANNER_EDIT_CONTROL_CLEARANCE =
+  tokens.spacing.lg + 34 + tokens.spacing.sm;
 
 export type BrandProfileHeaderProps = {
   brandName: string;
@@ -51,10 +63,14 @@ export type BrandProfileHeaderProps = {
   onPatch?: () => void;
   onMessage?: () => void;
   onEditProfile?: () => void;
-  onCreate?: () => void;
+  onCreate?: (e?: any) => void;
   createAnchorRef?: React.RefObject<View | null>;
   onCreateAnchorLayout?: () => void;
   onShare?: () => void;
+  /** Role-aware compact three-dot menu. The caller supplies only actions allowed
+   *  for the current owner, shopper, or public viewer. */
+  onOpenMenu?: (event?: any) => void;
+  menuAnchorRef?: React.RefObject<View | null>;
   qrTargetUrl?: string | null;
   onOpenQr?: () => void;
   onBack?: () => void;
@@ -62,6 +78,8 @@ export type BrandProfileHeaderProps = {
   onViewAvatar?: () => void;
   onEditAvatar?: () => void;
   onEditBanner?: () => void;
+  onNotifications?: () => void;
+  unreadNotificationCount?: number;
 };
 
 function compactInitials(value: string) {
@@ -96,23 +114,38 @@ function StoreStatusBadge({ badge }: { badge: ProfileBadgeModel | null }) {
   const isOpen = badge.variant.includes('open');
   const isClosed = badge.variant.includes('closed');
   const color = isOpen ? theme.colors.success : isClosed ? theme.colors.textMuted : theme.colors.warning;
-  const label = isOpen ? 'Open' : isClosed ? 'Closed' : 'Limited or custom-only';
+  const label = isOpen ? 'Open' : isClosed ? 'Closed' : 'Limited';
+  const fullLabel = isOpen ? 'Open' : isClosed ? 'Closed' : 'Limited or custom-only';
 
+  /*
+    This used to be a colour-only square with no text — green, grey or yellow,
+    and nothing else. Nobody can read it. It sat directly beside the brand's
+    name, so the first question every viewer had about a brand header was "what
+    is that green thing", which is the exact opposite of what a status indicator
+    is for; the legend was hidden behind a tap most people will never make, and
+    a colour-only cue is unreadable to anyone with a red/green deficiency
+    regardless.
+
+    The dot survives as the colour cue and now carries its own word. The tap
+    still explains the full vocabulary, because "Limited" is genuinely worth a
+    sentence.
+  */
   return (
     <Pressable
-      onPress={() => toast.info('Store status: green means Open, gray means Closed, yellow means Limited or custom-only.')}
+      onPress={() =>
+        toast.info(
+          'Store status — Open: taking orders. Closed: not taking orders right now. Limited: custom-only or partly available.',
+        )
+      }
       hitSlop={tokens.spacing.sm}
       accessibilityRole="button"
-      accessibilityLabel={`${label}. Tap for store status legend.`}
+      accessibilityLabel={`Store ${fullLabel}. Tap for store status legend.`}
       style={styles.storeStatusButton}
     >
-      {/* Color-only wavy square: green=open, gray=closed, yellow=limited/custom-only. */}
-      <View style={[styles.storeStatusBadge, { backgroundColor: color }]}>
-        <View style={[styles.storeStatusCorner, styles.storeStatusCornerTopLeft, { backgroundColor: color }]} />
-        <View style={[styles.storeStatusCorner, styles.storeStatusCornerTopRight, { backgroundColor: color }]} />
-        <View style={[styles.storeStatusCorner, styles.storeStatusCornerBottomLeft, { backgroundColor: color }]} />
-        <View style={[styles.storeStatusCorner, styles.storeStatusCornerBottomRight, { backgroundColor: color }]} />
-      </View>
+      <View style={[styles.storeStatusDot, { backgroundColor: color }]} />
+      <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+        {label}
+      </AppText>
     </Pressable>
   );
 }
@@ -123,12 +156,14 @@ function HeaderIconButton({
   onPress,
   disabled = false,
   bare = false,
+  badgeCount,
 }: {
   label: string;
   value: string;
   onPress?: () => void;
   disabled?: boolean;
   bare?: boolean;
+  badgeCount?: number;
 }) {
   const { theme } = useTheme();
 
@@ -142,17 +177,28 @@ function HeaderIconButton({
         styles.headerIconButton,
         bare && styles.headerIconButtonBare,
         {
-          backgroundColor: bare ? 'transparent' : theme.colors.glassSurfaceStrong,
-          borderColor: bare ? 'transparent' : theme.colors.glassBorder,
+          backgroundColor: bare ? 'transparent' : tokens.scrim(0.28),
+          borderColor: bare ? 'transparent' : tokens.tintLight(0.15),
           opacity: disabled ? 0.55 : pressed ? 0.78 : 1,
         },
       ]}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <AppText variant="subtitle" tone="default" style={styles.headerIconText}>
+      {/* `tone`, not a colour override: AppText owns colour, and the glyph is
+          an emoji, which renders in its own palette regardless. */}
+      <AppText variant="bodyReadable" tone={bare ? 'default' : 'inverse'} style={styles.headerIconText}>
         {value}
       </AppText>
+      {typeof badgeCount === 'number' && badgeCount > 0 ? (
+        // Notification count: no background pill — the number renders in the
+        // system/brand color and bold, matching the runway + island convention.
+        <View style={styles.headerIconBadge} pointerEvents="none">
+          <AppText variant="badgeLabel" tone="primary" style={styles.headerIconBadgeText}>
+            {badgeCount > 99 ? '99+' : badgeCount}
+          </AppText>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -167,9 +213,13 @@ function BannerHeader({
   onBack,
   onSearch,
   onShare,
+  onOpenMenu,
+  menuAnchorRef,
   qrTargetUrl,
   onOpenQr,
   onEditBanner,
+  onNotifications,
+  unreadNotificationCount,
 }: Pick<
   BrandProfileHeaderProps,
   | 'brandName'
@@ -181,22 +231,22 @@ function BannerHeader({
   | 'onBack'
   | 'onSearch'
   | 'onShare'
+  | 'onOpenMenu'
+  | 'menuAnchorRef'
   | 'qrTargetUrl'
   | 'onOpenQr'
   | 'onEditBanner'
+  | 'onNotifications'
+  | 'unreadNotificationCount'
 >) {
   const { scheme, theme } = useTheme();
-  const { width: viewportWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const resolvedBanner = useResolvedImageUri({
     src: bannerUrl,
     fileId: bannerFileId ?? undefined,
     allowSignedFallback: isOwner,
   });
   const storeStatusBadge = getStoreStatusBadge(badges ?? []);
-  const isCompactPhone = viewportWidth < 390;
-  const isTablet = viewportWidth >= 700;
-  const qrPanelSize = isTablet ? 136 : isCompactPhone ? 92 : 106;
-  const qrCodeSize = isTablet ? 112 : isCompactPhone ? 72 : 84;
 
   return (
     <View style={[styles.bannerWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -219,91 +269,52 @@ function BannerHeader({
       </View>
 
       <View style={[styles.bannerShade, { backgroundColor: theme.colors.backdrop }]} />
+      {/* A shimmer, not a status report.
+          This was a blurred overlay carrying a pill that said "Uploading" —
+          chrome announcing a background task the user already knows they
+          started, sitting on top of the image they are trying to see. A
+          skeleton says the same thing without words, and because it is the
+          shape of the thing being loaded it simply stops when the picture is
+          there. No transition to narrate, nothing to read. */}
       {bannerLoading ? (
-        <View style={styles.bannerLoadingOverlay} pointerEvents="none">
-          <BlurView
-            intensity={18}
-            tint={scheme === 'dark' ? 'dark' : 'light'}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={[styles.loadingPill, { backgroundColor: theme.colors.glassSurfaceStrong }]}>
-            <ActivityIndicator size="small" color={theme.colors.primary} />
-            <AppText variant="captionBold" tone="default">
-              Uploading
-            </AppText>
-          </View>
-        </View>
+        <Skeleton style={styles.bannerLoadingOverlay} borderRadius={0} />
       ) : null}
 
-      <View style={styles.bannerControls}>
-        <HeaderIconButton label="Go back" value="‹" onPress={onBack} bare />
+      <View style={[styles.bannerControls, { top: insets.top }]}>
+        <HeaderIconButton label="Go back" value="👈" onPress={onBack} />
         <View style={styles.bannerRightControls}>
-          {!isOwner ? (
-            <HeaderIconButton label="Search" value="🔍" onPress={onSearch} bare />
-          ) : null}
-          <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} bare />
+          {onNotifications ? (
+            <HeaderIconButton label="Notifications" value="🔔" onPress={onNotifications} badgeCount={unreadNotificationCount} />
+          ) : (
+            <HeaderIconButton label="Search" value="🔍" onPress={onSearch} />
+          )}
+          {onOpenMenu ? (
+            <View ref={menuAnchorRef} collapsable={false}>
+              <HeaderIconButton label="More options" value="⋯" onPress={onOpenMenu} />
+            </View>
+          ) : (
+            <HeaderIconButton label="Share brand" value="⋯" onPress={onShare} />
+          )}
         </View>
       </View>
 
-      {qrTargetUrl || onOpenQr ? (
-        <View
-          pointerEvents="box-none"
-          style={[
-            styles.bannerQrSlot,
-            {
-              width: qrPanelSize,
-              height: qrPanelSize,
-              right: tokens.spacing.lg,
-              top: isTablet ? 68 : 72,
-            },
-          ]}
-        >
-          <Pressable
-            onPress={onOpenQr}
-            disabled={!onOpenQr}
-            style={({ pressed }) => [
-              styles.qrButton,
-              {
-                width: qrPanelSize,
-                height: qrPanelSize,
-                backgroundColor: qrTargetUrl ? tokens.themes.light.colors.surface : theme.colors.glassSurfaceStrong,
-                borderColor: theme.colors.glassBorder,
-                opacity: pressed ? 0.82 : 1,
-              },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Show brand QR code"
-          >
-            {qrTargetUrl ? (
-              <QRCode
-                value={qrTargetUrl}
-                size={qrCodeSize}
-                color={tokens.themes.light.colors.text}
-                backgroundColor={tokens.themes.light.colors.surface}
-                quietZone={2}
-              />
-            ) : (
-              <View
-                style={[
-                  styles.qrPlaceholder,
-                  {
-                    width: qrCodeSize,
-                    height: qrCodeSize,
-                    backgroundColor: theme.colors.glassSurface,
-                    borderColor: theme.colors.glassBorder,
-                  },
-                ]}
-              >
-                <AppText variant="captionBold" tone="muted">
-                  QR
-                </AppText>
-              </View>
-            )}
-          </Pressable>
-        </View>
-      ) : null}
 
-      <View style={[styles.bannerNameChip, { backgroundColor: 'transparent', borderColor: theme.colors.glassBorder }]}>
+
+      <View
+        style={[
+          styles.bannerNameChip,
+          {
+            backgroundColor: 'transparent',
+            borderColor: theme.colors.glassBorder,
+            // Leave room for the edit control when it is actually rendered,
+            // and reclaim that room for the name when it is not.
+            right:
+              isOwner && onEditBanner
+                ? BANNER_EDIT_CONTROL_CLEARANCE
+                : tokens.spacing.lg,
+          },
+        ]}
+      >
         <BlurView
           intensity={Math.max(14, Math.round(theme.colors.glassBlur * 0.5))}
           tint={scheme === 'dark' ? 'dark' : 'light'}
@@ -314,7 +325,7 @@ function BannerHeader({
           pointerEvents="none"
           style={[
             StyleSheet.absoluteFill,
-            { backgroundColor: scheme === 'dark' ? 'rgba(0,0,0,0.14)' : 'rgba(8,10,18,0.08)' },
+            { backgroundColor: scheme === 'dark' ? tokens.scrim(0.14) : tokens.colors.inkWash },
           ]}
         />
         <AppText variant="title" tone="inverse" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.bannerNameText}>
@@ -414,25 +425,25 @@ function OverlayAvatar({
         )}
       </View>
 
+      {/* Same treatment as the banner: the avatar's own shape, shimmering. */}
       {avatarLoading ? (
-        <View style={[styles.avatarLoading, { backgroundColor: theme.colors.overlay }]} pointerEvents="none">
-          <BlurView
-            intensity={16}
-            tint="dark"
-            style={StyleSheet.absoluteFill}
-          />
-          <ActivityIndicator size="small" color={theme.colors.primary} />
-        </View>
+        <Skeleton style={styles.avatarLoading} borderRadius={tokens.radius.xl - 3} />
       ) : null}
 
       {isOwner && onEditAvatar ? (
+        // No filled chip. The solid purple disc read as a status badge stuck to
+        // the logo rather than a control, and it covered the corner of the image
+        // it was meant to let you change. It now sits in the bottom-right corner
+        // as a bare glyph, kept legible over any photo by a shadow instead of a
+        // background.
         <Pressable
           onPress={onEditAvatar}
-          style={[styles.avatarEditBadge, { backgroundColor: theme.colors.primary, borderColor: theme.colors.surface }]}
+          style={({ pressed }) => [styles.avatarEditBadge, pressed ? styles.pressedControl : null]}
+          hitSlop={tokens.spacing.sm}
           accessibilityRole="button"
           accessibilityLabel="Edit brand logo"
         >
-          <AppText variant="subtitle" tone="inverse">
+          <AppText variant="subtitle" tone="inverse" style={styles.avatarEditGlyph}>
             ✎
           </AppText>
         </Pressable>
@@ -452,7 +463,7 @@ function BrandStatsRow({ stats }: { stats: BrandHeaderStat[] }) {
           {index > 0 ? <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} /> : null}
           <View style={styles.statItem}>
             <AppText
-              variant="smallBold"
+              variant="statValue"
               tone="secondary"
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -462,7 +473,7 @@ function BrandStatsRow({ stats }: { stats: BrandHeaderStat[] }) {
               {stat.value}
             </AppText>
             <AppText
-              variant="captionBold"
+              variant="statLabel"
               tone="muted"
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -529,24 +540,46 @@ function BrandTextTags({ tags }: { tags: string[] }) {
 }
 
 function SideBrandMetaBlock({
+  username,
   location,
   stats,
   tags,
   badges,
+  isOwner,
+  onEditProfile,
 }: {
+  username?: string | null;
   location?: string | null;
   stats: BrandHeaderStat[];
   tags: string[];
   badges: ProfileBadgeModel[];
+  isOwner?: boolean;
+  onEditProfile?: () => void;
 }) {
   const secondaryBadges = badges.filter((badge) => !badge.variant.startsWith('store_'));
+  const handle = username?.trim().replace(/^@+/, '') || '';
+  const locationLabel = location?.trim() || '';
 
   return (
     <View style={styles.metaBlock}>
-      {location ? (
-        <AppText variant="smallBold" tone="secondary" numberOfLines={1} style={styles.locationText}>
-          📍 {location}
+      {handle ? (
+        <AppText variant="smallBold" tone="primary" numberOfLines={1} style={styles.usernameText}>
+          @{handle}
         </AppText>
+      ) : null}
+      {locationLabel ? (
+        <AppText variant="smallBold" tone="secondary" numberOfLines={1} style={styles.locationText}>
+          📍 {locationLabel}
+        </AppText>
+      ) : isOwner && onEditProfile ? (
+        // An owner whose location is blank previously saw nothing at all here —
+        // no row, no hint, no way to tell whether the field was empty or the
+        // header had dropped it. Say which it is, and make it the fix.
+        <Pressable onPress={onEditProfile} accessibilityRole="button" accessibilityLabel="Add your location">
+          <AppText variant="smallBold" tone="primary" numberOfLines={1} style={styles.locationText}>
+            📍 Add your location
+          </AppText>
+        </Pressable>
       ) : null}
 
       <BrandBadgeRail badges={secondaryBadges} />
@@ -578,15 +611,15 @@ function BrandDescription({ description }: { description?: string | null }) {
   return (
     <View style={styles.descriptionWrap}>
       <AppText
-        variant="bodyRegular"
-        tone="secondary"
+        variant="bodyReadable"
+        tone="default"
         numberOfLines={expanded ? undefined : BRAND_DESCRIPTION_PREVIEW_LINES}
       >
         {copy}
       </AppText>
       <AppText
-        variant="bodyRegular"
-        tone="secondary"
+        variant="bodyReadable"
+        tone="default"
         style={styles.descriptionMeasureText}
         onTextLayout={handleMeasuredTextLayout}
         accessible={false}
@@ -597,14 +630,14 @@ function BrandDescription({ description }: { description?: string | null }) {
       </AppText>
       {canExpand && !expanded ? (
         <Pressable onPress={() => setExpanded(true)} accessibilityRole="button" accessibilityLabel="Show full brand description">
-          <AppText variant="bodyBold" tone="primary">
+          <AppText variant="smallBold" tone="primary" style={styles.expandToggle}>
             See more
           </AppText>
         </Pressable>
       ) : null}
       {canExpand && expanded ? (
         <Pressable onPress={() => setExpanded(false)} accessibilityRole="button" accessibilityLabel="Collapse brand description">
-          <AppText variant="bodyBold" tone="primary">
+          <AppText variant="smallBold" tone="primary" style={styles.expandToggle}>
             See less
           </AppText>
         </Pressable>
@@ -613,27 +646,94 @@ function BrandDescription({ description }: { description?: string | null }) {
   );
 }
 
-function BrandContactItems({ items = [] }: { items?: BrandHeaderContactItem[] }) {
-  const { theme } = useTheme();
-  const visibleItems = items.filter((item) => item.value.trim().length > 0);
+/**
+ * Contact-row markers.
+ *
+ * Ours stay emoji (Rule 5). A third-party platform gets that platform's real
+ * mark — see `components/ui/PlatformMark.tsx` for why the emoji stand-ins that
+ * used to live here (📸 for Instagram, 📘 for Facebook) were not a weaker
+ * version of the right glyph but a different symbol pointing somewhere else.
+ */
+function ContactIcon({ label, color }: { label: string; color: string }) {
+  return <ContactMarker label={label} color={color} />;
+}
 
-  if (visibleItems.length === 0) return null;
+function getContactUrl(label: string, value: string): string | null {
+  const normalized = label.trim().toLowerCase();
+  const cleanValue = value.trim();
+  switch (normalized) {
+    case 'instagram': return `https://instagram.com/${cleanValue.replace('@', '')}`;
+    case 'facebook': return `https://facebook.com/${cleanValue}`;
+    case 'x':
+    case 'twitter': return `https://twitter.com/${cleanValue.replace('@', '')}`;
+    case 'email': return `mailto:${cleanValue}`;
+    case 'phone': return `tel:${cleanValue.replace(/[^0-9+]/g, '')}`;
+    case 'website': return cleanValue.startsWith('http') ? cleanValue : `https://${cleanValue}`;
+    default: return null;
+  }
+}
+
+function BrandContactItems({
+  items = [],
+  qrTargetUrl,
+  onOpenQr,
+}: {
+  items?: BrandHeaderContactItem[];
+  qrTargetUrl?: string | null;
+  onOpenQr?: () => void;
+}) {
+  const visibleItems = items.filter((item) => item.value.trim().length > 0);
+  const hasQr = Boolean(qrTargetUrl || onOpenQr);
+  const { theme } = useTheme();
+
+  if (visibleItems.length === 0 && !hasQr) return null;
 
   return (
     <View style={styles.contactWrap}>
       {visibleItems.map((item) => (
-        <View
-          key={`${item.label}-${item.value}`}
-          style={[styles.contactChip, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
+        <Pressable 
+          key={`${item.label}-${item.value}`} 
+          style={styles.contactActionRow}
+          onPress={() => {
+            const url = getContactUrl(item.label, item.value);
+            if (url) {
+              void Linking.openURL(url).catch(() => undefined);
+            }
+          }}
+          hitSlop={8}
+          accessibilityRole="link"
+          accessibilityLabel={`Open ${item.label} ${item.value}`}
         >
-          <AppText variant="captionBold" tone="muted" numberOfLines={1}>
-            {item.label}
-          </AppText>
-          <AppText variant="captionRegular" tone="secondary" numberOfLines={1} style={styles.contactValue}>
+          <ContactIcon label={item.label} color={theme.colors.text} />
+          {/* Deep near-black, not brand purple. Every contact row was purple,
+              which made a plain email address look like a promoted link and
+              fought with the coloured platform icon next to it. The icon
+              already carries the affordance. */}
+          <AppText
+            variant="smallBold"
+            tone="default"
+            numberOfLines={1}
+            style={styles.contactLine}
+          >
             {item.value}
           </AppText>
-        </View>
+        </Pressable>
       ))}
+      {hasQr ? (
+        <Pressable
+          onPress={onOpenQr}
+          style={styles.contactActionRow}
+          accessibilityRole="button"
+          accessibilityLabel="Open brand profile QR code"
+        >
+          <AppText variant="bodyReadable" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            🔳
+          </AppText>
+          <AppText variant="smallBold" tone="default" numberOfLines={1} style={styles.contactLine}>
+            QR code
+          </AppText>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -641,19 +741,24 @@ function BrandContactItems({ items = [] }: { items?: BrandHeaderContactItem[] })
 function BrandProfileDetails({
   description,
   contactItems,
+  qrTargetUrl,
+  onOpenQr,
 }: {
   description?: string | null;
   contactItems?: BrandHeaderContactItem[];
+  qrTargetUrl?: string | null;
+  onOpenQr?: () => void;
 }) {
   const hasDescription = Boolean(description?.trim());
   const hasContact = Boolean(contactItems?.some((item) => item.value.trim().length > 0));
+  const hasQr = Boolean(qrTargetUrl || onOpenQr);
 
-  if (!hasDescription && !hasContact) return null;
+  if (!hasDescription && !hasContact && !hasQr) return null;
 
   return (
     <View>
       <BrandDescription description={description} />
-      <BrandContactItems items={contactItems} />
+      <BrandContactItems items={contactItems} qrTargetUrl={qrTargetUrl} onOpenQr={onOpenQr} />
     </View>
   );
 }
@@ -696,7 +801,7 @@ function VisitorActionIconButton({
       ]}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={theme.colors.primary} />
+        <MuseLoader size={20} />
       ) : (
         <AppText
           variant={emphasized ? 'title' : 'subtitle'}
@@ -756,7 +861,7 @@ function BrandProfileActions({
         {onCreate ? (
           <View ref={createAnchorRef} onLayout={onCreateAnchorLayout} collapsable={false}>
             <Pressable
-              onPress={onCreate}
+              onPress={(e) => onCreate?.(e)}
               style={({ pressed }) => [
                 styles.squareAction,
                 {
@@ -780,8 +885,18 @@ function BrandProfileActions({
 
   return (
     <View style={[styles.actionRow, styles.visitorActionRow]}>
+      {/*
+        🧵 not 🪡.
+
+        The sewing-needle glyph renders as a thin diagonal sliver at button size
+        — on most Android font stacks it is nearly invisible and reads as a
+        stray mark rather than an action, which is why it was reported as "does
+        not look like patch at all". The spool is the mark this product already
+        uses for threading on the Runway rail, it is legible at 20pt, and using
+        it here ties patching a brand to the same idea.
+      */}
       <VisitorActionIconButton
-        icon="🪡"
+        icon="🧵"
         label={isPatched ? 'Unpatch brand' : 'Patch brand'}
         onPress={onPatch}
         disabled={!onPatch || patchLoading}
@@ -858,6 +973,8 @@ export function BrandProfileHeader({
   createAnchorRef,
   onCreateAnchorLayout,
   onShare,
+  onOpenMenu,
+  menuAnchorRef,
   qrTargetUrl,
   onOpenQr,
   onBack,
@@ -865,9 +982,11 @@ export function BrandProfileHeader({
   onViewAvatar,
   onEditAvatar,
   onEditBanner,
+  onNotifications,
+  unreadNotificationCount,
 }: BrandProfileHeaderProps) {
   const { theme } = useTheme();
-  const effectiveName = brandName || username || 'WEAZ Brand';
+  const effectiveName = brandName || username || 'WIEZ Brand';
   const { width } = useWindowDimensions();
   const useFullWidthStats = width < 380;
 
@@ -887,9 +1006,13 @@ export function BrandProfileHeader({
         onBack={onBack}
         onSearch={onSearch}
         onShare={onShare}
+        onOpenMenu={onOpenMenu}
+        menuAnchorRef={menuAnchorRef}
         qrTargetUrl={qrTargetUrl}
         onOpenQr={onOpenQr}
         onEditBanner={onEditBanner}
+        onNotifications={onNotifications}
+        unreadNotificationCount={unreadNotificationCount}
       />
 
       <View style={styles.identityRow}>
@@ -904,10 +1027,13 @@ export function BrandProfileHeader({
           onEditAvatar={onEditAvatar}
         />
         <SideBrandMetaBlock
+          username={username}
           location={location}
           stats={useFullWidthStats ? [] : stats}
           tags={tags}
           badges={badges}
+          isOwner={isOwner}
+          onEditProfile={onEditProfile}
         />
       </View>
 
@@ -917,7 +1043,7 @@ export function BrandProfileHeader({
         </View>
       ) : null}
 
-      <BrandProfileDetails description={description} contactItems={contactItems} />
+      <BrandProfileDetails description={description} contactItems={contactItems} qrTargetUrl={qrTargetUrl} onOpenQr={onOpenQr} />
 
       <BrandProfileActions
         isOwner={isOwner}
@@ -971,7 +1097,7 @@ const styles = StyleSheet.create({
   },
   bannerControls: {
     position: 'absolute',
-    top: tokens.spacing.lg,
+    top: 0,
     left: tokens.spacing.lg,
     right: tokens.spacing.lg,
     flexDirection: 'row',
@@ -1007,7 +1133,7 @@ const styles = StyleSheet.create({
   headerIconButton: {
     width: 48,
     height: 48,
-    borderRadius: tokens.radius.lg,
+    borderRadius: tokens.radius.full,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1021,12 +1147,39 @@ const styles = StyleSheet.create({
   headerIconText: {
     textAlign: 'center',
   },
+  /* `fontStyle` is legal on AppText; size/weight/colour are not — those come
+     from the `smallBold` variant. The old inline 10px size was also below
+     the 12px floor in Rule 22, so this fixes a second violation. */
+  expandToggle: {
+    fontStyle: 'italic',
+  },
+  headerIconBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 8,
+    minWidth: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIconBadgeText: {
+    textAlign: 'center',
+  },
+  /*
+    Bounded by `right`, never by a percentage.
+
+    This chip and `bannerEditControl` are absolutely positioned siblings. The
+    chip was `left: 132` with `maxWidth: '62%'` and the control is `right: 24`
+    — two independent measurements of the same row, which only stay apart on a
+    wide enough screen. On a 360dp phone the chip's right edge lands around
+    355dp while the control starts near 302dp, so the brand name ran underneath
+    the edit button. A percentage cannot express "stop before that control";
+    `right` can, and it holds at every width.
+  */
   bannerNameChip: {
     position: 'absolute',
     left: 132,
     bottom: 0,
     alignSelf: 'flex-start',
-    maxWidth: '62%',
     minHeight: 38,
     borderTopLeftRadius: tokens.radius.lg,
     borderTopRightRadius: tokens.radius.lg,
@@ -1059,38 +1212,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   storeStatusButton: {
-    width: 28,
-    height: 28,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: tokens.spacing.xs,
+    paddingLeft: tokens.spacing.xs,
   },
-  storeStatusBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: tokens.radius.sm,
-    transform: [{ rotate: '45deg' }],
-  },
-  storeStatusCorner: {
-    position: 'absolute',
+  storeStatusDot: {
     width: 8,
     height: 8,
     borderRadius: tokens.radius.full,
-  },
-  storeStatusCornerTopLeft: {
-    top: -3,
-    left: 5,
-  },
-  storeStatusCornerTopRight: {
-    right: -3,
-    top: 5,
-  },
-  storeStatusCornerBottomLeft: {
-    left: -3,
-    bottom: 5,
-  },
-  storeStatusCornerBottomRight: {
-    bottom: -3,
-    right: 5,
   },
   identityRow: {
     flexDirection: 'row',
@@ -1127,29 +1257,25 @@ const styles = StyleSheet.create({
   },
   avatarEditBadge: {
     position: 'absolute',
-    right: -tokens.spacing.xs,
-    bottom: -tokens.spacing.xs,
-    width: 34,
-    height: 34,
-    borderRadius: tokens.radius.full,
-    borderWidth: 0,
+    right: tokens.spacing.xs,
+    bottom: tokens.spacing.xs,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarEditGlyph: {
+    // Stands in for the removed background disc: enough separation to stay
+    // readable on a light logo without putting a coloured shape on the image.
+    textShadowColor: tokens.scrim(0.62),
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   metaBlock: {
     flex: 1,
     minWidth: 0,
     gap: tokens.spacing.xs,
     paddingTop: tokens.spacing['4xl'] + tokens.spacing.sm,
-  },
-  brandNamePill: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.lg,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
   },
   brandNameRow: {
     flexDirection: 'row',
@@ -1160,6 +1286,9 @@ const styles = StyleSheet.create({
   brandNameText: {
     minWidth: 0,
     flexShrink: 1,
+  },
+  usernameText: {
+    maxWidth: '100%',
   },
   locationText: {
     maxWidth: '100%',
@@ -1197,6 +1326,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: tokens.spacing.md,
+    marginTop: tokens.spacing.md,
   },
   textTag: {
     flexShrink: 1,
@@ -1209,7 +1339,8 @@ const styles = StyleSheet.create({
   },
   descriptionWrap: {
     paddingHorizontal: tokens.spacing.lg,
-    marginTop: tokens.spacing.md,
+    marginTop: tokens.spacing.xl,
+    marginBottom: tokens.spacing.xl2, // Increased gap below the see less/more
     gap: tokens.spacing.sm,
   },
   descriptionMeasureText: {
@@ -1224,7 +1355,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
-    marginTop: tokens.spacing.lg,
+    marginTop: tokens.spacing['2xl'],
   },
   primaryActionSlot: {
     flex: 1,
@@ -1251,25 +1382,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   contactWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
     marginTop: tokens.spacing.sm,
   },
-  contactChip: {
-    maxWidth: '100%',
+  contactActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     gap: tokens.spacing.xs,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.full,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
+    maxWidth: '100%',
   },
-  contactValue: {
-    minWidth: 0,
-    flexShrink: 1,
+  contactLine: {
+    maxWidth: '100%',
   },
   squareAction: {
     width: 52,

@@ -57,15 +57,87 @@ assert.match(catalogCardBranchSource, /primaryActionKind:\s*'view-collection'/);
 assert.match(catalogEntityCardSource, /export const DesignCard/);
 assert.match(catalogEntityCardSource, /export const CatalogCollectionCard/);
 assert.match(catalogEntityCardSource, /resolveCatalogCardBranch/);
+assert.doesNotMatch(
+  catalogEntityCardSource,
+  /collection=\{\{\s*\.\.\.collection/,
+  'CatalogEntityCard must preserve collection object identity for memoized cards.',
+);
 assert.match(collectionCardSource, /testID=\{`catalog-card-\$\{cardBranch\}`\}/);
 assert.match(collectionCardSource, /accessibilityLabel=\{copy\.ownerActionsLabel\}/);
+assert.doesNotMatch(
+  collectionCardSource,
+  /imageToneOverlay/,
+  'Catalog thumbnails must not apply a full-image dark tone overlay.',
+);
 
+/*
+  There is ONE content viewer per kind, and these builders must point at it.
+
+  `routeForDesignTarget` used to return `/designs/[designId]`, which rendered a
+  completely different screen from the one the catalogue opens — so a design
+  reached from a notification, a search result or saved items looked nothing
+  like the same design reached by tapping its card. The old screen and its two
+  alias routes are deleted; these assertions stop them being reintroduced by a
+  builder quietly pointing back at a path that no longer has a viewer.
+*/
 assert.match(mobileRoutingSource, /export function routeForDesignTarget/);
-assert.match(mobileRoutingSource, /pathname:\s*'\/designs\/\[designId\]'/);
+assert.match(mobileRoutingSource, /pathname:\s*'\/market-viewer'/);
+assert.match(mobileRoutingSource, /sourceType:\s*'DESIGN'/);
 assert.match(mobileRoutingSource, /export function routeForStoreCollectionTarget/);
-assert.match(mobileRoutingSource, /pathname:\s*'\/collections\/\[collectionId\]'/);
+assert.match(mobileRoutingSource, /pathname:\s*'\/collection-viewer'/);
+assert.doesNotMatch(
+  mobileRoutingSource,
+  /pathname:\s*'\/designs\/\[designId\]'/,
+  'the retired second design viewer must not come back',
+);
+assert.doesNotMatch(
+  mobileRoutingSource,
+  /pathname:\s*'\/collections\/\[collectionId\]'/,
+  'the retired second collection viewer must not come back',
+);
 assert.match(mobileRoutingSource, /routeForLegacyCollectionBackedDesignTarget/);
 assert.match(mobileRoutingSource, /targetType === 'DESIGN'/);
+
+// The route files themselves are gone. A stale alias would render a viewer
+// nobody maintains, which is exactly how the split survived unnoticed.
+for (const retired of [
+  path.join('app', 'designs', '[designId].tsx'),
+  path.join('app', 'collections', '[collectionId].tsx'),
+  path.join('components', 'catalog', 'CollectionDetailViewer.tsx'),
+]) {
+  assert.equal(
+    fs.existsSync(path.join(root, retired)),
+    false,
+    `${retired} was retired when the content viewers were consolidated; do not recreate it`,
+  );
+}
+
+// Comments moved with the viewers — the retired screen was the only one that
+// had them, so a comment notification must still land somewhere that shows one.
+const marketViewerSource = read('src/features/market/components/MarketCommerceViewer.tsx');
+assert.match(marketViewerSource, /CollectionCommentsSheet/);
+assert.match(marketViewerSource, /openComments/);
+
+/*
+  Comments must SCALE the page, not cover it.
+
+  Mounting the sheet without `progress`/`onSheetHeight` typechecks, renders, and
+  looks correct right up until someone opens it — at which point a panel drops
+  over the bottom half of the design being discussed. The Runway has coupled the
+  two since the comments work landed; the viewer shipped without it, so the same
+  design behaved differently depending on which screen its comments were opened
+  from. Both halves are asserted because either one alone is inert.
+*/
+assert.match(marketViewerSource, /progress=\{commentsProgress\}/);
+assert.match(marketViewerSource, /onSheetHeight=\{setCommentsSheetHeight\}/);
+assert.match(marketViewerSource, /commentsStageStyle/);
+
+const runwayFeedSource = read('src/features/feed/components/RunwayFeedScreen.tsx');
+for (const surface of [marketViewerSource, runwayFeedSource]) {
+  // The two stages must agree on the geometry, or one design settles at a
+  // different size than the other for the same sheet height.
+  assert.match(surface, /Math\.max\(0\.35, Math\.min\(1, visibleBand \/ \w+\)\)/);
+}
 assert.match(studioNavigationBridgeSource, /pathname === '\/designs\/create'/);
 assert.match(studioNavigationBridgeSource, /pathname:\s*'\/designs\/\[designId\]\/edit'/);
 assert.match(studioNavigationBridgeSource, /routeForStoreCollectionTarget\(collectionId\)/);

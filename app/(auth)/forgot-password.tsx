@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { requestPasswordReset } from '@/src/api/AuthApi';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
-import { WeazLogo } from '@/components/ui/WeazLogo';
+import { tokens } from '@/src/styles/tokens';
+import WiezMark from '@/src/brand/WiezMark';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
 import { Button } from '@/components/ui/Button';
 import { AppText } from '@/components/ui/AppText';
@@ -39,12 +40,12 @@ export default function ForgotPasswordScreen() {
   }, [params.email]);
 
   const bgGradient = isDark
-    ? (['#0f0a14', '#1a0a2e', '#0f0a14'] as const)
-    : (['#f7f6f8', '#ede8f5', '#f0ecfa'] as const);
+    ? tokens.auth.screenGradientDark
+    : tokens.auth.screenGradientLight;
 
   const accentGradient = isDark
-    ? (['#2B1742', '#1E293B', '#0F172A'] as const)
-    : (['#EDE9FE', '#FEF3C7', '#F8FAFC'] as const);
+    ? tokens.auth.cardGradientDark
+    : tokens.auth.cardGradientLight;
 
   const formBg = theme.colors.surface;
   const formBorder = theme.colors.border;
@@ -87,15 +88,13 @@ export default function ForgotPasswordScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      <KeyboardAwareScrollView
-        enableOnAndroid
-        keyboardOpeningTime={0}
-        enableAutomaticScroll
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAwareFormScroll
+        bottomOffset={tokens.spacing['2xl']}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 36 },
+          // Floor the bottom inset — see the note in signup.tsx: Android gesture
+          // nav under-reports it relative to the swipe handle's real footprint.
+          { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom, 24) + 40 },
         ]}
       >
         <View style={styles.logoRow}>
@@ -105,7 +104,7 @@ export default function ForgotPasswordScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to login"
           >
-            <WeazLogo size={36} />
+            <WiezMark size={36} />
           </Pressable>
         </View>
 
@@ -191,7 +190,7 @@ export default function ForgotPasswordScreen() {
             )}
           </View>
         </View>
-      </KeyboardAwareScrollView>
+      </KeyboardAwareFormScroll>
     </View>
   );
 }
@@ -203,19 +202,25 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    justifyContent: 'flex-end',
+    // `flex-end` pushed the whole form against the bottom of the screen and left
+    // a large dead gap above the logo. Login and signup both anchor to the top;
+    // this screen was the only one that did not.
+    justifyContent: 'flex-start',
   },
   logoRow: {
     alignSelf: 'flex-start',
   },
   spacer: {
-    minHeight: 140,
+    // Was 140, which existed only to offset the old `flex-end` anchoring. With
+    // the content anchored to the top it reads as the logo-to-headline gap, and
+    // matches the `spacing['3xl']` that login and signup use there.
+    minHeight: 40,
   },
   headlineBlock: {
     marginBottom: 20,
   },
   kicker: {
-    marginBottom: 10,
+    marginBottom: 8,
     letterSpacing: 3,
     textTransform: 'uppercase',
   },
@@ -227,7 +232,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     marginTop: 4,
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.25,
     shadowRadius: 24,
@@ -245,7 +250,7 @@ const styles = StyleSheet.create({
     right: 28,
     height: 1.5,
     borderRadius: 1,
-    backgroundColor: '#D4AF37',
+    backgroundColor: tokens.auth.gold,
     opacity: 0.7,
     zIndex: 2,
   },
@@ -266,7 +271,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   primaryButton: {
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18,
     shadowRadius: 18,

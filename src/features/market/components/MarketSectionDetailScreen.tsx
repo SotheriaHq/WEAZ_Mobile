@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   View,
@@ -10,10 +8,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { router } from 'expo-router';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 
+import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
-import { StableImage } from '@/components/ui/StableImage';
+import { ScreenState } from '@/components/ui/ScreenState';
 import {
   getMarketSectionDetail,
   type MarketSection,
@@ -26,7 +25,14 @@ import {
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { navPerf } from '@/src/utils/navPerf';
 import { MobileMarketSuggestionBlocks } from '@/src/features/market/components/MobileMarketSuggestionBlocks';
+import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
+import {
+  DesignerFrontCard,
+  type DesignerFrontBrand,
+} from '@/src/features/market/components/DesignerFrontCard';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type Props = {
   sectionKey: string;
@@ -59,6 +65,17 @@ const formatPrice = (item: MarketSectionItem) => {
   return 'View';
 };
 
+/** Section payload -> the designer front's props. */
+const toDesignerFrontBrand = (item: MarketSectionItem): DesignerFrontBrand => ({
+  id: item.brand?.id ?? item.target?.id ?? item.sourceId,
+  name: item.brand?.name ?? item.title,
+  handle: item.subtitle ?? null,
+  logoUrl: item.brand?.logoUrl ?? item.media?.thumbnailUrl ?? null,
+  logoFileId: item.media?.fileId ?? null,
+  pieceCount: item.stats?.products ?? null,
+  blurb: item.description ?? null,
+});
+
 const openItem = (item: MarketSectionItem, sectionKey: string) => {
   const targetType = item.target?.type ?? item.entityType;
   const targetId = item.target?.id ?? item.sourceId;
@@ -75,11 +92,11 @@ const openItem = (item: MarketSectionItem, sectionKey: string) => {
   void flushMarketSignals();
 
   if (targetType === 'PRODUCT') {
-    router.push({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
+    drillDownPush({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
     return;
   }
   if (targetType === 'DESIGN') {
-    router.push({
+    drillDownPush({
       pathname: '/market-viewer',
       params: {
         sourceType: 'DESIGN',
@@ -93,19 +110,32 @@ const openItem = (item: MarketSectionItem, sectionKey: string) => {
     return;
   }
   if (targetType === 'COLLECTION') {
-    router.push({
+    drillDownPush({
       pathname: '/collection-viewer',
       params: { collectionId: targetId, returnTo: `/market-section?sectionKey=${sectionKey}` },
     } as any);
     return;
   }
   if (targetType === 'BRAND') {
-    router.push({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
+    drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
     return;
   }
-  router.push('/(tabs)/discover' as any);
+  // Top-level fallback when the section item has no drill-down target — navigate
+  // (not push) so we reuse the existing Market tab instead of stacking a copy.
+  topLevelNavigate('/(tabs)/discover' as any);
 };
 
+/**
+ * The same card as every other grid in the app.
+ *
+ * This screen was drawing its own: a bordered box with a cropped image on top,
+ * an entity-type pill ("DESIGN"), then title, subtitle and price stacked
+ * underneath on a solid body. Market itself moved to `UnifiedProductCard`
+ * (full-bleed media, frosted copy panel) and this screen — the one you land on
+ * from every "See more" — was left behind, so following a row into its own page
+ * changed what the cards looked like. The entity pill goes with it: "DESIGN"
+ * tells a shopper nothing the picture has not.
+ */
 function SectionItemCard({
   item,
   width,
@@ -115,51 +145,22 @@ function SectionItemCard({
   width: number;
   sectionKey: string;
 }) {
-  const { theme } = useTheme();
-  const imageUri = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
+  const mediaSrc = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
 
   return (
-    <Pressable
+    <UnifiedProductCard
+      width={width}
+      height={Math.round(width * 1.58)}
+      title={item.title}
+      brandName={item.brand?.name ?? null}
+      priceLabel={formatPrice(item)}
+      customOrder={Boolean(item.availability?.customOrderEnabled)}
+      mediaSrc={mediaSrc}
+      mediaFileId={item.media?.fileId ?? null}
+      analyticsSourceScreen="market_section"
       onPress={() => openItem(item, sectionKey)}
-      style={({ pressed }) => [
-        styles.card,
-        { width, backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-        pressed && styles.pressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${item.title}`}
-    >
-      {imageUri ? (
-        <StableImage
-          uri={imageUri}
-          resizeMode="cover"
-          containerStyle={styles.cardImage}
-          imageStyle={styles.cardImage}
-        />
-      ) : (
-        <View style={[styles.cardImage, styles.cardFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
-          <AppText variant="title" tone="muted">
-            {item.title.slice(0, 1).toUpperCase()}
-          </AppText>
-        </View>
-      )}
-      <View style={styles.cardBody}>
-        <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-          {item.entityType}
-        </AppText>
-        <AppText variant="bodyBold" numberOfLines={2}>
-          {item.title}
-        </AppText>
-        {item.subtitle ? (
-          <AppText variant="caption" tone="muted" numberOfLines={1}>
-            {item.subtitle}
-          </AppText>
-        ) : null}
-        <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-          {formatPrice(item)}
-        </AppText>
-      </View>
-    </Pressable>
+      style={styles.gridCard}
+    />
   );
 }
 
@@ -176,7 +177,21 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const columnCount = width >= 720 ? 3 : 2;
+  /*
+    A section of BRANDS is not a grid.
+
+    "New designers to watch" carries brands, and a brand tile in a two-up grid
+    is a logo and a number — nothing to judge a designer by. Those sections lay
+    out one designer front per row instead, full width, each showing that
+    designer's actual work. Every other section stays a grid, because a product
+    or a design IS its picture and a grid shows more of them.
+  */
+  const isDesignerSection = useMemo(
+    () => items.length > 0 && items.every((item) => item.entityType === 'BRAND'),
+    [items],
+  );
+  const columnCount = isDesignerSection ? 1 : width >= 720 ? 3 : 2;
+  const fullWidth = Math.floor(width - SIDE_PADDING * 2);
   const cardWidth = useMemo(
     () => Math.floor((width - SIDE_PADDING * 2 - GAP * (columnCount - 1)) / columnCount),
     [columnCount, width],
@@ -219,6 +234,17 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
     [cursor, hasNextPage, loadingMore, section, sectionKey],
   );
 
+  // Dev-only nav timing for market→section. Shell/skeleton renders at mount;
+  // data is ready once the initial section load settles.
+  useEffect(() => {
+    navPerf.screenMounted('market→section');
+    navPerf.shellVisible('market→section');
+    navPerf.firstVisibleUi('market→section');
+  }, []);
+  useEffect(() => {
+    if (!loading) navPerf.dataReady('market→section');
+  }, [loading]);
+
   useEffect(() => {
     void loadSection('reset');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -243,18 +269,17 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <Pressable
-        onPress={() => router.back()}
-        style={({ pressed }) => [
-          styles.backButton,
-          { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-          pressed && styles.pressed,
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-      >
-        <AppText variant="captionBold">Back</AppText>
-      </Pressable>
+      {/*
+        The same back control as every other screen.
+
+        This was the one place in the app that spelled the word "Back" in a
+        bordered pill instead of using `AppBackButton`, so the section detail
+        looked like it belonged to a different product — and it called
+        `router.back()` raw, with no fallback for the case where there is no
+        history to pop (a notification or deep link opening the section
+        directly would have left the user stuck).
+      */}
+      <AppBackButton fallbackHref="/(tabs)/discover" />
       <View style={styles.titleBlock}>
         <AppText variant="h2" numberOfLines={2}>
           {section?.title ?? 'Market section'}
@@ -270,7 +295,7 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
 
   const renderFooter = () => (
     <View style={styles.footer}>
-      {loadingMore ? <ActivityIndicator color={theme.colors.primary} /> : null}
+      {loadingMore ? <MuseLoader size={20} /> : null}
       {section ? (
         <MobileMarketSuggestionBlocks
           context="MARKET_SECTION_DETAIL"
@@ -291,7 +316,7 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         {renderHeader()}
         <View style={styles.centerState}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="small" tone="muted">Loading section</AppText>
         </View>
       </SafeAreaView>
@@ -302,6 +327,7 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
     <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <FlatList
+        showsVerticalScrollIndicator={false}
         data={items}
         key={columnCount}
         numColumns={columnCount}
@@ -311,20 +337,55 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
         columnWrapperStyle={columnCount > 1 ? styles.gridRow : undefined}
         contentContainerStyle={[styles.content, { paddingBottom: standardScreenBottomPadding + tokens.spacing.lg }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
-        renderItem={({ item }) => (
-          <SectionItemCard item={item} width={cardWidth} sectionKey={section?.key ?? sectionKey} />
-        )}
+        renderItem={({ item }) =>
+          isDesignerSection ? (
+            <DesignerFrontCard
+              brand={toDesignerFrontBrand(item)}
+              width={fullWidth}
+              onOpenDesign={(design) =>
+                drillDownPush({
+                  pathname: '/market-viewer',
+                  params: {
+                    sourceType: 'DESIGN',
+                    sourceId: design.id,
+                    brandId: item.brand?.id ?? item.sourceId,
+                    title: design.title,
+                    brandName: design.brandName ?? item.brand?.name ?? '',
+                  },
+                } as any)
+              }
+              onOpenCatalogue={(brandId) =>
+                drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId } } as any)
+              }
+            />
+          ) : (
+            <SectionItemCard item={item} width={cardWidth} sectionKey={section?.key ?? sectionKey} />
+          )
+        }
         onEndReached={() => {
           if (hasNextPage && !loadingMore) void loadSection('more');
         }}
         onEndReachedThreshold={0.55}
         ListEmptyComponent={
-          <View style={styles.centerState}>
-            <AppText variant="bodyBold">{error ? 'Section could not load' : 'No items yet'}</AppText>
-            <AppText variant="small" tone="muted" numberOfLines={2}>
-              {error ?? 'This section is active but has no market-ready items right now.'}
-            </AppText>
-          </View>
+          // A failed load and a genuinely empty section used to render the same
+          // block, so there was no way to tell which one you were looking at —
+          // and only one of them is worth retrying.
+          error ? (
+            <ScreenState
+              compact
+              kind="server"
+              title="Section could not load"
+              message={error}
+              onAction={onRefresh}
+            />
+          ) : (
+            <ScreenState
+              compact
+              kind="empty"
+              title="No items yet"
+              message="This section is active but has no market-ready items right now."
+            />
+          )
         }
       />
     </SafeAreaView>
@@ -346,38 +407,14 @@ const styles = StyleSheet.create({
     paddingTop: tokens.spacing.sm,
     paddingBottom: tokens.spacing.lg,
   },
-  backButton: {
-    alignSelf: 'flex-start',
-    minHeight: 38,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    paddingHorizontal: tokens.spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   titleBlock: {
     gap: tokens.spacing.xs,
   },
   gridRow: {
     gap: GAP,
   },
-  card: {
+  gridCard: {
     marginBottom: GAP,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  cardImage: {
-    width: '100%',
-    aspectRatio: 4 / 5,
-  },
-  cardFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardBody: {
-    padding: tokens.spacing.md,
-    gap: tokens.spacing.xs,
   },
   footer: {
     paddingTop: tokens.spacing.md,
@@ -389,8 +426,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: tokens.spacing.sm,
     paddingHorizontal: SIDE_PADDING,
-  },
-  pressed: {
-    opacity: 0.72,
   },
 });

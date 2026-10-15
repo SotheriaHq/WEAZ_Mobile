@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
@@ -19,6 +21,7 @@ import { useAuth } from '@/src/auth/AuthContext';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 const targetTypeLabel: Record<MarketSignalTargetType, string> = {
   PRODUCT: 'Product',
@@ -260,7 +263,7 @@ export default function MarketPreferencesScreen() {
           </View>
         </View>
         <View style={styles.stateWrap}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="body" tone="muted">
             Loading market preferences...
           </AppText>
@@ -286,7 +289,7 @@ export default function MarketPreferencesScreen() {
           <AppText variant="bodyRegular" tone="muted" style={styles.centerText}>
             Account-level hidden content and reset controls are available after sign in.
           </AppText>
-          <Button title="Sign in" onPress={() => router.push('/(auth)/login' as never)} />
+          <Button title="Sign in" onPress={() => drillDownPush('/(auth)/login' as never)} />
         </View>
       </SafeAreaView>
     );

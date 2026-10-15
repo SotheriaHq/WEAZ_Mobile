@@ -25,6 +25,26 @@ export function AppBackButton({
   size = 44,
   style,
 }: Props) {
+  const pendingRouteFrameRef = React.useRef<number | null>(null);
+
+  const cancelPendingRouteFrame = React.useCallback(() => {
+    if (pendingRouteFrameRef.current === null) return;
+    cancelAnimationFrame(pendingRouteFrameRef.current);
+    pendingRouteFrameRef.current = null;
+  }, []);
+
+  const scheduleBackRouteAfterFrame = React.useCallback((run: () => void) => {
+    // Back is always a warm stack pop — navigate immediately so the previous
+    // screen appears without a frame of dead air. Pressed feedback still paints
+    // via the button's native pressed style on the same commit.
+    cancelPendingRouteFrame();
+    navPerf.frameYieldBeforeRoute('back');
+    navPerf.navigationCalled('back');
+    run();
+  }, [cancelPendingRouteFrame]);
+
+  React.useEffect(() => cancelPendingRouteFrame, [cancelPendingRouteFrame]);
+
   return (
     <IconButton
       size={size}
@@ -37,13 +57,13 @@ export function AppBackButton({
           return;
         }
         if (router.canGoBack()) {
-          navPerf.navigationCalled();
-          router.back();
+          scheduleBackRouteAfterFrame(() => router.back());
           return;
         }
         if (fallbackHref) {
-          navPerf.navigationCalled();
-          router.replace(fallbackHref as any);
+          // navigate (not replace) so the top-level fallback reuses its warm
+          // instance instead of being remounted and refetched on return.
+          scheduleBackRouteAfterFrame(() => router.navigate(fallbackHref as any));
         }
       }}
       testID="app-back-button"

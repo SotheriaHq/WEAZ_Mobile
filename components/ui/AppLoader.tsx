@@ -3,20 +3,24 @@ import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme, type ThemeContextValue } from '@/src/theme/ThemeProvider';
-import { PRODUCT_NAME } from '@/src/config/productIdentity';
+import { PRODUCT_NAME } from '@/src/brand/identity';
 import { tokens } from '@/src/styles/tokens';
 
-import { WeazLogoLoader } from './WeazLogoLoader';
-import { AppText } from '@/components/ui/AppText';
+import WiezMark from '@/src/brand/WiezMark';
+import { MuseLoader } from './MuseLoader';
 
 type LoaderTone = 'light' | 'dark';
 
+/**
+ * `title` / `message` are gone: nothing renders them since the loader stopped
+ * narrating. What remains is a backdrop and two ambient orbs, all from tokens —
+ * the dark branch used to hardcode its backdrop and four alpha values while the
+ * light branch right beside it read from the theme.
+ */
 type LoaderVisualTheme = {
   background: string;
   orbPrimary: string;
   orbSecondary: string;
-  title: string;
-  message: string;
 };
 
 type LoaderContentProps = {
@@ -51,18 +55,14 @@ function buildVisualTheme(
   const base =
     scheme === 'dark'
       ? {
-          background: '#0b0710',
-          orbPrimary: 'rgba(147, 51, 234, 0.18)',
-          orbSecondary: 'rgba(212, 175, 55, 0.14)',
-          title: '#ffffff',
-          message: 'rgba(255,255,255,0.72)',
+          background: tokens.colors.loaderBackdropDark,
+          orbPrimary: tokens.colors.loaderOrbPrimaryDark,
+          orbSecondary: tokens.colors.loaderOrbSecondaryDark,
         }
       : {
           background: theme.colors.bg,
-          orbPrimary: 'rgba(147, 51, 234, 0.12)',
-          orbSecondary: 'rgba(212, 175, 55, 0.12)',
-          title: theme.colors.text,
-          message: theme.colors.textMuted,
+          orbPrimary: tokens.colors.loaderOrbPrimaryLight,
+          orbSecondary: tokens.colors.loaderOrbSecondaryLight,
         };
 
   return {
@@ -85,25 +85,25 @@ function LoaderBackdrop({ visualTheme }: { visualTheme: LoaderVisualTheme }) {
   );
 }
 
-function LoaderContent({ title = PRODUCT_NAME, message = 'Loading your feed', size = 88, visualTheme }: LoaderContentProps) {
+/**
+ * The mark IS the loading state — no wordmark, no caption.
+ *
+ * This used to paint the logo, then "WIEZ" under it, then a sentence under
+ * that. Stacked behind the Studio shell's own narrated wait it read as three
+ * consecutive loading screens for one navigation. `title` / `message` are still
+ * accepted (call sites pass them) and deliberately not rendered; a wait needs a
+ * heartbeat, not a script. Anything the user must ACT on is an error state, not
+ * a loader.
+ *
+ * A full screen is the one place with room for the figure, so it gets the mark
+ * with the spinner beneath it. Everywhere smaller — `LoaderBlock`, buttons,
+ * rows — is the orb alone, because the muse's face stops reading below ~96px.
+ */
+function LoaderContent({ size = 88 }: LoaderContentProps) {
   return (
-    <View style={styles.content}>
-      <WeazLogoLoader
-        size={size}
-        showWordmark={false}
-      />
-      <AppText
-        variant="display"
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.84}
-        style={styles.wordmark}
-      >
-        {title}
-      </AppText>
-      <AppText variant="smallBold" tone="muted" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.9} style={styles.message}>
-        {message}
-      </AppText>
+    <View style={styles.content} accessibilityLabel={`Loading ${PRODUCT_NAME}`}>
+      <WiezMark size={Math.max(size, 96)} />
+      <MuseLoader size={28} style={styles.contentSpinner} />
     </View>
   );
 }
@@ -146,7 +146,9 @@ export function LoaderBlock({
   return (
     <View style={[styles.block, { minHeight, backgroundColor: visualTheme.background }, style]}>
       <LoaderBackdrop visualTheme={visualTheme} />
-      <LoaderContent title={title} message={message} size={size} visualTheme={visualTheme} />
+      <View style={styles.content} accessibilityLabel={`Loading ${PRODUCT_NAME}`}>
+        <MuseLoader size={Math.min(size, 56)} />
+      </View>
     </View>
   );
 }
@@ -191,13 +193,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
-  wordmark: {
-    marginTop: 24,
-    letterSpacing: 0.2,
-  },
-  message: {
-    marginTop: 6,
-    letterSpacing: 0.15,
+  contentSpinner: {
+    marginTop: 20,
   },
   orb: {
     position: 'absolute',

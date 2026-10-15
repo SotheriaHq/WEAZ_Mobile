@@ -290,7 +290,7 @@ export default function ProductBagSelectorSheet({
                   <AppText variant="caption" tone="muted">
                     Region: {SIZING_REGION_LABELS[recommendation.selectedRegion]}
                   </AppText>
-                  {(recommendation.reasons.length ? recommendation.reasons : ['WEAZ compared your saved measurements with approved chart ranges.']).map((reason) => (
+                  {(recommendation.reasons.length ? recommendation.reasons : ['WIEZ compared your saved measurements with approved chart ranges.']).map((reason) => (
                     <AppText key={reason} variant="caption">- {reason}</AppText>
                   ))}
                   <AppText variant="caption" tone="muted">
@@ -332,7 +332,7 @@ export default function ProductBagSelectorSheet({
                         },
                       ]}
                     >
-                      <AppText variant="caption" tone={selected ? 'inverse' : 'default'}>
+                      <AppText variant="caption" tone={selected ? 'inverse' : 'default'} numberOfLines={1}>
                         {size}
                       </AppText>
                     </Pressable>
@@ -370,7 +370,7 @@ export default function ProductBagSelectorSheet({
                         },
                       ]}
                     >
-                      <AppText variant="caption" tone={selected ? 'inverse' : 'default'}>
+                      <AppText variant="caption" tone={selected ? 'inverse' : 'default'} numberOfLines={1}>
                         {color}
                       </AppText>
                     </Pressable>

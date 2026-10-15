@@ -16,9 +16,15 @@ type AppQrSheetProps = {
   subtitle?: string;
   qrValue?: string | null;
   displayUrl?: string | null;
+  /** Optional public handle shown under the QR (parity with web BrandedQRCode). */
+  username?: string | null;
   shareMessage?: string;
   onClose: () => void;
 };
+
+/** WIEZ purple — aligned with web BrandedQRCode eye/fg colors. */
+const WIEZ_QR_FG = tokens.colors.qrForeground;
+const WIEZ_QR_BG = tokens.colors.qrBackground;
 
 export function AppQrSheet({
   visible,
@@ -26,6 +32,7 @@ export function AppQrSheet({
   subtitle,
   qrValue,
   displayUrl,
+  username,
   shareMessage,
   onClose,
 }: AppQrSheetProps) {
@@ -33,6 +40,7 @@ export function AppQrSheet({
   const toast = useToast();
   const value = qrValue?.trim() || '';
   const readableUrl = displayUrl?.trim() || value;
+  const handleLabel = username?.trim().replace(/^@+/, '') || null;
 
   const handleCopy = useCallback(async () => {
     if (!readableUrl) {
@@ -70,7 +78,7 @@ export function AppQrSheet({
             style={[
               styles.qrFrame,
               {
-                backgroundColor: tokens.themes.light.colors.surface,
+                backgroundColor: WIEZ_QR_BG,
                 borderColor: theme.colors.border,
               },
             ]}
@@ -78,10 +86,18 @@ export function AppQrSheet({
             <QRCode
               value={value}
               size={220}
-              color={tokens.themes.light.colors.text}
-              backgroundColor={tokens.themes.light.colors.surface}
-              quietZone={10}
+              color={WIEZ_QR_FG}
+              backgroundColor={WIEZ_QR_BG}
+              quietZone={12}
+              ecl="M"
             />
+            {handleLabel ? (
+              <View style={styles.usernamePill}>
+                <AppText variant="captionBold" tone="primary" numberOfLines={1}>
+                  @{handleLabel}
+                </AppText>
+              </View>
+            ) : null}
           </View>
 
           <View
@@ -93,9 +109,6 @@ export function AppQrSheet({
               },
             ]}
           >
-            <AppText variant="captionBold" tone="muted">
-              Public link
-            </AppText>
             <AppText variant="captionRegular" numberOfLines={3}>
               {readableUrl}
             </AppText>
@@ -123,13 +136,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.lg,
   },
+  brandLabel: {
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
   qrFrame: {
     borderRadius: tokens.radius.xl,
     borderWidth: 1,
     padding: tokens.spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: tokens.spacing.sm,
     ...tokens.elevation.sm,
+  },
+  usernamePill: {
+    maxWidth: 220,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 2,
   },
   urlBox: {
     width: '100%',

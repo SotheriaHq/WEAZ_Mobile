@@ -9,10 +9,23 @@ const repoRoot = path.resolve(__dirname, '..');
 const brandApiPath = path.join(repoRoot, 'src', 'api', 'BrandApi.ts');
 const imageUriPath = path.join(repoRoot, 'src', 'hooks', 'useResolvedImageUri.ts');
 const formatCountPath = path.join(repoRoot, 'src', 'utils', 'formatCount.ts');
-const catalogPath = path.join(repoRoot, 'app', 'catalog', 'index.tsx');
+const catalogPath = path.join(repoRoot, 'app', '(tabs)', 'catalog', 'index.tsx');
 const badgePath = path.join(repoRoot, 'components', 'catalog', 'ProfileBadge.tsx');
 const appBadgePath = path.join(repoRoot, 'components', 'ui', 'AppBadge.tsx');
 const brandHeaderPath = path.join(repoRoot, 'components', 'catalog', 'BrandProfileHeader.tsx');
+const socialLinksPath = path.join(repoRoot, 'src', 'utils', 'socialLinks.ts');
+const editProfilePath = path.join(repoRoot, 'app', '(tabs)', 'catalog', 'edit-profile.tsx');
+const studioWebViewPath = path.join(repoRoot, 'app', '(tabs)', 'studio', 'webview.tsx');
+const brandTagsPath = path.join(repoRoot, 'src', 'data', 'brandTags.ts');
+const brandTagDtoPath = path.join(
+  repoRoot,
+  '..',
+  'bthreadly',
+  'src',
+  'brands',
+  'dto',
+  'update-brand-profile.dto.ts',
+);
 
 function loadBrandApiWithMock(mockApiClient) {
   const module = { exports: {} };
@@ -52,6 +65,18 @@ function loadFormatCount() {
 
   vm.runInNewContext(compile(formatCountPath), sandbox, { filename: formatCountPath });
   return module.exports.formatCount;
+}
+
+function loadSocialLinks() {
+  const module = { exports: {} };
+  const sandbox = {
+    module,
+    exports: module.exports,
+    require: createScriptRequire({ repoRoot }),
+  };
+
+  vm.runInNewContext(compile(socialLinksPath), sandbox, { filename: socialLinksPath });
+  return module.exports;
 }
 
 function loadImageResolverWithMock(mockBrandApi) {
@@ -211,7 +236,17 @@ async function main() {
 
   const catalogSource = fs.readFileSync(catalogPath, 'utf8');
   assert.match(catalogSource, /getBrandBadges\(/);
-  assert.match(catalogSource, /const effectiveProfile = profileQuery\.data !== undefined \? profileQuery\.data : profile/);
+  // The query still outranks held state. What changed is the FALLBACK: held
+  // `profile` state survives a param change on this one component (it serves
+  // both `/catalog` and `/catalog/[brandId]`), so falling back to it
+  // unconditionally kept another brand's catalogue on screen after the route
+  // had already moved on, and the queries then followed that stale `profile.id`.
+  // The old shape is asserted absent rather than merely replaced, because it is
+  // the bug and not a style preference.
+  assert.match(catalogSource, /const queriedProfile = profileQuery\.data !== undefined \? profileQuery\.data : null/);
+  assert.match(catalogSource, /const heldProfile = profileIsForTarget\(profile, targetBrandId, user\) \? profile : null/);
+  assert.match(catalogSource, /const effectiveProfile = queriedProfile \?\? heldProfile/);
+  assert.doesNotMatch(catalogSource, /profileQuery\.data !== undefined \? profileQuery\.data : profile\b/);
   assert.match(catalogSource, /effectiveProfile\?\.designsCount/);
   assert.match(catalogSource, /effectiveProfile\?\.collectionsCount/);
   assert.match(catalogSource, /effectiveProfile\?\.followersCount/);
@@ -235,6 +270,48 @@ async function main() {
   assert.match(badgeSource, /accessibilityLabel=\{badge\.accessibilityLabel\}/);
   assert.doesNotMatch(badgeSource, /rotate:\s*'45deg'/);
 
+  /*
+    Verification renders as the SEAL, not as a chip.
+
+    Native used to draw a bordered "✦ Verified" pill while web drew the
+    scalloped seal, so the same brand made two different-looking claims
+    depending on which app you opened. These pin the split: verification
+    variants go to `VerifiedSeal`, email verification collapses to a bare tick,
+    and everything else is still a chip.
+  */
+  assert.match(badgeSource, /VerifiedSeal/);
+  assert.match(badgeSource, /EmailVerifiedTick/);
+  assert.match(badgeSource, /const SEAL_VARIANTS[\s\S]*brand_verified: 'brand'/);
+  assert.doesNotMatch(
+    badgeSource,
+    /const SEAL_VARIANTS[\s\S]*store_open_verified:/,
+    'open/closed variants carry a word ("Open"/"Closed") and must stay chips — a wordless seal would delete it',
+  );
+
+  const sealPath = path.join(repoRoot, 'components', 'ui', 'VerifiedSeal.tsx');
+  const sealSource = fs.readFileSync(sealPath, 'utf8');
+  const webSealPath = path.join(repoRoot, '..', 'fthreadly', 'src', 'components', 'brand', 'VerifiedBrandBadge.tsx');
+  assert.match(sealSource, /MIN_LEGIBLE_SIZE = 20/);
+  if (fs.existsSync(webSealPath)) {
+    /*
+      The seal is a deliberate cross-repo duplicate — separate repos, no shared
+      package — so the only thing that can notice them drifting is this. Both
+      must draw the same silhouette and the same needle.
+    */
+    const webSealSource = fs.readFileSync(webSealPath, 'utf8');
+    const needle = 'M15.9 7.4 9.6 13.7l-1.3 3.1 3.1-1.3 6.3-6.3z';
+    assert.ok(
+      sealSource.includes(needle) && webSealSource.includes(needle),
+      'web and native seals must carry the identical needle path',
+    );
+    assert.ok(
+      sealSource.includes('M22.5 12.5c0-1.58') && webSealSource.includes('M22.5 12.5c0-1.58'),
+      'web and native seals must carry the identical scalloped outline',
+    );
+  } else {
+    console.log('  (skipped web seal parity — fthreadly is not checked out beside this repo)');
+  }
+
   const appBadgeSource = fs.readFileSync(appBadgePath, 'utf8');
   assert.match(appBadgeSource, /export type AppBadgeTone = 'primary' \| 'success' \| 'warning' \| 'muted' \| 'verified' \| 'neutral'/);
   assert.match(appBadgeSource, /export function getStoreBadgeModel/);
@@ -245,13 +322,165 @@ async function main() {
 
   const brandHeaderSource = fs.readFileSync(brandHeaderPath, 'utf8');
   assert.match(brandHeaderSource, /function StoreStatusBadge/);
-  assert.match(brandHeaderSource, /Color-only wavy square/);
-  assert.match(brandHeaderSource, /storeStatusBadge:[\s\S]*transform:\s*\[\{\s*rotate:\s*'45deg'\s*\}\]/);
+  /*
+    The store-status indicator must carry its own WORD.
+
+    It used to be a colour-only square sitting beside the brand's name, with the
+    legend hidden behind a tap — unreadable at a glance, and unreadable at all
+    to anyone with a red/green deficiency. These assertions pin the label and
+    fail if the badge ever regresses to colour alone.
+  */
+  assert.match(brandHeaderSource, /storeStatusDot:/);
+  assert.match(brandHeaderSource, /const label = isOpen \? 'Open' : isClosed \? 'Closed' : 'Limited'/);
+  assert.doesNotMatch(
+    brandHeaderSource,
+    /storeStatusCorner/,
+    'the colour-only wavy square must not come back — status needs a word, not just a hue',
+  );
   assert.match(brandHeaderSource, /BRAND_DESCRIPTION_PREVIEW_LINES\s*=\s*2/);
   assert.match(brandHeaderSource, /BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH/);
   assert.match(brandHeaderSource, /descriptionMeasureText/);
   assert.match(brandHeaderSource, /See more/);
   assert.match(brandHeaderSource, /See less/);
+
+  // The avatar edit affordance is a bare glyph, not a filled purple disc, and it
+  // sits in the bottom-RIGHT corner.
+  assert.doesNotMatch(
+    brandHeaderSource,
+    /styles\.avatarEditBadge, \{ backgroundColor: theme\.colors\.primary/,
+  );
+  assert.match(brandHeaderSource, /avatarEditBadge:[\s\S]*?right: tokens\.spacing\.xs/);
+  assert.match(brandHeaderSource, /avatarEditGlyph:[\s\S]*?textShadowColor/);
+  // An owner with no location gets an actionable hint, not a silently absent row.
+  assert.match(brandHeaderSource, /📍 Add your location/);
+  // Contact rows (email, website, socials, QR code) read in the body colour.
+  assert.doesNotMatch(brandHeaderSource, /QR code[\s\S]{0,80}tone="primary"/);
+  // The invariant is "a marker, then a body-toned label" — NOT which library
+  // draws the marker. This used to pin `<FontAwesome5 name="qrcode">`, so it
+  // failed the moment the contact rows moved to emoji markers under Rule 5
+  // even though the behaviour it exists to protect was unchanged.
+  assert.match(brandHeaderSource, /🔳[\s\S]{0,220}tone="default"/);
+  // Rule 5 applies to this file as a whole: no icon-library glyphs at all.
+  assert.doesNotMatch(brandHeaderSource, /<(FontAwesome5?|MaterialIcons)\b/);
+
+  // --- Brand profile save: the payload the API will actually accept ---------
+  //
+  // Both halves of this were 400s in the field: `@IsUrl()` rejects a bare
+  // handle, and `@ArrayMaxSize(BRAND_PROFILE_TAG_LIMIT)` rejects the 8th tag.
+  const { normalizeSocialLink, ensureHttps } = loadSocialLinks();
+
+  assert.equal(normalizeSocialLink('instagram', '@maisonvant'), 'https://instagram.com/maisonvant');
+  assert.equal(normalizeSocialLink('instagram', 'maisonvant'), 'https://instagram.com/maisonvant');
+  assert.equal(normalizeSocialLink('twitter', '@maison'), 'https://x.com/maison');
+  assert.equal(normalizeSocialLink('facebook', 'maison.vant'), 'https://facebook.com/maison.vant');
+  assert.equal(normalizeSocialLink('website', 'maisonvant.com'), 'https://maisonvant.com');
+  // Already-absolute URLs pass through untouched.
+  assert.equal(
+    normalizeSocialLink('instagram', 'https://instagram.com/maisonvant'),
+    'https://instagram.com/maisonvant',
+  );
+  // Empty stays undefined: the DTO field is optional and '' fails @IsUrl().
+  assert.equal(normalizeSocialLink('website', '   '), undefined);
+  assert.equal(normalizeSocialLink('website', null), undefined);
+  assert.equal(ensureHttps('wiez.com'), 'https://wiez.com');
+  for (const platform of ['instagram', 'facebook', 'twitter', 'website']) {
+    const value = normalizeSocialLink(platform, '@handle');
+    assert.ok(/^https?:\/\//i.test(value), `${platform} must normalize to an absolute URL`);
+  }
+
+  // The mobile tag cap must equal the API's, or the save 400s with no field hint.
+  const brandTagsSource = fs.readFileSync(brandTagsPath, 'utf8');
+  const mobileTagLimit = Number(
+    /BRAND_TAG_SELECTION_LIMIT\s*=\s*(\d+)/.exec(brandTagsSource)?.[1],
+  );
+  const apiTagLimit = Number(
+    /BRAND_PROFILE_TAG_LIMIT\s*=\s*(\d+)/.exec(fs.readFileSync(brandTagDtoPath, 'utf8'))?.[1],
+  );
+  assert.ok(Number.isInteger(mobileTagLimit), 'mobile BRAND_TAG_SELECTION_LIMIT must be a number');
+  assert.equal(mobileTagLimit, apiTagLimit);
+
+  const editProfileSource = fs.readFileSync(editProfilePath, 'utf8');
+  assert.match(editProfileSource, /socialInstagram: normalizeSocialLink\('instagram'/);
+  assert.match(editProfileSource, /socialFacebook: normalizeSocialLink\('facebook'/);
+  assert.match(editProfileSource, /socialTwitter: normalizeSocialLink\('twitter'/);
+  assert.match(editProfileSource, /socialWebsite: normalizeSocialLink\('website'/);
+  assert.match(editProfileSource, /brandTags: form\.brandTags\.slice\(0, BRAND_TAG_SELECTION_LIMIT\)/);
+  assert.match(editProfileSource, /maxSelected=\{BRAND_TAG_SELECTION_LIMIT\}/);
+  // A 400 must name the field, not hide behind a generic failure line.
+  assert.match(editProfileSource, /function getProfileSaveErrorMessage/);
+  assert.match(editProfileSource, /toast\.error\(getProfileSaveErrorMessage\(error\)\)/);
+  // The tags sheet carries no explanatory subtitle.
+  assert.doesNotMatch(editProfileSource, /Pick the specialties that describe this brand/);
+
+  // --- Store setup gating ---------------------------------------------------
+  //
+  // A brand mid-setup is offered setup, never a store it does not have, and the
+  // Studio re-checks on entry so a deep link cannot bypass the menu.
+  assert.match(catalogSource, /storeSetupComplete === false/);
+  assert.match(catalogSource, /title: 'Set up store'/);
+  // `essentials`, NOT `setup`. Store setup is two phases — Essentials, then the
+  // creation wizard — and `setup` is the wizard alone. Pointing there skipped
+  // phase one outright: every brand began setup on the Social step having never
+  // been asked for their essentials. Essentials forwards to the wizard itself
+  // when it is already complete, so it is the correct entry from any state.
+  assert.match(catalogSource, /routeKey: 'essentials'/);
+  assert.doesNotMatch(catalogSource, /routeKey: 'setup'/);
+
+  const studioSource = fs.readFileSync(studioWebViewPath, 'utf8');
+  assert.match(studioSource, /STORE_SETUP_EXEMPT_ROUTES = new Set<StudioRouteKey>\(\['setup', 'essentials'\]\)/);
+  assert.match(
+    studioSource,
+    /storeSetupComplete === false && !STORE_SETUP_EXEMPT_ROUTES\.has\(resolvedRouteKey\)/,
+  );
+  // The gate sits AHEAD of the warm-session shortcut, otherwise an island hop
+  // reaches a gated route through an already-booted WebView.
+  assert.ok(
+    studioSource.indexOf('STORE_SETUP_EXEMPT_ROUTES.has(resolvedRouteKey)') <
+      studioSource.indexOf('// Warm session: island tab switch'),
+    'store setup gate must run before the warm-session shortcut',
+  );
+  // An unknown status must never lock out a brand whose store is live.
+  assert.doesNotMatch(studioSource, /storeSetupComplete !== true/);
+
+  /*
+    The canonical owner id comes from the fetched profile, not from the route.
+
+    A brand is reachable under two ids — `/brands/:id` resolves by OWNER USER
+    id while the DTO's `id` is the brand id (the dual-id note in
+    `src/auth/brandAccess.ts`). The collections, products and reviews
+    endpoints key on the canonical one, so deriving the owner id from the route
+    param worked only when the route happened to carry that id, and the Shop
+    and Reviews tabs came up empty the rest of the time — on other brands and
+    on the account's own catalogue.
+  */
+  assert.match(
+    catalogSource,
+    /const collectionOwnerId = queriedProfile\?\.id \?\? getCollectionOwnerId\(effectiveProfile\)/,
+    'the canonical owner id must come from the profile fetched for this target',
+  );
+
+  /*
+    And the queried profile is never re-checked by id.
+
+    `useBrandProfileQuery` is keyed on `targetBrandId` with no
+    `placeholderData` and no `keepPreviousData`, so its data is for the current
+    key or it is `undefined`. An id comparison on top of that guarantee adds
+    nothing and rejects every brand reached by its other id, which is what
+    stopped `setProfile` from ever running for a visited brand.
+
+    The held-state gate is a different thing and must stay: that is the one
+    that can actually leak another brand's catalogue across a param change.
+  */
+  assert.doesNotMatch(
+    catalogSource,
+    /if \(data && !profileIsForTarget\(data, targetBrandId, user\)\) return;/,
+    'queried profile data must not be gated on an id comparison',
+  );
+  assert.match(
+    catalogSource,
+    /const heldProfile = profileIsForTarget\(profile, targetBrandId, user\) \? profile : null/,
+    'the held profile must still be gated, or another brand leaks across a param change',
+  );
 
   console.log('Brand profile contract tests passed.');
 }

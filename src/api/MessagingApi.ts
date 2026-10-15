@@ -130,13 +130,21 @@ export function normalizeConversationParticipant(raw: unknown): ConversationPart
   const lastName = asString(source.lastName);
   const username = asString(source.username);
   const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  /*
+    `displayName` is the server's canonical answer and must win: for a BRAND
+    account it is the storefront name, while firstName/lastName are the owner's
+    personal name — joining those locally labels a brand thread with a stranger.
+    The local join stays as the fallback so a response from an older API (or one
+    that did not select the brand relation) still produces a usable name.
+  */
+  const displayName = asString(source.displayName);
 
   return {
     id,
     username,
     firstName,
     lastName,
-    name: fullName || username || null,
+    name: displayName || fullName || username || null,
     avatarUrl: asString(source.profileImage) ?? asString(source.avatarUrl) ?? asString(source.avatar),
   };
 }
@@ -403,6 +411,10 @@ const resolveThreadPath = (context: MessageContextParams) => {
   throw new Error('A threadId, conversationId, orderId, or customOrderId is required');
 };
 
+export type OrderConversationRef =
+  | { orderId: string; customOrderId?: never }
+  | { customOrderId: string; orderId?: never };
+
 export const MessagingApi = {
   async listConversations(params?: ListConversationsParams): Promise<ConversationListResponse> {
     const response = await apiClient.get('/messaging/inbox', {
@@ -440,6 +452,26 @@ export const MessagingApi = {
         productId: context.productId ?? undefined,
       },
     });
+    return normalizeResolvedConversationRoute(response.data);
+  },
+
+  /**
+   * Read-only: is there already a conversation with this order's brand?
+   * Drives "Go to conversation" vs "Open conversation"; never creates a thread.
+   */
+  async findOrderConversation(ref: OrderConversationRef): Promise<{ exists: boolean; threadId: string | null }> {
+    const response = await apiClient.get('/messaging/conversations/by-order', { params: ref });
+    const source = asRecord(unwrapData<unknown>(response.data));
+    return { exists: source.exists === true, threadId: asString(source.threadId) };
+  },
+
+  /**
+   * Open the conversation for an order. Reuses the one buyer<->brand thread
+   * (creating it only if none exists) and links the order into it. The plain
+   * resolver 404s for any order nobody has written about yet.
+   */
+  async openOrderConversation(ref: OrderConversationRef): Promise<ResolvedConversationRoute | null> {
+    const response = await apiClient.post('/messaging/conversations/by-order', ref);
     return normalizeResolvedConversationRoute(response.data);
   },
 
@@ -499,6 +531,26 @@ export const MessagingApi = {
     const endpoint = hasOrderContext
       ? '/messaging/conversations/start'
       : `/messaging/brands/${payload.brandId}/messages`;
+    /*
+      The content reference must survive BOTH branches.
+
+      This body is built field by field rather than spread, which silently drops
+      anything the caller adds — and the very first message of a thread is the
+      one most likely to carry a reference, because starting a conversation is
+      what you do from a design or a product you are looking at. Listing the
+      fields explicitly here is what makes that visible.
+    */
+    const contentContext = {
+      contextDesignId: payload.contextDesignId,
+      contextDesignTitle: payload.contextDesignTitle,
+      contextDesignCoverFileId: payload.contextDesignCoverFileId,
+      contextDesignCoverUrl: payload.contextDesignCoverUrl,
+      contextProductId: payload.contextProductId,
+      contextProductTitle: payload.contextProductTitle,
+      contextProductCoverFileId: payload.contextProductCoverFileId,
+      contextProductCoverUrl: payload.contextProductCoverUrl,
+    };
+
     const body = hasOrderContext
       ? {
           brandId: payload.brandId ?? undefined,
@@ -510,11 +562,13 @@ export const MessagingApi = {
           bodyText: payload.bodyText,
           clientMessageId: payload.clientMessageId,
           attachmentFileIds: payload.attachmentFileIds,
+          ...contentContext,
         }
       : {
           bodyText: payload.bodyText,
           clientMessageId: payload.clientMessageId,
           attachmentFileIds: payload.attachmentFileIds,
+          ...contentContext,
         };
 
     const response = await apiClient.post(
@@ -554,11 +608,12 @@ export const MessagingApi = {
       isDocument ? MOBILE_UPLOAD_POLICIES.messageDocument : MOBILE_UPLOAD_POLICIES.messageImage,
     );
     const formData = new FormData();
-    formData.append('file', {
-      uri: file.uri,
-      name: file.name,
-      type: file.type,
-    } as any);
+    const filePart = {
+      uri: String(file.uri),
+      name: String(file.name),
+      type: String(file.type),
+    };
+    formData.append('file', JSON.parse(JSON.stringify(filePart)));
 
     const endpoint = isDocument
       ? '/uploads/message-document'

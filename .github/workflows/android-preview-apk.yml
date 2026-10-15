@@ -1,0 +1,157 @@
+# Build the instrumented preview APK in CI.
+#
+# EAS free-plan Android builds run out monthly, and a latency investigation that
+# needs a device capture per hypothesis runs out of them quickly. This repo is
+# public, so GitHub-hosted runners are free and unmetered, and they already ship
+# the JDK and Android SDK that a React Native release build needs.
+#
+# Manual by default (`workflow_dispatch`): a build should happen because someone
+# wants to test something, not on every push.
+#
+# SIGNING. No keystore is supplied, so Expo's generated `release` config falls
+# back to the debug key. The APK installs and runs, but its signature differs
+# from the EAS-signed one — Android refuses to update across signatures, so the
+# existing app must be uninstalled once before the first install from here.
+# To avoid that, export the EAS keystore (`eas credentials`) into the secrets
+# below and this workflow will use it instead.
+name: Android preview APK
+
+# TRIGGERS, and why there are two.
+#
+# `workflow_dispatch` — the "Run workflow" button — only works when the
+# workflow file exists on the repository's DEFAULT branch. This repo's default
+# is `main` and the work happens on `SIT`, so the button alone was unusable: the
+# API answered "not found on the default branch" and nothing could be started.
+#
+# A tag push is evaluated against the workflow file in the ref being PUSHED, so
+# it works from `SIT` without putting anything on `main`. It also keeps the
+# property that made this manual in the first place: a build happens because
+# someone asked for one, by pushing a tag, not on every commit.
+#
+# The dispatch trigger stays, so the button works if this ever lands on `main`.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'apk-*'
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Needed to publish the GitHub Release at the end.
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Expo SDK 56 / React Native require JDK 17; the runner has several.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Gate the build on the same checks a local change is held to, so a
+      # broken bundle never reaches a device and burns a capture.
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Contract tests
+        run: |
+          node scripts/test-auth-user-equality.js
+          node scripts/test-perf-instrumentation-contract.js
+          node scripts/test-clipping-and-market-chrome-contract.js
+          node scripts/check-perf-regressions.cjs
+
+      # `android/` is gitignored and generated here, so the committed tree stays
+      # managed-workflow and this cannot drift from app.config.js.
+      - name: Prebuild Android project
+        run: npx expo prebuild --platform android --no-install
+
+      # EXPO_PUBLIC_* values are inlined into the bundle at build time. They are
+      # read from repository secrets rather than written here: this repo is
+      # public, and a value pasted into a workflow file is published with it.
+      # A missing secret does not fail the build — the app simply falls back to
+      # its default, which is fine for a latency capture but will break Google
+      # sign-in.
+      - name: Build release APK
+        working-directory: android
+        env:
+          # Always on, not an input.
+          #
+          # This was `${{ inputs.debug_nav && '1' || '' }}`, which is empty for
+          # any trigger that is not a dispatch — so a tag-triggered build would
+          # have produced an APK with the instrumentation silently OFF, and the
+          # capture it exists to serve would have come back empty. The whole
+          # purpose of this artifact is the [WIEZ-PERF] trace; a build without
+          # it is not a thing worth making.
+          EXPO_PUBLIC_DEBUG_NAV: '1'
+          # Stamped into the bundle so every captured log names the build that
+          # produced it. A capture was once attributed to a build that had never
+          # reached the device, and establishing that cost a full round trip.
+          EXPO_PUBLIC_BUILD_SHA: ${{ github.sha }}
+          EXPO_PUBLIC_API_BASE_URL: ${{ secrets.EXPO_PUBLIC_API_BASE_URL }}
+          EXPO_PUBLIC_WEB_APP_URL: ${{ secrets.EXPO_PUBLIC_WEB_APP_URL }}
+          EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+          # Exactly 'true', and not '1'.
+          #
+          # `sentry.gradle` line 11 reads
+          #   System.getenv('SENTRY_DISABLE_AUTO_UPLOAD') != 'true'
+          # which is a strict string comparison, so '1' left uploads ENABLED and
+          # the build died at `createBundleReleaseJsAndAssets_SentryUpload` with
+          # "An organization ID or slug is required" — nine minutes in, after the
+          # bundle had already been built successfully. The EAS environment has
+          # this as 'true'; copying the value approximately rather than exactly
+          # cost one build.
+          SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+        run: ./gradlew assembleRelease --no-daemon --console=plain
+
+      # Named with the commit so a tester can tell two downloads apart — the
+      # EAS builds were all versionCode 1, which made a stale install look
+      # current and cost one wasted round of debugging.
+      - name: Name the artifact after its commit
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/*.apk \
+             "dist/wiez-preview-${GITHUB_SHA::7}.apk"
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wiez-preview-apk-${{ github.sha }}
+          path: dist/*.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      # Also publish a GitHub Release, because the artifact above is a zip that
+      # only a signed-in GitHub user can download — awkward on a phone. A release
+      # asset is a plain .apk anyone with the link can download, like an EAS
+      # artifact URL. The repo is public, so so is the APK.
+      #
+      # Two assets: the commit-named one, and `wiez-preview.apk`, whose
+      #   /releases/latest/download/wiez-preview.apk
+      # URL never changes and always serves the newest build — one bookmark or
+      # QR code for every future install.
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHORT="${GITHUB_SHA::7}"
+          TAG="${{ github.ref_type == 'tag' && github.ref_name || '' }}"
+          TAG="${TAG:-apk-$SHORT}"
+          cp "dist/wiez-preview-$SHORT.apk" dist/wiez-preview.apk
+          gh release create "$TAG" \
+            "dist/wiez-preview-$SHORT.apk" dist/wiez-preview.apk \
+            --target "$GITHUB_SHA" --latest \
+            --title "WIEZ preview $SHORT" \
+            --notes "Preview APK built from $GITHUB_SHA."

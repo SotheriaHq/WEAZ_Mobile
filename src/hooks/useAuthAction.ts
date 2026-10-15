@@ -6,6 +6,8 @@
 
 import { useCallback } from 'react';
 import { router } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useToast } from '@/src/toast/ToastContext';
 
@@ -42,7 +44,7 @@ export function useAuthAction() {
 
                 // Delay navigation slightly so user sees toast
                 setTimeout(() => {
-                    router.push({
+                    drillDownPush({
                         pathname: '/login',
                         params: {
                             reason: 'auth_required',

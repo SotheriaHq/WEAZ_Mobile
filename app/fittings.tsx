@@ -1,0 +1,698 @@
+/**
+ * My fittings — a screen, not a sheet.
+ *
+ * ## Why this is a screen
+ *
+ * This was a bottom sheet on the profile, and it had a fault that cost people
+ * their measurements: its Cancel/Done footer sat below a body that could outgrow
+ * the sheet's 88% cap once the keyboard was up, so on a normal handset the
+ * buttons were simply not on screen. There is no visible way to commit a form
+ * whose only commit control is off-screen — so shoppers typed their fittings,
+ * swiped the sheet away, and lost every value. A sheet is the wrong container
+ * for a form this size regardless: it competes with the keyboard for the same
+ * vertical space, and it has to be dismissible by a gesture that also discards.
+ *
+ * A full screen has the height, a back button that means "go back", and a
+ * footer pinned by `KeyboardStickyFooter` that rides the keyboard instead of
+ * being buried under it. It lives OUTSIDE the `(tabs)` group deliberately: a
+ * drill-down window gets a back control, not the floating island.
+ *
+ * ## What it collects
+ *
+ * Two clearly separated groups, because they answer different questions:
+ *
+ *  - **The eight core points** are what `SizeComputationService` weighs. They
+ *    are the only ones that decide whether a size can be computed at all, so
+ *    they are the only ones marked required, and they are the ones worth asking
+ *    for once up front.
+ *  - **Everything else** is garment-specific — a brand asks for it against a
+ *    particular design, at order time, in `BagFittingsSheet`. Those values are
+ *    kept and shown here so they are editable in one place, but they are never
+ *    presented as something the shopper owes us.
+ *
+ * Collecting the second group up front is what turned the profile into a
+ * nineteen-row wall of numbers. Order-time collection stays exactly as it was.
+ */
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { AppBackButton } from '@/components/ui/AppBackButton';
+import { AppText } from '@/components/ui/AppText';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
+import { KeyboardStickyFooter } from '@/components/ui/KeyboardStickyFooter';
+import { SettingsStateCard } from '@/components/settings/SettingsPrimitives';
+import { ComputedSizePanel } from '@/components/sizing/ComputedSize';
+import {
+  ProfileApi,
+  type ComputedSizeFitProfile,
+  type SizeFitProfile,
+  type SizingRegion,
+} from '@/src/api/ProfileApi';
+import { useAuth } from '@/src/auth/AuthContext';
+import { resolveComputedSizeState } from '@/src/features/sizing/computedSize';
+import { Tabs } from '@/components/catalog/Tabs';
+import { FittingsSizesTab } from '@/components/sizing/FittingsSizesTab';
+import {
+  CORE_MEASUREMENT_SLOTS,
+  MEASUREMENT_UNIT_LABELS,
+  collapseMeasurements,
+  convertMeasurementValues,
+  getMeasurementHint,
+  type CoreMeasurementKey,
+} from '@/src/features/sizing/measurementCatalog';
+import { tokens } from '@/src/styles/tokens';
+import { useTheme } from '@/src/theme/ThemeProvider';
+import { useToast } from '@/src/toast/ToastContext';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
+import { MuseLoader } from '@/components/ui/MuseLoader';
+
+type LengthUnit = 'CM' | 'IN';
+type CoreValues = Record<CoreMeasurementKey, string>;
+
+const FOOTER_CLEARANCE = 112;
+
+type FittingsTab = 'measurements' | 'sizes';
+
+/** Measurements are a form you fill in; sizes are a result you read. */
+const FITTINGS_TABS = [
+  { key: 'measurements', label: 'Measurements' },
+  { key: 'sizes', label: 'Sizes' },
+];
+
+const emptyCoreValues = (): CoreValues =>
+  Object.fromEntries(CORE_MEASUREMENT_SLOTS.map((slot) => [slot.key, ''])) as CoreValues;
+
+const sanitizeNumeric = (value: string) => value.replace(/[^0-9.]/g, '');
+
+/** The form as one comparable string, for the unsaved-changes check. */
+const snapshotForm = (
+  core: Record<string, string>,
+  extras: Record<string, string>,
+  unit: string,
+) =>
+  JSON.stringify({
+    unit,
+    core: Object.entries(core).map(([key, value]) => [key, String(value ?? '').trim()]).sort(),
+    extras: Object.entries(extras).map(([key, value]) => [key, String(value ?? '').trim()]).sort(),
+  });
+
+export default function FittingsScreen() {
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const toast = useToast();
+  const { status, isAuthenticated } = useAuth();
+
+  const [sizeFit, setSizeFit] = useState<SizeFitProfile | null>(null);
+  const [computed, setComputed] = useState<ComputedSizeFitProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [unit, setUnit] = useState<LengthUnit>('CM');
+  const [coreValues, setCoreValues] = useState<CoreValues>(emptyCoreValues);
+  const [extraValues, setExtraValues] = useState<Record<string, string>>({});
+  const [extrasExpanded, setExtrasExpanded] = useState(false);
+
+  /**
+   * The form is the draft; the server response is only its seed.
+   *
+   * Without this guard a background refresh landing mid-typing would overwrite
+   * whatever the user had entered with the stored values — the same class of
+   * bug as the missing Done button, and just as silent.
+   */
+  const seededRef = useRef(false);
+
+  /**
+   * What the form held when it last matched the server — on load, and after
+   * every save. Comparing against it is how the Charts button knows whether
+   * leaving would throw typed numbers away.
+   */
+  const savedSnapshotRef = useRef<string | null>(null);
+
+  const [extraKeys, setExtraKeys] = useState<Array<{ key: string; label: string }>>([]);
+
+  const load = useCallback(async () => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [profile, computedProfile] = await Promise.all([
+        ProfileApi.getSizeFit(),
+        ProfileApi.getComputedSizeFit().catch(() => null),
+      ]);
+      setSizeFit(profile);
+      setComputed(computedProfile);
+
+      if (!seededRef.current) {
+        const collapsed = collapseMeasurements(profile?.measurements);
+        const seededCore = Object.fromEntries(
+          CORE_MEASUREMENT_SLOTS.map((slot) => [slot.key, collapsed.core[slot.key] ?? '']),
+        ) as CoreValues;
+        const seededExtras = Object.fromEntries(
+          collapsed.extras.map((entry) => [entry.key, entry.value]),
+        );
+        setUnit(profile?.preferredLengthUnit ?? 'CM');
+        setCoreValues(seededCore);
+        setExtraKeys(collapsed.extras.map(({ key, label }) => ({ key, label })));
+        setExtraValues(seededExtras);
+        savedSnapshotRef.current = snapshotForm(
+          seededCore,
+          seededExtras,
+          profile?.preferredLengthUnit ?? 'CM',
+        );
+        seededRef.current = true;
+      }
+    } catch (error) {
+      setLoadError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : 'Unable to load your fittings.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (status === 'loading') return;
+    void load();
+  }, [load, status]);
+
+  const computedState = useMemo(() => resolveComputedSizeState(computed), [computed]);
+  const [activeTab, setActiveTab] = useState<FittingsTab>('measurements');
+  const [regionSaving, setRegionSaving] = useState(false);
+
+  /**
+   * Switch the chart the shopper is sized against.
+   *
+   * The saved measurements do not change — only what they are compared to — so
+   * the computed profile has to be re-read afterwards or every size on screen
+   * still reflects the previous chart. The optimistic local write is what keeps
+   * the chip selection immediate over a slow connection; it is reverted if the
+   * server rejects it.
+   */
+  const handleChangeRegion = useCallback(
+    async (region: SizingRegion) => {
+      if (regionSaving) return;
+      const previous = sizeFit?.preferredSizingRegion ?? null;
+      setRegionSaving(true);
+      setSizeFit((current) =>
+        current ? { ...current, preferredSizingRegion: region } : current,
+      );
+      try {
+        await ProfileApi.updateSizeFitSettings({ preferredSizingRegion: region });
+        setComputed(await ProfileApi.getComputedSizeFit().catch(() => computed));
+      } catch {
+        setSizeFit((current) =>
+          current ? { ...current, preferredSizingRegion: previous ?? undefined } : current,
+        );
+        toast.error('Could not change your sizing chart. Try again.');
+      } finally {
+        setRegionSaving(false);
+      }
+    },
+    [computed, regionSaving, sizeFit?.preferredSizingRegion, toast],
+  );
+
+  const savedCoreCount = useMemo(
+    () =>
+      CORE_MEASUREMENT_SLOTS.filter((slot) => {
+        const parsed = Number(coreValues[slot.key]);
+        return Number.isFinite(parsed) && parsed > 0;
+      }).length,
+    [coreValues],
+  );
+
+  const handleUnitChange = useCallback(
+    (nextUnit: LengthUnit) => {
+      if (nextUnit === unit) return;
+      // See `convertMeasurementValues`: stored scalars carry no unit marker, so
+      // flipping the toggle without converting silently redefines a 182cm
+      // shopper as 182 INCHES, which the server then multiplies into a
+      // four-and-a-half-metre body.
+      setCoreValues((values) => convertMeasurementValues(values, unit, nextUnit));
+      setExtraValues((values) => convertMeasurementValues(values, unit, nextUnit));
+      setUnit(nextUnit);
+    },
+    [unit],
+  );
+
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (saving) return false;
+    setSaving(true);
+    try {
+      /*
+        Canonical keys only.
+
+        The server fans each value back out to its gendered registry key
+        (`CHEST_BUST` -> `MEN_CHEST`) and prefers the canonical one when they
+        disagree, so writing canonical is what makes this screen the authority
+        over whatever key a brand's order form happened to use.
+      */
+      const measurements: Record<string, string> = {};
+      for (const slot of CORE_MEASUREMENT_SLOTS) {
+        const value = String(coreValues[slot.key] ?? '').trim();
+        if (value) measurements[slot.key] = value;
+      }
+      for (const { key } of extraKeys) {
+        const value = String(extraValues[key] ?? '').trim();
+        if (value) measurements[key] = value;
+      }
+
+      const updated = await ProfileApi.updateSizeFit({
+        measurements,
+        preferredLengthUnit: unit,
+      });
+      setSizeFit(updated);
+      // The estimate is derived from what we just saved, so re-read it rather
+      // than leaving a stale size on screen next to fresh numbers.
+      setComputed(await ProfileApi.getComputedSizeFit().catch(() => computed));
+      savedSnapshotRef.current = snapshotForm(coreValues, extraValues, unit);
+      toast.success('Fittings saved.');
+      return true;
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : 'Could not save your fittings. Please try again.',
+      );
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [computed, coreValues, extraKeys, extraValues, saving, toast, unit]);
+
+  const { from } = useLocalSearchParams<{ from?: string }>();
+
+  /**
+   * Fittings ↔ Charts, both ways.
+   *
+   * Opened FROM the charts, this steps back to them — the charts are a tab that
+   * stayed mounted underneath, so going back returns to the same chart and
+   * scroll position, now re-read against whatever was just saved. Opened from
+   * anywhere else, it navigates to the Charts tab.
+   *
+   * Leaving with typed but unsaved numbers asks first. The round trip exists
+   * precisely so a shopper can change a measurement and check where it lands;
+   * losing the change on the way over would defeat it.
+   */
+  const openCharts = useCallback(() => {
+    const go = () => {
+      if (from === 'charts' && router.canGoBack()) {
+        router.back();
+        return;
+      }
+      topLevelNavigate('/charts' as never);
+    };
+
+    const dirty =
+      savedSnapshotRef.current !== null &&
+      snapshotForm(coreValues, extraValues, unit) !== savedSnapshotRef.current;
+    if (!dirty) {
+      go();
+      return;
+    }
+
+    Alert.alert('Save your changes first?', 'Some measurements have not been saved yet.', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: go },
+      {
+        text: 'Save',
+        onPress: () => {
+          void handleSave().then((saved) => {
+            if (saved) go();
+          });
+        },
+      },
+    ]);
+  }, [coreValues, extraValues, from, handleSave, unit]);
+
+  if (status === 'loading' || (loading && !sizeFit)) {
+    return (
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+        <FittingsHeader onOpenCharts={openCharts} />
+        <View style={styles.stateWrap}>
+          <MuseLoader size={20} />
+          <AppText variant="body" tone="muted">
+            Loading your fittings...
+          </AppText>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+        <FittingsHeader onOpenCharts={openCharts} />
+        <View style={styles.stateContent}>
+          <SettingsStateCard
+            title="Sign in required"
+            body="Your fittings are saved to your account."
+            actionTitle="Sign in"
+            onAction={() => drillDownPush('/(auth)/login' as never)}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (loadError && !sizeFit) {
+    return (
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+        <FittingsHeader onOpenCharts={openCharts} />
+        <View style={styles.stateContent}>
+          <SettingsStateCard
+            title="Could not load your fittings"
+            body={loadError}
+            actionTitle="Retry"
+            onAction={() => void load()}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const unitSuffix = unit.toLowerCase();
+  const footerClearance = Math.max(FOOTER_CLEARANCE, insets.bottom + 80);
+
+  return (
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+      <FittingsHeader onOpenCharts={openCharts} />
+
+      {/*
+        Two jobs, two tabs.
+
+        Measurements are a form you fill in once; sizes are a result you read
+        and configure. Stacking them made one long screen where the thing a
+        returning shopper wants — "what size am I, and against which chart?" —
+        sat below eight numeric inputs they had already filled in.
+      */}
+      <Tabs
+        tabs={FITTINGS_TABS}
+        activeTab={activeTab}
+        onTabChange={(key) => setActiveTab(key as FittingsTab)}
+      />
+
+      <KeyboardAwareFormScroll
+        style={styles.flex}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: activeTab === 'measurements' ? footerClearance : tokens.spacing.xl },
+        ]}
+        bottomOffset={tokens.spacing.xl}
+        extraKeyboardSpace={0}
+        automaticallyAdjustKeyboardInsets={false}
+      >
+        {activeTab === 'sizes' ? (
+          <FittingsSizesTab
+            computed={computed}
+            preferredRegion={sizeFit?.preferredSizingRegion ?? null}
+            onChangeRegion={(region) => void handleChangeRegion(region)}
+            regionSaving={regionSaving}
+          />
+        ) : (
+          <>
+        <ComputedSizePanel state={computedState} />
+
+        <View style={styles.section}>
+          <AppText variant="smallBold" tone="secondary">
+            Units
+          </AppText>
+          <View style={styles.unitRow}>
+            {(['CM', 'IN'] as const).map((option) => {
+              const selected = option === unit;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => handleUnitChange(option)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  style={({ pressed }) => [
+                    styles.unitPill,
+                    {
+                      backgroundColor: selected ? theme.colors.primarySoft : 'transparent',
+                      borderColor: selected ? theme.colors.primary : theme.colors.border,
+                    },
+                    pressed ? styles.pressed : null,
+                  ]}
+                >
+                  <AppText variant="bodyBold" tone={selected ? 'primary' : 'secondary'}>
+                    {MEASUREMENT_UNIT_LABELS[option]}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <AppText variant="bodyBold">Points we size you by</AppText>
+            <AppText variant="captionBold" tone="muted">
+              {savedCoreCount}/{CORE_MEASUREMENT_SLOTS.length}
+            </AppText>
+          </View>
+          <AppText variant="captionRegular" tone="muted">
+            These eight decide your size. Save them once and no brand has to ask again.
+          </AppText>
+
+          <View style={styles.fieldList}>
+            {CORE_MEASUREMENT_SLOTS.map((slot) => (
+              <Input
+                key={slot.key}
+                label={slot.label}
+                required
+                helperText={slot.hint}
+                value={coreValues[slot.key]}
+                onChangeText={(value) =>
+                  setCoreValues((current) => ({
+                    ...current,
+                    [slot.key]: sanitizeNumeric(value),
+                  }))
+                }
+                keyboardType="decimal-pad"
+                placeholder="0"
+                trailing={
+                  <AppText variant="captionRegular" tone="muted">
+                    {unitSuffix}
+                  </AppText>
+                }
+              />
+            ))}
+          </View>
+        </View>
+
+        {extraKeys.length > 0 ? (
+          <View style={styles.section}>
+            <Pressable
+              onPress={() => setExtrasExpanded((current) => !current)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: extrasExpanded }}
+              accessibilityLabel={`${extrasExpanded ? 'Hide' : 'Show'} points brands have asked you for`}
+              style={({ pressed }) => [
+                styles.disclosure,
+                { borderTopColor: theme.colors.border },
+                pressed ? styles.pressed : null,
+              ]}
+            >
+              <View style={styles.disclosureCopy}>
+                <AppText variant="bodyBold">Points brands have asked for</AppText>
+                <AppText variant="captionRegular" tone="muted">
+                  {extraKeys.length} saved from your orders. Not needed for your size.
+                </AppText>
+              </View>
+              <AppText variant="captionBold" tone="secondary">
+                {extrasExpanded ? '▲' : '▼'}
+              </AppText>
+            </Pressable>
+
+            {extrasExpanded ? (
+              <View style={styles.fieldList}>
+                {extraKeys.map(({ key, label }) => (
+                  <Input
+                    key={key}
+                    label={label}
+                    helperText={getMeasurementHint(key) ?? undefined}
+                    value={extraValues[key] ?? ''}
+                    onChangeText={(value) =>
+                      setExtraValues((current) => ({ ...current, [key]: sanitizeNumeric(value) }))
+                    }
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    trailing={
+                      <AppText variant="captionRegular" tone="muted">
+                        {unitSuffix}
+                      </AppText>
+                    }
+                  />
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={[styles.note, { borderTopColor: theme.colors.border }]}>
+          <AppText variant="smallBold" tone="secondary">
+            Measure over light clothing, tape snug but not tight.
+          </AppText>
+          <AppText variant="captionRegular" tone="muted">
+            A brand only ever sees the points its design needs, and only when you place an order.
+          </AppText>
+        </View>
+          </>
+        )}
+      </KeyboardAwareFormScroll>
+
+      {/*
+        Pinned, and riding the keyboard.
+
+        The sheet this screen replaced put its footer below a scrolling body, so
+        the keyboard could bury Done and there was no way to commit the form.
+        `KeyboardStickyFooter` follows the platform keyboard inset, so Save is
+        on screen in the first frame even when this screen opens with a keyboard
+        already up.
+      */}
+      {activeTab === 'measurements' && !loading && !loadError ? (
+        <KeyboardStickyFooter offset={{ closed: 0, opened: 0 }}>
+          <View
+            style={[
+              styles.footer,
+              {
+                backgroundColor: theme.colors.bg,
+                borderTopColor: theme.colors.border,
+                paddingBottom: Math.max(insets.bottom + tokens.spacing.lg, tokens.spacing['2xl']),
+              },
+            ]}
+          >
+            <Button
+              title="Save fittings"
+              size="md"
+              onPress={() => void handleSave()}
+              loading={saving}
+            />
+          </View>
+        </KeyboardStickyFooter>
+      ) : null}
+    </SafeAreaView>
+  );
+}
+
+function FittingsHeader({ onOpenCharts }: { onOpenCharts?: () => void }) {
+  const { theme } = useTheme();
+  return (
+    <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
+      <AppBackButton fallbackHref="/(tabs)/me" />
+      <View style={styles.headerCopy}>
+        <AppText variant="title" numberOfLines={1}>
+          My fittings
+        </AppText>
+        <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+          Saved once, reused on every custom order
+        </AppText>
+      </View>
+      {/* The other half of the round trip: see where these numbers land. */}
+      {onOpenCharts ? (
+        <Button title="📐 Charts" size="sm" variant="secondary" onPress={onOpenCharts} />
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  flex: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingBottom: tokens.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: tokens.spacing.xs,
+  },
+  stateWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.xl,
+  },
+  stateContent: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.lg,
+  },
+  content: {
+    gap: tokens.spacing.xl,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.lg,
+    paddingBottom: FOOTER_CLEARANCE,
+  },
+  section: {
+    gap: tokens.spacing.sm,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+  },
+  unitRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+  },
+  unitPill: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fieldList: {
+    gap: tokens.spacing.md,
+    marginTop: tokens.spacing.xs,
+  },
+  disclosure: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+    minHeight: 44,
+    paddingTop: tokens.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  disclosureCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: tokens.spacing.xs,
+  },
+  note: {
+    gap: tokens.spacing.xs,
+    paddingTop: tokens.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  footer: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  pressed: {
+    opacity: 0.82,
+  },
+});

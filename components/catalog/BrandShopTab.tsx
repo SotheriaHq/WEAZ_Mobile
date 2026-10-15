@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -20,6 +21,8 @@ import { Chip } from '@/components/ui/Chip';
 import { UnifiedProductCard } from '@/components/commerce/UnifiedProductCard';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
 import { AppSelectSheet } from '@/components/ui/AppSelectSheet';
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
+import { Button } from '@/components/ui/Button';
 import { BagPulseIcon, type BagPulseStatus } from '@/components/ui/BagPulseIcon';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
@@ -28,9 +31,10 @@ import { useProductBagging } from '@/src/hooks/useProductBagging';
 import { BAG_IT_EMOJI, BAG_IT_LABEL } from '@/src/constants/bagging';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
-import { THREADLY_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
+import { WIEZ_QUERY_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { brandShopDevLog, brandShopDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
+import { DEFAULT_CURRENCY, formatMoneyOr } from '@/src/utils/money';
 
 type SortKey = 'newest' | 'price_low_high' | 'price_high_low';
 type FilterKey = 'all' | 'in_stock' | 'custom_only' | 'bagged' | 'saved';
@@ -104,17 +108,8 @@ const normalizeVariantPool = (
   });
 };
 
-const formatPrice = (amount: number, currency = 'NGN'): string => {
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${Number(amount || 0).toLocaleString()}`;
-  }
-};
+const formatPrice = (amount: number, currency = DEFAULT_CURRENCY): string =>
+  formatMoneyOr(amount, 'Price on request', currency);
 
 const getBagPulseStatus = (args: {
   busy?: boolean;
@@ -218,6 +213,49 @@ function RailChip({
   );
 }
 
+function SelectorTrigger({
+  icon,
+  label,
+  value,
+  active,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const { theme } = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${value}`}
+      style={({ pressed }) => [
+        styles.selectorTrigger,
+        {
+          borderColor: active ? theme.colors.primary : theme.colors.border,
+          backgroundColor: active ? theme.colors.primarySoft : theme.colors.surfaceAlt,
+        },
+        pressed && { opacity: 0.78 },
+      ]}
+    >
+      <AppText variant="captionRegular" tone="muted">{icon}</AppText>
+      <AppText
+        variant="captionBold"
+        tone={active ? 'primary' : 'secondary'}
+        numberOfLines={1}
+        style={styles.selectorTriggerLabel}
+      >
+        {label}: {value}
+      </AppText>
+      <AppText variant="captionRegular" tone="muted">▾</AppText>
+    </Pressable>
+  );
+}
+
 interface BrandShopTabProps {
   brandId?: string;
   isOwner?: boolean;
@@ -238,8 +276,6 @@ export function BrandShopTab({
   enabled = true,
 }: BrandShopTabProps) {
   const { scheme, theme } = useTheme();
-  const insets = useSafeAreaInsets();
-  const modalBottomGap = Platform.OS === 'android' ? Math.max(0, insets.bottom) : 0;
   const { status, user } = useAuth();
   const { standardScreenBottomPadding } = useScreenChrome();
   const requireAuth = useAuthAction();
@@ -256,6 +292,13 @@ export function BrandShopTab({
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedFilter, setSelectedFilter] = useState<FilterKey>('all');
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [priceMin, setPriceMin] = useState('');
+  const [priceMax, setPriceMax] = useState('');
+  const [onSaleOnly, setOnSaleOnly] = useState(false);
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
 
   const [wishlistByProductId, setWishlistByProductId] = useState<Record<string, true>>({});
   const [cartByProductId, setCartByProductId] = useState<Record<string, string>>({});
@@ -391,7 +434,7 @@ export function BrandShopTab({
       const items = await queryClient.fetchQuery({
         queryKey: brandProductsQueryKey,
         queryFn: () => MobileStoreApi.getBrandProducts(normalizedBrandId, 80),
-        staleTime: THREADLY_QUERY_STALE_TIME_MS,
+        staleTime: WIEZ_QUERY_STALE_TIME_MS,
       });
       setProducts(items);
     } catch (err) {
@@ -434,6 +477,32 @@ export function BrandShopTab({
     return ['all', ...categories];
   }, [displayProducts]);
 
+  const sizeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          displayProducts
+            .flatMap((product) => product.sizes ?? [])
+            .map((size) => size.trim())
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    [displayProducts],
+  );
+
+  const colorOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          displayProducts
+            .flatMap((product) => product.colors ?? [])
+            .map((color) => color.trim())
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [displayProducts],
+  );
+
   const filteredProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
@@ -463,6 +532,27 @@ export function BrandShopTab({
       if (selectedFilter === 'bagged' && !standardBagged && !customBagged) return false;
       if (selectedFilter === 'saved' && !saved) return false;
 
+      const min = parseFloat(priceMin);
+      const max = parseFloat(priceMax);
+      if (!Number.isNaN(min) && product.price < min) return false;
+      if (!Number.isNaN(max) && product.price > max) return false;
+
+      if (onSaleOnly) {
+        const onSale =
+          typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
+        if (!onSale) return false;
+      }
+
+      if (selectedSizes.length > 0) {
+        const productSizes = product.sizes ?? [];
+        if (!productSizes.some((size) => selectedSizes.includes(size))) return false;
+      }
+
+      if (selectedColors.length > 0) {
+        const productColors = product.colors ?? [];
+        if (!productColors.some((color) => selectedColors.includes(color))) return false;
+      }
+
       return true;
     });
 
@@ -484,9 +574,14 @@ export function BrandShopTab({
     cartByProductId,
     customBagByProductId,
     displayProducts,
+    onSaleOnly,
+    priceMax,
+    priceMin,
     query,
     selectedCategory,
+    selectedColors,
     selectedFilter,
+    selectedSizes,
     selectedSort,
     wishlistByProductId,
   ]);
@@ -537,7 +632,7 @@ export function BrandShopTab({
 
   const openProductDetail = useCallback(
     async (product: StoreProduct) => {
-      router.push({ pathname: '/products/[productId]', params: { productId: product.id } } as any);
+      drillDownPush({ pathname: '/products/[productId]', params: { productId: product.id } } as any);
     },
     [],
   );
@@ -706,10 +801,18 @@ export function BrandShopTab({
     setRefreshing(false);
   }, [enabled, fetchProducts, refreshCommerceState]);
 
+  const activeFilterCount =
+    (selectedFilter !== 'all' ? 1 : 0) +
+    (priceMin.trim() ? 1 : 0) +
+    (priceMax.trim() ? 1 : 0) +
+    (onSaleOnly ? 1 : 0) +
+    selectedSizes.length +
+    selectedColors.length;
+
   const hasActiveProductFilters = Boolean(
     query.trim() ||
       selectedCategory !== 'all' ||
-      selectedFilter !== 'all',
+      activeFilterCount > 0,
   );
 
   const clearProductFilters = useCallback(() => {
@@ -717,6 +820,11 @@ export function BrandShopTab({
     setSelectedCategory('all');
     setSelectedFilter('all');
     setSelectedSort('newest');
+    setPriceMin('');
+    setPriceMax('');
+    setOnSaleOnly(false);
+    setSelectedSizes([]);
+    setSelectedColors([]);
   }, []);
 
   const renderEmptyState = (args: {
@@ -729,7 +837,7 @@ export function BrandShopTab({
     <View style={styles.emptyState}>
       <AppText variant="display">{args.marker}</AppText>
       <AppText variant="subtitle" style={styles.emptyTitle}>{args.title}</AppText>
-      <AppText variant="body" tone="muted" style={styles.emptyBody}>{args.body}</AppText>
+      <AppText variant="bodyReadable" tone="muted" style={styles.emptyBody}>{args.body}</AppText>
       {args.actionLabel && args.onAction ? (
         <Pressable
           onPress={args.onAction}
@@ -774,6 +882,8 @@ export function BrandShopTab({
     });
   }
 
+  const activeSortLabel = SORT_OPTIONS.find((option) => option.key === selectedSort)?.label ?? 'Newest';
+
   const listHeader = (
     <>
       {headerComponent}
@@ -807,39 +917,28 @@ export function BrandShopTab({
           })}
         </ScrollView>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {SORT_OPTIONS.map((option) => {
-            const selected = selectedSort === option.key;
-            return (
-              <RailChip
-                key={option.key}
-                label={option.label}
-                selected={selected}
-                onPress={() => setSelectedSort(option.key)}
-              />
-            );
-          })}
-        </ScrollView>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {FILTER_OPTIONS.map((option) => {
-            const selected = selectedFilter === option.key;
-            return (
-              <RailChip
-                key={option.key}
-                label={option.label}
-                selected={selected}
-                onPress={() => setSelectedFilter(option.key)}
-              />
-            );
-          })}
-        </ScrollView>
+        <View style={styles.selectorRow}>
+          <SelectorTrigger
+            icon="↕"
+            label="Sort"
+            value={activeSortLabel}
+            active={selectedSort !== 'newest'}
+            onPress={() => setSortSheetOpen(true)}
+          />
+          <SelectorTrigger
+            icon="⚙"
+            label="Filter"
+            value={activeFilterCount > 0 ? `${activeFilterCount} active` : 'All'}
+            active={activeFilterCount > 0}
+            onPress={() => setFilterSheetOpen(true)}
+          />
+        </View>
       </View>
     </>
   );
 
   return (
-    <View style={styles.shopRoot}>
+    <View style={[styles.shopRoot, !scrollEnabled && { flex: undefined }]}>
       {filteredProducts.length === 0 ? listHeader : null}
 
       {filteredProducts.length === 0 ? (
@@ -860,12 +959,12 @@ export function BrandShopTab({
                   : 'This brand has not published any store products yet.',
               },
         )
-      ) : (
+      ) : scrollEnabled ? (
         <FlatList
           data={filteredProducts}
           keyExtractor={(item) => item.id}
           numColumns={2}
-          scrollEnabled={scrollEnabled}
+          scrollEnabled={true}
           ListHeaderComponent={listHeader}
           columnWrapperStyle={{ gap: CARD_GAP }}
           contentContainerStyle={[
@@ -891,25 +990,63 @@ export function BrandShopTab({
           )}
           ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
         />
+      ) : (
+        // Embedded mode (scrollEnabled=false): the parent catalogue ScrollView is
+        // the single scroll owner. A nested non-scroll ScrollView here collapsed /
+        // measured unreliably, which clipped the lower product rows and made the
+        // Shop tab feel scroll-locked. A plain View reports its true content height
+        // to the pager's onLayout so every row scrolls fully above the bottom island.
+        <View>
+          {listHeader}
+          <View
+            style={[
+              styles.gridContainer,
+              { paddingHorizontal: SIDE_PADDING, paddingBottom: gridBottomPadding },
+              { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP, rowGap: CARD_GAP }
+            ]}
+          >
+            {filteredProducts.map((item) => (
+              <ProductCard
+                key={item.id}
+                product={item}
+                width={cardWidth}
+                wishlisted={Boolean(wishlistByProductId[item.id])}
+                standardBagged={Boolean(cartByProductId[item.id])}
+                customBagged={Boolean(customBagByProductId[item.id])}
+                busy={Boolean(busyByProductId[item.id] || loadingByProductId[item.id])}
+                pulseStatus={getPulseStatus(item.id, getTotalStock(item) <= 0 && !item.customOrderEnabled)}
+                onPress={() => {
+                  void openProductDetail(item);
+                }}
+              />
+            ))}
+          </View>
+        </View>
       )}
 
-      <Modal
-        visible={detailVisible}
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-        navigationBarTranslucent
-        onRequestClose={closeProductDetail}
-      >
-        <View style={styles.modalRoot}>
-          <Pressable style={[styles.modalBackdrop, { backgroundColor: theme.colors.overlay }]} onPress={closeProductDetail} />
-          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, marginBottom: modalBottomGap }]}>
-            <View style={[styles.modalHandle, { backgroundColor: theme.colors.border }]} />
+      {/*
+        The product sheet uses the app's sheet, not its own modal.
 
-            {detailLoading || !activeProduct ? (
-              <LoaderBlock message="Loading product options" minHeight={240} style={styles.modalLoadingWrap} />
-            ) : (
-              <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+        It was a transparent `Modal` with `animationType="slide"` — the
+        platform's slide, on the platform's curve, with no handle to drag and no
+        swipe to dismiss. Every other sheet a shopper meets on the way to the bag
+        (filters, sort, size and colour, the bag itself) is `AppBottomSheet`, so
+        the one step in the middle of that flow opened and closed unlike the
+        steps either side of it.
+      */}
+      <AppBottomSheet
+        visible={detailVisible}
+        title={activeProduct?.name ?? 'Product'}
+        subtitle={
+          activeProduct ? formatPrice(activeProduct.price, activeProduct.currency) : undefined
+        }
+        onClose={closeProductDetail}
+        showCloseButton
+      >
+        {detailLoading || !activeProduct ? (
+          <LoaderBlock message="Loading product options" minHeight={240} style={styles.modalLoadingWrap} />
+        ) : (
+              <View style={styles.modalContent}>
                 <View style={styles.modalImageWrap}>
                   {activeProductImageUri ? (
                     <StableImage
@@ -925,13 +1062,9 @@ export function BrandShopTab({
                   )}
                 </View>
 
-                <AppText variant="title">{activeProduct.name}</AppText>
-                <AppText variant="subtitle" tone="primary">
-                  {formatPrice(activeProduct.price, activeProduct.currency)}
-                </AppText>
-
+                {/* Name and price are the sheet's own header now. */}
                 {activeProduct.description ? (
-                  <AppText variant="body" tone="muted" style={styles.modalDescription}> 
+                  <AppText variant="small" tone="muted" style={styles.modalDescription}> 
                     {activeProduct.description}
                   </AppText>
                 ) : null}
@@ -1069,11 +1202,9 @@ export function BrandShopTab({
                     ) : null}
                   </View>
                 )}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
+              </View>
+        )}
+      </AppBottomSheet>
 
       <AppSelectSheet
         visible={categorySheetOpen}
@@ -1087,6 +1218,125 @@ export function BrandShopTab({
         onChange={setSelectedCategory}
         onClose={() => setCategorySheetOpen(false)}
       />
+
+      <AppSelectSheet
+        visible={sortSheetOpen}
+        title="Sort"
+        subtitle="Choose how products are ordered."
+        options={SORT_OPTIONS.map((option) => ({ value: option.key, label: option.label }))}
+        value={selectedSort}
+        onChange={(value) => setSelectedSort(value as SortKey)}
+        onClose={() => setSortSheetOpen(false)}
+      />
+
+      <AppBottomSheet
+        visible={filterSheetOpen}
+        title="Filter"
+        subtitle="Refine by availability, price, size and colour."
+        onClose={() => setFilterSheetOpen(false)}
+        onDone={() => setFilterSheetOpen(false)}
+        doneLabel="Done"
+        footer={
+          <Button
+            title="Clear all filters"
+            variant="secondary"
+            onPress={clearProductFilters}
+            disabled={!hasActiveProductFilters}
+          />
+        }
+      >
+        <View style={styles.filterSection}>
+          <AppText variant="bodyBold">Availability</AppText>
+          <View style={styles.filterChipWrap}>
+            {/* "In bag" and "Wishlist" are buyer state. The owner of the shop
+                has neither, and offering them reads as a shopping affordance on
+                the seller's own store. */}
+            {FILTER_OPTIONS.filter(
+              (option) => !isOwner || (option.key !== 'bagged' && option.key !== 'saved'),
+            ).map((option) => (
+              <Chip
+                key={option.key}
+                label={option.label}
+                selected={selectedFilter === option.key}
+                onPress={() => setSelectedFilter(option.key)}
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.filterSection}>
+          <AppText variant="bodyBold">Price range</AppText>
+          <View style={styles.priceRow}>
+            <Input
+              label="Minimum price"
+              hideLabel
+              value={priceMin}
+              onChangeText={(text) => setPriceMin(text.replace(/[^0-9]/g, ''))}
+              placeholder="Min"
+              keyboardType="number-pad"
+              containerStyle={styles.priceInput}
+            />
+            <AppText variant="body" tone="muted">—</AppText>
+            <Input
+              label="Maximum price"
+              hideLabel
+              value={priceMax}
+              onChangeText={(text) => setPriceMax(text.replace(/[^0-9]/g, ''))}
+              placeholder="Max"
+              keyboardType="number-pad"
+              containerStyle={styles.priceInput}
+            />
+          </View>
+        </View>
+
+        <View style={styles.filterSection}>
+          <AppText variant="bodyBold">Offers</AppText>
+          <View style={styles.filterChipWrap}>
+            <Chip label="On sale" selected={onSaleOnly} onPress={() => setOnSaleOnly((value) => !value)} />
+          </View>
+        </View>
+
+        {sizeOptions.length > 0 ? (
+          <View style={styles.filterSection}>
+            <AppText variant="bodyBold">Sizes</AppText>
+            <View style={styles.filterChipWrap}>
+              {sizeOptions.map((size) => (
+                <Chip
+                  key={size}
+                  label={size}
+                  selected={selectedSizes.includes(size)}
+                  onPress={() =>
+                    setSelectedSizes((prev) =>
+                      prev.includes(size) ? prev.filter((value) => value !== size) : [...prev, size],
+                    )
+                  }
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {colorOptions.length > 0 ? (
+          <View style={styles.filterSection}>
+            <AppText variant="bodyBold">Colours</AppText>
+            <View style={styles.filterChipWrap}>
+              {colorOptions.map((color) => (
+                <Chip
+                  key={color}
+                  label={color}
+                  swatchColor={color}
+                  selected={selectedColors.includes(color)}
+                  onPress={() =>
+                    setSelectedColors((prev) =>
+                      prev.includes(color) ? prev.filter((value) => value !== color) : [...prev, color],
+                    )
+                  }
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
+      </AppBottomSheet>
     </View>
   );
 }
@@ -1109,7 +1359,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 8,
     borderRadius: 16,
-    paddingVertical: 6,
+    paddingVertical: 8,
     gap: 8,
   },
   panelTitle: {
@@ -1123,7 +1373,7 @@ const styles = StyleSheet.create({
   searchBox: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1144,8 +1394,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
+  selectorRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+    marginTop: 2,
+  },
+  selectorTrigger: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  selectorTriggerLabel: {
+    flex: 1,
+  },
+  filterSection: {
+    gap: tokens.spacing.sm,
+  },
+  filterChipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  priceInput: {
+    flex: 1,
+  },
   gridContainer: {
-    paddingTop: 14,
+    paddingTop: 16,
   },
   imageFallback: {
     flex: 1,
@@ -1164,11 +1448,7 @@ const styles = StyleSheet.create({
     paddingVertical: 80,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-  },
-  loadingText: {
-    fontSize: 13,
-    fontWeight: '600',
+    gap: 8,
   },
   emptyState: {
     paddingHorizontal: 28,
@@ -1179,49 +1459,26 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     textAlign: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   emptyBody: {
-    fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
   },
   retryBtn: {
-    marginTop: 18,
+    marginTop: 16,
     borderRadius: 12,
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  modalRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFill,
-  },
-  modalCard: {
-    maxHeight: '86%',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    paddingTop: 8,
-  },
-  modalHandle: {
-    width: 54,
-    height: 5,
-    borderRadius: 999,
-    alignSelf: 'center',
-    marginBottom: 8,
-  },
   modalLoadingWrap: {
     paddingVertical: 44,
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   modalContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 22,
+    // No horizontal padding: the sheet body brings its own.
+    paddingBottom: 24,
     gap: 12,
   },
   modalImageWrap: {
@@ -1234,16 +1491,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  modalPrice: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
   modalDescription: {
-    fontSize: 13,
     lineHeight: 20,
   },
   modalMetaRow: {
@@ -1254,8 +1502,8 @@ const styles = StyleSheet.create({
   metaPill: {
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   metaPillText: {
     fontSize: 12,
@@ -1263,10 +1511,6 @@ const styles = StyleSheet.create({
   },
   selectorBlock: {
     gap: 8,
-  },
-  selectorTitle: {
-    fontSize: 13,
-    fontWeight: '700',
   },
   selectorWrap: {
     flexDirection: 'row',
@@ -1278,18 +1522,14 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    gap: 6,
-  },
-  ownerHintTitle: {
-    fontSize: 13,
-    fontWeight: '800',
+    gap: 4,
   },
   ownerHintBody: {
     fontSize: 12,
     lineHeight: 18,
   },
   actionStack: {
-    gap: 10,
+    gap: 8,
     marginTop: 2,
   },
   actionButton: {

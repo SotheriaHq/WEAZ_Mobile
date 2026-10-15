@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { tokens } from '@/src/styles/tokens';
 
 type ThreadTapBurstOverlayProps = {
   burstKey: number;
@@ -55,6 +56,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
             duration: 90,
             easing: Easing.out(Easing.quad),
             useNativeDriver: true,
+            isInteraction: false,
           }),
           Animated.timing(opacity, {
             toValue: 0,
@@ -62,6 +64,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
             delay: 110,
             easing: Easing.in(Easing.quad),
             useNativeDriver: true,
+            isInteraction: false,
           }),
         ]),
         Animated.timing(scale, {
@@ -69,6 +72,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 140,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]).start();
       return;
@@ -81,6 +85,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 120,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(opacity, {
           toValue: 0,
@@ -88,6 +93,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           delay: 220,
           easing: Easing.in(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
       Animated.sequence([
@@ -96,12 +102,14 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 170,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(scale, {
           toValue: 1,
           duration: 220,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
       Animated.sequence([
@@ -111,6 +119,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 240,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
       Animated.sequence([
@@ -120,6 +129,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 90,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(stitchOpacity, {
           toValue: 0,
@@ -127,6 +137,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           delay: 110,
           easing: Easing.in(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
       Animated.sequence([
@@ -136,6 +147,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 240,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
       Animated.sequence([
@@ -145,6 +157,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           duration: 100,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(trailOpacity, {
           toValue: 0,
@@ -152,6 +165,7 @@ export default function ThreadTapBurstOverlay({ burstKey, style }: ThreadTapBurs
           delay: 120,
           easing: Easing.in(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
     ]).start();
@@ -240,7 +254,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 2,
     borderRadius: 1,
-    backgroundColor: '#0f766e',
+    backgroundColor: tokens.colors.threadBurstDeep,
   },
   threadHeadWrap: {
     position: 'absolute',
@@ -251,8 +265,8 @@ const styles = StyleSheet.create({
     height: 9,
     borderRadius: 5,
     borderWidth: 1,
-    borderColor: '#0f766e',
-    backgroundColor: '#CCFBF1',
+    borderColor: tokens.colors.threadBurstDeep,
+    backgroundColor: tokens.colors.threadBurstSoft,
   },
   fabricPoint: {
     position: 'absolute',
@@ -260,7 +274,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#CCFBF1',
+    backgroundColor: tokens.colors.threadBurstSoft,
   },
   fabricPointStart: {
     left: 30,
@@ -272,9 +286,9 @@ const styles = StyleSheet.create({
     width: 42,
     height: 30,
     borderRadius: 9,
-    backgroundColor: '#CCFBF1',
+    backgroundColor: tokens.colors.threadBurstSoft,
     borderWidth: 1,
-    borderColor: '#0F766E',
+    borderColor: tokens.colors.threadBurstDeep,
     overflow: 'hidden',
     transform: [{ rotate: '-5deg' }],
   },
@@ -283,7 +297,7 @@ const styles = StyleSheet.create({
     width: 13,
     height: 3,
     borderRadius: 2,
-    backgroundColor: '#0F766E',
+    backgroundColor: tokens.colors.threadBurstDeep,
     transform: [{ rotate: '-18deg' }],
   },
   stitchDashOne: {

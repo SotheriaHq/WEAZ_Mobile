@@ -46,6 +46,7 @@ export function IconButton({
           borderRadius: size / 2,
           backgroundColor,
           borderColor,
+          borderWidth: variant === 'solid' ? StyleSheet.hairlineWidth : 0,
           opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
           transform: pressed ? [{ scale: 0.96 }] : [],
         },
@@ -60,7 +61,6 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   inner: {

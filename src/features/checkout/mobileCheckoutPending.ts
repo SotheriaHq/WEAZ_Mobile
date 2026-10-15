@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 
 export const MOBILE_PENDING_CHECKOUT_STORAGE_KEY =
-  'threadly.mobileCheckout.pending.v1';
+  'wiez.mobileCheckout.pending.v1';
 
 export type PendingMobileCheckout = {
   reference: string;

@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  ActivityIndicator,
   Animated,
   Easing,
   Pressable,
@@ -14,13 +13,14 @@ import {
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
 
 type Props = {
   title: string;
-  onPress?: () => void;
+  onPress?: () => void | Promise<unknown>;
   disabled?: boolean;
   loading?: boolean;
   fullWidth?: boolean;
@@ -31,7 +31,24 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   testID?: string;
+  /**
+   * Opt out of the built-in single-fire guard for controls where distinct
+   * rapid presses are a legitimate interaction (steppers, counters).
+   */
+  allowRapidPress?: boolean;
 };
+
+/**
+ * Every Button is single-fire by default. Under dev/SIT latency a press can
+ * take seconds to produce visible feedback, and users respond by pressing
+ * again — which used to submit duplicate mutations and stack duplicate
+ * screens. Two layers close that:
+ *   1. If onPress returns a promise, the button goes busy (spinner + disabled)
+ *      until it settles — automatic loading state for async handlers.
+ *   2. Sync handlers (fire-and-forget `void doAsync()` wrappers, navigation)
+ *      get a rapid-press window: presses inside it are ignored.
+ */
+const RAPID_PRESS_IGNORE_MS = 650;
 
 /**
  * Resolves the correct size dimensions and typography from the token system.
@@ -61,11 +78,34 @@ export function Button({
   style,
   textStyle,
   testID,
+  allowRapidPress,
 }: Props) {
   const { theme } = useTheme();
   const sz = sizeStyles(size);
-  const isDisabled = disabled || loading;
+  const pendingPressRef = React.useRef(false);
+  const lastPressAtRef = React.useRef(0);
+  const [pendingPress, setPendingPress] = React.useState(false);
+  const isBusy = loading || pendingPress;
+  const isDisabled = disabled || isBusy;
   const scale = React.useRef(new Animated.Value(1)).current;
+
+  const handlePress = React.useCallback(() => {
+    if (!onPress) return;
+    if (pendingPressRef.current) return;
+    const now = Date.now();
+    if (!allowRapidPress && now - lastPressAtRef.current < RAPID_PRESS_IGNORE_MS) return;
+    lastPressAtRef.current = now;
+    const result = onPress() as unknown;
+    if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
+      pendingPressRef.current = true;
+      setPendingPress(true);
+      const settle = () => {
+        pendingPressRef.current = false;
+        setPendingPress(false);
+      };
+      (result as PromiseLike<unknown>).then(settle, settle);
+    }
+  }, [allowRapidPress, onPress]);
 
   const animatePress = React.useCallback(
     (toValue: number, duration: number) => {
@@ -74,6 +114,7 @@ export function Button({
         duration,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
+        isInteraction: false,
       }).start();
     },
     [scale],
@@ -89,6 +130,22 @@ export function Button({
     animatePress(1, 140);
   }, [animatePress]);
 
+  /**
+   * Disabled is a state of its own, not the enabled state turned down.
+   *
+   * Every variant used to keep its own fill and lean on `opacity: 0.55`, so a
+   * disabled primary was brand purple at 55% — still the loudest, most
+   * obviously pressable thing on the screen, and then it refused the press.
+   * The Continue and Save buttons on the create flows spend most of their life
+   * disabled, so that was the app's most common button reading as its most
+   * inviting one. Disabled now drops to neutral chrome in both themes and the
+   * brand colour is reserved for controls that will actually do something.
+   *
+   * `loading` is deliberately NOT this. A busy button is working on the press
+   * it was given, so it keeps its colour and shows a spinner.
+   */
+  const isInert = Boolean(disabled) && !isBusy;
+
   // ── Container style per variant (fully theme-adaptive) ──────────────────────
   const variantContainer: ViewStyle = (() => {
     const base: ViewStyle = {
@@ -99,6 +156,14 @@ export function Button({
       gap: tokens.spacing.sm,
       borderWidth: 1,
     };
+
+    if (isInert) {
+      return {
+        ...base,
+        backgroundColor: variant === 'outline' ? 'transparent' : theme.colors.disabledSurface,
+        borderColor: theme.colors.disabledBorder,
+      };
+    }
 
     switch (variant) {
       case 'primary':
@@ -118,6 +183,7 @@ export function Button({
 
   // ── Text color per variant ───────────────────────────────────────────────────
   const variantTone = (() => {
+    if (isInert) return 'disabled' as const;
     switch (variant) {
       case 'secondary':
       case 'outline':
@@ -135,7 +201,7 @@ export function Button({
     <Animated.View style={[styles.scaleWrap, { transform: [{ scale }] }]}>
       <Pressable
         testID={testID}
-        onPress={onPress}
+        onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={isDisabled}
@@ -146,7 +212,9 @@ export function Button({
             height: sz.height,
             paddingHorizontal: sz.paddingHorizontal,
             width: fullWidth ? '100%' : undefined,
-            opacity: isDisabled ? 0.55 : 1,
+            // Inert buttons carry their own neutral palette, so the blanket
+            // fade is only for the busy state now.
+            opacity: isInert ? 1 : isBusy ? 0.75 : 1,
           },
           style,
         ]}
@@ -160,7 +228,7 @@ export function Button({
               style={[
                 styles.text,
                 {
-                  opacity: loading ? 0 : 1,
+                  opacity: isBusy ? 0 : 1,
                 },
                 textStyle,
               ]}
@@ -168,12 +236,9 @@ export function Button({
             >
               {title}
             </AppText>
-            {loading ? (
+            {isBusy ? (
               <View style={styles.loaderOverlay} pointerEvents="none">
-                <ActivityIndicator
-                  size="small"
-                  color={variantTone === 'inverse' ? theme.colors.textInverse : theme.colors.text}
-                />
+                <MuseLoader size={20} />
               </View>
             ) : null}
           </View>
@@ -190,6 +255,17 @@ const styles = StyleSheet.create({
   },
   container: {
     minWidth: 44,
+    /*
+      The busy spinner is an absolute overlay sized by the platform, not by us,
+      and it sits over a label slot only as big as the (hidden) title. On a
+      short title or a small size that intrinsic spinner is wider and taller
+      than the slot it covers, so it painted past the button's rounded edge.
+
+      The button has no shadow, so clipping here costs nothing and makes
+      "loading escapes the button" structurally impossible rather than
+      dependent on how large a given platform draws its indicator.
+    */
+    overflow: 'hidden',
   },
   content: {
     flexDirection: 'row',
@@ -203,7 +279,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 1,
-    minWidth: 0,
+    // Room for the spinner that replaces the title. Without a floor the slot
+    // collapses to the width of a short label and the overlay has nowhere to
+    // sit; with it, the indicator is centred in space that actually exists.
+    minWidth: 20,
   },
   loaderOverlay: {
     ...StyleSheet.absoluteFill,

@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from './httpClient';
+import { invalidateCoalesced } from '@/src/api/coalesceRequest';
 import type { CatalogEntityType } from '@/src/features/catalog/catalogDomain';
 import { resolveCatalogEntityType } from '@/src/features/catalog/catalogEntity';
 import {
@@ -44,6 +45,12 @@ export interface BrandProfileDto {
   brandCountry: string | null;
   brandState: string | null;
   brandCity: string | null;
+  /**
+   * Exact street address. Owner-only and additionally gated on the brand's
+   * show/hide-location setting, both enforced server-side — the API returns
+   * null for anyone else, so this is safe to render whenever it is present.
+   */
+  streetAddress?: string | null;
   country?: string | null;
   state?: string | null;
   city?: string | null;
@@ -82,6 +89,8 @@ export interface BrandProfileDto {
   profilePhotoViewState?: ProfilePhotoViewState | null;
   username: string | null;
   email: string | null;
+  publicContactEmail?: string | null;
+  contactEmailPublic?: boolean | null;
   firstName?: string | null;
   lastName?: string | null;
 }
@@ -119,6 +128,9 @@ export interface CollectionDto {
   // Client-side status for publishing state
   clientStatus?: 'publishing' | 'publish-failed';
   clientStatusMessage?: string;
+  clientProgress?: number;
+  clientTaskId?: string;
+  clientFailureReason?: string | null;
 }
 
 export type CollectionScope = 'design' | 'store' | 'all';
@@ -222,6 +234,13 @@ export interface UpdateBrandProfilePayload {
   brandCountry?: string;
   brandState?: string;
   brandCity?: string;
+  /**
+   * WRITE key is `brandStreetAddress`; the READ key on the profile is
+   * `streetAddress`. They genuinely differ on the backend (see
+   * `UpdateBrandProfileDto` vs the brand profile response), so do not
+   * "tidy" these into one name — sending `streetAddress` is silently dropped.
+   */
+  brandStreetAddress?: string;
   brandTags?: string[];
   socialInstagram?: string;
   socialFacebook?: string;
@@ -471,6 +490,7 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
   const brandCity =
     asString(source.brandCity) ??
     asString(source.city);
+  const streetAddress = asString(source.streetAddress);
 
   const logoImage =
     asString(source.logoImage) ??
@@ -578,6 +598,7 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
     brandCountry,
     brandState,
     brandCity,
+    streetAddress,
     country: brandCountry,
     state: brandState,
     city: brandCity,
@@ -586,7 +607,19 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
       (derivedLocation || null) ??
       null,
     brandTags: tagSource
-      .map((tag) => asString(tag))
+      .map((tag) => {
+        // Tags may arrive as plain strings or as objects ({ name|label|tag|value }).
+        // Resolve both shapes so brand tags reliably populate in the UI.
+        if (typeof tag === 'string') return asString(tag);
+        const tagRecord = asRecord(tag);
+        return (
+          asString(tagRecord.name) ??
+          asString(tagRecord.label) ??
+          asString(tagRecord.tag) ??
+          asString(tagRecord.value) ??
+          asString(tagRecord.normalizedName)
+        );
+      })
       .filter((tag): tag is string => Boolean(tag)),
     socialInstagram:
       asString(source.socialInstagram) ??
@@ -600,6 +633,20 @@ function normalizeBrandProfile(payload: unknown): BrandProfileDto | null {
     socialWebsite:
       asString(source.socialWebsite) ??
       asString(socialLinks.website),
+    /**
+     * The brand's PUBLISHED contact address, separate from `email` above.
+     *
+     * `email` is the account credential and the API returns it only to the
+     * owner. `publicContactEmail` is an address the brand chose to publish, and
+     * the API returns it to everyone once they switch it on — so a shopper
+     * finally has a way to reach a brand from their catalog.
+     */
+    publicContactEmail: asString(contactInfo.publicEmail),
+    /** Owner-only: whether the address above is currently published. */
+    contactEmailPublic:
+      typeof contactInfo.contactEmailPublic === 'boolean'
+        ? contactInfo.contactEmailPublic
+        : null,
     phoneNumber:
       asString(source.phoneNumber) ??
       asString(contactInfo.phone),
@@ -822,7 +869,13 @@ export const brandApi = {
    */
   async getProfileById(
     brandId: string,
-    opts?: { forceRefresh?: boolean },
+    /**
+     * `throwOnError` hands the real failure back instead of `null`. Returning
+     * null for EVERY failure made an offline phone, an expired session and a
+     * missing brand all read as "Could not load brand profile." — with the
+     * actual reason only in a console line a release build never shows.
+     */
+    opts?: { forceRefresh?: boolean; throwOnError?: boolean },
   ): Promise<BrandProfileDto | null> {
     try {
       const cacheKey = asString(brandId);
@@ -871,6 +924,7 @@ export const brandApi = {
       });
     } catch (error) {
       console.error('Error fetching brand profile by ID:', error);
+      if (opts?.throwOnError) throw error;
       return null;
     }
   },
@@ -903,10 +957,16 @@ export const brandApi = {
   /**
    * Patch a brand profile.
    */
+  /**
+   * Patching changes the user's patch list, so the coalesced read of
+   * `/users/:id/patches` must not be allowed to serve its short-TTL copy
+   * afterwards — the profile would show the old set for a few seconds.
+   */
   async patchBrand(brandId: string): Promise<boolean> {
     try {
       const response = await apiClient.post(`/brands/${brandId}/patches`);
       const data = unwrapData<any>(response.data);
+      invalidateCoalesced('patches');
       return Boolean(data?.isPatched ?? true);
     } catch (error) {
       console.error('Error patching brand:', error);
@@ -921,6 +981,7 @@ export const brandApi = {
     try {
       const response = await apiClient.delete(`/brands/${brandId}/patches`);
       const data = unwrapData<any>(response.data);
+      invalidateCoalesced('patches');
       return Boolean(data?.isPatched ?? false);
     } catch (error) {
       console.error('Error unpatching brand:', error);
@@ -948,7 +1009,7 @@ export const brandApi = {
   async getCollections(args?: {
     brandId?: string;
     visibility?: 'PUBLIC' | 'PRIVATE';
-    status?: CollectionPublicationStatus;
+    status?: CollectionPublicationStatus | CollectionPublicationStatus[];
     search?: string;
     page?: number;
     limit?: number;
@@ -967,7 +1028,8 @@ export const brandApi = {
         ]);
         let merged = [...storeResult.items, ...designResult.items];
         if (args?.status) {
-          merged = merged.filter((item) => (item.publicationStatus ?? item.status) === args.status);
+          const statuses = Array.isArray(args.status) ? args.status : [args.status];
+          merged = merged.filter((item) => statuses.includes(item.publicationStatus ?? item.status as any));
         }
         if (args?.search) {
           const normalizedSearch = args.search.trim().toLowerCase();
@@ -1005,7 +1067,8 @@ export const brandApi = {
 
       let filtered = normalized.items;
       if (args?.status) {
-        filtered = filtered.filter((item) => (item.publicationStatus ?? item.status) === args.status);
+        const statuses = Array.isArray(args.status) ? args.status : [args.status];
+        filtered = filtered.filter((item) => statuses.includes(item.publicationStatus ?? item.status as any));
       }
       if (args?.search) {
         const normalizedSearch = args.search.trim().toLowerCase();
@@ -1059,12 +1122,26 @@ export const brandApi = {
         storeDraftsRequest,
       ]);
 
+      /**
+       * Pin BOTH status fields.
+       *
+       * This used to set only `status`, leaving `publicationStatus` at whatever
+       * normalization produced — 'UNKNOWN' whenever the draft payload carries no
+       * explicit publication status. Every consumer that reads
+       * `publicationStatus ?? status` therefore saw 'UNKNOWN' for a draft, and
+       * `??` does not fall through for a present-but-wrong value. That is why
+       * tapping a draft opened the read-only viewer instead of the editor: the
+       * routing rule was correct, the status it read was not.
+       *
+       * These come from draft-only endpoints, so DRAFT is not an assumption.
+       */
       const designDrafts =
         designDraftsResult.status === 'fulfilled'
           ? normalizeCollectionListPayload(designDraftsResult.value.data).items.map(
               (item) => ({
                 ...item,
                 status: 'DRAFT' as const,
+                publicationStatus: 'DRAFT' as const,
               }),
             )
           : [];
@@ -1073,6 +1150,7 @@ export const brandApi = {
           ? storeDraftsResult.value.map((item) => ({
               ...item,
               status: 'DRAFT' as const,
+              publicationStatus: 'DRAFT' as const,
               isAvailableInStore: true,
             }))
           : [];
@@ -1350,11 +1428,12 @@ export const brandApi = {
         MOBILE_UPLOAD_POLICIES.profileImage,
       );
       
-      formData.append('file', {
-        uri,
-        type: mimeType,
-        name: fileName,
-      } as any);
+      const filePart = {
+        uri: String(uri),
+        type: String(mimeType),
+        name: String(fileName),
+      };
+      formData.append('file', JSON.parse(JSON.stringify(filePart)));
 
       const response = await apiClient.post('/uploads/profile-image', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -1379,11 +1458,12 @@ export const brandApi = {
         MOBILE_UPLOAD_POLICIES.bannerImage,
       );
       
-      formData.append('file', {
-        uri,
-        type: mimeType,
-        name: fileName,
-      } as any);
+      const filePart = {
+        uri: String(uri),
+        type: String(mimeType),
+        name: String(fileName),
+      };
+      formData.append('file', JSON.parse(JSON.stringify(filePart)));
 
       const response = await apiClient.post('/uploads/banner-image', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -1442,33 +1522,34 @@ export const brandApi = {
   },
 
   /**
-   * Delete a collection
+   * Delete a design (domain rule: design actions call design endpoints —
+   * the only caller deletes catalog design drafts).
    */
-  async deleteCollection(collectionId: string): Promise<boolean> {
+  async deleteDesign(designId: string): Promise<boolean> {
     try {
-      await apiClient.delete(`/collections/${collectionId}`);
+      await apiClient.delete(`/designs/${designId}`);
       return true;
     } catch (error) {
-      console.error('Error deleting collection:', error);
+      console.error('Error deleting design:', error);
       throw error;
     }
   },
 
   /**
-   * Get store status
+   * Get store status.
+   *
+   * Rethrows rather than answering `isSetupComplete: false` on failure. This
+   * result gates the Studio entry point, and a swallowed network error that
+   * reads as "not set up" would lock a live brand out of its own store. The
+   * caller decides what an unknown status means; it must not be told a lie.
    */
   async getStoreStatus(): Promise<{ hasStore: boolean; storeId: string | null; isSetupComplete: boolean }> {
-    try {
-      const response = await apiClient.get('/store/status');
-      const data = unwrapData<any>(response.data);
-      return {
-        hasStore: data?.hasStore ?? false,
-        storeId: data?.storeId ?? null,
-        isSetupComplete: data?.isSetupComplete ?? false,
-      };
-    } catch (error) {
-      console.error('Error getting store status:', error);
-      return { hasStore: false, storeId: null, isSetupComplete: false };
-    }
+    const response = await apiClient.get('/store/status');
+    const data = unwrapData<any>(response.data);
+    return {
+      hasStore: data?.hasStore ?? false,
+      storeId: data?.storeId ?? null,
+      isSetupComplete: data?.isSetupComplete ?? false,
+    };
   },
 };

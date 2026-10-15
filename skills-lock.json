@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "expo-data-fetching": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/expo/skills/expo-data-fetching/SKILL.md",
+      "computedHash": "34fe0ea97749dc85f46fe376dc54fb44ee41bdeba04bf4f50e49ee7d16dc3121"
+    },
+    "react-native-expo": {
+      "source": "hairyf/skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-native-expo/SKILL.md",
+      "computedHash": "49fdaaef87e270dd3698e5ac735d73e04b1ce7fc23a29ed63a1522542d555e07"
+    }
+  }
+}

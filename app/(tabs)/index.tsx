@@ -1,5 +1,5 @@
-import { MarketFeedScreen } from '@/src/features/feed/components/MarketFeedScreen';
+import { RunwayFeedScreen } from '@/src/features/feed/components/RunwayFeedScreen';
 
 export default function HomeScreen() {
-  return <MarketFeedScreen />;
+  return <RunwayFeedScreen />;
 }

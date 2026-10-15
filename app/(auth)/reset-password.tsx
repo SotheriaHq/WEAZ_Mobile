@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,7 +9,7 @@ import { confirmPasswordReset } from '@/src/api/AuthApi';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import { tokens } from '@/src/styles/tokens';
-import { WeazLogo } from '@/components/ui/WeazLogo';
+import WiezMark from '@/src/brand/WiezMark';
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
 import { Button } from '@/components/ui/Button';
 import { AppText } from '@/components/ui/AppText';
@@ -61,12 +61,12 @@ export default function ResetPasswordScreen() {
   const canSubmit = Boolean(token) && passwordIsLongEnough && passwordsMatch && !submitting;
 
   const bgGradient = isDark
-    ? (['#0f0a14', '#1a0a2e', '#0f0a14'] as const)
-    : (['#f7f6f8', '#ede8f5', '#f0ecfa'] as const);
+    ? tokens.auth.screenGradientDark
+    : tokens.auth.screenGradientLight;
 
   const accentGradient = isDark
-    ? (['#2B1742', '#1E293B', '#0F172A'] as const)
-    : (['#EDE9FE', '#FEF3C7', '#F8FAFC'] as const);
+    ? tokens.auth.cardGradientDark
+    : tokens.auth.cardGradientLight;
 
   const clearErrors = () => {
     setNewPasswordError('');
@@ -255,12 +255,8 @@ export default function ResetPasswordScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      <KeyboardAwareScrollView
-        enableOnAndroid
-        keyboardOpeningTime={0}
-        enableAutomaticScroll
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAwareFormScroll
+        bottomOffset={tokens.spacing['2xl']}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 36 },
@@ -273,7 +269,7 @@ export default function ResetPasswordScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to login"
           >
-            <WeazLogo size={36} />
+            <WiezMark size={36} />
           </Pressable>
         </View>
 
@@ -285,7 +281,7 @@ export default function ResetPasswordScreen() {
           </AppText>
           <AppText variant="display">Choose a new password</AppText>
           <AppText variant="body" muted style={styles.subtitle}>
-            Use the secure link from your email to finish resetting your WEAZ account.
+            Use the secure link from your email to finish resetting your WIEZ account.
           </AppText>
         </View>
 
@@ -295,7 +291,7 @@ export default function ResetPasswordScreen() {
           <View style={styles.gradientAccentLine} />
           {!token ? renderMissingToken() : success ? renderSuccess() : renderForm()}
         </View>
-      </KeyboardAwareScrollView>
+      </KeyboardAwareFormScroll>
     </View>
   );
 }
@@ -319,7 +315,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   kicker: {
-    marginBottom: 10,
+    marginBottom: 8,
     letterSpacing: 3,
     textTransform: 'uppercase',
   },
@@ -331,7 +327,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     marginTop: 4,
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.25,
     shadowRadius: 24,
@@ -349,7 +345,7 @@ const styles = StyleSheet.create({
     right: 28,
     height: 1.5,
     borderRadius: 1,
-    backgroundColor: '#D4AF37',
+    backgroundColor: tokens.auth.gold,
     opacity: 0.7,
     zIndex: 2,
   },
@@ -376,7 +372,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     marginTop: tokens.spacing.xl,
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18,
     shadowRadius: 18,

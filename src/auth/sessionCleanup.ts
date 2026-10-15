@@ -3,38 +3,38 @@ import type { QueryClient, QueryKey } from '@tanstack/react-query';
 import * as SecureStore from 'expo-secure-store';
 
 import { clearBrandApiSessionCaches } from '@/src/api/BrandApi';
-import { setApiAuthToken, setApiRefreshToken } from '@/src/api/httpClient';
 import { env } from '@/src/config/env';
+import { setApiAuthToken, setApiRefreshToken } from '@/src/api/httpClient';
+import { clearCoalescedRequests } from '@/src/api/coalesceRequest';
+import { invalidateGetDedupe } from '@/src/api/httpClient';
 import { clearCachedMarketFeed } from '@/src/features/feed/api/feedApi';
 import { MOBILE_PENDING_CHECKOUT_STORAGE_KEY } from '@/src/features/checkout/mobileCheckoutPending';
+import {
+  clearDesignEditorBackgroundTasks,
+  DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY,
+} from '@/src/features/design-editor/designEditorBackgroundTasks';
+import { DESIGN_DRAFT_SESSION_STORAGE_PREFIX } from '@/src/features/design-editor/designDraftSessionStore';
 import { PERSISTED_FEED_CACHE_PREFIX } from '@/src/features/feed/utils/feedKeys';
 import { clearResolvedImageUriCache } from '@/src/hooks/useResolvedImageUri';
+import { clearAppBadge } from '@/src/notifications/appBadge';
 import { deactivateRegisteredPushTokenForLogout } from '@/src/notifications/pushTokenRegistration';
 import { queryClient as defaultQueryClient } from '@/src/query/queryClient';
 import {
   purgeMobilePersistedQueryCache,
-  THREADLY_QUERY_CACHE_STORAGE_KEY,
+  WIEZ_QUERY_CACHE_STORAGE_KEY,
 } from '@/src/query/queryPersistor';
-import { queryKeys } from '@/src/query/queryKeys';
+import { queryKeys, PRIVATE_QUERY_ROOTS } from '@/src/query/queryKeys';
 import { clearMessagingRealtimeSession } from '@/src/realtime/messaging';
 import { clearNotificationRealtimeSession } from '@/src/realtime/notifications';
+import { resetCustomOrdersAvailability } from '@/src/api/BuyerOrdersApi';
 import { clearMobileMarketSignalQueue } from '@/src/services/marketSignals';
-import { removeAccessToken, removeRefreshToken } from '@/src/storage/secureStorage';
+import { clearWarmScreenStateCache } from '@/src/state/screenWarmState';
+import { clearPersistentScreenCache } from '@/src/state/persistentScreenCache';
+import { clearShopperProfileWarmups } from '@/src/profile/shopperProfileWarmup';
+import { removeAccessToken, removeCachedAuthUser, removeRefreshToken } from '@/src/storage/secureStorage';
 
-export const ACTIVE_BRAND_STORAGE_KEY = 'threadly.activeBrandId';
-const PENDING_BAG_ACTION_STORAGE_KEY = 'threadly.pendingBagAction.v1';
-
-const PRIVATE_QUERY_ROOTS = new Set([
-  'auth',
-  'brand',
-  'design',
-  'designs',
-  'store',
-  'saved',
-  'notifications',
-  'messaging',
-  'reviews',
-]);
+export const ACTIVE_BRAND_STORAGE_KEY = 'wiez.activeBrandId';
+const PENDING_BAG_ACTION_STORAGE_KEY = 'wiez.pendingBagAction.v1';
 
 export function isMobilePrivateSessionQueryKey(queryKey: QueryKey) {
   const [root, scope] = queryKey;
@@ -56,8 +56,10 @@ export async function clearMobilePrivateAsyncStorage() {
     const keys = await AsyncStorage.getAllKeys();
     const privateKeys = keys.filter(
       (key) =>
-        key === THREADLY_QUERY_CACHE_STORAGE_KEY ||
+        key === WIEZ_QUERY_CACHE_STORAGE_KEY ||
+        key === DESIGN_EDITOR_BACKGROUND_TASKS_STORAGE_KEY ||
         key.startsWith(PERSISTED_FEED_CACHE_PREFIX) ||
+        key.startsWith(DESIGN_DRAFT_SESSION_STORAGE_PREFIX) ||
         key === env.userStorageKey,
     );
 
@@ -76,25 +78,45 @@ export async function clearMobilePrivateSessionState({
   client?: QueryClient;
   deactivatePushToken?: boolean;
 } = {}) {
-  if (deactivatePushToken) {
-    await deactivateRegisteredPushTokenForLogout().catch(() => undefined);
-  }
-
+  // Coalesced reads are per-account; none may survive into the next user.
+  clearCoalescedRequests();
+  /*
+    The transport-level GET dedupe is keyed on URL and params only, which is
+    right within one identity and wrong across two — `/messaging/inbox` is the
+    same URL for everybody. Signing out must drop it, or the next account can be
+    served the previous one's reads from the settle window.
+  */
+  invalidateGetDedupe();
   setApiAuthToken(null);
   setApiRefreshToken(null);
   clearMobilePrivateQueryCache(client);
   clearNotificationRealtimeSession();
   clearMessagingRealtimeSession();
   clearBrandApiSessionCaches();
+  clearWarmScreenStateCache();
+  clearShopperProfileWarmups();
   clearResolvedImageUriCache();
+  clearDesignEditorBackgroundTasks();
+  // "This account type has no custom orders" is a per-account verdict, so it
+  // must not survive into the next sign-in (brand → buyer would stay suppressed).
+  resetCustomOrdersAvailability();
 
   await Promise.allSettled([
+    // The UI is already private before this network best-effort begins. Waiting
+    // for token deactivation here made sign-out feel frozen on slow networks.
+    deactivatePushToken
+      ? deactivateRegisteredPushTokenForLogout().catch(() => undefined)
+      : Promise.resolve(),
+    // The on-disk half of the warm cache. One account's profile snapshot must
+    // never greet the next person to sign in on this device.
+    clearPersistentScreenCache(),
+    clearAppBadge(),
     removeAccessToken(),
     removeRefreshToken(),
     SecureStore.deleteItemAsync(ACTIVE_BRAND_STORAGE_KEY),
     SecureStore.deleteItemAsync(PENDING_BAG_ACTION_STORAGE_KEY),
     SecureStore.deleteItemAsync(MOBILE_PENDING_CHECKOUT_STORAGE_KEY),
-    SecureStore.deleteItemAsync(env.userStorageKey),
+    removeCachedAuthUser(),
     purgeMobilePersistedQueryCache(),
     clearCachedMarketFeed(),
     clearMobileMarketSignalQueue(),

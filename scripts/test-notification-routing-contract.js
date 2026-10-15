@@ -167,6 +167,82 @@ function main() {
   );
 
   assert.equal(
+    toJson(routeForNotification({
+      type: 'BAG_ITEM_ADDED',
+      payload: { targetUrl: '/bag' },
+      targetUrl: '/bag',
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/checkout',
+  );
+
+  assert.equal(
+    toJson(routeForNotification({
+      type: 'BAG_CHECKOUT_REMINDER',
+      payload: { itemCount: 2 },
+      targetUrl: null,
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/checkout',
+  );
+
+  // The size/fits reminder opens the fittings screen, not the profile it sits
+  // on. It shipped as a bare '/profile', so the one thing the notification was
+  // about was a further tap away that the notification never named.
+  assert.equal(
+    toJson(routeForNotification({
+      type: 'SIZE_FIT_UPDATE_REMINDER',
+      payload: { targetUrl: '/profile?tab=fits' },
+      targetUrl: '/profile?tab=fits',
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/fittings',
+  );
+
+  // The neighbouring tab values must keep their own destinations.
+  assert.equal(
+    toJson(routeForNotification({
+      type: 'ORDER_STATUS_CHANGED',
+      payload: { targetUrl: '/profile?tab=orders' },
+      targetUrl: '/profile?tab=orders',
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/orders',
+  );
+
+  assert.equal(
+    toJson(routeForNotification({
+      type: 'UNKNOWN_PROFILE_NOTICE',
+      payload: { targetUrl: '/profile' },
+      targetUrl: '/profile',
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/(tabs)/me',
+  );
+
+  assert.equal(
+    toJson(routeForNotification({
+      type: 'UNKNOWN',
+      payload: {},
+      targetUrl: '/bag',
+      target: null,
+      actor: null,
+      subTargetId: null,
+    })),
+    '/checkout',
+  );
+
+  assert.equal(
     normalizeNotificationContext({
       type: 'message',
       actorUserId: 'actor-1',
@@ -176,9 +252,14 @@ function main() {
   );
 
   const notificationRoutingSource = fs.readFileSync(notificationRoutingPath, 'utf8');
-  assert.match(notificationRoutingSource, /pendingNavigationRef\.current = \{ params: context, type: options\.type \}/);
-  assert.match(notificationRoutingSource, /pendingNavigationRef\.current = null;\s*navigateToMessage/s);
-  assert.match(notificationRoutingSource, /getMessageNotificationTarget\(\{ targetUrl: url \}\)/);
+  assert.match(notificationRoutingSource, /pendingNotificationRef\.current = notification/);
+  assert.match(notificationRoutingSource, /pendingNotificationRef\.current = null;\s*navigateToNotification\(pending\)/s);
+  // Taps route through the SAME resolver the in-app list uses. The viewer is
+  // passed alongside the notification because account-lifecycle types resolve to
+  // the viewer's own home, which differs for a brand and a shopper — so this
+  // asserts the resolver is used, not the exact arity it is called with.
+  assert.match(notificationRoutingSource, /routeForNotification\(\s*notification\s*(?:,[^)]*)?\)/);
+  assert.match(notificationRoutingSource, /buildNotificationFromPushData\(\{ targetUrl: url \}\)/);
 
   console.log('Notification routing contract tests passed.');
 }

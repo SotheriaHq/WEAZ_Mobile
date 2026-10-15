@@ -7,17 +7,16 @@ export function useFeedPrefetch() {
   const requestedRef = useRef(new Set<string>());
 
   const prefetchNearby = useCallback((items: Array<FeedResolvedMedia[]>, activeIndex: number) => {
-    [activeIndex - 1, activeIndex + 1, activeIndex + 2].forEach((index) => {
-      const primary = items[index]?.find((media) => media.type === 'image');
-      const key = primary?.fileId || primary?.displayUrl;
-      if (!primary || !key || requestedRef.current.has(key)) return;
-      requestedRef.current.add(key);
-      void prefetchFeedImage({
-        src: primary.displayUrl,
-        fileId: primary.fileId,
-        collectionId: primary.collectionId,
-        mediaIndex: primary.mediaIndex,
-      });
+    const primary = items[activeIndex + 1]?.find((media) => media.type === 'image');
+    const source = primary?.previewUrl ?? primary?.thumbnailUrl ?? primary?.displayUrl;
+    const key = primary?.fileId || source;
+    if (!primary || !key || requestedRef.current.has(key)) return;
+    requestedRef.current.add(key);
+    void prefetchFeedImage({
+      src: source,
+      fileId: primary.fileId,
+      collectionId: primary.collectionId,
+      mediaIndex: primary.mediaIndex,
     });
   }, []);
 

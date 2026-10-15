@@ -20,8 +20,13 @@ assert.match(
 );
 assert.match(
   marketScreen,
-  /buildMarketQueryKey\(filters,\s*debouncedSearch\)/,
-  'Market query key must be based on debounced search state.',
+  /buildMarketQueryKey\(filters,\s*debouncedSearch,\s*marketViewerKey\)/,
+  'Market query key must be based on debounced search state and viewer identity.',
+);
+assert.match(
+  marketScreen,
+  /viewerKey,/,
+  'Market cache keys must isolate authenticated viewer-specific state.',
 );
 assert.match(
   marketScreen,

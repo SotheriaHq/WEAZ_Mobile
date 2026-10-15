@@ -2,51 +2,119 @@ import React from 'react';
 import { StyleSheet, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { useKeyboardFormField } from '@/components/ui/KeyboardAwareFormScroll';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
 export type InputProps = Omit<TextInputProps, 'style'> & {
   label: string;
   hideLabel?: boolean;
+  /**
+   * Marks the field itself, with the `*` beside its label.
+   *
+   * Required-ness belongs ON the field. The alternative — a roll-call of field
+   * names in a banner or footer — asks the reader to match names against fields
+   * they cannot see, which is how a form ends up reporting a problem the user
+   * cannot find. The mark is state-aware: brand colour at rest, danger once the
+   * field is actually blocking.
+   */
+  required?: boolean;
   error?: string;
   helperText?: string;
   leading?: React.ReactNode;
+  /** Custom left padding to clear wider leading elements (e.g. dial codes). */
+  leadingWidth?: number;
   trailing?: React.ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
-  variant?: 'default' | 'bare';
+  /**
+   * `default` — filled, rounded box.
+   * `bare` — no chrome at all; the parent draws the container.
+   * `underline` — a single rule under the field. Reads as a line of writing
+   *   rather than a stack of boxes, which is what a long profile form wants:
+   *   the placeholder carries the hint and the label sits above.
+   */
+  variant?: 'default' | 'bare' | 'underline';
+  /**
+   * `comfortable` — a form field: 52pt tall, or 104 when multiline.
+   * `compact` — a field inside another control, where the control around it
+   *   supplies the touch target and the padding. The chat composer is the
+   *   case: at form height it made the message bar taller than the messages,
+   *   and a multiline composer that opens 104pt tall is a text editor, not a
+   *   place to write one line. Compact starts at one line and grows.
+   */
+  density?: 'comfortable' | 'compact';
 };
+
+/** Tallest a compact multiline field grows before it scrolls internally. */
+const COMPACT_MULTILINE_MAX_HEIGHT = 112;
 
 export const Input = React.forwardRef<TextInput, InputProps>(function Input({
   label,
   hideLabel = false,
+  required = false,
   error,
   helperText,
   leading,
+  leadingWidth,
   trailing,
   containerStyle,
   variant = 'default',
+  density = 'comfortable',
   multiline,
+  onFocus,
   ...rest
 }, ref) {
   const { theme } = useTheme();
+  const keyboardForm = useKeyboardFormField();
   const hasError = Boolean(error);
   const isBare = variant === 'bare';
+  const isUnderline = variant === 'underline';
+  const isPlain = isBare || isUnderline;
+  // A field that looks identical whether or not the caret is in it gives the
+  // user nothing to read the form by. Focus now moves the border to the brand
+  // colour and thickens it, which is the difference between "a box" and "the
+  // box I am typing in".
+  const [isFocused, setIsFocused] = React.useState(false);
+  const activeBorderColor = hasError
+    ? theme.colors.danger
+    : isFocused
+      ? theme.colors.primary
+      : theme.colors.border;
+  const activeBorderWidth = isFocused || hasError ? 1.5 : 1;
+  const isCompact = density === 'compact';
+  const fieldMinHeight = isCompact ? 40 : multiline ? 104 : 52;
 
   return (
     <View style={containerStyle}>
       {!hideLabel ? (
-        <AppText variant="caption" tone="secondary" style={styles.label}>
-          {label}
-        </AppText>
+        <View style={styles.labelRow}>
+          <AppText
+            variant="smallBold"
+            tone={hasError ? 'danger' : isFocused ? 'primary' : 'secondary'}
+            style={styles.label}
+          >
+            {label}
+          </AppText>
+          {required ? (
+            <AppText variant="smallBold" tone={hasError ? 'danger' : 'primary'}>
+              *
+            </AppText>
+          ) : null}
+        </View>
       ) : null}
       <View
         style={[
           styles.field,
+          isUnderline && styles.fieldUnderline,
           {
-            minHeight: multiline ? 104 : 52,
-            backgroundColor: isBare ? 'transparent' : theme.colors.surface,
-            borderColor: isBare ? 'transparent' : hasError ? theme.colors.danger : theme.colors.border,
-            borderWidth: isBare ? 0 : 1,
+            minHeight: fieldMinHeight,
+            ...(isCompact && multiline ? { maxHeight: COMPACT_MULTILINE_MAX_HEIGHT } : null),
+            backgroundColor: isPlain ? 'transparent' : theme.colors.surface,
+            borderColor: isBare ? 'transparent' : activeBorderColor,
+            borderWidth: isPlain ? 0 : activeBorderWidth,
+            ...(isUnderline
+              ? { borderBottomWidth: activeBorderWidth, borderBottomColor: activeBorderColor }
+              : null),
           },
         ]}
       >
@@ -55,21 +123,43 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
           ref={ref}
           {...rest}
           multiline={multiline}
+          onBlur={(event) => {
+            setIsFocused(false);
+            rest.onBlur?.(event);
+          }}
+          onFocus={(event) => {
+            setIsFocused(true);
+            onFocus?.(event);
+            // Scroll the caret clear of the keyboard when nested in KeyboardAwareFormScroll.
+            keyboardForm?.onFieldFocus();
+          }}
           style={[
             styles.input,
             {
-              color: theme.colors.text,
-              paddingLeft: isBare ? 0 : leading ? tokens.spacing.xl2 : tokens.spacing.lg,
-              paddingRight: isBare ? 0 : trailing ? 44 : tokens.spacing.lg,
-              paddingTop: multiline ? tokens.spacing.lg : 0,
-              paddingBottom: multiline ? tokens.spacing.lg : 0,
+              minHeight: fieldMinHeight,
+              ...(isCompact && multiline ? { maxHeight: COMPACT_MULTILINE_MAX_HEIGHT } : null),
+              color: rest.editable === false ? theme.colors.textMuted : theme.colors.text,
+              paddingLeft: isPlain
+                ? 0
+                : leadingWidth != null
+                  ? leadingWidth
+                  : leading
+                    ? tokens.spacing.xl2
+                    : tokens.spacing.lg,
+              paddingRight: isPlain ? 0 : trailing ? 44 : tokens.spacing.lg,
+              paddingTop: multiline ? (isCompact ? tokens.spacing.sm : tokens.spacing.lg) : 0,
+              paddingBottom: multiline ? (isCompact ? tokens.spacing.sm : tokens.spacing.lg) : 0,
               textAlignVertical: multiline ? 'top' : 'center',
-              fontFamily: tokens.fontFamily.regular,
+              // Medium, not regular. What the user types is the content of the
+              // screen and was rendering one weight lighter than the body text
+              // around it — the field read as a disabled preview of itself.
+              fontFamily: tokens.fontFamily.medium,
+              fontWeight: '500',
               fontSize: tokens.typography.body.size,
               lineHeight: tokens.typography.body.lineHeight,
             },
           ]}
-          placeholderTextColor={theme.colors.textMuted}
+          placeholderTextColor={theme.colors.textPlaceholder}
         />
         {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
       </View>
@@ -89,15 +179,27 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
 Input.displayName = 'Input';
 
 const styles = StyleSheet.create({
-  label: {
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
     marginBottom: tokens.spacing.sm,
+    minHeight: 20,
+  },
+  label: {
+    // Vertical rhythm moved to `labelRow`, which now owns the row the label and
+    // the required mark share.
+    flexShrink: 1,
     letterSpacing: 0,
     textTransform: 'none',
   },
   field: {
-    borderRadius: tokens.radius.lg,
+    borderRadius: tokens.radius.md,
     justifyContent: 'center',
-    overflow: 'hidden',
+  },
+  fieldUnderline: {
+    // Square, so the rule reads as a writing line and not a clipped box.
+    borderRadius: 0,
   },
   input: {
     minHeight: 52,

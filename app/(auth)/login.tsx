@@ -1,21 +1,30 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { router, useLocalSearchParams } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
-import { GoogleMark } from '@/components/auth/GoogleMark';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { PrimaryAuthButton } from '@/components/auth/PrimaryAuthButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { WeazLogo } from '@/components/ui/WeazLogo';
+import WiezMark from '@/src/brand/WiezMark';
 import { useAuth } from '@/src/auth/AuthContext';
 import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useGoogleIdTokenRequest } from '@/src/auth/useGoogleIdTokenRequest';
+import { useAuthFlowLock } from '@/src/auth/useAuthFlowLock';
+import {
+  AuthRequestError,
+  getAuthErrorMessage,
+  GoogleSignInError,
+} from '@/src/auth/authErrors';
 import {
   confirmEmailLoginCode,
+  confirmDirectLoginCode,
   getLoginOptions,
   requestEmailLoginCode,
   setupPassword as setupAccountPassword,
@@ -38,6 +47,7 @@ type LoginStep =
   | 'email'
   | 'password'
   | 'google-only'
+  | 'code-login'
   | 'generic'
   | 'code'
   | 'password-setup'
@@ -79,6 +89,14 @@ export default function LoginScreen() {
   const params = useLocalSearchParams<{ reason?: string; next?: string }>();
   const insets = useSafeAreaInsets();
 
+  /**
+   * One auth action at a time. Every control below either runs THROUGH
+   * `authFlow.run` (submissions) or THROUGH `authFlow.guard` (navigation), so
+   * a second press during the Google account chooser does nothing instead of
+   * quietly pushing a route behind it.
+   */
+  const authFlow = useAuthFlowLock();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -91,6 +109,8 @@ export default function LoginScreen() {
   const [flowError, setFlowError] = useState('');
   const [emailCode, setEmailCode] = useState('');
   const [emailCodeLoading, setEmailCodeLoading] = useState(false);
+  const [directLoginSendLoading, setDirectLoginSendLoading] = useState(false);
+  const [directLoginConfirmLoading, setDirectLoginConfirmLoading] = useState(false);
   const [passwordSetupToken, setPasswordSetupToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -119,6 +139,7 @@ export default function LoginScreen() {
         delay: STAGGER_LOGO,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(headlineOpacity, {
         toValue: 1,
@@ -126,6 +147,7 @@ export default function LoginScreen() {
         delay: STAGGER_HEADLINE,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(headlineSlide, {
         toValue: 0,
@@ -133,6 +155,7 @@ export default function LoginScreen() {
         delay: STAGGER_HEADLINE,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(formOpacity, {
         toValue: 1,
@@ -140,6 +163,7 @@ export default function LoginScreen() {
         delay: STAGGER_FORM,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(formSlide, {
         toValue: 0,
@@ -147,6 +171,7 @@ export default function LoginScreen() {
         delay: STAGGER_FORM,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
+        isInteraction: false,
       }),
     ]).start();
   }, [formOpacity, formSlide, headlineOpacity, headlineSlide, logoOpacity]);
@@ -220,7 +245,8 @@ export default function LoginScreen() {
       if (options.methods.password) {
         setLoginStep('password');
       } else if (options.methods.google || options.methods.passwordSetupAvailable) {
-        setLoginStep('google-only');
+        setLoginStep('code-login');
+        void sendDirectLoginCode(normalizedEmail, options.requestId);
       } else {
         recordCredentialFailure();
         toast.error('Invalid credentials');
@@ -235,6 +261,43 @@ export default function LoginScreen() {
       }
     } finally {
       setOptionsLoading(false);
+    }
+  };
+
+  const sendDirectLoginCode = async (emailToUse: string, requestId?: string) => {
+    setDirectLoginSendLoading(true);
+    try {
+      await requestEmailLoginCode({
+        email: emailToUse,
+        purpose: 'DIRECT_LOGIN',
+        requestId,
+      });
+      setEmailCode('');
+      toast.success('Sign-in code has been sent to your email.');
+    } catch (error) {
+      setFlowError(getErrorMessage(error, 'Unable to send direct login code.'));
+    } finally {
+      setDirectLoginSendLoading(false);
+    }
+  };
+
+  const confirmDirectLoginCodeFn = async () => {
+    const code = emailCode.trim();
+    if (!code) {
+      setFlowError('Enter the code from your inbox.');
+      return;
+    }
+    setFlowError('');
+    setDirectLoginConfirmLoading(true);
+    try {
+      const result = await confirmDirectLoginCode(normalizedEmail, code);
+      await signIn({ email: normalizedEmail, tokenPayload: result });
+      toast.success('Welcome back!');
+      setPendingNavigation(true);
+    } catch (error) {
+      setFlowError(getErrorMessage(error, 'Invalid or expired code.'));
+    } finally {
+      setDirectLoginConfirmLoading(false);
     }
   };
 
@@ -264,8 +327,44 @@ export default function LoginScreen() {
       toast.success('Welcome back!');
       setPendingNavigation(true);
     } catch (error) {
-      recordCredentialFailure();
-      toast.error('Invalid credentials');
+      const responseData = (error as any)?.response?.data;
+      const structuredErrors =
+        responseData &&
+        typeof responseData.errors === 'object' &&
+        responseData.errors !== null &&
+        !Array.isArray(responseData.errors)
+          ? (responseData.errors as Record<string, unknown>)
+          : undefined;
+      const structuredCode =
+        typeof structuredErrors?.code === 'string' ? structuredErrors.code : undefined;
+
+      if (
+        structuredCode === 'LOGIN_TEMPORARILY_LOCKED' ||
+        structuredCode === 'ACCOUNT_SUSPENDED_LOGIN_LOCKOUT'
+      ) {
+        // Progressive lockout: surface the backend wait/suspension guidance.
+        const message =
+          (typeof responseData?.message === 'string' && responseData.message) ||
+          'Too many failed sign-in attempts. Try again later.';
+        setFlowError(message);
+        toast.error(message);
+      } else {
+        recordCredentialFailure();
+        const attemptsRemaining =
+          typeof structuredErrors?.attemptsRemaining === 'number'
+            ? structuredErrors.attemptsRemaining
+            : null;
+        if (attemptsRemaining !== null && attemptsRemaining <= 5) {
+          const warning =
+            attemptsRemaining <= 1
+              ? 'Invalid credentials — one more failed attempt will suspend this account.'
+              : `Invalid credentials — ${attemptsRemaining} attempts remaining before this account is suspended.`;
+          setFlowError(warning);
+          toast.error(warning);
+        } else {
+          toast.error('Invalid credentials');
+        }
+      }
     } finally {
       setSubmitting(false);
     }
@@ -275,12 +374,28 @@ export default function LoginScreen() {
     setFlowError('');
     setGoogleLoading(true);
     try {
-      const idToken = await googleTokenRequest.requestGoogleIdToken();
-      await signInWithGoogle({ idToken });
+      const idToken = await googleTokenRequest.requestGoogleIdToken({ intent: 'LOGIN' });
+      await signInWithGoogle({ idToken, intent: 'LOGIN' });
       toast.success('Welcome back!');
       setPendingNavigation(true);
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Google sign-in could not be completed.'));
+      // Backing out of the Google sheet is a decision, not a failure. Toasting
+      // it just nags someone who already knows what they did.
+      if (error instanceof GoogleSignInError && error.reason === 'cancelled') {
+        return;
+      }
+
+      // No WIEZ account for this Google email. The API refuses to create one
+      // from the login screen on purpose — an account needs a type and current
+      // legal acceptances — so hand the user to signup instead of showing them
+      // a dead end they cannot resolve from here.
+      if (error instanceof AuthRequestError && error.code === 'GOOGLE_NO_ACCOUNT') {
+        toast.info("No WIEZ account for that Google email yet — let's get you signed up.");
+        router.replace('/(auth)/signup');
+        return;
+      }
+
+      toast.error(getAuthErrorMessage(error));
     } finally {
       setGoogleLoading(false);
     }
@@ -389,12 +504,8 @@ export default function LoginScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      <KeyboardAwareScrollView
-        enableOnAndroid
-        extraScrollHeight={tokens.spacing['2xl']}
-        enableResetScrollToCoords={false}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAwareFormScroll
+        bottomOffset={tokens.spacing['2xl']}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingTop: insets.top + tokens.spacing.lg, paddingBottom: insets.bottom + tokens.spacing['3xl'] },
@@ -402,12 +513,17 @@ export default function LoginScreen() {
       >
         <Animated.View style={[styles.logoRow, { opacity: logoOpacity }]}>
           <Pressable
-            onPress={() => router.replace('/')}
-            style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+            onPress={authFlow.guard(() => router.replace('/'))}
+            disabled={authFlow.busy}
+            style={({ pressed }) => [
+              pressed && { opacity: 0.7 },
+              authFlow.busy && styles.linkBlocked,
+            ]}
             accessibilityRole="button"
             accessibilityLabel="Go to home"
+            accessibilityState={{ disabled: authFlow.busy }}
           >
-            <WeazLogo size={36} />
+            <WiezMark size={36} />
           </Pressable>
         </Animated.View>
 
@@ -489,8 +605,49 @@ export default function LoginScreen() {
               <View style={styles.statePanel}>
                 <AppText variant="bodyBold">This account uses Google sign-in.</AppText>
                 <AppText variant="caption" tone="muted" style={styles.statePanelText}>
-                  Continue with Google, or verify your email to create a WEAZ password.
+                  Continue with Google, or verify your email to create a WIEZ password.
                 </AppText>
+              </View>
+            ) : null}
+
+            {loginStep === 'code-login' ? (
+              <View style={styles.inlineFlow}>
+                <AppText variant="bodyBold">Enter your sign-in code</AppText>
+                <AppText variant="caption" tone="muted">
+                  A sign-in code has been sent to your email address.
+                </AppText>
+                <FloatingLabelInput
+                  label="Verification Code"
+                  value={emailCode}
+                  onChangeText={(value) => {
+                    setEmailCode(value);
+                    setFlowError('');
+                  }}
+                  keyboardType="numeric"
+                  isPassword
+                  testID="direct-login-code-input"
+                />
+                <View style={styles.inlineActions}>
+                  <Button
+                    title="Verify code"
+                    onPress={() => authFlow.run('login-code-confirm', confirmDirectLoginCodeFn)}
+                    loading={directLoginConfirmLoading}
+                    disabled={authFlow.busy || directLoginConfirmLoading || directLoginSendLoading}
+                    fullWidth
+                  />
+                  <Button
+                    title="Resend code"
+                    variant="outline"
+                    onPress={() =>
+                      authFlow.run('login-code-send', () =>
+                        sendDirectLoginCode(normalizedEmail, loginOptions?.requestId),
+                      )
+                    }
+                    loading={directLoginSendLoading}
+                    disabled={authFlow.busy || directLoginConfirmLoading || directLoginSendLoading}
+                    fullWidth
+                  />
+                </View>
               </View>
             ) : null}
 
@@ -514,16 +671,16 @@ export default function LoginScreen() {
                 <View style={styles.inlineActions}>
                   <Button
                     title="Verify code"
-                    onPress={confirmPasswordSetupCode}
+                    onPress={() => authFlow.run('password-setup-confirm', confirmPasswordSetupCode)}
                     loading={emailCodeLoading}
-                    disabled={emailCodeLoading}
+                    disabled={authFlow.busy || emailCodeLoading}
                     fullWidth
                   />
                   <Button
                     title="Resend code"
                     variant="outline"
-                    onPress={requestPasswordSetupCode}
-                    disabled={emailCodeLoading}
+                    onPress={() => authFlow.run('password-setup-request', requestPasswordSetupCode)}
+                    disabled={authFlow.busy || emailCodeLoading}
                     fullWidth
                   />
                 </View>
@@ -534,7 +691,7 @@ export default function LoginScreen() {
               <View style={styles.inlineFlow}>
                 <AppText variant="bodyBold">Create your password</AppText>
                 <AppText variant="caption" tone="muted">
-                  This creates your first WEAZ password. You will sign in after it is saved.
+                  This creates your first WIEZ password. You will sign in after it is saved.
                 </AppText>
                 <FloatingLabelInput
                   label="New Password"
@@ -561,9 +718,9 @@ export default function LoginScreen() {
                 </AppText>
                 <PrimaryAuthButton
                   title="CREATE PASSWORD"
-                  onPress={submitPasswordSetup}
+                  onPress={() => authFlow.run('password-setup-submit', submitPasswordSetup)}
                   loading={passwordSetupLoading}
-                  disabled={passwordSetupLoading}
+                  disabled={authFlow.busy || passwordSetupLoading}
                 />
               </View>
             ) : null}
@@ -607,12 +764,13 @@ export default function LoginScreen() {
                 title="Forgot password?"
                 variant="ghost"
                 size="xs"
-                onPress={() =>
-                  router.push({
+                onPress={authFlow.guard(() =>
+                  drillDownPush({
                     pathname: '/forgot-password',
                     params: { email: normalizedEmail },
-                  })
-                }
+                  }),
+                )}
+                disabled={authFlow.busy}
                 style={styles.forgotBtn}
               />
             ) : null}
@@ -621,9 +779,9 @@ export default function LoginScreen() {
               <View style={styles.primaryAction}>
                 <PrimaryAuthButton
                   title="CONTINUE"
-                  onPress={continueWithEmail}
+                  onPress={() => authFlow.run('email-continue', continueWithEmail)}
                   loading={optionsLoading}
-                  disabled={optionsLoading}
+                  disabled={authFlow.busy || optionsLoading}
                 />
               </View>
             ) : null}
@@ -632,28 +790,31 @@ export default function LoginScreen() {
               <View style={styles.primaryAction}>
                 <PrimaryAuthButton
                   title="SIGN IN"
-                  onPress={submitPasswordLogin}
+                  onPress={() => authFlow.run('password-login', submitPasswordLogin)}
                   loading={submitting || status === 'loading'}
-                  disabled={submitting || status === 'loading'}
+                  disabled={authFlow.busy || submitting || status === 'loading'}
                 />
               </View>
             ) : null}
 
             {showGoogleAction ? (
               <View style={styles.googleAction}>
-                <Button
-                  title="Continue with Google"
-                  variant="outline"
-                  onPress={handleGoogleSignIn}
+                <GoogleSignInButton
+                  onPress={() => authFlow.run('google', handleGoogleSignIn)}
                   loading={googleLoading}
-                  disabled={!googleTokenRequest.configured || !googleTokenRequest.ready || googleLoading}
-                  fullWidth
-                  left={<GoogleMark />}
+                  disabled={authFlow.busy && !googleLoading}
                   testID="login-google-button"
                 />
-                {__DEV__ && !googleTokenRequest.configured ? (
+                {/*
+                  Not dev-gated. This hint used to be, which meant the one build
+                  shape with no console and no Metro log was also the one that
+                  said nothing — a release build just failed with a generic
+                  "try again in a moment" for a fault no retry can clear.
+                */}
+                {!googleTokenRequest.configured ? (
                   <AppText variant="caption" tone="warning" style={styles.googleConfigText}>
-                    Google sign-in needs public Google client IDs in this build.
+                    Google sign-in isn&apos;t available in this version of the app.
+                    {__DEV__ ? ' Set EXPO_PUBLIC_GOOGLE_*_CLIENT_ID and restart Metro.' : ''}
                   </AppText>
                 ) : null}
               </View>
@@ -665,9 +826,14 @@ export default function LoginScreen() {
                   New here?{' '}
                 </AppText>
                 <Pressable
-                  onPress={() => router.push({ pathname: '/(auth)/signup', params: { next: nextPath } })}
+                  onPress={authFlow.guard(() =>
+                    drillDownPush({ pathname: '/(auth)/signup', params: { next: nextPath } }),
+                  )}
+                  disabled={authFlow.busy}
+                  style={authFlow.busy ? styles.linkBlocked : undefined}
                   accessibilityRole="button"
                   accessibilityLabel="Create an account"
+                  accessibilityState={{ disabled: authFlow.busy }}
                 >
                   <AppText variant="captionBold" tone="primary">
                     Create an account.
@@ -683,9 +849,9 @@ export default function LoginScreen() {
               <Button
                 title="Create a password with email code"
                 variant="outline"
-                onPress={requestPasswordSetupCode}
+                onPress={() => authFlow.run('password-setup-request', requestPasswordSetupCode)}
                 loading={emailCodeLoading}
-                disabled={emailCodeLoading}
+                disabled={authFlow.busy || emailCodeLoading}
                 fullWidth
                 style={styles.passwordSetupButton}
               />
@@ -693,12 +859,17 @@ export default function LoginScreen() {
 
             <View style={styles.footerRow}>
               <AppText variant="body" tone="muted">
-                New to WEAZ?
+                New to WIEZ?
               </AppText>
               <Pressable
-                onPress={() => router.push({ pathname: '/(auth)/signup', params: { next: nextPath } })}
+                onPress={authFlow.guard(() =>
+                  drillDownPush({ pathname: '/(auth)/signup', params: { next: nextPath } }),
+                )}
+                disabled={authFlow.busy}
+                style={authFlow.busy ? styles.linkBlocked : undefined}
                 accessibilityRole="button"
                 accessibilityLabel="Create account"
+                accessibilityState={{ disabled: authFlow.busy }}
               >
                 <AppText variant="bodyBold" tone="primary" style={styles.footerLink}>
                   {'  '}CREATE ACCOUNT
@@ -707,7 +878,7 @@ export default function LoginScreen() {
             </View>
           </View>
         </Animated.View>
-      </KeyboardAwareScrollView>
+      </KeyboardAwareFormScroll>
     </View>
   );
 }
@@ -739,7 +910,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     marginTop: tokens.spacing.xs,
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.25,
     shadowRadius: 24,
@@ -756,7 +927,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 2,
-    backgroundColor: '#D4AF37',
+    backgroundColor: tokens.auth.gold,
     borderTopLeftRadius: tokens.radius.xl,
     borderTopRightRadius: tokens.radius.xl,
     zIndex: 2,
@@ -768,14 +939,14 @@ const styles = StyleSheet.create({
   notice: {
     paddingVertical: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
-    backgroundColor: '#2B1742',
+    backgroundColor: tokens.auth.plate,
     borderRadius: tokens.radius.md,
     borderWidth: 1,
-    borderColor: '#9333EA',
+    borderColor: tokens.auth.edge,
     marginBottom: tokens.spacing.xl2,
   },
   noticeText: {
-    color: '#D4AF37',
+    color: tokens.auth.gold,
     fontSize: tokens.typography.caption.size,
     fontWeight: '600',
     textAlign: 'center',
@@ -789,8 +960,8 @@ const styles = StyleSheet.create({
     padding: tokens.spacing.lg,
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.35)',
-    backgroundColor: 'rgba(212,175,55,0.08)',
+    borderColor: tokens.auth.noticeGoldBorder,
+    backgroundColor: tokens.auth.noticeGoldFill,
   },
   statePanelText: {
     lineHeight: 19,
@@ -801,8 +972,8 @@ const styles = StyleSheet.create({
     padding: tokens.spacing.lg,
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(147,51,234,0.3)',
-    backgroundColor: 'rgba(147,51,234,0.08)',
+    borderColor: tokens.auth.noticeInfoBorder,
+    backgroundColor: tokens.auth.noticeInfoFill,
   },
   inlineActions: {
     gap: tokens.spacing.sm,
@@ -813,16 +984,16 @@ const styles = StyleSheet.create({
     padding: tokens.spacing.lg,
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.35)',
-    backgroundColor: 'rgba(34,197,94,0.08)',
+    borderColor: tokens.auth.noticeSuccessBorder,
+    backgroundColor: tokens.auth.noticeSuccessFill,
   },
   errorPanel: {
     marginTop: tokens.spacing.md,
     padding: tokens.spacing.md,
     borderRadius: tokens.radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.35)',
-    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderColor: tokens.auth.noticeDangerBorder,
+    backgroundColor: tokens.auth.noticeDangerFill,
   },
   forgotBtn: {
     alignSelf: 'flex-end',
@@ -856,6 +1027,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexWrap: 'wrap',
+  },
+  /**
+   * Held while another auth action owns the flow lock. Dimming is the visible
+   * half of the guard: `authFlow.guard` already refuses the press, and this is
+   * what tells someone why before they make it.
+   */
+  linkBlocked: {
+    opacity: 0.4,
   },
   footerLink: {
     letterSpacing: 0.5,

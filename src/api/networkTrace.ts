@@ -1,10 +1,23 @@
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { AppState } from 'react-native';
 
+import { perfEnabled, perfMark } from '@/src/perf/wiezPerf';
+
 type TraceHeaders = Record<string, unknown> | { get?: (name: string) => unknown };
 
+/** Carries the monotonic start stamp so T8 can report a true round trip. */
+type PerfTimedConfig = InternalAxiosRequestConfig & {
+  __wiezPerfStartedAt?: number;
+};
+
+const perfNow: () => number = (() => {
+  const perf = (globalThis as { performance?: { now?: () => number } }).performance;
+  if (perf && typeof perf.now === 'function') return () => perf.now!();
+  return () => Date.now();
+})();
+
 type TraceableRequestConfig = InternalAxiosRequestConfig & {
-  __threadlyTrace?: {
+  __wiezTrace?: {
     id: number;
     requestTimestampMs: number;
     requestTimestamp: string;
@@ -80,7 +93,7 @@ const isTraceEnabled =
   typeof __DEV__ !== 'undefined' &&
   __DEV__ &&
   process.env.NODE_ENV !== 'test' &&
-  process.env.EXPO_PUBLIC_THREADLY_NETWORK_TRACE !== '0';
+  process.env.EXPO_PUBLIC_WIEZ_NETWORK_TRACE !== '0';
 
 let nextTraceId = 1;
 let currentScreenLabel: string | null = null;
@@ -142,7 +155,7 @@ function appendParams(searchParams: URLSearchParams, params: unknown) {
 
 function getRequestUrlParts(config: TraceableRequestConfig) {
   const rawUrl = typeof config.url === 'string' ? config.url : '';
-  const rawBaseUrl = typeof config.baseURL === 'string' && config.baseURL ? config.baseURL : 'http://threadly.local';
+  const rawBaseUrl = typeof config.baseURL === 'string' && config.baseURL ? config.baseURL : 'http://wiez.local';
   const parsed = new URL(rawUrl || '/', rawBaseUrl);
   appendParams(parsed.searchParams, config.params);
 
@@ -273,11 +286,42 @@ function countBy(source: NetworkTraceEntry[], key: keyof NetworkTraceEntry, fall
     .sort((a, b) => b.count - a.count);
 }
 
+/**
+ * Path only, no query string, and cheap.
+ *
+ * The rich `getRequestUrlParts` builds a `URL` and a `URLSearchParams` per
+ * call. That is fine for the dev-only trace, which already pays for response
+ * size estimation, but this runs in the build being measured and must not
+ * become part of what it measures. Dropping the query also keeps anything
+ * carried in a parameter out of logcat.
+ */
+function perfPathOf(config: InternalAxiosRequestConfig): string {
+  const raw = typeof config.url === 'string' ? config.url : '';
+  const path = raw.split('?')[0] || '/';
+  const method = String(config.method ?? 'GET').toUpperCase();
+  return `${method} ${path}`;
+}
+
 export function startNetworkTrace(config: InternalAxiosRequestConfig) {
+  // T7, independent of `isTraceEnabled`.
+  //
+  // The full trace above is deliberately dev-only — it keeps a 2000-entry ring
+  // buffer and JSON-stringifies every response body to estimate its size, and
+  // running that in a preview build would distort the thing under measurement.
+  // But "when did the request actually leave" is the single most important fact
+  // for telling navigation latency from data latency, and with the trace off it
+  // was not recorded in release-like builds at all. These two marks cost a
+  // string concat each.
+  if (perfEnabled()) {
+    const label = perfPathOf(config);
+    (config as PerfTimedConfig).__wiezPerfStartedAt = perfNow();
+    perfMark('request_begin', { detail: label });
+  }
+
   if (!isTraceEnabled) return config;
   const traceableConfig = config as TraceableRequestConfig;
   const now = Date.now();
-  traceableConfig.__threadlyTrace = {
+  traceableConfig.__wiezTrace = {
     id: nextTraceId++,
     requestTimestampMs: now,
     requestTimestamp: new Date(now).toISOString(),
@@ -293,9 +337,21 @@ export function finishNetworkTrace(
   response?: AxiosResponse,
   error?: unknown,
 ) {
+  // T8, independent of `isTraceEnabled` — see `startNetworkTrace`.
+  if (perfEnabled() && config) {
+    const startedAt = (config as PerfTimedConfig).__wiezPerfStartedAt;
+    const roundTrip = typeof startedAt === 'number' ? perfNow() - startedAt : null;
+    const outcome = response ? `status=${response.status}` : 'status=error';
+    perfMark('response_available', {
+      detail:
+        `${perfPathOf(config)} ${outcome}` +
+        (roundTrip === null ? '' : ` rttMs=${roundTrip.toFixed(1)}`),
+    });
+  }
+
   if (!isTraceEnabled || !config) return;
   const traceableConfig = config as TraceableRequestConfig;
-  const trace = traceableConfig.__threadlyTrace;
+  const trace = traceableConfig.__wiezTrace;
   if (!trace) return;
 
   const responseTimestampMs = Date.now();
@@ -412,7 +468,7 @@ export function getNetworkTraceSummary(): NetworkTraceSummary {
 
 export function printNetworkTraceSummary() {
   const summary = getNetworkTraceSummary();
-  console.log('[threadly-network-trace] summary', summary);
+  console.log('[wiez-network-trace] summary', summary);
   if (typeof console.table === 'function') {
     console.table(summary.duplicateBuckets.slice(0, 10));
     console.table(summary.signedUrlCalls.buckets.slice(0, 10));
@@ -433,7 +489,7 @@ const controls: NetworkTraceControls = {
 };
 
 if (isTraceEnabled) {
-  (globalThis as typeof globalThis & { __THREADLY_NETWORK_TRACE__?: NetworkTraceControls }).__THREADLY_NETWORK_TRACE__ = controls;
+  (globalThis as typeof globalThis & { __WIEZ_NETWORK_TRACE__?: NetworkTraceControls }).__WIEZ_NETWORK_TRACE__ = controls;
 }
 
 export const networkTraceEnabled = isTraceEnabled;

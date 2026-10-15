@@ -67,7 +67,12 @@ assertIncludes(notificationsApi, "'/notifications/unread-count'", 'notification 
 assertIncludes(notificationsApi, "'/notifications/push-tokens'", 'push token registration');
 
 const mobileMe = read('app/(tabs)/me.tsx');
-assertIncludes(mobileMe, "endpoint: '/store/orders'", 'profile order diagnostic endpoint');
+// The orders section reports both order kinds now, so the diagnostic names both.
+assertIncludes(
+  mobileMe,
+  "endpoint: '/store/orders + /custom-orders'",
+  'profile order diagnostic endpoint',
+);
 
 const checkoutGate = read('src/features/checkout/mobileCheckoutGate.ts');
 assertIncludes(checkoutGate, 'MOBILE_CHECKOUT_ENABLED = env.mobileCheckout.enabled', 'mobile checkout flag');
@@ -77,5 +82,13 @@ assertIncludes(paymentApi, "'/payment/initialize-unified'", 'mobile payment init
 assertIncludes(paymentApi, "'/payment/verify'", 'mobile payment verification');
 assertIncludes(paymentApi, '`/payment/attempts/${encodeURIComponent(reference)}`', 'mobile payment attempt status');
 assertIncludes(paymentApi, "'Idempotency-Key': idempotencyKey", 'mobile payment idempotency');
+
+const httpClient = read('src/api/httpClient.ts');
+assertIncludes(httpClient, 'const expoHost = getExpoHostHint();', 'physical-device Expo host lookup');
+assertIncludes(
+  httpClient,
+  'return `http://${expoHost}:${DEFAULT_PORT}`;',
+  'physical Android must use Metro\'s LAN host before any emulator fallback',
+);
 
 console.log('Mobile API contract parity checks passed.');

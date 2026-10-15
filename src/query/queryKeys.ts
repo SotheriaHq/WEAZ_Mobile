@@ -76,7 +76,7 @@ export const queryKeys = {
       filters?: {
         scope?: CollectionScopeKey;
         visibility?: CollectionVisibilityKey;
-        status?: string | null;
+        status?: string | string[] | null;
         limit?: number | null;
       },
     ) =>
@@ -121,6 +121,9 @@ export const queryKeys = {
     filters: (view?: string | null) => ['categories', 'filters', normalizeId(view)] as const,
     designCategories: () => ['categories', 'designCategories'] as const,
   },
+  tags: {
+    popular: (limit?: number | null) => ['tags', 'popular', limit ?? 50] as const,
+  },
   measurementPoints: {
     byGender: (gender?: string | null) => ['measurementPoints', normalizeId(gender) || 'all'] as const,
   },
@@ -130,6 +133,7 @@ export const queryKeys = {
   },
   notifications: {
     unreadCount: () => ['notifications', 'unreadCount'] as const,
+    list: (userId?: string | null) => ['notifications', 'list', normalizeId(userId)] as const,
   },
   messaging: {
     unreadCount: () => ['messaging', 'unreadCount'] as const,
@@ -150,10 +154,42 @@ export const queryKeys = {
       ['reviews', 'brand', normalizeId(brandId), normalizeRecord(params)] as const,
     product: (productId?: string | null, params?: Record<string, unknown> | null) =>
       ['reviews', 'product', normalizeId(productId), normalizeRecord(params)] as const,
+    mine: (userId?: string | null) => ['reviews', 'mine', normalizeId(userId)] as const,
+  },
+  orders: {
+    list: (userId?: string | null) => ['orders', 'list', normalizeId(userId)] as const,
+    detail: (orderId?: string | null, kind?: string | null) =>
+      ['orders', 'detail', normalizeId(orderId), kind ?? 'any'] as const,
+    conversation: (orderId?: string | null, kind?: string | null) =>
+      ['orders', 'conversation', normalizeId(orderId), kind ?? 'any'] as const,
+  },
+  brandStaff: {
+    list: (brandId?: string | null) => ['brandStaff', 'list', normalizeId(brandId)] as const,
+  },
+  brandFinance: {
+    bundle: (brandId?: string | null) =>
+      ['brandFinance', 'bundle', normalizeId(brandId)] as const,
   },
 };
 
-export const isPersistableThreadlyQueryKey = (queryKey: readonly unknown[]) => {
+// Single source of truth for which query roots hold user/brand-private data and
+// must be purged on logout. sessionCleanup imports this instead of re-listing.
+export const PRIVATE_QUERY_ROOTS = new Set<string>([
+  'auth',
+  'brand',
+  'design',
+  'designs',
+  'store',
+  'saved',
+  'notifications',
+  'messaging',
+  'reviews',
+  'orders',
+  'brandStaff',
+  'brandFinance',
+]);
+
+export const isPersistableWiezQueryKey = (queryKey: readonly unknown[]) => {
   const [root, scope] = queryKey;
   if (
     root === 'brand' ||
@@ -170,6 +206,17 @@ export const isPersistableThreadlyQueryKey = (queryKey: readonly unknown[]) => {
   }
   if (root === 'media') {
     return scope === 'publicUrl';
+  }
+  // Profile tabs the user round-trips between. Read-only display data with no
+  // PII, already purged on logout via PRIVATE_QUERY_ROOTS above. Left out
+  // originally, so reviews were the one profile tab that cold-loaded with a
+  // skeleton after every app restart while the catalog tabs repainted instantly.
+  // Mirrors fthreadly/src/query/queryKeys.ts.
+  //
+  // `orders`, `brandFinance` and `brandStaff` stay memory-only on purpose:
+  // addresses, payment references and staff records do not belong on disk.
+  if (root === 'reviews') {
+    return true;
   }
   return false;
 };

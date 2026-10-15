@@ -1,13 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import type { ImageContentFit } from 'expo-image';
 
 import { AppText } from '@/components/ui/AppText';
 import { AspectAwareMedia } from '@/src/components/media/AspectAwareMedia';
-import type { AspectAwareMediaStrategy } from '@/src/components/media/aspectAwareMediaStrategy';
-import { useTheme } from '@/src/theme/ThemeProvider';
-import { resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import {
+  buildFeedImageCacheKey,
+  resolveFeedImageSourcePolicy,
+  type FeedImageSourceTier,
+} from '@/src/features/feed/media/feedImageSourcePolicy';
+import { resolveRunwayMediaStrategy } from '@/src/features/feed/media/runwayMediaStrategy';
 import { feedMediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
+import { markRunwayFirstMediaVisible } from '@/src/features/feed/utils/runwayReadiness';
+import { resolveImageUri, useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { useTheme } from '@/src/theme/ThemeProvider';
 
 type FeedImageLoadState = 'idle' | 'resolving' | 'loading' | 'loaded' | 'failed';
 type FeedImageAspectClass = 'portrait' | 'square' | 'landscape' | 'unknown';
@@ -24,7 +29,6 @@ type FeedImageProps = {
   style?: StyleProp<ViewStyle>;
   sourceType?: string;
   imageIndex?: number;
-  contentFit?: ImageContentFit;
   viewportWidth?: number | null;
   viewportHeight?: number | null;
   naturalWidth?: number | null;
@@ -32,41 +36,54 @@ type FeedImageProps = {
   aspectRatio?: number | null;
   aspectClass?: FeedImageAspectClass;
   frostedBackdrop?: boolean;
+  allowDetailUpgrade?: boolean;
 };
 
-const classifyAspectRatio = (aspectRatio?: number | null): FeedImageAspectClass => {
-  if (!aspectRatio || !Number.isFinite(aspectRatio) || aspectRatio <= 0) return 'unknown';
-  if (aspectRatio > 1.08) return 'landscape';
-  if (aspectRatio < 0.92) return 'portrait';
-  return 'square';
+type SourceSelection = {
+  identity: string;
+  tier: FeedImageSourceTier;
 };
 
-const getAspectStrategyOverride = (
-  contentFit: ImageContentFit,
-  frostedBackdrop: boolean,
-): AspectAwareMediaStrategy | null => {
-  if (contentFit === 'cover') return 'edge';
-  if (frostedBackdrop) return null;
-  return 'letter-solid';
+type SuccessfulSource = SourceSelection & {
+  uri: string;
 };
 
-function FeedImagePlaceholder({ backgroundColor }: { backgroundColor: string }) {
-  const shimmer = useRef(new Animated.Value(0.35)).current;
+const isPositiveFinite = (value: number | null | undefined): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0;
+
+/**
+ * `AspectAwareMedia` paints its `dominantColor` as an opaque root. Passing the
+ * matte there covered the loading skeleton the instant a URL resolved, which
+ * is what left landscape photos framed in solid black until the bytes landed.
+ * This view's own root already carries the matte, so the media layer is clear.
+ */
+const MEDIA_LAYER_BACKGROUND = 'transparent';
+
+function FeedImagePlaceholder({
+  backgroundColor,
+  shimmerColor,
+}: {
+  backgroundColor: string;
+  shimmerColor: string;
+}) {
+  const shimmer = useRef(new Animated.Value(0.18)).current;
 
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(shimmer, {
-          toValue: 0.72,
-          duration: 550,
+          toValue: 0.52,
+          duration: 650,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
         Animated.timing(shimmer, {
-          toValue: 0.35,
-          duration: 550,
+          toValue: 0.18,
+          duration: 650,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
+          isInteraction: false,
         }),
       ]),
     );
@@ -76,7 +93,9 @@ function FeedImagePlaceholder({ backgroundColor }: { backgroundColor: string }) 
 
   return (
     <View style={[StyleSheet.absoluteFill, { backgroundColor }]}>
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: shimmer, backgroundColor }]} />
+      <Animated.View
+        style={[StyleSheet.absoluteFill, { opacity: shimmer, backgroundColor: shimmerColor }]}
+      />
     </View>
   );
 }
@@ -93,7 +112,6 @@ export const FeedImage = React.memo(function FeedImage({
   style,
   sourceType,
   imageIndex,
-  contentFit = 'contain',
   viewportWidth,
   viewportHeight,
   naturalWidth,
@@ -101,17 +119,37 @@ export const FeedImage = React.memo(function FeedImage({
   aspectRatio,
   aspectClass,
   frostedBackdrop = true,
+  allowDetailUpgrade = true,
 }: FeedImageProps) {
-  const { scheme, theme } = useTheme();
-  const placeholderSurface = dominantColor || (scheme === 'dark' ? theme.colors.surface : theme.colors.surfaceAlt);
+  const { theme } = useTheme();
+  // Letterboxed media is matted against the Runway stage, which follows the
+  // theme. It has to be the same token the screen root, the slide frame and the
+  // inter-page scrim use, or the seams show whenever an image does not edge-fill.
+  const matte = theme.colors.runwayStage;
+  const matteShimmer = theme.colors.border;
+  const placeholderSurface = dominantColor || theme.colors.surfaceAlt;
+  const sourcePolicy = useMemo(
+    () => resolveFeedImageSourcePolicy({ displayUrl, previewUrl, thumbnailUrl }),
+    [displayUrl, previewUrl, thumbnailUrl],
+  );
+  const sourceIdentity = `${id}|${fileId ?? ''}|${sourcePolicy.initialUrl ?? ''}|${sourcePolicy.detailUrl ?? ''}`;
+  const [sourceSelection, setSourceSelection] = useState<SourceSelection>({
+    identity: sourceIdentity,
+    tier: sourcePolicy.initialTier,
+  });
+  const [successfulSource, setSuccessfulSource] = useState<SuccessfulSource | null>(null);
   const [loadState, setLoadState] = useState<FeedImageLoadState>('idle');
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   const [loadedNaturalSize, setLoadedNaturalSize] = useState<{ width: number; height: number } | null>(null);
-  const lastSuccessfulUriRef = useRef<string | null>(null);
   const failedUriSetRef = useRef<Set<string>>(new Set());
-  const sourceUrl = displayUrl || previewUrl || thumbnailUrl || null;
+
+  const activeTier = sourceSelection.identity === sourceIdentity
+    ? sourceSelection.tier
+    : sourcePolicy.initialTier;
+  const sourceUrl = activeTier === 'detail' ? sourcePolicy.detailUrl : sourcePolicy.initialUrl;
   const hasSource = Boolean(sourceUrl || fileId);
+  const resolutionFileId = sourceUrl ? null : fileId;
   const debugContext = useMemo(
     () => ({
       designId: id,
@@ -121,75 +159,142 @@ export const FeedImage = React.memo(function FeedImage({
     }),
     [fileId, id, imageIndex, sourceType],
   );
-  const { uri, loading } = useResolvedImageAsset({
+  const { uri } = useResolvedImageAsset({
     src: sourceUrl,
-    fileId,
+    fileId: resolutionFileId,
     enabled: hasSource,
     allowSignedFallback: false,
     debugContext,
   });
-  const visibleUri = uri && uri !== failedUri ? uri : lastSuccessfulUriRef.current;
-  const hostname = useMemo(() => {
-    const candidate = visibleUri ?? uri ?? sourceUrl;
-    if (!candidate) return null;
-    try {
-      return new URL(candidate).hostname;
-    } catch {
-      return null;
-    }
-  }, [sourceUrl, uri, visibleUri]);
+  const currentUri = sourceUrl ? (uri === sourceUrl ? uri : null) : uri;
+  const visibleSuccessfulSource = successfulSource?.identity === sourceIdentity ? successfulSource : null;
   const measuredAspectRatio =
-    aspectRatio ??
-    (naturalWidth && naturalHeight ? naturalWidth / naturalHeight : null) ??
+    (isPositiveFinite(aspectRatio) ? aspectRatio : null) ??
+    (isPositiveFinite(naturalWidth) && isPositiveFinite(naturalHeight) ? naturalWidth / naturalHeight : null) ??
     (loadedNaturalSize ? loadedNaturalSize.width / loadedNaturalSize.height : null);
-  const resolvedAspectClass = aspectClass ?? classifyAspectRatio(measuredAspectRatio);
-  const strategyOverride = getAspectStrategyOverride(contentFit, frostedBackdrop);
-  const resolvedImageWidth = naturalWidth ?? loadedNaturalSize?.width ?? null;
-  const resolvedImageHeight = naturalHeight ?? loadedNaturalSize?.height ?? null;
+  const resolvedImageWidth = isPositiveFinite(naturalWidth) ? naturalWidth : loadedNaturalSize?.width ?? null;
+  const resolvedImageHeight = isPositiveFinite(naturalHeight) ? naturalHeight : loadedNaturalSize?.height ?? null;
+  const strategyResult = useMemo(
+    () => resolveRunwayMediaStrategy({
+      viewportWidth,
+      viewportHeight,
+      imageWidth: resolvedImageWidth,
+      imageHeight: resolvedImageHeight,
+      imageAspectRatio: measuredAspectRatio,
+    }),
+    [measuredAspectRatio, resolvedImageHeight, resolvedImageWidth, viewportHeight, viewportWidth],
+  );
+  const currentImageSource = useMemo(
+    () => currentUri
+      ? {
+          uri: currentUri,
+          cacheKey: buildFeedImageCacheKey({ fileId, url: currentUri, tier: activeTier }),
+        }
+      : null,
+    [activeTier, currentUri, fileId],
+  );
+  const successfulImageSource = useMemo(
+    () => visibleSuccessfulSource
+      ? {
+          uri: visibleSuccessfulSource.uri,
+          cacheKey: buildFeedImageCacheKey({
+            fileId,
+            url: visibleSuccessfulSource.uri,
+            tier: visibleSuccessfulSource.tier,
+          }),
+        }
+      : null,
+    [fileId, visibleSuccessfulSource],
+  );
+  const metadataPlaceholderUrl = sourcePolicy.placeholderUrl;
+  const placeholderSource = useMemo(
+    () => visibleSuccessfulSource && visibleSuccessfulSource.uri !== currentUri
+      ? successfulImageSource ?? undefined
+      : metadataPlaceholderUrl
+        ? {
+            uri: metadataPlaceholderUrl,
+            cacheKey: buildFeedImageCacheKey({ fileId, url: metadataPlaceholderUrl, tier: 'thumbnail' }),
+          }
+        : undefined,
+    [currentUri, fileId, metadataPlaceholderUrl, successfulImageSource, visibleSuccessfulSource],
+  );
+  const placeholderKind = blurHash
+    ? 'blurhash'
+    : placeholderSource
+      ? visibleSuccessfulSource
+        ? visibleSuccessfulSource.tier
+        : 'thumbnail'
+      : dominantColor
+        ? 'dominant-color'
+        : 'theme-shimmer';
 
   useEffect(() => {
+    setSourceSelection({ identity: sourceIdentity, tier: sourcePolicy.initialTier });
+    setSuccessfulSource(null);
     setLoadState(hasSource ? 'resolving' : 'idle');
     setFailedUri(null);
     setLoadedNaturalSize(null);
     failedUriSetRef.current = new Set();
-  }, [hasSource, id, sourceUrl, fileId, retryToken]);
+  }, [hasSource, sourceIdentity, sourcePolicy.initialTier]);
 
   useEffect(() => {
-    if (uri && uri !== failedUri) {
-      setLoadState((current) => (current === 'loaded' ? 'loaded' : 'loading'));
+    if (!hasSource) {
+      setLoadState('idle');
+      return;
     }
-  }, [failedUri, uri]);
+    setFailedUri(null);
+    setLoadState(currentUri ? 'loading' : 'resolving');
+  }, [activeTier, currentUri, hasSource, retryToken, sourceIdentity, sourceUrl]);
+
+  useEffect(() => {
+    if (
+      !allowDetailUpgrade ||
+      !sourcePolicy.hasDetailUpgrade ||
+      activeTier === 'detail' ||
+      !visibleSuccessfulSource
+    ) {
+      return;
+    }
+    setSourceSelection({ identity: sourceIdentity, tier: 'detail' });
+  }, [activeTier, allowDetailUpgrade, sourceIdentity, sourcePolicy.hasDetailUpgrade, visibleSuccessfulSource]);
 
   useEffect(() => {
     if (!__DEV__) return;
     feedMediaDevLog('image-fit-policy', {
-      mediaId: id,
+      itemId: id,
       mediaIndex: imageIndex ?? null,
-      viewportWidth: viewportWidth ?? null,
-      viewportHeight: viewportHeight ?? null,
-      naturalWidth: naturalWidth ?? loadedNaturalSize?.width ?? null,
-      naturalHeight: naturalHeight ?? loadedNaturalSize?.height ?? null,
-      aspectRatio: measuredAspectRatio ?? null,
-      aspectClass: resolvedAspectClass,
-      contentFit,
+      reportedWidth: naturalWidth ?? null,
+      reportedHeight: naturalHeight ?? null,
+      reportedAspect: aspectRatio ?? null,
+      inferredWidth: loadedNaturalSize?.width ?? null,
+      inferredHeight: loadedNaturalSize?.height ?? null,
+      inferredAspect: loadedNaturalSize ? loadedNaturalSize.width / loadedNaturalSize.height : null,
+      resolvedAspect: strategyResult.imageAspectRatio,
+      aspectClass: aspectClass ?? strategyResult.imageClass,
+      strategy: strategyResult.strategy,
+      coverCropFraction: strategyResult.coverCropFraction,
+      cropTolerance: 0.12,
+      placeholderSource: placeholderKind,
+      currentSourceTier: activeTier,
+      finalSourceTier: sourcePolicy.hasDetailUpgrade ? 'detail' : sourcePolicy.initialTier,
+      allowDetailUpgrade,
       frostedBackdrop,
-      strategyOverride,
     });
   }, [
+    activeTier,
+    allowDetailUpgrade,
     aspectClass,
-    contentFit,
+    aspectRatio,
+    frostedBackdrop,
     id,
     imageIndex,
-    loadedNaturalSize?.height,
-    loadedNaturalSize?.width,
-    measuredAspectRatio,
+    loadedNaturalSize,
     naturalHeight,
     naturalWidth,
-    resolvedAspectClass,
-    strategyOverride,
-    frostedBackdrop,
-    viewportHeight,
-    viewportWidth,
+    placeholderKind,
+    sourcePolicy.hasDetailUpgrade,
+    sourcePolicy.initialTier,
+    strategyResult,
   ]);
 
   const handleRetry = useCallback(() => {
@@ -197,8 +302,14 @@ export const FeedImage = React.memo(function FeedImage({
     failedUriSetRef.current = new Set();
     setLoadState(hasSource ? 'resolving' : 'idle');
     setRetryToken((current) => current + 1);
-    void resolveImageUri({ src: sourceUrl, fileId, forceRefresh: true, allowSignedFallback: false, debugContext });
-  }, [debugContext, fileId, hasSource, sourceUrl]);
+    void resolveImageUri({
+      src: sourceUrl,
+      fileId: resolutionFileId,
+      forceRefresh: true,
+      allowSignedFallback: false,
+      debugContext,
+    });
+  }, [debugContext, hasSource, resolutionFileId, sourceUrl]);
 
   const renderFallback = (copy: string) => (
     <Pressable
@@ -216,75 +327,106 @@ export const FeedImage = React.memo(function FeedImage({
     </Pressable>
   );
 
-  if (!hasSource) {
-    return renderFallback('No media source available');
-  }
-
-  if (loading || loadState === 'resolving') {
-    const staleUri = lastSuccessfulUriRef.current;
-    return (
-      <View style={[styles.root, { backgroundColor: placeholderSurface }, style]}>
-        {staleUri ? (
-          <AspectAwareMedia
-            source={{ uri: staleUri }}
-            blurhash={blurHash}
-            dominantColor={dominantColor}
-            imageWidth={resolvedImageWidth}
-            imageHeight={resolvedImageHeight}
-            imageAspectRatio={measuredAspectRatio}
-            style={StyleSheet.absoluteFill}
-            strategyOverride={strategyOverride}
-            recyclingKey={`${id}:${staleUri}:stale`}
-            accessibilityLabel={label ?? 'Feed image'}
-          />
-        ) : (
-          <FeedImagePlaceholder backgroundColor={placeholderSurface} />
-        )}
-      </View>
-    );
-  }
-
-  if (!visibleUri || loadState === 'failed' || failedUri === visibleUri) {
-    return renderFallback('Tap to retry');
-  }
+  if (!hasSource) return renderFallback('No media source available');
+  if (loadState === 'failed' && !visibleSuccessfulSource) return renderFallback('Tap to retry');
 
   return (
-    <View style={[styles.root, { backgroundColor: placeholderSurface }, style]}>
-      {loadState !== 'loaded' ? <FeedImagePlaceholder backgroundColor={placeholderSurface} /> : null}
-      <AspectAwareMedia
-        source={{ uri: visibleUri }}
-        blurhash={blurHash}
-        dominantColor={dominantColor}
-        imageWidth={resolvedImageWidth}
-        imageHeight={resolvedImageHeight}
-        imageAspectRatio={measuredAspectRatio}
-        style={[StyleSheet.absoluteFill, { opacity: loadState === 'loaded' ? 1 : 0 }]}
-        strategyOverride={strategyOverride}
-        recyclingKey={`${id}:${visibleUri}`}
-        accessibilityLabel={label ?? 'Feed image'}
-        onLoad={(event) => {
-          const nextWidth = event.source?.width;
-          const nextHeight = event.source?.height;
-          if (typeof nextWidth === 'number' && typeof nextHeight === 'number' && nextWidth > 0 && nextHeight > 0) {
-            setLoadedNaturalSize({ width: nextWidth, height: nextHeight });
-          }
-          lastSuccessfulUriRef.current = visibleUri;
-          setLoadState('loaded');
-        }}
-        onError={(event) => {
-          if (failedUriSetRef.current.has(visibleUri)) return;
-          failedUriSetRef.current.add(visibleUri);
-          mediaDevWarn('image-on-error', {
-            mediaId: id,
-            sourceType: sourceType ?? (displayUrl ? 'display-url' : fileId ? 'protected-file-id' : 'missing-source'),
-            hasFileId: Boolean(fileId),
-            hostname,
-            error: typeof event?.error === 'string' ? event.error : 'image-load-error',
-          });
-          setFailedUri(visibleUri);
-          setLoadState(lastSuccessfulUriRef.current && lastSuccessfulUriRef.current !== visibleUri ? 'loading' : 'failed');
-        }}
-      />
+    <View style={[styles.root, { backgroundColor: matte }, style]}>
+      {/* The skeleton stays until the image has loaded, placeholder or not. A
+          URL placeholder is itself a download, so "has a placeholder" never
+          meant "something is painted" — gating on it left a bare matte frame,
+          the black box around landscape photos while they loaded. It sits
+          UNDER the media, which is transparent (see `dominantColor` below), so
+          the placeholder and the image paint over it and only the letterbox
+          bands still pulse; a cached image covers it on its first frame. */}
+      {!visibleSuccessfulSource ? (
+        <FeedImagePlaceholder
+          backgroundColor={matte}
+          shimmerColor={matteShimmer}
+        />
+      ) : null}
+
+      {visibleSuccessfulSource && successfulImageSource && visibleSuccessfulSource.uri !== currentUri ? (
+        <AspectAwareMedia
+          source={successfulImageSource}
+          blurhash={blurHash}
+          dominantColor={MEDIA_LAYER_BACKGROUND}
+          imageWidth={resolvedImageWidth}
+          imageHeight={resolvedImageHeight}
+          imageAspectRatio={strategyResult.imageAspectRatio}
+          style={StyleSheet.absoluteFill}
+          strategyOverride={strategyResult.strategy}
+          recyclingKey={`${id}:${visibleSuccessfulSource.tier}:stale`}
+          transition={0}
+          accessibilityLabel={label ?? 'Feed image'}
+          diagnosticsLabel="RunwayFeedImage:preview"
+        />
+      ) : null}
+
+      {currentUri && currentImageSource && currentUri !== failedUri ? (
+        <AspectAwareMedia
+          source={currentImageSource}
+          placeholderSource={placeholderSource}
+          blurhash={blurHash}
+          dominantColor={MEDIA_LAYER_BACKGROUND}
+          imageWidth={resolvedImageWidth}
+          imageHeight={resolvedImageHeight}
+          imageAspectRatio={strategyResult.imageAspectRatio}
+          style={StyleSheet.absoluteFill}
+          strategyOverride={strategyResult.strategy}
+          recyclingKey={`${id}:${activeTier}:${retryToken}`}
+          // Detail-first: no cross-fade once we are already on the display URL.
+          // A 160ms soft→sharp reveal is exactly the "not sharp at first, then
+          // sharpens" report. Keep a short fade only when we are showing a
+          // lower-tier source with no detail URL yet.
+          transition={activeTier === 'detail' ? 0 : 120}
+          accessibilityLabel={label ?? 'Feed image'}
+          diagnosticsLabel="RunwayFeedImage"
+          onLoad={(event) => {
+            const nextWidth = event.source?.width;
+            const nextHeight = event.source?.height;
+            // Only adopt onLoad geometry when the feed row did not already ship
+            // dimensions. Writing the same numbers back re-ran the fit policy
+            // and forced AspectAwareMedia through another render mid-scroll.
+            if (
+              isPositiveFinite(nextWidth) &&
+              isPositiveFinite(nextHeight) &&
+              !isPositiveFinite(naturalWidth) &&
+              !isPositiveFinite(naturalHeight) &&
+              !isPositiveFinite(aspectRatio)
+            ) {
+              setLoadedNaturalSize({ width: nextWidth, height: nextHeight });
+            }
+            setSuccessfulSource({ identity: sourceIdentity, uri: currentUri, tier: activeTier });
+            setLoadState('loaded');
+            if (allowDetailUpgrade) {
+              markRunwayFirstMediaVisible({ mediaId: id, sourceTier: activeTier });
+            }
+            if (allowDetailUpgrade && sourcePolicy.hasDetailUpgrade && activeTier !== 'detail') {
+              requestAnimationFrame(() => {
+                setSourceSelection({ identity: sourceIdentity, tier: 'detail' });
+              });
+            }
+          }}
+          onError={(event) => {
+            if (failedUriSetRef.current.has(currentUri)) return;
+            failedUriSetRef.current.add(currentUri);
+            mediaDevWarn('image-on-error', {
+              mediaId: id,
+              sourceType: sourceType ?? (displayUrl ? 'display-url' : fileId ? 'protected-file-id' : 'missing-source'),
+              sourceTier: activeTier,
+              hasFileId: Boolean(fileId),
+              error: typeof event?.error === 'string' ? event.error : 'image-load-error',
+            });
+            setFailedUri(currentUri);
+            if (sourcePolicy.hasDetailUpgrade && activeTier !== 'detail') {
+              setSourceSelection({ identity: sourceIdentity, tier: 'detail' });
+              return;
+            }
+            setLoadState(visibleSuccessfulSource ? 'loaded' : 'failed');
+          }}
+        />
+      ) : null}
     </View>
   );
 });
@@ -300,7 +442,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   fallbackText: {
-    marginTop: 6,
+    marginTop: 4,
     textAlign: 'center',
   },
 });

@@ -1,11 +1,11 @@
 import { StyleSheet, View } from 'react-native';
 
-import WeazLogoLoader from '@/components/ui/WeazLogoLoader';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 export function FeedFooterLoader() {
   return (
     <View style={styles.root}>
-      <WeazLogoLoader size={24} />
+      <MuseLoader size={24} />
     </View>
   );
 }

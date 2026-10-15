@@ -17,7 +17,7 @@ function parseHrefId(href: string, pattern: RegExp): string | null {
 
 function parseTargetUrlPath(targetUrl: string) {
   try {
-    return new URL(targetUrl, 'https://threadly.mobile').pathname;
+    return new URL(targetUrl, 'https://wiez.mobile').pathname;
   } catch {
     return targetUrl.split('?')[0] || targetUrl;
   }
@@ -37,7 +37,7 @@ function firstQueryValue(params: URLSearchParams, keys: string[]): string | null
 
 function parseTargetUrl(targetUrl: string): { path: string; params: URLSearchParams } | null {
   try {
-    const parsed = new URL(targetUrl, 'https://threadly.mobile');
+    const parsed = new URL(targetUrl, 'https://wiez.mobile');
     const schemeHostPath =
       parsed.protocol !== 'http:' &&
       parsed.protocol !== 'https:' &&
@@ -216,7 +216,7 @@ export function routeForSearchItem(item: SearchItem): RouterTarget {
     case 'collection':
       return routeForStoreCollectionTarget(item.id);
     case 'design':
-      return routeForDesignTarget(item.id, { legacyCollectionId: item.id });
+      return routeForDesignTarget(item.id);
     case 'tag':
       return {
         pathname: '/search',
@@ -232,20 +232,42 @@ export function routeForSearchItem(item: SearchItem): RouterTarget {
 export function routeForDesignTarget(
   designId: string,
   options: {
-    legacyCollectionId?: string | null;
     openComments?: boolean;
     commentId?: string | null;
+    /**
+     * The cover already decoded on the calling screen. Handing it over lets the
+     * viewer paint on its FIRST frame instead of holding a loader for the
+     * detail request — measured at ~1.7s between screen_mounted and data_ready.
+     */
+    coverImage?: string | null;
+    coverFileId?: string | null;
   } = {},
 ): RouterTarget {
+  /*
+    THE content viewer is `/market-viewer`. There is no second one.
+
+    This used to return `/designs/[designId]`, which rendered
+    `CollectionDetailViewer` — a completely different screen: a left-hand action
+    rail, its own back pill, its own share sheet, no metadata sheet. Which of
+    the two designs a shopper saw depended entirely on how they arrived. Tapping
+    a design in a brand's catalogue gave the modern viewer; opening the SAME
+    design from a comment notification, a search result, saved items, or a
+    Studio link gave the old one. Same content, same account, two apps.
+
+    Nothing about that was a decision — the catalogue was migrated to
+    `/market-viewer` and these builders were not, so the old screen survived on
+    the routes nobody re-tested. `legacyCollectionId` went with it: the viewer
+    resolves designs by id directly and never needed the collection alias.
+  */
   return {
-    pathname: '/designs/[designId]',
+    pathname: '/market-viewer',
     params: {
-      designId,
-      ...(options.legacyCollectionId && options.legacyCollectionId !== designId
-        ? { legacyCollectionId: options.legacyCollectionId }
-        : null),
+      sourceType: 'DESIGN',
+      sourceId: designId,
       ...(options.openComments ? { openComments: '1' } : null),
       ...(options.commentId ? { commentId: options.commentId } : null),
+      ...(options.coverImage ? { coverImage: options.coverImage } : null),
+      ...(options.coverFileId ? { coverFileId: options.coverFileId } : null),
     },
   } as unknown as Href;
 }
@@ -257,8 +279,10 @@ export function routeForStoreCollectionTarget(
     commentId?: string | null;
   } = {},
 ): RouterTarget {
+  // Store collections have their own viewer (`/collection-viewer`); same
+  // consolidation as `routeForDesignTarget` above.
   return {
-    pathname: '/collections/[collectionId]',
+    pathname: '/collection-viewer',
     params: {
       collectionId,
       ...(options.openComments ? { openComments: '1' } : null),
@@ -273,7 +297,6 @@ function routeForLegacyCollectionBackedDesignTarget(
   commentId?: string | null,
 ): RouterTarget {
   return routeForDesignTarget(legacyCollectionId, {
-    legacyCollectionId,
     openComments,
     commentId,
   });
@@ -307,7 +330,27 @@ function routeForProductTarget(notification: MobileNotification): RouterTarget {
   return '/(tabs)/discover' as Href;
 }
 
-export function routeForNotification(notification: MobileNotification): RouterTarget {
+/**
+ * Who is reading the notification. Account-lifecycle notifications point at
+ * "your profile", and which screen that is depends on the account type — a brand
+ * owner's home is their catalogue, not the shopper profile.
+ */
+export type NotificationViewer = {
+  type?: 'BRAND' | 'REGULAR' | string | null;
+  activeBrandId?: string | null;
+} | null;
+
+const viewerIsBrand = (viewer: NotificationViewer): boolean =>
+  Boolean(viewer && (viewer.type === 'BRAND' || viewer.activeBrandId));
+
+/** The viewer's own profile home, by account type. */
+const routeForOwnProfile = (viewer: NotificationViewer): RouterTarget =>
+  (viewerIsBrand(viewer) ? '/catalog' : '/(tabs)/me') as Href;
+
+export function routeForNotification(
+  notification: MobileNotification,
+  viewer: NotificationViewer = null,
+): RouterTarget {
   const type = notification.type.toUpperCase();
   const payload = (notification.payload ?? {}) as Record<string, unknown>;
   const target = notification.target;
@@ -318,6 +361,25 @@ export function routeForNotification(notification: MobileNotification): RouterTa
     notification.subTargetId ??
     (typeof payload.commentId === 'string' ? payload.commentId : null);
 
+  // Patch (user↔brand) routing is action-aware and must beat the generic
+  // USER-target handler below (which would send every patch notification to the
+  // brand catalog regardless of who it is for).
+  if (type === 'PATCH') {
+    const action = typeof payload.action === 'string' ? payload.action : null;
+    const brandId = targetType === 'USER' ? targetId : null;
+    if (action === 'USER_PATCH_CONFIRMED' && brandId) {
+      // The buyer's own confirmation opens the patched brand's catalog.
+      return { pathname: '/catalog/[brandId]', params: { brandId } } as Href;
+    }
+    if (action === 'PROFILE_PATCHED' || action === 'PROFILE_UNPATCHED') {
+      // Brand-facing patch notification opens the patcher's profile.
+      if (actorId) {
+        return { pathname: '/profile/[id]', params: { id: actorId } } as Href;
+      }
+      return { pathname: '/(tabs)/me', params: { tab: 'Patches' } } as Href;
+    }
+  }
+
   if (targetType === 'COLLECTION_MEDIA') {
     const collectionId = typeof payload.collectionId === 'string' ? payload.collectionId : null;
     if (collectionId) {
@@ -327,7 +389,6 @@ export function routeForNotification(notification: MobileNotification): RouterTa
 
   if (targetType === 'DESIGN' && targetId) {
     return routeForDesignTarget(targetId, {
-      legacyCollectionId: typeof payload.legacyCollectionId === 'string' ? payload.legacyCollectionId : null,
       openComments: Boolean(commentId),
       commentId,
     });
@@ -382,10 +443,71 @@ export function routeForNotification(notification: MobileNotification): RouterTa
   }
 
   if (type.startsWith('ORDER_') || type.startsWith('CUSTOM_ORDER_')) {
+    // Route to the EXACT order when we can identify it (matches the web fix), so
+    // taps land on the order screen instead of the generic list. Brand/admin
+    // previews (/studio/*, /admin/*) fall through to the buyer orders list, which
+    // is the existing safe behaviour for non-buyer recipients on mobile.
+    const previewPath = readString(target?.preview);
+    const isBuyerContext = !previewPath || previewPath.startsWith('/custom-orders/') || previewPath.startsWith('/orders/');
+    const isCustom =
+      type.startsWith('CUSTOM_ORDER_') ||
+      typeof payload.customOrderId === 'string' ||
+      Boolean(previewPath?.startsWith('/custom-orders/'));
+    const explicitOrderId =
+      (typeof payload.customOrderId === 'string' && payload.customOrderId) ||
+      (typeof payload.orderId === 'string' && payload.orderId) ||
+      (previewPath ? parseHrefId(previewPath, /\/(?:custom-orders|orders)\/([^/?#]+)/) : null) ||
+      null;
+
+    /*
+      An extension notification names the REQUEST, and the decision lives on its
+      own screen. This branch used to drop `requestId` on the floor and land the
+      shopper on the order — which, before extensions were mapped at all, showed
+      no sign that anything was waiting on them. That is the reported bug.
+    */
+    const extensionRequestId =
+      typeof payload.requestId === 'string' && payload.requestId ? payload.requestId : null;
+    if (
+      isBuyerContext &&
+      explicitOrderId &&
+      extensionRequestId &&
+      type === 'CUSTOM_ORDER_EXTENSION_REQUESTED'
+    ) {
+      return {
+        pathname: '/orders/extension/[requestId]',
+        params: { requestId: extensionRequestId, orderId: explicitOrderId },
+      } as unknown as Href;
+    }
+
+    if (isBuyerContext && explicitOrderId) {
+      return {
+        pathname: '/orders/[orderId]',
+        params: {
+          orderId: explicitOrderId,
+          // Skip the standard-order 404 hop when we already know the kind.
+          kind: isCustom ? 'CUSTOM' : 'STANDARD',
+        },
+      } as Href;
+    }
     return '/orders' as Href;
   }
 
   if (type.startsWith('SIZE_FIT_')) {
+    /*
+      The reminder to refresh your measurements opens the measurements, and
+      every other size-fit notice stays on the profile.
+
+      All of them used to land on the Me tab, because this branch ran before
+      the `targetUrl` block and swallowed the whole family. For the SHARE
+      notices that is right — the fittings screen has two tabs, measurements
+      and sizes, and no shares section, so sending a "someone shared their fit
+      with you" notice there would arrive at a screen that cannot show it. For
+      the update reminder it is wrong: the measurements ARE its subject, and
+      they were left one unnamed tap away.
+    */
+    if (type === 'SIZE_FIT_UPDATE_REMINDER') {
+      return '/fittings' as Href;
+    }
     return '/(tabs)/me' as Href;
   }
 
@@ -405,6 +527,10 @@ export function routeForNotification(notification: MobileNotification): RouterTa
     return routeForProductTarget(notification);
   }
 
+  if (type === 'BAG_ITEM_ADDED' || type === 'BAG_CHECKOUT_REMINDER') {
+    return '/checkout' as Href;
+  }
+
   if (type === 'COLLECTION_DELETED') {
     return {
       pathname: '/catalog',
@@ -413,7 +539,10 @@ export function routeForNotification(notification: MobileNotification): RouterTa
   }
 
   if (type === 'LOGIN' || type === 'LOGOUT' || type === 'LOGOUT_ALL' || type === 'SIGNUP') {
-    return '/(tabs)/me' as Href;
+    // Was hard-coded to '/(tabs)/me'. A brand tapping their own "welcome, your
+    // account is created" notification therefore landed on the SHOPPER profile
+    // rendering their own account — the right data in the wrong home.
+    return routeForOwnProfile(viewer);
   }
 
   if (type.startsWith('VERIFICATION_')) {
@@ -431,7 +560,6 @@ export function routeForNotification(notification: MobileNotification): RouterTa
 
     if (designId) {
       return routeForDesignTarget(designId, {
-        legacyCollectionId: typeof payload.legacyCollectionId === 'string' ? payload.legacyCollectionId : null,
         openComments: Boolean(commentId),
         commentId,
       });
@@ -451,9 +579,18 @@ export function routeForNotification(notification: MobileNotification): RouterTa
       return { pathname: '/designs/[designId]/edit', params: { designId: draftId } } as unknown as Href;
     }
     if (path === '/profile') {
-      const tab = new URL(targetUrl, 'https://threadly.mobile').searchParams.get('tab')?.toLowerCase();
+      const tab = new URL(targetUrl, 'https://wiez.mobile').searchParams.get('tab')?.toLowerCase();
       if (tab === 'orders') return '/orders' as Href;
+      /*
+        The fittings screen itself. The "update your size/fits profile"
+        reminder used to arrive as a bare `/profile` and land on the Me tab,
+        leaving its subject behind a further tap the notification never named.
+      */
+      if (tab === 'fits') return '/fittings' as Href;
       return '/(tabs)/me' as Href;
+    }
+    if (path === '/bag') {
+      return '/checkout' as Href;
     }
     const orderId = parseHrefId(targetUrl, /\/orders\/([^/?#]+)/);
     const customOrderId = parseHrefId(targetUrl, /\/custom-orders\/([^/?#]+)/);
@@ -521,6 +658,74 @@ export function normalizeNotificationContext(
   return {
     ...context,
     _hasUnsupportedContext: hasUnsupportedContext,
+  };
+}
+
+/**
+ * Adapt an Expo push notification `data` payload into the canonical
+ * `MobileNotification` shape consumed by `routeForNotification`.
+ *
+ * The backend (`push-notifications.service.ts buildPushMessage`) ships routing
+ * metadata in the push `data` object: `notificationId`, `type`, `target`
+ * (`{ type, id, preview }`), `targetUrl`, `subTargetId`, plus per-type routing
+ * fields (e.g. `collectionId`, `productId`, `designId`, `orderId`,
+ * `customOrderId`, `brandId`, `postId`, `commentId`, `actorId`, and the message
+ * routing fields). Mapping it back to a `MobileNotification` lets a tapped push
+ * reuse the SAME comprehensive router as the in-app notification inbox, so every
+ * notification type routes to exactly the content it references — not just
+ * messages.
+ *
+ * Returns `null` when the payload carries no routable signal at all.
+ */
+export function buildNotificationFromPushData(
+  data: Record<string, unknown> | null | undefined,
+): MobileNotification | null {
+  if (!data || typeof data !== 'object') return null;
+
+  const type = readString(data.type) ?? readString(data.notificationType);
+  const targetUrl = readString(data.targetUrl);
+
+  let target: MobileNotification['target'] = null;
+  const rawTarget = data.target;
+  if (rawTarget && typeof rawTarget === 'object') {
+    const candidate = rawTarget as Record<string, unknown>;
+    const targetType = readString(candidate.type);
+    const targetId = readString(candidate.id);
+    if (targetType && targetId) {
+      target = {
+        type: targetType as NonNullable<MobileNotification['target']>['type'],
+        id: targetId,
+        preview: readString(candidate.preview) ?? undefined,
+      };
+    }
+  }
+
+  // Nothing to route on: not a notification payload (e.g. an unrelated data push).
+  if (!type && !target && !targetUrl) {
+    return null;
+  }
+
+  const actorId =
+    readString(data.actorUserId) ??
+    readString(data.actorId) ??
+    (data.actor && typeof data.actor === 'object'
+      ? readString((data.actor as Record<string, unknown>).id)
+      : null);
+
+  return {
+    id: readString(data.notificationId) ?? readString(data.id) ?? '',
+    type: type ?? 'SYSTEM',
+    message: readString(data.message) ?? '',
+    createdAt: new Date().toISOString(),
+    isRead: false,
+    actor: actorId ? { id: actorId } : null,
+    target,
+    subTargetId: readString(data.subTargetId) ?? readString(data.commentId) ?? null,
+    targetUrl,
+    // Pass the full data object through as the payload so `routeForNotification`
+    // can read per-type fields (collectionId / productId / designId / orderId /
+    // customOrderId / brandId / postId / legacyCollectionId / message fields).
+    payload: data,
   };
 }
 

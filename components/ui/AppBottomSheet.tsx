@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -9,8 +10,9 @@ import {
   StyleSheet,
   View,
   ViewStyle,
+  useWindowDimensions,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
+
 import Animated, {
   Easing,
   runOnJS,
@@ -30,7 +32,7 @@ type Props = {
   visible: boolean;
   title?: string;
   subtitle?: string;
-  children: React.ReactNode;
+  children: React.ReactNode | (() => React.ReactNode);
   onClose: () => void;
   showCloseButton?: boolean;
   onDone?: () => void;
@@ -40,6 +42,10 @@ type Props = {
   scrollable?: boolean;
   footer?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
+  keyboardBehavior?: 'auto' | 'none';
+  keyboardActive?: boolean;
+  headerMeta?: string;
+  onDismiss?: () => void;
 };
 
 export function AppBottomSheet({
@@ -56,47 +62,452 @@ export function AppBottomSheet({
   scrollable = true,
   footer,
   style,
+  keyboardBehavior = 'auto',
+  keyboardActive,
+  headerMeta,
+  onDismiss,
 }: Props) {
   const { theme, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(28);
+  /** The backdrop's opacity (and drag feedback). */
   const opacity = useSharedValue(0);
-  const [mounted, setMounted] = useState(visible);
+  /** The sheet's own opacity: fades in on open, stays solid while it slides out. */
+  const sheetOpacity = useSharedValue(0);
+  /** A swipe already owns the close animation; the close effect must not restart it. */
+  const dragExitRef = useRef(false);
+  const [mounted, setMounted] = useState(
+    visible && (keyboardBehavior !== 'none' || !Keyboard.isVisible()),
+  );
+  const onDismissRef = useRef(onDismiss);
+  const keyboardInset = useSharedValue(0);
+  const [keyboardEventHeight, setKeyboardEventHeight] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const { height: windowHeight } = useWindowDimensions();
+  const baseWindowHeightRef = useRef(windowHeight);
   const isDark = scheme === 'dark';
-  const androidBottomGap = Platform.OS === 'android' ? Math.max(0, insets.bottom) : 0;
-  const sheetPaddingBottom =
-    Platform.OS === 'android'
-      ? tokens.spacing.lg
-      : Math.max(tokens.spacing.lg, insets.bottom + tokens.spacing.sm);
+  /**
+   * Clearance under the sheet's last row, and why the floor is what it is.
+   *
+   * A sheet is rendered in a `Modal`, which on Android is its OWN window drawn
+   * behind the navigation bar (`navigationBarTranslucent`). The insets here are
+   * measured from the app's root window, not from that one, so this number is
+   * the app's best guess at the modal's bottom bar rather than a reading of it.
+   * When the guess comes back short — the documented failure mode for
+   * safe-area-context inside a core `Modal` — whatever sits at the bottom of
+   * the sheet ends up behind the system bar, which is the "bag opens but its
+   * buttons are hidden under the screen" report.
+   *
+   * `spacing.xl` (24) is therefore a FLOOR, not a design choice: it is more
+   * than a gesture bar and enough of a 3-button bar to keep a 44pt control
+   * pressable even if `insets.bottom` reports 0. Where the inset is reported
+   * correctly it wins, and this changes nothing.
+   */
+  const sheetPaddingBottom = Math.max(
+    tokens.spacing.xl,
+    insets.bottom + tokens.spacing.sm,
+  );
 
   useAndroidOverlaySystemBars(visible, scheme, 'bottom-sheet');
 
   useEffect(() => {
-    if (visible) {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
+
+  const dismissCompletedRef = useRef(false);
+  /** Backdrop taps and drags before this instant are the previous sheet's finger. */
+  const suppressDismissUntilRef = useRef(0);
+  const wasVisibleRef = useRef(false);
+  const getExitTranslateRef = useRef<() => number>(() => EXIT_TRAVEL_FALLBACK);
+  const finishDismiss = React.useCallback(() => {
+    // Idempotent: animation callback + force-unmount timeout can both fire.
+    if (dismissCompletedRef.current) return;
+    dismissCompletedRef.current = true;
+    setMounted(false);
+    onDismissRef.current?.();
+  }, []);
+
+  /**
+   * How far the body has scrolled, so a downward drag that STARTS at the top of
+   * the content can close the sheet instead of doing nothing.
+   *
+   * The drag responder used to live only on `dragArea` — the handle and header
+   * strip, roughly 60pt tall. Every sheet with a scrollable body (the bag
+   * fittings measurements, custom bag, filters) therefore ignored a swipe-down
+   * anywhere on the content, which is the entire surface the user's thumb is
+   * actually on. They swiped the fields and the sheet did not move.
+   */
+  const bodyScrollYRef = React.useRef(0);
+
+  /**
+   * Whether the body actually has anything to scroll.
+   *
+   * On Android the body is a NATIVE ScrollView, and a native ScrollView takes
+   * every vertical drag past its touch slop — including a downward one at the
+   * top, where it has nowhere to go. When it does, the JS responder is
+   * cancelled and the sheet snaps back. That is why a swipe on the content
+   * "only worked from the top strip": the handle and header sit outside the
+   * scroller, the body does not.
+   *
+   * A body whose content fits has nothing to scroll, so scrolling is switched
+   * off there. With it off, the native view never claims the drag and the
+   * whole sheet — fields, labels, empty space — is draggable. Unmeasured counts
+   * as overflowing, so nothing that needs to scroll can start out stuck.
+   */
+  const [bodyViewportHeight, setBodyViewportHeight] = React.useState(0);
+  const [bodyContentHeight, setBodyContentHeight] = React.useState(0);
+  const bodyOverflows =
+    bodyViewportHeight <= 0 || bodyContentHeight > bodyViewportHeight + 1;
+
+  /**
+   * How far the sheet has to move to be gone.
+   *
+   * The close animation used to travel to a fixed `28` — a 28pt nudge that
+   * worked only because the opacity fade did the real hiding. That is fine from
+   * rest, and wrong from a DRAG: release at 200pt down and the sheet animates
+   * from 200 back UP to 28 while fading, so it visibly stalls, reverses, and
+   * only then disappears. That reversal is the "hangs mid-collapse" report.
+   *
+   * Measured from layout so a short sheet does not travel a whole screen.
+   * `EXIT_TRAVEL_FALLBACK` covers the first frame before layout lands.
+   */
+  const sheetHeightRef = React.useRef(EXIT_TRAVEL_FALLBACK);
+
+  React.useEffect(() => {
+    if (mounted) return;
+    bodyScrollYRef.current = 0;
+    // The next opening may hold different content; measure it afresh rather
+    // than start from the last sheet's verdict on whether it could scroll.
+    setBodyViewportHeight(0);
+    setBodyContentHeight(0);
+  }, [mounted]);
+
+  /** Distance that puts the sheet fully below the screen edge. */
+  const getExitTranslate = React.useCallback(
+    () => Math.max(EXIT_TRAVEL_FALLBACK, sheetHeightRef.current + insets.bottom),
+    [insets.bottom],
+  );
+
+  const dragHandlers = React.useMemo(
+    () => ({
+      onPanResponderMove: (_: unknown, gestureState: { dy: number }) => {
+        const nextY = Math.max(0, gestureState.dy);
+        translateY.value = nextY;
+        // Only the backdrop lightens as the sheet is pulled; the sheet itself
+        // stays solid under the finger.
+        opacity.value = Math.max(0.35, 1 - nextY / 420);
+      },
+      onPanResponderRelease: (
+        _: unknown,
+        gestureState: { dy: number; vy: number },
+      ) => {
+        if (Date.now() < suppressDismissUntilRef.current) {
+          translateY.value = withTiming(0, {
+            duration: 140,
+            easing: Easing.out(Easing.cubic),
+          });
+          opacity.value = withTiming(1, {
+            duration: 120,
+            easing: Easing.out(Easing.cubic),
+          });
+          return;
+        }
+        if (gestureState.dy > 48 || gestureState.vy > 0.8) {
+          Keyboard.dismiss();
+          /*
+            Carry the throw through, then tell the parent.
+
+            This used to call `onClose()` and return, leaving `translateY`
+            frozen wherever the finger let go until the `visible` prop made its
+            way back down and the close effect picked it up — a beat of dead
+            sheet, and then a jump. Starting the outward motion here means the
+            gesture and the animation are one continuous movement, and the
+            effect that follows re-issues the same target, so it changes
+            nothing.
+
+            Duration scales with what is left to travel and with how fast the
+            finger was going, so a flick exits quickly and a slow drag does not
+            snap.
+          */
+          const exitTranslate = getExitTranslate();
+          const remaining = Math.max(0, exitTranslate - Math.max(0, gestureState.dy));
+          const flickSpeed = Math.max(0.9, Math.min(gestureState.vy, 3));
+          const duration = Math.round(
+            Math.max(130, Math.min(260, remaining / flickSpeed)),
+          );
+          /*
+            This throw is the WHOLE close. `dragExitRef` tells the close effect
+            not to start a second animation when `visible` flips a moment later:
+            it used to re-issue its own 200ms ease-in from wherever the sheet had
+            got to, which stopped the throw mid-flight and restarted it slow —
+            the visible hitch at the end of every swipe-to-close.
+          */
+          dragExitRef.current = true;
+          translateY.value = withTiming(
+            exitTranslate,
+            { duration, easing: Easing.out(Easing.cubic) },
+            () => {
+              runOnJS(finishDismiss)();
+            },
+          );
+          opacity.value = withTiming(0, {
+            duration,
+            easing: Easing.out(Easing.cubic),
+          });
+          onClose();
+          return;
+        }
+        translateY.value = withTiming(0, {
+          duration: 140,
+          easing: Easing.out(Easing.cubic),
+        });
+        opacity.value = withTiming(1, {
+          duration: 120,
+          easing: Easing.out(Easing.cubic),
+        });
+      },
+      onPanResponderTerminate: () => {
+        translateY.value = withTiming(0, {
+          duration: 140,
+          easing: Easing.out(Easing.cubic),
+        });
+        opacity.value = withTiming(1, {
+          duration: 120,
+          easing: Easing.out(Easing.cubic),
+        });
+      },
+    }),
+    [finishDismiss, getExitTranslate, onClose, opacity, translateY],
+  );
+
+  /** Handle + header. Always draggable, whatever the body is doing. */
+  const dragCloseResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          gestureState.dy > 8 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+        ...dragHandlers,
+      }),
+    [dragHandlers],
+  );
+
+  /**
+   * Whole-sheet drag, claimed in the CAPTURE phase.
+   *
+   * Bubble-phase would be too late: the body is a ScrollView and a ScrollView
+   * claims every vertical drag it is offered, so a swipe-down on the content
+   * became a (no-op) scroll-up-past-the-top and the sheet never moved. Capture
+   * runs parent-before-child, which lets the sheet take the gesture first —
+   * but ONLY when the body is already scrolled to the top and the pull is
+   * clearly downward. Anywhere else, the ScrollView keeps it and scrolling
+   * behaves exactly as before.
+   */
+  const sheetDragResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        /**
+         * The threshold has to be tiny, and that is not sloppiness.
+         *
+         * React Native only re-runs capture negotiation while NO view owns the
+         * responder, and a ScrollView claims it on the very first move event.
+         * A `dy > 12` threshold therefore never got a second chance — by the
+         * time the finger had travelled twelve points the ScrollView was
+         * already the responder and the sheet was never asked again. That is
+         * why swipe-to-dismiss still did nothing on the bagging measurement
+         * sheet after the first fix.
+         *
+         * Stealing this early is safe precisely because of the scroll check:
+         * at offset 0 a downward drag has nothing to scroll to, so the
+         * ScrollView would have consumed it and done nothing anyway.
+         */
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          // `<= 1`, not `<= 0`: Android reports sub-pixel offsets (0.33, 0.67)
+          // for a body resting at the top after a keyboard or layout change,
+          // and a strict zero check read those as "scrolled" and refused the
+          // drag for the rest of the sheet's life.
+          bodyScrollYRef.current <= 1 &&
+          gestureState.dy > 3 &&
+          gestureState.dy > Math.abs(gestureState.dx),
+        // Once a clear downward pull is ours, a nested input or chip scroller
+        // asking for it back must not snap the sheet up mid-drag.
+        onPanResponderTerminationRequest: () => false,
+        ...dragHandlers,
+      }),
+    [dragHandlers],
+  );
+
+  /**
+   * Pull down on the dimmed area to close, exactly as on the sheet.
+   *
+   * Outside the sheet only a TAP did anything. A person who puts a thumb on the
+   * empty space above and drags down — the gesture every other sheet on the
+   * phone answers — got nothing until they lifted, and then the sheet vanished
+   * without having moved, which reads as a glitch rather than a dismissal. The
+   * sheet now follows the finger from there too, and is released or thrown
+   * away by the same rules as a drag on the sheet itself.
+   *
+   * Capture phase, so it can take the gesture from the backdrop `Pressable`
+   * once it is clearly a downward drag. That TERMINATES the press, so a drag
+   * never also fires the tap-to-close — one gesture, one dismissal. A tap that
+   * does not move is untouched and still closes on release.
+   */
+  const backdropDragResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          gestureState.dy > 4 && gestureState.dy > Math.abs(gestureState.dx),
+        onPanResponderTerminationRequest: () => false,
+        ...dragHandlers,
+      }),
+    [dragHandlers],
+  );
+
+  useEffect(() => {
+    if (!visible) return;
+
+    if (keyboardBehavior !== 'none' || !Keyboard.isVisible()) {
       setMounted(true);
+      return;
     }
-  }, [visible]);
+
+    Keyboard.dismiss();
+    const hiddenSubscription = Keyboard.addListener('keyboardDidHide', () =>
+      setMounted(true),
+    );
+    const fallbackTimer = setTimeout(() => setMounted(true), 320);
+
+    return () => {
+      hiddenSubscription.remove();
+      clearTimeout(fallbackTimer);
+    };
+  }, [keyboardBehavior, visible]);
+
+  useEffect(() => {
+    if (!visible || keyboardBehavior !== 'auto') {
+      setKeyboardVisible(false);
+      setKeyboardEventHeight(0);
+      return;
+    }
+
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardEventHeight(event.endCoordinates.height);
+      setKeyboardVisible(true);
+    });
+    const hide = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+      setKeyboardEventHeight(0);
+    });
+
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [keyboardBehavior, visible]);
+
+  useEffect(() => {
+    if (!keyboardVisible && windowHeight > baseWindowHeightRef.current) {
+      baseWindowHeightRef.current = windowHeight;
+    }
+
+    const resizedBySystem =
+      Platform.OS === 'android' &&
+      keyboardVisible &&
+      keyboardEventHeight > 0 &&
+      baseWindowHeightRef.current - windowHeight > keyboardEventHeight * 0.5;
+    const shouldApplyInset =
+      visible &&
+      keyboardBehavior === 'auto' &&
+      keyboardVisible &&
+      (keyboardActive ?? true) &&
+      !resizedBySystem;
+
+    keyboardInset.value = withTiming(
+      shouldApplyInset ? keyboardEventHeight : 0,
+      {
+        duration: shouldApplyInset ? 180 : 140,
+        easing: Easing.out(Easing.cubic),
+      },
+    );
+  }, [
+    keyboardActive,
+    keyboardBehavior,
+    keyboardEventHeight,
+    keyboardInset,
+    keyboardVisible,
+    visible,
+    windowHeight,
+  ]);
+
+  /**
+   * One close, one curve, and the sheet leaves the screen before it unmounts.
+   *
+   * Every sheet and selector in the app closes through here, so these are the
+   * app-wide collapse rules:
+   *
+   *  - The sheet SLIDES out at full opacity and only the backdrop fades. It used
+   *    to fade as well, which read as the sheet dissolving mid-air.
+   *  - Unmount is tied to the SLIDE finishing. It was tied to the fade (160ms),
+   *    which finished before the slide (200ms), so the sheet vanished with a
+   *    fifth of its journey left — the snap at the end of every close.
+   *  - A drag-started close is left alone (`dragExitRef`), so the throw is never
+   *    interrupted and restarted.
+   *  - A gentler ease-in (quad, not cubic): cubic sat almost still for the first
+   *    third of the close, which reads as lag after a tap.
+   */
+  getExitTranslateRef.current = getExitTranslate;
 
   useEffect(() => {
     if (!mounted) return;
 
     if (visible) {
+      if (wasVisibleRef.current) return;
+      wasVisibleRef.current = true;
+      dismissCompletedRef.current = false;
+      dragExitRef.current = false;
+      suppressDismissUntilRef.current = Date.now() + HANDOFF_DISMISS_SUPPRESS_MS;
       translateY.value = 28;
       opacity.value = 0;
-      translateY.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
-      opacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
-    } else {
-      translateY.value = withTiming(28, { duration: 180, easing: Easing.in(Easing.cubic) });
-      opacity.value = withTiming(0, { duration: 160, easing: Easing.in(Easing.cubic) }, (finished) => {
-        if (finished) {
-          runOnJS(setMounted)(false);
-        }
-      });
+      sheetOpacity.value = 0;
+      translateY.value = withTiming(0, { duration: SHEET_OPEN_MS, easing: Easing.out(Easing.cubic) });
+      opacity.value = withTiming(1, { duration: SHEET_OPEN_MS, easing: Easing.out(Easing.cubic) });
+      sheetOpacity.value = withTiming(1, { duration: 160, easing: Easing.out(Easing.cubic) });
+      return;
     }
-  }, [mounted, opacity, translateY, visible]);
+
+    wasVisibleRef.current = false;
+
+    if (!dragExitRef.current) {
+      // Same outward target as the drag path, so a close that starts from a
+      // dragged position never animates backwards up the screen.
+      translateY.value = withTiming(
+        getExitTranslateRef.current(),
+        { duration: SHEET_CLOSE_MS, easing: Easing.in(Easing.quad) },
+        () => {
+          // Always unmount. Reanimated can report finished=false when a new
+          // timing interrupts the close (rapid re-open/close, same-value
+          // reselect), and the old path left the Modal mounted forever —
+          // "categories selector never closes".
+          runOnJS(finishDismiss)();
+        },
+      );
+      opacity.value = withTiming(0, { duration: SHEET_CLOSE_MS, easing: Easing.in(Easing.quad) });
+    }
+
+    // Hard fallback if the UI-thread callback never fires. Longer than any
+    // close so it can never cut one short.
+    const forceUnmount = setTimeout(() => {
+      finishDismiss();
+    }, SHEET_CLOSE_FALLBACK_MS);
+    return () => clearTimeout(forceUnmount);
+  }, [finishDismiss, mounted, opacity, sheetOpacity, translateY, visible]);
 
   const sheetStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
+    opacity: sheetOpacity.value,
     transform: [{ translateY: translateY.value }],
   }));
 
@@ -104,14 +515,68 @@ export function AppBottomSheet({
     opacity: opacity.value,
   }));
 
+  const keyboardWrapStyle = useAnimatedStyle(() => ({
+    paddingBottom: keyboardBehavior === 'auto' ? keyboardInset.value : 0,
+  }));
+
+  // Sheet-level lift (keyboardWrapStyle) owns IME clearance so the sticky
+  // Done/footer stays above the keyboard. Body is a plain ScrollView so we
+  // do not double-apply keyboard insets.
   const Body = scrollable ? ScrollView : View;
   const bodyProps = scrollable
     ? {
         showsVerticalScrollIndicator: false,
         keyboardShouldPersistTaps: 'handled' as const,
-        contentContainerStyle: styles.bodyContent,
+        keyboardDismissMode: 'interactive' as const,
+        automaticallyAdjustKeyboardInsets: false,
+        /**
+         * `flexShrink: 1` keeps the footer on screen.
+         *
+         * The sheet is capped at `maxHeight: '88%'` and lays its children out in
+         * a column: body, then footer. A ScrollView with no flex rule takes its
+         * CONTENT height, so once the body outgrew the cap it pushed the footer
+         * past the bottom edge and Cancel/Done simply were not there. The
+         * non-scrollable branch below has always set this; the scrollable one
+         * never did, and only showed the fault once a sheet body got tall
+         * enough — which the paired fittings grid did.
+         */
+        style: { flexShrink: 1 },
+        // Off when the content fits — see `bodyOverflows`. The ScrollView stays
+        // mounted either way, so `keyboardShouldPersistTaps` still governs taps.
+        scrollEnabled: bodyOverflows,
+        onLayout: (event: { nativeEvent: { layout: { height: number } } }) => {
+          const height = event.nativeEvent.layout.height;
+          if (height > 0) setBodyViewportHeight(height);
+        },
+        onContentSizeChange: (_width: number, height: number) => {
+          setBodyContentHeight(height);
+        },
+        scrollEventThrottle: 16,
+        // Feeds `sheetDragResponder`: a swipe-down only becomes a dismiss when
+        // there is nothing left to scroll up to.
+        onScroll: (event: {
+          nativeEvent: { contentOffset: { y: number } };
+        }) => {
+          bodyScrollYRef.current = event.nativeEvent.contentOffset.y;
+        },
+        contentContainerStyle: [
+          styles.bodyContent,
+          keyboardBehavior === 'auto'
+            ? keyboardVisible
+              ? [
+                  styles.bodyContentKeyboard,
+                  {
+                    paddingBottom: Math.max(
+                      240,
+                      keyboardEventHeight + tokens.spacing.xl,
+                    ),
+                  },
+                ]
+              : styles.bodyContentKeyboard
+            : null,
+        ],
       }
-    : { style: styles.bodyContent };
+    : { style: [styles.bodyContent, { flexShrink: 1 }] };
 
   if (!mounted) return null;
 
@@ -122,78 +587,202 @@ export function AppBottomSheet({
       animationType="none"
       statusBarTranslucent
       navigationBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (Date.now() < suppressDismissUntilRef.current) return;
+        onClose();
+      }}
     >
       <View style={styles.root}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close sheet">
-          <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-            <BlurView
-              tint={isDark ? 'dark' : 'light'}
-              intensity={Platform.OS === 'android' ? 24 : 38}
-              style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdrop }]}
-            />
-          </Animated.View>
-        </Pressable>
+        {/*
+          The keyboard goes on touch-down; the sheet goes on RELEASE.
 
-        <KeyboardAvoidingView
-          // Edge-to-edge (Expo SDK 56+) resizes the Android window for the
-          // keyboard natively. Adding 'height'/'padding' here would double-offset
-          // and clip the footer/action buttons, so Android relies on the native
-          // resize while iOS (no native resize) uses padding.
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardWrap}
+          These were one `onPressIn` handler doing both, and each half wants a
+          different moment.
+
+          Dismissing the keyboard early is why `onPressIn` was used: it makes the
+          backdrop respond on the first touch rather than swallowing it, and the
+          shopper-settings contract pins that behaviour.
+
+          Closing the sheet early is a data-loss bug. `onPressIn` fires the
+          instant a finger lands, so the backdrop becomes an uncancellable
+          dismiss — a thumb that catches the edge of the sheet, or lands just
+          outside one the keyboard has pushed to an unfamiliar height, closes it
+          before the user can slide off to abort. On a sheet holding typed input
+          (the bag fittings measurements) that discards the values with no
+          warning and no undo: "I entered my fittings, closed the form, and
+          nothing was saved."
+
+          Split, both hold. `onPress` completes on lift and is cancelled if the
+          finger leaves the bounds, so the tap can be taken back.
+        */}
+        {/* Drag-down on the dimmed area moves the sheet — `backdropDragResponder`. */}
+        <View style={StyleSheet.absoluteFill} {...backdropDragResponder.panHandlers}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPressIn={() => {
+              Keyboard.dismiss();
+            }}
+            onPress={() => {
+              if (Date.now() < suppressDismissUntilRef.current) return;
+              onClose();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Close sheet"
+          >
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFill,
+                backdropStyle,
+                { backgroundColor: theme.colors.backdrop },
+              ]}
+            />
+          </Pressable>
+        </View>
+        {/*
+          `box-none` is load-bearing.
+
+          This wrapper is `flex: 1` so it can pad the sheet up over the
+          keyboard, which means it covers the whole screen — including the empty
+          area above the sheet that the user reads as "outside". With the
+          default `pointerEvents="auto"` it was the hit-test winner there and
+          the backdrop `Pressable` behind it never received the tap, so tapping
+          off the sheet did nothing at all. `box-none` makes the wrapper itself
+          transparent to touches while its children stay interactive.
+        */}
+        <Animated.View
+          pointerEvents="box-none"
+          style={[styles.keyboardWrap, keyboardWrapStyle]}
         >
           <Animated.View
+            {...sheetDragResponder.panHandlers}
+            onLayout={(event) => {
+              const height = event.nativeEvent.layout.height;
+              if (height > 0) sheetHeightRef.current = height;
+            }}
             style={[
               styles.sheet,
               {
                 backgroundColor: theme.colors.bottomSheetSurface,
                 borderColor: theme.colors.border,
-                marginBottom: androidBottomGap,
                 paddingBottom: sheetPaddingBottom,
               },
               sheetStyle,
               style,
             ]}
           >
-            <View style={[styles.handle, { backgroundColor: theme.colors.bottomSheetHandle }]} />
+            <View {...dragCloseResponder.panHandlers} style={styles.dragArea}>
+              <View style={[styles.handle, { backgroundColor: theme.colors.bottomSheetHandle }]} />
 
-            {(title || subtitle || onDone) ? (
-              <View style={styles.header}>
+              {(title || subtitle || headerMeta || onDone) ? (
+                <View style={styles.header}>
                 <View style={styles.titleWrap}>
-                  {title ? <AppText variant="title">{title}</AppText> : null}
+                  {title || headerMeta ? (
+                    <View style={styles.titleRow}>
+                      {title ? <AppText variant="title" style={styles.title}>{title}</AppText> : null}
+                      {headerMeta ? (
+                        <View
+                          style={[
+                            styles.headerMeta,
+                            {
+                              backgroundColor: theme.colors.primarySoft,
+                              borderColor: theme.colors.focusRing,
+                            },
+                          ]}
+                        >
+                          <AppText variant="captionBold" tone="primary">{headerMeta}</AppText>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
                   {subtitle ? <AppText variant="body" tone="muted">{subtitle}</AppText> : null}
                 </View>
+                {/*
+                  One primary confirm, never a bare "X".
+
+                  The close control was an unstyled glyph and Done was a
+                  `secondary` button, so the sheet's only two exits both read as
+                  flat text — nothing in the header looked like the thing to
+                  press to commit. A sheet that has an `onDone` now shows a
+                  solid primary button and no X, because Done IS the close. A
+                  sheet with only `showCloseButton` gets a real Done-shaped
+                  button rather than a glyph, since dismissing these sheets
+                  keeps the selection anyway.
+
+                  ...but NOT when the sheet draws its own `footer`. A footer is
+                  always the sheet's real actions (Cancel / Save / Remove), so
+                  synthesizing a header confirm on top of it gave five sheets
+                  two "Done" buttons that did different things — the header one
+                  dismissed, the footer one committed — with nothing to tell
+                  them apart. The footer wins: it is the one the author wrote.
+                */}
                 <View style={styles.headerActions}>
                   {onDone ? (
                     <Button
                       title={doneLabel}
                       size="sm"
-                      variant="secondary"
                       onPress={onDone}
                       disabled={doneDisabled}
                       loading={loading}
                       style={styles.doneButton}
                     />
-                  ) : null}
-                  {showCloseButton ? (
-                    <Pressable onPress={onClose} style={({ pressed }) => [styles.closeButton, pressed ? styles.pressed : null]}>
-                      <AppText variant="subtitle" tone="muted">✕</AppText>
-                    </Pressable>
+                  ) : showCloseButton && !footer ? (
+                    <Button
+                      title={doneLabel}
+                      size="sm"
+                      onPress={onClose}
+                      style={styles.doneButton}
+                    />
                   ) : null}
                 </View>
-              </View>
-            ) : null}
+                </View>
+              ) : null}
+            </View>
 
-            <Body {...bodyProps}>{children}</Body>
+            <Body {...bodyProps}>
+              {typeof children === 'function' ? children() : children}
+            </Body>
 
             {footer ? <View style={styles.footer}>{footer}</View> : null}
           </Animated.View>
-        </KeyboardAvoidingView>
+        </Animated.View>
       </View>
     </Modal>
   );
 }
+
+/**
+ * Fallback exit distance, used for the frame before the sheet has been laid out.
+ * Comfortably past the bottom edge for any sheet we render.
+ */
+const EXIT_TRAVEL_FALLBACK = 420;
+const SHEET_OPEN_MS = 240;
+/**
+ * A sheet that replaces another one (fittings, then the custom order) is born
+ * under the finger that confirmed the previous sheet. That release lands on
+ * the new backdrop, or as a short downward drag, and used to dismiss the new
+ * sheet as soon as its content appeared.
+ */
+const HANDOFF_DISMISS_SUPPRESS_MS = 600;
+const SHEET_CLOSE_MS = 230;
+/** Longer than the slowest close (a drag throw caps at 260ms). */
+const SHEET_CLOSE_FALLBACK_MS = 450;
+
+/**
+ * The one way a sheet moves in this app.
+ *
+ * Exported because a couple of surfaces cannot be this component and still have
+ * to match it — the collection comments panel reports its own height so the
+ * viewer behind it can scale, which this component has no notion of. Those
+ * surfaces run their own animation on these numbers rather than inventing a
+ * spring, so every panel on the same journey opens and closes at the same rate.
+ *
+ * Pair them with `Easing.out(Easing.cubic)` opening and `Easing.in(Easing.quad)`
+ * closing: it arrives quickly and settles, then leaves without dawdling.
+ */
+export const SHEET_MOTION = {
+  openMs: SHEET_OPEN_MS,
+  closeMs: SHEET_CLOSE_MS,
+} as const;
 
 const styles = StyleSheet.create({
   root: {
@@ -214,11 +803,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.lg,
     gap: tokens.spacing.md,
   },
+  sheetKeyboardOpen: {
+    // Lifted by KeyboardAvoidingView padding; allow it to fill the remaining space above the keyboard
+    maxHeight: '100%',
+  },
   handle: {
     width: 46,
     height: 4,
     borderRadius: tokens.radius.full,
     alignSelf: 'center',
+  },
+  dragArea: {
+    gap: tokens.spacing.md,
+    paddingBottom: tokens.spacing.xs,
   },
   header: {
     flexDirection: 'row',
@@ -229,6 +826,21 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: tokens.spacing.xs,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  title: {
+    flexShrink: 1,
+  },
+  headerMeta: {
+    minHeight: 28,
+    justifyContent: 'center',
+    paddingHorizontal: tokens.spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+  },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -236,10 +848,11 @@ const styles = StyleSheet.create({
   },
   doneButton: {
     minWidth: 78,
+    height: 44,
   },
   closeButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     borderRadius: tokens.radius.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -250,7 +863,19 @@ const styles = StyleSheet.create({
   bodyContent: {
     gap: tokens.spacing.md,
   },
+  bodyContentKeyboard: {
+    paddingBottom: tokens.spacing.lg,
+  },
   footer: {
+    // The body is the only shrinkable child (`flexShrink: 1` in `bodyProps`).
+    // Stating this here means the sheet's commit controls cannot be the thing
+    // that gets squeezed off the bottom edge when the body outgrows the 88% cap.
+    flexShrink: 0,
+    // ...and the footer cannot be squeezed to nothing either. A sheet whose
+    // body is long enough to hit the cap has a footer carrying the only way to
+    // commit, so it keeps its measured height rather than yielding it.
+    flexGrow: 0,
+    flexBasis: 'auto',
     paddingTop: tokens.spacing.sm,
   },
 });

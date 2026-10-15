@@ -8,6 +8,7 @@ import {
   type ThemePreference,
 } from '@/src/types/theme';
 import { tokens, type ThemeScheme } from '@/src/styles/tokens';
+import { useCommitCost } from '@/src/perf/commitCost';
 
 export type ThemeMode = ThemePreference;
 
@@ -32,7 +33,7 @@ export type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const THEME_MODE_KEY = 'threadly.theme.mode';
+const THEME_MODE_KEY = 'wiez.theme.mode';
 
 function computeScheme(mode: ThemeMode, systemScheme: ColorSchemeName): ResolvedTheme {
   if (mode === 'light') return 'light';
@@ -50,6 +51,7 @@ export function ThemeProvider({
   initialMode?: ThemeMode;
   bootstrapped?: boolean;
 }) {
+  useCommitCost('P:Theme');
   const [mode, setModeState] = useState<ThemeMode>(initialMode);
   const [ready, setReady] = useState(bootstrapped);
   const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(
@@ -117,6 +119,36 @@ export function ThemeProvider({
       theme,
     }),
     [ready, mode, setThemePreference, syncThemePreferenceFromBackend, scheme, theme],
+  );
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+/**
+ * Force everything rendered inside to resolve dark-theme tokens, regardless of
+ * the user's light/dark preference.
+ *
+ * For full-bleed media viewers that matte images against
+ * `tokens.themes.dark.colors.bg` in both themes. Chrome floating over such a
+ * stage must belong to the stage, not to the app's ambient scheme: in light mode
+ * a themed chip or skeleton lights up as a bright slab on black.
+ *
+ * The Runway is NOT one of these any more — it follows the ambient theme via
+ * `theme.colors.runwayStage`, which has a value per scheme. Reach for this only
+ * where the backdrop is genuinely dark regardless of preference.
+ *
+ * This is the general form of the per-component `onDarkStage` props (see `Chip`,
+ * `Skeleton`, `AppText`) — the same intent expressed as scope instead of a prop
+ * threaded through every child. The stored preference and its setters pass
+ * through untouched, so a control rendered inside a scope still writes the real
+ * user preference.
+ */
+export function DarkStageThemeScope({ children }: { children: React.ReactNode }) {
+  const parent = useTheme();
+
+  const value = useMemo<ThemeContextValue>(
+    () => ({ ...parent, resolvedTheme: 'dark', scheme: 'dark', theme: tokens.themes.dark }),
+    [parent],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

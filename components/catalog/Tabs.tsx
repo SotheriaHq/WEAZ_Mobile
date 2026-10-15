@@ -36,14 +36,101 @@ interface TabsProps {
   activeTab: string;
   onTabChange: (key: string) => void;
   scrollable?: boolean;
+  /**
+   * Horizontal alignment of tabs in scrollable mode. Defaults to 'center'
+   * (existing behavior). Use 'start' for left-aligned tabs (e.g. the Messages
+   * inbox, where All / Unread / Orders should begin at the far left).
+   * Ignored in non-scrollable (equal-width) mode.
+   */
+  align?: 'center' | 'start';
   swipeProgress?: SharedValue<number>;
+}
+
+// ─────────────────────────────────────────────────────────────
+// TabItem Component
+// ─────────────────────────────────────────────────────────────
+
+interface TabItemProps {
+  tab: Tab;
+  tabIndex: number;
+  activeTab: string;
+  swipeProgress?: SharedValue<number>;
+  handlePress: (key: string) => void;
+  handleTabLayout: (key: string, x: number, width: number) => void;
+  scrollable: boolean;
+  theme: any;
+}
+
+function TabItem({ tab, tabIndex, activeTab, swipeProgress, handlePress, handleTabLayout, scrollable, theme }: TabItemProps) {
+  const isActiveReact = tab.key === activeTab;
+
+  const animatedLabelStyle = useAnimatedStyle(() => {
+    let isActive = false;
+    if (swipeProgress) {
+      isActive = Math.round(swipeProgress.value) === tabIndex;
+    } else {
+      isActive = tab.key === activeTab;
+    }
+
+    return {
+      // Deeper and bolder on both sides of the state.
+      // Inactive was `medium` in `textMuted` — the lightest weight in the
+      // lightest tone, so the tabs a user has NOT selected barely registered as
+      // tappable at all. Inactive is now semiBold in `textSecondary`, and the
+      // active tab moves to bold, keeping the gap between them.
+      // `fontWeight` is emitted alongside the family because this is a raw
+      // `Animated.Text`, not `AppText`, so nothing else supplies it.
+      fontFamily: isActive ? tokens.fontFamily.bold : tokens.fontFamily.semiBold,
+      fontWeight: isActive ? '700' : '600',
+      color: isActive ? theme.colors.primary : theme.colors.textSecondary,
+    };
+  }, [activeTab, swipeProgress, tab.key, tabIndex, theme]);
+
+  return (
+    <Pressable
+      key={tab.key}
+      onPress={() => handlePress(tab.key)}
+      onLayout={(e: LayoutChangeEvent) => {
+        const { x, width } = e.nativeEvent.layout;
+        handleTabLayout(tab.key, x, width);
+      }}
+      style={({ pressed }) => [
+        styles.tab,
+        scrollable ? styles.tabScrollable : styles.tabFixed,
+        pressed && { opacity: 0.7 },
+      ]}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: isActiveReact }}
+    >
+      <Animated.Text
+        style={[
+          styles.tabLabel,
+          // `meta` (13px) rather than `caption` (12px): a tab is a primary
+          // navigation control, not supporting text, and 12px sat below
+          // everything it was navigating between.
+          { fontSize: tokens.typography.meta.size, lineHeight: tokens.typography.meta.lineHeight },
+          animatedLabelStyle,
+        ]}
+      >
+        {tab.label}
+      </Animated.Text>
+
+      {typeof tab.badge === 'number' && tab.badge > 0 && (
+        <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
+          <AppText variant="caption" tone="inverse" style={styles.badgeText}>
+            {tab.badge > 99 ? '99+' : tab.badge}
+          </AppText>
+        </View>
+      )}
+    </Pressable>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────
 
-export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, swipeProgress }: TabsProps) {
+export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align = 'center', swipeProgress }: TabsProps) {
   const { theme } = useTheme();
 
   // Mutable ref stores each tab's measured position/width.
@@ -135,48 +222,32 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, swipePr
 
   const TabContainer = scrollable ? ScrollView : View;
   const containerProps: any = scrollable
-    ? { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.scrollContent }
+    ? {
+        horizontal: true,
+        showsHorizontalScrollIndicator: false,
+        contentContainerStyle: [
+          styles.scrollContent,
+          align === 'start' ? styles.scrollContentStart : null,
+        ],
+      }
     : { style: styles.tabsContainer };
 
   return (
     <View style={[styles.container, { borderBottomColor: theme.colors.border }]}>
       <TabContainer {...containerProps}>
-        {tabs.map((tab) => {
-          const isActive = tab.key === activeTab;
-          return (
-            <Pressable
-              key={tab.key}
-              onPress={() => handlePress(tab.key)}
-              onLayout={(e: LayoutChangeEvent) => {
-                const { x, width } = e.nativeEvent.layout;
-                handleTabLayout(tab.key, x, width);
-              }}
-              style={({ pressed }) => [
-                styles.tab,
-                scrollable ? styles.tabScrollable : styles.tabFixed,
-                pressed && { opacity: 0.7 },
-              ]}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: isActive }}
-            >
-              <AppText
-                variant={isActive ? 'captionBold' : 'captionRegular'}
-                tone={isActive ? 'primary' : 'muted'}
-                style={styles.tabLabel}
-              >
-                {tab.label}
-              </AppText>
-
-              {typeof tab.badge === 'number' && tab.badge > 0 && (
-                <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
-                  <AppText variant="caption" tone="inverse" style={styles.badgeText}>
-                    {tab.badge > 99 ? '99+' : tab.badge}
-                  </AppText>
-                </View>
-              )}
-            </Pressable>
-          );
-        })}
+        {tabs.map((tab, index) => (
+          <TabItem
+            key={tab.key}
+            tab={tab}
+            tabIndex={index}
+            activeTab={activeTab}
+            swipeProgress={swipeProgress}
+            handlePress={handlePress}
+            handleTabLayout={handleTabLayout}
+            scrollable={scrollable}
+            theme={theme}
+          />
+        ))}
       </TabContainer>
 
       {/* Animated underline — primary accent */}
@@ -204,6 +275,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.xs,
+  },
+  // Left-aligned scrollable tabs (Messages inbox): start at the far left with no
+  // centering flex-grow, so the underline measures/aligns from the first tab.
+  scrollContentStart: {
+    flexGrow: 0,
+    justifyContent: 'flex-start',
+    paddingHorizontal: 0,
   },
   tab: {
     flexDirection: 'row',

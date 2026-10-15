@@ -4,11 +4,12 @@
  * Similar to 'sonner' on web but optimized for React Native
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/AppText';
+import { tokens } from '@/src/styles/tokens';
+import { useCommitCost } from '@/src/perf/commitCost';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -21,13 +22,21 @@ export interface ToastData {
   type: ToastType;
   message: string;
   duration?: number;
+  actionLabel?: string;
+  onPress?: () => void;
 }
 
+export type ToastOptions = number | {
+  duration?: number;
+  actionLabel?: string;
+  onPress?: () => void;
+};
+
 interface ToastContextValue {
-  success: (message: string, duration?: number) => void;
-  error: (message: string, duration?: number) => void;
-  info: (message: string, duration?: number) => void;
-  warning: (message: string, duration?: number) => void;
+  success: (message: string, options?: ToastOptions) => void;
+  error: (message: string, options?: ToastOptions) => void;
+  info: (message: string, options?: ToastOptions) => void;
+  warning: (message: string, options?: ToastOptions) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -36,11 +45,13 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 // Toast Component
 // ─────────────────────────────────────────────────────────────
 
-const TOAST_COLORS: Record<ToastType, { bg: string; border: string; icon: string; iconName: keyof typeof MaterialIcons.glyphMap }> = {
-  success: { bg: 'rgba(16, 185, 129, 0.95)', border: '#10B981', icon: '#fff', iconName: 'check-circle' },
-  error: { bg: 'rgba(239, 68, 68, 0.95)', border: '#EF4444', icon: '#fff', iconName: 'error' },
-  info: { bg: 'rgba(59, 130, 246, 0.95)', border: '#3B82F6', icon: '#fff', iconName: 'info' },
-  warning: { bg: 'rgba(245, 158, 11, 0.95)', border: '#F59E0B', icon: '#fff', iconName: 'warning' },
+// Emoji markers, not icon-library glyphs (Rule 5). `icon` stays on the record
+// because the fill/edge pair is still colour-driven; the marker is not.
+const TOAST_COLORS: Record<ToastType, { bg: string; border: string; icon: string; marker: string }> = {
+  success: { bg: tokens.toast.successFill, border: tokens.toast.successEdge, icon: tokens.colors.light, marker: '✅' },
+  error: { bg: tokens.toast.errorFill, border: tokens.toast.errorEdge, icon: tokens.colors.light, marker: '⛔' },
+  info: { bg: tokens.toast.infoFill, border: tokens.toast.infoEdge, icon: tokens.colors.light, marker: 'ℹ️' },
+  warning: { bg: tokens.toast.warningFill, border: tokens.toast.warningEdge, icon: tokens.colors.light, marker: '⚠️' },
 };
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -57,11 +68,13 @@ function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: str
         damping: 15,
         stiffness: 120,
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(opacity, {
         toValue: 1,
         duration: 200,
         useNativeDriver: true,
+        isInteraction: false,
       }),
     ]).start();
 
@@ -79,15 +92,23 @@ function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: str
         duration: 200,
         easing: Easing.in(Easing.ease),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(opacity, {
         toValue: 0,
         duration: 200,
         useNativeDriver: true,
+        isInteraction: false,
       }),
     ]).start(() => {
       onDismiss(toast.id);
     });
+  };
+
+  const handleBodyPress = () => {
+    if (!toast.onPress) return;
+    toast.onPress();
+    dismissToast();
   };
 
   return (
@@ -102,12 +123,26 @@ function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: str
         },
       ]}
     >
-      <MaterialIcons name={colors.iconName} size={20} color={colors.icon} />
-      <AppText style={styles.toastText} numberOfLines={2}>
-        {toast.message}
-      </AppText>
-      <Pressable onPress={dismissToast} hitSlop={8}>
-        <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.8)" />
+      <Pressable
+        onPress={handleBodyPress}
+        disabled={!toast.onPress}
+        style={styles.toastBody}
+        accessibilityRole={toast.onPress ? 'button' : undefined}
+      >
+        <AppText variant="subtitle" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          {colors.marker}
+        </AppText>
+        <AppText variant="bodyReadable" tone="inverse" numberOfLines={2} style={styles.toastText}>
+          {toast.message}
+        </AppText>
+        {toast.actionLabel ? (
+          <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
+            {toast.actionLabel}
+          </AppText>
+        ) : null}
+      </Pressable>
+      <Pressable onPress={dismissToast} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss">
+        <AppText variant="bodyBold" tone="inverse">✕</AppText>
       </Pressable>
     </Animated.View>
   );
@@ -137,24 +172,45 @@ function ToastContainer({ toasts, onDismiss }: { toasts: ToastData[]; onDismiss:
 
 let toastIdCounter = 0;
 
+function normalizeToastOptions(options?: ToastOptions) {
+  if (typeof options === 'number') return { duration: options };
+  return options ?? {};
+}
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
+  useCommitCost('P:Toast');
   const [toasts, setToasts] = useState<ToastData[]>([]);
 
-  const addToast = useCallback((type: ToastType, message: string, duration?: number) => {
+  const addToast = useCallback((type: ToastType, message: string, options?: ToastOptions) => {
     const id = `toast-${++toastIdCounter}`;
-    setToasts((prev) => [...prev.slice(-2), { id, type, message, duration }]); // Keep max 3 toasts
+    const normalized = normalizeToastOptions(options);
+    setToasts((prev) => [...prev.slice(-2), { id, type, message, ...normalized }]); // Keep max 3 toasts
   }, []);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const success = useCallback((message: string, duration?: number) => addToast('success', message, duration), [addToast]);
-  const error = useCallback((message: string, duration?: number) => addToast('error', message, duration), [addToast]);
-  const info = useCallback((message: string, duration?: number) => addToast('info', message, duration), [addToast]);
-  const warning = useCallback((message: string, duration?: number) => addToast('warning', message, duration), [addToast]);
+  const success = useCallback((message: string, options?: ToastOptions) => addToast('success', message, options), [addToast]);
+  const error = useCallback((message: string, options?: ToastOptions) => addToast('error', message, options), [addToast]);
+  const info = useCallback((message: string, options?: ToastOptions) => addToast('info', message, options), [addToast]);
+  const warning = useCallback((message: string, options?: ToastOptions) => addToast('warning', message, options), [addToast]);
 
-  const value: ToastContextValue = { success, error, info, warning };
+  // Memoized, and that is load-bearing rather than an optimisation.
+  //
+  // `ToastProvider` re-renders every time a toast appears or dismisses. A fresh
+  // object literal here handed every `useToast()` consumer in the app a new
+  // context value on each of those renders, which invalidated every
+  // `useCallback`/`useEffect` that lists `toast` in its deps. On the brand
+  // profile editor that meant `loadProfile` was rebuilt, its effect re-fired,
+  // the screen flipped to the full-page loader, and the refetch overwrote
+  // `form`/`baseline` — so uploading an avatar (which toasts on success) silently
+  // discarded every unsaved text field. The four handlers below are already
+  // stable, so this value never needs to change.
+  const value = useMemo<ToastContextValue>(
+    () => ({ success, error, info, warning }),
+    [success, error, info, warning],
+  );
 
   return (
     <ToastContext.Provider value={value}>
@@ -193,10 +249,10 @@ export function setGlobalToastRef(ref: ToastContextValue) {
 }
 
 export const toast = {
-  success: (message: string, duration?: number) => globalToastRef?.success(message, duration),
-  error: (message: string, duration?: number) => globalToastRef?.error(message, duration),
-  info: (message: string, duration?: number) => globalToastRef?.info(message, duration),
-  warning: (message: string, duration?: number) => globalToastRef?.warning(message, duration),
+  success: (message: string, options?: ToastOptions) => globalToastRef?.success(message, options),
+  error: (message: string, options?: ToastOptions) => globalToastRef?.error(message, options),
+  info: (message: string, options?: ToastOptions) => globalToastRef?.info(message, options),
+  warning: (message: string, options?: ToastOptions) => globalToastRef?.warning(message, options),
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -214,12 +270,12 @@ const styles = StyleSheet.create({
   toast: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 14,
     borderWidth: 1,
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -227,9 +283,11 @@ const styles = StyleSheet.create({
   },
   toastText: {
     flex: 1,
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
+  },
+  toastBody: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 });

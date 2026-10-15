@@ -6,10 +6,13 @@ import React, {
   useState,
 } from 'react';
 import { router, usePathname } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import * as SecureStore from 'expo-secure-store';
 import { StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/src/auth/AuthContext';
+import { hasActiveBrandMembership } from '@/src/auth/brandAccess';
 import { useToast } from '@/src/toast/ToastContext';
 import type { ProductBagStatus } from '@/src/api/StoreApi';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
@@ -25,7 +28,12 @@ import { useBagCount } from '@/src/features/bagging/BagCountContext';
 import { baggingService } from '@/src/services/bagging';
 import type { BagSourceType } from '@/src/api/StoreApi';
 import { BagFlowContext } from '@/src/features/bagging/BagFlowContext';
+import {
+  clearDeliveryAddressCache,
+  warmDeliveryAddressCache,
+} from '@/src/features/delivery/deliveryAddressCache';
 import type { BagFlowProductInput } from '@/src/features/bagging/BagFlowContext';
+import { useCommitCost } from '@/src/perf/commitCost';
 
 export { useBagFlow } from '@/src/features/bagging/BagFlowContext';
 
@@ -54,11 +62,24 @@ type PendingBagAction = {
   returnPath: string;
 };
 
-const PENDING_BAG_ACTION_KEY = 'threadly.pendingBagAction.v1';
+const PENDING_BAG_ACTION_KEY = 'wiez.pendingBagAction.v1';
 
 export function BagFlowProvider({ children }: { children: React.ReactNode }) {
+  useCommitCost('P:BagFlow');
   const pathname = usePathname();
-  const { status: authStatus } = useAuth();
+  const { status: authStatus, user } = useAuth();
+  /**
+   * Brands do not shop.
+   *
+   * Guarding here rather than at each button is deliberate: every bag surface in
+   * the app — the island Bag tab, "Bag it" on a product card, the custom-order
+   * flow, the fittings sheets — opens through this provider. One refusal here
+   * cannot be routed around by a screen that forgets to check, and a brand who
+   * reaches a bag by deep link or stale UI still cannot open it. A brand tapping
+   * Bag used to land in their own checkout and from there on the *buyer* orders
+   * screen, which is not their orders at all.
+   */
+  const isBrandAccount = hasActiveBrandMembership(user);
   const toast = useToast();
   const { refreshGlobalBagCount } = useBagCount();
 
@@ -66,13 +87,31 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
   const [customTarget, setCustomTarget] = useState<BagFlowTarget | null>(null);
   const [fittingsTarget, setFittingsTarget] = useState<BagFlowTarget | null>(null);
   const [staleTarget, setStaleTarget] = useState<BagFlowTarget | null>(null);
+  /**
+   * The custom sheet was reached by saving fittings first. Both sheets then say
+   * which step they are, so "save your measurements" and "custom order" read as
+   * one flow rather than two unrelated sheets asking for the same numbers.
+   */
+  const [customAfterFittings, setCustomAfterFittings] = useState(false);
   const [summaryTarget, setSummaryTarget] = useState<BagFlowTarget | null>(null);
   const [myBagVisible, setMyBagVisible] = useState(false);
   const [pendingAuth, setPendingAuth] = useState<PendingAuthResume | null>(null);
 
   const pendingResumeRef = useRef<PendingAuthResume | null>(null);
 
+  // The address is on the account before anyone presses Bag it. Load it with
+  // the session so the custom sheet opens on the saved address, or on the
+  // profile fields, and never on a loading row that then dismisses.
+  useEffect(() => {
+    if (authStatus !== 'authenticated') {
+      clearDeliveryAddressCache();
+      return;
+    }
+    void warmDeliveryAddressCache();
+  }, [authStatus]);
+
   const closeActiveFlow = useCallback(() => {
+    setCustomAfterFittings(false);
     setSelectorTarget(null);
     setCustomTarget(null);
     setFittingsTarget(null);
@@ -191,7 +230,25 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [routeResolvedStatus]);
 
+  /**
+   * Closes every bag surface and refuses the request. Returns true when it
+   * handled things, so each opener can bail in one line.
+   */
+  const refuseForBrandAccount = useCallback(() => {
+    if (!isBrandAccount) return false;
+    setPendingAuth(null);
+    setSelectorTarget(null);
+    setCustomTarget(null);
+    setFittingsTarget(null);
+    setStaleTarget(null);
+    setSummaryTarget(null);
+    setMyBagVisible(false);
+    toast.info('Brand accounts sell on WIEZ — shopping is a personal account feature.');
+    return true;
+  }, [isBrandAccount, toast]);
+
   const openSelector = useCallback((product: BagProductInput, status: ProductBagStatus) => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setCustomTarget(null);
     setFittingsTarget(null);
@@ -199,9 +256,10 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSummaryTarget(null);
     setMyBagVisible(false);
     setSelectorTarget({ product, status });
-  }, []);
+  }, [refuseForBrandAccount]);
 
   const openCustomFlow = useCallback((product: BagProductInput, status: ProductBagStatus) => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setSelectorTarget(null);
     setFittingsTarget(null);
@@ -227,9 +285,10 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     }
 
     setCustomTarget({ product, status });
-  }, [toast]);
+  }, [refuseForBrandAccount, toast]);
 
   const openFittings = useCallback((product: BagProductInput, status: ProductBagStatus) => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setSelectorTarget(null);
     setCustomTarget(null);
@@ -237,9 +296,10 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSummaryTarget(null);
     setMyBagVisible(false);
     setFittingsTarget({ product, status });
-  }, []);
+  }, [refuseForBrandAccount]);
 
   const openStaleFittings = useCallback((product: BagProductInput, status: ProductBagStatus) => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setSelectorTarget(null);
     setCustomTarget(null);
@@ -247,7 +307,20 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSummaryTarget(null);
     setMyBagVisible(false);
     setStaleTarget({ product, status });
-  }, []);
+  }, [refuseForBrandAccount]);
+
+  /**
+   * Read through a ref, never as a dependency.
+   *
+   * `openAuthPrompt` once listed `pathname` in its deps, which minted a new
+   * context `value` on EVERY navigation. Market and Runway read this context
+   * and stay mounted behind the tabs, so each tab press re-rendered both — the
+   * device capture of 2026-10-15 measured Market alone at 400-1250ms per press,
+   * on tabs it was not even showing. The path is only needed at the moment the
+   * prompt opens, so a ref gives the same answer without the broadcast.
+   */
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
 
   const openAuthPrompt = useCallback(
     (product: BagProductInput, action: BagDefaultAction, resume?: () => void | Promise<void>) => {
@@ -257,6 +330,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
       setStaleTarget(null);
       setSummaryTarget(null);
       setMyBagVisible(false);
+      const pathname = pathnameRef.current;
       const nextPending = { product, action, returnPath: pathname, resume };
       setPendingAuth(nextPending);
       pendingResumeRef.current = nextPending;
@@ -271,10 +345,11 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
       void SecureStore.setItemAsync(PENDING_BAG_ACTION_KEY, JSON.stringify(serialized)).catch(() => undefined);
       toast.info('Please sign in to bag items.');
     },
-    [pathname, toast],
+    [toast],
   );
 
   const openExistingBag = useCallback((product: BagProductInput, status: ProductBagStatus) => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setSelectorTarget(null);
     setCustomTarget(null);
@@ -285,6 +360,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const openMyBag = useCallback(() => {
+    if (refuseForBrandAccount()) return;
     setPendingAuth(null);
     setSelectorTarget(null);
     setCustomTarget(null);
@@ -293,7 +369,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setSummaryTarget(null);
     setMyBagVisible(true);
     void refreshGlobalBagCount();
-  }, [refreshGlobalBagCount]);
+  }, [refreshGlobalBagCount, refuseForBrandAccount]);
 
   useEffect(() => {
     pendingResumeRef.current = pendingAuth;
@@ -318,6 +394,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
+      isMyBagOpen: myBagVisible,
       openSelector,
       openCustomFlow,
       openFittings,
@@ -327,7 +404,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
       openMyBag,
       closeActiveFlow,
     }),
-    [closeActiveFlow, openAuthPrompt, openCustomFlow, openExistingBag, openFittings, openMyBag, openSelector, openStaleFittings],
+    [closeActiveFlow, myBagVisible, openAuthPrompt, openCustomFlow, openExistingBag, openFittings, openMyBag, openSelector, openStaleFittings],
   );
 
   return (
@@ -356,6 +433,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
         onClose={closeActiveFlow}
         onResolved={(nextStatus) => {
           if (!fittingsTarget) return;
+          setCustomAfterFittings(true);
           void routeResolvedStatus(fittingsTarget.product, nextStatus);
         }}
       />
@@ -405,9 +483,11 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
         visible={Boolean(customTarget)}
         product={customTarget?.product ?? null}
         status={customTarget?.status ?? null}
+        afterFittings={customAfterFittings}
         onClose={closeActiveFlow}
         onCompleted={(nextStatus) => {
           if (!customTarget) return;
+          setCustomAfterFittings(false);
           setCustomTarget(null);
           setSummaryTarget({ product: customTarget.product, status: nextStatus });
         }}
@@ -437,7 +517,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
             <Button
               title="Sign in"
               onPress={() => {
-                router.push({
+                drillDownPush({
                   pathname: '/login',
                   params: {
                     reason: 'auth_required',
@@ -450,7 +530,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
               title="Create account"
               variant="secondary"
               onPress={() => {
-                router.push({
+                drillDownPush({
                   pathname: '/signup',
                   params: {
                     reason: 'auth_required',
@@ -480,6 +560,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   authFooter: {
-    gap: 10,
+    gap: 8,
   },
 });

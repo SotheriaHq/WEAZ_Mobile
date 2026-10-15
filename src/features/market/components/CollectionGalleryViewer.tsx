@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -11,10 +10,13 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
+import { BackLink } from '@/components/ui/InlineNavLink';
 import { Button } from '@/components/ui/Button';
 import { StableImage } from '@/components/ui/StableImage';
 import { MobileStoreApi, type CollectionBagStatus } from '@/src/api/StoreApi';
@@ -23,7 +25,8 @@ import { BAG_IT_EMOJI } from '@/src/constants/bagging';
 import { tokens } from '@/src/styles/tokens';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type CollectionGalleryViewerProps = {
   collectionId: string;
@@ -39,7 +42,7 @@ type GalleryMedia = {
 };
 
 const shouldLogGalleryTiming = () =>
-  isThreadlyDebugEnabled('network') ||
+  isWiezDebugEnabled('network') ||
   process.env.EXPO_PUBLIC_BAGGING_OBSERVABILITY === 'true';
 
 const logGalleryTiming = (event: string, startedAt: number, context: Record<string, unknown>) => {
@@ -195,7 +198,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
       <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: chrome.insets.top }]}>
         <StatusBar style={statusBarContrast(scheme)} />
         <View style={styles.centerState}>
-          <ActivityIndicator color={theme.colors.primary} />
+          <MuseLoader size={20} />
           <AppText variant="bodyBold">Loading gallery</AppText>
         </View>
       </SafeAreaView>
@@ -210,7 +213,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
           <AppText variant="subtitle">Gallery unavailable</AppText>
           <AppText variant="body" tone="secondary">{error ?? 'Try again later.'}</AppText>
           <Button title="Retry" onPress={() => void load()} />
-          <Button title="Back to collection" variant="outline" onPress={goBack} />
+          <BackLink label="Collection" onPress={goBack} />
         </View>
       </SafeAreaView>
     );
@@ -266,7 +269,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
 
       <View style={[styles.overlay, { bottom: chrome.immersiveOverlayBottomClearance + tokens.spacing.md }]}>
         <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-          {status.collection.brandName ?? 'WEAZ brand'}
+          {status.collection.brandName ?? 'WIEZ brand'}
         </AppText>
         <AppText variant="title" tone="inverse" numberOfLines={2}>
           {status.collection.title}
@@ -282,7 +285,7 @@ export function CollectionGalleryViewer({ collectionId }: CollectionGalleryViewe
             <Button
               title="View product"
               variant="outline"
-              onPress={() => router.push({ pathname: '/products/[productId]', params: { productId: activeMedia.productId, returnTo: `/collection-gallery?collectionId=${normalizedCollectionId}` } } as any)}
+              onPress={() => drillDownPush({ pathname: '/products/[productId]', params: { productId: activeMedia.productId, returnTo: `/collection-gallery?collectionId=${normalizedCollectionId}` } } as any)}
             />
           ) : null}
         </View>

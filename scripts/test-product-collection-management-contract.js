@@ -48,14 +48,15 @@ assert.match(
   'Draft query keys should represent mixed design/store draft content.',
 );
 
-const catalogIndexSource = readProjectFile('app', 'catalog', 'index.tsx');
+// Catalogue lives in the `(tabs)` route GROUP — the /catalog URL is unchanged.
+const catalogIndexSource = readProjectFile('app', '(tabs)', 'catalog', 'index.tsx');
 assert.match(
   catalogIndexSource,
   /useBrandDraftsQuery\(\{[\s\S]*ownerId:\s*collectionOwnerId/,
   'The catalog Drafts tab should pass the owner id so quick store drafts remain visible after creation.',
 );
 
-const createCollectionScreenSource = readProjectFile('app', 'catalog', 'create-collection.tsx');
+const createCollectionScreenSource = readProjectFile('app', '(tabs)', 'catalog', 'create-collection.tsx');
 assert.match(createCollectionScreenSource, /routeKey:\s*'createCollection'/);
 assert.match(createCollectionScreenSource, /brandApi\.createCollection/);
 assert.match(createCollectionScreenSource, /Open Studio Builder/);

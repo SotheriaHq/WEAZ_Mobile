@@ -1,11 +1,76 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import { SHEET_MOTION } from '@/components/ui/AppBottomSheet';
+import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiClient } from '@/src/api/httpClient';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { AppText } from '@/components/ui/AppText';
+import { Input } from '@/components/ui/Input';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
+import { tokens } from '@/src/styles/tokens';
+import { MuseLoader } from '@/components/ui/MuseLoader';
+
+/**
+ * Scrim weight, by what the caller has already done to its own content.
+ *
+ * A caller that SCALES its page into the band above the sheet has separated the
+ * two planes geometrically: the design is smaller, inset, and sitting above an
+ * opaque sheet. A 55% wash on top of that is the "grey background over the
+ * content" report — the design stops being viewable at exactly the moment the
+ * user is reading remarks about it. 0.18 is enough to seat the sheet as the
+ * foreground plane and light enough that the garment still reads.
+ *
+ * A caller that does NOT scale (a scrolling product list) has only the scrim,
+ * so it keeps the full weight.
+ */
+const SCALED_SCRIM_ALPHA = 0.18;
+const FLAT_SCRIM_ALPHA = 0.55;
+
+/**
+ * How tall the panel is, as a fraction of the window — and why it is a
+ * CONSTANT rather than whatever the thread happens to need.
+ *
+ * The sheet used to be `minHeight: '50%'` / `maxHeight: '74%'`, so its height
+ * was whatever its content came out to. That is the whole reason opening
+ * comments did not animate:
+ *
+ *  - The caller scales its page into the band ABOVE this sheet, and it can only
+ *    work out that band once it knows the height. The height arrived from
+ *    `onLayout`, which is a frame or two AFTER the open animation has already
+ *    started — so the page did not scale down, it snapped down late, with the
+ *    slide already half over.
+ *  - The panel's own slide interpolated from a hard-coded `480` for exactly the
+ *    same reason, so on the first open it travelled the wrong distance.
+ *  - Worse, the height then CHANGED again when the comments finished loading
+ *    (an empty thread is short, a full one hits the cap), which re-scaled the
+ *    page a second time, after the transition had visibly settled.
+ *
+ * A fixed fraction is known before the first frame, so the page and the panel
+ * start moving together, and it does not move again when the thread loads.
+ * This is also what Reels and Facebook do — the comment panel is a fixed
+ * stage, not a box that grows with the conversation.
+ */
+const COMMENTS_SHEET_HEIGHT_RATIO = 0.68;
+
+/**
+ * The panel's height for a given window, for callers that scale content into
+ * the band above it. Both sides compute it from the same function, so neither
+ * has to wait for the other to measure.
+ */
+export const getCommentsSheetHeight = (windowHeight: number): number =>
+  Math.round(Math.max(0, windowHeight) * COMMENTS_SHEET_HEIGHT_RATIO);
 
 type Comment = {
   id: string;
@@ -37,6 +102,27 @@ type CollectionCommentsSheetProps = {
   collectionTitle?: string | null;
   initialCommentId?: string | null;
   onClose: () => void;
+  /**
+   * 0 = closed, 1 = fully open. Supply one to couple something else to this
+   * sheet's motion — the Runway scales its page down into the band above the
+   * sheet, and it has to move on exactly the same frames, not merely for the
+   * same duration. When omitted the sheet drives an internal value and behaves
+   * as before.
+   */
+  progress?: Animated.Value;
+  /** Measured sheet height, so a caller can compute how much room is left. */
+  onSheetHeight?: (height: number) => void;
+  /**
+   * The caller is scaling its page into the band above this sheet.
+   *
+   * When it is, the content has ALREADY been pushed back — it is smaller, it is
+   * inset, and the sheet is an opaque plane below it. Dimming it a second time
+   * at scrim strength is what made an open comment thread read as a grey sheet
+   * pulled over the design being discussed. Callers that do not scale (a
+   * scrolling product list) keep the full scrim, because separation is the only
+   * thing they have.
+   */
+  contentScaled?: boolean;
 };
 const normalizeDisplayName = (user?: BackendCommentUser | null) => {
   if (!user) return 'User';
@@ -138,7 +224,7 @@ function CommentItem({
               backgroundColor: colors.surfaceAlt,
               borderWidth: 1,
               borderRadius: 16,
-              padding: 10,
+              padding: 12,
             }
           : null,
       ]}
@@ -174,13 +260,29 @@ export default function CollectionCommentsSheet({
   collectionTitle,
   initialCommentId = null,
   onClose,
+  progress: progressProp,
+  onSheetHeight,
+  contentScaled = false,
 }: CollectionCommentsSheetProps) {
   const { theme, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const isDark = scheme === 'dark';
   const androidBottomGap = Platform.OS === 'android' ? Math.max(0, insets.bottom) : 0;
-  const translateY = useRef(new Animated.Value(480)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
+  /**
+   * ONE value drives everything: the sheet's slide, the scrim's fade, and any
+   * coupled motion the caller asked for. Two separate animations of the same
+   * duration drift; one interpolated value cannot.
+   */
+  const internalProgress = useRef(new Animated.Value(0)).current;
+  const progress = progressProp ?? internalProgress;
+  const { height: windowHeight } = useWindowDimensions();
+  // Known before layout — see COMMENTS_SHEET_HEIGHT_RATIO.
+  const sheetHeight = getCommentsSheetHeight(windowHeight);
+  const translateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [sheetHeight, 0],
+  });
+  const opacity = progress;
   const [mounted, setMounted] = useState(visible);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -189,6 +291,15 @@ export default function CollectionCommentsSheet({
   const commentsListRef = useRef<FlatList<Comment> | null>(null);
 
   useAndroidOverlaySystemBars(visible, scheme, 'collection-comments');
+
+  /*
+    Declared ABOVE the open/close effect on purpose: effects run in source
+    order, so a caller that has not derived the height itself still has it
+    before the animation it is coupled to starts.
+  */
+  useEffect(() => {
+    onSheetHeight?.(sheetHeight);
+  }, [onSheetHeight, sheetHeight]);
 
   const loadComments = useMemo(
     () => async (targetCollectionId: string) => {
@@ -202,18 +313,14 @@ export default function CollectionCommentsSheet({
 
   useEffect(() => {
     if (!visible || !collectionId) {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 180,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateY, {
-          toValue: 480,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
+      Animated.timing(progress, {
+        toValue: 0,
+        duration: SHEET_MOTION.closeMs,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+        isInteraction: false,
+      }).start(({ finished }) => {
+        if (!finished) return;
         setMounted(false);
         setCommentText('');
       });
@@ -222,20 +329,18 @@ export default function CollectionCommentsSheet({
 
     setMounted(true);
     void loadComments(collectionId);
-    Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        damping: 24,
-        stiffness: 220,
-      }),
-    ]).start();
-  }, [collectionId, loadComments, opacity, translateY, visible]);
+    // The shared sheet's curve, not a spring of its own. This panel cannot be
+    // `AppBottomSheet` (it reports its height so the viewer behind it can
+    // scale), but a shopper going from the design to its comments should not
+    // feel the panel arrive on a different rhythm from the bag or the filters.
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: SHEET_MOTION.openMs,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+      isInteraction: false,
+    }).start();
+  }, [collectionId, loadComments, progress, visible]);
 
   useEffect(() => {
     if (!initialCommentId || comments.length === 0) return;
@@ -280,15 +385,22 @@ export default function CollectionCommentsSheet({
     >
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>
-          <Pressable style={styles.scrim} onPress={onClose} />
+          <Pressable
+            style={[
+              styles.scrim,
+              { backgroundColor: tokens.scrim(contentScaled ? SCALED_SCRIM_ALPHA : FLAT_SCRIM_ALPHA) },
+            ]}
+            onPress={onClose}
+          />
         </Animated.View>
 
         <Animated.View
           style={[
             styles.sheet,
             {
-              backgroundColor: isDark ? '#0f0b18' : '#ffffff',
+              backgroundColor: isDark ? tokens.viewer.surface : tokens.colors.light,
               borderTopColor: theme.colors.border,
+              height: sheetHeight,
               marginBottom: androidBottomGap,
               paddingBottom: Platform.OS === 'android' ? 0 : insets.bottom,
               transform: [{ translateY }],
@@ -329,7 +441,7 @@ export default function CollectionCommentsSheet({
 
           {commentsLoading ? (
             <View style={styles.commentsLoading}>
-              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <MuseLoader size={20} />
             </View>
           ) : (
             <FlatList
@@ -349,6 +461,10 @@ export default function CollectionCommentsSheet({
                   }}
                 />
               )}
+              // The panel is a fixed height now, so the list is the part that
+              // flexes. Without this it would take its CONTENT height and push
+              // the composer off the bottom of a full thread.
+              style={styles.commentsScroller}
               contentContainerStyle={styles.commentsList}
               showsVerticalScrollIndicator={false}
               onScrollToIndexFailed={({ index }) => {
@@ -368,7 +484,7 @@ export default function CollectionCommentsSheet({
             />
           )}
 
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <KeyboardAvoider>
             <View
               style={[
                 styles.commentInput,
@@ -377,19 +493,16 @@ export default function CollectionCommentsSheet({
                 },
               ]}
             >
-              <TextInput
+              {/* Shared primitive, not a raw input. `hideLabel` keeps the
+                  accessible name without printing a label above a one-line
+                  composer; the surrounding row already draws the container. */}
+              <Input
+                label="Add a comment"
+                hideLabel
                 value={commentText}
                 onChangeText={setCommentText}
                 placeholder="Add a comment..."
-                placeholderTextColor={theme.colors.textMuted}
-                style={[
-                  styles.commentInputField,
-                  {
-                    backgroundColor: theme.colors.surfaceAlt,
-                    borderColor: theme.colors.border,
-                    color: theme.colors.text,
-                  },
-                ]}
+                containerStyle={styles.commentInputField}
                 returnKeyType="send"
                 onSubmitEditing={() => {
                   void sendComment();
@@ -408,10 +521,10 @@ export default function CollectionCommentsSheet({
                   },
                 ]}
               >
-                {sendingComment ? <ActivityIndicator size="small" color="#fff" /> : <AppText variant="h3" tone="inverse">↑</AppText>}
+                {sendingComment ? <MuseLoader size={20} /> : <AppText variant="h3" tone="inverse">↑</AppText>}
               </Pressable>
             </View>
-          </KeyboardAvoidingView>
+          </KeyboardAvoider>
         </Animated.View>
       </View>
     </Modal>
@@ -419,17 +532,26 @@ export default function CollectionCommentsSheet({
 }
 
 const styles = StyleSheet.create({
+  /**
+   * A dim, not a blackout. Weight comes from `contentScaled` — see the two
+   * alphas above.
+   *
+   * This was `tokens.colors.dark` — fully opaque black — animated to full opacity
+   * across the entire screen, so opening comments did not "cover" the design,
+   * it ERASED it: everything above the sheet went pure black. The whole point
+   * of a comment sheet on a feed is to keep looking at the thing you are
+   * commenting on. A scrim exists to push the content back, not to delete it.
+   */
   scrim: {
     flex: 1,
-    backgroundColor: '#000000',
   },
   sheet: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    minHeight: '50%',
-    maxHeight: '74%',
+    // Height is set inline from `getCommentsSheetHeight` — fixed, and known
+    // before the first frame so the caller's page can scale WITH the slide.
     borderTopWidth: 1,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -441,7 +563,7 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   panelHandleBar: {
-    padding: 6,
+    padding: 8,
   },
   panelHandleBarInner: {
     width: 38,
@@ -475,32 +597,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   commentsLoading: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 32,
   },
+  commentsScroller: {
+    flex: 1,
+    minHeight: 0,
+  },
   commentsList: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    gap: 14,
+    gap: 12,
     flexGrow: 1,
   },
   commentsEmpty: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 40,
-    gap: 10,
-  },
-  commentsEmptyEmoji: {
-    fontSize: 30,
+    gap: 8,
   },
   commentsEmptyText: {
-    fontSize: 13,
     fontWeight: '500',
   },
   commentItem: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   commentAvatar: {
     width: 34,
@@ -509,11 +632,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-  },
-  commentAvatarText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#fff',
   },
   commentBody: {
     flex: 1,
@@ -524,33 +642,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  commentAuthor: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
   commentTime: {
     fontSize: 12,
     fontWeight: '500',
   },
   commentText: {
-    fontSize: 13,
     lineHeight: 18,
   },
   commentInput: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     borderTopWidth: 1,
     paddingHorizontal: 16,
     paddingTop: 12,
   },
   commentInputField: {
     flex: 1,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
   },
   commentSendBtn: {
     width: 44,
@@ -560,7 +668,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   commentSendText: {
-    color: '#fff',
+    color: tokens.colors.light,
     fontSize: 18,
     fontWeight: '900',
   },

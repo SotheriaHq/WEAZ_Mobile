@@ -52,12 +52,20 @@ export interface CartState {
   items: Array<{
     id: string;
     productId: string;
+    quantity: number;
+    name: string | null;
+    brandName: string | null;
+    thumbnail: string | null;
+    unitPrice: number | null;
+    itemTotal: number | null;
     selectedSize?: string | null;
     selectedColor?: string | null;
     sizeRecommendationSnapshot?: SizeRecommendationSnapshot | Record<string, unknown> | null;
   }>;
   itemCount: number;
   totalQuantity: number;
+  subtotal: number | null;
+  currency: string;
 }
 
 export interface WishlistState {
@@ -74,10 +82,51 @@ export interface ActiveCustomConfiguration {
   isActive: boolean;
 }
 
+export interface CustomPriceSummary {
+  grandTotal: number;
+  subtotal: number | null;
+  shippingFee: number | null;
+  rushFee: number | null;
+  fabricCharge: number | null;
+}
+
+/**
+ * The locked quote for a custom request.
+ *
+ * This used to be three ids — the server's price breakdown, lock expiry and
+ * size-match guidance were all discarded here, so the native sheet could not
+ * show a shopper what they were about to add to their bag. Web shows every one
+ * of these before its "Add to bag" button; the fields match its
+ * `PricePreviewResponse`.
+ */
 export interface CustomPricePreview {
   checkoutIntentId: string | null;
   configurationVersionId?: string;
   quoteStatus?: string;
+  currency: string;
+  priceSummary: CustomPriceSummary | null;
+  priceLockExpiresAt: string | null;
+  noDirectMatch: boolean;
+  conversionGuidance: string | null;
+}
+
+const asFiniteNumber = (value: unknown): number | null => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+function toCustomPriceSummary(raw: unknown): CustomPriceSummary | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const source = raw as Record<string, unknown>;
+  const grandTotal = asFiniteNumber(source.grandTotal);
+  if (grandTotal == null) return null;
+  return {
+    grandTotal,
+    subtotal: asFiniteNumber(source.subtotal),
+    shippingFee: asFiniteNumber(source.shippingFee),
+    rushFee: asFiniteNumber(source.rushFee),
+    fabricCharge: asFiniteNumber(source.fabricCharge),
+  };
 }
 
 export interface CustomBagState {
@@ -85,6 +134,16 @@ export interface CustomBagState {
     sessionId: string;
     sourceType: string;
     sourceId: string;
+    sourceTitle: string | null;
+    sourceBrandName: string | null;
+    sourcePrimaryMediaUrl: string | null;
+    rushSelected: boolean;
+    measurementCount: number;
+    grandTotal: number | null;
+    currency: string;
+    isPriceLockExpired: boolean;
+    canRelockPrice: boolean;
+    priceLockExpiresAt: string | null;
   }>;
   total: number;
 }
@@ -346,10 +405,130 @@ const logBagTiming = (label: string, startedAt: number, context: Record<string, 
   });
 };
 
-const appendArray = (target: unknown[], value: unknown) => {
-  if (Array.isArray(value)) {
-    target.push(...value);
+type MediaEntry = { url: string | null; fileId: string | null };
+
+/**
+ * A media entry mid-merge, carrying the identity fields the payload supplied.
+ *
+ * `sourceUrl` is the raw storage URL a resolved display URL was built from —
+ * see `mergeMediaAliases`. It is an identity, never something to render, so it
+ * is dropped before the entry leaves this module.
+ */
+type MergeableMediaEntry = MediaEntry & { sourceUrl: string | null };
+
+/**
+ * The part of a URL that identifies the image, with the signature stripped.
+ *
+ * Display URLs are S3 pre-signed, so the same object comes back with a fresh
+ * `X-Amz-Signature` and `X-Amz-Date` on every read. Compare whole URLs and two
+ * reads of one photo look like two photos.
+ */
+const mediaUrlPath = (url: string | null): string | null => {
+  if (!url) return null;
+  const queryStart = url.indexOf('?');
+  return queryStart >= 0 ? url.slice(0, queryStart) : url;
+};
+
+/**
+ * Folds the API's several names for the product's images into one list.
+ *
+ * `images`, `media`, `mediaItems` and `productMedia` are names the API has used
+ * for THE SAME PHOTOS across shapes and versions, and a single payload can
+ * carry more than one of them — the product detail sends `images` as plain URL
+ * strings and `media` as objects. They were being concatenated, so every photo
+ * appeared twice: that is the "over 9" pager dots on a product with five
+ * images.
+ *
+ * Picking one array and ignoring the rest is not the fix either, because the
+ * aliases carry DIFFERENT FIELDS for the same photo — the URL strings have no
+ * file id, and the file id is what lets the app re-sign an expired URL.
+ *
+ * ## Why matching on identity alone was not enough
+ *
+ * Identity here means "same file id, or same URL once the signature is off",
+ * and against the real payload it matches NEITHER field. `store.service.ts`
+ * builds the product response like this:
+ *
+ *     images: base.images                                  // raw S3 URLs, strings
+ *     media:  images.map(url => ({ fileUploadId, url: displayUrlByRawUrl.get(url) ?? url, … }))
+ *
+ * So for one photograph, `images[i]` is the RAW url with no file id, and
+ * `media[i].url` is the RESOLVED display url — a different host and a different
+ * path, not merely a different signature. Nothing links them: the string alias
+ * has no id to match on and its path does not equal the resolved one. Five
+ * photos therefore survived as ten entries, which is the ten pager dots on a
+ * product whose server-side cap is six images.
+ *
+ * ## The rule
+ *
+ * Fold ALIAS BY ALIAS rather than over one flat concatenation, and give each
+ * alias three chances to land on an existing entry:
+ *
+ *   1. file id — the strongest link when both aliases carry one.
+ *   2. URL identity, comparing each side's `url` AND its `sourceUrl` (the raw
+ *      storage URL a display URL was built from, which `store.service.ts` now
+ *      emits beside it). `sourceUrl` is what actually joins the raw-string alias
+ *      to the resolved-object alias, and it works regardless of order or length.
+ *   3. POSITION, when an alias is exactly as long as the list built so far. This
+ *      is the fallback for an API that predates `sourceUrl`: `media` is
+ *      `images.map(...)`, so an equal length is not a coincidence, it is the
+ *      relationship. Installed app builds keep working against either server.
+ *
+ * Anything that matches none of the three is appended — an alias that genuinely
+ * carries extra photos still contributes them.
+ *
+ * Merging fills gaps and never overwrites, except that a resolved URL beats a
+ * raw one: the raw S3 url is not fetchable by the client, so where both exist
+ * the one that renders wins.
+ */
+const isRawStorageUrl = (url: string | null): boolean => {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return lower.includes('.s3.') || lower.includes('amazonaws.com');
+};
+
+/** Every path this entry is known by, for identity comparison. */
+const mediaIdentityPaths = (entry: MergeableMediaEntry): string[] =>
+  [mediaUrlPath(entry.url), mediaUrlPath(entry.sourceUrl)].filter(
+    (value): value is string => Boolean(value),
+  );
+
+const mergeIntoEntry = (existing: MergeableMediaEntry, incoming: MergeableMediaEntry) => {
+  if (!existing.fileId && incoming.fileId) existing.fileId = incoming.fileId;
+  if (!existing.sourceUrl && incoming.sourceUrl) existing.sourceUrl = incoming.sourceUrl;
+  if (!existing.url && incoming.url) existing.url = incoming.url;
+  else if (incoming.url && isRawStorageUrl(existing.url) && !isRawStorageUrl(incoming.url)) {
+    existing.url = incoming.url;
   }
+};
+
+const mergeMediaAliases = (aliases: MergeableMediaEntry[][]): MediaEntry[] => {
+  const merged: MergeableMediaEntry[] = [];
+
+  for (const alias of aliases) {
+    if (alias.length === 0) continue;
+    const alignsByPosition = merged.length > 0 && alias.length === merged.length;
+
+    alias.forEach((entry, index) => {
+      const paths = mediaIdentityPaths(entry);
+      const byIdentity = merged.find(
+        (candidate) =>
+          (entry.fileId !== null && candidate.fileId === entry.fileId) ||
+          mediaIdentityPaths(candidate).some((candidatePath) => paths.includes(candidatePath)),
+      );
+
+      const target = byIdentity ?? (alignsByPosition ? merged[index] : undefined);
+      if (target) {
+        mergeIntoEntry(target, entry);
+        return;
+      }
+      merged.push({ ...entry });
+    });
+  }
+
+  // `sourceUrl` is an identity, not an address — nothing downstream should be
+  // able to render it by mistake.
+  return merged.map(({ url, fileId }) => ({ url, fileId }));
 };
 
 const unwrapProductListPayload = (payload: unknown): {
@@ -406,18 +585,23 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
   const rawBrand = asRecord(item.brand);
   const rawBrandLogoFile = asRecord(item.brandLogoFile ?? rawBrand.logoFile ?? rawBrand.logoImageFile);
 
-  const rawImages: unknown[] = [];
-  appendArray(rawImages, item.images);
-  appendArray(rawImages, item.media);
-  appendArray(rawImages, item.mediaItems);
-  appendArray(rawImages, item.productMedia);
+  /*
+    Each alias stays its OWN list. Concatenating them first destroys the one
+    piece of evidence that lets raw-vs-display duplicates be collapsed: which
+    entry came from which alias, and at what index. See `mergeMediaAliases`.
 
-  const images = rawImages
+    `media` is listed before `images` deliberately — it is the richest alias
+    (URL plus file id), so it becomes the base list the others align against.
+  */
+  const toMediaEntries = (value: unknown): MergeableMediaEntry[] =>
+    (Array.isArray(value) ? value : [])
     .map((entry) => {
       if (typeof entry === 'string') {
+        // A plain string is a raw storage URL under the `images` alias, so it is
+        // both the address and the identity.
         const url = asString(entry);
         if (!url) return null;
-        return { url, fileId: null };
+        return { url, fileId: null, sourceUrl: url };
       }
 
       const media = asRecord(entry);
@@ -443,10 +627,19 @@ const normalizeProduct = (raw: unknown): StoreProduct | null => {
         asString(file.id) ??
         (isFileLikeRecord(media) ? asString(media.id) : null) ??
         null;
+      const sourceUrl =
+        asString(media.sourceUrl) ?? asString(media.rawUrl) ?? asString(file.s3Url) ?? null;
       if (!url && !fileId) return null;
-      return { url, fileId };
+      return { url, fileId, sourceUrl };
     })
-    .filter((entry): entry is { url: string | null; fileId: string | null } => Boolean(entry));
+    .filter((entry): entry is MergeableMediaEntry => Boolean(entry));
+
+  const images = mergeMediaAliases([
+    toMediaEntries(item.media),
+    toMediaEntries(item.images),
+    toMediaEntries(item.mediaItems),
+    toMediaEntries(item.productMedia),
+  ]);
 
   const imageUrls = images.map((entry) => entry.url).filter((url): url is string => Boolean(url));
   const preferredCoverUrl =
@@ -1193,12 +1386,21 @@ export const MobileStoreApi = {
       .map((entry) => {
         const item = asRecord(entry);
         const product = asRecord(item.product);
+        const brand = asRecord(item.brand);
         const id = asString(item.id);
         const productId = asString(item.productId) ?? asString(product.id);
         if (!id || !productId) return null;
+        const unitPrice = asNumber(product.effectivePrice, Number.NaN);
+        const itemTotal = asNumber(item.itemTotal, Number.NaN);
         return {
           id,
           productId,
+          quantity: Math.max(1, asNumber(item.quantity, 1)),
+          name: asString(product.name),
+          brandName: asString(brand.name),
+          thumbnail: asString(product.thumbnail),
+          unitPrice: Number.isFinite(unitPrice) ? unitPrice : null,
+          itemTotal: Number.isFinite(itemTotal) ? itemTotal : null,
           selectedSize: asString(item.selectedSize),
           selectedColor: asString(item.selectedColor),
           sizeRecommendationSnapshot: item.sizeRecommendationSnapshot as Record<string, unknown> | null,
@@ -1206,10 +1408,13 @@ export const MobileStoreApi = {
       })
       .filter(Boolean) as CartState['items'];
 
+    const subtotal = asNumber(payload?.subtotal, Number.NaN);
     return {
       items: mapped,
       itemCount: asNumber(payload?.itemCount, mapped.length),
       totalQuantity: asNumber(payload?.totalQuantity, mapped.length),
+      subtotal: Number.isFinite(subtotal) ? subtotal : null,
+      currency: asString(payload?.currency) ?? 'NGN',
     };
   },
 
@@ -1309,10 +1514,16 @@ export const MobileStoreApi = {
     });
 
     const data = unwrapData<Record<string, unknown>>(response.data);
+    const summary = data?.buyerPriceSummary as Record<string, unknown> | null | undefined;
     return {
       checkoutIntentId: asString(data?.checkoutIntentId),
       configurationVersionId: asString(data?.configurationVersionId) ?? undefined,
       quoteStatus: asString(data?.quoteStatus) ?? undefined,
+      currency: asString(data?.currency) ?? asString(summary?.currency) ?? 'NGN',
+      priceSummary: toCustomPriceSummary(summary),
+      priceLockExpiresAt: asString(data?.priceLockExpiresAt),
+      noDirectMatch: data?.noDirectMatch === true,
+      conversionGuidance: asString(data?.conversionGuidance),
     };
   },
 
@@ -1357,15 +1568,8 @@ export const MobileStoreApi = {
     const items = Array.isArray(payload?.items) ? payload.items : [];
 
     const mapped = items
-      .map((entry) => {
-        const item = asRecord(entry);
-        const sessionId = asString(item.sessionId);
-        const sourceType = asString(item.sourceType);
-        const sourceId = asString(item.sourceId);
-        if (!sessionId || !sourceType || !sourceId) return null;
-        return { sessionId, sourceType, sourceId };
-      })
-      .filter((entry): entry is { sessionId: string; sourceType: string; sourceId: string } => Boolean(entry));
+      .map((entry) => normalizeCustomBagLine(entry))
+      .filter(Boolean) as CustomBagState['items'];
 
     return {
       items: mapped,
@@ -1373,9 +1577,40 @@ export const MobileStoreApi = {
     };
   },
 
+  async relockCustomBagLine(sessionId: string): Promise<CustomBagState['items'][number] | null> {
+    const response = await apiClient.post(`/custom-orders/checkout-sessions/${sessionId}/relock`);
+    const payload = unwrapData<Record<string, unknown>>(response.data);
+    return normalizeCustomBagLine(payload);
+  },
+
   async removeCustomBagLine(sessionId: string): Promise<void> {
     await apiClient.delete(`/custom-orders/checkout-sessions/${sessionId}`);
   },
 };
+
+function normalizeCustomBagLine(entry: unknown): CustomBagState['items'][number] | null {
+  const item = asRecord(entry);
+  const priceSummary = asRecord(item.buyerPriceSummary);
+  const sessionId = asString(item.sessionId);
+  const sourceType = asString(item.sourceType);
+  const sourceId = asString(item.sourceId);
+  if (!sessionId || !sourceType || !sourceId) return null;
+  const grandTotal = asNumber(priceSummary.grandTotal, Number.NaN);
+  return {
+    sessionId,
+    sourceType,
+    sourceId,
+    sourceTitle: asString(item.sourceTitle),
+    sourceBrandName: asString(item.sourceBrandName),
+    sourcePrimaryMediaUrl: asString(item.sourcePrimaryMediaUrl),
+    rushSelected: item.rushSelected === true,
+    measurementCount: asNumber(item.measurementCount, 0),
+    grandTotal: Number.isFinite(grandTotal) ? grandTotal : null,
+    currency: asString(priceSummary.currency) ?? 'NGN',
+    isPriceLockExpired: item.isPriceLockExpired === true,
+    canRelockPrice: item.canRelockPrice === true,
+    priceLockExpiresAt: asString(item.priceLockExpiresAt),
+  };
+}
 
 export default MobileStoreApi;

@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, Stack } from 'expo-router';
+
+import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -30,7 +32,7 @@ export default function LegalIndexScreen() {
           {LEGAL_PAGES.map((document) => (
             <Pressable
               key={document.key}
-              onPress={() => router.push(`/legal/${document.slug}` as never)}
+              onPress={() => drillDownPush(`/legal/${document.slug}` as never)}
               accessibilityRole="button"
               accessibilityLabel={`View ${document.title}`}
             >

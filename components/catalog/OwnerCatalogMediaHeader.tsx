@@ -24,8 +24,9 @@ type OwnerCatalogMediaHeaderProps = {
   onEditProfile?: () => void;
   onCreate?: () => void;
   createAnchorRef?: React.RefObject<View | null>;
-  onCreateAnchorLayout?: () => void;
   onShare?: () => void;
+  onOpenMenu?: (event?: any) => void;
+  menuAnchorRef?: React.RefObject<View | null>;
   qrTargetUrl?: string | null;
   onOpenQr?: () => void;
   onBack?: () => void;
@@ -34,6 +35,8 @@ type OwnerCatalogMediaHeaderProps = {
   stats?: BrandHeaderStat[];
   contactItems?: BrandHeaderContactItem[];
   badges?: ProfileBadgeModel[];
+  onNotifications?: () => void;
+  unreadNotificationCount?: number;
 };
 
 type PendingMediaState = {
@@ -57,8 +60,9 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   onEditProfile,
   onCreate,
   createAnchorRef,
-  onCreateAnchorLayout,
   onShare,
+  onOpenMenu,
+  menuAnchorRef,
   qrTargetUrl,
   onOpenQr,
   onBack,
@@ -67,6 +71,8 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
   stats = [],
   contactItems = [],
   badges = [],
+  onNotifications,
+  unreadNotificationCount,
 }: OwnerCatalogMediaHeaderProps) {
   const { user, updateUser } = useAuth();
   const queryClient = useQueryClient();
@@ -117,11 +123,20 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
     fileId: pendingBanner?.fileId ?? baseBanner.fileId,
   });
 
-  const brandName = profile?.brandFullName || user?.brandFullName || 'Your Brand';
-  const username = profile?.username || user?.username || undefined;
+  const brandName =
+    profile?.brandFullName?.trim() ||
+    user?.brandFullName?.trim() ||
+    profile?.username?.trim() ||
+    user?.username?.trim() ||
+    'Your Brand';
+  const username = profile?.username?.trim() || user?.username?.trim() || undefined;
   const location =
-    profile?.location ||
-    [profile?.brandCity, profile?.brandState, profile?.brandCountry].filter(Boolean).join(', ') || undefined;
+    profile?.location?.trim() ||
+    [profile?.brandCity, profile?.brandState, profile?.brandCountry]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter(Boolean)
+      .join(', ') ||
+    undefined;
 
   const handleEditAvatar = useCallback(async () => {
     const hasPermission = await requestPhotoPermission(
@@ -180,7 +195,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
         profilePhotoUpdatedAt: nextProfilePhotoUpdatedAt,
-      });
+      }, 'catalog/OwnerCatalogMediaHeader');
       if (profileId) {
         brandApi.invalidateBrandProfileCache(profileId);
         queryClient.setQueryData(queryKeys.brand.profile(profileId), (current: BrandProfileDto | null | undefined) => {
@@ -257,7 +272,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
         bannerImage: uploaded.url,
         bannerImageId: uploaded.id,
         bannerImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
-      });
+      }, 'catalog/OwnerCatalogMediaHeader');
       const profileId = profile?.id ?? user?.id ?? null;
       if (profileId) {
         brandApi.invalidateBrandProfileCache(profileId);
@@ -306,13 +321,16 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       onEditProfile={onEditProfile}
       onCreate={onCreate}
       createAnchorRef={createAnchorRef}
-      onCreateAnchorLayout={onCreateAnchorLayout}
       onShare={onShare}
+      onOpenMenu={onOpenMenu}
+      menuAnchorRef={menuAnchorRef}
       qrTargetUrl={qrTargetUrl}
       onOpenQr={onOpenQr}
       onBack={onBack}
       onSearch={onSearch}
       onViewAvatar={onViewAvatar}
+      onNotifications={onNotifications}
+      unreadNotificationCount={unreadNotificationCount}
     />
   );
 });

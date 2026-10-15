@@ -69,6 +69,26 @@ export function getMissingRequiredMediaSlots(
   return REQUIRED_MEDIA_VIEW_SLOTS.filter((slot) => !present.has(slot));
 }
 
+export function isImageDesignMediaAsset(asset: { mediaKind?: string | null; mimeType?: string | null }) {
+  const mediaKind = String(asset.mediaKind ?? '').toLowerCase();
+  const mimeType = String(asset.mimeType ?? '').toLowerCase();
+  if (mediaKind) return mediaKind === 'image';
+  return mimeType.startsWith('image/');
+}
+
+export function getMissingRequiredImageMediaSlots(
+  assets: Array<{ viewSlot?: string | null; mediaKind?: string | null; mimeType?: string | null }>,
+): BackendMediaViewSlot[] {
+  return REQUIRED_MEDIA_VIEW_SLOTS.filter(
+    (slot) =>
+      !assets.some(
+        (asset) =>
+          normalizeMediaViewSlot(asset.viewSlot) === slot &&
+          isImageDesignMediaAsset(asset),
+      ),
+  );
+}
+
 export type ContentPublicationStatus =
   | 'DRAFT'
   | 'IN_REVIEW'

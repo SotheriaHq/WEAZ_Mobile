@@ -1,10 +1,10 @@
 import React from 'react';
 import { Pressable } from 'react-native';
-import { router } from 'expo-router';
+import { topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 import { Header } from '@/components/ui/Header';
-import { WeazLogo } from '@/components/ui/WeazLogo';
-import { PRODUCT_NAME } from '@/src/config/productIdentity';
+import WiezMark from '@/src/brand/WiezMark';
+import { PRODUCT_NAME } from '@/src/brand/identity';
 
 export function BrandHeader({ right }: { right?: React.ReactNode }) {
   return (
@@ -12,12 +12,12 @@ export function BrandHeader({ right }: { right?: React.ReactNode }) {
       title={PRODUCT_NAME}
       left={
         <Pressable
-          onPress={() => router.push('/')}
+          onPress={() => topLevelNavigate('/')}
           style={({ pressed }) => [pressed && { opacity: 0.75 }]}
           accessibilityRole="button"
           accessibilityLabel="Go to home"
         >
-          <WeazLogo size={32} />
+          <WiezMark size={32} />
         </Pressable>
       }
       right={right}

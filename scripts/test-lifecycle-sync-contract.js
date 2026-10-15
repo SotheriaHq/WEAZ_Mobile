@@ -70,9 +70,31 @@ assertIncludes(useMobileBagging, 'clearCachedBagStatus();', 'bagging cache clear
 assertIncludes(useMobileBagging, 'setStandardCart(null);', 'bagging local cart state clears on user switch');
 
 const sessionCleanup = read('src/auth/sessionCleanup.ts');
-assertIncludes(sessionCleanup, "'store'", 'private store query cleanup');
-assertIncludes(sessionCleanup, "'saved'", 'private saved query cleanup');
-assertIncludes(sessionCleanup, 'threadly.pendingBagAction.v1', 'pending bag action cleanup');
+/*
+  The private-root list moved out of this file and into `queryKeys.ts`, so that
+  one declaration serves both the logout purge and the persisted-cache filter
+  instead of two hand-kept copies. The contract is unchanged — store and saved
+  data must not survive a session — so it is asserted where it now lives, plus
+  the fact that cleanup still routes through it.
+*/
+assertIncludes(sessionCleanup, 'PRIVATE_QUERY_ROOTS', 'session cleanup uses the shared private-root list');
+assertIncludes(sessionCleanup, 'isMobilePrivateSessionQueryKey', 'private queries purged by predicate');
+const queryKeysSource = read('src/query/queryKeys.ts');
+assertIncludes(queryKeysSource, "'store'", 'private store query cleanup');
+assertIncludes(queryKeysSource, "'saved'", 'private saved query cleanup');
+/*
+  The key itself was renamed `threadly.` -> `wiez.` with the rebrand. What
+  matters is not the literal but that ONE key is written and cleared: a
+  divergence here leaves the previous account's pending bag action on the device
+  for the next person to sign in. Asserted against both sides.
+*/
+const PENDING_BAG_ACTION_KEY = 'wiez.pendingBagAction.v1';
+assertIncludes(sessionCleanup, PENDING_BAG_ACTION_KEY, 'pending bag action cleanup');
+assertIncludes(
+  read('src/features/bagging/BagFlowProvider.tsx'),
+  PENDING_BAG_ACTION_KEY,
+  'pending bag action writer uses the key that cleanup clears',
+);
 assertIncludes(sessionCleanup, 'MOBILE_PENDING_CHECKOUT_STORAGE_KEY', 'pending checkout cleanup');
 assertIncludes(sessionCleanup, 'clearMobileMarketSignalQueue()', 'market lifecycle cleanup');
 assertIncludes(sessionCleanup, 'purgeMobilePersistedQueryCache()', 'persisted query cleanup');

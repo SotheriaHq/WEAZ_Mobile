@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import type * as ExpoNotifications from 'expo-notifications';
 
 import {
   NotificationsApi,
@@ -9,8 +10,9 @@ import {
   type RegisterPushTokenPayload,
 } from '@/src/api/NotificationsApi';
 import { getActiveApiBaseUrl } from '@/src/api/httpClient';
+import { ensureAndroidPushChannels } from '@/src/notifications/pushChannels';
 
-type ExpoNotificationsModule = typeof import('expo-notifications');
+type ExpoNotificationsModule = typeof ExpoNotifications;
 
 export type PushRegistrationRecord = {
   userId: string;
@@ -18,18 +20,20 @@ export type PushRegistrationRecord = {
   platform: PushPlatform;
   appVersion?: string | null;
   expoProjectId?: string | null;
+  registeredAt?: number | null;
 };
 
 type PushRegistrationResult =
   | { status: 'registered'; token: string }
   | { status: 'skipped'; reason: string };
 
-const PUSH_REGISTRATION_STORAGE_KEY = 'threadly.pushTokenRegistration.v1';
+const PUSH_REGISTRATION_STORAGE_KEY = 'wiez.pushTokenRegistration.v1';
+const PUSH_REGISTRATION_REVALIDATION_MS = 24 * 60 * 60 * 1000;
 
-let notificationsModulePromise: Promise<ExpoNotificationsModule | null> | null = null;
 let inFlightRegistrationKey: string | null = null;
 let inFlightRegistrationPromise: Promise<PushRegistrationResult> | null = null;
 let lastSuccessfulRegistrationKey: string | null = null;
+let lastSuccessfulRegistrationAt = 0;
 let registrationEpoch = 0;
 
 export function mapPlatformToPushPlatform(os: string | null | undefined): PushPlatform {
@@ -78,15 +82,12 @@ function isExpoGoAndroid() {
 
 async function getNotificationsModule() {
   if (Platform.OS === 'web' || isExpoGoAndroid()) return null;
-
-  notificationsModulePromise ??= import('expo-notifications').catch((error) => {
-    if (__DEV__) {
-      console.warn('Unable to load expo-notifications for push token registration:', error);
-    }
+  try {
+    return await Promise.resolve().then(() => require('expo-notifications') as ExpoNotificationsModule);
+  } catch (error) {
+    console.warn('[Notifications] Native module expo-notifications is unavailable.', error);
     return null;
-  });
-
-  return notificationsModulePromise;
+  }
 }
 
 async function ensureNotificationPermission(NotificationsModule: ExpoNotificationsModule) {
@@ -117,12 +118,7 @@ async function ensureNotificationPermission(NotificationsModule: ExpoNotificatio
 
 async function ensureAndroidNotificationChannel(NotificationsModule: ExpoNotificationsModule) {
   if (Platform.OS !== 'android') return;
-
-  await NotificationsModule.setNotificationChannelAsync('default', {
-    name: 'default',
-    importance: NotificationsModule.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-  });
+  await ensureAndroidPushChannels(NotificationsModule);
 }
 
 export function buildPushRegistrationKey(record: PushRegistrationRecord): string {
@@ -142,6 +138,14 @@ export function shouldRegisterPushToken(
   return !previous || buildPushRegistrationKey(previous) !== buildPushRegistrationKey(next);
 }
 
+export function shouldRevalidatePushRegistration(
+  record: PushRegistrationRecord | null | undefined,
+  now = Date.now(),
+): boolean {
+  const registeredAt = Number(record?.registeredAt);
+  return !Number.isFinite(registeredAt) || now - registeredAt >= PUSH_REGISTRATION_REVALIDATION_MS;
+}
+
 async function readStoredPushRegistration(): Promise<PushRegistrationRecord | null> {
   try {
     const raw = await SecureStore.getItemAsync(PUSH_REGISTRATION_STORAGE_KEY);
@@ -154,6 +158,10 @@ async function readStoredPushRegistration(): Promise<PushRegistrationRecord | nu
       platform: parsed.platform,
       appVersion: parsed.appVersion ?? null,
       expoProjectId: parsed.expoProjectId ?? null,
+      registeredAt:
+        typeof parsed.registeredAt === 'number' && Number.isFinite(parsed.registeredAt)
+          ? parsed.registeredAt
+          : null,
     };
   } catch {
     return null;
@@ -167,6 +175,7 @@ async function writeStoredPushRegistration(record: PushRegistrationRecord) {
 export async function clearStoredPushRegistration() {
   registrationEpoch += 1;
   lastSuccessfulRegistrationKey = null;
+  lastSuccessfulRegistrationAt = 0;
   await SecureStore.deleteItemAsync(PUSH_REGISTRATION_STORAGE_KEY).catch(() => undefined);
 }
 
@@ -224,16 +233,24 @@ export async function registerAuthenticatedPushToken(params: {
     platform,
     appVersion,
     expoProjectId,
+    registeredAt: Date.now(),
   };
   const nextKey = buildPushRegistrationKey(nextRecord);
 
-  if (lastSuccessfulRegistrationKey === nextKey) {
+  if (
+    lastSuccessfulRegistrationKey === nextKey &&
+    Date.now() - lastSuccessfulRegistrationAt < PUSH_REGISTRATION_REVALIDATION_MS
+  ) {
     return { status: 'skipped', reason: 'already-registered' };
   }
 
   const previousRecord = await readStoredPushRegistration();
-  if (!shouldRegisterPushToken(previousRecord, nextRecord)) {
+  if (
+    !shouldRegisterPushToken(previousRecord, nextRecord) &&
+    !shouldRevalidatePushRegistration(previousRecord)
+  ) {
     lastSuccessfulRegistrationKey = nextKey;
+    lastSuccessfulRegistrationAt = Number(previousRecord?.registeredAt) || Date.now();
     return { status: 'skipped', reason: 'already-registered' };
   }
 
@@ -260,6 +277,7 @@ export async function registerAuthenticatedPushToken(params: {
 
       await writeStoredPushRegistration(nextRecord);
       lastSuccessfulRegistrationKey = nextKey;
+      lastSuccessfulRegistrationAt = nextRecord.registeredAt ?? Date.now();
       return { status: 'registered', token } as const;
     })
     .finally(() => {
@@ -286,6 +304,41 @@ export async function deactivateRegisteredPushTokenForLogout(): Promise<void> {
   }
 }
 
+/**
+ * Plain-English, actionable text for every reason registration can bail out.
+ *
+ * `registerAuthenticatedPushToken` has eight `skipped` paths and NONE of them
+ * used to be surfaced anywhere: the hook below only caught thrown errors, and a
+ * skip is a resolved promise. So a device that never registered a token looked
+ * exactly like a device that did — no token on the server, no push, and nothing
+ * on screen or in the logs saying which gate closed. "Push doesn't work" was
+ * unanswerable without reading the source.
+ *
+ * Note there is NO environment gate in this file or in the backend's
+ * `push-notifications.service.ts` — push is not disabled in dev. If it is not
+ * arriving, it is one of these.
+ */
+export const PUSH_SKIP_EXPLANATIONS: Record<string, string> = {
+  'expo-go-android-unsupported':
+    'Expo Go on Android cannot receive push notifications (removed in SDK 53+). Test on a development build or a real release build.',
+  'expo-project-id-missing':
+    'No EAS project ID. Set extra.eas.projectId in app.json or EXPO_PUBLIC_EAS_PROJECT_ID, then restart Metro.',
+  'notifications-unavailable':
+    'expo-notifications is not available in this runtime. A development build is required.',
+  'permission-denied':
+    'Notification permission was denied for this device. Enable it in system settings.',
+  'push-disabled': 'Push is turned off in this account’s notification settings.',
+  'push-settings-unavailable':
+    'Could not read notification settings from the API. Check the backend is reachable.',
+  'expo-token-missing': 'Expo returned no push token for this device.',
+  unauthenticated: 'Not signed in yet.',
+  'api-base-url-missing': 'No API base URL configured for this build.',
+};
+
+export function describePushSkipReason(reason: string): string {
+  return PUSH_SKIP_EXPLANATIONS[reason] ?? `Push registration skipped: ${reason}.`;
+}
+
 export function useAuthenticatedPushTokenRegistration(params: {
   authenticated: boolean;
   userId: string | null | undefined;
@@ -300,10 +353,21 @@ export function useAuthenticatedPushTokenRegistration(params: {
       userId,
       authToken,
       requirePushEnabled: true,
-    }).catch((error) => {
-      if (__DEV__) {
-        console.warn('Push token registration failed:', error);
-      }
-    });
+    })
+      .then((result) => {
+        if (__DEV__ && result.status === 'skipped') {
+          // The single most useful line in the log when push "doesn't work".
+          console.warn(
+            `[Push] Not registered (${result.reason}). ${describePushSkipReason(result.reason)}`,
+          );
+        } else if (__DEV__) {
+          console.log('[Push] Device token registered with the API.');
+        }
+      })
+      .catch((error) => {
+        if (__DEV__) {
+          console.warn('[Push] Token registration failed:', error);
+        }
+      });
   }, [authenticated, userId, authToken]);
 }

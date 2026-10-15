@@ -16,7 +16,10 @@ const loginPath = path.join(repoRoot, 'app', '(auth)', 'login.tsx');
 const signupPath = path.join(repoRoot, 'app', '(auth)', 'signup.tsx');
 const googleMarkPath = path.join(repoRoot, 'components', 'auth', 'GoogleMark.tsx');
 const googleHookPath = path.join(repoRoot, 'src', 'auth', 'useGoogleIdTokenRequest.ts');
+const googleRecoveryPath = path.join(repoRoot, 'src', 'auth', 'googleRedirectRecovery.ts');
+const rootLayoutPath = path.join(repoRoot, 'app', '_layout.tsx');
 const appJsonPath = path.join(repoRoot, 'app.json');
+const appConfigPath = path.join(repoRoot, 'app.config.js');
 const packageJsonPath = path.join(repoRoot, 'package.json');
 
 function compile(filePath) {
@@ -81,16 +84,22 @@ function main() {
   const verifyEmailRouteSource = fs.readFileSync(verifyEmailRoutePath, 'utf8');
   assert.match(verifyEmailRouteSource, /useLocalSearchParams/, 'Verify route must read query params.');
   assert.match(verifyEmailRouteSource, /firstParamValue\(params\.token\)\.trim\(\)/, 'Verify route must trim route tokens.');
-  assert.match(verifyEmailRouteSource, /verifyEmail\(token\)/, 'Verify route must call the verify-email API with the route token.');
+  assert.match(verifyEmailRouteSource, /spendEmailVerificationToken\(token\)/, 'Verify route must spend the route token through the shared single-spend helper.');
+  assert.match(verifyEmailRouteSource, /setRetryNonce/, 'Verify route must offer a retry: a request that never reached the server is not a rejected link.');
+  assert.doesNotMatch(verifyEmailRouteSource, /[^.\w]verifyEmail\(token\)/, 'Verify route must not call the API directly: a second spend of a single-use token reads as "invalid or expired".');
+  assert.match(
+    fs.readFileSync(path.join(repoRoot, 'src', 'auth', 'emailVerificationLink.ts'), 'utf8'),
+    /verifyEmail\(token\)/,
+    'The single-spend helper must call the verify-email API with the token.',
+  );
   assert.match(verifyEmailRouteSource, /renderMissingToken/, 'Verify route must include a missing-token state.');
   assert.match(verifyEmailRouteSource, /renderVerifying/, 'Verify route must include a verifying/loading state.');
   assert.match(verifyEmailRouteSource, /renderSuccess/, 'Verify route must include a success state.');
   assert.match(verifyEmailRouteSource, /renderError/, 'Verify route must include an invalid-or-expired error state.');
-  assert.match(
-    verifyEmailRouteSource,
-    /router\.replace\(\(isAuthenticated \? '\/\(tabs\)\/me' : '\/login'\)/,
-    'Verify route must send authenticated users to profile and guests to login.',
-  );
+  assert.match(verifyEmailRouteSource, /destinationAfterVerification/, 'Verify route must resolve a post-verification destination.');
+  assert.match(verifyEmailRouteSource, /!isAuthenticated[\s\S]{0,160}'\/login'/, 'Verify route must send guests to login.');
+  assert.match(verifyEmailRouteSource, /isBrandAccount\(user\)[\s\S]{0,120}'\/catalog'/, 'Verify route must send newly verified brands to catalog.');
+  assert.match(verifyEmailRouteSource, /:\s*'\/\(tabs\)\/me'/, 'Verify route must send verified shoppers to profile.');
   assert.doesNotMatch(verifyEmailRouteSource, /console\.(log|warn|error).*token/, 'Verify route must not log raw tokens.');
   assert.doesNotMatch(verifyEmailRouteSource, /\bsignIn\b/, 'Verify route must not automatically log the user in.');
 
@@ -110,6 +119,48 @@ function main() {
 
   const notificationRoutingSource = fs.readFileSync(notificationRoutingPath, 'utf8');
   assert.match(notificationRoutingSource, /resolveMobileAuthRoute/, 'Deep-link handling must check auth links explicitly.');
+  assert.doesNotMatch(
+    notificationRoutingSource,
+    /router\.replace\(authRoute/,
+    'Deep-link handling must leave auth links to AuthLinkGate; a second navigation raced the gate.',
+  );
+
+  // Cold-start auth links: Expo Router's Android launch-URL read races a 150 ms
+  // timeout and dropped the verify link, so a gate owns them instead.
+  const nativeIntentSource = fs.readFileSync(path.join(repoRoot, 'app', '+native-intent.tsx'), 'utf8');
+  assert.match(nativeIntentSource, /export async function redirectSystemPath/, 'app/+native-intent.tsx must export redirectSystemPath.');
+  assert.match(nativeIntentSource, /resolveMobileAuthRoute\(path\)/, 'Expo Router must not route auth links itself.');
+  assert.match(
+    nativeIntentSource,
+    /rememberPendingEmailVerification\(authRoute\.params\.token\)/,
+    'Expo Router sees system URLs the gate sometimes never gets: a verify link must be written down here even though it is not routed here.',
+  );
+  const authLinkGateSource = fs.readFileSync(path.join(repoRoot, 'components', 'auth', 'AuthLinkGate.tsx'), 'utf8');
+  assert.match(authLinkGateSource, /Linking\.getInitialURL\(\)/, 'AuthLinkGate must read the launch URL itself, without a timeout.');
+  assert.match(authLinkGateSource, /spendEmailVerificationToken\(token\)/, 'AuthLinkGate must spend a verify token before any screen mounts.');
+  assert.match(
+    authLinkGateSource,
+    /drainPendingEmailVerification\(\)/,
+    'AuthLinkGate must retry a link an earlier run could not spend; a request lost to a cold start had nothing to retry it.',
+  );
+
+  // Verification happens outside this process, and the request carrying it can
+  // die with the process. Everything that notices the account is still
+  // unverified must be able to finish the job, not just re-read the account.
+  const noticeSource = fs.readFileSync(path.join(repoRoot, 'components', 'auth', 'EmailVerificationNotice.tsx'), 'utf8');
+  assert.match(
+    noticeSource,
+    /drainPendingEmailVerification\(\)[\s\S]{0,200}validateToken\(\{ forceRefresh: true \}\)/,
+    'The verification watcher must finish an unspent link BEFORE re-reading the account.',
+  );
+  const profileTabSource = fs.readFileSync(path.join(repoRoot, 'app', '(tabs)', 'me.tsx'), 'utf8');
+  assert.match(
+    profileTabSource,
+    /handleRefresh[\s\S]{0,900}drainPendingEmailVerification\(\)/,
+    'Pull-to-refresh on the profile must retry an unspent link, not only re-read the account.',
+  );
+  assert.match(authLinkGateSource, /useRootNavigationState\(\)/, 'AuthLinkGate must wait for the root navigator before navigating.');
+  assert.match(authLinkGateSource, /updateUser\(\{ isEmailVerified: true \}\)/, 'AuthLinkGate must clear the unverified flag itself.');
 
   const forgotPasswordSource = fs.readFileSync(forgotPasswordPath, 'utf8');
   assert.match(forgotPasswordSource, /browser/i, 'Forgot-password success copy must mention browser fallback.');
@@ -159,7 +210,19 @@ function main() {
   assert.match(loginSource, /confirmEmailLoginCode/, 'Mobile login must support email-code confirmation.');
   assert.match(loginSource, /setupAccountPassword/, 'Mobile login must support first-password setup.');
   assert.match(loginSource, /useGoogleIdTokenRequest/, 'Mobile login must request a Google ID token through AuthSession.');
-  assert.match(loginSource, /signInWithGoogle\(\{\s*idToken\s*\}\)/, 'Mobile login must send only ID token for Google login.');
+  assert.match(
+    loginSource,
+    /signInWithGoogle\(\{\s*idToken,\s*intent:\s*'LOGIN'\s*\}\)/,
+    'Mobile login must send the ID token with an explicit LOGIN intent (and no other credentials).',
+  );
+  // The backend refuses to provision an account from the login screen and
+  // answers GOOGLE_NO_ACCOUNT. Without this branch the user hits a dead end on
+  // the one screen that cannot resolve it.
+  assert.match(
+    loginSource,
+    /GOOGLE_NO_ACCOUNT[\s\S]{0,240}\(auth\)\/signup/,
+    'Mobile login must route an unknown Google account to signup.',
+  );
   assert.doesNotMatch(loginSource, /onChangeText=\{(?:(?!\n\s*\})[\s\S])*getLoginOptions/, 'Mobile login must not call login-options while typing.');
   assert.doesNotMatch(loginSource, /console\.(log|warn|error).*token/, 'Mobile login must not log raw Google/password setup tokens.');
 
@@ -167,12 +230,44 @@ function main() {
   assert.match(signupSource, /signup-google-button/, 'Mobile signup must render a Google signup action.');
   assert.match(signupSource, /signInWithGoogle\(\{\s*idToken,/s, 'Mobile signup must send Google ID token to backend auth.');
   assert.match(signupSource, /brandFullName: trimmedBrandName/, 'Mobile Google brand signup must send brand full name.');
+  // The mirror of login's GOOGLE_NO_ACCOUNT branch.
+  assert.match(
+    signupSource,
+    /EMAIL_ALREADY_EXISTS[\s\S]{0,240}\(auth\)\/login/,
+    'Mobile signup must route an already-registered Google account to login.',
+  );
+
+  // Neither screen may toast a raw `error.message`: that is how "Google did not
+  // return an ID token." reached a user. Copy comes from `getAuthErrorMessage`,
+  // which falls back to a generic line for anything unvetted.
+  for (const [label, source] of [['login', loginSource], ['signup', signupSource]]) {
+    assert.match(
+      source,
+      /getAuthErrorMessage\(error\)/,
+      `Mobile ${label} must render Google failures through getAuthErrorMessage.`,
+    );
+    assert.match(
+      source,
+      /reason === 'cancelled'/,
+      `Mobile ${label} must stay silent when the user backs out of Google sign-in.`,
+    );
+  }
 
   const googleMarkSource = fs.readFileSync(googleMarkPath, 'utf8');
   assert.match(googleMarkSource, /react-native-svg/, 'Mobile Google social mark must use an SVG component.');
   assert.match(googleMarkSource, /fill="#1976D2"/, 'Mobile Google social mark must use brand-color SVG paths.');
-  assert.match(loginSource, /left=\{<GoogleMark \/>/, 'Mobile login Google button must render the Google SVG mark.');
-  assert.match(signupSource, /left=\{<GoogleMark \/>/, 'Mobile signup Google button must render the Google SVG mark.');
+  for (const [label, source] of [['login', loginSource], ['signup', signupSource]]) {
+    assert.match(
+      source,
+      /import \{ GoogleSignInButton \} from '@\/components\/auth\/GoogleSignInButton';/,
+      `Mobile ${label} must use the shared accessible Google button.`,
+    );
+    assert.match(
+      source,
+      /<GoogleSignInButton[\s\S]{0,240}testID="(?:login|signup)-google-button"/,
+      `Mobile ${label} must render its Google action through the shared button.`,
+    );
+  }
   assert.doesNotMatch(
     [loginSource, signupSource, googleMarkSource].join('\n'),
     /\u{1F34E}/u,
@@ -182,6 +277,28 @@ function main() {
   const googleHookSource = fs.readFileSync(googleHookPath, 'utf8');
   assert.match(googleHookSource, /expo-auth-session\/providers\/google/, 'Mobile Google auth must use Expo AuthSession Google provider.');
   assert.match(googleHookSource, /useIdTokenAuthRequest/, 'Mobile Google auth must request ID tokens.');
+  // On native, `useIdTokenAuthRequest` falls back to the PKCE code flow, so
+  // `promptAsync` resolves with an authorization code and NEVER an id_token —
+  // the provider's auto-exchange publishes on a later render and cannot reach
+  // that promise. Reading `id_token` off it broke every Android sign-in before
+  // the API was ever called. The exchange has to be explicit.
+  assert.match(
+    googleHookSource,
+    /exchangeCodeAsync\(/,
+    'Mobile Google auth must exchange the authorization code for an ID token itself.',
+  );
+  assert.match(
+    googleHookSource,
+    /code_verifier:\s*codeVerifier/,
+    'Mobile Google auth must send the PKCE verifier on the code exchange.',
+  );
+  // Toast copy is owned by `authErrors`; a bare `throw new Error(...)` here is
+  // how engineer-facing strings reach users.
+  assert.doesNotMatch(
+    googleHookSource,
+    /throw new Error\(/,
+    'Mobile Google auth must throw typed GoogleSignInError values, not bare Errors.',
+  );
   assert.match(
     googleHookSource,
     /UNCONFIGURED_GOOGLE_CLIENT_ID/,
@@ -202,6 +319,52 @@ function main() {
     /GOOGLE_CLIENT_SECRET|google-client-secret|client_secret/i,
     'Mobile source and env example must not contain a Google client secret.',
   );
+  assert.match(
+    googleHookSource,
+    /beginGoogleAuthRedirectRecovery\(/,
+    'Mobile Google auth must persist state-bound PKCE recovery before opening Android OAuth.',
+  );
+  assert.match(
+    googleHookSource,
+    /state:\s*request\.state/,
+    'Mobile Google auth recovery must retain the AuthSession state for callback validation.',
+  );
+  assert.match(
+    googleHookSource,
+    /createTask:\s*false/,
+    'Android Google auth must keep the Custom Tab in the current app task.',
+  );
+  assert.match(
+    googleHookSource,
+    /Application\.applicationId/,
+    'Native Google auth must build its redirect from the installed application id.',
+  );
+  assert.match(
+    googleHookSource,
+    /redirectUri:\s*nativeGoogleRedirectUri/,
+    'A development build must pass that redirect explicitly, or Google returns to the Expo launcher.',
+  );
+  assert.match(
+    googleHookSource,
+    /clearGoogleAuthRedirectRecovery\(\)/,
+    'Mobile Google auth must remove transient PKCE recovery after its live result settles.',
+  );
+
+  const googleRecoverySource = fs.readFileSync(googleRecoveryPath, 'utf8');
+  assert.match(googleRecoverySource, /GOOGLE_REDIRECT_RECOVERY_MAX_AGE_MS\s*=\s*10 \* 60 \* 1000/, 'Google redirect recovery must expire quickly.');
+  assert.match(googleRecoverySource, /returnedState !== pending\.state/, 'Google redirect recovery must reject mismatched OAuth state.');
+  assert.match(googleRecoverySource, /exchangeCodeAsync\(/, 'Google redirect recovery must exchange the one-time PKCE code.');
+  assert.match(googleRecoverySource, /finally[\s\S]{0,240}clearGoogleAuthRedirectRecovery\(\)/, 'Google redirect recovery must delete one-time PKCE material after every callback outcome.');
+  assert.doesNotMatch(googleRecoverySource, /setItemAsync\([^\n]+idToken/, 'Google redirect recovery must never persist a Google ID token.');
+
+  const rootLayoutSource = fs.readFileSync(rootLayoutPath, 'utf8');
+  assert.match(rootLayoutSource, /function GoogleAuthRedirectRecoveryGate\(/, 'The root layout must install the cold-relaunch Google callback handler.');
+  assert.match(rootLayoutSource, /recoverGoogleAuthRedirect\(/, 'The root layout must consume a recovered Google callback.');
+  assert.match(rootLayoutSource, /Linking\.getInitialURL\(\)/, 'The root layout must handle a Google callback that cold-started the app.');
+  assert.match(rootLayoutSource, /<GoogleAuthRedirectRecoveryGate\s*\/>/, 'The cold-relaunch Google handler must be mounted inside authenticated app providers.');
+  assert.match(rootLayoutSource, /<AuthLinkGate\s*\/>/, 'AuthLinkGate must be mounted outside the boot gate.');
+  assert.match(rootLayoutSource, /<RouteRestorationGate\s*\/>/, 'The root must restore the route after Android kills the app in the background.');
+  assert.match(rootLayoutSource, /claimFreshLaunchUrl\(/, 'The deep-link fallback must ignore a launch URL Android is replaying.');
 
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   assert.ok(
@@ -264,13 +427,67 @@ function main() {
       pathname: '/(auth)/verify-email',
     },
   );
+  assert.deepEqual(
+    toJson(resolveMobileAuthRoute('threadlymobile://verify-email/abc123')),
+    {
+      pathname: '/(auth)/verify-email',
+      params: { token: 'abc123' },
+    },
+    'An Android intent drops ?token=, so the token in the path must still verify.',
+  );
+  assert.deepEqual(
+    toJson(resolveMobileAuthRoute('threadlymobile://verify-email/abc123?token=from-query')),
+    {
+      pathname: '/(auth)/verify-email',
+      params: { token: 'from-query' },
+    },
+  );
+  assert.deepEqual(
+    toJson(resolveMobileAuthRoute('wiezmobile://reset-password/abc123')),
+    {
+      pathname: '/(auth)/reset-password',
+      params: { token: 'abc123' },
+    },
+  );
+  assert.match(
+    profileTabSource,
+    /outcome\?\.status === 'verified'[\s\S]{0,180}updateUser\(\{ isEmailVerified: true \}\)/,
+    'A profile refresh that spends the link must clear the banner even if the profile read is stale.',
+  );
   assert.equal(resolveMobileAuthRoute('threadlymobile://settings?tab=account-security&emailChangeToken=abc123'), null);
   assert.equal(resolveMobileAuthRoute('threadlymobile://change-email/confirm?token=abc123'), null);
   assert.equal(resolveMobileAuthRoute('threadlymobile://admin/reset-password?token=abc123'), null);
   assert.equal(resolveMobileAuthRoute('threadlymobile://brand/staff/invite?token=abc123'), null);
 
   const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
-  assert.equal(appJson.expo.scheme, 'threadlymobile', 'Expo scheme must remain configured.');
+  // `scheme` is an array, and order matters: `Linking.createURL` uses the FIRST
+  // entry, so `wiezmobile` has to stay first or every in-app deep link changes
+  // scheme. The package entry is what lets Google's OAuth redirect
+  // (`com.wiez.wiez:/oauthredirect`) reach the app at all — prebuild only
+  // emits intent filters for declared schemes.
+  const declaredSchemes = Array.isArray(appJson.expo.scheme)
+    ? appJson.expo.scheme
+    : [appJson.expo.scheme];
+  assert.equal(declaredSchemes[0], 'wiezmobile', 'Expo scheme must remain configured and stay first.');
+  assert.ok(
+    declaredSchemes.includes(appJson.expo.android?.package),
+    'Expo schemes must include the Android package so the Google OAuth redirect can reach the app.',
+  );
+  // `com.wiez.wiez` is the only package the Google Android OAuth client is
+  // registered for. `com.sotheriahq.wiez` is the retired pre-rename package; a
+  // build carrying it sends a redirect Google will not accept.
+  assert.equal(appJson.expo.android?.package, 'com.wiez.wiez', 'Android package must be com.wiez.wiez.');
+  const appConfigSource = fs.readFileSync(appConfigPath, 'utf8');
+  assert.match(
+    appConfigSource,
+    /com\.wiez\.wiez/,
+    'The dynamic Expo config must default to the com.wiez.wiez Android package.',
+  );
+  assert.doesNotMatch(
+    `${appConfigSource}\n${JSON.stringify(appJson)}`,
+    /sotheriahq/,
+    'The retired com.sotheriahq.wiez package must not return to the Expo config.',
+  );
   assert.equal(
     appJson.expo.ios?.associatedDomains,
     undefined,

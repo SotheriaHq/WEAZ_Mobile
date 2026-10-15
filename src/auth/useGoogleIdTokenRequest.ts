@@ -1,18 +1,53 @@
-import { useCallback, useMemo } from 'react';
-import { Platform } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
+import { useCallback, useMemo } from "react";
+import { Platform } from "react-native";
+import * as Application from "expo-application";
+import * as WebBrowser from "expo-web-browser";
+import { exchangeCodeAsync } from "expo-auth-session";
+import * as Google from "expo-auth-session/providers/google";
 
-import { env } from '@/src/config/env';
+import {
+  googleSignInAlreadyRunning,
+  googleSignInCancelled,
+  googleSignInNoCode,
+  googleSignInNoToken,
+  googleSignInNotConfigured,
+  googleSignInNotReady,
+  googleSignInUnavailable,
+} from "@/src/auth/authErrors";
+import {
+  beginGoogleAuthRedirectRecovery,
+  clearGoogleAuthRedirectRecovery,
+  endGoogleAuthSessionKeepingRecovery,
+  salvageLiveGoogleAuthRedirect,
+  type GoogleAuthContinuation,
+} from "@/src/auth/googleRedirectRecovery";
+import { env } from "@/src/config/env";
 
 WebBrowser.maybeCompleteAuthSession();
 
 const UNCONFIGURED_GOOGLE_CLIENT_ID =
-  'threadly-google-auth-not-configured.apps.googleusercontent.com';
+  "wiez-google-auth-not-configured.apps.googleusercontent.com";
 
-const usableClientId = (value: string | undefined | null): string | undefined => {
-  const normalized = String(value ?? '').trim();
-  if (!normalized || normalized.startsWith('<')) return undefined;
+/**
+ * The redirect a development build must use.
+ *
+ * `makeRedirectUri` only honours `native: ${applicationId}:/oauthredirect` in a
+ * standalone or bare build. In a development client it ignores that and builds
+ * `wiezmobile://expo-development-client/?url=...` instead. Google then returns
+ * to the Expo launcher, which shows "start the app" and drops the sign-in.
+ * Passing `redirectUri` skips `makeRedirectUri` entirely, so the dev client and
+ * the preview build both return to `com.wiez.wiez:/oauthredirect` — the scheme
+ * the main activity owns, not the launcher.
+ */
+const nativeGoogleRedirectUri = Application.applicationId
+  ? `${Application.applicationId}:/oauthredirect`
+  : undefined;
+
+const usableClientId = (
+  value: string | undefined | null,
+): string | undefined => {
+  const normalized = String(value ?? "").trim();
+  if (!normalized || normalized.startsWith("<")) return undefined;
   return normalized;
 };
 
@@ -29,10 +64,10 @@ const getGoogleClientIds = (): GoogleClientIds => ({
 });
 
 const platformClientId = (clientIds: GoogleClientIds): string | undefined => {
-  if (Platform.OS === 'ios') {
+  if (Platform.OS === "ios") {
     return clientIds.iosClientId;
   }
-  if (Platform.OS === 'android') {
+  if (Platform.OS === "android") {
     return clientIds.androidClientId;
   }
   return clientIds.webClientId;
@@ -42,56 +77,194 @@ type UseGoogleIdTokenRequestOptions = {
   loginHint?: string;
 };
 
-export function useGoogleIdTokenRequest(options: UseGoogleIdTokenRequestOptions = {}) {
-  const config = useMemo(
-    () => {
-      const clientIds = getGoogleClientIds();
-      const fallbackClientId = platformClientId(clientIds) ?? UNCONFIGURED_GOOGLE_CLIENT_ID;
+export function useGoogleIdTokenRequest(
+  options: UseGoogleIdTokenRequestOptions = {},
+) {
+  const config = useMemo(() => {
+    const clientIds = getGoogleClientIds();
+    const fallbackClientId =
+      platformClientId(clientIds) ?? UNCONFIGURED_GOOGLE_CLIENT_ID;
 
-      return {
-        webClientId:
-          Platform.OS === 'web'
-            ? fallbackClientId
-            : clientIds.webClientId,
-        iosClientId:
-          Platform.OS === 'ios'
-            ? fallbackClientId
-            : clientIds.iosClientId,
-        androidClientId:
-          Platform.OS === 'android'
-            ? fallbackClientId
-            : clientIds.androidClientId,
-        selectAccount: true,
-        scopes: ['openid', 'email', 'profile'],
-        ...(options.loginHint?.trim() ? { loginHint: options.loginHint.trim() } : {}),
-      };
-    },
-    [options.loginHint],
-  );
+    return {
+      webClientId:
+        Platform.OS === "web" ? fallbackClientId : clientIds.webClientId,
+      iosClientId:
+        Platform.OS === "ios" ? fallbackClientId : clientIds.iosClientId,
+      androidClientId:
+        Platform.OS === "android"
+          ? fallbackClientId
+          : clientIds.androidClientId,
+      selectAccount: true,
+      scopes: ["openid", "email", "profile"],
+      ...(options.loginHint?.trim()
+        ? { loginHint: options.loginHint.trim() }
+        : {}),
+      ...(Platform.OS !== "web" && nativeGoogleRedirectUri
+        ? { redirectUri: nativeGoogleRedirectUri }
+        : {}),
+    };
+  }, [options.loginHint]);
 
   const [request, , promptAsync] = Google.useIdTokenAuthRequest(config);
   const configured = Boolean(platformClientId(getGoogleClientIds()));
 
-  const requestGoogleIdToken = useCallback(async () => {
-    if (!configured) {
-      throw new Error('Google sign-in is not configured for this build.');
-    }
-    if (!request) {
-      throw new Error('Google sign-in is not ready yet. Try again.');
-    }
+  const requestGoogleIdToken = useCallback(
+    async (continuation?: GoogleAuthContinuation) => {
+      /**
+       * Not configured and not yet loaded look identical from the outside and
+       * are opposites in practice: one is a build that can never sign anyone
+       * in, the other is a race that fixes itself in a second. Telling a person
+       * to "try again in a moment" for the first is a lie they can act on for
+       * a long time.
+       *
+       * `EXPO_PUBLIC_*` is inlined at BUNDLE time, so a missing client ID is
+       * baked into the binary — for a cloud build that means the value has to
+       * exist in the EAS environment for that profile; a local `.env` is
+       * gitignored and never uploaded.
+       */
+      if (!configured) {
+        if (__DEV__) {
+          console.warn(
+            "[google-auth] not configured — set EXPO_PUBLIC_GOOGLE_*_CLIENT_ID and restart Metro (EXPO_PUBLIC_* is inlined at bundle time).",
+          );
+        }
+        throw googleSignInNotConfigured();
+      }
+      if (!request) throw googleSignInNotReady();
 
-    const result = await promptAsync();
-    if (result.type !== 'success') {
-      throw new Error('Google sign-in was cancelled or unavailable.');
-    }
+      const codeVerifier = request.codeVerifier?.trim();
+      if (!codeVerifier) throw googleSignInNotReady();
 
-    const idToken = result.params?.id_token?.trim();
-    if (!idToken) {
-      throw new Error('Google did not return an ID token.');
-    }
+      /**
+       * `createTask: false` is the whole reason sign-in returned to a cold app.
+       *
+       * On Android expo-web-browser defaults to opening the auth tab in a NEW
+       * TASK. The redirect then arrives as a fresh launch of the app rather than
+       * a resume of the one that started the flow: the JS that is awaiting
+       * `promptAsync` is gone, so the promise never settles and nothing is
+       * created. In a development build the relaunch lands on the dev-client
+       * launcher — the "empty shell" — because no project is loaded yet in that
+       * new process; a standalone build fails the same way, just less visibly,
+       * restarting to a signed-out home screen.
+       *
+       * Keeping the tab in the SAME task means the redirect resumes the existing
+       * activity, the listener is still attached, and the promise resolves.
+       */
+      await beginGoogleAuthRedirectRecovery({
+        clientId: request.clientId,
+        redirectUri: request.redirectUri,
+        codeVerifier,
+        state: request.state,
+        continuation,
+      });
 
-    return idToken;
-  }, [configured, promptAsync, request]);
+      /**
+       * Set only on the one exit where the persisted PKCE record is still
+       * useful: a reported dismissal whose redirect never reached this
+       * process. See `endGoogleAuthSessionKeepingRecovery`.
+       */
+      let keepRecoveryRecord = false;
+
+      try {
+        const result = await promptAsync(
+          Platform.OS === "android" ? { createTask: false } : undefined,
+        );
+
+        if (__DEV__) {
+          console.log(
+            `[google-auth] promptAsync → "${result.type}" (redirectUri ${request.redirectUri})`,
+          );
+        }
+
+        if (result.type === "cancel" || result.type === "dismiss") {
+          /**
+           * `dismiss` does not mean the person backed out. On Android
+           * expo-web-browser reports it whenever the Custom Tab closes — which
+           * is exactly what the redirect itself causes — so a COMPLETED
+           * sign-in arrives here looking like a cancellation
+           * (expo/expo issues 23781 and 29153).
+           *
+           * The redirect is delivered to the app as a VIEW intent either way,
+           * and the deep-link listener now keeps it. Ask for it before calling
+           * this a decision: silently treating a successful sign-in as a
+           * cancellation is what returned people to a signed-out app with no
+           * error at all.
+           */
+          const salvaged = await salvageLiveGoogleAuthRedirect();
+          if (__DEV__) {
+            // The difference between "they cancelled" and "we lost a completed
+            // sign-in" is invisible from the outside — both end on the same
+            // screen in silence. Say which one happened.
+            console.log(
+              `[google-auth] browser reported "${result.type}"; redirect ${
+                salvaged ? "salvaged — completing sign-in" : "not captured — treating as a real cancel"
+              }`,
+            );
+          }
+          if (salvaged) return salvaged.idToken;
+
+          /**
+           * Nothing arrived in THIS process — which on Android is exactly what
+           * a real cancellation and a lost redirect both look like. The
+           * pending record is the only thing that can tell them apart later,
+           * so it survives: if the redirect turns up on the next launch, the
+           * recovery gate finishes the sign-in instead of starting over.
+           */
+          keepRecoveryRecord = true;
+          throw googleSignInCancelled();
+        }
+        // `expo-auth-session` keeps a module-level `_authLock` and answers
+        // `locked` rather than opening a second browser session. That is a
+        // different instruction to the user than "try again": the first sheet
+        // is still open somewhere.
+        if (result.type === "locked") {
+          throw googleSignInAlreadyRunning();
+        }
+        if (result.type !== "success") {
+          throw googleSignInUnavailable();
+        }
+
+        // Only web asks Google for an `id_token` directly. Installed apps run the
+        // PKCE code flow, so `promptAsync` resolves with the RAW redirect params —
+        // an authorization `code`, never an `id_token`, no matter how long you wait.
+        //
+        // `useIdTokenAuthRequest` does auto-exchange the code, but it publishes the
+        // result on the hook's second tuple element on a later render; it cannot
+        // reach back into the promise `promptAsync` already resolved. Reading
+        // `id_token` off that promise is why every Android sign-in died here with
+        // "Google did not return an ID token" before the API was ever called.
+        const directIdToken = result.params?.id_token?.trim();
+        if (directIdToken) return directIdToken;
+
+        const code = result.params?.code?.trim();
+        if (!code) throw googleSignInNoCode();
+
+        const tokenResponse = await exchangeCodeAsync(
+          {
+            clientId: request.clientId,
+            redirectUri: request.redirectUri,
+            code,
+            // Proves we are the app that started the flow. Installed apps have no
+            // client secret, so PKCE is the whole of the exchange's security.
+            extraParams: { code_verifier: codeVerifier },
+          },
+          Google.discovery,
+        );
+
+        const idToken = tokenResponse.idToken?.trim();
+        if (!idToken) throw googleSignInNoToken();
+
+        return idToken;
+      } finally {
+        if (keepRecoveryRecord) {
+          endGoogleAuthSessionKeepingRecovery();
+        } else {
+          await clearGoogleAuthRedirectRecovery();
+        }
+      }
+    },
+    [configured, promptAsync, request],
+  );
 
   return {
     configured,

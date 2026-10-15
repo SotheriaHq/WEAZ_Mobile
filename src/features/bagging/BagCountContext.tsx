@@ -3,9 +3,10 @@ import { AppState } from 'react-native';
 
 import { useAuth } from '@/src/auth/AuthContext';
 import type { BagCount } from '@/src/api/StoreApi';
-import { queryClient, THREADLY_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
+import { queryClient, WIEZ_COUNT_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 import { baggingService } from '@/src/services/bagging';
+import { useCommitCost } from '@/src/perf/commitCost';
 
 const EMPTY_BAG_COUNT: BagCount = {
   standardQuantity: 0,
@@ -22,6 +23,7 @@ type BagCountContextValue = {
 const BagCountContext = createContext<BagCountContextValue | null>(null);
 
 export function BagCountProvider({ children }: { children: React.ReactNode }) {
+  useCommitCost('P:BagCount');
   const { status, user } = useAuth();
   const bagCountQueryKey = useMemo(() => queryKeys.store.bagCount(user?.id), [user?.id]);
   const [count, setCount] = useState<BagCount>(
@@ -29,6 +31,12 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
   );
   const [loading, setLoading] = useState(false);
   const inflightRefreshRef = useRef<Promise<BagCount> | null>(null);
+  const lastRefreshAttemptAtRef = useRef(0);
+  const countRef = useRef(count);
+
+  useEffect(() => {
+    countRef.current = count;
+  }, [count]);
 
   const refreshGlobalBagCount = useCallback(async (options?: { forceRefresh?: boolean }) => {
     if (status === 'loading') {
@@ -37,7 +45,7 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
         setCount(cachedCount);
         return cachedCount;
       }
-      return EMPTY_BAG_COUNT;
+      return countRef.current;
     }
 
     if (status !== 'authenticated') {
@@ -48,26 +56,28 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (options?.forceRefresh) {
-      queryClient.removeQueries({ queryKey: bagCountQueryKey, exact: true });
+      await queryClient.invalidateQueries({ queryKey: bagCountQueryKey, exact: true });
     }
 
     if (inflightRefreshRef.current) {
       return inflightRefreshRef.current;
     }
 
+    lastRefreshAttemptAtRef.current = Date.now();
     setLoading(true);
     const request = (async () => {
       try {
         const nextCount = await queryClient.fetchQuery({
           queryKey: bagCountQueryKey,
           queryFn: baggingService.getBagCount,
-          staleTime: THREADLY_COUNT_STALE_TIME_MS,
+          staleTime: WIEZ_COUNT_STALE_TIME_MS,
         });
         setCount(nextCount);
         return nextCount;
       } catch {
-        setCount(EMPTY_BAG_COUNT);
-        return EMPTY_BAG_COUNT;
+        const fallbackCount = queryClient.getQueryData<BagCount>(bagCountQueryKey) ?? countRef.current;
+        setCount(fallbackCount);
+        return fallbackCount;
       }
     })();
 
@@ -92,6 +102,9 @@ export function BagCountProvider({ children }: { children: React.ReactNode }) {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
+        if (Date.now() - lastRefreshAttemptAtRef.current < WIEZ_COUNT_STALE_TIME_MS) {
+          return;
+        }
         void refreshGlobalBagCount();
       }
     });

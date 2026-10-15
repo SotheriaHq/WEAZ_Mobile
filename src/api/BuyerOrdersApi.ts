@@ -1,4 +1,5 @@
 import { apiClient } from './httpClient';
+import { markOrdersChanged } from '@/src/features/orders/orderRevision';
 import { type Order } from './ProfileApi';
 
 type RecordLike = Record<string, unknown>;
@@ -24,6 +25,78 @@ type StandardOrderLike = Order & {
 
 export type BuyerOrderKind = 'STANDARD' | 'CUSTOM';
 
+export type OrderScheduleState =
+  | 'NOT_STARTED'
+  | 'ON_TRACK'
+  | 'DUE_SOON'
+  | 'OVERDUE'
+  | 'DELIVERED'
+  | 'CLOSED';
+
+/**
+ * When an order is due, resolved by the API.
+ *
+ * The brand's production and delivery lead times are snapshotted on every
+ * custom order at the moment it is placed, so "is this late?" is answerable
+ * without opening it — which is the whole point: a shopper should not have to
+ * tap into three orders to discover one of them has slipped.
+ *
+ * `estimated` is true when the dates were derived from those lead times rather
+ * than from a promise recorded on the order, and the clients say so rather than
+ * presenting a derived date as a commitment.
+ */
+export interface BuyerOrderSchedule {
+  expectedProductionAt: string | null;
+  expectedDeliveryAt: string | null;
+  /** Whether the date the countdown measures against was derived. */
+  estimated: boolean;
+  productionEstimated: boolean;
+  deliveryEstimated: boolean;
+  state: OrderScheduleState;
+  daysRemaining: number | null;
+  daysOverdue: number;
+  extensionDaysGranted: number;
+}
+
+const EMPTY_SCHEDULE: BuyerOrderSchedule = {
+  expectedProductionAt: null,
+  expectedDeliveryAt: null,
+  estimated: false,
+  productionEstimated: false,
+  deliveryEstimated: false,
+  state: 'NOT_STARTED',
+  daysRemaining: null,
+  daysOverdue: 0,
+  extensionDaysGranted: 0,
+};
+
+const SCHEDULE_STATES: ReadonlySet<string> = new Set([
+  'NOT_STARTED',
+  'ON_TRACK',
+  'DUE_SOON',
+  'OVERDUE',
+  'DELIVERED',
+  'CLOSED',
+]);
+
+function normalizeSchedule(value: unknown): BuyerOrderSchedule {
+  if (!value || typeof value !== 'object') return EMPTY_SCHEDULE;
+  const source = value as RecordLike;
+  const state = typeof source.state === 'string' ? source.state : '';
+  return {
+    expectedProductionAt: optionalString(source.expectedProductionAt),
+    expectedDeliveryAt: optionalString(source.expectedDeliveryAt),
+    estimated: source.estimated === true,
+    productionEstimated: source.productionEstimated === true,
+    deliveryEstimated: source.deliveryEstimated === true,
+    state: (SCHEDULE_STATES.has(state) ? state : 'NOT_STARTED') as OrderScheduleState,
+    daysRemaining:
+      source.daysRemaining == null ? null : asNumber(source.daysRemaining),
+    daysOverdue: asNumber(source.daysOverdue, 0),
+    extensionDaysGranted: asNumber(source.extensionDaysGranted, 0),
+  };
+}
+
 export interface BuyerOrderSummary {
   id: string;
   kind: BuyerOrderKind;
@@ -40,6 +113,9 @@ export interface BuyerOrderSummary {
   progressLabel: string | null;
   sourceLabel: string;
   canConfirmDelivery: boolean;
+  /** When this order is due. Null-ish for standard orders, which carry no
+   *  production lead time of their own. */
+  schedule: BuyerOrderSchedule;
 }
 
 export interface BuyerOrderItem {
@@ -78,6 +154,44 @@ export interface BuyerStandardOrderDetail {
   raw: Order;
 }
 
+/**
+ * A brand's request for more time, and the shopper's answer to it.
+ *
+ * `appliedExtraDays` is what was actually granted, which differs from
+ * `requestedExtraDays` when a counter was accepted — the budget is audited on the
+ * applied figure, never the asked one.
+ */
+export interface BuyerExtensionRequest {
+  id: string;
+  targetType: string;
+  requestedExtraDays: number;
+  reason: string;
+  buyerResponseStatus: string;
+  buyerCounterDays: number | null;
+  buyerNote: string | null;
+  brandNote: string | null;
+  /** Past this, the request expires unanswered and an admin takes it on. */
+  respondByAt: string | null;
+  appliedExtraDays: number | null;
+  sequence: number | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * The extension budget, as the server resolved it. Policy is two approved
+ * extensions of at most three days each, six days total, and none at all on an
+ * order the shopper paid a rush fee on.
+ */
+export interface BuyerExtensionPolicy {
+  maxDaysPerRequest: number;
+  maxApprovedExtensions: number;
+  maxTotalDays: number;
+  totalExtensionDaysGranted: number;
+  approvedExtensionCount: number;
+  rushBlocked: boolean;
+}
+
 export interface BuyerCustomOrderDetail {
   kind: 'CUSTOM';
   id: string;
@@ -107,6 +221,53 @@ export interface BuyerCustomOrderDetail {
   shippingAddress: RecordLike | null;
   contactInfo: RecordLike | null;
   promisedDeliveryAt: string | null;
+  promisedProductionAt: string | null;
+  /** The promise before any extension moved it. Null means none was granted. */
+  originalPromisedDeliveryAt: string | null;
+  extensionRequests: BuyerExtensionRequest[];
+  extensionPolicy: BuyerExtensionPolicy;
+  /** Open disputes on the order, so the screen can offer the way out of one. */
+  disputes: Array<{
+    id: string;
+    status: string;
+    reasonType: string;
+    openedAt: string | null;
+    /**
+     * A settlement WIEZ has put to a party and is waiting on.
+     *
+     * Present only while the dispute is AWAITING_PARTY_CONSENT. More time is
+     * the shopper's to give — it is the exact thing they already refused — so
+     * it is proposed rather than applied, and nothing moves until they answer.
+     */
+    proposal: {
+      resolution: string;
+      note: string | null;
+      extraDays: number | null;
+      consentBy: 'BUYER' | 'BRAND' | 'BOTH' | null;
+      respondByAt: string | null;
+      buyerConsentAt: string | null;
+      buyerDeclinedAt: string | null;
+    } | null;
+  }>;
+  /**
+   * Whether this order can be escalated for lateness. Decided by the API — the
+   * grace period and the precedence between the two promises are policy, and a
+   * client that recomputes them eventually disagrees with the endpoint and
+   * offers a button that fails.
+   */
+  delayDispute: {
+    eligible: boolean;
+    basis: 'PRODUCTION' | 'DELIVERY' | null;
+    availableAt: string | null;
+    reason: string;
+  };
+  /** Same resolver as the list row, so a row and this screen cannot disagree. */
+  schedule: BuyerOrderSchedule;
+  buyerAdminNoticeAt: string | null;
+  hasUnreadBuyerAdminNotice: boolean;
+  adminInterventionAt: string | null;
+  adminInterventionReason: string | null;
+  adminInterventionResolvedAt: string | null;
   progressEvents: Array<{
     id: string;
     stage: string;
@@ -118,6 +279,7 @@ export interface BuyerCustomOrderDetail {
     actorType: string;
     eventType: string;
     createdAt: string;
+    payload: RecordLike;
   }>;
   raw: RecordLike;
 }
@@ -188,7 +350,7 @@ function normalizeStandardSummary(order: StandardOrderLike): BuyerOrderSummary {
     id: order.id,
     kind: 'STANDARD',
     title: firstItem?.productName || order.orderCode || order.code || 'Order',
-    brandName: order.brand?.name?.trim() || 'WEAZ store',
+    brandName: order.brand?.name?.trim() || 'WIEZ store',
     status: order.status || 'UNKNOWN',
     paymentStatus: order.paymentStatus || 'PENDING',
     amount: asNumber(order.totalAmount ?? order.total ?? breakdown.grossAmount ?? 0),
@@ -206,6 +368,11 @@ function normalizeStandardSummary(order: StandardOrderLike): BuyerOrderSummary {
           : 'Placed',
     sourceLabel: 'Standard order',
     canConfirmDelivery: isDeliveryConfirmationPending(order.status),
+    // A standard order ships from stock against the store's dispatch SLA, not
+    // against a per-order production commitment, so there is no countdown to
+    // derive. The row falls back to its status, which is what it has always
+    // shown.
+    schedule: EMPTY_SCHEDULE,
   };
 }
 
@@ -244,7 +411,7 @@ function normalizeStandardDetail(raw: unknown): BuyerStandardOrderDetail {
     kind: 'STANDARD',
     id: asString(order.id),
     title: asString(order.orderCode || order.code || items[0]?.productName || 'Order', 'Order'),
-    brandName: asString(brand.name, 'WEAZ store'),
+    brandName: asString(brand.name, 'WIEZ store'),
     status: asString(order.status, 'UNKNOWN'),
     paymentStatus: asString(order.paymentStatus ?? breakdown.paymentStatus, 'PENDING'),
     amount: asNumber(order.totalAmount ?? order.total ?? breakdown.grossAmount ?? 0),
@@ -266,30 +433,58 @@ function normalizeStandardDetail(raw: unknown): BuyerStandardOrderDetail {
   };
 }
 
+/**
+ * The custom-order LIST and DETAIL payloads describe their source differently.
+ *
+ * `mapDetail` nests it under `source: { type, id, title, primaryMediaUrl }`.
+ * `mapListItem` — the one `GET /custom-orders` returns — flattens the same
+ * facts to `sourceType` / `sourceId` / `sourceTitle` / `sourcePrimaryMediaUrl`.
+ *
+ * This normaliser read only the nested shape, so for every row in the list
+ * `source` was `{}` and each of its three reads fell through to a default:
+ * every custom order was titled "Custom order", carried no cover photo (hence
+ * the placeholder emoji in the orders list), and was labelled a design order
+ * whether or not it was one. Read both shapes.
+ */
+function readCustomSource(item: RecordLike) {
+  const nested = asRecord(item.source);
+  return {
+    type: optionalString(nested.type) ?? optionalString(item.sourceType),
+    id: optionalString(nested.id) ?? optionalString(item.sourceId),
+    title: optionalString(nested.title) ?? optionalString(item.sourceTitle),
+    primaryMediaUrl:
+      optionalString(nested.primaryMediaUrl) ?? optionalString(item.sourcePrimaryMediaUrl),
+    brandName: optionalString(nested.brandName) ?? optionalString(item.sourceBrandName),
+  };
+}
+
 function normalizeCustomSummary(item: RecordLike): BuyerOrderSummary | null {
   const id = optionalString(item.id);
   if (!id) return null;
 
-  const source = asRecord(item.source);
+  const source = readCustomSource(item);
   const brand = asRecord(item.brand);
   const summary = asRecord(item.buyerPriceSummary);
 
   return {
     id,
     kind: 'CUSTOM',
-    title: asString(source.title, 'Custom order'),
-    brandName: asString(brand.name, 'WEAZ store'),
+    title: source.title ?? 'Custom order',
+    brandName: optionalString(brand.name) ?? source.brandName ?? 'WIEZ store',
     status: asString(item.status, 'UNKNOWN'),
     paymentStatus: asString(item.paymentStatus, 'PENDING'),
     amount: asNumber(summary.grandTotal ?? 0),
     currency: asString(summary.currency, 'NGN'),
     createdAt: asString(item.createdAt),
     updatedAt: optionalString(item.updatedAt),
+    // A custom order has no line items — this is how many measurements were
+    // taken, which is why the row labels it as measurements and not as items.
     itemCount: asNumber(item.measurementCount, 0),
-    thumbnail: optionalString(source.primaryMediaUrl),
+    thumbnail: source.primaryMediaUrl,
     progressLabel: optionalString(item.currentProgressStage),
     sourceLabel: source.type === 'PRODUCT' ? 'Custom product order' : 'Custom design order',
     canConfirmDelivery: isDeliveryConfirmationPending(asString(item.status, '')),
+    schedule: normalizeSchedule(item.schedule),
   };
 }
 
@@ -319,15 +514,46 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
           actorType: asString(sourceEntry.actorType),
           eventType: asString(sourceEntry.eventType),
           createdAt: asString(sourceEntry.createdAt),
+          // Admin notices carry their text in the payload, and the shopper's
+          // notice panel is the only place that text is ever shown.
+          payload: asRecord(sourceEntry.payloadJson),
         };
       })
     : [];
+
+  // Extension requests were not mapped at all, which is why a shopper who
+  // tapped "your maker needs more time" arrived at a screen with nothing on it.
+  const extensionRequests = Array.isArray(item.extensionRequests)
+    ? item.extensionRequests.map((entry) => {
+        const request = asRecord(entry);
+        return {
+          id: asString(request.id),
+          targetType: asString(request.targetType, 'PRODUCTION'),
+          requestedExtraDays: asNumber(request.requestedExtraDays ?? 0),
+          reason: asString(request.reason),
+          buyerResponseStatus: asString(request.buyerResponseStatus, 'OPEN'),
+          buyerCounterDays:
+            request.buyerCounterDays != null ? asNumber(request.buyerCounterDays) : null,
+          buyerNote: optionalString(request.buyerNote),
+          brandNote: optionalString(request.brandNote),
+          respondByAt: optionalString(request.respondByAt),
+          appliedExtraDays:
+            request.appliedExtraDays != null ? asNumber(request.appliedExtraDays) : null,
+          sequence: request.sequence != null ? asNumber(request.sequence) : null,
+          resolvedAt: optionalString(request.resolvedAt),
+          createdAt: asString(request.createdAt),
+        };
+      })
+    : [];
+
+  const policy = asRecord(item.extensionPolicy);
+  const delayDispute = asRecord(item.delayDispute);
 
   return {
     kind: 'CUSTOM',
     id: asString(item.id),
     title: asString(source.title, 'Custom order'),
-    brandName: asString(brand.name || source.brandName, 'WEAZ store'),
+    brandName: asString(brand.name || source.brandName, 'WIEZ store'),
     status: asString(item.status, 'UNKNOWN'),
     paymentStatus: asString(item.paymentStatus, 'PENDING'),
     amount: asNumber(summary.grandTotal ?? 0),
@@ -352,21 +578,161 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
     shippingAddress: item.shippingAddress && typeof item.shippingAddress === 'object' ? asRecord(item.shippingAddress) : null,
     contactInfo: item.contactInfo && typeof item.contactInfo === 'object' ? asRecord(item.contactInfo) : null,
     promisedDeliveryAt: optionalString(item.promisedDeliveryAt),
+    promisedProductionAt: optionalString(item.promisedProductionAt),
+    // The promise as it stood before any extension moved it. Null means none was
+    // ever granted, in which case the current promise IS the original.
+    originalPromisedDeliveryAt: optionalString(item.originalPromisedDeliveryAt),
+    extensionRequests,
+    extensionPolicy: {
+      maxDaysPerRequest: asNumber(policy.maxDaysPerRequest ?? 3),
+      maxApprovedExtensions: asNumber(policy.maxApprovedExtensions ?? 2),
+      maxTotalDays: asNumber(policy.maxTotalDays ?? 6),
+      totalExtensionDaysGranted: asNumber(policy.totalExtensionDaysGranted ?? 0),
+      approvedExtensionCount: asNumber(policy.approvedExtensionCount ?? 0),
+      rushBlocked: policy.rushBlocked === true,
+    },
+    disputes: Array.isArray(item.disputes)
+      ? item.disputes.map((entry) => {
+          const dispute = asRecord(entry);
+          const proposal = asRecord(dispute.proposal);
+          return {
+            id: asString(dispute.id),
+            status: asString(dispute.status, 'OPEN'),
+            reasonType: asString(dispute.reasonType),
+            openedAt: optionalString(dispute.openedAt),
+            // `null` rather than an empty object when there is no proposal, so
+            // the screen can test for one without inspecting its fields.
+            proposal: dispute.proposal
+              ? {
+                  resolution: asString(proposal.resolution),
+                  note: optionalString(proposal.note),
+                  extraDays:
+                    proposal.extraDays != null ? asNumber(proposal.extraDays) : null,
+                  consentBy:
+                    proposal.consentBy === 'BUYER' ||
+                    proposal.consentBy === 'BRAND' ||
+                    proposal.consentBy === 'BOTH'
+                      ? proposal.consentBy
+                      : null,
+                  respondByAt: optionalString(proposal.respondByAt),
+                  buyerConsentAt: optionalString(proposal.buyerConsentAt),
+                  buyerDeclinedAt: optionalString(proposal.buyerDeclinedAt),
+                }
+              : null,
+          };
+        })
+      : [],
+    delayDispute: {
+      eligible: delayDispute.eligible === true,
+      basis:
+        delayDispute.basis === 'DELIVERY' || delayDispute.basis === 'PRODUCTION'
+          ? delayDispute.basis
+          : null,
+      availableAt: optionalString(delayDispute.availableAt),
+      reason: asString(delayDispute.reason, 'NOT_LATE_YET'),
+    },
+    schedule: normalizeSchedule(item.schedule),
+    buyerAdminNoticeAt: optionalString(item.buyerAdminNoticeAt),
+    hasUnreadBuyerAdminNotice: item.hasUnreadBuyerAdminNotice === true,
+    adminInterventionAt: optionalString(item.adminInterventionAt),
+    adminInterventionReason: optionalString(item.adminInterventionReason),
+    adminInterventionResolvedAt: optionalString(item.adminInterventionResolvedAt),
     progressEvents,
     timelineEvents,
     raw: item,
   };
 }
 
-async function listCustomOrders(page = 1, limit = 50): Promise<BuyerOrderSummary[]> {
-  const response = await apiClient.get('/custom-orders', {
-    params: { page, limit },
-  });
-  const items = unwrapCollection<unknown>(response.data);
+/**
+ * The server returns a full detail after a buyer action. Project it into the
+ * exact shape used by list rows so a visible deadline can update immediately
+ * instead of waiting for the next navigation or list refetch.
+ */
+export function toBuyerOrderSummary(detail: BuyerOrderDetail): BuyerOrderSummary {
+  if (detail.kind === 'STANDARD') {
+    return {
+      id: detail.id,
+      kind: 'STANDARD',
+      title: detail.title,
+      brandName: detail.brandName,
+      status: detail.status,
+      paymentStatus: detail.paymentStatus,
+      amount: detail.amount,
+      currency: detail.currency,
+      createdAt: detail.createdAt,
+      updatedAt: detail.updatedAt,
+      itemCount: detail.itemCount,
+      thumbnail: detail.items[0]?.thumbnail ?? null,
+      progressLabel: detail.deliveredAt
+        ? 'Delivered'
+        : detail.buyerConfirmedDeliveryAt
+          ? 'Completed'
+          : detail.paidAt
+            ? 'Processing'
+            : 'Placed',
+      sourceLabel: 'Standard order',
+      canConfirmDelivery: isDeliveryConfirmationPending(detail.status),
+      schedule: EMPTY_SCHEDULE,
+    };
+  }
 
-  return items
-    .map((entry) => normalizeCustomSummary(asRecord(entry)))
-    .filter((entry): entry is BuyerOrderSummary => Boolean(entry));
+  return {
+    id: detail.id,
+    kind: 'CUSTOM',
+    title: detail.title,
+    brandName: detail.brandName,
+    status: detail.status,
+    paymentStatus: detail.paymentStatus,
+    amount: detail.amount,
+    currency: detail.currency,
+    createdAt: detail.createdAt,
+    updatedAt: detail.updatedAt,
+    itemCount: detail.measurementCount,
+    thumbnail: detail.sourcePrimaryMediaUrl,
+    progressLabel: detail.currentProgressStage,
+    sourceLabel: detail.sourceType === 'PRODUCT' ? 'Custom product order' : 'Custom design order',
+    canConfirmDelivery: isDeliveryConfirmationPending(detail.status),
+    schedule: detail.schedule,
+  };
+}
+
+/**
+ * `/custom-orders` is buyer-only — the API answers 400 "Endpoint requires user
+ * type REGULAR" for BRAND accounts. Two problems followed from calling it
+ * blindly: the `Promise.all` below rejected, so a brand viewing Orders lost the
+ * standard orders that HAD loaded; and the request was re-issued on every
+ * refresh, once per screen focus, purely to fail again. Remember the refusal
+ * and stop asking for the rest of the session.
+ */
+let customOrdersUnavailable = false;
+
+async function listCustomOrders(page = 1, limit = 50): Promise<BuyerOrderSummary[]> {
+  if (customOrdersUnavailable) return [];
+
+  try {
+    const response = await apiClient.get('/custom-orders', {
+      params: { page, limit },
+    });
+    const items = unwrapCollection<unknown>(response.data);
+
+    return items
+      .map((entry) => normalizeCustomSummary(asRecord(entry)))
+      .filter((entry): entry is BuyerOrderSummary => Boolean(entry));
+  } catch (error) {
+    const status = (error as { response?: { status?: number } })?.response?.status;
+    // 400/403 here means "this account type has no custom orders", not a
+    // transient failure — anything else stays a real error worth surfacing.
+    if (status === 400 || status === 403) {
+      customOrdersUnavailable = true;
+      return [];
+    }
+    throw error;
+  }
+}
+
+/** Clear the cached "not a buyer" verdict — call on sign-out / account switch. */
+export function resetCustomOrdersAvailability() {
+  customOrdersUnavailable = false;
 }
 
 async function listStandardOrders(page = 1, limit = 50): Promise<BuyerOrderSummary[]> {
@@ -379,10 +745,11 @@ async function listStandardOrders(page = 1, limit = 50): Promise<BuyerOrderSumma
 }
 
 export const BuyerOrdersApi = {
-  async list(): Promise<BuyerOrderSummary[]> {
+  async list(options?: { limit?: number }): Promise<BuyerOrderSummary[]> {
+    const limit = Math.max(1, Math.min(options?.limit ?? 50, 50));
     const [standardOrders, customOrders] = await Promise.all([
-      listStandardOrders(1, 50),
-      listCustomOrders(1, 50),
+      listStandardOrders(1, limit),
+      listCustomOrders(1, limit),
     ]);
 
     const merged: BuyerOrderSummary[] = [
@@ -391,30 +758,143 @@ export const BuyerOrdersApi = {
     ];
 
     merged.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
-    return merged;
+    return merged.slice(0, limit);
   },
 
-  async getById(orderId: string): Promise<BuyerOrderDetail> {
-    try {
+  async getById(
+    orderId: string,
+    options?: { prefer?: 'STANDARD' | 'CUSTOM' },
+  ): Promise<BuyerOrderDetail> {
+    // Prefer the known kind to avoid a guaranteed 404 RTT on custom-order taps.
+    const prefer = options?.prefer ?? 'STANDARD';
+    const tryCustom = async () => {
+      const response = await apiClient.get(`/custom-orders/${orderId}`);
+      return normalizeCustomDetail(response.data);
+    };
+    const tryStandard = async () => {
       const response = await apiClient.get(`/store/orders/${orderId}`);
       return normalizeStandardDetail(response.data);
+    };
+
+    if (prefer === 'CUSTOM') {
+      try {
+        return await tryCustom();
+      } catch (error) {
+        if (getHttpStatus(error) !== 404) {
+          throw error;
+        }
+        return tryStandard();
+      }
+    }
+
+    try {
+      return await tryStandard();
     } catch (error) {
       if (getHttpStatus(error) !== 404) {
         throw error;
       }
+      return tryCustom();
     }
+  },
 
-    const response = await apiClient.get(`/custom-orders/${orderId}`);
-    return normalizeCustomDetail(response.data);
+  /**
+   * Accept or decline a request for more time.
+   *
+   * The note is optional on both answers: requiring a reason to say no is a way
+   * of discouraging no, and the shopper already has the harder job here. Counters
+   * are deliberately not offered on mobile — two answers is the whole decision,
+   * and a third option on a phone turns it into a form.
+   */
+  async respondToExtension(
+    orderId: string,
+    requestId: string,
+    payload: { response: 'ACCEPTED' | 'REJECTED'; note?: string },
+  ): Promise<BuyerCustomOrderDetail> {
+    const response = await apiClient.post(
+      `/custom-orders/${orderId}/extension-requests/${requestId}/respond`,
+      payload,
+    );
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
+  },
+
+  /**
+   * Report that a bespoke order is late.
+   *
+   * No photographs: there is nothing to photograph, which is exactly why this
+   * was impossible before — the evidence validator demanded one and a shopper
+   * with an overdue order could not supply it.
+   */
+  async reportDelay(
+    orderId: string,
+    payload: { basis: 'PRODUCTION' | 'DELIVERY' | null; description: string },
+  ): Promise<BuyerCustomOrderDetail> {
+    const response = await apiClient.post(`/custom-orders/${orderId}/report-issue`, {
+      issueType: payload.basis === 'DELIVERY' ? 'NON_DELIVERY' : 'UNREASONABLE_DELAY',
+      description: payload.description,
+      evidenceJson: {},
+    });
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
+  },
+
+  /** "It arrived — I'll take it late." The shopper ends their own report. */
+  /**
+   * Answer a settlement WIEZ has proposed.
+   *
+   * Declining does not close the dispute — it returns it to the admin handling
+   * it with the disagreement still live, which is what the screen tells the
+   * shopper before they press anything.
+   */
+  async respondToDisputeProposal(
+    orderId: string,
+    disputeId: string,
+    accept: boolean,
+  ): Promise<BuyerCustomOrderDetail> {
+    const response = await apiClient.post(
+      `/custom-orders/${orderId}/disputes/${disputeId}/proposal/respond`,
+      { accept },
+    );
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
+  },
+
+  async closeDelayDispute(
+    orderId: string,
+    disputeId: string,
+    note?: string,
+  ): Promise<BuyerCustomOrderDetail> {
+    const response = await apiClient.post(
+      `/custom-orders/${orderId}/disputes/${disputeId}/close`,
+      { note },
+    );
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
+  },
+
+  /** Mark WIEZ's notices on this order as read. Read-only channel: no replies. */
+  async ackAdminNotices(orderId: string): Promise<BuyerCustomOrderDetail> {
+    const response = await apiClient.post(`/custom-orders/${orderId}/admin-notices/ack`);
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
   },
 
   async confirmDelivery(order: BuyerOrderDetail, note?: string): Promise<BuyerOrderDetail> {
     if (order.kind === 'STANDARD') {
       const response = await apiClient.post(`/store/orders/${order.id}/confirm-delivery`, { note });
-      return normalizeStandardDetail(response.data);
+      const detail = normalizeStandardDetail(response.data);
+      markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+      return detail;
     }
 
     const response = await apiClient.post(`/custom-orders/${order.id}/confirm-delivery`, { note });
-    return normalizeCustomDetail(response.data);
+    const detail = normalizeCustomDetail(response.data);
+    markOrdersChanged({ summary: toBuyerOrderSummary(detail) });
+    return detail;
   },
 };

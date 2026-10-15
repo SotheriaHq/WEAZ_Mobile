@@ -1,14 +1,19 @@
 import React, { memo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { BAG_IT_LABEL, CUSTOM_ORDER_EMOJI } from '@/src/constants/bagging';
+import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { AppText } from '@/components/ui/AppText';
+import { MediaScrim } from '@/components/ui/MediaScrim';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
+import { CLIP_EMOJI, clipAccessibilityLabel } from '@/src/constants/clipping';
 import { useTheme } from '@/src/theme/ThemeProvider';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type UnifiedProductCardProps = {
   width: number;
@@ -16,6 +21,14 @@ type UnifiedProductCardProps = {
   title: string;
   brandName?: string | null;
   priceLabel?: string | null;
+  /**
+   * Custom-order item — shown as a scissors mark, not the words "Custom quote".
+   *
+   * Passed explicitly rather than sniffed out of `priceLabel`, because the
+   * label is display copy and can change; whether an item takes custom orders
+   * is a fact about the item.
+   */
+  customOrder?: boolean;
   mediaSrc?: string | null;
   mediaFileId?: string | null;
   typeLabel?: string | null;
@@ -35,19 +48,37 @@ type UnifiedProductCardProps = {
   allowSignedFallback?: boolean;
   style?: StyleProp<ViewStyle>;
   onPress: () => void;
+  /** Phase 5: fired on press-in to warm the destination before navigation. */
+  onPressIn?: () => void;
   onFavoritePress?: () => void;
   onActionPress?: () => void;
 };
 
 const IMAGE_FALLBACK_ICON = String.fromCodePoint(0x1f5bc, 0xfe0f);
-const FAVORITE_ICON = String.fromCodePoint(0x2764, 0xfe0f);
-const FAVORITE_EMPTY_ICON = String.fromCodePoint(0x1f90d);
+/*
+  A clip, not a heart — and ONE clip, not two glyphs.
+
+  ❤️/🤍 says "like", and two hearts that differ only in COLOUR is the
+  weakest possible way to show a state change: over a photograph the tint is
+  swallowed, and anyone who cannot separate red from white sees no change at
+  all.
+
+  The first answer was a second SHAPE (a bookmark for "kept"), which does read
+  in greyscale but reads as a different control: the silhouette the eye tracks
+  moved on every press. So the shape is now fixed and the DISC behind it
+  carries the state — filled in the brand colour when clipped, glass when not.
+  A filled disc survives a photograph and greyscale for the same reason a
+  different shape did, without changing what the button looks like it does.
+  See `src/constants/clipping.ts`.
+*/
+const FAVORITE_ICON = CLIP_EMOJI;
 
 export const UnifiedProductCard = memo(function UnifiedProductCard({
   width,
   height,
   title,
   priceLabel,
+  customOrder = false,
   mediaSrc,
   mediaFileId,
   unavailable = false,
@@ -65,6 +96,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   allowSignedFallback = true,
   style,
   onPress,
+  onPressIn,
   onFavoritePress,
   onActionPress,
 }: UnifiedProductCardProps) {
@@ -78,10 +110,12 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
   const cardHeight = height ?? Math.round(width * 1.58);
   const canPressAction = Boolean(onActionPress) && !actionBusy && !actionDisabled && !unavailable;
   const displayPrice = priceLabel?.trim() || 'Price on request';
+  const isBagAction = actionLabel === BAG_IT_LABEL;
 
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={onPressIn}
       style={({ pressed }) => [
         styles.card,
         {
@@ -118,11 +152,22 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
         </LinearGradient>
       )}
 
-      <LinearGradient
-        pointerEvents="none"
-        colors={[theme.colors.backdrop, theme.colors.backdropStrong]}
-        style={styles.mediaShade}
-      />
+      {/*
+        The TOP band only, and lightly.
+
+        This was one gradient across the whole card — `backdrop` to
+        `backdropStrong`, i.e. 58% to 80% black over the entire photograph on the
+        dark theme (22% to 40% on light). Every product in the grid was being
+        shown through a grey wash, which is exactly the "cards look dull, nothing
+        pops" report, and it was doing that to protect two things that both sit
+        in the top ~20pt: the New Drop badge and the favourite button.
+
+        Both already carry their own treatment — the badge has a text shadow, the
+        button has a plate — so this is `light` and reaches a quarter of the way
+        down. Below that the artwork is untouched all the way to the copy panel,
+        which brings its own ramp.
+      */}
+      <MediaScrim edges={['top']} reach={0.26} strength="light" />
 
       {newDropItemId ? (
         <NewDropBadge
@@ -130,17 +175,17 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
           createdAt={newDropCreatedAt}
           sourceScreen={analyticsSourceScreen}
           feedPosition={feedPosition}
-          compact
           style={styles.newDropBadge}
         />
       ) : null}
 
-      <View style={[styles.priceChip, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
-        <AppText variant="captionBold" tone="inverse" numberOfLines={1} style={styles.priceChipText}>
-          {displayPrice}
-        </AppText>
-      </View>
-
+      {/*
+        The price used to be a floating chip pinned over the artwork here, and
+        the custom-order state was folded into it as the words "Custom quote" —
+        which, in a chip that narrow, rendered as "Custo...". Both are card COPY
+        and belong in the copy panel with the title, where there is room for
+        them and only one text surface on the card. See `metaRow` below.
+      */}
       {topRightSlot ? (
         <View style={styles.topRightSlot}>{topRightSlot}</View>
       ) : onFavoritePress ? (
@@ -153,17 +198,19 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
           hitSlop={tokens.spacing.sm}
           style={({ pressed }) => [
             styles.favoriteButton,
-            { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder },
+            favorite
+              ? { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
+              : { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder },
             pressed && styles.inlinePressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={favoriteAccessibilityLabel ?? (favorite ? 'Remove from favorites' : 'Add to favorites')}
+          accessibilityLabel={favoriteAccessibilityLabel ?? clipAccessibilityLabel(favorite)}
         >
           {favoriteBusy ? (
-            <ActivityIndicator size="small" color={theme.colors.textInverse} />
+            <MuseLoader size={20} />
           ) : (
             <AppText variant="captionBold" tone="inverse">
-              {favorite ? FAVORITE_ICON : FAVORITE_EMPTY_ICON}
+              {FAVORITE_ICON}
             </AppText>
           )}
         </Pressable>
@@ -174,7 +221,22 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
         intensity={theme.colors.glassBlur as number}
         style={[styles.copyOverlay, { maxHeight: Math.round(cardHeight * 0.2) }]}
       >
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdropStrong }]} />
+        {/*
+          A gradient, so the panel has no top edge to see.
+
+          This was a flat `backdropStrong` fill inside an inset, rounded box —
+          a visible dark rectangle pasted onto the photograph, with its own
+          corners and its own hard boundary. Ramping from transparent into the
+          same strong scrim means the panel emerges out of the image instead of
+          sitting on it, and the text still lands on the opaque end where it is
+          legible over anything.
+        */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={[tokens.scrim(0), tokens.scrim(0.45), theme.colors.backdropStrong]}
+          locations={[0, 0.4, 1]}
+          style={StyleSheet.absoluteFill}
+        />
         <View style={styles.copyStack}>
           <View style={styles.titleBlock}>
             <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
@@ -183,7 +245,26 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
           </View>
 
           <View style={styles.actionRow}>
-            <View style={styles.actionSpacer} />
+            <View style={styles.metaBlock}>
+              {customOrder ? (
+                <AppText
+                  variant="captionBold"
+                  tone="inverse"
+                  style={styles.customMark}
+                  accessibilityLabel="Custom order available"
+                >
+                  {CUSTOM_ORDER_EMOJI}
+                </AppText>
+              ) : null}
+              <AppText
+                variant="captionBold"
+                tone="inverse"
+                numberOfLines={1}
+                style={styles.priceText}
+              >
+                {displayPrice}
+              </AppText>
+            </View>
             {actionLabel ? (
               <Pressable
                 onPress={(event) => {
@@ -191,20 +272,55 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
                   onActionPress?.();
                 }}
                 disabled={!canPressAction}
+                hitSlop={tokens.spacing.sm}
                 style={({ pressed }) => [
-                  styles.actionButton,
-                  {
-                    backgroundColor: canPressAction ? theme.colors.primary : theme.colors.controlSurfaceActive,
-                    borderColor: canPressAction ? theme.colors.primary : theme.colors.glassBorder,
-                    opacity: canPressAction ? 1 : 0.72,
-                  },
+                  isBagAction ? styles.bagAction : styles.actionButton,
+                  isBagAction
+                    ? null
+                    : {
+                        backgroundColor: canPressAction
+                          ? theme.colors.primary
+                          : theme.colors.controlSurfaceActive,
+                        borderColor: canPressAction ? theme.colors.primary : theme.colors.glassBorder,
+                        opacity: canPressAction ? 1 : 0.72,
+                      },
                   pressed && canPressAction && styles.inlinePressed,
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel={actionLabel}
               >
-                {actionBusy ? (
-                  <ActivityIndicator size="small" color={theme.colors.onPrimary} />
+                {/*
+                  The bag MARK, not the words "Bag It".
+
+                  A card is mostly photograph; the two words competed with the
+                  title and the price for the little text room there is, and
+                  they say nothing the shopping-bag glyph does not. Any other
+                  action ("Out", "View") keeps its word, because those have no
+                  established mark. The full label stays on
+                  `accessibilityLabel`, so nothing is lost to a screen reader.
+                */}
+                {actionBusy && !isBagAction ? (
+                  <MuseLoader size={20} />
+                ) : isBagAction ? (
+                  /*
+                    The mark and its heartbeat, with nothing behind it.
+
+                    This was the bag glyph on a solid purple pill — a filled
+                    button dropped onto the photograph, which is the loudest
+                    element on a card whose subject is the garment. `bare` keeps
+                    the pulse (that is what says the control is live) and drops
+                    the plate. Busy state rides the same icon rather than
+                    swapping in a spinner, so the glyph never disappears
+                    mid-tap.
+                  */
+                  <BagPulseIcon
+                    status={
+                      actionBusy ? 'bagging' : canPressAction ? 'not_bagged' : 'disabled'
+                    }
+                    context="multi_card"
+                    surface="bare"
+                    size={30}
+                  />
                 ) : (
                   <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
                     {actionLabel}
@@ -237,9 +353,6 @@ const styles = StyleSheet.create({
   media: {
     ...StyleSheet.absoluteFill,
   },
-  mediaShade: {
-    ...StyleSheet.absoluteFill,
-  },
   fallback: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
@@ -250,23 +363,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: tokens.spacing.sm,
     top: tokens.spacing.sm,
-    maxWidth: '18%',
-    opacity: 0.9,
-  },
-  priceChip: {
-    position: 'absolute',
-    right: tokens.spacing.sm,
-    bottom: 86,
-    maxWidth: '30%',
-    minHeight: 26,
-    borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.xs,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  priceChipText: {
-    textAlign: 'center',
+    // No width cap and no dimming. The cap was ~30pt on a two-up grid and
+    // clipped the label to nothing; the badge is now bare text, so it takes
+    // only the room the word needs and cannot collide with anything.
   },
   topRightSlot: {
     position: 'absolute',
@@ -284,17 +383,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /**
+   * Full-bleed. The card's own rounding clips it, so the panel needs none.
+   *
+   * It used to be inset on three sides with its own radius, which read as a
+   * floating chip laid over the artwork — two sets of rounded corners, one
+   * inside the other, and a strip of untouched photo between them. Taking it to
+   * the edges lets the media fill the card and leaves the gradient above as the
+   * only thing separating text from image.
+   */
   copyOverlay: {
     position: 'absolute',
-    left: tokens.spacing.sm,
-    right: tokens.spacing.sm,
-    bottom: tokens.spacing.sm,
-    borderRadius: tokens.radius.md,
+    left: 0,
+    right: 0,
+    bottom: 0,
     overflow: 'hidden',
   },
   copyStack: {
     paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
+    paddingBottom: tokens.spacing.sm,
+    paddingTop: tokens.spacing.xs,
     gap: tokens.spacing.xs,
   },
   titleBlock: {
@@ -306,9 +414,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.sm,
   },
-  actionSpacer: {
+  metaBlock: {
     flex: 1,
     minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  customMark: {
+    textShadowColor: tokens.scrim(0.9),
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  priceText: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  bagAction: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionButton: {
     minWidth: 50,

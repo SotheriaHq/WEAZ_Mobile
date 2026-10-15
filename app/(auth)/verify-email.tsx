@@ -1,105 +1,134 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import { router, useLocalSearchParams } from 'expo-router';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { verifyEmail } from '@/src/api/AuthApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { spendEmailVerificationToken } from '@/src/auth/pendingEmailVerification';
+import { isBrandAccount } from '@/src/auth/brandAccess';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
-import { useToast } from '@/src/toast/ToastContext';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { WeazLogo } from '@/components/ui/WeazLogo';
+import WiezMark from '@/src/brand/WiezMark';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type VerifyEmailState = 'verifying' | 'success' | 'error';
+
+const SUCCESS_REDIRECT_DELAY_MS = 1_200;
 
 const firstParamValue = (value: string | string[] | undefined): string => {
   if (Array.isArray(value)) return value[0] ?? '';
   return value ?? '';
 };
 
-const getVerifyEmailErrorMessage = (error: unknown): string => {
-  const responseData = (error as any)?.response?.data;
-  const candidates = [
-    responseData?.message,
-    responseData?.data?.message,
-    responseData?.error,
-    (error as any)?.message,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim().length > 0) {
-      return candidate.trim();
-    }
-  }
-
-  return 'Unable to verify email. The link may be invalid or expired.';
-};
-
 export default function VerifyEmailScreen() {
   const { theme, scheme } = useTheme();
   const isDark = scheme === 'dark';
-  const toast = useToast();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ token?: string | string[] }>();
-  const { isAuthenticated, validateToken } = useAuth();
-  const verificationStartedRef = useRef(false);
+  const { isAuthenticated, updateUser, user, validateToken } = useAuth();
+  const verificationStartedRef = useRef<number | null>(null);
 
   const token = useMemo(() => firstParamValue(params.token).trim(), [params.token]);
 
   const [state, setState] = useState<VerifyEmailState>('verifying');
   const [message, setMessage] = useState('Verifying your email address...');
+  /**
+   * A request that never reached the server is a different failure from a link
+   * the server rejected, and only one of them is worth trying again. Tapping a
+   * verification link is exactly when the connection is least settled — the app
+   * is usually cold starting — so this screen offers the retry rather than
+   * sending someone back to login to request a whole new email.
+   */
+  const [retryable, setRetryable] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const bgGradient = isDark
-    ? (['#0f0a14', '#1a0a2e', '#0f0a14'] as const)
-    : (['#f7f6f8', '#ede8f5', '#f0ecfa'] as const);
+    ? tokens.auth.screenGradientDark
+    : tokens.auth.screenGradientLight;
 
   const accentGradient = isDark
-    ? (['#2B1742', '#1E293B', '#0F172A'] as const)
-    : (['#EDE9FE', '#FEF3C7', '#F8FAFC'] as const);
+    ? tokens.auth.cardGradientDark
+    : tokens.auth.cardGradientLight;
 
   const goToLogin = () => {
     router.replace('/login' as any);
   };
 
-  const goToProfileOrLogin = () => {
-    router.replace((isAuthenticated ? '/(tabs)/me' : '/login') as any);
-  };
+  /**
+   * Where a verified account belongs.
+   *
+   * `isBrandAccount` and not `hasActiveBrandMembership`: this screen is reached
+   * moments after signup, when a brand has no store yet, and the capability
+   * predicate is false for exactly that window. Using it sent a brand that had
+   * just verified its email to the shopper profile.
+   */
+  const destinationAfterVerification = useMemo(
+    () =>
+      (!isAuthenticated
+        ? '/login'
+        : isBrandAccount(user)
+          ? '/catalog'
+          : '/(tabs)/me') as Href,
+    [isAuthenticated, user],
+  );
 
   useEffect(() => {
     if (!token) {
-      verificationStartedRef.current = false;
+      verificationStartedRef.current = null;
       setState('error');
       setMessage('This verification link is missing a valid token. Request a new verification email before trying again.');
       return;
     }
 
-    if (verificationStartedRef.current) return;
-    verificationStartedRef.current = true;
+    if (verificationStartedRef.current === retryNonce) return;
+    verificationStartedRef.current = retryNonce;
 
     const verifyToken = async () => {
       setState('verifying');
+      setRetryable(false);
       setMessage('Verifying your email address...');
 
-      try {
-        const response = await verifyEmail(token);
+      /*
+        The same request `AuthLinkGate` already started for this link, not a
+        second one: the gate spends the token the moment the link arrives, so
+        verification survives this screen never mounting, or mounting twice.
+        The gate also owns the "Email verified." toast.
+      */
+      const outcome = await spendEmailVerificationToken(token);
+      if (outcome?.status === 'verified') {
         if (isAuthenticated) {
-          await validateToken().catch(() => false);
+          await validateToken({ forceRefresh: true }).catch(() => false);
+          updateUser({ isEmailVerified: true }, 'auth/verify-email');
         }
         setState('success');
-        setMessage(response.message || 'Your email has been verified.');
-        toast.success('Email verified.');
-      } catch (error) {
-        setState('error');
-        setMessage(getVerifyEmailErrorMessage(error));
+        setMessage(outcome.message);
+        return;
+      }
+
+      setState('error');
+      setRetryable(outcome?.status === 'failed' && outcome.retryable);
+      setMessage(outcome?.message ?? 'Unable to verify email right now.');
+      // An older link (superseded by a resend) fails even when the account is
+      // already verified. Ask the server; the effect below turns that into
+      // success instead of a false "verification unavailable".
+      if (isAuthenticated) {
+        await validateToken({ forceRefresh: true }).catch(() => false);
       }
     };
 
     void verifyToken();
-  }, [isAuthenticated, token, toast, validateToken]);
+  }, [isAuthenticated, retryNonce, token, updateUser, validateToken]);
+
+  useEffect(() => {
+    if (state === 'error' && isAuthenticated && user?.isEmailVerified === true) {
+      setState('success');
+      setMessage('Your email is verified.');
+    }
+  }, [isAuthenticated, state, user?.isEmailVerified]);
 
   const renderMissingToken = () => (
     <View style={[styles.formInner, { backgroundColor: theme.colors.surface }]}>
@@ -124,14 +153,33 @@ export default function VerifyEmailScreen() {
   const renderVerifying = () => (
     <View style={[styles.formInner, { backgroundColor: theme.colors.surface }]}>
       <View style={styles.stateBlock}>
-        <ActivityIndicator color={theme.colors.primary} />
+        <MuseLoader size={20} />
         <AppText variant="title">Verifying email</AppText>
         <AppText variant="body" tone="muted">
-          Keep this screen open while WEAZ confirms your email address.
+          Keep this screen open while WIEZ confirms your email address.
         </AppText>
       </View>
     </View>
   );
+
+  /**
+   * Verification is the last step, not a checkpoint.
+   *
+   * The screen used to end on a "Go to profile" button, which asks the person
+   * to confirm something they already confirmed by tapping the link in their
+   * email. There is no decision to make here and no other destination, so the
+   * app takes them there itself.
+   *
+   * The short pause is deliberate: the confirmation has to be readable, or the
+   * screen flashes and the user cannot tell whether it worked.
+   */
+  useEffect(() => {
+    if (state !== 'success') return;
+    const timer = setTimeout(() => {
+      router.replace(destinationAfterVerification);
+    }, SUCCESS_REDIRECT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [state, destinationAfterVerification]);
 
   const renderSuccess = () => (
     <View style={[styles.formInner, { backgroundColor: theme.colors.surface }]}>
@@ -140,15 +188,12 @@ export default function VerifyEmailScreen() {
         <AppText variant="body" tone="muted">
           {message}
         </AppText>
-        <Button
-          title={isAuthenticated ? 'Go to profile' : 'Go to login'}
-          onPress={goToProfileOrLogin}
-          size="lg"
-          fullWidth
-          style={styles.primaryButton}
-          textStyle={styles.primaryButtonText}
-          testID="verify-email-next"
-        />
+        <View style={styles.successHandoff}>
+          <MuseLoader size={20} />
+          <AppText variant="caption" tone="muted">
+            Taking you to your profile…
+          </AppText>
+        </View>
       </View>
     </View>
   );
@@ -167,12 +212,24 @@ export default function VerifyEmailScreen() {
             {message}
           </AppText>
         </View>
+        {retryable ? (
+          <Button
+            title="Try again"
+            onPress={() => setRetryNonce((nonce) => nonce + 1)}
+            size="lg"
+            fullWidth
+            style={styles.primaryButton}
+            textStyle={styles.primaryButtonText}
+            testID="verify-email-retry"
+          />
+        ) : null}
         <Button
           title="Back to login"
           onPress={goToLogin}
           size="lg"
+          variant={retryable ? 'secondary' : 'primary'}
           fullWidth
-          style={styles.primaryButton}
+          style={retryable ? undefined : styles.primaryButton}
           textStyle={styles.primaryButtonText}
           testID="verify-email-login"
         />
@@ -195,12 +252,8 @@ export default function VerifyEmailScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      <KeyboardAwareScrollView
-        enableOnAndroid
-        keyboardOpeningTime={0}
-        enableAutomaticScroll
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAwareFormScroll
+        bottomOffset={tokens.spacing['2xl']}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 36 },
@@ -213,7 +266,7 @@ export default function VerifyEmailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to login"
           >
-            <WeazLogo size={36} />
+            <WiezMark size={36} />
           </Pressable>
         </View>
 
@@ -225,7 +278,7 @@ export default function VerifyEmailScreen() {
           </AppText>
           <AppText variant="display">Confirm your email</AppText>
           <AppText variant="body" muted style={styles.subtitle}>
-            Use the secure link from your email to finish verifying your WEAZ account.
+            Use the secure link from your email to finish verifying your WIEZ account.
           </AppText>
         </View>
 
@@ -241,12 +294,17 @@ export default function VerifyEmailScreen() {
                 ? renderError()
                 : renderVerifying()}
         </View>
-      </KeyboardAwareScrollView>
+      </KeyboardAwareFormScroll>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  successHandoff: {
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
   root: {
     flex: 1,
   },
@@ -265,7 +323,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   kicker: {
-    marginBottom: 10,
+    marginBottom: 8,
     letterSpacing: 3,
     textTransform: 'uppercase',
   },
@@ -277,7 +335,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     marginTop: 4,
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.25,
     shadowRadius: 24,
@@ -295,7 +353,7 @@ const styles = StyleSheet.create({
     right: 28,
     height: 1.5,
     borderRadius: 1,
-    backgroundColor: '#D4AF37',
+    backgroundColor: tokens.auth.gold,
     opacity: 0.7,
     zIndex: 2,
   },
@@ -314,7 +372,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     marginTop: tokens.spacing.xl,
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18,
     shadowRadius: 18,

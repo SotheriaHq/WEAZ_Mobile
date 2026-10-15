@@ -1,33 +1,57 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-} from '@expo-google-fonts/inter';
+// Import individual weights rather than the package barrel. Its barrel eagerly
+// requires every Inter face, which makes Metro deliver unused font assets before
+// the first native screen can become interactive.
+import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
+import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium';
+import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
+import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
+import { Inter_800ExtraBold } from '@expo-google-fonts/inter/800ExtraBold';
 import { useFonts } from 'expo-font';
-import { Stack, usePathname } from 'expo-router';
+import { router, Stack, usePathname } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
 import 'react-native-reanimated';
 
+import { installPrefetchAppStateBridge } from '@/src/prefetch/prefetchAppState';
 import { ThemeProvider, useTheme, type ThemeMode } from '@/src/theme/ThemeProvider';
 import { ThemeBackendSync } from '@/src/theme/ThemeBackendSync';
 import { normalizeThemePreference } from '@/src/types/theme';
 import { AuthProvider } from '@/src/auth/AuthContext';
+import { GenderPromptSheet } from '@/components/profile/GenderPromptSheet';
 import { setNetworkTraceScreen } from '@/src/api/networkTrace';
+import { setFontFallbackMode } from '@/src/styles/FontMode';
+import { startJsThreadMonitor } from '@/src/perf/jsThreadMonitor';
+import { primePersistentScreenCache } from '@/src/state/persistentScreenCache';
 
 import { ToastProvider } from '@/src/toast/ToastContext';
 import { useToast } from '@/src/toast/ToastContext';
 import { useAuth } from '@/src/auth/AuthContext';
+import { getAuthErrorMessage, AuthRequestError } from '@/src/auth/authErrors';
+import {
+  captureGoogleAuthRedirectIfLive,
+  isGoogleAuthRedirectUrl,
+  recoverGoogleAuthRedirect,
+} from '@/src/auth/googleRedirectRecovery';
+import { acquireAuthFlowLock } from '@/src/auth/authFlowLock';
+import {
+  getRequiredLegalAcceptances,
+  LEGAL_SIGNUP_DOCUMENT_KEYS,
+} from '@/src/api/LegalApi';
 import { BagCountProvider } from '@/src/features/bagging/BagCountContext';
 import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
 import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
+import { initMobileSentry } from '@/src/observability/sentry';
+
+initMobileSentry();
 
 import { handleInitialNotification, setupNotificationListeners } from '@/src/utils/notificationRouting';
+import { AuthLinkGate } from '@/components/auth/AuthLinkGate';
+import { RouteRestorationGate } from '@/components/navigation/RouteRestorationGate';
+import { claimFreshLaunchUrl } from '@/src/navigation/launchLinkLedger';
 import { useNotificationRouting } from '@/src/utils/notificationRouting';
 import { useAuthenticatedPushTokenRegistration } from '@/src/notifications/pushTokenRegistration';
 import {
@@ -43,8 +67,13 @@ import {
 } from '@/src/system/AndroidSystemBars';
 import { ScreenChromeProvider } from '@/src/system/ScreenChrome';
 import { QueryProvider } from '@/src/query/QueryProvider';
-import { isThreadlyDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { useCommitCost } from '@/src/perf/commitCost';
+import { useAndroidDoubleBackExit } from '@/src/hooks/useAndroidDoubleBackExit';
+import { isWiezDebugEnabled } from '@/src/features/feed/utils/feedDiagnostics';
+import { tokens } from '@/src/styles/tokens';
 
+// Nav timing is opt-in via EXPO_PUBLIC_DEBUG_NAV=1 in every build type; see
+// `src/utils/navPerf.ts`. It is no longer forced on for non-dev builds.
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -58,8 +87,26 @@ export const unstable_settings = {
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 void SplashScreen.preventAutoHideAsync();
 
-const THEME_MODE_KEY = 'threadly.theme.mode';
-const BOOT_BACKGROUND = '#0b0710';
+const THEME_MODE_KEY = 'wiez.theme.mode';
+// Must stay in lock-step with the native splash (expo-splash-screen plugin in
+// app.json): same asset, same backgroundColor, same logo size. This makes the JS
+// fallback a pixel-identical continuation of the native splash, so the native→JS
+// handoff is a single continuous surface with no tiny→large logo jump and no
+// blank flash between the native splash and the first app shell.
+const BOOT_BACKGROUND = tokens.colors.bootBackground;
+const SPLASH_LOGO_SIZE = 116; // matches app.json splash plugin `imageWidth: 116`
+
+function StartupFallback() {
+  return (
+    <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND, alignItems: 'center', justifyContent: 'center' }]}>
+      <Image
+        source={require('../assets/images/wiez-splash-icon.png')}
+        style={{ width: SPLASH_LOGO_SIZE, height: SPLASH_LOGO_SIZE }}
+        contentFit="contain"
+      />
+    </View>
+  );
+}
 
 void applyAndroidSystemBarsPolicy(getInitialAndroidSystemScheme(), 'module-load');
 
@@ -67,9 +114,12 @@ let rootLayoutMountCount = 0;
 let rootBootstrapMountCount = 0;
 let splashHideCallCount = 0;
 let splashHidden = false;
+// Captured at module load (before React boots) so splash-visible time spans the
+// whole native-splash → first-shell window, not just the React lifetime.
+const bootStartedAt = Date.now();
 
 function devBootLog(event: string, details?: Record<string, unknown>) {
-  if (!isThreadlyDebugEnabled('boot')) return;
+  if (!isWiezDebugEnabled('boot')) return;
   console.log('[boot]', details ? { event, ...details } : { event });
 }
 
@@ -80,6 +130,7 @@ function hideNativeSplashOnce(reason: string) {
   devBootLog('hide-native-splash', {
     reason,
     splashHideCallCount,
+    splashVisibleMs: Date.now() - bootStartedAt,
   });
   void SplashScreen.hideAsync().catch((error) => {
     if (__DEV__) {
@@ -89,9 +140,25 @@ function hideNativeSplashOnce(reason: string) {
 }
 
 function NotificationSetup() {
-  const { handleNotification, handleDeepLink } = useNotificationRouting();
+  const routing = useNotificationRouting();
+  /*
+    Handlers through a ref, and the effect below runs ONCE.
+
+    `handleNotification`/`handleDeepLink` are rebuilt whenever the auth user
+    object changes, which happens several times during boot. With them as effect
+    dependencies every change tore the effect down — clearing the 100 ms timer
+    that was about to route the launch link — and started it again. A cold start
+    from a link could lose that race repeatedly and land on the Runway.
+  */
+  const routingRef = useRef(routing);
+  routingRef.current = routing;
 
   useEffect(() => {
+    const handleNotification: typeof routing.handleNotification = (notification) =>
+      routingRef.current.handleNotification(notification);
+    const handleDeepLink: typeof routing.handleDeepLink = (url) =>
+      routingRef.current.handleDeepLink(url);
+
     let isMounted = true;
     let cleanupNotificationHandling: (() => void) | null = null;
     const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -126,7 +193,7 @@ function NotificationSetup() {
         const unsubscribe = isExpoGoAndroid ? () => {} : setupNotificationListeners(
           (notification) => {
             // Handle foreground notification
-            if (isThreadlyDebugEnabled('boot')) {
+            if (isWiezDebugEnabled('boot')) {
               console.log('Notification received while foreground');
             }
           },
@@ -136,17 +203,30 @@ function NotificationSetup() {
           },
         );
 
-        // Set up deep link listener
+        /**
+         * A Google OAuth callback is delivered to the app as an ordinary VIEW
+         * intent, so it reaches this listener too — and it is NOT a link into
+         * a screen. `handleDeepLink` has no route for `/oauthredirect`, so
+         * `routeForNotification` fell through to its default and replaced the
+         * current route with `/notifications` while sign-in was still in
+         * flight. That navigation is what dropped people into a signed-out
+         * shell immediately after they authenticated with Google.
+         *
+         * `GoogleAuthRedirectRecoveryGate` owns these URLs.
+         */
         const handleUrl = ({ url }: { url: string }) => {
+          if (isGoogleAuthRedirectUrl(url)) return;
           handleDeepLink(url);
         };
 
         // Handle URL when app is already running
         const urlSubscription = Linking.addEventListener('url', handleUrl);
 
-        // Check for initial URL (app opened from link while closed)
-        const initialUrl = await Linking.getInitialURL();
-        if (initialUrl) {
+        // Check for initial URL (app opened from link while closed). A launch URL
+        // Android is REPLAYING after reviving a killed app is not a new tap, and
+        // `RouteRestorationGate` returns the person to where they were instead.
+        const initialUrl = await claimFreshLaunchUrl(await Linking.getInitialURL());
+        if (initialUrl && !isGoogleAuthRedirectUrl(initialUrl)) {
           schedule(() => {
             handleDeepLink(initialUrl);
           }, 100);
@@ -175,7 +255,140 @@ function NotificationSetup() {
       timers.clear();
       cleanupNotificationHandling?.();
     };
-  }, [handleNotification, handleDeepLink]);
+  }, []);
+
+  return null;
+}
+
+/**
+ * Android normally returns the Google Custom Tab to the live AuthSession. Some
+ * device launchers recreate the development client instead; the callback then
+ * arrives after its in-memory listener has disappeared. The auth hook stores a
+ * 10-minute, state-bound PKCE recovery record before opening Google, and this
+ * gate consumes it only after the local auth bootstrap is settled.
+ */
+function GoogleAuthRedirectRecoveryGate() {
+  const { localSessionReady, signInWithGoogle } = useAuth();
+  const toast = useToast();
+  const processingRef = useRef(false);
+
+  useEffect(() => {
+    if (!localSessionReady) return;
+
+    let mounted = true;
+
+    const completeRedirect = async (url: string | null | undefined) => {
+      /**
+       * FIRST, before any gating. When a screen started sign-in, it holds the
+       * auth-flow lock and is waiting on a redirect that arrives right here —
+       * so both guards below would return early and throw it away. Handing it
+       * to the live session is the whole point of this listener on the happy
+       * path; the recovery code underneath only runs when no session is alive.
+       */
+      // Dev-only, and deliberately says nothing about `code` or `state`: a
+      // silent flow is what made this cost days, but an authorization code in
+      // a Metro log is a credential in a scrollback buffer.
+      const isGoogleCallback = __DEV__ && isGoogleAuthRedirectUrl(url);
+
+      if (captureGoogleAuthRedirectIfLive(url)) {
+        if (isGoogleCallback) {
+          console.log('[google-auth] callback handed to the live session');
+        }
+        return;
+      }
+      if (isGoogleCallback) {
+        console.log(
+          '[google-auth] callback arrived with no live session — attempting cold recovery',
+        );
+      }
+
+      if (processingRef.current) return;
+      processingRef.current = true;
+
+      /**
+       * This gate finishes a Google sign-in that Android recreated the process
+       * out from under — so it runs while the auth screen underneath is mounted
+       * and fully interactive. Without the app-wide lock the person can start a
+       * second flow, or navigate away, while a session is being established for
+       * them. `authFlowLock` is module state precisely so it can be held from
+       * out here, where no screen owns the flow.
+       *
+       * A refused lock means a screen is already running an auth action; its
+       * flow is the live one and this stale callback is not worth interrupting
+       * it for. The pending record stays put for the next launch.
+       */
+      const releaseAuthFlow = acquireAuthFlowLock('google');
+      if (!releaseAuthFlow) {
+        processingRef.current = false;
+        return;
+      }
+
+      try {
+        const recovered = await recoverGoogleAuthRedirect(url);
+        if (isGoogleCallback) {
+          console.log(
+            `[google-auth] cold recovery ${
+              recovered
+                ? 'exchanged the code — completing sign-in'
+                : 'found no usable pending record (expired, already spent, or state mismatch)'
+            }`,
+          );
+        }
+        if (!recovered || !mounted) return;
+
+        const legalAcceptances =
+          recovered.continuation.intent === 'SIGNUP'
+            ? await getRequiredLegalAcceptances(LEGAL_SIGNUP_DOCUMENT_KEYS)
+            : undefined;
+        if (!mounted) return;
+
+        await signInWithGoogle({
+          idToken: recovered.idToken,
+          ...recovered.continuation,
+          ...(legalAcceptances ? { legalAcceptances } : {}),
+        });
+        if (!mounted) return;
+
+        const isNewBrand =
+          recovered.continuation.intent === 'SIGNUP' &&
+          recovered.continuation.type === 'BRAND';
+        router.replace((isNewBrand ? '/catalog' : '/(tabs)/me') as any);
+        toast.success(
+          recovered.continuation.intent === 'SIGNUP' ? 'Welcome to WIEZ!' : 'Welcome back!',
+        );
+      } catch (error) {
+        if (!mounted) return;
+
+        if (error instanceof AuthRequestError) {
+          if (error.code === 'GOOGLE_NO_ACCOUNT') {
+            router.replace('/(auth)/signup');
+            toast.info("No WIEZ account for that Google email yet — let's get you signed up.");
+            return;
+          }
+          if (error.code === 'EMAIL_ALREADY_EXISTS') {
+            router.replace('/(auth)/login');
+            toast.info('That email already has a WIEZ account — log in to continue.');
+            return;
+          }
+        }
+
+        toast.error(getAuthErrorMessage(error));
+      } finally {
+        releaseAuthFlow();
+        processingRef.current = false;
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      void completeRedirect(url);
+    });
+    void Linking.getInitialURL().then((url) => completeRedirect(url));
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, [localSessionReady, signInWithGoogle, toast]);
 
   return null;
 }
@@ -249,49 +462,119 @@ function NetworkTraceRouteSync() {
   return null;
 }
 
-function RootBootstrap({
-  fontsLoaded,
+// Reads the current route in an isolated leaf so a navigation re-renders ONLY
+// this null node, not RootBootstrap. RootBootstrap renders the entire app tree
+// (RootStack + every screen) below it; when it subscribed to usePathname()
+// directly, every tab switch re-rendered the whole tree — a major contributor to
+// the ~700–1700ms route_call→path_changed window measured on device. Keeping the
+// pathname subscription here confines that cost to a no-op component.
+function AndroidSystemBarsRouteSync({
+  scheme,
+  bootReady,
 }: {
-  fontsLoaded: boolean;
+  scheme: ReturnType<typeof useTheme>['scheme'];
+  bootReady: boolean;
 }) {
-  const { ready: themeReady, scheme, theme } = useTheme();
-  const { status } = useAuth();
   const pathname = usePathname();
-  const bootReady = fontsLoaded && themeReady && status !== 'loading';
-  const hasLoggedReadyRef = useRef(false);
   useAndroidSystemBars(scheme, bootReady ? `route:${pathname}` : 'bootstrap');
+  return null;
+}
+
+function RootBootstrap({
+  fontsReady,
+}: {
+  fontsReady: boolean;
+}) {
+  /*
+    The gap in the attribution.
+
+    Everything between the providers and the tab shell was unlabelled, so a
+    re-render originating HERE looked exactly like the context broadcast that
+    was inferred — and wrongly — from identical per-screen counts. This renders
+    `<RootStack />` as a fresh element on every render of its own, so a single
+    re-render here reconciles the entire app below it: the stack, the tab shell,
+    the navigator, and with `freezeOnBlur` every tab the session has visited.
+  */
+  useCommitCost('P:RootBootstrap');
+  const { ready: themeReady, scheme, theme } = useTheme();
+  const { localSessionReady, status } = useAuth();
+
+  /*
+    The routed app, held stable across this component's re-renders.
+
+    This component calls `useAuth()`, so it re-renders whenever the auth context
+    value changes — and it rendered `<RootStack />` inline, which made a fresh
+    element every time and forced React to reconcile the ENTIRE routed tree.
+    With `freezeOnBlur` keeping every visited tab mounted, that reaches every
+    screen the session has opened. The 2026-10-12 capture shows the shape
+    exactly: `P:Auth`, `P:RootBootstrap`, `P:RootStack`, `TabShell` and the
+    screens all at the same count.
+
+    Holding one element reference stops it: React compares the child to the
+    previous render's and skips the subtree when it is identical. `RootStack`
+    takes no props and subscribes to the theme itself, so a theme change still
+    reaches it through its own context — nothing about routing or theming
+    changes, only this component's ability to force reconciliation for reasons
+    the routed tree does not care about.
+
+    An amplifier fix, and worth having on its own terms even though the loop
+    driving it is fixed in `updateUser`: signing in, editing a profile and
+    switching brand all legitimately change the auth value, and none of them
+    should reconcile every mounted screen.
+  */
+  const routedApp = useMemo(() => <RootStack />, []);
+  const bootReady = fontsReady && themeReady && localSessionReady;
+  const hasLoggedReadyRef = useRef(false);
+  useAndroidDoubleBackExit();
 
   useEffect(() => {
     rootBootstrapMountCount += 1;
-    devBootLog('root-bootstrap-mounted', { rootBootstrapMountCount });
+    devBootLog('root-bootstrap-mounted', {
+      rootBootstrapMountCount,
+      developmentRuntime: __DEV__,
+      executionEnvironment: Constants.executionEnvironment,
+      appOwnership: Constants.appOwnership,
+    });
   }, []);
 
   useEffect(() => {
     if (!bootReady || hasLoggedReadyRef.current) return;
     hasLoggedReadyRef.current = true;
     devBootLog('root-bootstrap-ready', {
-      fontsLoaded,
+      fontsReady,
       themeReady,
+      localSessionReady,
       authStatus: status,
     });
-  }, [bootReady, fontsLoaded, status, themeReady]);
+  }, [bootReady, fontsReady, localSessionReady, status, themeReady]);
 
   if (!bootReady) {
-    return <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND }]} />;
+    return (
+      <>
+        <AndroidSystemBarsRouteSync scheme={scheme} bootReady={false} />
+        <StartupFallback />
+      </>
+    );
   }
 
   return (
     <View
       style={[styles.appRoot, { backgroundColor: theme.colors.bg }]}
       onLayout={() => {
+        devBootLog('first-shell-layout', {
+          authStatus: status,
+          fallbackVisibleMs: Date.now() - bootStartedAt,
+        });
         hideNativeSplashOnce('root-bootstrap-layout');
       }}
     >
+      <AndroidSystemBarsRouteSync scheme={scheme} bootReady />
       <NotificationSetup />
       <NetworkTraceRouteSync />
       <PushTokenRegistrationGate />
       <ForegroundMessagingSetup />
-      <RootStack />
+      {routedApp}
+      <RouteRestorationGate />
     </View>
   );
 }
@@ -303,10 +586,38 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    ...FontAwesome.font,
+    // The display/screen-title tiers sit at 800 so headings are not the same
+    // weight as every other heading. Without this they silently fall back.
+    Inter_800ExtraBold,
+    // (No icon-library font is preloaded: every marker in the app is an emoji
+    //  per Rule 5, so there are no glyphs left for it to serve.)
   });
   const [themeBootstrapReady, setThemeBootstrapReady] = useState(false);
   const [initialThemeMode, setInitialThemeMode] = useState<ThemeMode>('system');
+  const [fontsTimeout, setFontsTimeout] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    /**
+     * How long to wait for Inter before showing UI without it.
+     *
+     * In a dev build each face is fetched from the Metro server over the LAN,
+     * and six of them routinely take longer than the old flat 3s — so the
+     * timeout won on most dev sessions and the app rendered in the device's
+     * own font. Production reads them from the bundle, where 3s is generous.
+     * The fallback is no longer permanent either way (see `FontMode`), but a
+     * longer dev window avoids the visible swap.
+     */
+    const timer = setTimeout(() => {
+      if (isMounted) {
+        setFontsTimeout(true);
+      }
+    }, __DEV__ ? 10000 : 3000);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     rootLayoutMountCount += 1;
@@ -314,12 +625,29 @@ export default function RootLayout() {
     void applyAndroidSystemBarsPolicy(getInitialAndroidSystemScheme(), 'root-layout-first-render');
   }, []);
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
+  // Phase 5: pause predictive prefetching whenever the app is backgrounded.
+  useEffect(() => installPrefetchAppStateBridge(), []);
+
+  /**
+   * Read last session's screen snapshots back into the warm cache.
+   *
+   * Started at the top of boot so it is long finished before anyone can reach a
+   * tab: by the time the shopper taps Me, the profile has content to render on
+   * its first frame instead of an empty tab and a spinner. Nothing waits on it —
+   * if it is slow or fails, the screen simply behaves as it did before.
+   */
   useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+    void primePersistentScreenCache();
+  }, []);
 
-
+  /**
+   * Sample JS-thread availability for the duration of the session.
+   *
+   * Inert unless EXPO_PUBLIC_DEBUG_NAV is set at bundle time. It is what makes
+   * "the request left late" separable from "the response came back late" — see
+   * src/perf/jsThreadMonitor.ts.
+   */
+  useEffect(() => startJsThreadMonitor(), []);
 
   useEffect(() => {
     let isMounted = true;
@@ -346,18 +674,49 @@ export default function RootLayout() {
     };
   }, []);
 
-  if (!loaded || !themeBootstrapReady) {
-    return <View style={[styles.appRoot, { backgroundColor: BOOT_BACKGROUND }]} />;
+  const fontsReady = loaded || fontsTimeout || !!error;
+  const usingFontFallback = fontsReady && !loaded;
+
+  /**
+   * In a layout effect, not during render.
+   *
+   * `setFontFallbackMode` now notifies every subscribed `AppText`, so calling
+   * it mid-render would update other components while this one is rendering.
+   * A layout effect still runs before paint, so the first frame is correct —
+   * and because the store is reactive, the LATER transition matters too: when
+   * Inter finishes loading after the timeout has already fired, this fires
+   * again with `false` and the app re-renders in Inter instead of staying on
+   * the device's system font for the rest of the session.
+   */
+  useLayoutEffect(() => {
+    setFontFallbackMode(usingFontFallback);
+  }, [usingFontFallback]);
+
+  useEffect(() => {
+    if (!fontsReady) return;
+    devBootLog('font-ready', {
+      loaded,
+      fallback: usingFontFallback,
+      timeout: fontsTimeout,
+      error: error ? String(error) : null,
+    });
+    if (usingFontFallback && __DEV__) {
+      console.warn('[boot] Font loading failed or timed out. Locked to system font fallback.');
+    }
+  }, [error, fontsReady, fontsTimeout, loaded, usingFontFallback]);
+
+  if (!fontsReady || !themeBootstrapReady) {
+    return <StartupFallback />;
   }
 
-  return <RootLayoutNav fontsLoaded={loaded} initialThemeMode={initialThemeMode} />;
+  return <RootLayoutNav fontsReady={fontsReady} initialThemeMode={initialThemeMode} />;
 }
 
 function RootLayoutNav({
-  fontsLoaded,
+  fontsReady,
   initialThemeMode,
 }: {
-  fontsLoaded: boolean;
+  fontsReady: boolean;
   initialThemeMode: ThemeMode;
 }) {
   return (
@@ -366,10 +725,13 @@ function RootLayoutNav({
         <ToastProvider>
           <AuthProvider>
             <ThemeBackendSync />
+            <GoogleAuthRedirectRecoveryGate />
+            <AuthLinkGate />
+            <GenderPromptSheet />
             <BagCountProvider>
               <BagFlowProvider>
                 <ScreenChromeProvider>
-                  <RootBootstrap fontsLoaded={fontsLoaded} />
+                  <RootBootstrap fontsReady={fontsReady} />
                 </ScreenChromeProvider>
               </BagFlowProvider>
             </BagCountProvider>
@@ -381,6 +743,7 @@ function RootLayoutNav({
 }
 
 function RootStack() {
+  useCommitCost('P:RootStack');
   const { theme } = useTheme();
 
   return (
@@ -391,7 +754,10 @@ function RootStack() {
       }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
-      <Stack.Screen name="catalog" options={{ headerShown: false }} />
+      {/* Catalogue and Studio both live in the (tabs) group for persistent
+          top-level lifetime and to inherit the single floating island; the
+          /catalog and /studio URLs are unchanged (route groups are omitted
+          from the path). */}
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
       <Stack.Screen name="reviews/index" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="messages/[threadId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
@@ -400,7 +766,6 @@ function RootStack() {
       <Stack.Screen name="collection-gallery" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="search" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="products/[productId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
-      <Stack.Screen name="studio" options={{ headerShown: false, animation: 'slide_from_right' }} />
     </Stack>
   );
 }

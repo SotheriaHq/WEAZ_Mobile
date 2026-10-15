@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -14,11 +13,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
+import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { BlurView } from 'expo-blur';
 
-import { WeazLogo } from '@/components/ui/WeazLogo';
+import WiezMark from '@/src/brand/WiezMark';
 import { AppText } from '@/components/ui/AppText';
+import { SeeMoreLink } from '@/components/ui/InlineNavLink';
+import { MediaScrim } from '@/components/ui/MediaScrim';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Input } from '@/components/ui/Input';
 import { StableImage } from '@/components/ui/StableImage';
@@ -38,10 +39,17 @@ import {
   type MarketSectionItem,
 } from '@/src/api/MarketApi';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
+import { createMixSeed, mixScoredItems } from '@/src/utils/feedMixer';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { buildMoodboardSuggestionSection } from '@/src/recommendations/recommendationScoring';
 import { MarketFilterSheet } from '@/src/features/market/components/MarketFilterSheet';
+import {
+  buildAdireBatch,
+  createAdireBatchState,
+  filterAdireItems,
+  type AdireBatchState,
+} from '@/src/features/market/adire';
 import { MarketEmptyState, MarketErrorState } from '@/src/features/market/components/MarketStates';
 import { MarketSkeleton } from '@/src/features/market/components/MarketSkeleton';
 import {
@@ -52,22 +60,33 @@ import {
 } from '@/src/features/market/marketUtils';
 import type { MarketContentItem, MarketFilters } from '@/src/features/market/types';
 import { tokens } from '@/src/styles/tokens';
+import { clipAccessibilityLabel } from '@/src/constants/clipping';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
 import type { MarketFeedResponse, MarketItem } from '@/src/types/market';
 import { useScreenChrome } from '@/src/system/ScreenChrome';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import {
   flushMarketSignals,
   startMarketSignalRuntime,
   trackMarketSignal,
 } from '@/src/services/marketSignals';
+import { useCommitCost } from '@/src/perf/commitCost';
+import { useScreenArrival, useSkeletonTiming } from '@/src/perf/usePerfStages';
+import { navPerf } from '@/src/utils/navPerf';
+import { prefetchMedia } from '@/src/prefetch/navPrefetch';
+import { formatMoney } from '@/src/utils/money';
+import { MuseLoader } from '@/components/ui/MuseLoader';
 
 const SIDE_PADDING = tokens.spacing.lg;
 const SECTION_GAP = tokens.spacing.xl;
 const CARD_GAP = tokens.spacing.md;
 const HERO_INTERVAL_MS = 3000;
+/** Level sliders — the filter/adjust glyph, not the settings cog. */
+const MARKET_FILTER_EMOJI = String.fromCodePoint(0x1f39a, 0xfe0f);
+
 const PREFERRED_CATEGORIES = ['Ankara Fashion', 'Lacewear', 'Ready to Wear', 'Custom', 'Bridal'];
 const MARKET_SEARCH_DEBOUNCE_MS = 350;
 const MARKET_HOME_CACHE_TTL_MS = 3 * 60 * 1000;
@@ -75,7 +94,6 @@ const MARKET_HOME_CACHE_MAX_ENTRIES = 12;
 
 type MarketRow =
   | { id: 'hero'; type: 'HERO_CAROUSEL'; items: MarketContentItem[] }
-  | { id: 'blazing'; type: 'BLAZING_ROW'; trends: BlazingTrend[] }
   | {
       id: string;
       type: 'HORIZONTAL_CARD_ROW';
@@ -92,6 +110,14 @@ type MarketRow =
       onSeeAll?: () => void;
     }
   | {
+      id: 'adire';
+      type: 'ADIRE_ROW';
+      title: string;
+      subtitle: string;
+      items: MarketContentItem[];
+      onSeeAll: () => void;
+    }
+  | {
       id: 'latest-collections';
       type: 'COLLECTION_ROW';
       title: string;
@@ -105,13 +131,6 @@ type MarketRow =
   | { id: 'empty'; type: 'EMPTY_STATE' }
   | { id: 'error'; type: 'ERROR_STATE'; message: string };
 
-type BlazingTrend = {
-  id: string;
-  label: string;
-  count: number;
-  category: string | null;
-  item: MarketContentItem | null;
-};
 
 type ProductMarketItem = Extract<MarketContentItem, { entityType: 'PRODUCT' }>;
 type DesignMarketItem = Extract<MarketContentItem, { entityType: 'DESIGN' }>;
@@ -136,14 +155,15 @@ type MarketSettledResults = {
 
 const marketSnapshotCache = new Map<string, MarketSnapshot>();
 const marketRequestInFlight = new Map<string, Promise<MarketSettledResults>>();
+let marketSectionsCache: MarketSection[] | null = null;
 
 const toErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to load market right now.';
 
-function getItemTitle(item: MarketContentItem) {
+export function getItemTitle(item: MarketContentItem) {
   return item.kind === 'product' ? item.product.name : item.design.collectionTitle;
 }
 
-function getItemBrand(item: MarketContentItem) {
+export function getItemBrand(item: MarketContentItem) {
   if (item.kind === 'product') return normalizeOption(item.product.brandName);
   return normalizeOption(item.design.brandName ?? item.design.username);
 }
@@ -207,10 +227,11 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
   return debouncedValue;
 }
 
-function buildMarketQueryKey(filters: MarketFilters, searchValue: string) {
+function buildMarketQueryKey(filters: MarketFilters, searchValue: string, viewerKey: string) {
   const minPrice = parsePriceFilter(filters.minPrice);
   const maxPrice = parsePriceFilter(filters.maxPrice);
   return JSON.stringify({
+    viewerKey,
     category: filters.category ?? null,
     minPrice,
     maxPrice,
@@ -302,7 +323,7 @@ function fetchMarketBatch(params: {
   return request;
 }
 
-function buildContentItems(products: StoreProduct[], designs: MarketItem[]): MarketContentItem[] {
+export function buildContentItems(products: StoreProduct[], designs: MarketItem[]): MarketContentItem[] {
   return [
     ...products.map((product) => ({
       key: `product:${product.id}`,
@@ -319,7 +340,7 @@ function buildContentItems(products: StoreProduct[], designs: MarketItem[]): Mar
   ];
 }
 
-function getItemMedia(item: MarketContentItem) {
+export function getItemMedia(item: MarketContentItem) {
   if (item.kind === 'product') {
     return {
       mediaSrc: item.product.coverImage,
@@ -351,11 +372,11 @@ function getItemTypeLabel(item: MarketContentItem) {
   return 'Catalog item';
 }
 
-function isCustomReady(item: MarketContentItem) {
+export function isCustomReady(item: MarketContentItem) {
   return item.kind === 'product' ? item.product.customOrderEnabled : Boolean(item.design.viewerState?.canBag);
 }
 
-function getItemPriceLabel(item: MarketContentItem) {
+export function getItemPriceLabel(item: MarketContentItem) {
   if (item.kind === 'product') {
     const price = item.product.effectivePrice ?? item.product.salePrice ?? item.product.price;
     return formatMarketPrice(price, item.product.currency) ?? 'Price on request';
@@ -385,15 +406,7 @@ function getCollectionPriceLabel(collection: StoreCollectionSummary) {
 
 function formatMarketPrice(value?: number | null, currency = 'NGN') {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return `${currency} ${Math.round(value).toLocaleString('en-NG')}`;
-  }
+  return formatMoney(value, currency);
 }
 
 function getGridColumnCount(width: number) {
@@ -410,33 +423,6 @@ function chunkItems<T>(items: T[], size: number) {
   return chunks;
 }
 
-function buildBlazingTrends(categoryOptions: string[], allItems: MarketContentItem[], filteredItems: MarketContentItem[]) {
-  const trends = categoryOptions
-    .map((category) => {
-      const matching = allItems.filter((item) =>
-        getItemCategories(item).some((entry) => entry.toLowerCase() === category.toLowerCase()),
-      );
-      return {
-        id: category,
-        label: category,
-        count: matching.length,
-        category,
-        item: matching.find(hasDisplayMedia) ?? matching[0] ?? null,
-      };
-    })
-    .filter((trend) => trend.count > 0)
-    .slice(0, 10);
-
-  if (trends.length > 0) return trends;
-
-  return filteredItems.slice(0, 8).map((item) => ({
-    id: item.key,
-    label: getItemTypeLabel(item),
-    count: Math.max(1, getPopularity(item)),
-    category: getItemCategories(item)[0] ?? null,
-    item,
-  }));
-}
 
 function buildRows(args: {
   allItems: MarketContentItem[];
@@ -446,6 +432,11 @@ function buildRows(args: {
   collections: StoreCollectionSummary[];
   collectionError: string | null;
   categoryOptions: string[];
+  /** Last snapshot taken with no theme filter — see `chromePool` below. */
+  chromeItems: MarketContentItem[];
+  adirePool: MarketContentItem[];
+  adireBatchState: AdireBatchState;
+  openAdireAll: () => void;
   loadingMore: boolean;
   setNewestView: () => void;
   setCustomReadyView: () => void;
@@ -459,21 +450,61 @@ function buildRows(args: {
     collections,
     collectionError,
     categoryOptions,
+    chromeItems,
+    adirePool,
+    adireBatchState,
+    openAdireAll,
     loadingMore,
     setNewestView,
     setCustomReadyView,
     openApiSection,
   } = args;
-  const heroItems = filteredItems.filter(hasDisplayMedia).slice(0, 3);
+  /**
+   * Hero and the theme rail are CHROME, and chrome is built from the unfiltered
+   * pool — never from the results the chrome itself filters.
+   *
+   * Tapping a live-theme card writes `filters.category`, which is part of
+   * `marketQueryKey`, so the whole market list REFETCHES scoped to that theme.
+   * While that request is in flight `allItems`/`filteredItems` are empty, and
+   * afterwards they hold only that one category. Both of these rows were
+   * derived from those arrays, so both vanished the instant you used one of
+   * them — the theme rail deleting the control you had just pressed, and the
+   * hero above it going with it. Two sections disappearing at once is why it
+   * reads as the screen being destroyed.
+   *
+   * `chromeItems` is the last snapshot taken with no theme applied, so it
+   * survives both the refetch and the narrowing. An earlier fix made
+   * `buildBlazingTrends`' FALLBACK use `allItems` instead of `filteredItems`,
+   * which was the right idea one level too shallow: `allItems` is itself
+   * refetched per theme, so it empties too.
+   */
+  const chromePool = chromeItems.length > 0 ? chromeItems : allItems;
+  const heroItems = chromePool.filter(hasDisplayMedia).slice(0, 3);
   const rows: MarketRow[] = [];
 
   if (heroItems.length > 0) {
     rows.push({ id: 'hero', type: 'HERO_CAROUSEL', items: heroItems });
   }
 
-  const trends = buildBlazingTrends(categoryOptions, allItems, filteredItems);
-  if (trends.length > 0) {
-    rows.push({ id: 'blazing', type: 'BLAZING_ROW', trends });
+  /**
+   * Adire Casual — its own section, built from whatever the market already has.
+   *
+   * The pool is every item that mentions adire anywhere a brand might write it
+   * (tags, title, description, category, style details), and one BATCH of that
+   * pool is shown here. `buildAdireBatch` owns the rotation rules — an item
+   * appears at most twice, more if it sells — so this only has to decide where
+   * the row sits and what it links to.
+   */
+  const adireItems = buildAdireBatch(adirePool, (entry) => entry.key, adireBatchState);
+  if (adireItems.length > 0) {
+    rows.push({
+      id: 'adire',
+      type: 'ADIRE_ROW',
+      title: 'Adire Casual',
+      subtitle: 'Indigo-dyed pieces, everyday cuts',
+      items: adireItems,
+      onSeeAll: openAdireAll,
+    });
   }
 
   apiSections
@@ -495,7 +526,7 @@ function buildRows(args: {
     rows.push({
       id: 'fresh-row',
       type: 'HORIZONTAL_CARD_ROW',
-      title: 'Fresh on WEAZ',
+      title: 'Fresh on WIEZ',
       subtitle: 'New products and custom-ready runway',
       items: freshItems,
       onSeeAll: setNewestView,
@@ -517,7 +548,7 @@ function buildRows(args: {
     id: 'latest-collections',
     type: 'COLLECTION_ROW',
     title: 'Latest Collections',
-    subtitle: 'Shop complete edits from WEAZ brands',
+    subtitle: 'Shop complete edits from WIEZ brands',
     items: collections,
     error: collectionError,
   });
@@ -591,8 +622,9 @@ function MarketProductCard({
       width={width}
       height={height}
       title={getItemTitle(item)}
-      brandName={getItemBrand(item) ?? 'WEAZ brand'}
+      brandName={getItemBrand(item) ?? 'WIEZ brand'}
       priceLabel={getItemPriceLabel(item)}
+      customOrder={Boolean(item.product.customOrderEnabled)}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
       newDropItemId={item.product.id}
@@ -605,6 +637,7 @@ function MarketProductCard({
       actionLabel={unavailable ? 'Out' : BAG_IT_LABEL}
       actionBusy={bagBusy}
       actionDisabled={unavailable}
+      onPressIn={() => prefetchMedia({ src: media.mediaSrc, fileId: media.mediaFileId }, 'tap')}
       onPress={() => onOpen(item)}
       onActionPress={() => onBag(item)}
       onFavoritePress={() => onFavorite(item)}
@@ -631,8 +664,9 @@ function MarketDesignCard({
       width={width}
       height={height}
       title={getItemTitle(item)}
-      brandName={getItemBrand(item) ?? 'WEAZ brand'}
+      brandName={getItemBrand(item) ?? 'WIEZ brand'}
       priceLabel={getItemPriceLabel(item)}
+      customOrder={canRequestCustomOrder}
       mediaSrc={media.mediaSrc}
       mediaFileId={media.mediaFileId}
       newDropItemId={item.design.collectionId}
@@ -640,10 +674,11 @@ function MarketDesignCard({
       analyticsSourceScreen="market"
       favorite={favorite}
       favoriteBusy={favoriteBusy}
-      favoriteAccessibilityLabel={favorite ? 'Remove from Saved Looks' : 'Save look for inspiration'}
+      favoriteAccessibilityLabel={clipAccessibilityLabel(favorite)}
       actionLabel={canRequestCustomOrder ? BAG_IT_LABEL : undefined}
       actionBusy={bagBusy}
       actionDisabled={!canRequestCustomOrder}
+      onPressIn={() => prefetchMedia({ src: media.mediaSrc, fileId: media.mediaFileId }, 'tap')}
       onPress={() => onOpen(item)}
       onActionPress={canRequestCustomOrder ? () => onBag(item) : undefined}
       onFavoritePress={() => onFavorite(item)}
@@ -688,10 +723,20 @@ function MarketHeroSlide({
       {imageUri ? (
         <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.heroImage} imageStyle={styles.heroImage} />
       ) : null}
-      <LinearGradient
-        colors={[theme.colors.backdropStrong, theme.colors.backdrop, theme.colors.backdropStrong]}
-        style={StyleSheet.absoluteFill}
-      />
+      {/*
+        Two bands, not a veil.
+
+        This ran `backdropStrong → backdrop → backdropStrong` across the whole
+        slide, so the BRIGHTEST point of the hero image — its centre, where the
+        garment is — sat under 58% black on the dark theme, and the top and
+        bottom under 80%. The hero is the largest photograph on the market
+        screen and it was the most heavily suppressed thing on it.
+
+        Copy only lives in the top row and the bottom block, so only those are
+        protected. `strong` because both are white text with no plate of their
+        own, and this image is unknown and can be pale.
+      */}
+      <MediaScrim edges={['top', 'bottom']} reach={0.36} strength="strong" />
       <View style={styles.heroTopRow}>
         <View style={[styles.heroPill, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
           <AppText variant="captionBold" tone="inverse">Market Pick</AppText>
@@ -784,77 +829,6 @@ function MarketHeroCarousel({
   );
 }
 
-function BlazingChip({
-  trend,
-  onPress,
-}: {
-  trend: BlazingTrend;
-  onPress: (trend: BlazingTrend) => void;
-}) {
-  const { theme } = useTheme();
-  const media = trend.item ? getItemMedia(trend.item) : { mediaSrc: null, mediaFileId: null };
-  const imageUri = useResolvedImageUri({
-    src: media.mediaSrc,
-    fileId: media.mediaFileId,
-    enabled: Boolean(media.mediaSrc || media.mediaFileId),
-  });
-
-  return (
-    <Pressable
-      onPress={() => onPress(trend)}
-      style={({ pressed }) => [
-        styles.blazingChip,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-        pressed && styles.pressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${trend.label}`}
-    >
-      {imageUri ? (
-        <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.blazingFullImage} imageStyle={styles.blazingFullImage} />
-      ) : (
-        <View style={[styles.blazingFullImage, { backgroundColor: theme.colors.primarySoft, alignItems: 'center', justifyContent: 'center' }]}>
-          <AppText variant="title" tone="primary">{String.fromCodePoint(0x1f525)}</AppText>
-        </View>
-      )}
-      <LinearGradient
-        colors={['transparent', theme.colors.backdropStrong] as [string, string]}
-        style={StyleSheet.absoluteFill}
-      />
-      <BlurView tint="dark" intensity={22} style={styles.blazingCopy}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdrop }]} />
-        <AppText variant="captionBold" tone="inverse" numberOfLines={1}>{trend.label}</AppText>
-        <AppText variant="caption" tone="inverse" numberOfLines={1}>
-          {trend.count} live picks
-        </AppText>
-      </BlurView>
-    </Pressable>
-  );
-}
-
-function BlazingRow({
-  trends,
-  onSelectTrend,
-}: {
-  trends: BlazingTrend[];
-  onSelectTrend: (trend: BlazingTrend) => void;
-}) {
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <AppText variant="subtitle">{String.fromCodePoint(0x1f525)} Live themes</AppText>
-      </View>
-      <FlatList
-        data={trends}
-        horizontal
-        keyExtractor={(item) => item.id}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.blazingContent}
-        renderItem={({ item }) => <BlazingChip trend={item} onPress={onSelectTrend} />}
-      />
-    </View>
-  );
-}
 
 function CollectionCard({
   collection,
@@ -890,22 +864,30 @@ function CollectionCard({
           <AppText variant="title" tone="muted">{String.fromCodePoint(0x1f5bc, 0xfe0f)}</AppText>
         </View>
       )}
-      <LinearGradient
-        colors={['transparent', theme.colors.backdropStrong] as [string, string]}
-        style={StyleSheet.absoluteFill}
-      />
+      {/*
+        A linear ramp across the FULL height was already 40% black by the
+        midpoint, which is where the cover art's subject sits. The copy is a
+        frosted panel pinned to the bottom edge and the count pill has its own
+        plate, so the ramp only has to carry the seam between them.
+      */}
+      <MediaScrim edges={['bottom']} reach={0.5} strength="standard" />
       <View style={[styles.collectionCountPill, { backgroundColor: theme.colors.backdropStrong, borderColor: theme.colors.glassBorder }]}>
         <AppText variant="captionBold" tone="inverse">
           {collection.productCount} {collection.productCount === 1 ? 'piece' : 'pieces'}
         </AppText>
       </View>
       <BlurView tint="dark" intensity={24} style={styles.collectionCopy}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.backdrop }]} />
+        {/*
+          `backdrop` here is 58% black on the dark theme, and it sat on top of a
+          24-intensity blur AND the full-height ramp above — three suppressions
+          stacked on one strip. The ramp is a band now, so one wash is enough.
+        */}
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: tokens.scrim(0.34) }]} />
         <AppText variant="bodyBold" tone="inverse" numberOfLines={2}>
           {collection.title}
         </AppText>
         <AppText variant="caption" tone="inverse" numberOfLines={1}>
-          {collection.brandName ?? 'WEAZ brand'}
+          {collection.brandName ?? 'WIEZ brand'}
         </AppText>
         <View style={styles.collectionMetaRow}>
           <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
@@ -941,10 +923,11 @@ function CollectionRow({
 
   return (
     <View style={styles.section}>
+      {/* Same rule as the rows above: the title names the section, the cards
+          say the rest. The subtitle is gone. */}
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleBlock}>
-          <AppText variant="subtitle">{title}</AppText>
-          <AppText variant="caption" tone="muted" numberOfLines={1}>{subtitle}</AppText>
+          <AppText variant="subtitle" numberOfLines={1}>{title}</AppText>
         </View>
       </View>
 
@@ -1043,16 +1026,21 @@ function HorizontalCardRow({
 
   return (
     <View style={styles.section}>
+      {/*
+        The title, and the way out. Nothing else.
+
+        A row used to carry four pieces of chrome: a title, a subtitle
+        underneath it, a descriptive chip, and a filled "See all" control — for
+        ONE horizontal strip of cards. The subtitles are written for whoever
+        tuned the ranking ("Deterministic V1 heat from product views and thread
+        activity"), not for a shopper, and they push the first card further down
+        on every row. The title says what the row is; the cards say the rest.
+      */}
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleBlock}>
-          <AppText variant="subtitle">{title}</AppText>
-          {subtitle ? <AppText variant="caption" tone="muted" numberOfLines={1}>{subtitle}</AppText> : null}
+          <AppText variant="subtitle" numberOfLines={1}>{title}</AppText>
         </View>
-        {onSeeAll ? (
-          <Pressable onPress={onSeeAll} hitSlop={tokens.spacing.sm} accessibilityRole="button" accessibilityLabel={`See all ${title}`}>
-            <AppText variant="captionBold" tone="primary">See all</AppText>
-          </Pressable>
-        ) : null}
+        {onSeeAll ? <SeeMoreLink onPress={onSeeAll} ofWhat={title} /> : null}
       </View>
       <FlatList
         data={items}
@@ -1097,6 +1085,28 @@ function formatSectionItemPrice(item: MarketSectionItem) {
   return 'View';
 }
 
+/**
+ * Every API-driven section renders the SAME card as the rest of the market.
+ *
+ * This used to be its own layout: image on top, then a solid card body with an
+ * entity-type pill ("PRODUCT"), title, brand and price stacked underneath. So
+ * "Hot right now", "Fresh Drops", "Picked for you", "New designers to watch",
+ * "Shop by style", "Loved near you", "Still thinking about these", "More from
+ * brands you like" and "Style picks of the week" — every section the API
+ * drives, which is most of the screen — looked nothing like "Fresh on WIEZ" or
+ * "For your moodboard" directly above and below them.
+ *
+ * `UnifiedProductCard` is the agreed design (full-bleed image, frosted copy
+ * panel over it) and it is now the only product card on this screen. The
+ * entity-type pill is gone with it: "PRODUCT" told a shopper nothing they could
+ * not see, and labels like that were removed from the catalog cards for the
+ * same reason.
+ *
+ * Bag and favourite are not wired here because section items are not
+ * `MarketContentItem`s — a section can carry a BRAND or a CATEGORY, which
+ * neither action means anything for. The card handles their absence by
+ * rendering neither control, so the SHAPE stays identical either way.
+ */
 function ApiSectionCard({
   item,
   width,
@@ -1106,53 +1116,21 @@ function ApiSectionCard({
   width: number;
   onOpen: (item: MarketSectionItem) => void;
 }) {
-  const { theme } = useTheme();
-  const imageUri = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
+  const mediaSrc = item.media?.thumbnailUrl ?? item.media?.url ?? item.brand?.logoUrl ?? null;
 
   return (
-    <Pressable
+    <UnifiedProductCard
+      width={width}
+      height={Math.round(width * 1.5)}
+      title={item.title}
+      brandName={item.brand?.name ?? 'WIEZ brand'}
+      priceLabel={formatSectionItemPrice(item)}
+      customOrder={Boolean(item.availability?.customOrderEnabled)}
+      mediaSrc={mediaSrc}
+      mediaFileId={item.media?.fileId ?? null}
+      analyticsSourceScreen="market"
       onPress={() => onOpen(item)}
-      style={({ pressed }) => [
-        styles.apiSectionCard,
-        { width, backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-        pressed && styles.pressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${item.title}`}
-    >
-      {imageUri ? (
-        <StableImage
-          uri={imageUri}
-          resizeMode="cover"
-          containerStyle={styles.apiSectionImage}
-          imageStyle={styles.apiSectionImage}
-        />
-      ) : (
-        <View style={[styles.apiSectionImage, { backgroundColor: theme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }]}>
-          <AppText variant="title" tone="muted">
-            {item.entityType === 'CATEGORY' ? String.fromCodePoint(0x25A6) : item.title.slice(0, 1).toUpperCase()}
-          </AppText>
-        </View>
-      )}
-      <View style={styles.apiSectionCardBody}>
-        <View style={[styles.apiTypePill, { backgroundColor: theme.colors.primarySoft }]}>
-          <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-            {item.entityType}
-          </AppText>
-        </View>
-        <AppText variant="bodyBold" numberOfLines={2}>
-          {item.title}
-        </AppText>
-        {item.subtitle ? (
-          <AppText variant="caption" tone="muted" numberOfLines={1}>
-            {item.subtitle}
-          </AppText>
-        ) : null}
-        <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-          {formatSectionItemPrice(item)}
-        </AppText>
-      </View>
-    </Pressable>
+    />
   );
 }
 
@@ -1169,20 +1147,12 @@ function ApiSectionRow({
 }) {
   return (
     <View style={styles.section}>
+      {/* See the note on the curated row: title + the way out, nothing else. */}
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleBlock}>
-          <AppText variant="subtitle">{section.title}</AppText>
-          {section.subtitle ? (
-            <AppText variant="caption" tone="muted" numberOfLines={1}>
-              {section.subtitle}
-            </AppText>
-          ) : null}
+          <AppText variant="subtitle" numberOfLines={1}>{section.title}</AppText>
         </View>
-        {onSeeAll ? (
-          <Pressable onPress={onSeeAll} hitSlop={tokens.spacing.sm} accessibilityRole="button" accessibilityLabel={`See all ${section.title}`}>
-            <AppText variant="captionBold" tone="primary">See all</AppText>
-          </Pressable>
-        ) : null}
+        {onSeeAll ? <SeeMoreLink onPress={onSeeAll} ofWhat={section.title} /> : null}
       </View>
       <FlatList
         data={section.items}
@@ -1282,10 +1252,17 @@ function EditorialCard({
       {imageUri ? (
         <StableImage uri={imageUri} resizeMode="cover" containerStyle={styles.editorialImage} imageStyle={styles.editorialImage} />
       ) : null}
-      <LinearGradient
-        colors={[theme.colors.backdropStrong, theme.colors.primaryDark, theme.colors.backdropStrong]}
-        style={StyleSheet.absoluteFill}
-      />
+      {/*
+        `primaryDark` is an OPAQUE violet, not a wash. Stopping this gradient
+        there meant the middle of the card was a solid purple band with the
+        photograph completely painted over, and the slivers above and below it
+        were 80% black. The image was, in effect, not rendered at all.
+
+        Copy sits in the bottom block and the tag pill is a filled chip, so a
+        bottom band is the whole job. `strong` and a deeper reach because this
+        card carries three lines of copy.
+      */}
+      <MediaScrim edges={['top', 'bottom']} reach={0.46} strength="strong" />
       <View style={[styles.editorialTag, { backgroundColor: theme.colors.primary }]}>
         <AppText variant="captionBold" tone="inverse">Market Edit</AppText>
       </View>
@@ -1294,7 +1271,7 @@ function EditorialCard({
           {item ? `Build a look around ${getItemTitle(item)}` : 'Discover curated African fashion'}
         </AppText>
         <AppText variant="caption" tone="inverse" numberOfLines={2}>
-          Mix custom-ready design inspiration with ready-to-wear finds from WEAZ brands.
+          Mix custom-ready design inspiration with ready-to-wear finds from WIEZ brands.
         </AppText>
         <AppText variant="captionBold" tone="primary">Read & Shop {String.fromCodePoint(0x2192)}</AppText>
       </View>
@@ -1303,14 +1280,31 @@ function EditorialCard({
 }
 
 export function MarketScreen() {
+  useCommitCost('Market');
+  const flowKey = 'market';
+  // Phase 1 instrumentation (gated)
+  React.useEffect(() => {
+    navPerf.screenMounted(flowKey);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    navPerf.shellVisible(flowKey);
+  }, []);
+
+  React.useEffect(() => {
+    navPerf.firstVisibleUi(flowKey);
+  }, []);
+
   const { theme, scheme } = useTheme();
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const toast = useToast();
   const { insets, standardScreenBottomPadding } = useScreenChrome();
   const { width, height } = useWindowDimensions();
   const { bagProduct, bagSource } = useMobileBagging();
+  const deferredWorkReady = useDeferredScreenWork();
+  const marketViewerKey = status === 'authenticated' ? user?.id ?? 'authenticated' : 'guest';
   const initialMarketSnapshotRef = useRef<MarketSnapshot | null>(
-    readMarketSnapshot(buildMarketQueryKey(DEFAULT_MARKET_FILTERS, ''))?.snapshot ?? null,
+    readMarketSnapshot(buildMarketQueryKey(DEFAULT_MARKET_FILTERS, '', marketViewerKey))?.snapshot ?? null,
   );
   const [products, setProducts] = useState<StoreProduct[]>(() => initialMarketSnapshotRef.current?.products ?? []);
   const [designs, setDesigns] = useState<MarketItem[]>(() => initialMarketSnapshotRef.current?.designs ?? []);
@@ -1332,7 +1326,7 @@ export function MarketScreen() {
   const [collectionError, setCollectionError] = useState<string | null>(
     () => initialMarketSnapshotRef.current?.collectionError ?? null,
   );
-  const [apiSections, setApiSections] = useState<MarketSection[]>([]);
+  const [apiSections, setApiSections] = useState<MarketSection[]>(() => marketSectionsCache ?? []);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, MARKET_SEARCH_DEBOUNCE_MS);
   const [filters, setFilters] = useState<MarketFilters>(DEFAULT_MARKET_FILTERS);
@@ -1344,18 +1338,85 @@ export function MarketScreen() {
   const lastResetQueryKeyRef = useRef<string | null>(null);
   const resetInFlightKeyRef = useRef<string | null>(null);
   const moreInFlightKeyRef = useRef<string | null>(null);
+  const productsRef = useRef(products);
+  const designsRef = useRef(designs);
+  const collectionsRef = useRef(collections);
+  const productCursorRef = useRef(productCursor);
+  const designCursorRef = useRef(designCursor);
+  const productHasNextRef = useRef(productHasNext);
+  const designHasNextRef = useRef(designHasNext);
+  const collectionErrorRef = useRef(collectionError);
   const moodboardSectionSeenRef = useRef<string | null>(null);
   const moodboardSuggestionSeenRef = useRef<Set<string>>(new Set());
   const viewedSectionKeysRef = useRef<Set<string>>(new Set());
   const viewedItemKeysRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => startMarketSignalRuntime(), []);
+  useEffect(() => {
+    if (!deferredWorkReady) return undefined;
+    return startMarketSignalRuntime();
+  }, [deferredWorkReady]);
+
+  // Dev-only nav timing for tabs→market. Shell renders at mount (cached snapshot
+  // or skeleton); data is ready once the initial market load settles.
+  useEffect(() => {
+    navPerf.screenMounted('tabs→market');
+    navPerf.shellVisible('tabs→market');
+    navPerf.firstVisibleUi('tabs→market');
+    if (initialMarketSnapshotRef.current || marketSectionsCache !== null) {
+      navPerf.mark('cache_hit', 'tabs→market');
+      navPerf.mark('stale_ui_rendered', 'tabs→market');
+    } else {
+      navPerf.mark('cache_miss', 'tabs→market');
+      navPerf.mark('cold_skeleton_rendered', 'tabs→market');
+    }
+  }, []);
+  useEffect(() => {
+    if (!loading) navPerf.dataReady('tabs→market');
+  }, [loading]);
+  // T10 from the flag that actually decides whether a skeleton is on screen.
+  useScreenArrival('tabs→market');
+  useSkeletonTiming(loading, 'tabs→market');
+
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
+
+  useEffect(() => {
+    designsRef.current = designs;
+  }, [designs]);
+
+  useEffect(() => {
+    collectionsRef.current = collections;
+  }, [collections]);
+
+  useEffect(() => {
+    productCursorRef.current = productCursor;
+  }, [productCursor]);
+
+  useEffect(() => {
+    designCursorRef.current = designCursor;
+  }, [designCursor]);
+
+  useEffect(() => {
+    productHasNextRef.current = productHasNext;
+  }, [productHasNext]);
+
+  useEffect(() => {
+    designHasNextRef.current = designHasNext;
+  }, [designHasNext]);
+
+  useEffect(() => {
+    collectionErrorRef.current = collectionError;
+  }, [collectionError]);
 
   const bottomClearance = standardScreenBottomPadding;
+  // One rotation seed per screen mount: every market entry renders a freshly
+  // mixed stack; the order stays stable while the user is on the screen.
+  const marketMixSeedRef = useRef(createMixSeed());
   const allItems = useMemo(() => buildContentItems(products, designs), [designs, products]);
   const marketQueryKey = useMemo(
-    () => buildMarketQueryKey(filters, debouncedSearch),
-    [debouncedSearch, filters.category, filters.maxPrice, filters.minPrice, filters.sort],
+    () => buildMarketQueryKey(filters, debouncedSearch, marketViewerKey),
+    [debouncedSearch, filters.category, filters.maxPrice, filters.minPrice, filters.sort, marketViewerKey],
   );
 
   const applyMarketSnapshot = useCallback((snapshot: MarketSnapshot) => {
@@ -1372,11 +1433,57 @@ export function MarketScreen() {
   const loadApiSections = useCallback(async () => {
     try {
       const response = await getMarketSections({ limit: 8 });
-      setApiSections(response.sections ?? []);
+      const nextSections = response.sections ?? [];
+      marketSectionsCache = nextSections;
+      setApiSections(nextSections);
     } catch {
-      setApiSections([]);
+      // Keep the last visible sections on transient refresh failures.
     }
   }, []);
+
+  /**
+   * The market as it looks with NO theme applied.
+   *
+   * Captured whenever `filters.category` is null and results are in, then held
+   * across theme changes so the hero and the theme rail have something stable
+   * to be built from. Without it those two rows are derived from a list that
+   * the act of choosing a theme empties and re-scopes — so they delete
+   * themselves the moment they are used.
+   */
+  const [chromeItems, setChromeItems] = useState<MarketContentItem[]>([]);
+
+  /**
+   * Adire Casual draws from the UNFILTERED pool, like the other chrome.
+   *
+   * A themed section that empties when someone filters the market by something
+   * else is a section that disappears at random, so it reads from the same
+   * snapshot the hero does rather than from the current result set.
+   */
+  const adirePool = useMemo(
+    () => filterAdireItems(chromeItems.length > 0 ? chromeItems : allItems),
+    [allItems, chromeItems],
+  );
+
+  /*
+   * The exposure tally lives in a ref: it is bookkeeping for the rotation, not
+   * something the screen renders, and putting it in state would re-run the
+   * batch on every tick that reads it. Reset when the pool identity changes so
+   * a fresh set of items starts from a clean count.
+   */
+  const adireBatchStateRef = useRef<AdireBatchState>(createAdireBatchState());
+  useEffect(() => {
+    adireBatchStateRef.current = createAdireBatchState();
+  }, [adirePool]);
+
+  const openAdireAll = useCallback(() => {
+    drillDownPush('/adire' as any);
+  }, []);
+
+  useEffect(() => {
+    if (filters.category) return;
+    if (allItems.length === 0) return;
+    setChromeItems(allItems);
+  }, [allItems, filters.category]);
 
   const categoryOptions = useMemo(() => {
     const values = new Set<string>();
@@ -1419,11 +1526,22 @@ export function MarketScreen() {
       return true;
     });
 
-    return next.sort((a, b) => {
-      if (filters.sort === 'price_asc') return (getItemPrice(a) ?? Number.MAX_SAFE_INTEGER) - (getItemPrice(b) ?? Number.MAX_SAFE_INTEGER);
-      if (filters.sort === 'price_desc') return (getItemPrice(b) ?? 0) - (getItemPrice(a) ?? 0);
-      if (filters.sort === 'popular') return getPopularity(b) - getPopularity(a);
-      return new Date(getItemCreatedAt(b) ?? 0).getTime() - new Date(getItemCreatedAt(a) ?? 0).getTime();
+    if (filters.sort === 'price_asc' || filters.sort === 'price_desc' || filters.sort === 'popular') {
+      return next.sort((a, b) => {
+        if (filters.sort === 'price_asc') return (getItemPrice(a) ?? Number.MAX_SAFE_INTEGER) - (getItemPrice(b) ?? Number.MAX_SAFE_INTEGER);
+        if (filters.sort === 'price_desc') return (getItemPrice(b) ?? 0) - (getItemPrice(a) ?? 0);
+        return getPopularity(b) - getPopularity(a);
+      });
+    }
+
+    // Default view: scored rotation (recency + popularity weighted, seeded
+    // per screen mount) — the market never renders the same stack in the
+    // same order on every visit. Explicit user sorts above stay exact.
+    return mixScoredItems(next, marketMixSeedRef.current, {
+      getId: (item) => item.key,
+      getCreatedAtMs: (item) => new Date(getItemCreatedAt(item) ?? 0).getTime(),
+      getPopularity,
+      getBrandKey: (item) => getItemBrand(item),
     });
   }, [allItems, filters, search]);
 
@@ -1514,9 +1632,11 @@ export function MarketScreen() {
 
   const loadMarket = useCallback(
     async (mode: 'reset' | 'more', options?: { forceRefresh?: boolean }) => {
+      let didStartBackgroundRefresh = false;
       if (mode === 'reset') {
         const cached = options?.forceRefresh ? null : readMarketSnapshot(marketQueryKey);
         if (cached) {
+          navPerf.mark('cache_hit', 'tabs→market');
           applyMarketSnapshot(cached.snapshot);
           setError(null);
           setLoading(false);
@@ -1525,7 +1645,14 @@ export function MarketScreen() {
             lastResetQueryKeyRef.current = marketQueryKey;
             return;
           }
-        } else if (!options?.forceRefresh && lastResetQueryKeyRef.current === marketQueryKey && allItems.length > 0) {
+          navPerf.mark('stale_ui_rendered', 'tabs→market');
+          navPerf.mark('background_refresh_started', 'tabs→market');
+          didStartBackgroundRefresh = true;
+        } else if (
+          !options?.forceRefresh &&
+          lastResetQueryKeyRef.current === marketQueryKey &&
+          (allItems.length > 0 || collectionsRef.current.length > 0)
+        ) {
           return;
         }
 
@@ -1537,7 +1664,7 @@ export function MarketScreen() {
         loadedMorePageKeysRef.current.clear();
         setError(null);
         setCollectionError(null);
-        setLoading(!cached && allItems.length === 0);
+        setLoading(!cached && allItems.length === 0 && collectionsRef.current.length === 0);
       } else {
         const canFetchProducts = productHasNext && Boolean(productCursor);
         const canFetchDesigns = designHasNext && Boolean(designCursor);
@@ -1571,8 +1698,15 @@ export function MarketScreen() {
         const productOk = productValue !== null;
         const designOk = designValue !== null;
         const collectionOk = collectionResult.status === 'fulfilled';
+        const previousProducts = productsRef.current;
+        const previousDesigns = designsRef.current;
+        const previousCollections = collectionsRef.current;
+        const hasVisibleMarketState =
+          previousProducts.length > 0 ||
+          previousDesigns.length > 0 ||
+          previousCollections.length > 0;
 
-        if (!productOk && !designOk) {
+        if (!productOk && !designOk && !hasVisibleMarketState) {
           const failureReason =
             productResult.status === 'rejected'
               ? productResult.reason
@@ -1582,14 +1716,14 @@ export function MarketScreen() {
           setError(toErrorMessage(failureReason));
         }
 
-        let nextProducts: StoreProduct[] | null = null;
-        let nextDesigns: MarketItem[] | null = null;
-        let nextCollections: StoreCollectionSummary[] | null = null;
-        let nextProductCursor: string | null = null;
-        let nextDesignCursor: string | null = null;
-        let nextProductHasNext = false;
-        let nextDesignHasNext = false;
-        let nextCollectionError: string | null = null;
+        let nextProducts: StoreProduct[] | null = mode === 'reset' ? previousProducts : null;
+        let nextDesigns: MarketItem[] | null = mode === 'reset' ? previousDesigns : null;
+        let nextCollections: StoreCollectionSummary[] | null = mode === 'reset' ? previousCollections : null;
+        let nextProductCursor: string | null = mode === 'reset' ? productCursorRef.current : null;
+        let nextDesignCursor: string | null = mode === 'reset' ? designCursorRef.current : null;
+        let nextProductHasNext = mode === 'reset' ? productHasNextRef.current : false;
+        let nextDesignHasNext = mode === 'reset' ? designHasNextRef.current : false;
+        let nextCollectionError: string | null = mode === 'reset' ? collectionErrorRef.current : null;
 
         if (productValue) {
           nextProductCursor = productValue.nextCursor;
@@ -1607,11 +1741,6 @@ export function MarketScreen() {
           }
           setProductCursor(nextProductCursor);
           setProductHasNext(nextProductHasNext);
-        } else if (mode === 'reset') {
-          setProducts([]);
-          setProductCursor(null);
-          setProductHasNext(false);
-          nextProducts = [];
         }
 
         if (designValue) {
@@ -1630,11 +1759,6 @@ export function MarketScreen() {
           }
           setDesignCursor(nextDesignCursor);
           setDesignHasNext(nextDesignHasNext);
-        } else if (mode === 'reset') {
-          setDesigns([]);
-          setDesignCursor(null);
-          setDesignHasNext(false);
-          nextDesigns = [];
         }
 
         if (mode === 'reset') {
@@ -1645,11 +1769,9 @@ export function MarketScreen() {
           } else if (collectionResult.status === 'rejected') {
             nextCollectionError = toErrorMessage(collectionResult.reason);
             setCollectionError(nextCollectionError);
-            setCollections([]);
-            nextCollections = [];
           }
 
-          if (productValue || designValue) {
+          if (productValue || designValue || collectionValue) {
             writeMarketSnapshot(marketQueryKey, {
               products: nextProducts ?? [],
               designs: nextDesigns ?? [],
@@ -1671,6 +1793,9 @@ export function MarketScreen() {
             resetInFlightKeyRef.current = null;
           }
           setLoading(false);
+          if (didStartBackgroundRefresh) {
+            navPerf.mark('background_refresh_completed', 'tabs→market');
+          }
         } else {
           moreInFlightKeyRef.current = null;
           setLoadingMore(false);
@@ -1700,8 +1825,9 @@ export function MarketScreen() {
   }, [marketQueryKey]);
 
   useEffect(() => {
+    if (!deferredWorkReady) return;
     void loadApiSections();
-  }, [loadApiSections]);
+  }, [deferredWorkReady, loadApiSections]);
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
@@ -1712,7 +1838,7 @@ export function MarketScreen() {
   }, [products]);
 
   useEffect(() => {
-    if (status !== 'authenticated' || designs.length === 0) return undefined;
+    if (!deferredWorkReady || status !== 'authenticated' || designs.length === 0) return undefined;
     const ids = designs.map((item) => item.collectionId).filter(Boolean);
     let cancelled = false;
     SavedItemsApi.checkBatch('COLLECTION', ids)
@@ -1730,7 +1856,7 @@ export function MarketScreen() {
     return () => {
       cancelled = true;
     };
-  }, [designs, status]);
+  }, [deferredWorkReady, designs, status]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1744,7 +1870,7 @@ export function MarketScreen() {
   const requireAuth = useCallback(() => {
     if (status === 'authenticated') return true;
     toast.info('Please sign in to continue.');
-    router.push({ pathname: '/(auth)/login', params: { next: '/(tabs)/discover' } } as any);
+    drillDownPush({ pathname: '/(auth)/login', params: { next: '/(tabs)/discover' } } as any);
     return false;
   }, [status, toast]);
 
@@ -1760,10 +1886,10 @@ export function MarketScreen() {
     void flushMarketSignals();
 
     if (item.kind === 'product') {
-      router.push({ pathname: '/products/[productId]', params: { productId: item.product.id } } as any);
+      drillDownPush({ pathname: '/products/[productId]', params: { productId: item.product.id } } as any);
       return;
     }
-    router.push({
+    drillDownPush({
       pathname: '/market-viewer',
       params: {
         sourceType: 'DESIGN',
@@ -1785,7 +1911,7 @@ export function MarketScreen() {
       sectionKey: 'latest-collections',
     });
     void flushMarketSignals();
-    router.push({
+    drillDownPush({
       pathname: '/collection-viewer',
       params: { collectionId: collection.id, returnTo: '/(tabs)/discover' },
     } as any);
@@ -1801,7 +1927,9 @@ export function MarketScreen() {
       sectionKey,
     });
     void flushMarketSignals();
-    router.push({
+    navPerf.tap('market→section');
+    navPerf.navigationCalled();
+    drillDownPush({
       pathname: '/market-section',
       params: { sectionKey },
     } as any);
@@ -1821,11 +1949,11 @@ export function MarketScreen() {
     void flushMarketSignals();
 
     if (targetType === 'PRODUCT' && targetId) {
-      router.push({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
+      drillDownPush({ pathname: '/products/[productId]', params: { productId: targetId } } as any);
       return;
     }
     if (targetType === 'DESIGN' && targetId) {
-      router.push({
+      drillDownPush({
         pathname: '/market-viewer',
         params: {
           sourceType: 'DESIGN',
@@ -1839,14 +1967,14 @@ export function MarketScreen() {
       return;
     }
     if (targetType === 'COLLECTION' && targetId) {
-      router.push({
+      drillDownPush({
         pathname: '/collection-viewer',
         params: { collectionId: targetId, returnTo: '/(tabs)/discover' },
       } as any);
       return;
     }
     if (targetType === 'BRAND' && targetId) {
-      router.push({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
+      drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
       return;
     }
     if (targetType === 'CATEGORY') {
@@ -1991,11 +2119,49 @@ export function MarketScreen() {
 
   const rowData = useMemo<MarketRow[]>(() => {
     if (error) return [{ id: 'error', type: 'ERROR_STATE', message: error }];
-    if (filteredItems.length === 0 && collections.length === 0 && apiSections.length === 0) {
+    /**
+     * "No results" replaces the RESULTS, not the whole screen.
+     *
+     * This returned a bare empty state, which on a theme change meant the hero
+     * and the theme rail were unmounted along with the items — and a theme
+     * refetch passes through exactly this branch, because `filteredItems` is
+     * empty for as long as the request is in flight. Once there is a chrome
+     * snapshot to draw from, the empty state is appended BELOW the chrome so
+     * the rail that applied the filter is still there to clear it.
+     */
+    const noContent =
+      filteredItems.length === 0 && collections.length === 0 && apiSections.length === 0;
+    if (noContent && chromeItems.length === 0) {
       return [{ id: 'empty', type: 'EMPTY_STATE' }];
+    }
+    if (noContent) {
+      return [
+        ...buildRows({
+          allItems,
+          chromeItems,
+          adirePool,
+          adireBatchState: adireBatchStateRef.current,
+          openAdireAll,
+          filteredItems,
+          moodboardItems,
+          apiSections,
+          collections,
+          collectionError,
+          categoryOptions,
+          loadingMore,
+          setNewestView,
+          setCustomReadyView,
+          openApiSection,
+        }).filter((row) => row.type === 'HERO_CAROUSEL'),
+        { id: 'empty', type: 'EMPTY_STATE' },
+      ];
     }
     return buildRows({
       allItems,
+      chromeItems,
+      adirePool,
+      adireBatchState: adireBatchStateRef.current,
+      openAdireAll,
       filteredItems,
       moodboardItems,
       apiSections,
@@ -2008,10 +2174,13 @@ export function MarketScreen() {
       openApiSection,
     });
   }, [
+    adirePool,
     allItems,
     apiSections,
     categoryOptions,
+    chromeItems,
     collectionError,
+    openAdireAll,
     collections,
     error,
     filteredItems,
@@ -2063,7 +2232,11 @@ export function MarketScreen() {
       if (row.type === 'HERO_CAROUSEL') {
         row.items.forEach((entry, index) => trackItemImpression(entry, sectionKey, index));
       }
-      if (row.type === 'HORIZONTAL_CARD_ROW' || row.type === 'PRODUCT_GRID') {
+      if (
+        row.type === 'HORIZONTAL_CARD_ROW' ||
+        row.type === 'ADIRE_ROW' ||
+        row.type === 'PRODUCT_GRID'
+      ) {
         row.items.forEach((entry, index) => trackItemImpression(entry, sectionKey, index));
       }
       if (row.type === 'API_SECTION_ROW') {
@@ -2122,21 +2295,36 @@ export function MarketScreen() {
   const horizontalCardWidth = Math.min(184, Math.max(150, Math.round(width * 0.42)));
   const heroHeight = Math.min(236, Math.max(176, Math.round(height * 0.24)));
 
-  const handleTrendSelect = useCallback((trend: BlazingTrend) => {
-    if (trend.category) {
-      setFilters((current) => ({ ...current, category: trend.category }));
-    } else if (trend.item) {
-      openItem(trend.item);
+  /**
+   * Applying a theme scrolls back to the top.
+   *
+   * The rows above the tap point change when a filter lands, so leaving the
+   * list where it was meant the user's viewport jumped to a different section
+   * without moving — the second half of "it feels like I am routed to another
+   * screen". Returning to the top shows the change in context: the theme bar
+   * appears, the rail is still there, and the list below it is visibly the new
+   * one.
+   */
+  const feedListRef = useRef<FlatList<MarketRow> | null>(null);
+  const lastAppliedCategoryRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const next = filters.category ?? null;
+    if (lastAppliedCategoryRef.current === undefined) {
+      lastAppliedCategoryRef.current = next;
+      return;
     }
-  }, [openItem]);
+    if (lastAppliedCategoryRef.current === next) return;
+    lastAppliedCategoryRef.current = next;
+    feedListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, [filters.category]);
+
 
   const renderRow = useCallback(
     ({ item }: { item: MarketRow }) => {
       switch (item.type) {
         case 'HERO_CAROUSEL':
           return <MarketHeroCarousel items={item.items} width={width} height={heroHeight} onOpen={openItem} />;
-        case 'BLAZING_ROW':
-          return <BlazingRow trends={item.trends} onSelectTrend={handleTrendSelect} />;
         case 'HORIZONTAL_CARD_ROW':
           return (
             <HorizontalCardRow
@@ -2152,6 +2340,24 @@ export function MarketScreen() {
               onFavorite={handleFavorite}
               onSeeAll={item.onSeeAll}
               source={item.source}
+            />
+          );
+        case 'ADIRE_ROW':
+          /* Same row component as every other curated strip, so Adire Casual
+             is a section of the market rather than a special case in it. */
+          return (
+            <HorizontalCardRow
+              title={item.title}
+              subtitle={item.subtitle}
+              items={item.items}
+              cardWidth={horizontalCardWidth}
+              favoriteByKey={favoriteByKey}
+              busyByKey={busyByKey}
+              favoriteBusyByKey={favoriteBusyByKey}
+              onOpen={openItem}
+              onBag={handleBag}
+              onFavorite={handleFavorite}
+              onSeeAll={item.onSeeAll}
             />
           );
         case 'API_SECTION_ROW':
@@ -2194,7 +2400,7 @@ export function MarketScreen() {
         case 'LOADING_MORE':
           return (
             <View style={styles.loadingMoreRow}>
-              <ActivityIndicator color={theme.colors.primary} />
+              <MuseLoader size={20} />
             </View>
           );
         case 'ERROR_STATE':
@@ -2211,7 +2417,6 @@ export function MarketScreen() {
       favoriteByKey,
       handleBag,
       handleFavorite,
-      handleTrendSelect,
       heroHeight,
       horizontalCardWidth,
       loadMarket,
@@ -2226,8 +2431,8 @@ export function MarketScreen() {
   const renderHeader = (
     <View style={styles.headerStack}>
       <View style={styles.topRow}>
-        <Pressable onPress={() => router.replace('/' as any)} style={({ pressed }) => [styles.logoButton, pressed && styles.pressed]}>
-          <WeazLogo size={30} />
+        <Pressable onPress={() => topLevelNavigate('/' as any)} style={({ pressed }) => [styles.logoButton, pressed && styles.pressed]}>
+          <WiezMark size={30} />
         </Pressable>
         <View style={styles.titleWrap}>
           <AppText variant="title">Market</AppText>
@@ -2243,9 +2448,19 @@ export function MarketScreen() {
             pressed && styles.pressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Open filters"
+          accessibilityLabel="Sort and filter the market"
         >
-          <AppText variant="subtitle">{String.fromCodePoint(0x2699, 0xfe0f)}</AppText>
+          {/*
+            Sliders, not a gear.
+
+            A cog means "settings" — app preferences, account, configuration —
+            everywhere else a person uses a phone, so putting one here promised
+            the wrong screen. The slider control is the one glyph that reads as
+            "adjust what I am looking at", and it is what filter controls use
+            across the apps this audience already knows. The label goes under it
+            because an icon alone in a header is a guess either way.
+          */}
+          <AppText variant="subtitle">{MARKET_FILTER_EMOJI}</AppText>
         </Pressable>
       </View>
 
@@ -2299,12 +2514,60 @@ export function MarketScreen() {
           );
         })}
       </ScrollView>
+
+      {/*
+        Say which theme is on, and give a way off it.
+
+        Live themes and the category chips are DIFFERENT taxonomies: the chips
+        come from `categoryOptions` ("Ankara Fashion", "Lacewear", …) while a
+        live theme falls back to an item's own category ("Bridal",
+        "Two-piece set"). Tapping a theme set `filters.category` to a value no
+        chip could match — so no chip highlighted, "All" un-highlighted too, and
+        the screen entered a filtered state that its own controls could neither
+        show nor clear. The user had no indication anything had been applied,
+        let alone how to undo it.
+
+        This bar is bound to the filter itself rather than to the chip list, so
+        it is correct whichever taxonomy set it.
+      */}
+      {filters.category ? (
+        /*
+          One control, and it is a way OUT.
+
+          Choosing a theme re-scopes the whole market, which is a place you have
+          gone rather than a chip you have ticked — so the thing that undoes it
+          has to read like leaving. It was a pill with a small ✕ on the end: two
+          targets, the useful one the size of a full stop, and nothing saying
+          where pressing it would put you.
+
+          The whole bar is now the exit, it leads with a back arrow, and it says
+          where it goes.
+        */
+        <Pressable
+          onPress={() => setFilters((current) => ({ ...current, category: null }))}
+          accessibilityRole="button"
+          accessibilityLabel={`Leave the ${filters.category} theme and return to the full market`}
+          style={({ pressed }) => [styles.activeFilterRow, pressed && styles.pressed]}
+        >
+          <View
+            style={[
+              styles.activeFilterPill,
+              { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.focusRing },
+            ]}
+          >
+            <AppText variant="captionBold" tone="primary">←</AppText>
+            <AppText variant="captionBold" tone="primary" numberOfLines={1} style={styles.activeFilterLabel}>
+              Showing “{filters.category}” · Back to all
+            </AppText>
+          </View>
+        </Pressable>
+      ) : null}
     </View>
   );
 
-  if (loading && allItems.length === 0) {
+  if (loading && allItems.length === 0 && collections.length === 0 && apiSections.length === 0) {
     return (
-      <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
+      <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.surface, paddingTop: insets.top }]}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <MarketSkeleton bottomPadding={bottomClearance} />
       </SafeAreaView>
@@ -2312,9 +2575,10 @@ export function MarketScreen() {
   }
 
   return (
-    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
+    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.surface, paddingTop: insets.top }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <FlatList
+        ref={feedListRef}
         data={rowData}
         keyExtractor={(item) => item.id}
         renderItem={renderRow}
@@ -2391,6 +2655,24 @@ const styles = StyleSheet.create({
   categoryRow: {
     gap: tokens.spacing.sm,
     paddingRight: tokens.spacing.lg,
+  },
+  activeFilterRow: {
+    flexDirection: 'row',
+    paddingTop: tokens.spacing.sm,
+  },
+  activeFilterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    minHeight: 32,
+    maxWidth: '100%',
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    paddingHorizontal: tokens.spacing.md,
+  },
+  activeFilterLabel: {
+    flexShrink: 1,
+    minWidth: 0,
   },
   categoryChip: {
     minHeight: 36,
@@ -2475,30 +2757,6 @@ const styles = StyleSheet.create({
   heroDotActive: {
     width: 18,
   },
-  blazingContent: {
-    paddingHorizontal: SIDE_PADDING,
-    gap: tokens.spacing.sm,
-  },
-  blazingChip: {
-    width: 176,
-    height: 132,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  blazingFullImage: {
-    ...StyleSheet.absoluteFill,
-  },
-  blazingCopy: {
-    position: 'absolute',
-    left: tokens.spacing.sm,
-    right: tokens.spacing.sm,
-    bottom: tokens.spacing.sm,
-    borderRadius: tokens.radius.md,
-    overflow: 'hidden',
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
-  },
   horizontalCardsContent: {
     paddingHorizontal: SIDE_PADDING,
     gap: CARD_GAP,
@@ -2548,27 +2806,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.xs,
-    justifyContent: 'center',
-  },
-  apiSectionCard: {
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  apiSectionImage: {
-    width: '100%',
-    aspectRatio: 4 / 5,
-  },
-  apiSectionCardBody: {
-    padding: tokens.spacing.md,
-    gap: tokens.spacing.xs,
-  },
-  apiTypePill: {
-    alignSelf: 'flex-start',
-    minHeight: 24,
-    borderRadius: tokens.radius.full,
-    paddingHorizontal: tokens.spacing.sm,
-    alignItems: 'center',
     justifyContent: 'center',
   },
   gridStack: {

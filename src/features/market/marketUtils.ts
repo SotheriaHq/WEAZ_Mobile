@@ -1,5 +1,6 @@
 import type { StoreProduct } from '@/src/api/StoreApi';
 import type { MarketItem } from '@/src/types/market';
+import { formatMoney } from '@/src/utils/money';
 
 export const DEFAULT_MARKET_FILTERS = {
   category: null,
@@ -12,15 +13,7 @@ export const DEFAULT_MARKET_FILTERS = {
 
 export function formatMarketPrice(value?: number | null, currency = 'NGN') {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return `NGN ${Math.round(value).toLocaleString('en-NG')}`;
-  }
+  return formatMoney(value, currency);
 }
 
 export function getProductDisplayPrice(product: StoreProduct) {

@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from 'expo-router';
+import type { CountryCode } from 'libphonenumber-js';
 
 import { ProfileApi, type UserProfile } from '@/src/api/ProfileApi';
-import { useAuth } from '@/src/auth/AuthContext';
+import { useAuth, type AuthUser } from '@/src/auth/AuthContext';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { getFriendlyErrorMessage } from '@/src/utils/errorMessage';
 import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profileImage';
 import { compressPickedImage } from '@/src/utils/imageCompression';
 import {
@@ -17,26 +20,86 @@ import {
   getMobileUploadValidationMessage,
   assertValidPickedUploadAsset,
 } from '@/src/utils/uploadValidation';
-import { AppLoaderScreen } from '@/components/ui/AppLoader';
 import { AppText } from '@/components/ui/AppText';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { Input } from '@/components/ui/Input';
+import { LocationCascadeFields } from '@/components/forms/LocationCascadeFields';
+import { PhoneNumberField } from '@/components/forms/PhoneNumberField';
+import { useScreenChrome } from '@/src/system/ScreenChrome';
+import { iso2ForCountryName } from '@/src/utils/phoneCountries';
 import { StableImage } from '@/components/ui/StableImage';
 import { tokens } from '@/src/styles/tokens';
+import { readWarmScreenState } from '@/src/state/screenWarmState';
+import { backOrNavigate, topLevelNavigate } from '@/src/utils/mobileNavigation';
+import { MuseLoader } from '@/components/ui/MuseLoader';
+
+/**
+ * Where "back" should land, stated by whoever opened this screen.
+ *
+ * Only same-app absolute paths are accepted — a `from` that arrives on a deep
+ * link is attacker-controlled, and navigating to an arbitrary string is how a
+ * back button becomes a redirect.
+ */
+const ALLOWED_RETURN_HREFS = new Set(['/settings', '/(tabs)/me']);
+
+function resolveReturnHref(value: string | string[] | undefined): string | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  const trimmed = String(candidate ?? '').trim();
+  return ALLOWED_RETURN_HREFS.has(trimmed) ? trimmed : null;
+}
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 type ProfileFormState = {
   firstName: string;
   lastName: string;
+  username: string;
+  phoneNumber: string;
+  /**
+   * Street address only.
+   *
+   * This field used to be labelled "Location" and hold the whole thing — the
+   * one box a shopper had for a country, a state, an LGA and a street. It was
+   * seeded from `profile.location`, which the server COMPOSES, so anything
+   * typed here came back as part of a display line and could never be read back
+   * into a picker. The administrative levels are their own fields now and this
+   * one means what its label says.
+   */
   address: string;
+  country: string;
+  state: string;
+  city: string;
 };
 
-function toForm(profile: UserProfile): ProfileFormState {
+type WarmProfileState = {
+  profile: UserProfile | null;
+};
+
+/**
+ * Seed every field from whatever is already in memory before the profile
+ * request lands.
+ *
+ * Location used to read from `profile` only, so on a cold entry (Settings, deep
+ * link) the name fields filled from the auth user instantly while location sat
+ * empty — indistinguishable from "you have not set a location". Each field now
+ * falls back through profile → auth user, and the screen shows an explicit
+ * loading state until the fetch settles so blank never has to be interpreted.
+ */
+function toForm(profile: UserProfile | null, user: AuthUser | null): ProfileFormState {
   return {
-    firstName: profile.firstName ?? '',
-    lastName: profile.lastName ?? '',
-    address: profile.location ?? profile.address ?? '',
+    firstName: profile?.firstName ?? user?.firstName ?? '',
+    lastName: profile?.lastName ?? user?.lastName ?? '',
+    username: profile?.username ?? user?.username ?? '',
+    phoneNumber: user?.phoneNumber ?? '',
+    // `profile.location` is deliberately NOT read here any more. It is the
+    // server's composed "City, State, Country" display line; seeding an editable
+    // field from it meant a shopper who opened this screen and saved without
+    // touching anything wrote their own display line back in as a street
+    // address.
+    address: profile?.address ?? '',
+    country: profile?.country ?? '',
+    state: profile?.state ?? '',
+    city: profile?.city ?? '',
   };
 }
 
@@ -48,38 +111,71 @@ function formsEqual(a: ProfileFormState, b: ProfileFormState): boolean {
   return (
     normalized(a.firstName) === normalized(b.firstName) &&
     normalized(a.lastName) === normalized(b.lastName) &&
-    normalized(a.address) === normalized(b.address)
+    normalized(a.username) === normalized(b.username) &&
+    normalized(a.phoneNumber) === normalized(b.phoneNumber) &&
+    normalized(a.address) === normalized(b.address) &&
+    normalized(a.country) === normalized(b.country) &&
+    normalized(a.state) === normalized(b.state) &&
+    normalized(a.city) === normalized(b.city)
   );
 }
 
-function statusLabel(state: SaveState, savedAt: Date | null): string {
-  if (state === 'saving') return 'Saving changes...';
-  if (state === 'error') return 'Could not save changes. Fix the issue before leaving.';
+function statusLabel(state: SaveState, savedAt: Date | null, error: string | null): string | null {
+  if (state === 'saving') return 'Saving changes';
+  // Prefer the specific failure over the generic sentence — "Username already
+  // taken" tells the user what to do; "Could not save changes" does not.
+  if (state === 'error') return error ?? 'Could not save changes. Fix the issue before leaving.';
   if (state === 'saved' && savedAt) {
     return `Saved ${savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   }
-  return 'Changes save when you leave';
+  return null;
 }
 
 export default function MeEditScreen() {
   const { user, updateUser } = useAuth();
   const { theme } = useTheme();
+  /*
+    This screen lives inside the `(tabs)` group, so the floating island is
+    rendered OVER it by `app/(tabs)/_layout.tsx` — it is not part of this
+    screen's layout and takes no space in it. The content padding was a fixed
+    `spacing['4xl']`, which is smaller than the island on every device, so the
+    last fields on the form sat underneath it: the email block was unreadable
+    and untappable. Every other screen in this group reserves
+    `standardScreenBottomPadding` for exactly this reason.
+  */
+  const { standardScreenBottomPadding } = useScreenChrome();
   const toast = useToast();
   const navigation = useNavigation();
+  const params = useLocalSearchParams<{ from?: string | string[] }>();
+  const returnHref = useMemo(() => resolveReturnHref(params.from), [params.from]);
 
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [form, setForm] = useState<ProfileFormState | null>(null);
-  const [baseline, setBaseline] = useState<ProfileFormState | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialProfile = useMemo(
+    () =>
+      user?.id
+        ? readWarmScreenState<WarmProfileState>(`me:v2:${user.id}`)?.profile ?? null
+        : null,
+    [user?.id],
+  );
+  const initialForm = useMemo(() => toForm(initialProfile, user), [initialProfile, user]);
+  const [profile, setProfile] = useState<UserProfile | null>(initialProfile);
+  const [form, setForm] = useState<ProfileFormState>(initialForm);
+  const [baseline, setBaseline] = useState<ProfileFormState>(initialForm);
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  // Carries the specific reason a save failed, so the header can say what went
+  // wrong instead of "Could not save changes."
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  // Distinguishes "we have not fetched yet" from "this field is genuinely
+  // empty". Without it a cold entry renders a complete-looking form with blank
+  // location and reads as data loss.
+  const [isHydrating, setIsHydrating] = useState(!initialProfile);
 
   const latestFormRef = useRef<ProfileFormState | null>(null);
   const pendingChangesRef = useRef(false);
+  const hasUserEditedRef = useRef(false);
   const isNavigatingAwayRef = useRef(false);
 
   const hasPendingChanges = useMemo(() => {
-    if (!form || !baseline) return false;
     return !formsEqual(form, baseline);
   }, [baseline, form]);
 
@@ -92,33 +188,22 @@ export default function MeEditScreen() {
   }, [hasPendingChanges]);
 
   const loadProfile = useCallback(async () => {
-    setLoading(true);
-    const retryDelays = [1000, 3000];
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) {
-        await new Promise<void>((resolve) => setTimeout(resolve, retryDelays[attempt - 1]));
-      }
-      try {
-        const data = await ProfileApi.getMe();
-        if (!data) {
-          console.warn('[background.profile.load.failed] No profile data returned');
-          if (attempt === 2) toast.error('Could not load your profile.');
-          continue;
-        }
-        const nextForm = toForm(data);
-        setProfile(data);
+    try {
+      const data = await ProfileApi.getMe();
+      if (!data) return;
+      const nextForm = toForm(data, user);
+      setProfile(data);
+      if (!hasUserEditedRef.current) {
         setForm(nextForm);
         setBaseline(nextForm);
         setSaveState('idle');
-        setLoading(false);
-        return;
-      } catch (error) {
-        console.warn('[background.profile.load.failed]', error);
-        if (attempt === 2) toast.error('Failed to load your profile.');
       }
+    } catch {
+      // Auth/warm data keeps the editor usable while the profile request degrades.
+    } finally {
+      setIsHydrating(false);
     }
-    setLoading(false);
-  }, [toast]);
+  }, [user]);
 
   useEffect(() => {
     void loadProfile();
@@ -126,15 +211,16 @@ export default function MeEditScreen() {
 
   const persistDraft = useCallback(
     async (draft: ProfileFormState) => {
-      if (!profile) return true;
-      if (!baseline || formsEqual(draft, baseline)) return true;
+      if (formsEqual(draft, baseline)) return true;
 
-      const resolvedFirstName = draft.firstName.trim() || baseline.firstName.trim() || profile.firstName.trim();
-      const resolvedLastName = draft.lastName.trim() || baseline.lastName.trim() || profile.lastName.trim();
+      const resolvedFirstName = draft.firstName.trim() || baseline.firstName.trim() || profile?.firstName.trim() || user?.firstName?.trim();
+      const resolvedLastName = draft.lastName.trim() || baseline.lastName.trim() || profile?.lastName.trim() || user?.lastName?.trim();
+      const username =
+        draft.username.trim() || profile?.username.trim() || user?.username?.trim();
 
-      if (!resolvedFirstName || !resolvedLastName) {
+      if (!resolvedFirstName || !resolvedLastName || !username) {
         setSaveState('error');
-        toast.error('First and last name are required.');
+        toast.error('First name, last name, and username are required.');
         return false;
       }
 
@@ -142,6 +228,7 @@ export default function MeEditScreen() {
         ...draft,
         firstName: resolvedFirstName,
         lastName: resolvedLastName,
+        username,
       };
 
       setSaveState('saving');
@@ -149,31 +236,51 @@ export default function MeEditScreen() {
         const updated = await ProfileApi.updateProfile({
           firstName: resolvedFirstName,
           lastName: resolvedLastName,
-          username: profile.username,
-          address: draft.address.trim() || undefined,
+          username,
+          // Empty STRING, not undefined. The server reads undefined as "leave it
+          // alone", so omitting a cleared field silently refuses to clear it —
+          // the user empties their state, saves, and it comes straight back.
+          address: draft.address.trim(),
+          country: draft.country.trim(),
+          state: draft.state.trim(),
+          city: draft.city.trim(),
+          phoneNumber: draft.phoneNumber.trim() || undefined,
         });
-        if (updated) {
-          setProfile(updated);
-          setBaseline(resolvedDraft);
-          setSaveState('saved');
-          setLastSavedAt(new Date());
-          updateUser({
-            firstName: updated.firstName,
-            lastName: updated.lastName,
-            username: updated.username,
-            profileImage: updated.profileImage,
-            profileImageId: updated.profileImageId,
-            profileImageFile: updated.profileImageFile,
-          });
+        // A falsy response means nothing was persisted. Returning `true` here —
+        // as this did — let `beforeRemove` navigate away on the strength of a
+        // save that never happened, discarding the user's edits silently.
+        if (!updated) {
+          setSaveState('error');
+          toast.error('Your profile did not save. Please try again.');
+          return false;
         }
+
+        setProfile(updated);
+        setBaseline(resolvedDraft);
+        setSaveState('saved');
+        setLastSavedAt(new Date());
+        updateUser({
+          firstName: updated.firstName,
+          lastName: updated.lastName,
+          username: updated.username,
+          phoneNumber: draft.phoneNumber.trim() || null,
+          profileImage: updated.profileImage,
+          profileImageId: updated.profileImageId,
+          profileImageFile: updated.profileImageFile,
+        }, 'tabs/me-edit');
         return true;
-      } catch {
+      } catch (error) {
         setSaveState('error');
-        toast.error('Failed to save your profile changes.');
+        // The bare `catch` here used to collapse every cause into one generic
+        // sentence, so a taken username, an expired session and a dropped
+        // connection were indistinguishable — and none of them actionable.
+        const reason = getFriendlyErrorMessage(error, 'Failed to save your profile changes.');
+        setSaveError(reason);
+        toast.error(reason);
         return false;
       }
     },
-    [baseline, profile, toast, updateUser],
+    [baseline, profile, toast, updateUser, user?.firstName, user?.lastName, user?.username],
   );
 
   const persistOnExit = useCallback(async () => {
@@ -189,7 +296,18 @@ export default function MeEditScreen() {
       if (isNavigatingAwayRef.current) {
         return;
       }
-      if (!pendingChangesRef.current || !latestFormRef.current) {
+
+      const isPop =
+        event.data.action.type === 'POP' || event.data.action.type === 'GO_BACK';
+      const hasPendingWork = Boolean(
+        pendingChangesRef.current && latestFormRef.current,
+      );
+      // A hardware/gesture back pops the same cross-group boundary the header
+      // button does, so it needs the same redirect — otherwise Android's back
+      // still drops the user on Runway however carefully the header behaves.
+      const mustRedirect = Boolean(returnHref && isPop);
+
+      if (!hasPendingWork && !mustRedirect) {
         return;
       }
 
@@ -197,16 +315,20 @@ export default function MeEditScreen() {
       isNavigatingAwayRef.current = true;
 
       void persistOnExit().then((didSave) => {
-        if (didSave) {
-          navigation.dispatch(event.data.action);
+        if (!didSave) {
+          isNavigatingAwayRef.current = false;
           return;
         }
-        isNavigatingAwayRef.current = false;
+        if (mustRedirect) {
+          topLevelNavigate(returnHref as never);
+          return;
+        }
+        navigation.dispatch(event.data.action);
       });
     });
 
     return unsubscribe;
-  }, [navigation, persistOnExit]);
+  }, [navigation, persistOnExit, returnHref]);
 
   const handleBack = useCallback(async () => {
     if (isNavigatingAwayRef.current) {
@@ -219,8 +341,18 @@ export default function MeEditScreen() {
       isNavigatingAwayRef.current = false;
       return;
     }
-    router.back();
-  }, [persistOnExit]);
+    // Edit Info lives inside the (tabs) group. Entering it from a ROOT screen
+    // (Settings) crosses navigator groups, and popping that crossing lands on
+    // the tab group's initial route — Runway — not on the screen the user came
+    // from. Settings has many entries and users move between them, so the
+    // caller states where back belongs and we honour it verbatim.
+    if (returnHref) {
+      topLevelNavigate(returnHref as never);
+      return;
+    }
+    // No stated origin: back out to the Me profile rather than the default tab.
+    backOrNavigate('/(tabs)/me');
+  }, [persistOnExit, returnHref]);
 
   const handlePickAvatar = useCallback(async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -290,7 +422,7 @@ export default function MeEditScreen() {
         profileImage: uploaded.url,
         profileImageId: uploaded.id,
         profileImageFile: { id: uploaded.id, url: uploaded.url, s3Url: uploaded.url },
-      });
+      }, 'tabs/me-edit');
       setSaveState('saved');
       setLastSavedAt(new Date());
       toast.success('Profile image updated.');
@@ -308,30 +440,60 @@ export default function MeEditScreen() {
   );
   const statusTone =
     saveState === 'error' ? 'danger' : saveState === 'saving' ? 'warning' : 'muted';
+  const currentStatusLabel = statusLabel(saveState, lastSavedAt, saveError);
 
-  if (loading || !form) {
-    return <AppLoaderScreen message="Loading editor" />;
-  }
+  const updateField = useCallback((patch: Partial<ProfileFormState>) => {
+    hasUserEditedRef.current = true;
+    setForm((current) => ({ ...current, ...patch }));
+  }, []);
+
+  /*
+    The dial code follows the country the user just picked, so a Ghanaian who
+    fills in their location does not then have to find Ghana again in the phone
+    picker. Two sources, in order: the ISO2 the cascade resolved from the live
+    country list, then the bundled name→ISO2 map, which still answers when the
+    country came from the offline fallback or from a value typed into the
+    free-text branch. Nigeria last, because that is the market, not a guess
+    about this person.
+  */
+  const [countryIso2, setCountryIso2] = useState<string | undefined>(undefined);
+  const phoneCountry = useMemo(
+    () =>
+      (countryIso2 as CountryCode | undefined) ??
+      iso2ForCountryName(form.country) ??
+      ('NG' as CountryCode),
+    [countryIso2, form.country],
+  );
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
       <View style={styles.header}>
         <AppBackButton onPress={handleBack} style={styles.backButton} />
         <View style={styles.headerTextWrap}>
-          <AppText variant="bodyBold">Edit Profile</AppText>
-          <AppText variant="caption" tone={statusTone} style={styles.status}>
-            {statusLabel(saveState, lastSavedAt)}
-          </AppText>
+          <AppText variant="title">Your bio</AppText>
+          {currentStatusLabel ? (
+            // A spinner alongside the label: "Saving changes" as static text
+            // gives no sign the app is actually working, which is why a stalled
+            // save is indistinguishable from a frozen screen.
+            <View style={styles.statusRow}>
+              {saveState === 'saving' ? (
+                <MuseLoader size={20} />
+              ) : null}
+              <AppText variant="caption" tone={statusTone} style={styles.status}>
+                {currentStatusLabel}
+              </AppText>
+            </View>
+          ) : null}
         </View>
       </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+      <KeyboardAwareFormScroll
+        style={styles.flex}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: standardScreenBottomPadding },
+        ]}
+      >
           <View style={styles.avatarSection}>
             <Pressable
               onPress={handlePickAvatar}
@@ -355,47 +517,124 @@ export default function MeEditScreen() {
                 <AppText variant="captionBold">✏️</AppText>
               </View>
             </Pressable>
-            <AppText variant="body" tone="muted" style={styles.avatarHelp}>
-              Email and password stay in account settings. This screen only edits profile details.
-            </AppText>
           </View>
 
-          <View style={styles.group}>
+          <View style={[styles.formPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.fieldRow, styles.emailRow, { borderBottomColor: theme.colors.border }]}>
+              <Input
+                label="Email"
+                value={user?.email ?? '—'}
+                editable={false}
+                placeholder="Email"
+                containerStyle={styles.group}
+                variant="bare"
+              />
+            </View>
+
+            <View style={[styles.fieldRow, { borderBottomColor: theme.colors.border }]}>
             <Input
               label="First Name"
               value={form.firstName}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, firstName: value } : prev))}
+              onChangeText={(value) => updateField({ firstName: value })}
               placeholder="First name"
               containerStyle={styles.group}
+              variant="bare"
             />
-          </View>
+            </View>
 
-          <View style={styles.group}>
+            <View style={[styles.fieldRow, { borderBottomColor: theme.colors.border }]}>
             <Input
               label="Last Name"
               value={form.lastName}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, lastName: value } : prev))}
+              onChangeText={(value) => updateField({ lastName: value })}
               placeholder="Last name"
               containerStyle={styles.group}
+              variant="bare"
             />
-          </View>
+            </View>
 
-          <View style={styles.group}>
+            <View style={[styles.fieldRow, { borderBottomColor: theme.colors.border }]}>
             <Input
-              label="Location"
-              value={form.address}
-              onChangeText={(value) => setForm((prev) => (prev ? { ...prev, address: value } : prev))}
-              placeholder="City, State"
+              label="Username"
+              value={form.username}
+              onChangeText={(value) => updateField({ username: value })}
+              placeholder="username"
+              autoCapitalize="none"
+              autoCorrect={false}
               containerStyle={styles.group}
+              variant="bare"
+            />
+            </View>
+
+            <View style={[styles.fieldRow, { borderBottomColor: theme.colors.border }]}>
+              <View style={styles.group}>
+                <AppText variant="smallBold" tone="secondary" style={styles.fieldLabel}>
+                  Phone number
+                </AppText>
+                {/*
+                  The country code is part of the VALUE, not something to type.
+
+                  This was a bare text input with a "+234 800 000 0000"
+                  placeholder — so the dial code was a hint, every user outside
+                  Nigeria had to know their own code, and a Nigerian typing the
+                  number the way it is printed on their SIM pack (0803…) got no
+                  warning about the trunk zero that has to be dropped once a
+                  country code is attached. The picker seeds itself from the
+                  country chosen just below, so most people never open it.
+                */}
+                <PhoneNumberField
+                  label="Phone number"
+                  value={form.phoneNumber}
+                  onChange={(next) => updateField({ phoneNumber: next })}
+                  defaultCountry={phoneCountry}
+                  disabled={isHydrating}
+                  variant="bare"
+                  testID="me-edit-phone"
+                />
+              </View>
+            </View>
+
+            {/*
+              Country / State / City-LGA / street address.
+
+              There was ONE field here, labelled "Location", seeded from the
+              server's composed display line. A shopper could type anything into
+              it, nothing downstream could read it back, and the structured
+              fields the web brand form has had for a long time simply did not
+              exist on this screen.
+
+              `renderField` supplies this panel's own divider rows so the picked
+              fields sit in the same stack as the typed ones above rather than
+              reading as a second form pasted underneath.
+            */}
+            <LocationCascadeFields
+              value={{
+                country: form.country,
+                state: form.state,
+                city: form.city,
+                address: form.address,
+              }}
+              onChange={updateField}
+              variant="bare"
+              disabled={isHydrating}
+              onCountryIso2Change={setCountryIso2}
+              addressHelperText="Only you can see this. Hidden entirely when “Show my location” is off in Settings."
+              renderField={(field, key) => (
+                <View
+                  style={[
+                    styles.fieldRow,
+                    // The address is the last row in the panel, so it draws no
+                    // rule — the panel's own border closes it.
+                    key === 'address' ? styles.fieldRowLast : null,
+                    { borderBottomColor: theme.colors.border },
+                  ]}
+                >
+                  <View style={styles.group}>{field}</View>
+                </View>
+              )}
             />
           </View>
-
-          <View style={styles.helperStack}>
-            <AppText variant="caption" tone="muted">Changes save automatically when you leave this screen.</AppText>
-            <AppText variant="caption" tone="muted">Signed in as {user?.email ?? 'your account'}.</AppText>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareFormScroll>
     </SafeAreaView>
   );
 }
@@ -403,18 +642,6 @@ export default function MeEditScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 24,
-  },
-  loadingText: {
-    fontSize: tokens.typography.caption.size,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -427,13 +654,18 @@ const styles = StyleSheet.create({
   headerTextWrap: {
     flex: 1,
   },
-  status: {
+  statusRow: {
     marginTop: tokens.spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  status: {
+    flexShrink: 1,
   },
   content: {
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.lg,
-    paddingBottom: tokens.spacing['4xl'],
     gap: tokens.spacing.md,
   },
   avatarSection: {
@@ -472,15 +704,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarHelp: {
-    textAlign: 'center',
-    maxWidth: 280,
+  formPanel: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.lg,
+    overflow: 'hidden',
+  },
+  fieldRow: {
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  fieldRowLast: {
+    borderBottomWidth: 0,
+  },
+  fieldLabel: {
+    marginBottom: tokens.spacing.sm,
+    letterSpacing: 0,
+    textTransform: 'none',
   },
   group: {
+    width: '100%',
     gap: tokens.spacing.sm,
   },
-  helperStack: {
-    gap: tokens.spacing.xs,
-    paddingTop: tokens.spacing.xs,
+  emailRow: {
+    opacity: 0.72,
   },
 });

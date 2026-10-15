@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Animated, ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { isUsableImageHttpUrl, prefetchResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { resolveFeedImagePrefetchTarget } from '@/src/features/feed/media/feedImageSourcePolicy';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { feedMediaDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { FeedMediaSlide } from '@/src/features/feed/components/FeedMediaSlide';
@@ -20,11 +21,28 @@ const getAspectClass = (aspectRatio?: number | null) => {
   return 'square';
 };
 
+// Active page: mount two slides either side so the next angle is already
+// painted before a horizontal swipe. Inactive pages (above/below the vertical
+// feed): mount ONLY the current angle — five full-bleed pages each mounting
+// five images was the progressive "gets shakier after a few scrolls" tax.
+const shouldMountSlide = (index: number, activeIndex: number, isActivePage: boolean) =>
+  isActivePage ? Math.abs(index - activeIndex) <= 2 : index === activeIndex;
+
 type FeedMediaCarouselProps = {
   collectionId: string;
   mediaItems: FeedViewerMedia[];
   pageHeight: number;
+  isActive: boolean;
   initialActiveIndex?: number;
+  /**
+   * The owning page's chrome fade, from RunwayFeedItem. The dot row is the one
+   * piece of chrome that lives inside the carousel rather than in the page's
+   * chrome layer, so without this it stays at full opacity through a vertical
+   * swipe while the action rail, meta card and badge all fade — leaving two rows
+   * of bright white pills as the most prominent moving thing on screen. Native
+   * driven, so binding it costs no JS work per frame.
+   */
+  chromeOpacity?: Animated.AnimatedInterpolation<number>;
   onActiveIndexChange: (nextIndex: number) => void;
   onContentPress?: () => void;
 };
@@ -39,12 +57,17 @@ type FeedMediaCarouselProps = {
  * The onScroll handler is intentionally omitted: dot-indicator position updates
  * only on momentum end, keeping the JS thread free during the drag so the
  * native scroll layer can respond instantly to touch on budget CPUs.
+ * Every angle keeps a fixed-width frame for exact paging, but only the current
+ * and adjacent frames mount media. This preserves direct ScrollView gestures
+ * without paying the image/component cost for every angle.
  */
 export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   collectionId,
   mediaItems,
   pageHeight,
+  isActive,
   initialActiveIndex = 0,
+  chromeOpacity,
   onActiveIndexChange,
   onContentPress,
 }: FeedMediaCarouselProps) {
@@ -59,6 +82,14 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
   const hasMultipleItems = mediaItems.length > 1;
   const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
   const safeActiveIndex = mediaItems.length > 0 ? Math.min(activeIndex, mediaItems.length - 1) : 0;
+  // Slide frames sit on the runway stage. `runwayStage` rather than `bg`: a
+  // not-yet-painted slide entering the viewport shows this colour, so it has to
+  // be the stage matte exactly, and in the light theme the stage is a settled
+  // neutral so the frame does not flash paper white on the way in.
+  const slideFrameStyle = useMemo(
+    () => [styles.slide, { width, backgroundColor: theme.colors.runwayStage }],
+    [theme.colors.runwayStage, width],
+  );
 
   const stableMediaItems = useMemo(
     () =>
@@ -66,6 +97,8 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         ...item,
         url: normalizeStableUri(item.url) ?? item.url,
         displayUrl: normalizeStableUri(item.displayUrl) ?? normalizeStableUri(item.url) ?? item.url,
+        previewUrl: normalizeStableUri(item.previewUrl),
+        thumbnailUrl: normalizeStableUri(item.thumbnailUrl),
         fileId: normalizeStableUri(item.fileId),
       })),
     [mediaItems],
@@ -95,26 +128,47 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       uniqueDisplayUrls: uniqueDisplayUrls.length,
       activeIndex: safeActiveIndex,
       nextIndex: stableMediaItems.length > 1 ? Math.min(stableMediaItems.length - 1, safeActiveIndex + 1) : null,
+      mountedIndices: stableMediaItems
+        .map((_, index) => index)
+        .filter((index) => shouldMountSlide(index, safeActiveIndex, isActive)),
     });
-  }, [collectionId, safeActiveIndex, stableMediaItems.length, uniqueDisplayUrls, uniqueMediaIds]);
+  }, [collectionId, isActive, safeActiveIndex, stableMediaItems.length, uniqueDisplayUrls, uniqueMediaIds]);
 
-  // Prefetch next image to eliminate loading lag on swipe.
+  // Prefetch adjacent images in BOTH directions (and one extra ahead) so a
+  // swipe left or right always reveals an already-cached image — never a
+  // shimmer that resolves seconds later.
   useEffect(() => {
     if (stableMediaItems.length < 2) return;
-    const nextIndex = Math.min(stableMediaItems.length - 1, safeActiveIndex + 1);
-    const next = stableMediaItems[nextIndex];
-    if (!next) return;
-    const nextDirectUrl = normalizeStableUri(next.displayUrl) ?? normalizeStableUri(next.url);
-    if (!nextDirectUrl || !isUsableImageHttpUrl(nextDirectUrl)) return;
-    void prefetchResolvedImageAsset({
-      src: nextDirectUrl,
-      fileId: null,
-      allowSignedFallback: false,
-      debugContext: {
-        designId: next.id,
-        mediaIndex: nextIndex,
-        sourceField: 'feed.media.displayUrl',
-      },
+    const candidateIndices = [
+      safeActiveIndex + 1,
+      safeActiveIndex - 1,
+      safeActiveIndex + 2,
+      safeActiveIndex - 2,
+    ].filter((index) => index >= 0 && index <= stableMediaItems.length - 1);
+    candidateIndices.forEach((candidateIndex) => {
+      const candidate = stableMediaItems[candidateIndex];
+      if (!candidate) return;
+      // Keyed exactly as the slide's `FeedImage` renders it. This used to pass
+      // `fileId: null` and the raw URL, while the slide reads
+      // `runway:<fileId>:detail` — so every side-swipe downloaded again.
+      const target = resolveFeedImagePrefetchTarget({
+        displayUrl: candidate.displayUrl ?? candidate.url,
+        previewUrl: candidate.previewUrl,
+        thumbnailUrl: candidate.thumbnailUrl,
+        fileId: candidate.fileId,
+      });
+      if (!target.src || !isUsableImageHttpUrl(target.src)) return;
+      void prefetchResolvedImageAsset({
+        src: target.src,
+        cacheKey: target.cacheKey,
+        fileId: null,
+        allowSignedFallback: false,
+        debugContext: {
+          designId: candidate.id,
+          mediaIndex: candidateIndex,
+          sourceField: 'feed.media.adjacent-preview',
+        },
+      });
     });
   }, [safeActiveIndex, stableMediaItems]);
 
@@ -164,7 +218,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleMomentumEnd = useCallback(
+  const settleToMeasuredIndex = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const measuredIndex = Math.max(
         0,
@@ -172,16 +226,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
       );
       const previousIndex = previousIndexRef.current;
       const jumpDistance = Math.abs(measuredIndex - previousIndex);
-
-      // Limit to one page per gesture even if the device let momentum carry farther.
-      const nextIndex =
-        jumpDistance > 1
-          ? Math.max(0, Math.min(stableMediaItems.length - 1, previousIndex + Math.sign(measuredIndex - previousIndex)))
-          : measuredIndex;
-
-      if (nextIndex !== measuredIndex) {
-        carouselRef.current?.scrollTo({ x: nextIndex * width, y: 0, animated: false });
-      }
+      const nextIndex = measuredIndex;
 
       previousIndexRef.current = nextIndex;
       scrollDevLog('horizontal-carousel-index', {
@@ -190,7 +235,10 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
         previousIndex,
         nextIndex,
         jumpDistance,
-        corrected: nextIndex !== measuredIndex,
+        corrected: false,
+        mountedIndices: stableMediaItems
+          .map((_, index) => index)
+          .filter((index) => shouldMountSlide(index, nextIndex, true)),
       });
       if (nextIndex !== previousIndex) {
         const nextMedia = stableMediaItems[nextIndex] ?? null;
@@ -210,6 +258,21 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     [onActiveIndexChange, stableMediaItems, width],
   );
 
+  // Momentum end is the primary settle signal, but Android drops it when the
+  // finger releases exactly on a page boundary (zero velocity → no momentum
+  // phase). A stale activeIndex then left the upcoming slide unmounted and the
+  // dots frozen until the NEXT full swipe — the "swipe waits/holds" symptom.
+  // Drag end with ~zero horizontal velocity is that missing settle signal; the
+  // index math is idempotent, so double-firing with momentum end is harmless.
+  const handleScrollEndDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const velocityX = event.nativeEvent.velocity?.x ?? 0;
+      if (Math.abs(velocityX) > 0.05) return;
+      settleToMeasuredIndex(event);
+    },
+    [settleToMeasuredIndex],
+  );
+
   if (!mediaItems.length) {
     return (
       <View style={StyleSheet.absoluteFill}>
@@ -226,6 +289,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
           imageIndex={0}
           viewportWidth={width}
           viewportHeight={pageHeight}
+          allowDetailUpgrade={isActive}
           onPress={onContentPress}
         />
       </View>
@@ -234,36 +298,54 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
 
   return (
     <View style={StyleSheet.absoluteFill}>
+      {/* No `disableIntervalMomentum` here. With pagingEnabled and no
+          snapToInterval it is dead on both platforms (iOS only reads it inside
+          the snapToInterval/snapToOffsets branches of scrollViewWillEndDragging;
+          Android short-circuits to smoothScrollAndSnap before reading it), and
+          it was dropped so the flag does not get copied back onto the vertical
+          feed — there it caused the slam-into-page settle. See the paging
+          comment on RunwayFeedScreen's list. */}
       <ScrollView
         ref={carouselRef}
         horizontal
         pagingEnabled
         bounces={false}
         decelerationRate="fast"
-        disableIntervalMomentum
         directionalLockEnabled
-        nestedScrollEnabled
+        nestedScrollEnabled={false}
         overScrollMode="never"
         showsHorizontalScrollIndicator={false}
-        scrollEnabled
-        onMomentumScrollEnd={handleMomentumEnd}
+        // Only the settled vertical page accepts horizontal pans. Inactive
+        // rows would otherwise compete with the outer FlatList for the
+        // gesture at the start of a vertical drag — the "drags then goes"
+        // feel that horizontal swipes never had.
+        scrollEnabled={isActive}
+        onMomentumScrollEnd={settleToMeasuredIndex}
+        onScrollEndDrag={handleScrollEndDrag}
       >
         {stableMediaItems.map((item, index) => (
-          <View key={item.id} style={[styles.slide, { width }]}>
-            <FeedMediaSlide
-              media={item}
-              imageIndex={index}
-              viewportWidth={width}
-              viewportHeight={pageHeight}
-              onPress={onContentPress}
-            />
+          <View key={item.id} style={slideFrameStyle}>
+            {shouldMountSlide(index, safeActiveIndex, isActive) ? (
+              <FeedMediaSlide
+                media={item}
+                imageIndex={index}
+                viewportWidth={width}
+                viewportHeight={pageHeight}
+                allowDetailUpgrade={isActive && index === safeActiveIndex}
+                onPress={onContentPress}
+              />
+            ) : null}
           </View>
         ))}
       </ScrollView>
 
       {/* Dots update on momentum end only; no JS state during drag keeps the
-          thread free and touch fully responsive on low-end Android devices. */}
-      <View style={styles.dotRow} pointerEvents="none">
+          thread free and touch fully responsive on low-end Android devices.
+          The opacity binding is the page's vertical transit fade, not anything
+          this carousel drives — see the chromeOpacity prop. */}
+      <Animated.View
+        style={chromeOpacity ? [styles.dotRow, { opacity: chromeOpacity }] : styles.dotRow}
+        pointerEvents="none">
         {stableMediaItems.map((_, index) => (
           <View
             key={`${stableMediaItems[index]?.id ?? index}-${index}`}
@@ -277,7 +359,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
             ]}
           />
         ))}
-      </View>
+      </Animated.View>
     </View>
   );
 });
@@ -294,7 +376,7 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
     zIndex: 6,
   },
   dot: {

@@ -1,4 +1,5 @@
 import { apiClient } from '@/src/api/httpClient';
+import { coalesceRequest, invalidateCoalesced } from '@/src/api/coalesceRequest';
 import { normalizeThemePreference, type ThemePreference } from '@/src/types/theme';
 import type { ProfilePhotoViewState } from '@/src/types/profilePhoto';
 import { resolveProfileImageSource } from '@/src/utils/profileImage';
@@ -10,6 +11,7 @@ export interface UserProfile {
   username: string;
   firstName: string;
   lastName: string;
+  gender?: 'MALE' | 'FEMALE' | 'NON_BINARY' | 'UNSPECIFIED' | null;
   email?: string | null;
   themePreference: ThemePreference;
   profileImage?: string | null;
@@ -20,9 +22,17 @@ export interface UserProfile {
     url?: string | null;
   } | null;
   bannerImage?: string | null;
+  /** Street address only — the administrative levels are their own fields. */
   address?: string | null;
+  country?: string | null;
+  state?: string | null;
+  /** Same administrative level Nigeria calls a Local Government Area. */
+  city?: string | null;
+  /** Server-composed "City, State, Country" for display. Never editable. */
   location?: string | null;
   profileVisibility: 'UNLOCKED' | 'LOCKED';
+  showUsername: boolean;
+  showLocation: boolean;
   profilePhotoUpdatedAt?: string | null;
   profilePhotoViewState?: ProfilePhotoViewState | null;
   isEmailVerified?: boolean;
@@ -88,9 +98,44 @@ export interface SizeRecommendationResponse {
   fallbackUsed: boolean;
   staleMeasurementWarning?: boolean;
   sizeChartUnavailable?: boolean;
+  measurementProblems?: MeasurementProblem[];
+  primaryMeasurementUnavailable?: boolean;
+  measurementsDisagree?: boolean;
   userFitPreference?: FitPreference | string | null;
   productFitType?: string | null;
   fabricStretch?: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN' | null;
+}
+
+/**
+ * One saved measurement the backend audit rejected, and why.
+ *
+ * Mirrors `bthreadly/src/sizing/measurement-integrity.ts`. `key` is canonical,
+ * so a screen can point at the field that needs correcting.
+ */
+export type MeasurementProblem = {
+  key: string;
+  code: 'IMPLAUSIBLE' | 'OUT_OF_PROPORTION' | 'LIKELY_HALF_GIRTH' | 'LIKELY_INCHES';
+  value: number;
+  message: string;
+  /** The height-anchored band this value should have fallen in. */
+  expected?: { min: number; max: number };
+  suggestedValue?: number;
+};
+
+export interface SavedDeliveryAddress {
+  id: string;
+  firstName: string;
+  lastName: string;
+  customerName: string;
+  contactEmail: string;
+  phone: string;
+  street: string;
+  apartment: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  updatedAt: string;
 }
 
 export interface ComputedSizeFitProfile {
@@ -103,6 +148,14 @@ export interface ComputedSizeFitProfile {
   fitPreference: FitPreference | null;
   categoryBreakdown: Record<string, SizeRecommendationResponse>;
   missingBaselineMeasurements: string[];
+  /**
+   * Measurements the engine refused to size against, each with a shopper-facing
+   * reason. Distinct from `missingBaselineMeasurements`: those were never
+   * entered, these were entered wrongly. A value that cannot describe a body is
+   * withheld rather than scored, because scored, it stopped ranking sizes and
+   * let the remaining measurements elect one on their own.
+   */
+  measurementProblems?: MeasurementProblem[];
   staleMeasurementWarning?: boolean;
   measurementUpdatePrompt?: {
     requiredMeasurements: string[];
@@ -215,6 +268,7 @@ function normalizeProfile(raw: unknown): UserProfile | null {
     username: s.username ?? '',
     firstName: s.firstName ?? '',
     lastName: s.lastName ?? '',
+    gender: s.gender ?? null,
     email: s.email ?? null,
     themePreference: normalizeThemePreference(s.themePreference),
     profileImage: image.src,
@@ -222,11 +276,17 @@ function normalizeProfile(raw: unknown): UserProfile | null {
     profileImageFile: s.profileImageFile ?? null,
     bannerImage: s.bannerImage ?? null,
     address: s.address ?? null,
+    country: s.country ?? null,
+    state: s.state ?? null,
+    city: s.city ?? null,
     location: s.location ?? s.address ?? null,
     profileVisibility: s.profileVisibility === 'LOCKED' ? 'LOCKED' : 'UNLOCKED',
+    showUsername: s.showUsername !== false,
+    showLocation: s.showLocation !== false,
     profilePhotoUpdatedAt: s.profilePhotoUpdatedAt ?? null,
     profilePhotoViewState: s.profilePhotoViewState ?? null,
-    isEmailVerified: Boolean(s.isEmailVerified),
+    isEmailVerified:
+      typeof s.isEmailVerified === 'boolean' ? s.isEmailVerified : undefined,
     createdAt: typeof s.createdAt === 'string' ? s.createdAt : null,
   };
 }
@@ -373,9 +433,41 @@ export const ProfileApi = {
     lastName: string;
     username: string;
     address?: string;
+    /*
+      Sent as '' to CLEAR, never omitted for that purpose. The server treats
+      undefined as "leave it alone", so an omitted country cannot erase a stored
+      one — which is what a user expects when they empty the field.
+    */
+    country?: string;
+    state?: string;
+    city?: string;
+    phoneNumber?: string;
+    gender?: 'MALE' | 'FEMALE' | 'NON_BINARY' | 'UNSPECIFIED';
   }): Promise<UserProfile | null> {
     const res = await apiClient.patch('/users/me/profile', payload);
     return normalizeProfile(res.data);
+  },
+
+  async updateProfileVisibility(profileVisibility: UserProfile['profileVisibility']): Promise<{
+    profileVisibility: UserProfile['profileVisibility'];
+  }> {
+    const res = await apiClient.patch('/users/me/profile-visibility', { profileVisibility });
+    const d = (res.data?.data ?? res.data) as any;
+    return {
+      profileVisibility: d?.profileVisibility === 'LOCKED' ? 'LOCKED' : 'UNLOCKED',
+    };
+  },
+
+  async updateProfilePrivacy(payload: {
+    showUsername?: boolean;
+    showLocation?: boolean;
+  }): Promise<{ showUsername: boolean; showLocation: boolean }> {
+    const res = await apiClient.patch('/users/me/profile-privacy', payload);
+    const d = (res.data?.data ?? res.data) as any;
+    return {
+      showUsername: d?.showUsername !== false,
+      showLocation: d?.showLocation !== false,
+    };
   },
 
   async uploadProfileImage(formData: FormData): Promise<{ url: string; id: string } | null> {
@@ -402,6 +494,39 @@ export const ProfileApi = {
     const res = await apiClient.get('/users/me/size-fit');
     const d = (res.data?.data ?? res.data) as any;
     return d ?? null;
+  },
+
+  async getDeliveryAddresses(): Promise<SavedDeliveryAddress[]> {
+    const res = await apiClient.get('/users/me/delivery-addresses');
+    const d = (res.data?.data ?? res.data) as any;
+    const items = Array.isArray(d?.items) ? d.items : [];
+    return items
+      .map((entry: any) => ({
+        id: String(entry?.id ?? ''),
+        firstName: String(entry?.firstName ?? ''),
+        lastName: String(entry?.lastName ?? ''),
+        customerName: String(entry?.customerName ?? ''),
+        contactEmail: String(entry?.contactEmail ?? ''),
+        phone: String(entry?.phone ?? ''),
+        street: String(entry?.street ?? ''),
+        apartment: String(entry?.apartment ?? ''),
+        city: String(entry?.city ?? ''),
+        state: String(entry?.state ?? ''),
+        postalCode: String(entry?.postalCode ?? ''),
+        country: String(entry?.country ?? 'Nigeria'),
+        updatedAt: String(entry?.updatedAt ?? ''),
+      }))
+      .filter((entry: SavedDeliveryAddress) => Boolean(entry.id && entry.street && entry.city));
+  },
+
+  /**
+   * Save the whole address book. The server keeps one list per account (the
+   * same one web reads), caps it at 10, and drops any entry without a name,
+   * street, city, state and phone — so what comes back is what was kept.
+   */
+  async replaceDeliveryAddresses(items: SavedDeliveryAddress[]): Promise<SavedDeliveryAddress[]> {
+    await apiClient.put('/users/me/delivery-addresses', { items });
+    return ProfileApi.getDeliveryAddresses();
   },
 
   async getComputedSizeFit(params?: { region?: SizingRegion }): Promise<ComputedSizeFitProfile | null> {
@@ -448,8 +573,17 @@ export const ProfileApi = {
     return normalizeSaved(res.data);
   },
 
+  /**
+   * Coalesced: three screens ask for this independently and simultaneously.
+   *
+   * `RunwayFeedScreen`, `me.tsx` and `profile/[id].tsx` each await this
+   * directly, so a cold start issued the identical query four times in one
+   * burst. None of them can see the others, so the dedupe belongs here.
+   */
   async getPatches(userId: string): Promise<PatchedBrand[]> {
-    const res = await apiClient.get(`/users/${userId}/patches`);
-    return normalizePatches(res.data);
+    return coalesceRequest(`patches:${userId}`, async () => {
+      const res = await apiClient.get(`/users/${userId}/patches`);
+      return normalizePatches(res.data);
+    });
   },
 };
