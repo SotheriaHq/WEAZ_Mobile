@@ -331,7 +331,19 @@ const progressiveSources = resolveFeedImageSourcePolicy({
 check('feed source starts at the detail tier', progressiveSources.initialUrl, 'https://cdn.threadly.test/look-detail.webp');
 check('feed source reports the detail tier', progressiveSources.initialTier, 'detail');
 check('feed source detail target equals the initial url', progressiveSources.detailUrl, 'https://cdn.threadly.test/look-detail.webp');
-check('feed source uses the best sub-tier as placeholder', progressiveSources.placeholderUrl, 'https://cdn.threadly.test/look-card.webp');
+// The placeholder is the SMALLEST sub-tier. It downloads in parallel with the
+// detail image, so it only shows anything if it lands well before it — THUMB
+// (240px) does, CARD (640px) raced the detail image and usually lost.
+check('feed source uses the smallest sub-tier as placeholder', progressiveSources.placeholderUrl, 'https://cdn.threadly.test/look-thumb.webp');
+check(
+  'feed source falls back to the preview placeholder without a thumbnail',
+  resolveFeedImageSourcePolicy({
+    displayUrl: 'https://cdn.threadly.test/look-detail.webp',
+    previewUrl: 'https://cdn.threadly.test/look-card.webp',
+    thumbnailUrl: null,
+  }).placeholderUrl,
+  'https://cdn.threadly.test/look-card.webp',
+);
 check('feed source must not re-introduce a per-activation upgrade', progressiveSources.hasDetailUpgrade, false);
 
 // Degradation path: the policy has to start at the best tier that actually
