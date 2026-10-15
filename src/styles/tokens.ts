@@ -404,7 +404,7 @@ export const tokens = {
    * Full-bleed content-viewer chrome palette.
    *
    * A full-bleed viewer that is deep-dark in BOTH themes (same policy as the
-   * Runway stage — see the dark-stage notes in CODEMAP.md), so it cannot read
+   * Runway stage — see `runwayStage` in this file), so it cannot read
    * ambient theme colours without turning into a bright slab in light mode.
    * Naming the ladder is what stops the next edit inventing a fifth near-black.
    */
