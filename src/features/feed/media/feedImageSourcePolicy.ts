@@ -39,11 +39,14 @@ export function resolveFeedImageSourcePolicy({
   const initialTier: FeedImageSourceTier = detail ? 'detail' : preview ? 'preview' : 'thumbnail';
   const detailUrl = initialUrl;
 
+  // Smallest tier first. The placeholder downloads in parallel with the detail
+  // image, so it only helps if it lands well before it: THUMB (240px) does,
+  // CARD (640px) was a second full-size request racing the first.
   const placeholderUrl =
-    preview && preview !== initialUrl
-      ? preview
-      : thumbnail && thumbnail !== initialUrl
-        ? thumbnail
+    thumbnail && thumbnail !== initialUrl
+      ? thumbnail
+      : preview && preview !== initialUrl
+        ? preview
         : null;
 
   return {
@@ -74,4 +77,29 @@ export function buildFeedImageCacheKey({
   } catch {
     return `runway:${tier}:${url}`;
   }
+}
+
+/**
+ * The exact source + cache key `FeedImage` will render for this media.
+ *
+ * A prefetch is only worth anything if it lands under the key the visible
+ * image reads. `FeedImage` passes a custom `cacheKey`, and `ExpoImage.prefetch`
+ * cannot take one — it caches under the raw URL — so every prefetched page was
+ * downloaded a second time when it scrolled in. Prefetchers resolve through
+ * this so the two can never drift apart again.
+ */
+export function resolveFeedImagePrefetchTarget({
+  displayUrl,
+  previewUrl,
+  thumbnailUrl,
+  fileId,
+}: FeedImageSourcePolicyInput & { fileId?: string | null }): { src: string | null; cacheKey: string | null } {
+  const policy = resolveFeedImageSourcePolicy({ displayUrl, previewUrl, thumbnailUrl });
+  const src = policy.initialUrl;
+  const normalizedFileId = normalizeUrl(fileId);
+  if (!src && !normalizedFileId) return { src: null, cacheKey: null };
+  // With a file ID the key ignores the URL, so a file-ID-only row still keys
+  // correctly before its URL is resolved.
+  const cacheKey = buildFeedImageCacheKey({ fileId: normalizedFileId, url: src ?? '', tier: policy.initialTier });
+  return { src, cacheKey };
 }

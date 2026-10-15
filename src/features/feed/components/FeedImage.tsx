@@ -51,6 +51,14 @@ type SuccessfulSource = SourceSelection & {
 const isPositiveFinite = (value: number | null | undefined): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
 
+/**
+ * `AspectAwareMedia` paints its `dominantColor` as an opaque root. Passing the
+ * matte there covered the loading skeleton the instant a URL resolved, which
+ * is what left landscape photos framed in solid black until the bytes landed.
+ * This view's own root already carries the matte, so the media layer is clear.
+ */
+const MEDIA_LAYER_BACKGROUND = 'transparent';
+
 function FeedImagePlaceholder({
   backgroundColor,
   shimmerColor,
@@ -324,12 +332,14 @@ export const FeedImage = React.memo(function FeedImage({
 
   return (
     <View style={[styles.root, { backgroundColor: matte }, style]}>
-      {/* Detail-first: the ExpoImage below paints its blurhash/thumbnail
-          placeholder immediately, so the animated shimmer is reserved for the
-          true cold case with no placeholder at all. Showing it whenever a
-          placeholder exists caused a black flash when a recycled row remounted
-          its already-cached image on revisit. */}
-      {!visibleSuccessfulSource && !blurHash && !metadataPlaceholderUrl ? (
+      {/* The skeleton stays until the image has loaded, placeholder or not. A
+          URL placeholder is itself a download, so "has a placeholder" never
+          meant "something is painted" — gating on it left a bare matte frame,
+          the black box around landscape photos while they loaded. It sits
+          UNDER the media, which is transparent (see `dominantColor` below), so
+          the placeholder and the image paint over it and only the letterbox
+          bands still pulse; a cached image covers it on its first frame. */}
+      {!visibleSuccessfulSource ? (
         <FeedImagePlaceholder
           backgroundColor={matte}
           shimmerColor={matteShimmer}
@@ -340,7 +350,7 @@ export const FeedImage = React.memo(function FeedImage({
         <AspectAwareMedia
           source={successfulImageSource}
           blurhash={blurHash}
-          dominantColor={matte}
+          dominantColor={MEDIA_LAYER_BACKGROUND}
           imageWidth={resolvedImageWidth}
           imageHeight={resolvedImageHeight}
           imageAspectRatio={strategyResult.imageAspectRatio}
@@ -358,7 +368,7 @@ export const FeedImage = React.memo(function FeedImage({
           source={currentImageSource}
           placeholderSource={placeholderSource}
           blurhash={blurHash}
-          dominantColor={matte}
+          dominantColor={MEDIA_LAYER_BACKGROUND}
           imageWidth={resolvedImageWidth}
           imageHeight={resolvedImageHeight}
           imageAspectRatio={strategyResult.imageAspectRatio}

@@ -15,11 +15,14 @@ export const prefetchFeedImage = async ({
   fileId,
   collectionId,
   mediaIndex,
+  cacheKey,
 }: {
   src?: string | null;
   fileId?: string | null;
   collectionId?: string | null;
   mediaIndex?: number | null;
+  /** The key `FeedImage` renders under — see `resolveFeedImagePrefetchTarget`. */
+  cacheKey?: string | null;
 }) => {
   const directSrc = normalizeStableUri(src);
   const normalizedFileId = normalizeStableUri(fileId);
@@ -55,6 +58,7 @@ export const prefetchFeedImage = async ({
       src: directSrc,
       fileId: normalizedFileId,
       allowSignedFallback: false,
+      cacheKey,
       debugContext: {
         designId: collectionId,
         mediaIndex,

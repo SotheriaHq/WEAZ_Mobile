@@ -3,6 +3,7 @@ import { Animated, ScrollView, StyleSheet, View, useWindowDimensions, type Nativ
 
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { isUsableImageHttpUrl, prefetchResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { resolveFeedImagePrefetchTarget } from '@/src/features/feed/media/feedImageSourcePolicy';
 import { trackMobileEvent } from '@/src/analytics/mobileAnalytics';
 import { feedMediaDevLog, scrollDevLog } from '@/src/features/feed/utils/feedDiagnostics';
 import { FeedMediaSlide } from '@/src/features/feed/components/FeedMediaSlide';
@@ -147,14 +148,19 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
     candidateIndices.forEach((candidateIndex) => {
       const candidate = stableMediaItems[candidateIndex];
       if (!candidate) return;
-      const directUrl =
-        normalizeStableUri(candidate.displayUrl) ??
-        normalizeStableUri(candidate.url) ??
-        normalizeStableUri(candidate.previewUrl) ??
-        normalizeStableUri(candidate.thumbnailUrl);
-      if (!directUrl || !isUsableImageHttpUrl(directUrl)) return;
+      // Keyed exactly as the slide's `FeedImage` renders it. This used to pass
+      // `fileId: null` and the raw URL, while the slide reads
+      // `runway:<fileId>:detail` — so every side-swipe downloaded again.
+      const target = resolveFeedImagePrefetchTarget({
+        displayUrl: candidate.displayUrl ?? candidate.url,
+        previewUrl: candidate.previewUrl,
+        thumbnailUrl: candidate.thumbnailUrl,
+        fileId: candidate.fileId,
+      });
+      if (!target.src || !isUsableImageHttpUrl(target.src)) return;
       void prefetchResolvedImageAsset({
-        src: directUrl,
+        src: target.src,
+        cacheKey: target.cacheKey,
         fileId: null,
         allowSignedFallback: false,
         debugContext: {

@@ -49,6 +49,7 @@ import { NetworkErrorState } from '@/components/designs/NetworkErrorState';
 import { ScreenState } from '@/components/ui/ScreenState';
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { prefetchFeedImage } from '@/src/features/feed/media/mediaCache';
+import { resolveFeedImagePrefetchTarget } from '@/src/features/feed/media/feedImageSourcePolicy';
 import { useDeferredScreenWork } from '@/src/hooks/useDeferredScreenWork';
 import {
   setBrandPatchStatus,
@@ -1572,13 +1573,17 @@ export function RunwayFeedScreen() {
       const candidateItem = candidateIndex >= 0 ? items[candidateIndex] : null;
       const candidateMedia = candidateItem ? buildFallbackMediaItems(candidateItem)[0] : null;
       if (!candidateMedia) return;
-      const directUrl =
-        normalizeStableUri(candidateMedia.displayUrl) ??
-        normalizeStableUri(candidateMedia.url) ??
-        normalizeStableUri(candidateMedia.previewUrl) ??
-        normalizeStableUri(candidateMedia.thumbnailUrl);
+      // Same source and cache key `FeedMediaSlide` -> `FeedImage` renders, or
+      // the prefetch lands under a key the visible image never reads.
+      const target = resolveFeedImagePrefetchTarget({
+        displayUrl: normalizeStableUri(candidateMedia.displayUrl) ?? normalizeStableUri(candidateMedia.url),
+        previewUrl: candidateMedia.previewUrl,
+        thumbnailUrl: candidateMedia.thumbnailUrl,
+        fileId: candidateMedia.fileId,
+      });
       void prefetchFeedImage({
-        src: directUrl,
+        src: target.src,
+        cacheKey: target.cacheKey,
         fileId: candidateMedia.fileId,
         collectionId: candidateItem?.collectionId,
         mediaIndex: candidateMedia.mediaIndex,

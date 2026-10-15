@@ -108,6 +108,34 @@ const now: () => number = (() => {
   return () => Date.now();
 })();
 
+/**
+ * Which JS task we are in, advanced by a timer after the current one ends.
+ *
+ * A render and its layout effects only measure "the cost of this commit" when
+ * they run in the same task. Hidden tabs are frozen (`freezeHiddenTabs`):
+ * react-freeze suspends them, React renders the subtree hidden and holds back
+ * its layout effects until the tab is shown again — seconds or minutes later,
+ * with no new render in between. Timing render-to-layout-effect across that
+ * gap produced `FeedItem:self=55980ms` and a Market `incl` that grew by the
+ * wall-clock time between visits (16.6s, 18.5s, 20.9s, 23.0s, 25.7s) on the
+ * 2026-10-15 capture, while `blockedMs` on the same flows was 0-240ms. Those
+ * figures measured time hidden, not work done. A commit whose render ran in
+ * an earlier task is now dropped instead.
+ */
+let taskEpoch = 0;
+let taskEpochTickScheduled = false;
+
+function currentTaskEpoch(): number {
+  if (!taskEpochTickScheduled) {
+    taskEpochTickScheduled = true;
+    setTimeout(() => {
+      taskEpoch += 1;
+      taskEpochTickScheduled = false;
+    }, 0);
+  }
+  return taskEpoch;
+}
+
 function record(label: string, selfMs: number, inclusiveMs: number): void {
   if (selfMs < MIN_RECORDED_MS && inclusiveMs < MIN_RECORDED_MS) return;
   const existing = windowCosts.get(label);
@@ -133,10 +161,12 @@ function record(label: string, selfMs: number, inclusiveMs: number): void {
 export function useCommitCost(label: string): void {
   const startedAt = useRef(0);
   const descendantSelfAtStart = useRef(0);
+  const renderEpoch = useRef(-1);
   // Assigned during render on purpose. This is the current render's start, and
   // a ref is the only store that survives to the layout effect without itself
   // causing a render.
   startedAt.current = perfEnabled() ? now() : 0;
+  renderEpoch.current = startedAt.current === 0 ? -1 : currentTaskEpoch();
   descendantSelfAtStart.current = completedSelfTotal;
 
   // No dependency array: every commit of this subtree is a measurement.
@@ -146,6 +176,13 @@ export function useCommitCost(label: string): void {
   // difference is therefore exactly the work done beneath this component.
   useLayoutEffect(() => {
     if (!perfEnabled() || startedAt.current === 0) return;
+    // Consumed either way, so a later layout effect with no render of its
+    // own (a frozen tab being revealed) cannot time against this start.
+    const renderedThisTask = renderEpoch.current === taskEpoch;
+    if (!renderedThisTask) {
+      startedAt.current = 0;
+      return;
+    }
     const inclusive = now() - startedAt.current;
     const descendants = completedSelfTotal - descendantSelfAtStart.current;
     const self = Math.max(0, inclusive - descendants);

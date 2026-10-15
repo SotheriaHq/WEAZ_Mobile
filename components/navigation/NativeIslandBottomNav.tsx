@@ -136,7 +136,15 @@ type NativeIslandBottomNavProps = {
   onPressIn?: (item: NativeIslandNavItem) => void;
 };
 
-export function NativeIslandTabIcon({
+/*
+  Memoized. The dock renders three times per tab press (press, pathname,
+  confirmation), and the device capture had `Island` at 25-96ms self on each —
+  every one of those re-rendered all six chips with their animated styles,
+  AppText nodes and avatar image, though only the chip leaving and the chip
+  arriving change `focused`. Every prop is a primitive or the stable
+  `pressedKey` shared value, so the default shallow compare is exact.
+*/
+export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   label,
   emoji,
   avatarUri,
@@ -348,7 +356,7 @@ export function NativeIslandTabIcon({
       </View>
     </View>
   );
-}
+});
 
 // Frosted-glass chrome. Extracted and memoized so it does NOT re-render when the
 // active tab changes on navigation.
