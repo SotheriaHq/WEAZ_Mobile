@@ -59,6 +59,7 @@ import {
   shopperProfileWarmStateKey,
 } from '@/src/profile/shopperProfileWarmup';
 import { persistScreenState } from '@/src/state/persistentScreenCache';
+import { freezeHiddenTabLayout } from '@/src/navigation/freezeHiddenTabs';
 
 // Keep Runway (`index`) as the tab shell's anchor route now that Catalogue is
 // also a (hidden) tab — without this, adding sibling screens can shift Expo
@@ -977,8 +978,11 @@ export default function TabLayout() {
         // Keep visited tabs attached. The default (`true` on iOS and Android)
         // detaches the native view on blur, so a return to Market/Inbox/Me/Studio
         // rebuilt the scene — including destroying the Studio WebView and
-        // forcing a cold handoff. freezeOnBlur still pauses JS on hidden tabs.
+        // forcing a cold handoff. NOTE: with detaching off, `freezeOnBlur` below
+        // does NOTHING (react-native-screens only freezes enabled screens) —
+        // `screenLayout` is what actually stops hidden tabs re-rendering.
         detachInactiveScreens={false}
+        screenLayout={freezeHiddenTabLayout}
         screenOptions={{
           headerShown: false,
           lazy: true,

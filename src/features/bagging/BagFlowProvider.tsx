@@ -309,6 +309,19 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
     setStaleTarget({ product, status });
   }, [refuseForBrandAccount]);
 
+  /**
+   * Read through a ref, never as a dependency.
+   *
+   * `openAuthPrompt` once listed `pathname` in its deps, which minted a new
+   * context `value` on EVERY navigation. Market and Runway read this context
+   * and stay mounted behind the tabs, so each tab press re-rendered both — the
+   * device capture of 2026-10-15 measured Market alone at 400-1250ms per press,
+   * on tabs it was not even showing. The path is only needed at the moment the
+   * prompt opens, so a ref gives the same answer without the broadcast.
+   */
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+
   const openAuthPrompt = useCallback(
     (product: BagProductInput, action: BagDefaultAction, resume?: () => void | Promise<void>) => {
       setSelectorTarget(null);
@@ -317,6 +330,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
       setStaleTarget(null);
       setSummaryTarget(null);
       setMyBagVisible(false);
+      const pathname = pathnameRef.current;
       const nextPending = { product, action, returnPath: pathname, resume };
       setPendingAuth(nextPending);
       pendingResumeRef.current = nextPending;
@@ -331,7 +345,7 @@ export function BagFlowProvider({ children }: { children: React.ReactNode }) {
       void SecureStore.setItemAsync(PENDING_BAG_ACTION_KEY, JSON.stringify(serialized)).catch(() => undefined);
       toast.info('Please sign in to bag items.');
     },
-    [pathname, toast],
+    [toast],
   );
 
   const openExistingBag = useCallback((product: BagProductInput, status: ProductBagStatus) => {
