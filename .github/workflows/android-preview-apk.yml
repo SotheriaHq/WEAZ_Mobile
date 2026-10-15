@@ -39,6 +39,9 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Needed to publish the GitHub Release at the end.
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -129,3 +132,26 @@ jobs:
           path: dist/*.apk
           retention-days: 14
           if-no-files-found: error
+
+      # Also publish a GitHub Release, because the artifact above is a zip that
+      # only a signed-in GitHub user can download — awkward on a phone. A release
+      # asset is a plain .apk anyone with the link can download, like an EAS
+      # artifact URL. The repo is public, so so is the APK.
+      #
+      # Two assets: the commit-named one, and `wiez-preview.apk`, whose
+      #   /releases/latest/download/wiez-preview.apk
+      # URL never changes and always serves the newest build — one bookmark or
+      # QR code for every future install.
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHORT="${GITHUB_SHA::7}"
+          TAG="${{ github.ref_type == 'tag' && github.ref_name || '' }}"
+          TAG="${TAG:-apk-$SHORT}"
+          cp "dist/wiez-preview-$SHORT.apk" dist/wiez-preview.apk
+          gh release create "$TAG" \
+            "dist/wiez-preview-$SHORT.apk" dist/wiez-preview.apk \
+            --target "$GITHUB_SHA" --latest \
+            --title "WIEZ preview $SHORT" \
+            --notes "Preview APK built from $GITHUB_SHA."
