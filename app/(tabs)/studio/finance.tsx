@@ -258,18 +258,91 @@ export default function StudioFinanceScreen() {
           ) : null}
 
           {/* Available balance hero */}
-          <View style={[styles.hero, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <AppText variant="caption" tone="secondary" style={styles.heroLabel}>
-              AVAILABLE BALANCE
-            </AppText>
-            <AppText variant="display" style={styles.heroAmount}>
-              {formatMoney(available, currency)}
-            </AppText>
+          <View
+            style={[
+              styles.hero,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <View style={styles.heroTopRow}>
+              <View style={styles.heroLabelGroup}>
+                <AppText variant="captionBold" tone="secondary" style={styles.heroLabel}>
+                  AVAILABLE BALANCE
+                </AppText>
+                <AppText variant="moneyLarge">
+                  {formatMoney(available, currency)}
+                </AppText>
+              </View>
+              <View
+                style={[
+                  styles.statusPill,
+                  {
+                    backgroundColor: available >= MIN_PAYOUT
+                      ? theme.colors.primarySoft
+                      : theme.colors.surfaceAlt,
+                    borderColor: available >= MIN_PAYOUT
+                      ? theme.colors.primary
+                      : theme.colors.border,
+                  },
+                ]}
+              >
+                <AppText
+                  variant="captionBold"
+                  tone={available >= MIN_PAYOUT ? 'primary' : 'secondary'}
+                >
+                  {available >= MIN_PAYOUT
+                    ? '✓ Ready to withdraw'
+                    : `Threshold ${formatMoney(MIN_PAYOUT, currency)}`}
+                </AppText>
+              </View>
+            </View>
+
             {overview?.negativeBalance ? (
-              <AppText variant="caption" tone="danger" style={{ marginTop: 4 }}>
+              <AppText variant="caption" tone="danger" style={styles.negativeNotice}>
                 Negative balance — new releases will offset recovery automatically.
               </AppText>
             ) : null}
+
+            {/* Payout readiness progress bar */}
+            <View style={styles.progressContainer}>
+              <View
+                style={[
+                  styles.progressBarTrack,
+                  { backgroundColor: theme.colors.surfaceAlt },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${Math.min(Math.round((available / MIN_PAYOUT) * 100), 100)}%`,
+                      backgroundColor: available >= MIN_PAYOUT
+                        ? theme.colors.success
+                        : theme.colors.primary,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.progressLabelRow}>
+                <AppText variant="caption" tone="secondary">
+                  {available >= MIN_PAYOUT
+                    ? `${formatMoney(available, currency)} (100% of minimum threshold)`
+                    : `${formatMoney(available, currency)} of ${formatMoney(MIN_PAYOUT, currency)} (${Math.round(Math.min((available / MIN_PAYOUT) * 100, 100))}%)`}
+                </AppText>
+                <AppText
+                  variant="captionBold"
+                  tone={available >= MIN_PAYOUT ? 'success' : 'muted'}
+                >
+                  {available >= MIN_PAYOUT
+                    ? 'Eligible'
+                    : `${formatMoney(Math.max(MIN_PAYOUT - available, 0), currency)} left`}
+                </AppText>
+              </View>
+            </View>
+
             <View style={styles.heroActions}>
               <Button
                 title={requesting ? 'Submitting…' : 'Request payout'}
@@ -286,36 +359,89 @@ export default function StudioFinanceScreen() {
           {/* Metric strip */}
           <View style={styles.metricsRow}>
             {[
-              { label: 'Released', value: overview?.releasedBalance ?? 0 },
-              { label: 'Reserved', value: overview?.reservedPayoutBalance ?? 0 },
-              { label: 'Paid out', value: overview?.paidOutBalance ?? 0 },
-              { label: 'Held', value: heldTotal },
+              {
+                label: 'Released',
+                value: overview?.releasedBalance ?? 0,
+                tone: 'success' as const,
+                accentColor: theme.colors.success,
+                emoji: '🔓',
+                sublabel: 'Ready in balance',
+              },
+              {
+                label: 'Reserved',
+                value: overview?.reservedPayoutBalance ?? 0,
+                tone: 'primary' as const,
+                accentColor: theme.colors.primary,
+                emoji: '⏳',
+                sublabel: 'In payout queue',
+              },
+              {
+                label: 'Paid out',
+                value: overview?.paidOutBalance ?? 0,
+                tone: 'default' as const,
+                accentColor: theme.colors.textSecondary,
+                emoji: '🏦',
+                sublabel: 'Settled to bank',
+              },
+              {
+                label: 'Held',
+                value: heldTotal,
+                tone: 'warning' as const,
+                accentColor: theme.colors.warning,
+                emoji: '🔒',
+                sublabel: 'Escrow protected',
+              },
             ].map((metric) => (
               <View
                 key={metric.label}
                 style={[
                   styles.metricCard,
-                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                  {
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.border,
+                  },
                 ]}
               >
-                <AppText variant="caption" tone="secondary">
-                  {metric.label}
-                </AppText>
-                <AppText variant="subtitle" style={styles.metricValue}>
+                <View
+                  style={[
+                    styles.metricAccentBar,
+                    { backgroundColor: metric.accentColor },
+                  ]}
+                />
+                <View style={styles.metricHeaderRow}>
+                  <AppText variant="captionBold" tone="secondary" style={styles.metricLabelText}>
+                    {metric.label.toUpperCase()}
+                  </AppText>
+                  <AppText variant="caption">{metric.emoji}</AppText>
+                </View>
+                <AppText variant="money" tone={metric.tone}>
                   {formatMoney(metric.value, currency)}
+                </AppText>
+                <AppText variant="caption" tone="muted">
+                  {metric.sublabel}
                 </AppText>
               </View>
             ))}
           </View>
 
-          <AppText variant="caption" tone="secondary" style={styles.metaLine}>
-            {overview?.totalOrders ?? 0} paid orders ·{' '}
-            {overview?.activeEscrowHolds ?? 0} active holds ·{' '}
-            {overview?.queuedCustomAllocations ?? 0} custom payout-eligible
-          </AppText>
+          <View
+            style={[
+              styles.metaSummaryBadge,
+              {
+                backgroundColor: theme.colors.surfaceAlt,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <AppText variant="caption" tone="secondary">
+              📦 {overview?.totalOrders ?? 0} paid orders · 🔒{' '}
+              {overview?.activeEscrowHolds ?? 0} active holds · ⚡{' '}
+              {overview?.queuedCustomAllocations ?? 0} custom payout-eligible
+            </AppText>
+          </View>
 
           {/* Held funds */}
-          <SectionTitle title="Held funds" emoji="🔒" count={data?.heldFunds?.length ?? 0} />
+          <SectionTitle title="Held funds" emoji="🔒" count={data?.heldFunds?.length ?? 0} theme={theme} />
           {(data?.heldFunds?.length ?? 0) === 0 ? (
             <EmptyCard theme={theme} message="No funds currently held in escrow." />
           ) : (
@@ -325,7 +451,7 @@ export default function StudioFinanceScreen() {
           )}
 
           {/* Incoming */}
-          <SectionTitle title="Incoming credits" emoji="💸" count={data?.incoming?.length ?? 0} />
+          <SectionTitle title="Incoming credits" emoji="💸" count={data?.incoming?.length ?? 0} theme={theme} />
           {(data?.incoming?.length ?? 0) === 0 ? (
             <EmptyCard theme={theme} message="No incoming credits yet." />
           ) : (
@@ -335,7 +461,7 @@ export default function StudioFinanceScreen() {
           )}
 
           {/* Payout history */}
-          <SectionTitle title="Payout history" emoji="🏦" count={data?.payouts?.length ?? 0} />
+          <SectionTitle title="Payout history" emoji="🏦" count={data?.payouts?.length ?? 0} theme={theme} />
           {(data?.payouts?.length ?? 0) === 0 ? (
             <EmptyCard theme={theme} message="No payout requests yet." />
           ) : (
@@ -365,19 +491,31 @@ function SectionTitle({
   title,
   emoji,
   count,
+  theme,
 }: {
   title: string;
   emoji: string;
   count: number;
+  theme: { colors: { surfaceAlt: string; border: string } };
 }) {
   return (
     <View style={styles.sectionHeader}>
       <AppText variant="subtitle">
         {emoji} {title}
       </AppText>
-      <AppText variant="caption" tone="secondary">
-        {count}
-      </AppText>
+      <View
+        style={[
+          styles.countBadge,
+          {
+            backgroundColor: theme.colors.surfaceAlt,
+            borderColor: theme.colors.border,
+          },
+        ]}
+      >
+        <AppText variant="captionBold" tone="secondary">
+          {count}
+        </AppText>
+      </View>
     </View>
   );
 }
@@ -411,15 +549,20 @@ function HeldCard({
   theme: {
     colors: {
       surface: string;
+      surfaceAlt: string;
       border: string;
       success: string;
       danger: string;
       warning: string;
       primary: string;
+      primarySoft: string;
       textSecondary: string;
     };
   };
 }) {
+  const isFrozen = hold.status?.toUpperCase() === 'FROZEN';
+  const isPartiallyReleased = hold.status?.toUpperCase() === 'PARTIALLY_RELEASED';
+
   return (
     <View
       style={[
@@ -428,40 +571,70 @@ function HeldCard({
       ]}
     >
       <View style={styles.cardTop}>
-        <AppText variant="subtitle" style={styles.cardTitle}>
-          {hold.title}
-        </AppText>
-        <AppText variant="caption" tone={statusTone(hold.status)}>
-          {humanize(hold.status)}
-        </AppText>
+        <View style={styles.cardHeaderLeft}>
+          <AppText variant="subtitle" style={styles.cardTitle}>
+            {hold.title}
+          </AppText>
+          <AppText variant="caption" tone="secondary">
+            {holdTypeLabel(hold.holdType)}
+            {hold.counterparty ? ` · ${hold.counterparty}` : ''}
+          </AppText>
+        </View>
+        <View
+          style={[
+            styles.badgePill,
+            {
+              backgroundColor: isPartiallyReleased
+                ? theme.colors.primarySoft
+                : theme.colors.surfaceAlt,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <AppText variant="captionBold" tone={statusTone(hold.status)}>
+            {isFrozen ? '🧊 ' : isPartiallyReleased ? '✂️ ' : '🔒 '}
+            {humanize(hold.status)}
+          </AppText>
+        </View>
       </View>
-      <AppText variant="caption" tone="secondary">
-        {holdTypeLabel(hold.holdType)}
-        {hold.counterparty ? ` · ${hold.counterparty}` : ''}
-      </AppText>
       <View style={styles.amountGrid}>
-        <AmountCell label="Held (net)" value={formatMoney(hold.heldNetAmount, hold.currency)} theme={theme} />
+        <AmountCell
+          label="Held (net)"
+          value={formatMoney(hold.heldNetAmount, hold.currency)}
+          tone="warning"
+          theme={theme}
+        />
         <AmountCell
           label="Released (net)"
           value={formatMoney(hold.releasedNetAmount, hold.currency)}
+          tone="success"
           theme={theme}
         />
         <AmountCell
           label="Gross"
           value={formatMoney(hold.grossAmount, hold.currency)}
+          tone="default"
           theme={theme}
         />
         <AmountCell
           label="Commission"
           value={formatMoney(hold.commissionAmount ?? 0, hold.currency)}
+          tone="danger"
           theme={theme}
         />
       </View>
       {hold.releaseCondition ? (
-        <AppText variant="caption" tone="secondary" style={styles.cardFoot}>
-          Release: {humanize(hold.releaseCondition)}
-          {hold.nextReleaseAt ? ` · eligible ${formatDate(hold.nextReleaseAt)}` : ''}
-        </AppText>
+        <View
+          style={[
+            styles.cardFootContainer,
+            { backgroundColor: theme.colors.surfaceAlt },
+          ]}
+        >
+          <AppText variant="caption" tone="secondary">
+            ⏳ Release rule: {humanize(hold.releaseCondition)}
+            {hold.nextReleaseAt ? ` · Eligible ${formatDate(hold.nextReleaseAt)}` : ' · Awaiting completion'}
+          </AppText>
+        </View>
       ) : null}
     </View>
   );
@@ -472,7 +645,15 @@ function IncomingCard({
   theme,
 }: {
   tx: BrandIncomingTransaction;
-  theme: { colors: { surface: string; border: string; primary: string } };
+  theme: {
+    colors: {
+      surface: string;
+      surfaceAlt: string;
+      border: string;
+      primary: string;
+      primarySoft: string;
+    };
+  };
 }) {
   const refType = String(tx.referenceType || '').toUpperCase();
   const typeLabel =
@@ -490,23 +671,32 @@ function IncomingCard({
       ]}
     >
       <View style={styles.cardTop}>
-        <AppText variant="subtitle" style={styles.cardTitle}>
-          {tx.title || 'Incoming credit'}
-        </AppText>
-        <AppText variant="subtitle" tone="primary">
-          {formatMoney(tx.netAmount ?? tx.amount, tx.currency)}
+        <View style={styles.cardHeaderLeft}>
+          <AppText variant="subtitle" style={styles.cardTitle}>
+            {tx.title || 'Incoming credit'}
+          </AppText>
+          <AppText variant="caption" tone="secondary">
+            {typeLabel} · {stageLabel(tx.stage)}
+            {tx.counterparty ? ` · ${tx.counterparty}` : ''}
+          </AppText>
+        </View>
+        <AppText variant="money" tone="success">
+          +{formatMoney(tx.netAmount ?? tx.amount, tx.currency)}
         </AppText>
       </View>
-      <AppText variant="caption" tone="secondary">
-        {typeLabel} · {stageLabel(tx.stage)}
-        {tx.counterparty ? ` · ${tx.counterparty}` : ''}
-      </AppText>
-      <AppText variant="caption" tone="secondary" style={styles.cardFoot}>
-        {formatDate(tx.createdAt)}
-        {tx.commissionAmount
-          ? ` · commission ${formatMoney(tx.commissionAmount, tx.currency)}`
-          : ''}
-      </AppText>
+      <View
+        style={[
+          styles.cardFootContainer,
+          { backgroundColor: theme.colors.surfaceAlt },
+        ]}
+      >
+        <AppText variant="caption" tone="secondary">
+          📅 {formatDate(tx.createdAt)}
+          {tx.commissionAmount
+            ? ` · Commission deducted ${formatMoney(tx.commissionAmount, tx.currency)}`
+            : ''}
+        </AppText>
+      </View>
     </View>
   );
 }
@@ -519,11 +709,13 @@ function PayoutCard({
   theme: {
     colors: {
       surface: string;
+      surfaceAlt: string;
       border: string;
       success: string;
       danger: string;
       warning: string;
       primary: string;
+      primarySoft: string;
       textSecondary: string;
     };
   };
@@ -536,16 +728,26 @@ function PayoutCard({
       ]}
     >
       <View style={styles.cardTop}>
-        <AppText variant="subtitle" style={styles.cardTitle}>
+        <AppText variant="money" style={styles.cardTitle}>
           {formatMoney(payout.amount, payout.currency)}
         </AppText>
-        <AppText variant="caption" tone={statusTone(payout.status)}>
-          {humanize(payout.status)}
-        </AppText>
+        <View
+          style={[
+            styles.badgePill,
+            {
+              backgroundColor: theme.colors.surfaceAlt,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <AppText variant="captionBold" tone={statusTone(payout.status)}>
+            {humanize(payout.status)}
+          </AppText>
+        </View>
       </View>
       <AppText variant="caption" tone="secondary">
         Requested {formatDate(payout.createdAt)}
-        {payout.paidAt ? ` · paid ${formatDate(payout.paidAt)}` : ''}
+        {payout.paidAt ? ` · Paid ${formatDate(payout.paidAt)}` : ''}
       </AppText>
     </View>
   );
@@ -554,18 +756,20 @@ function PayoutCard({
 function AmountCell({
   label,
   value,
+  tone = 'default',
   theme,
 }: {
   label: string;
   value: string;
-  theme: { colors: { border: string } };
+  tone?: 'default' | 'success' | 'warning' | 'danger';
+  theme: { colors: { border: string; surfaceAlt: string } };
 }) {
   return (
-    <View style={[styles.amountCell, { borderColor: theme.colors.border }]}>
-      <AppText variant="caption" tone="secondary">
-        {label}
+    <View style={[styles.amountCell, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}>
+      <AppText variant="caption" tone="secondary" style={styles.amountCellLabel}>
+        {label.toUpperCase()}
       </AppText>
-      <AppText variant="body" style={styles.amountCellValue}>
+      <AppText variant="moneySmall" tone={tone}>
         {value}
       </AppText>
     </View>
@@ -598,12 +802,46 @@ const styles = StyleSheet.create({
     padding: tokens.spacing.lg,
     gap: tokens.spacing.xs,
   },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+  },
+  heroLabelGroup: {
+    flex: 1,
+    gap: 2,
+  },
   heroLabel: {
     letterSpacing: 1.2,
-    fontWeight: '700',
   },
-  heroAmount: {
-    fontWeight: '800',
+  statusPill: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 4,
+  },
+  negativeNotice: {
+    marginTop: 4,
+  },
+  progressContainer: {
+    marginTop: tokens.spacing.sm,
+    gap: 4,
+  },
+  progressBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  progressLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.xs,
   },
   heroActions: {
     marginTop: tokens.spacing.sm,
@@ -625,11 +863,30 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.lg,
     padding: tokens.spacing.md,
     gap: 4,
+    position: 'relative',
+    overflow: 'hidden',
   },
-  metricValue: {
-    fontWeight: '700',
+  metricAccentBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
   },
-  metaLine: {
+  metricHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  metricLabelText: {
+    letterSpacing: 0.8,
+  },
+  metaSummaryBadge: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.lg,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
     marginBottom: tokens.spacing.xs,
   },
   sectionHeader: {
@@ -639,11 +896,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  countBadge: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 2,
+  },
   card: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: tokens.radius.lg,
     padding: tokens.spacing.md,
-    gap: 4,
+    gap: tokens.spacing.xs,
   },
   cardTop: {
     flexDirection: 'row',
@@ -651,13 +914,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: tokens.spacing.sm,
   },
-  cardTitle: {
+  cardHeaderLeft: {
     flex: 1,
-    flexShrink: 1,
-    fontWeight: '700',
+    gap: 2,
   },
-  cardFoot: {
-    marginTop: 2,
+  cardTitle: {
+    flexShrink: 1,
+  },
+  badgePill: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+  },
+  cardFootContainer: {
+    marginTop: tokens.spacing.xs,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.sm,
   },
   amountGrid: {
     flexDirection: 'row',
@@ -674,7 +949,7 @@ const styles = StyleSheet.create({
     padding: tokens.spacing.sm,
     gap: 2,
   },
-  amountCellValue: {
-    fontWeight: '600',
+  amountCellLabel: {
+    letterSpacing: 0.6,
   },
 });

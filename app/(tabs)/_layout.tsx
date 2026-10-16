@@ -53,7 +53,7 @@ import {
   registerIslandTabNavigation,
 } from '@/src/navigation/islandTabStack';
 import { requestStudioInPlaceNav } from '@/src/features/studio/studioNavController';
-import { isStudioRouteKey } from '@/src/features/studio/studioRoutes';
+import { isStudioFocusedFlow, isStudioRouteKey } from '@/src/features/studio/studioRoutes';
 import {
   fetchShopperProfileWarmState,
   shopperProfileWarmStateKey,
@@ -313,7 +313,9 @@ export default function TabLayout() {
   const displayedActiveKey = bagFlow?.isMyBagOpen && !inStudioIsland
     ? NATIVE_ISLAND_KEYS.bag
     : optimisticActiveKey ?? activeIslandKey;
-  const hideIslandForFocusedFlow = FOCUSED_CATALOG_FLOW.test(pathname);
+  const hideIslandForFocusedFlow =
+    FOCUSED_CATALOG_FLOW.test(pathname) ||
+    (inStudioIsland && isStudioFocusedFlow(studioRouteKeyParam));
 
   const refreshUnreadNotificationCount = useCallback(async () => {
     lastNotificationRefreshAttemptAtRef.current = Date.now();

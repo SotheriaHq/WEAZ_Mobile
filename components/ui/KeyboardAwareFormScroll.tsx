@@ -134,7 +134,15 @@ export const KeyboardAwareFormScroll = forwardRef<
     }
 
     const windowHeight = Dimensions.get('window').height;
-    const keyboardTop = windowHeight - kb;
+    const isAndroid = Platform.OS === 'android';
+    const resizedBySystem =
+      isAndroid &&
+      kb > 0 &&
+      baseWindowHeightRef.current - windowHeight > kb * 0.5;
+
+    // When the Android window is resized by the system (adjustResize), windowHeight is ALREADY
+    // bounded by the keyboard top. Subtracting kb again would double-count the keyboard.
+    const keyboardTop = resizedBySystem ? windowHeight : windowHeight - kb;
 
     (focused as {
       measureInWindow: (
@@ -142,7 +150,7 @@ export const KeyboardAwareFormScroll = forwardRef<
       ) => void;
     }).measureInWindow((_x, y, _w, height) => {
       const fieldBottom = y + height;
-      const targetBottom = keyboardTop - bottomOffset;
+      const targetBottom = keyboardTop - (bottomOffset + tokens.spacing.md);
       if (fieldBottom <= targetBottom + 2) return;
 
       const delta = fieldBottom - targetBottom;
@@ -153,12 +161,20 @@ export const KeyboardAwareFormScroll = forwardRef<
 
   const onFieldFocus = useCallback(() => {
     // Keyboard already open: the layout is settled, so scroll straight away.
-    // The old 48/64ms settle timer existed only to outlast the animated spacer
-    // that no longer animates.
     if (keyboardHeightRef.current > 0) {
       scrollToFocused();
+      setTimeout(scrollToFocused, 80);
     }
   }, [scrollToFocused]);
+
+  useEffect(() => {
+    const sub = Dimensions.addEventListener('change', ({ window }) => {
+      if (keyboardHeightRef.current <= 0) {
+        baseWindowHeightRef.current = window.height;
+      }
+    });
+    return () => sub?.remove();
+  }, []);
 
   useEffect(() => {
     // Keep the spacer floor in sync when sticky-footer clearance changes.
@@ -191,6 +207,8 @@ export const KeyboardAwareFormScroll = forwardRef<
       // Same tick as the keyboard, so the caret travels WITH it. On iOS this
       // rides `keyboardWillShow`, which fires before the IME moves at all.
       scrollToFocused();
+      // Post-animation settle check ensures any layout reflow keeps the field clearly visible.
+      setTimeout(scrollToFocused, 100);
     };
 
     const onHide = () => {

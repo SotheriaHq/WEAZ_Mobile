@@ -113,38 +113,34 @@ function StoreStatusBadge({ badge }: { badge: ProfileBadgeModel | null }) {
 
   const isOpen = badge.variant.includes('open');
   const isClosed = badge.variant.includes('closed');
-  const color = isOpen ? theme.colors.success : isClosed ? theme.colors.textMuted : theme.colors.warning;
-  const label = isOpen ? 'Open' : isClosed ? 'Closed' : 'Limited';
-  const fullLabel = isOpen ? 'Open' : isClosed ? 'Closed' : 'Limited or custom-only';
+  const bg = isOpen
+    ? theme.colors.success
+    : isClosed
+      ? theme.colors.surfaceAlt
+      : theme.colors.warning;
+  const statusDescription = isOpen
+    ? 'Open — this brand is actively taking orders.'
+    : isClosed
+      ? 'Closed — not taking orders right now.'
+      : 'Limited — custom-only or partially available.';
+  const accessibilityStatus = isOpen ? 'Open' : isClosed ? 'Closed' : 'Limited';
 
-  /*
-    This used to be a colour-only square with no text — green, grey or yellow,
-    and nothing else. Nobody can read it. It sat directly beside the brand's
-    name, so the first question every viewer had about a brand header was "what
-    is that green thing", which is the exact opposite of what a status indicator
-    is for; the legend was hidden behind a tap most people will never make, and
-    a colour-only cue is unreadable to anyone with a red/green deficiency
-    regardless.
-
-    The dot survives as the colour cue and now carries its own word. The tap
-    still explains the full vocabulary, because "Limited" is genuinely worth a
-    sentence.
-  */
   return (
     <Pressable
-      onPress={() =>
-        toast.info(
-          'Store status — Open: taking orders. Closed: not taking orders right now. Limited: custom-only or partly available.',
-        )
-      }
+      onPress={() => toast.info(`Store status: ${statusDescription}`)}
       hitSlop={tokens.spacing.sm}
       accessibilityRole="button"
-      accessibilityLabel={`Store ${fullLabel}. Tap for store status legend.`}
-      style={styles.storeStatusButton}
+      accessibilityLabel={`Store ${accessibilityStatus}. Tap to see store status details.`}
+      style={({ pressed }) => [
+        styles.storeStatusBadge,
+        {
+          backgroundColor: bg,
+          opacity: pressed ? 0.8 : 1,
+        },
+      ]}
     >
-      <View style={[styles.storeStatusDot, { backgroundColor: color }]} />
-      <AppText variant="captionBold" tone="inverse" numberOfLines={1}>
-        {label}
+      <AppText variant="captionBold" style={styles.storeStatusEmoji}>
+        {'\u{1F6CD}\u{FE0F}'}
       </AppText>
     </Pressable>
   );
@@ -304,10 +300,6 @@ function BannerHeader({
         style={[
           styles.bannerNameChip,
           {
-            backgroundColor: 'transparent',
-            borderColor: theme.colors.glassBorder,
-            // Leave room for the edit control when it is actually rendered,
-            // and reclaim that room for the name when it is not.
             right:
               isOwner && onEditBanner
                 ? BANNER_EDIT_CONTROL_CLEARANCE
@@ -315,19 +307,6 @@ function BannerHeader({
           },
         ]}
       >
-        <BlurView
-          intensity={Math.max(14, Math.round(theme.colors.glassBlur * 0.5))}
-          tint={scheme === 'dark' ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            { backgroundColor: scheme === 'dark' ? tokens.scrim(0.14) : tokens.colors.inkWash },
-          ]}
-        />
         <AppText variant="title" tone="inverse" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.bannerNameText}>
           {brandName}
         </AppText>
@@ -1178,24 +1157,19 @@ const styles = StyleSheet.create({
   bannerNameChip: {
     position: 'absolute',
     left: 132,
-    bottom: 0,
+    bottom: 6,
     alignSelf: 'flex-start',
-    minHeight: 38,
-    borderTopLeftRadius: tokens.radius.lg,
-    borderTopRightRadius: tokens.radius.lg,
-    borderBottomLeftRadius: tokens.radius.sm,
-    borderBottomRightRadius: tokens.radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
+    minHeight: 32,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.xs,
-    overflow: 'hidden',
   },
   bannerNameText: {
     minWidth: 0,
     flexShrink: 1,
+    textShadowColor: tokens.scrim(0.75),
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   bannerEditControl: {
     position: 'absolute',
@@ -1211,16 +1185,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  storeStatusButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
-    paddingLeft: tokens.spacing.xs,
-  },
-  storeStatusDot: {
-    width: 8,
-    height: 8,
+  storeStatusBadge: {
+    width: 24,
+    height: 24,
     borderRadius: tokens.radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: tokens.spacing.xs,
+    shadowColor: tokens.colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.25,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  storeStatusEmoji: {
+    fontSize: 12,
+    lineHeight: 14,
   },
   identityRow: {
     flexDirection: 'row',

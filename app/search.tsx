@@ -50,14 +50,24 @@ type ResultState =
   // from "the server broke", and those need different copy and different advice.
   | { status: 'error'; message: string; kind: ScreenStateKind };
 
-const FILTER_OPTIONS: Array<{ key: FilterType; label: string }> = [
-  { key: 'all', label: 'All' },
-  { key: 'profile', label: 'Profiles' },
-  { key: 'brand', label: 'Brands' },
-  { key: 'design', label: 'Runway' },
-  { key: 'collection', label: 'Collections' },
-  { key: 'product', label: 'Products' },
-  { key: 'tag', label: 'Tags' },
+const FILTER_OPTIONS: Array<{ key: FilterType; label: string; emoji: string }> = [
+  { key: 'all', label: 'All', emoji: '✨' },
+  { key: 'profile', label: 'Profiles', emoji: '👤' },
+  { key: 'brand', label: 'Brands', emoji: '🏷️' },
+  { key: 'design', label: 'Runway', emoji: '👗' },
+  { key: 'collection', label: 'Collections', emoji: '📁' },
+  { key: 'product', label: 'Products', emoji: '🛍️' },
+  { key: 'tag', label: 'Tags', emoji: '#️⃣' },
+];
+
+const CURATED_TRENDING_TAGS = [
+  'AnkaraStyles',
+  'Streetwear',
+  'AsoEbi',
+  'ReadyToWear',
+  'Kaftan',
+  'TraditionalWear',
+  'CorsetGown',
 ];
 const SEARCH_SCREEN_DEBOUNCE_MS = 350;
 
@@ -155,31 +165,7 @@ function SearchSection({
   );
 }
 
-function QueryRow({
-  label,
-  onPress,
-  onRemove,
-}: {
-  label: string;
-  onPress: () => void;
-  onRemove?: () => void;
-}) {
-  return (
-    <View style={styles.queryRow}>
-      <Pressable onPress={onPress} style={styles.queryCopy}>
-        <AppText variant="bodyBold">🕘</AppText>
-        <AppText variant="body" numberOfLines={1}>
-          {label}
-        </AppText>
-      </Pressable>
-      {onRemove ? (
-        <Pressable onPress={onRemove} style={styles.queryRemove}>
-          <AppText variant="captionBold" tone="muted">✕</AppText>
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
+
 
 function SearchResultRow({
   item,
@@ -540,12 +526,13 @@ export default function SearchScreen() {
             style={[
               styles.filterPill,
               {
-                backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
+                backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
                 borderColor: selected ? theme.colors.primary : theme.colors.border,
               },
             ]}
           >
-            <AppText variant="captionBold" tone={selected ? 'primary' : 'muted'}>
+            <AppText variant="caption">{option.emoji}</AppText>
+            <AppText variant="captionBold" tone={selected ? 'inverse' : 'secondary'}>
               {option.label}
             </AppText>
           </Pressable>
@@ -565,15 +552,20 @@ export default function SearchScreen() {
             value={query}
             onChangeText={onChangeQuery}
             onSubmitEditing={onSubmitSearch}
-            placeholder="Search WIEZ"
+            placeholder="Search looks, brands, designers..."
             returnKeyType="search"
+            leading={
+              <View style={styles.searchLeadingIcon}>
+                <AppText variant="caption">🔍</AppText>
+              </View>
+            }
             trailing={
               query.length > 0 ? (
                 <Pressable
                   onPress={onClearQuery}
                   accessibilityRole="button"
                   accessibilityLabel="Clear search"
-                  style={styles.clearSearchButton}
+                  style={[styles.clearSearchButton, { backgroundColor: theme.colors.surfaceAlt }]}
                 >
                   <AppText variant="captionBold" tone="muted">✕</AppText>
                 </Pressable>
@@ -592,6 +584,7 @@ export default function SearchScreen() {
           data={resultState.items}
           keyExtractor={(item) => `${item.type}-${item.id}`}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.content, { paddingBottom: contentBottom }]}
           ListHeaderComponent={
@@ -617,6 +610,7 @@ export default function SearchScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         contentContainerStyle={[styles.content, { paddingBottom: contentBottom }]}
       >
         {filtersRow}
@@ -683,21 +677,41 @@ export default function SearchScreen() {
                       setLocalRecent(await getLocalRecentSearches());
                       setHiddenRecent(await getHiddenSearches());
                     }}
+                    style={styles.clearAllButton}
                   >
-                    <AppText variant="captionBold" tone="muted">Clear</AppText>
+                    <AppText variant="captionBold" tone="danger">Clear all</AppText>
                   </Pressable>
                 }
               >
-                <View style={styles.sectionStack}>
+                <View style={styles.recentChipsWrap}>
                   {recentQueries.map((entry) => (
-                    <QueryRow
+                    <View
                       key={entry.query}
-                      label={entry.query}
-                      onPress={() => runSubmittedSearch(entry.query)}
-                      onRemove={() => {
-                        void removeRecent(entry.query);
-                      }}
-                    />
+                      style={[
+                        styles.recentChip,
+                        {
+                          backgroundColor: theme.colors.surface,
+                          borderColor: theme.colors.border,
+                        },
+                      ]}
+                    >
+                      <Pressable
+                        onPress={() => runSubmittedSearch(entry.query)}
+                        style={styles.recentChipContent}
+                      >
+                        <AppText variant="caption" tone="muted">🕘</AppText>
+                        <AppText variant="body" numberOfLines={1}>
+                          {entry.query}
+                        </AppText>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => void removeRecent(entry.query)}
+                        style={styles.recentChipClose}
+                        accessibilityLabel={`Remove ${entry.query}`}
+                      >
+                        <AppText variant="captionBold" tone="muted">×</AppText>
+                      </Pressable>
+                    </View>
                   ))}
                 </View>
               </SearchSection>
@@ -722,23 +736,31 @@ export default function SearchScreen() {
 
             {showPopularSection ? (
               <SearchSection
-                title="Popular on WIEZ"
+                title="🔥 Trending on WIEZ"
                 rightAction={
-                  <AppText variant="captionRegular" tone="muted">{suggestions?.trending?.length ?? 0} trending</AppText>
+                  <AppText variant="captionRegular" tone="muted">
+                    {suggestions?.trending?.length ?? 0} trending
+                  </AppText>
                 }
               >
-                <View style={styles.sectionStack}>
+                <View style={styles.trendingChipsWrap}>
                   {suggestions?.trending.map((trend: SearchTrendingLink) => (
                     <Pressable
                       key={trend.query}
                       onPress={() => runSubmittedSearch(trend.query)}
-                      style={({ pressed }) => [styles.resultRow, pressed ? styles.pressed : null]}
+                      style={({ pressed }) => [
+                        styles.trendingPill,
+                        {
+                          backgroundColor: theme.colors.surfaceAlt,
+                          borderColor: theme.colors.border,
+                        },
+                        pressed ? styles.pressed : null,
+                      ]}
                     >
-                      <View style={styles.resultMeta}>
-                        <AppText variant="captionBold" tone="primary">🔥 Trending</AppText>
-                        <AppText variant="bodyBold">{trend.query}</AppText>
-                      </View>
-                      <AppText variant="subtitle" tone="muted">›</AppText>
+                      <AppText variant="caption">🔥</AppText>
+                      <AppText variant="captionBold" tone="primary">
+                        {trend.query}
+                      </AppText>
                     </Pressable>
                   ))}
                 </View>
@@ -746,13 +768,63 @@ export default function SearchScreen() {
             ) : null}
 
             {showDefaultPrompt ? (
-              <View style={styles.defaultPrompt}>
-                <AppText variant="bodyBold" style={styles.defaultPromptTitle}>
-                  👀 What are you looking for?
-                </AppText>
-                <AppText variant="small" tone="muted" style={styles.defaultPromptCopy}>
-                  Search profiles, brands, runway looks,{'\n'}collections, products, or tags.
-                </AppText>
+              <View style={styles.discoveryHub}>
+                <View style={styles.sectionHeader}>
+                  <AppText variant="subtitle">Explore Categories</AppText>
+                </View>
+                <View style={styles.categoryGrid}>
+                  {[
+                    { label: 'Runway Looks', type: 'design' as const, emoji: '👗', desc: 'Trending designs & outfits' },
+                    { label: 'Fashion Brands', type: 'brand' as const, emoji: '🏷️', desc: 'Verified creators & houses' },
+                    { label: 'Market Products', type: 'product' as const, emoji: '🛍️', desc: 'Ready-to-wear & custom items' },
+                    { label: 'Designers & Creators', type: 'profile' as const, emoji: '👤', desc: 'Stylists & master tailors' },
+                  ].map((cat) => (
+                    <Pressable
+                      key={cat.type}
+                      onPress={() => {
+                        setFilterType(cat.type);
+                      }}
+                      style={[
+                        styles.categoryCard,
+                        {
+                          backgroundColor: theme.colors.surface,
+                          borderColor: theme.colors.border,
+                        },
+                      ]}
+                    >
+                      <AppText variant="subtitle">{cat.emoji}</AppText>
+                      <AppText variant="bodyBold">{cat.label}</AppText>
+                      <AppText variant="caption" tone="muted">{cat.desc}</AppText>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {/* Trending tags in default prompt */}
+                <View style={[styles.section, { marginTop: tokens.spacing.md }]}>
+                  <View style={styles.sectionHeader}>
+                    <AppText variant="subtitle">🔥 Popular Aesthetics</AppText>
+                  </View>
+                  <View style={styles.trendingChipsWrap}>
+                    {CURATED_TRENDING_TAGS.map((tag) => (
+                      <Pressable
+                        key={tag}
+                        onPress={() => runSubmittedSearch(`#${tag}`)}
+                        style={({ pressed }) => [
+                          styles.trendingPill,
+                          {
+                            backgroundColor: theme.colors.surfaceAlt,
+                            borderColor: theme.colors.border,
+                          },
+                          pressed ? styles.pressed : null,
+                        ]}
+                      >
+                        <AppText variant="captionBold" tone="primary">
+                          #{tag}
+                        </AppText>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
               </View>
             ) : null}
           </>
@@ -772,22 +844,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.md,
-    paddingBottom: tokens.spacing.md,
+    paddingBottom: tokens.spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   searchInputWrap: {
     flex: 1,
     minWidth: 0,
   },
+  searchLeadingIcon: {
+    paddingLeft: tokens.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   searchFieldContainer: {
     marginBottom: 0,
   },
   clearSearchButton: {
-    width: 36,
-    height: 36,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: tokens.radius.full,
+    marginRight: tokens.spacing.xs,
+  },
+  clearAllButton: {
+    paddingHorizontal: tokens.spacing.xs,
+    paddingVertical: tokens.spacing[0],
   },
   content: {
     gap: tokens.spacing.lg,
@@ -802,16 +884,18 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   filterRow: {
-    flexGrow: 1,
-    justifyContent: 'center',
     gap: tokens.spacing.xs,
-    paddingHorizontal: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.xs,
   },
   filterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
     borderWidth: 1,
     borderRadius: tokens.radius.full,
-    paddingHorizontal: tokens.spacing.xs / 2,
-    paddingVertical: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
   },
   section: {
     gap: tokens.spacing.sm,
@@ -825,24 +909,63 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
   },
-  queryRow: {
+  recentChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.xs,
+  },
+  recentChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.sm,
-    minHeight: 52,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+    paddingLeft: tokens.spacing.sm,
+    paddingRight: tokens.spacing.xs,
+    paddingVertical: tokens.spacing.xs,
+    gap: tokens.spacing.xs,
   },
-  queryCopy: {
-    flex: 1,
+  recentChipContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
   },
-  queryRemove: {
-    width: 36,
-    height: 36,
+  recentChipClose: {
+    width: 24,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: tokens.radius.full,
+  },
+  trendingChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.xs,
+  },
+  trendingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  discoveryHub: {
+    gap: tokens.spacing.md,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.xs,
+  },
+  categoryCard: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.xs,
   },
   resultRow: {
     minHeight: 64,
@@ -880,21 +1003,5 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
-  },
-  defaultPrompt: {
-    alignSelf: 'stretch',
-    minHeight: 220,
-    alignItems: 'stretch',
-    justifyContent: 'center',
-    gap: tokens.spacing.sm,
-    paddingHorizontal: tokens.spacing.lg,
-  },
-  defaultPromptTitle: {
-    width: '100%',
-    textAlign: 'center',
-  },
-  defaultPromptCopy: {
-    width: '100%',
-    textAlign: 'center',
   },
 });

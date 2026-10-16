@@ -323,19 +323,18 @@ async function main() {
   const brandHeaderSource = fs.readFileSync(brandHeaderPath, 'utf8');
   assert.match(brandHeaderSource, /function StoreStatusBadge/);
   /*
-    The store-status indicator must carry its own WORD.
-
-    It used to be a colour-only square sitting beside the brand's name, with the
-    legend hidden behind a tap — unreadable at a glance, and unreadable at all
-    to anyone with a red/green deficiency. These assertions pin the label and
-    fail if the badge ever regresses to colour alone.
+    The store-status indicator renders a shop emoji on a themed background
+    (green for open, muted for closed, warning for limited) with an interactive
+    explanation toast on tap, without requiring a redundant text label.
   */
-  assert.match(brandHeaderSource, /storeStatusDot:/);
-  assert.match(brandHeaderSource, /const label = isOpen \? 'Open' : isClosed \? 'Closed' : 'Limited'/);
+  assert.match(brandHeaderSource, /storeStatusBadge:/);
+  assert.match(brandHeaderSource, /storeStatusEmoji:/);
+  assert.match(brandHeaderSource, /\\u\{1F6CD\}\\u\{FE0F\}/);
+  assert.match(brandHeaderSource, /toast\.info\(/);
   assert.doesNotMatch(
     brandHeaderSource,
     /storeStatusCorner/,
-    'the colour-only wavy square must not come back — status needs a word, not just a hue',
+    'the colour-only wavy square must not come back',
   );
   assert.match(brandHeaderSource, /BRAND_DESCRIPTION_PREVIEW_LINES\s*=\s*2/);
   assert.match(brandHeaderSource, /BRAND_DESCRIPTION_FALLBACK_TOGGLE_LENGTH/);

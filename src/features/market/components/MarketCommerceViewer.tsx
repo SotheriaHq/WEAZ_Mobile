@@ -856,13 +856,17 @@ export function MarketCommerceViewer({
   */
   const bagAccessibilityLabel = priceLabel ? `${BAG_IT_LABEL}, ${priceLabel}` : BAG_IT_LABEL;
 
+  const itemTags = useMemo(() => {
+    const raw = design?.tags ?? product?.tags ?? [];
+    return Array.isArray(raw) ? raw.filter(Boolean) : [];
+  }, [design?.tags, product?.tags]);
+
   const productOptions = useMemo(() => {
     if (!product) return [];
     const options: string[] = [];
     if (product.sizes.length > 0) options.push(`Sizes: ${product.sizes.join(', ')}`);
     if (product.colors.length > 0) options.push(`Colors: ${product.colors.join(', ')}`);
     if (product.categoryName) options.push(`Category: ${product.categoryName}`);
-    if (product.tags && product.tags.length > 0) options.push(`Tags: ${product.tags.join(', ')}`);
     return options;
   }, [product]);
 
@@ -870,30 +874,130 @@ export function MarketCommerceViewer({
     if (!design) return [];
     const options: string[] = [];
     if (typeof design.itemCount === 'number') options.push(`${design.itemCount} item${design.itemCount === 1 ? '' : 's'}`);
-    if (design.tags && design.tags.length > 0) options.push(`Tags: ${design.tags.join(', ')}`);
     if (design.isAvailableInStore) options.push('Available for custom request');
     return options;
   }, [design]);
 
-  const stockLabel = product
-    ? productStock && productStock > 0
-      ? `${productStock} in stock`
-      : product.customOrderEnabled
-        ? 'Custom-order only'
-        : 'Out of stock'
-    : bagStatus?.custom.available || design?.isAvailableInStore
-      ? 'Custom request available'
-      : 'Custom request unavailable';
-  const customLabel = bagStatus?.custom.available
-    ? bagStatus.custom.freshnessState === 'STALE' ||
-      bagStatus.custom.freshnessState === 'VERY_STALE'
-      ? 'Fittings need confirmation'
-      : bagStatus.custom.fittingState === 'MISSING' || bagStatus.custom.fittingState === 'PARTIAL'
-        ? 'Fittings needed'
-        : 'Custom bagging ready'
-    : sourceType === 'PRODUCT' && product?.customOrderEnabled
-      ? 'Checking custom setup'
-      : 'Custom bagging unavailable';
+  const stockMeta = useMemo(() => {
+    if (product) {
+      if (productStock && productStock > 0) {
+        return {
+          label: `${productStock} in stock`,
+          tone: 'success' as const,
+          dotColor: theme.colors.success,
+          statusText: 'AVAILABLE NOW',
+        };
+      }
+      if (product.customOrderEnabled) {
+        return {
+          label: 'Custom-order only',
+          tone: 'primary' as const,
+          dotColor: theme.colors.primary,
+          statusText: 'MADE TO ORDER',
+        };
+      }
+      return {
+        label: 'Out of stock',
+        tone: 'danger' as const,
+        dotColor: theme.colors.danger,
+        statusText: 'UNAVAILABLE',
+      };
+    }
+    if (bagStatus?.custom.available || design?.isAvailableInStore) {
+      return {
+        label: 'Custom request available',
+        tone: 'primary' as const,
+        dotColor: theme.colors.primary,
+        statusText: 'BESPOKE ORDER',
+      };
+    }
+    return {
+      label: 'Request unavailable',
+      tone: 'muted' as const,
+      dotColor: theme.colors.textMuted,
+      statusText: 'CLOSED',
+    };
+  }, [bagStatus?.custom.available, design?.isAvailableInStore, product, productStock, theme.colors]);
+
+  const baggingMeta = useMemo(() => {
+    if (bagStatus?.custom.available) {
+      const { freshnessState, fittingState } = bagStatus.custom;
+      if (freshnessState === 'STALE' || freshnessState === 'VERY_STALE') {
+        return {
+          label: 'Fittings need confirmation',
+          tone: 'warning' as const,
+          dotColor: theme.colors.warning,
+          statusText: 'MEASUREMENTS EXPIRING',
+        };
+      }
+      if (fittingState === 'MISSING' || fittingState === 'PARTIAL') {
+        return {
+          label: 'Fittings needed',
+          tone: 'warning' as const,
+          dotColor: theme.colors.warning,
+          statusText: 'MEASUREMENTS NEEDED',
+        };
+      }
+      return {
+        label: 'Custom bagging ready',
+        tone: 'success' as const,
+        dotColor: theme.colors.success,
+        statusText: 'FIT PROFILE READY',
+      };
+    }
+    if (sourceType === 'PRODUCT' && product?.customOrderEnabled) {
+      return {
+        label: 'Checking custom setup',
+        tone: 'primary' as const,
+        dotColor: theme.colors.primary,
+        statusText: 'VERIFYING',
+      };
+    }
+    return {
+      label: 'Standard checkout only',
+      tone: 'secondary' as const,
+      dotColor: theme.colors.textSecondary,
+      statusText: 'OFF-THE-RACK',
+    };
+  }, [bagStatus?.custom, product?.customOrderEnabled, sourceType, theme.colors]);
+
+  const humanFittingStatus = useMemo(() => {
+    if (!bagStatus) return { label: 'Eligibility will be checked before bagging', tone: 'secondary' as const, emoji: 'ℹ️', note: null };
+    const { freshnessState, fittingState } = bagStatus.custom;
+    if (fittingState === 'MISSING') {
+      return {
+        label: 'Measurements Needed',
+        tone: 'warning' as const,
+        emoji: '⚠️',
+        note: 'Save your profile measurements to enable custom fitting.',
+      };
+    }
+    if (fittingState === 'PARTIAL') {
+      return {
+        label: 'Partial Measurements Saved',
+        tone: 'warning' as const,
+        emoji: '📏',
+        note: 'Some key measurements are missing for this design.',
+      };
+    }
+    if (freshnessState === 'STALE' || freshnessState === 'VERY_STALE') {
+      return {
+        label: 'Measurements Need Confirmation',
+        tone: 'warning' as const,
+        emoji: '⏳',
+        note: 'Please confirm your measurements are still up to date.',
+      };
+    }
+    return {
+      label: 'Fittings Ready',
+      tone: 'success' as const,
+      emoji: '✓',
+      note: 'Your saved measurements match the requirements for this piece.',
+    };
+  }, [bagStatus]);
+
+  const stockLabel = stockMeta.label;
+  const customLabel = baggingMeta.label;
 
   const handleBack = useCallback(() => {
     backOrNavigate(fallbackHref as any);
@@ -1136,6 +1240,8 @@ export function MarketCommerceViewer({
           variant="captionBold"
           tone={bagDisabled ? 'muted' : 'inverse'}
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
         >
           {BAG_IT_LABEL}
         </AppText>
@@ -1166,7 +1272,7 @@ export function MarketCommerceViewer({
         accessibilityLabel="Comments"
       >
         <AppText
-          variant={variant === 'dock' ? 'title' : 'bodyBold'}
+          variant={variant === 'dock' ? 'title' : 'captionBold'}
           tone={variant === 'dock' ? 'inverse' : 'default'}
           numberOfLines={1}
           style={variant === 'dock' ? styles.dockGlyphText : undefined}
@@ -1195,9 +1301,11 @@ export function MarketCommerceViewer({
       }
     >
       <AppText
-        variant={variant === 'dock' ? 'title' : 'bodyBold'}
+        variant={variant === 'dock' ? 'title' : 'captionBold'}
         tone={variant === 'dock' ? 'inverse' : 'default'}
         numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
         style={variant === 'dock' ? styles.dockGlyphText : undefined}
       >
         {variant === 'dock'
@@ -1228,9 +1336,11 @@ export function MarketCommerceViewer({
       accessibilityLabel="Message brand"
     >
       <AppText
-        variant={variant === 'dock' ? 'title' : 'bodyBold'}
+        variant={variant === 'dock' ? 'title' : 'captionBold'}
         tone={variant === 'dock' ? 'inverse' : 'default'}
         numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
         style={variant === 'dock' ? styles.dockGlyphText : undefined}
       >
         {variant === 'dock' ? MESSAGE_EMOJI : `${MESSAGE_EMOJI}  Message`}
@@ -1396,21 +1506,27 @@ export function MarketCommerceViewer({
                 {title}
               </AppText>
             </View>
-            <View style={[styles.pricePill, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}>
-              <AppText variant="captionBold" tone="primary" numberOfLines={1}>
-                {priceLabel ?? 'Quote'}
+            <View style={[styles.pricePill, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.primary }]}>
+              <AppText variant="captionBold" tone="primary" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                {priceLabel ?? 'Custom quote'}
               </AppText>
             </View>
           </View>
 
           <View style={styles.metaGrid}>
             <View style={[styles.metaCell, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
-              <AppText variant="captionBold" tone="muted">Stock</AppText>
-              <AppText variant="bodyBold" numberOfLines={2}>{stockLabel}</AppText>
+              <View style={styles.metaCellHeader}>
+                <View style={[styles.statusDot, { backgroundColor: stockMeta.dotColor }]} />
+                <AppText variant="captionBold" tone="muted">{stockMeta.statusText}</AppText>
+              </View>
+              <AppText variant="bodyBold" tone={stockMeta.tone} numberOfLines={2}>{stockMeta.label}</AppText>
             </View>
             <View style={[styles.metaCell, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
-              <AppText variant="captionBold" tone="muted">Bagging</AppText>
-              <AppText variant="bodyBold" numberOfLines={2}>{customLabel}</AppText>
+              <View style={styles.metaCellHeader}>
+                <View style={[styles.statusDot, { backgroundColor: baggingMeta.dotColor }]} />
+                <AppText variant="captionBold" tone="muted">{baggingMeta.statusText}</AppText>
+              </View>
+              <AppText variant="bodyBold" tone={baggingMeta.tone} numberOfLines={2}>{baggingMeta.label}</AppText>
             </View>
           </View>
 
@@ -1478,6 +1594,37 @@ export function MarketCommerceViewer({
             </View>
           ) : null}
 
+          {itemTags.length > 0 ? (
+            <View style={styles.detailBlock}>
+              <AppText variant="bodyBold">Tags & Aesthetics</AppText>
+              <View style={styles.tagChipsWrap}>
+                {itemTags.map((tag) => (
+                  <Pressable
+                    key={tag}
+                    onPress={() => {
+                      drillDownPush({
+                        pathname: '/search',
+                        params: { q: tag.startsWith('#') ? tag : `#${tag}` },
+                      } as any);
+                    }}
+                    style={({ pressed }) => [
+                      styles.tagChip,
+                      {
+                        backgroundColor: theme.colors.surfaceAlt,
+                        borderColor: theme.colors.border,
+                      },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <AppText variant="captionBold" tone="primary">
+                      #{tag.replace(/^#/, '')}
+                    </AppText>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           <View style={styles.detailBlock}>
             <AppText variant="bodyBold">Options</AppText>
             {[...productOptions, ...designOptions].length > 0 ? (
@@ -1490,14 +1637,31 @@ export function MarketCommerceViewer({
           </View>
 
           <View style={styles.detailBlock}>
-            <AppText variant="bodyBold">Fittings</AppText>
-            <AppText variant="body" tone="secondary">
-              {bagStatus
-                ? `${bagStatus.custom.freshnessState} / ${bagStatus.custom.fittingState}`
-                : 'Eligibility will be checked before bagging.'}
-            </AppText>
+            <AppText variant="bodyBold">Fittings & Custom Tailoring</AppText>
+            <View
+              style={[
+                styles.fittingCard,
+                {
+                  backgroundColor: theme.colors.surfaceAlt,
+                  borderColor: humanFittingStatus.tone === 'warning' ? theme.colors.warning : theme.colors.border,
+                },
+              ]}
+            >
+              <View style={styles.fittingHeaderRow}>
+                <AppText variant="bodyBold" tone={humanFittingStatus.tone}>
+                  {humanFittingStatus.emoji} {humanFittingStatus.label}
+                </AppText>
+              </View>
+              {humanFittingStatus.note ? (
+                <AppText variant="caption" tone="secondary">
+                  {humanFittingStatus.note}
+                </AppText>
+              ) : null}
+            </View>
             {disabledReason ? (
-              <AppText variant="captionBold" tone="warning">{disabledReason}</AppText>
+              <AppText variant="captionBold" tone="warning" style={{ marginTop: tokens.spacing.xs }}>
+                {disabledReason}
+              </AppText>
             ) : null}
           </View>
 
@@ -1945,6 +2109,37 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: tokens.spacing.md,
     gap: tokens.spacing.xs,
+  },
+  metaCellHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: tokens.radius.full,
+  },
+  tagChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.spacing.sm,
+  },
+  tagChip: {
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+  },
+  fittingCard: {
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.xs,
+  },
+  fittingHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   sizeRecommendationCard: {
     borderRadius: tokens.radius.lg,
