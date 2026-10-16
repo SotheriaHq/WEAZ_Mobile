@@ -2047,13 +2047,24 @@ export default function CatalogScreen() {
     ],
   );
   const profileInitialLoading = profileQuery.isLoading && !effectiveProfile && !profileRef.current;
-  const listInitialLoading = visibilityFilter === 'Drafts'
-    ? draftsQuery.isLoading && effectiveDrafts.length === 0
+  /*
+    `isPending` (no data yet), not `isLoading` (pending AND fetching).
+
+    A list that has not started fetching yet — waiting on the brand id, on the
+    deferred-work gate, or on the persisted cache restoring — is pending but
+    not fetching, so `isLoading` was false and the grid was told "nothing to
+    show": with the brand header already cached above it, the Content tab sat
+    blank until the first card arrived. While a brand is known and the bucket
+    has no data, the grid's skeleton now holds the space instead.
+  */
+  const hasListTarget = Boolean(targetBrandId);
+  const listInitialLoading = hasListTarget && (visibilityFilter === 'Drafts'
+    ? draftsQuery.isPending && effectiveDrafts.length === 0
     : visibilityFilter === 'Needs Attention'
-      ? needsAttentionQuery.isLoading && effectiveCollections.length === 0
+      ? needsAttentionQuery.isPending && effectiveCollections.length === 0
       : visibilityFilter === 'In Review'
-        ? inReviewQuery.isLoading && effectiveCollections.length === 0
-        : collectionsQuery.isLoading && effectiveCollections.length === 0;
+        ? inReviewQuery.isPending && effectiveCollections.length === 0
+        : collectionsQuery.isPending && effectiveCollections.length === 0);
   /*
     Hold the pager's height floor open while the active grid is still loading.
 

@@ -60,3 +60,19 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * Catalogue content lives as long as the persisted cache does.
+ *
+ * The persisted snapshot only holds queries still in memory, and with the 30
+ * minute default an idle brand/design list was evicted and so never made it to
+ * disk — reopening the app later showed the catalogue Content tab empty while
+ * it waited on the network (8.5s to usable on the 2026-10-16 capture). These
+ * lists refetch on mount, so the cost of keeping them is a moment of last
+ * session's content, refreshed in place: the Instagram-style instant open.
+ * Scoped to these roots so the rest of the cache, and its disk size, is
+ * unchanged.
+ */
+export const WIEZ_CATALOG_CONTENT_GC_TIME_MS = 24 * 60 * 60 * 1000;
+queryClient.setQueryDefaults(['brand'], { gcTime: WIEZ_CATALOG_CONTENT_GC_TIME_MS });
+queryClient.setQueryDefaults(['designs'], { gcTime: WIEZ_CATALOG_CONTENT_GC_TIME_MS });
