@@ -556,11 +556,6 @@ export default function TabLayout() {
     setOptimisticActiveKey(null);
   }, []);
 
-  const markOptimisticActive = useCallback((item: NativeIslandNavItem) => {
-    if (item.disabled) return;
-    predictActiveKey(item.key);
-  }, [predictActiveKey]);
-
   const islandItems = useMemo<NativeIslandNavItem[]>(() => {
     // Inside Studio the dock must show Studio destinations (Dashboard, Store,
     // Orders, …) — same contract as web StudioSidebar / IslandBottomNav. Leaving
@@ -1096,7 +1091,13 @@ export default function TabLayout() {
         <NativeIslandBottomNav
           items={islandItems}
           onSelect={handleSelect}
-          onPressIn={markOptimisticActive}
+          // No optimistic React state on press. The chip lights from the
+          // island's UI-thread `pressedKey` the instant the finger lands, and
+          // stays lit until the route confirms. Setting `optimisticActiveKey`
+          // here too cost two extra TabShell + island commits per tap (set,
+          // then clear: `causes=TabShell:optimisticActiveKey×2`) right when
+          // the destination screen needed the JS thread, and drew nothing the
+          // shared value had not already drawn.
         />
       )}
     </>

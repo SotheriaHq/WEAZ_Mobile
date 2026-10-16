@@ -46,16 +46,6 @@ export { getNativeIslandContentClearance, getNativeIslandLayout, NATIVE_ISLAND_N
  */
 const TAP_SLOP_PX = 10;
 
-/**
- * How long a still finger waits before the scrolling dock treats it as a tap.
- *
- * The dock cannot route on touch-down: that is what made a swipe open the chip
- * the finger landed on. Waiting for finger-up makes a deliberate press feel
- * late. If the finger is still inside the slop after this delay, the press is
- * real and the route starts while the finger is still down.
- */
-const SCROLL_DOCK_COMMIT_DELAY_MS = 90;
-
 /** Press-in and press both fire for one tap. Ignore the second. */
 const COMMIT_DEDUPE_MS = 400;
 /**
@@ -523,8 +513,12 @@ export function NativeIslandBottomNav({
       setImmediateActiveKey((current) => (current === item.key ? null : current));
       setImmediateActiveNavFlow((current) => (current === navFlow ? null : current));
     }, PRESSED_KEY_MAX_MS);
-    setImmediateActiveKey(item.key);
-    setImmediateActiveNavFlow(navFlow);
+    // No React state here any more. `pressedKey` above already paints the
+    // pill, glyph and label on the UI thread; mirroring it into
+    // `immediateActiveKey` forced a full dock commit on press and another to
+    // clear it — two renders per tap (25-100ms each on the A17) competing with
+    // the destination screen for the JS thread, for no pixel the shared value
+    // had not drawn.
     navPerf.tapPressIn(navFlow, { target: targetRoute });
     navPerf.optimisticActiveSet(navFlow, { target: targetRoute });
     navPerf.tap(navFlow);
@@ -665,16 +659,24 @@ export function NativeIslandBottomNav({
       */
       paintCandidate(item);
       perfRecordTouchQueue(queuedMs);
-      const timer = setTimeout(() => {
-        commitScrollDockTap(item);
-      }, SCROLL_DOCK_COMMIT_DELAY_MS);
+      /*
+        The route opens on RELEASE, never on a timer.
+
+        This used to commit the chip 90ms after touch-down unless the finger
+        had already moved 10px — but a swipe that starts gently has not moved
+        that far in 90ms, so swiping along the Studio dock opened the chip the
+        finger STARTED on. Now `onPress` (release, and only when the ScrollView
+        did not take the gesture) commits; a swipe cancels the highlight via
+        `trackScrollDockMove` / `onScrollBeginDrag`. The chip still lights on
+        touch-down, so the press is acknowledged instantly.
+      */
       scrollGestureRef.current = {
         key: item.key,
         x: pageX,
         y: pageY,
         moved: false,
         committed: false,
-        timer,
+        timer: null,
       };
     },
     [clearScrollTimer, commitScrollDockTap],

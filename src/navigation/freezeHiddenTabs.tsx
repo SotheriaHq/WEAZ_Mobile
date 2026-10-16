@@ -55,7 +55,13 @@ function DelayedFreeze({ freeze, children }: { freeze: boolean; children: React.
  * context value changing on every route, which was fixed in the same change;
  * left unfrozen, Market now re-renders only when its own data changes.
  */
-const NEVER_FROZEN_ROUTES = new Set(['discover']);
+/*
+ * Studio is a WebView. It keeps posting messages (READY, route changes, auth)
+ * while its tab is hidden, and its loading overlay is cleared by them; a
+ * suspended React tree is the wrong place to deliver those. Studio lock-ups
+ * ("the app is stuck, nothing is clickable") began after this freeze shipped.
+ */
+const NEVER_FROZEN_ROUTES = new Set(['discover', 'studio']);
 
 export function freezeHiddenTabLayout({ route, navigation, children }: TabLayoutArgs) {
   if (route.name && NEVER_FROZEN_ROUTES.has(route.name)) {

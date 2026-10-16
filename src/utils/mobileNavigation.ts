@@ -53,7 +53,16 @@ let pushQuietUntil = 0;
 let drillQuietFloorUntil = 0;
 let lockIsSingleFlight = false;
 const PUSH_BURST_MS = 600;
-const PUSH_QUIET_MAX_MS = 8_000;
+/*
+  1.2s, not 8s. The long cap was sized for a thread that stalled for seconds,
+  when every tap queued during the stall pushed its own screen. Stalls are now
+  ~100-300ms (2026-10-16 capture), and an 8s window spent most of its life
+  swallowing deliberate presses: open a product, tap a link on it while its
+  data is still arriving, and nothing happens — "I can't click anything".
+  1.2s still collapses a clump released by a long stall, and no real press
+  waits longer than that.
+*/
+const PUSH_QUIET_MAX_MS = 1_200;
 const DRILL_DOWN_SETTLE_FLOWS = new Set([
   'market→section',
   'product_detail',
