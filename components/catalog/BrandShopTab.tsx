@@ -632,9 +632,19 @@ export function BrandShopTab({
 
   const openProductDetail = useCallback(
     async (product: StoreProduct) => {
+      // The owner's own product opens in the Studio editor — published or
+      // draft. It used to open the shopper product page (bag it, sizes, price
+      // to pay), which is the wrong screen for the person who sells it.
+      if (isOwner) {
+        drillDownPush({
+          pathname: '/studio',
+          params: { routeKey: 'editProduct', productId: product.id },
+        } as any);
+        return;
+      }
       drillDownPush({ pathname: '/products/[productId]', params: { productId: product.id } } as any);
     },
-    [],
+    [isOwner],
   );
 
   useEffect(() => {
