@@ -12,8 +12,9 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { Input } from '@/components/ui/Input';
-import { StableImage } from '@/components/ui/StableImage';
 import { useDesignEditor } from '@/src/features/design-editor/DesignEditorProvider';
+import { DesignMediaGallery } from '@/src/features/design-editor/DesignMediaGallery';
+import { DesignMediaStrip } from '@/src/features/design-editor/DesignMediaStrip';
 import {
   DESIGN_FIT_PREFERENCE_LABELS,
   DESIGN_SIZING_LABELS,
@@ -90,8 +91,8 @@ export default function CreateDesignPreviewScreen() {
   const insets = useSafeAreaInsets();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deletePhrase, setDeletePhrase] = React.useState('');
-  const [selectedPreviewIndex, setSelectedPreviewIndex] = React.useState(0);
-  const hasInitializedPreviewRef = React.useRef(false);
+  // Index of the photo open in the full-screen gallery, or null when closed.
+  const [galleryIndex, setGalleryIndex] = React.useState<number | null>(null);
 
   const subCategory = subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
   const categorySummary = selectedCategory?.name ?? 'Not selected';
@@ -131,34 +132,7 @@ export default function CreateDesignPreviewScreen() {
   );
   const isSaving = Boolean(saveState.action);
   const canDelete = deletePhrase === 'DELETE' && !isSaving;
-  const selectedPreviewAsset = assets[selectedPreviewIndex] ?? null;
-  const selectedPreviewSlotLabel = selectedPreviewAsset
-    ? getMediaViewSlotLabel(selectedPreviewAsset.viewSlot)
-    : '';
-
   useAndroidOverlaySystemBars(deleteOpen, scheme, 'create-design-delete');
-
-  React.useEffect(() => {
-    if (assets.length === 0) {
-      hasInitializedPreviewRef.current = false;
-      setSelectedPreviewIndex(0);
-      return;
-    }
-
-    if (!hasInitializedPreviewRef.current) {
-      hasInitializedPreviewRef.current = true;
-      const coverIndex = coverAssetId ? assets.findIndex((asset) => asset.id === coverAssetId) : -1;
-      const nextIndex = coverIndex >= 0 ? coverIndex : 0;
-      if (nextIndex !== selectedPreviewIndex) {
-        setSelectedPreviewIndex(nextIndex);
-      }
-      return;
-    }
-
-    if (selectedPreviewIndex >= assets.length) {
-      setSelectedPreviewIndex(assets.length - 1);
-    }
-  }, [assets, coverAssetId, selectedPreviewIndex]);
 
   if (booting) {
     return <AppLoaderScreen message="Loading preview" />;
@@ -182,49 +156,21 @@ export default function CreateDesignPreviewScreen() {
         contentContainerStyle={styles.content}
       >
         {assets.length > 0 ? (
-          /*
-            The hero box owns the 4:5 size. It used to have none: every image
-            in it is absolutely positioned, so the box collapsed to zero height
-            and each image sized itself to 4:5 of the screen width OUTSIDE it —
-            spilling over the thumbnail strip (hiding the other photos) and the
-            text card below. Now the box is sized and clips, and each photo is
-            shown whole (contain), never cropped or blown up.
-          */
-          <View style={[styles.heroWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
-            {assets.map((asset, index) => (
-              <View
-                key={asset.id}
-                style={[StyleSheet.absoluteFill, { opacity: index === selectedPreviewIndex ? 1 : 0, zIndex: index === selectedPreviewIndex ? 1 : 0 }]}
-              >
-                <StableImage
-                  uri={asset.remoteUrl ?? asset.uri}
-                  resizeMode="contain"
-                  containerStyle={StyleSheet.absoluteFill}
-                  imageStyle={StyleSheet.absoluteFill}
-                />
-              </View>
-            ))}
-            <View style={[styles.heroBadge, { backgroundColor: theme.colors.surfaceOverlay, zIndex: 10 }]}>
-              <AppText variant="captionBold">
-                {selectedPreviewAsset?.id === coverAssetId
-                  ? `Cover - ${selectedPreviewSlotLabel}`
-                  : selectedPreviewSlotLabel}
+          <View style={styles.mediaSection}>
+            <View style={styles.mediaHeader}>
+              <AppText variant="bodyBold">Photos</AppText>
+              <AppText variant="captionRegular" tone="muted">
+                Tap a photo to view it full screen.
               </AppText>
             </View>
-            {selectedPreviewAsset && selectedPreviewAsset.id !== coverAssetId ? (
-              <Pressable
-                onPress={() => setCoverAssetId(selectedPreviewAsset.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`Set ${selectedPreviewSlotLabel} as the cover`}
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.setCoverButton,
-                  { backgroundColor: theme.colors.primary, opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
-                ]}
-              >
-                <AppText variant="captionBold" tone="inverse">Set as cover</AppText>
-              </Pressable>
-            ) : null}
+            {/* The same strip the composer shows after picking — this screen
+                adds the full-screen gallery and leaves editing to the composer. */}
+            <DesignMediaStrip
+              assets={assets}
+              coverAssetId={coverAssetId}
+              onSetCover={setCoverAssetId}
+              onOpen={setGalleryIndex}
+            />
           </View>
         ) : (
           <View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -232,37 +178,14 @@ export default function CreateDesignPreviewScreen() {
           </View>
         )}
 
-        {assets.length > 1 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assetStrip}>
-            {assets.map((asset, index) => (
-              <Pressable
-                key={asset.id}
-                onPress={() => setSelectedPreviewIndex(index)}
-                style={[
-                  styles.assetThumbWrap,
-                  {
-                    borderColor: index === selectedPreviewIndex ? theme.colors.primary : theme.colors.border,
-                    backgroundColor: theme.colors.surface,
-                  },
-                ]}
-              >
-                <StableImage
-                  uri={asset.remoteUrl ?? asset.uri}
-                  containerStyle={styles.assetThumb}
-                  imageStyle={styles.assetThumb}
-                />
-                <View style={styles.assetThumbMeta}>
-                  <AppText variant="captionBold" tone={index === selectedPreviewIndex ? 'primary' : 'default'}>
-                    {getMediaViewSlotLabel(asset.viewSlot)}
-                  </AppText>
-                  <AppText variant="captionRegular" tone="muted">
-                    {asset.id === coverAssetId ? 'Current cover' : index === selectedPreviewIndex ? 'Previewing' : 'Tap to preview'}
-                  </AppText>
-                </View>
-              </Pressable>
-            ))}
-          </ScrollView>
-        ) : null}
+        <DesignMediaGallery
+          visible={galleryIndex !== null}
+          assets={assets}
+          initialIndex={galleryIndex ?? 0}
+          coverAssetId={coverAssetId}
+          onSetCover={setCoverAssetId}
+          onClose={() => setGalleryIndex(null)}
+        />
 
         <Card padding="lg" style={[styles.section, { borderColor: theme.colors.border }]}>
           <AppText variant="title">{form.title.trim() || 'Untitled design'}</AppText>
@@ -465,21 +388,11 @@ const styles = StyleSheet.create({
   assetThumbMeta: {
     gap: tokens.spacing.xs,
   },
-  heroWrap: {
-    position: 'relative',
-    width: '100%',
-    aspectRatio: 4 / 5,
-    borderRadius: tokens.radius.xl,
-    overflow: 'hidden',
+  mediaSection: {
+    gap: tokens.spacing.sm,
   },
-  setCoverButton: {
-    position: 'absolute',
-    right: tokens.spacing.sm,
-    bottom: tokens.spacing.sm,
-    zIndex: 10,
-    borderRadius: tokens.radius.full,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
+  mediaHeader: {
+    gap: tokens.spacing.xs,
   },
   heroImage: {
     width: '100%',

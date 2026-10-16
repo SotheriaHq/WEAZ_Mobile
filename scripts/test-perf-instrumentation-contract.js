@@ -510,17 +510,23 @@ check(
   waits out the slop, and an index comparison states exactly that: a
   `paintCandidate` that had been moved inside the timer would sort after it.
 */
+/*
+  Highlight on touch-down, route on RELEASE.
+
+  The dock used to commit on a 90ms timer unless the finger had moved 10px —
+  and a gently started swipe has not, so swiping the Studio dock opened the
+  chip the finger began on. The invariant is now: touch-down paints, nothing
+  in press-in schedules a commit, and the commit is wired to `onPress`, which
+  the ScrollView cancels when it takes the gesture.
+*/
 const scrollPaintAt = scrollPressInBody.indexOf('paintCandidate(item);');
-const scrollTimerAt = scrollPressInBody.indexOf('const timer = setTimeout(');
 check(
-  'the scrolling dock highlights on touch-down instead of after the slop timer',
+  'the scrolling dock highlights on touch-down and opens the chip only on release',
   scrollPressInBody.length > 0 &&
     scrollPaintAt > -1 &&
-    scrollTimerAt > -1 &&
-    scrollPaintAt < scrollTimerAt &&
-    /setTimeout\(\(\) => \{\s*\n\s*commitScrollDockTap\(item\);\s*\n\s*\}, SCROLL_DOCK_COMMIT_DELAY_MS\);/.test(
-      scrollPressInBody,
-    ),
+    !/setTimeout\(/.test(scrollPressInBody) &&
+    !/commitScrollDockTap\(/.test(scrollPressInBody) &&
+    /onPress=\{item\.disabled \? undefined : \(\) => commitScrollDockTap\(item\)\}/.test(island),
 );
 check(
   'a cancelled scroll candidate clears the UI-thread key too',
@@ -618,7 +624,9 @@ check(
   /singleFlight\?: boolean/.test(mobileNav) &&
     /navigation_ignored_in_flight/.test(mobileNav) &&
     /pushQuietUntil/.test(mobileNav) &&
-    /PUSH_QUIET_MAX_MS = 8_000/.test(mobileNav) &&
+    // A short cap: long enough to collapse a clump of taps released by a
+    // stall, short enough that a deliberate press is never swallowed.
+    /PUSH_QUIET_MAX_MS = 1_200/.test(mobileNav) &&
     /noteDrillDownSettled/.test(mobileNav) &&
     /armDrillDownQuiet\(target\)/.test(mobileNav) &&
     /\{ singleFlight: true \}/.test(mobileNav),

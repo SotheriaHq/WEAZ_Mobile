@@ -76,6 +76,7 @@ import type { DesignEditorMediaSource } from '@/src/features/design-editor/desig
 import { perfMeasure } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
 import { useCommitCost } from '@/src/perf/commitCost';
+import { DesignMediaStrip } from '@/src/features/design-editor/DesignMediaStrip';
 import {
   CREATOR_AUDIENCE_OPTIONS,
   CREATOR_METADATA_HELP,
@@ -851,26 +852,12 @@ export default function CreateDesignComposerScreen() {
               </View>
             </View>
             {assets.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaStrip}>
-                {assets.map((asset, index) => (
-                  <View key={asset.id} style={styles.assetCard}>
-                    <StableImage uri={asset.remoteUrl ?? asset.uri} containerStyle={styles.assetPreview} imageStyle={styles.assetPreview} />
-                    <View style={[styles.assetBadge, { backgroundColor: theme.colors.surfaceOverlay }]}>
-                      <AppText variant="captionBold">
-                        {asset.viewSlot ? getMediaViewSlotLabel(asset.viewSlot) : DESIGN_MEDIA_SLOTS[index]}
-                      </AppText>
-                    </View>
-                    <View style={styles.assetActionRow}>
-                      <Pressable onPress={() => setCoverAssetId(asset.id)}>
-                        <AppText variant="captionBold" tone={asset.id === coverAssetId ? 'muted' : 'primary'}>Set Cover</AppText>
-                      </Pressable>
-                      <Pressable onPress={() => removeAsset(asset.id)}>
-                        <AppText variant="captionBold" tone="danger">Remove</AppText>
-                      </Pressable>
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
+              <DesignMediaStrip
+                assets={assets}
+                coverAssetId={coverAssetId}
+                onSetCover={setCoverAssetId}
+                onRemove={removeAsset}
+              />
             )}
           </View>
 
