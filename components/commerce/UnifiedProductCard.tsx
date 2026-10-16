@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 import { BAG_IT_LABEL, CUSTOM_ORDER_EMOJI } from '@/src/constants/bagging';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AppText } from '@/components/ui/AppText';
 import { MediaScrim } from '@/components/ui/MediaScrim';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
@@ -107,6 +108,16 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
     enabled: Boolean(mediaSrc || mediaFileId),
     allowSignedFallback,
   });
+  // Same rule as CollectionCard: a source that is still resolving or decoding
+  // shows a skeleton; "Image unavailable" is only for no source or a real error.
+  // It used to show whenever `resolvedUri` was null — which includes the whole
+  // time a file-ID image is being resolved.
+  const hasMediaSource = Boolean(mediaSrc || mediaFileId);
+  const [paintedUri, setPaintedUri] = useState<string | null>(null);
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const mediaFailed = Boolean(resolvedUri) && failedUri === resolvedUri;
+  const mediaPainted = Boolean(resolvedUri) && paintedUri === resolvedUri;
+  const showMediaSkeleton = hasMediaSource && !mediaFailed && !mediaPainted;
   const cardHeight = height ?? Math.round(width * 1.58);
   const canPressAction = Boolean(onActionPress) && !actionBusy && !actionDisabled && !unavailable;
   const displayPrice = priceLabel?.trim() || 'Price on request';
@@ -130,15 +141,20 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
       accessibilityRole="button"
       accessibilityLabel={`Open ${title}`}
     >
-      {resolvedUri ? (
+      {showMediaSkeleton ? (
+        <Skeleton width="100%" height="100%" borderRadius={0} style={StyleSheet.absoluteFill} />
+      ) : null}
+      {resolvedUri && !mediaFailed ? (
         <StableImage
           uri={resolvedUri}
           resizeMode="cover"
           containerStyle={styles.media}
           imageStyle={styles.media}
-          fadeDuration={140}
+          fadeDuration={0}
+          onLoad={() => setPaintedUri(resolvedUri)}
+          onError={() => setFailedUri(resolvedUri)}
         />
-      ) : (
+      ) : showMediaSkeleton ? null : (
         <LinearGradient
           colors={[theme.colors.surfaceAlt, theme.colors.surface, theme.colors.surfaceAlt]}
           style={styles.fallback}
