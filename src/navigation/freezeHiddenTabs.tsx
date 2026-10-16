@@ -61,7 +61,14 @@ function DelayedFreeze({ freeze, children }: { freeze: boolean; children: React.
  * suspended React tree is the wrong place to deliver those. Studio lock-ups
  * ("the app is stuck, nothing is clickable") began after this freeze shipped.
  */
-const NEVER_FROZEN_ROUTES = new Set(['discover', 'studio']);
+/*
+ * Market (`discover`) was briefly exempted too, to skip its ~1s thaw. That was
+ * worse: unfrozen, hidden Market re-rendered on every auth and bag change at
+ * 0.5-2.6s a time (device log 2026-10-16 18:10-18:12: "Market=2592ms×6" during
+ * sign-in, "Market=2114ms×3" on a bag-count refresh while on Studio). It stays
+ * frozen until its render itself is made cheap.
+ */
+const NEVER_FROZEN_ROUTES = new Set(['studio']);
 
 export function freezeHiddenTabLayout({ route, navigation, children }: TabLayoutArgs) {
   if (route.name && NEVER_FROZEN_ROUTES.has(route.name)) {

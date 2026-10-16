@@ -280,6 +280,8 @@ export default function StudioWebViewScreen() {
   } | null>(null);
   const loadStateRef = useRef(loadState);
   loadStateRef.current = loadState;
+  // A web Back was sent and the page has not answered yet — see the BackHandler.
+  const webBackPendingRef = useRef(false);
 
   const closeStudio = useCallback(() => {
     if (router.canGoBack()) {
@@ -485,11 +487,28 @@ export default function StudioWebViewScreen() {
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
+    /*
+      Back can never be swallowed.
+
+      It used to call `goBack()` whenever the page reported history — and a
+      page that has hung, or whose renderer Android has killed, still reports
+      it, so every Back press went into a dead WebView and the user had no way
+      out short of killing the app. Now a web Back is only sent when the last
+      one was answered (any message or navigation from the page clears the
+      flag); an unanswered one means the page is stuck, and Back closes Studio.
+    */
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (canGoBack && webViewRef.current) {
+      if (
+        canGoBack &&
+        webViewRef.current &&
+        loadStateRef.current === 'ready' &&
+        !webBackPendingRef.current
+      ) {
+        webBackPendingRef.current = true;
         webViewRef.current.goBack();
         return true;
       }
+      webBackPendingRef.current = false;
       closeStudio();
       return true;
     });
@@ -510,6 +529,7 @@ export default function StudioWebViewScreen() {
 
   const handleNavigationStateChange = useCallback((navState: WebViewNavigation) => {
     setCanGoBack(Boolean(navState.canGoBack));
+    webBackPendingRef.current = false;
   }, []);
 
   /**
@@ -598,6 +618,8 @@ export default function StudioWebViewScreen() {
 
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
+      // Any message proves the page is alive, so a pending web Back is answered.
+      webBackPendingRef.current = false;
       let message: NativeMessage | null = null;
       try {
         message = JSON.parse(event.nativeEvent.data) as NativeMessage;
@@ -1042,6 +1064,27 @@ export default function StudioWebViewScreen() {
             // and hardware is what Studio has been tested on.)
             androidLayerType="hardware"
             onLoadStart={() => setLoadState((current) => (current === 'ready' ? current : 'loading'))}
+            /*
+              Android kills a WebView's renderer under memory pressure — the
+              device log showed exactly that ("Renderer process crash detected")
+              after Studio had sat loading for minutes. Unhandled, the WebView
+              stays on screen as a dead surface that takes every tap and does
+              nothing. Hand the user Retry / Close instead.
+            */
+            onRenderProcessGone={() => {
+              sessionEstablishedRef.current = false;
+              lastInjectedRouteRef.current = null;
+              setErrorMessage('Studio stopped responding. Retry to reload it.');
+              trackStudioWebViewEvent('load-failed', { routeKey: resolvedRouteKey, reason: 'render-process-gone' });
+              setLoadState('error');
+            }}
+            onContentProcessDidTerminate={() => {
+              sessionEstablishedRef.current = false;
+              lastInjectedRouteRef.current = null;
+              setErrorMessage('Studio stopped responding. Retry to reload it.');
+              trackStudioWebViewEvent('load-failed', { routeKey: resolvedRouteKey, reason: 'content-process-terminated' });
+              setLoadState('error');
+            }}
             onError={() => {
               setErrorMessage('Studio could not load. Check your connection and try again.');
               trackStudioWebViewEvent('load-failed', { routeKey: resolvedRouteKey, reason: 'webview-error' });
@@ -1075,6 +1118,22 @@ export default function StudioWebViewScreen() {
             accessibilityLabel="Loading Studio"
           >
             <MuseLoader size={84} />
+            {/* Always a way out. The overlay covers the screen and, in the
+                setup flow, the dock is hidden — a slow or stuck load used to
+                leave nothing to press. */}
+            <Pressable
+              onPress={closeStudio}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Close Studio"
+              style={({ pressed }) => [
+                styles.loadingClose,
+                { top: insets.top + tokens.spacing.sm },
+                pressed && styles.pressed,
+              ]}
+            >
+              <AppText variant="bodyBold" tone="secondary">✕</AppText>
+            </Pressable>
           </View>
         ) : null}
 
@@ -1128,6 +1187,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.xl,
     paddingBottom: tokens.spacing.xl,
+  },
+  loadingClose: {
+    position: 'absolute',
+    left: tokens.spacing.lg,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pressed: {
     opacity: 0.78,
