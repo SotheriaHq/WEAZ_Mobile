@@ -6,7 +6,6 @@ import { useTheme, type ThemeContextValue } from '@/src/theme/ThemeProvider';
 import { PRODUCT_NAME } from '@/src/brand/identity';
 import { tokens } from '@/src/styles/tokens';
 
-import WiezMark from '@/src/brand/WiezMark';
 import { MuseLoader } from './MuseLoader';
 
 type LoaderTone = 'light' | 'dark';
@@ -99,11 +98,10 @@ function LoaderBackdrop({ visualTheme }: { visualTheme: LoaderVisualTheme }) {
  * with the spinner beneath it. Everywhere smaller — `LoaderBlock`, buttons,
  * rows — is the orb alone, because the muse's face stops reading below ~96px.
  */
-function LoaderContent({ size = 88 }: LoaderContentProps) {
+function LoaderContent({ size = 56 }: LoaderContentProps) {
   return (
     <View style={styles.content} accessibilityLabel={`Loading ${PRODUCT_NAME}`}>
-      <WiezMark size={Math.max(size, 96)} />
-      <MuseLoader size={28} style={styles.contentSpinner} />
+      <MuseLoader size={Math.min(size, 64)} />
     </View>
   );
 }
@@ -192,9 +190,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-  },
-  contentSpinner: {
-    marginTop: 20,
   },
   orb: {
     position: 'absolute',

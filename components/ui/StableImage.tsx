@@ -21,6 +21,8 @@ type StableImageProps = {
   fallback?: React.ReactNode;
   fadeDuration?: number;
   onError?: () => void;
+  /** Fires when an image has decoded, so a caller can drop its loading skeleton. */
+  onLoad?: () => void;
   aspectAware?: boolean;
   imageWidth?: number | null;
   imageHeight?: number | null;
@@ -47,6 +49,7 @@ export function StableImage({
   fallback,
   fadeDuration = 180,
   onError,
+  onLoad,
   aspectAware = false,
   imageWidth,
   imageHeight,
@@ -92,6 +95,7 @@ export function StableImage({
   }, [displayOpacity, displayUri, incomingOpacity, uri]);
 
   const handleDisplayLoad = useCallback(() => {
+    onLoad?.();
     if (incomingUriRef.current) return;
     Animated.timing(displayOpacity, {
       toValue: 1,
@@ -99,11 +103,12 @@ export function StableImage({
       useNativeDriver: true,
       isInteraction: false,
     }).start();
-  }, [displayOpacity, fadeDuration]);
+  }, [displayOpacity, fadeDuration, onLoad]);
 
   const handleIncomingLoad = useCallback(() => {
     const nextUri = incomingUriRef.current;
     if (!nextUri) return;
+    onLoad?.();
 
     Animated.timing(incomingOpacity, {
       toValue: 1,
@@ -118,7 +123,7 @@ export function StableImage({
       incomingOpacity.setValue(0);
       displayOpacity.setValue(1);
     });
-  }, [displayOpacity, fadeDuration, incomingOpacity]);
+  }, [displayOpacity, fadeDuration, incomingOpacity, onLoad]);
 
   if (aspectAware) {
     const aspectStrategyOverride = strategyOverride ?? (resizeMode === 'cover' ? 'edge' : null);

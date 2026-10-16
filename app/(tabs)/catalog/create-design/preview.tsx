@@ -71,6 +71,7 @@ export default function CreateDesignPreviewScreen() {
     form,
     assets,
     coverAssetId,
+    setCoverAssetId,
     tags,
     save,
     saveState,
@@ -181,16 +182,25 @@ export default function CreateDesignPreviewScreen() {
         contentContainerStyle={styles.content}
       >
         {assets.length > 0 ? (
-          <View style={styles.heroWrap}>
+          /*
+            The hero box owns the 4:5 size. It used to have none: every image
+            in it is absolutely positioned, so the box collapsed to zero height
+            and each image sized itself to 4:5 of the screen width OUTSIDE it —
+            spilling over the thumbnail strip (hiding the other photos) and the
+            text card below. Now the box is sized and clips, and each photo is
+            shown whole (contain), never cropped or blown up.
+          */
+          <View style={[styles.heroWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
             {assets.map((asset, index) => (
-              <View 
-                key={asset.id} 
+              <View
+                key={asset.id}
                 style={[StyleSheet.absoluteFill, { opacity: index === selectedPreviewIndex ? 1 : 0, zIndex: index === selectedPreviewIndex ? 1 : 0 }]}
               >
                 <StableImage
                   uri={asset.remoteUrl ?? asset.uri}
-                  containerStyle={styles.heroImage}
-                  imageStyle={styles.heroImage}
+                  resizeMode="contain"
+                  containerStyle={StyleSheet.absoluteFill}
+                  imageStyle={StyleSheet.absoluteFill}
                 />
               </View>
             ))}
@@ -201,6 +211,20 @@ export default function CreateDesignPreviewScreen() {
                   : selectedPreviewSlotLabel}
               </AppText>
             </View>
+            {selectedPreviewAsset && selectedPreviewAsset.id !== coverAssetId ? (
+              <Pressable
+                onPress={() => setCoverAssetId(selectedPreviewAsset.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Set ${selectedPreviewSlotLabel} as the cover`}
+                hitSlop={8}
+                style={({ pressed }) => [
+                  styles.setCoverButton,
+                  { backgroundColor: theme.colors.primary, opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
+                ]}
+              >
+                <AppText variant="captionBold" tone="inverse">Set as cover</AppText>
+              </Pressable>
+            ) : null}
           </View>
         ) : (
           <View style={[styles.heroImage, styles.heroFallback, { backgroundColor: theme.colors.surfaceAlt }]}>
@@ -443,6 +467,19 @@ const styles = StyleSheet.create({
   },
   heroWrap: {
     position: 'relative',
+    width: '100%',
+    aspectRatio: 4 / 5,
+    borderRadius: tokens.radius.xl,
+    overflow: 'hidden',
+  },
+  setCoverButton: {
+    position: 'absolute',
+    right: tokens.spacing.sm,
+    bottom: tokens.spacing.sm,
+    zIndex: 10,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
   },
   heroImage: {
     width: '100%',

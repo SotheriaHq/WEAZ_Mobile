@@ -173,6 +173,22 @@ export const CollectionCard = React.memo(function CollectionCard({
   );
 
   const showImage = Boolean(coverUri && !imageFailed);
+  /*
+    Loading is not "unavailable".
+
+    The "Image unavailable" panel used to be StableImage's `fallback`, which is
+    painted UNDER the image for as long as it loads — and while a file-ID cover
+    is still resolving there is no image at all, so the panel stood alone. Every
+    tab switch therefore showed a grey card reading "Image unavailable" before
+    perfectly good photos appeared. Now: a skeleton while a cover exists but has
+    not painted, and the unavailable panel only when there is no cover or it
+    really failed.
+  */
+  const hasCoverSource = Boolean(collection.coverImage || collection.coverFileId);
+  const [paintedCoverUri, setPaintedCoverUri] = useState<string | null>(null);
+  const coverPainted = Boolean(coverUri) && paintedCoverUri === coverUri;
+  const showCoverSkeleton = hasCoverSource && !imageFailed && !coverPainted;
+  const showUnavailable = !hasCoverSource || imageFailed;
 
   return (
     <>
@@ -205,6 +221,9 @@ export const CollectionCard = React.memo(function CollectionCard({
         accessibilityLabel={`Open ${copy.badgeLabel.toLowerCase()} ${displayTitle}`}
       >
         <View style={[styles.coverFrame, { height: imageHeight, backgroundColor: theme.colors.surfaceAlt }]}>
+          {showCoverSkeleton ? (
+            <Skeleton width="100%" height="100%" borderRadius={0} style={StyleSheet.absoluteFill} />
+          ) : null}
           {showImage ? (
             <>
               {/* Fixed-aspect catalog thumbnail: fill the frame edge-to-edge (cover) so
@@ -217,13 +236,15 @@ export const CollectionCard = React.memo(function CollectionCard({
                 resizeMode="cover"
                 containerStyle={[styles.coverImage, { width, height: imageHeight }]}
                 imageStyle={[styles.coverImage, { width, height: imageHeight }]}
+                // No fade: the skeleton already covers the wait, and a fade made
+                // even memory-cached covers flash on every tab switch.
+                fadeDuration={0}
+                onLoad={() => setPaintedCoverUri(coverUri)}
                 onError={() => setImageFailed(true)}
-                fallback={<ImageFallback title={displayTitle} />}
               />
             </>
-          ) : (
-            <ImageFallback title={displayTitle} />
-          )}
+          ) : null}
+          {showUnavailable ? <ImageFallback title={displayTitle} /> : null}
 
           {collection.clientStatus ? (
             <View pointerEvents="none" style={[styles.clientStatusScrim, { backgroundColor: theme.colors.backdropStrong }]} />

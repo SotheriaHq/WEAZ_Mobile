@@ -33,10 +33,10 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useToast } from '@/src/toast/ToastContext';
+import { isValidEmail } from '@/src/utils/emailValidation';
 
 const INVISIBLE_AUTH_SPACING_REGEX =
   /[\u00A0\u1680\u180E\u2000-\u200D\u202F\u205F\u2060\u3000\uFEFF]/g;
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 12;
 const PASSWORD_SETUP_PURPOSE = 'PASSWORD_SETUP' as const;
 const STAGGER_LOGO = 0;
@@ -58,6 +58,23 @@ function stripInvisibleAuthSpacing(value: string): string {
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
+  // Check structured field-level errors from backend ValidationPipe
+  const errors = (error as any)?.response?.data?.errors;
+  if (Array.isArray(errors) && errors.length > 0) {
+    const first = errors[0];
+    const prop = (first?.property || '').toLowerCase();
+    const msg = first?.messages?.[0] || first?.constraints?.[0];
+    if (prop === 'email' || prop.endsWith('.email')) {
+      return 'Please enter a valid email address (e.g. name@example.com).';
+    }
+    if (prop === 'password' || prop.endsWith('.password')) {
+      return 'Password must be at least 12 characters.';
+    }
+    if (typeof msg === 'string' && msg.trim()) {
+      return msg.trim();
+    }
+  }
+
   const candidates = [
     (error as any)?.response?.data?.message,
     (error as any)?.response?.data?.error,
@@ -65,7 +82,14 @@ function getErrorMessage(error: unknown, fallback: string): string {
   ];
   for (const candidate of candidates) {
     if (typeof candidate === 'string' && candidate.trim()) {
-      return candidate.trim();
+      const trimmed = candidate.trim();
+      if (
+        trimmed.toLowerCase() === 'validation failed' ||
+        trimmed.toLowerCase() === 'bad request'
+      ) {
+        return 'Please enter a valid email address (e.g. name@example.com).';
+      }
+      return trimmed;
     }
   }
   return fallback;
@@ -230,8 +254,8 @@ export default function LoginScreen() {
   };
 
   const continueWithEmail = async () => {
-    if (!EMAIL_REGEX.test(normalizedEmail)) {
-      setEmailError('Enter a valid email address.');
+    if (!isValidEmail(normalizedEmail)) {
+      setEmailError('Please enter a valid email address (e.g. name@example.com).');
       return;
     }
 
@@ -305,8 +329,8 @@ export default function LoginScreen() {
     const normalizedPassword = stripInvisibleAuthSpacing(password);
     let hasError = false;
 
-    if (!EMAIL_REGEX.test(normalizedEmail)) {
-      setEmailError('Enter a valid email address.');
+    if (!isValidEmail(normalizedEmail)) {
+      setEmailError('Please enter a valid email address (e.g. name@example.com).');
       hasError = true;
     } else {
       setEmailError('');
@@ -402,8 +426,8 @@ export default function LoginScreen() {
   };
 
   const requestPasswordSetupCode = async () => {
-    if (!EMAIL_REGEX.test(normalizedEmail)) {
-      setEmailError('Enter a valid email address.');
+    if (!isValidEmail(normalizedEmail)) {
+      setEmailError('Please enter a valid email address (e.g. name@example.com).');
       return;
     }
 
