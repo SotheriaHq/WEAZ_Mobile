@@ -993,7 +993,7 @@ export default function StudioWebViewScreen() {
                   var rect = el.getBoundingClientRect();
                   // 16px of breathing room under the field so the caret is never
                   // flush against the keyboard.
-                  return rect.bottom > visibleBottom() - 16 || rect.top < 0;
+                  return rect.bottom > visibleBottom() - 48 || rect.top < 54;
                 }
                 function revealFocusedField(ignoreUserScroll) {
                   var el = document.activeElement;
@@ -1002,7 +1002,7 @@ export default function StudioWebViewScreen() {
                   if (!isObscured(el)) return;
                   try {
                     // 'nearest', not 'center' — the shortest move that works.
-                    el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+                    el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
                   } catch (e) {
                     try { el.scrollIntoView(false); } catch (e2) {}
                   }

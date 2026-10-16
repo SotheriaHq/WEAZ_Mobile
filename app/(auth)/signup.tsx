@@ -42,6 +42,7 @@ import {
   getRequiredLegalAcceptances,
   LEGAL_SIGNUP_DOCUMENT_KEYS,
 } from '@/src/api/LegalApi';
+import { isValidEmail } from '@/src/utils/emailValidation';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -51,7 +52,6 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 type UserType = 'REGULAR' | 'BRAND' | null;
 
 const PASSWORD_MIN_LENGTH = 12;
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function clearError(
   setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>,
@@ -200,8 +200,8 @@ export default function SignupScreen() {
     if (userType === 'BRAND' && trimmedBrandName.length < 2) {
       newErrors.brandName = 'Brand name must be at least 2 characters.';
     }
-    if (!EMAIL_REGEX.test(trimmedEmail)) {
-      newErrors.email = 'Enter a valid email address.';
+    if (!isValidEmail(trimmedEmail)) {
+      newErrors.email = 'Please enter a valid email address (e.g. name@example.com).';
     }
     if (trimmedPassword.length < PASSWORD_MIN_LENGTH) {
       newErrors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
