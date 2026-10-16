@@ -1279,7 +1279,57 @@ function EditorialCard({
   );
 }
 
+type MarketBagActions = ReturnType<typeof useMobileBagging>;
+type MarketScreenBodyProps = {
+  status: ReturnType<typeof useAuth>['status'];
+  userId: string | null;
+  bagProduct: MarketBagActions['bagProduct'];
+  bagSource: MarketBagActions['bagSource'];
+};
+
+/**
+ * Thin shell over the Market body.
+ *
+ * Market used to call `useAuth()` and `useMobileBagging()` itself, so every
+ * auth or bag change — a token refresh, a preferences save, a bag-count
+ * refresh — re-rendered the whole ~2,800-line screen, hidden or not: 0.5-2.6s a
+ * time on the A17 (`Market=2592ms×6` during sign-in, `Market=2114ms×3` on a
+ * bag-count refresh while the user was on Studio). The body only ever needed
+ * `status`, the user id, and two bag ACTIONS. This shell subscribes, hands the
+ * memoized body exactly those (the actions through stable wrappers), and so a
+ * bag or profile change re-renders these few lines instead of the screen.
+ */
 export function MarketScreen() {
+  const { status, user } = useAuth();
+  const { bagProduct, bagSource } = useMobileBagging();
+  const bagActionsRef = useRef({ bagProduct, bagSource });
+  bagActionsRef.current = { bagProduct, bagSource };
+  const stableBagProduct = useCallback(
+    ((...args: Parameters<MarketBagActions['bagProduct']>) =>
+      bagActionsRef.current.bagProduct(...args)) as MarketBagActions['bagProduct'],
+    [],
+  );
+  const stableBagSource = useCallback(
+    ((...args: Parameters<MarketBagActions['bagSource']>) =>
+      bagActionsRef.current.bagSource(...args)) as MarketBagActions['bagSource'],
+    [],
+  );
+  return (
+    <MarketScreenBody
+      status={status}
+      userId={user?.id ?? null}
+      bagProduct={stableBagProduct}
+      bagSource={stableBagSource}
+    />
+  );
+}
+
+const MarketScreenBody = React.memo(function MarketScreenBody({
+  status,
+  userId,
+  bagProduct,
+  bagSource,
+}: MarketScreenBodyProps) {
   useCommitCost('Market');
   const flowKey = 'market';
   // Phase 1 instrumentation (gated)
@@ -1296,13 +1346,11 @@ export function MarketScreen() {
   }, []);
 
   const { theme, scheme } = useTheme();
-  const { status, user } = useAuth();
   const toast = useToast();
   const { insets, standardScreenBottomPadding } = useScreenChrome();
   const { width, height } = useWindowDimensions();
-  const { bagProduct, bagSource } = useMobileBagging();
   const deferredWorkReady = useDeferredScreenWork();
-  const marketViewerKey = status === 'authenticated' ? user?.id ?? 'authenticated' : 'guest';
+  const marketViewerKey = status === 'authenticated' ? userId ?? 'authenticated' : 'guest';
   const initialMarketSnapshotRef = useRef<MarketSnapshot | null>(
     readMarketSnapshot(buildMarketQueryKey(DEFAULT_MARKET_FILTERS, '', marketViewerKey))?.snapshot ?? null,
   );
@@ -2613,7 +2661,7 @@ export function MarketScreen() {
       />
     </SafeAreaView>
   );
-}
+});
 
 const styles = StyleSheet.create({
   root: {
