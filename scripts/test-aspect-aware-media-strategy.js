@@ -182,6 +182,25 @@ check(
   'edge',
 );
 // Square and landscape must resolve to DIFFERENT strategies (subtle vs stronger ambient).
+// Content viewers (allowCrop: false) never cover-fit: a snug portrait that
+// would otherwise go edge-to-edge is contained, before AND after the container
+// is measured, so the photo neither crops nor zooms once it has appeared.
+check(
+  'viewer: snug portrait is contained, not cover-fit',
+  resolveMediaStrategy({ containerWidth: 400, containerHeight: 800, imageAspectRatio: 0.56, allowCrop: false }),
+  'letter-solid',
+);
+check(
+  'viewer: portrait before container measurement is contained, not cover-fit',
+  resolveMediaStrategy({ containerWidth: 0, containerHeight: 0, imageAspectRatio: 0.7, allowCrop: false }),
+  'letter-solid',
+);
+check(
+  'default (allowCrop) still cover-fits the same snug portrait',
+  resolveMediaStrategy({ containerWidth: 400, containerHeight: 800, imageAspectRatio: 0.56 }),
+  'edge',
+);
+
 const squareRunway = resolveMediaStrategy({ containerWidth: 500, containerHeight: 1000, imageAspectRatio: 1 });
 const landscapeRunway = resolveMediaStrategy({ containerWidth: 500, containerHeight: 1000, imageAspectRatio: 1.4 });
 check('square media in a tall runway container uses the subtle ambient', squareRunway, 'letter-soft');

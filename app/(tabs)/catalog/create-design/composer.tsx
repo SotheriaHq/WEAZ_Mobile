@@ -75,6 +75,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import type { DesignEditorMediaSource } from '@/src/features/design-editor/designEditorMediaFlow';
 import { perfMeasure } from '@/src/utils/perf';
 import { navPerf } from '@/src/utils/navPerf';
+import { useCommitCost } from '@/src/perf/commitCost';
 import {
   CREATOR_AUDIENCE_OPTIONS,
   CREATOR_METADATA_HELP,
@@ -133,6 +134,10 @@ function formatPriceSummary(minPrice: string, maxPrice: string) {
 }
 
 export default function CreateDesignComposerScreen() {
+  // Opening Create Design blocked JS for ~1.8s on device with every bit of it
+  // unattributed (create_design: worstBlock=1776ms, unattribMs=1776). Labelled
+  // so the next capture says whether the composer's own render is the cost.
+  useCommitCost('Composer');
   const {
     booting,
     loadingError,

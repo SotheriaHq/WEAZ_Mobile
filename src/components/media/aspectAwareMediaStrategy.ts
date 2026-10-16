@@ -74,8 +74,16 @@ export function resolveMediaStrategy(params: {
   imageHeight?: number | null;
   imageAspectRatio?: number | null;
   override?: AspectAwareMediaStrategy | null;
+  /**
+   * `false` for content viewers: the whole photo is always visible, so `edge`
+   * (cover) is never chosen. It also removes the visible rescale on open —
+   * the first paint (size unknown) and the settled fit (size known) are both a
+   * contain, so the photo never zooms up once it has appeared.
+   */
+  allowCrop?: boolean;
 }): AspectAwareMediaStrategy {
   if (params.override) return params.override;
+  const allowCrop = params.allowCrop ?? true;
 
   const hasContainerDimensions =
     isPositiveFinite(params.containerWidth) && isPositiveFinite(params.containerHeight);
@@ -98,14 +106,16 @@ export function resolveMediaStrategy(params: {
   // experience immersively, so default it to edge; wider media gets a clean matte
   // until the container is measured (avoids a blurred flash before first layout).
   if (!hasContainerDimensions) {
-    return imageClass === 'ultra-portrait' || imageClass === 'portrait' ? 'edge' : 'letter-solid';
+    return allowCrop && (imageClass === 'ultra-portrait' || imageClass === 'portrait')
+      ? 'edge'
+      : 'letter-solid';
   }
 
   const containerAspect = params.containerWidth / params.containerHeight;
   const crop = coverCropFraction(imageAspect, containerAspect);
 
   // Snug fit → immersive edge-to-edge cover (negligible cropping).
-  if (crop <= EDGE_COVER_CROP_TOLERANCE) {
+  if (allowCrop && crop <= EDGE_COVER_CROP_TOLERANCE) {
     return 'edge';
   }
 
