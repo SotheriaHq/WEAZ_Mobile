@@ -23,7 +23,7 @@ import React, { useEffect, useState } from 'react';
 import { Freeze } from 'react-freeze';
 
 type TabLayoutArgs = {
-  route: { key: string };
+  route: { key: string; name?: string };
   navigation: {
     getState: () => { index: number; routes: { key: string }[]; preloadedRouteKeys?: string[] };
   };
@@ -42,7 +42,25 @@ function DelayedFreeze({ freeze, children }: { freeze: boolean; children: React.
   return <Freeze freeze={freeze ? frozen : false}>{children}</Freeze>;
 }
 
+/**
+ * Tabs that are never frozen, because thawing them costs more than the
+ * re-renders freezing saves.
+ *
+ * Thawing is not free: react-freeze suspends the tree, and on reveal React
+ * reconnects every effect and layout effect in it at once. For Market
+ * (`discover`) — a very large screen with several lists — that was the
+ * unattributed 0.9-1.5s block on every entry in the 2026-10-16 capture
+ * (tabs→market blockedMs=1414/1481/926). What the freeze was added to stop,
+ * hidden Market re-rendering on navigation, came mostly from the BagFlow
+ * context value changing on every route, which was fixed in the same change;
+ * left unfrozen, Market now re-renders only when its own data changes.
+ */
+const NEVER_FROZEN_ROUTES = new Set(['discover']);
+
 export function freezeHiddenTabLayout({ route, navigation, children }: TabLayoutArgs) {
+  if (route.name && NEVER_FROZEN_ROUTES.has(route.name)) {
+    return children;
+  }
   const state = navigation.getState();
   const focused = state.routes[state.index]?.key === route.key;
   const preloaded = state.preloadedRouteKeys?.includes(route.key) ?? false;

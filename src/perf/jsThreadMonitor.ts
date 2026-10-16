@@ -26,6 +26,8 @@
  * logged unless a sample exceeds `BLOCK_THRESHOLD_MS`, so a healthy session is
  * silent. Fully inert when the debug flag is absent.
  */
+import { AppState } from 'react-native';
+
 import { drainCommitAttribution, lastDrainUnattributedMs } from '@/src/perf/commitCost';
 import {
   perfAddBlockedMs,
@@ -61,10 +63,26 @@ export function startJsThreadMonitor(): () => void {
   if (!perfEnabled() || timer !== null) return () => undefined;
 
   let previous = now();
+  /*
+    Time in the background is not a stall.
+
+    Android pauses JS timers while another activity is in front — the system
+    photo picker and camera are exactly that. The first sample after coming
+    back then measured the whole visit as drift: the 2026-10-16 capture booked
+    create_design as worstBlock=7762ms x3, which was the time spent choosing
+    photos, not a frozen app. Samples are skipped while not active, and the
+    clock restarts on return.
+  */
+  let foreground = AppState.currentState === 'active';
+  const appStateSubscription = AppState.addEventListener('change', (state) => {
+    foreground = state === 'active';
+    previous = now();
+  });
   timer = setInterval(() => {
     const current = now();
     const drift = current - previous - SAMPLE_MS;
     previous = current;
+    if (!foreground) return;
     if (drift < BLOCK_THRESHOLD_MS) return;
 
     blockedMsTotal += drift;
@@ -99,6 +117,7 @@ export function startJsThreadMonitor(): () => void {
   }, SAMPLE_MS);
 
   return () => {
+    appStateSubscription.remove();
     if (timer !== null) {
       clearInterval(timer);
       timer = null;
