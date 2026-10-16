@@ -9,15 +9,35 @@ const PROFILES: Record<
   CompressionProfile,
   { maxLongSide: number; minLongSide: number; maxBytes: number }
 > = {
-  profileImage: { maxLongSide: 1080, minLongSide: 512, maxBytes: 2 * MB },
-  bannerImage: { maxLongSide: 1920, minLongSide: 720, maxBytes: 2 * MB },
-  designMedia: { maxLongSide: 1600, minLongSide: 720, maxBytes: 2 * MB },
-  messageImage: { maxLongSide: 1280, minLongSide: 512, maxBytes: 2 * MB },
+  profileImage: { maxLongSide: 1080, minLongSide: 720, maxBytes: 2 * MB },
+  bannerImage: { maxLongSide: 1920, minLongSide: 1280, maxBytes: 2 * MB },
+  // 2048 = the server's largest (ZOOM) variant, so nothing the server renders
+  // is ever upscaled from a smaller upload. The floor is 1600: below that a
+  // full-screen Runway page on a 1440px-wide phone starts to soften.
+  designMedia: { maxLongSide: 2048, minLongSide: 1600, maxBytes: 2 * MB },
+  messageImage: { maxLongSide: 1280, minLongSide: 720, maxBytes: 2 * MB },
 };
 
-const INITIAL_QUALITY = 0.99;
-const MIN_QUALITY = 0.9;
+/*
+  Quality first, size second.
+
+  This used to start at 0.99 — a JPEG setting that buys almost nothing visible
+  over 0.92 and roughly doubles the bytes — and then chase a target of 10% of
+  the ORIGINAL file size, shrinking the long side by 18% per attempt down to a
+  720px floor. A 4MB phone photo therefore usually landed near 720-880px: the
+  design was permanently softened before it ever reached the server, and every
+  Runway variant was then upscaled from it. It also cost up to six full
+  re-encodes per photo.
+
+  Now: one 0.92 encode at up to the profile's max side, which nearly always
+  fits the upload limit. Only if it does not do we step quality down, and only
+  after that the size — never below the profile floor.
+*/
+const INITIAL_QUALITY = 0.92;
+const MIN_QUALITY = 0.86;
 const MAX_COMPRESSION_ATTEMPTS = 6;
+/** Headroom under the hard upload limit for multipart overhead. */
+const LIMIT_HEADROOM = 0.95;
 
 async function getLocalUriSize(uri: string): Promise<number | null> {
   try {
@@ -134,14 +154,9 @@ export async function compressPickedImage(
     const { manipulateAsync, SaveFormat } = manipulator;
     const cfg = PROFILES[profile];
     const longSide = Math.max(originalWidth, originalHeight);
-    const originalSize = await getLocalUriSize(uri);
-    const targetBytes = Math.max(
-      64 * 1024,
-      Math.min(
-        cfg.maxBytes,
-        originalSize ? Math.floor(originalSize * 0.1) : cfg.maxBytes,
-      ),
-    );
+    // The only size goal is fitting the upload limit — never a fraction of the
+    // original, which is what used to grind photos down to 720px.
+    const targetBytes = Math.floor(cfg.maxBytes * LIMIT_HEADROOM);
 
     let maxLongSide = Math.min(Math.max(longSide, 1), cfg.maxLongSide);
     let quality = INITIAL_QUALITY;
@@ -171,13 +186,15 @@ export async function compressPickedImage(
       }
       if (candidateSize === null || candidateSize <= targetBytes) break;
 
-      const nextLongSide = Math.round(maxLongSide * 0.82);
-      if (nextLongSide >= cfg.minLongSide && nextLongSide < maxLongSide) {
-        maxLongSide = nextLongSide;
+      // Over the limit: give up a little JPEG quality before any pixels, and
+      // pixels only in small steps, never under the profile floor.
+      if (quality > MIN_QUALITY) {
+        quality = Math.max(MIN_QUALITY, quality - 0.03);
         continue;
       }
-      if (quality > MIN_QUALITY) {
-        quality = Math.max(MIN_QUALITY, quality - 0.02);
+      const nextLongSide = Math.max(cfg.minLongSide, Math.round(maxLongSide * 0.9));
+      if (nextLongSide < maxLongSide) {
+        maxLongSide = nextLongSide;
         continue;
       }
       break;

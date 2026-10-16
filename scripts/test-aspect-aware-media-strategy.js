@@ -350,18 +350,17 @@ const progressiveSources = resolveFeedImageSourcePolicy({
 check('feed source starts at the detail tier', progressiveSources.initialUrl, 'https://cdn.threadly.test/look-detail.webp');
 check('feed source reports the detail tier', progressiveSources.initialTier, 'detail');
 check('feed source detail target equals the initial url', progressiveSources.detailUrl, 'https://cdn.threadly.test/look-detail.webp');
-// The placeholder is the SMALLEST sub-tier. It downloads in parallel with the
-// detail image, so it only shows anything if it lands well before it — THUMB
-// (240px) does, CARD (640px) raced the detail image and usually lost.
-check('feed source uses the smallest sub-tier as placeholder', progressiveSources.placeholderUrl, 'https://cdn.threadly.test/look-thumb.webp');
+// The placeholder is the CARD (preview) tier: a 240px THUMB stretched to a
+// full-screen page reads as the photo losing quality while the detail loads.
+check('feed source uses the CARD tier as placeholder', progressiveSources.placeholderUrl, 'https://cdn.threadly.test/look-card.webp');
 check(
-  'feed source falls back to the preview placeholder without a thumbnail',
+  'feed source falls back to the thumbnail placeholder without a preview',
   resolveFeedImageSourcePolicy({
     displayUrl: 'https://cdn.threadly.test/look-detail.webp',
-    previewUrl: 'https://cdn.threadly.test/look-card.webp',
-    thumbnailUrl: null,
+    previewUrl: null,
+    thumbnailUrl: 'https://cdn.threadly.test/look-thumb.webp',
   }).placeholderUrl,
-  'https://cdn.threadly.test/look-card.webp',
+  'https://cdn.threadly.test/look-thumb.webp',
 );
 check('feed source must not re-introduce a per-activation upgrade', progressiveSources.hasDetailUpgrade, false);
 

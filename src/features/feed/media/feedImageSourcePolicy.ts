@@ -39,14 +39,15 @@ export function resolveFeedImageSourcePolicy({
   const initialTier: FeedImageSourceTier = detail ? 'detail' : preview ? 'preview' : 'thumbnail';
   const detailUrl = initialUrl;
 
-  // Smallest tier first. The placeholder downloads in parallel with the detail
-  // image, so it only helps if it lands well before it: THUMB (240px) does,
-  // CARD (640px) was a second full-size request racing the first.
+  // CARD (640px) first. THUMB (240px) was tried as the placeholder for speed,
+  // but stretched to a full-screen page it reads as the photo losing quality
+  // until the detail image lands. With media on the Cloudflare edge the CARD
+  // arrives quickly, and it is a stand-in a viewer can actually look at.
   const placeholderUrl =
-    thumbnail && thumbnail !== initialUrl
-      ? thumbnail
-      : preview && preview !== initialUrl
-        ? preview
+    preview && preview !== initialUrl
+      ? preview
+      : thumbnail && thumbnail !== initialUrl
+        ? thumbnail
         : null;
 
   return {
