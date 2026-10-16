@@ -403,6 +403,10 @@ function MediaSlide({
           imageStyle={styles.mediaImage}
           blurhash={item.blurhash}
           dominantColor={item.dominantColor}
+          // A viewer shows the whole piece. Cover-fitting cropped up to 28% of
+          // a photo, and it was chosen only once the image reported its size —
+          // so the photo opened whole, then visibly zoomed and lost its sides.
+          allowCrop={false}
           // Viewer pages are full-bleed and stable; a 160ms cross-fade on every
           // strategy settle was reading as a shake on open.
           transition={item.imageAspectRatio || item.imageWidth ? 0 : 120}

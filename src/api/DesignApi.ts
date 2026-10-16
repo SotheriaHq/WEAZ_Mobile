@@ -1085,6 +1085,44 @@ export async function deleteDesign(designId: string) {
   await apiClient.delete(`/designs/${designId}`);
 }
 
+/**
+ * Photos in flight at once. They used to upload strictly one after another —
+ * a design needs at least four required views, so publishing waited out four
+ * or more full round trips to the bucket back to back. Each upload is its own
+ * XHR with no shared state, so three run side by side; more would mostly
+ * split the same phone uplink without finishing sooner.
+ */
+const DESIGN_UPLOAD_CONCURRENCY = 3;
+
+async function uploadDesignAssetsConcurrently(
+  uploads: PresignedUpload[],
+  assets: MobileDesignAsset[],
+  onAssetDone: (doneCount: number, total: number) => void,
+): Promise<UploadCompletion[]> {
+  // Same pairing and skip rule as the old sequential loop: upload i carries
+  // asset i, and an upload with no asset is dropped. Completions keep upload
+  // order, which finalize relies on.
+  const pairs = uploads
+    .map((upload, index) => ({ upload, asset: assets[index] }))
+    .filter((pair): pair is { upload: PresignedUpload; asset: MobileDesignAsset } => Boolean(pair.asset));
+  const completions = new Array<UploadCompletion>(pairs.length);
+  let nextIndex = 0;
+  let doneCount = 0;
+  const runLane = async () => {
+    while (nextIndex < pairs.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      completions[index] = await uploadDesignAsset(pairs[index].upload, pairs[index].asset);
+      doneCount += 1;
+      onAssetDone(doneCount, pairs.length);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(DESIGN_UPLOAD_CONCURRENCY, pairs.length) }, runLane),
+  );
+  return completions;
+}
+
 export async function saveDesignEditor(
   payload: DesignSavePayload,
   onProgress?: (value: number, message: string) => void,
@@ -1103,6 +1141,13 @@ export async function saveDesignEditor(
   if (!trimmedTitle) {
     throw new Error('Give this design a title before saving it.');
   }
+
+  // Two network round trips that depend on nothing below, so they start now
+  // and overlap image compression instead of following it. The no-op catch
+  // only keeps an early failure from surfacing as an unhandled rejection
+  // before it is awaited; the await below still throws it.
+  const policyAcknowledged = payload.action === 'publish' ? acknowledgeContentPolicy() : null;
+  policyAcknowledged?.catch(() => undefined);
 
   onProgress?.(0.05, 'Preparing media...');
   const processedFilteredAssets = await Promise.all(
@@ -1147,9 +1192,7 @@ export async function saveDesignEditor(
     maxFiles: DESIGN_EDITOR_MAX_MEDIA,
   });
 
-  if (payload.action === 'publish') {
-    await acknowledgeContentPolicy();
-  }
+  await policyAcknowledged;
 
   if (!payload.designId) {
     onProgress?.(0.1, 'Creating design draft...');
@@ -1167,22 +1210,30 @@ export async function saveDesignEditor(
     onDesignCreated?.(designId);
 
     const uploads = Array.isArray(initialized.uploads) ? initialized.uploads : [];
-    const completions: UploadCompletion[] = [];
 
-    for (let index = 0; index < uploads.length; index += 1) {
-      const upload = uploads[index];
-      const asset = processedFilteredAssets[index];
-      if (!asset) continue;
-      onProgress?.(
-        0.2 + ((index + 1) / Math.max(uploads.length, 1)) * 0.55,
-        uploads.length > 1 ? `Uploading media ${index + 1} of ${uploads.length}...` : 'Uploading media...',
-      );
-      completions.push(await uploadDesignAsset(upload, asset));
-    }
+    // Custom-order setup needs only the design id, so it runs alongside the
+    // uploads rather than after them. It still completes before finalize.
+    const customOrderReady =
+      payload.action === 'publish' && payload.customOrderEnabled
+        ? ensureDesignCustomOrderConfiguration(designId, payload)
+        : null;
+    customOrderReady?.catch(() => undefined);
 
-    if (payload.action === 'publish' && payload.customOrderEnabled) {
+    onProgress?.(0.2, uploads.length > 1 ? `Uploading ${uploads.length} photos...` : 'Uploading media...');
+    const completions = await uploadDesignAssetsConcurrently(
+      uploads,
+      processedFilteredAssets,
+      (done, total) => {
+        onProgress?.(
+          0.2 + (done / Math.max(total, 1)) * 0.55,
+          total > 1 ? `Uploaded ${done} of ${total}...` : 'Uploading media...',
+        );
+      },
+    );
+
+    if (customOrderReady) {
       onProgress?.(0.78, 'Preparing custom orders...');
-      await ensureDesignCustomOrderConfiguration(designId, payload);
+      await customOrderReady;
     }
 
     onProgress?.(0.82, payload.action === 'publish' ? 'Publishing design...' : 'Saving draft...');
@@ -1223,22 +1274,27 @@ export async function saveDesignEditor(
       : { designId: payload.designId, id: payload.designId, uploads: [] };
 
   const uploads = Array.isArray(initialized.uploads) ? initialized.uploads : [];
-  const completions: UploadCompletion[] = [];
 
-  for (let index = 0; index < uploads.length; index += 1) {
-    const upload = uploads[index];
-    const asset = localAssets[index];
-    if (!asset) continue;
-    onProgress?.(
-      0.24 + ((index + 1) / Math.max(uploads.length, 1)) * 0.36,
-      uploads.length > 1 ? `Uploading media ${index + 1} of ${uploads.length}...` : 'Uploading media...',
-    );
-    completions.push(await uploadDesignAsset(upload, asset));
+  // As in the new-design path: custom-order setup overlaps the uploads.
+  const customOrderReady =
+    payload.action === 'publish' && payload.customOrderEnabled
+      ? ensureDesignCustomOrderConfiguration(payload.designId, payload)
+      : null;
+  customOrderReady?.catch(() => undefined);
+
+  if (uploads.length > 0) {
+    onProgress?.(0.24, uploads.length > 1 ? `Uploading ${uploads.length} photos...` : 'Uploading media...');
   }
+  const completions = await uploadDesignAssetsConcurrently(uploads, localAssets, (done, total) => {
+    onProgress?.(
+      0.24 + (done / Math.max(total, 1)) * 0.36,
+      total > 1 ? `Uploaded ${done} of ${total}...` : 'Uploading media...',
+    );
+  });
 
-  if (payload.action === 'publish' && payload.customOrderEnabled) {
+  if (customOrderReady) {
     onProgress?.(0.66, 'Preparing custom orders...');
-    await ensureDesignCustomOrderConfiguration(payload.designId, payload);
+    await customOrderReady;
   }
 
   onProgress?.(0.7, payload.action === 'publish' ? 'Finalizing design...' : 'Saving draft...');

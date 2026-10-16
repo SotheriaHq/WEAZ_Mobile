@@ -33,6 +33,8 @@ export type AspectAwareMediaProps = {
   style?: StyleProp<ViewStyle>;
   imageStyle?: StyleProp<ImageStyle>;
   strategyOverride?: AspectAwareMediaStrategy | null;
+  /** `false` never crops (no cover fit) — for content viewers. See `resolveMediaStrategy`. */
+  allowCrop?: boolean;
   priority?: 'low' | 'normal' | 'high';
   cachePolicy?: 'none' | 'disk' | 'memory' | 'memory-disk';
   transition?: number;
@@ -110,6 +112,7 @@ export function AspectAwareMedia({
   style,
   imageStyle,
   strategyOverride,
+  allowCrop = true,
   priority = 'normal',
   cachePolicy = 'memory-disk',
   transition = 160,
@@ -156,6 +159,7 @@ export function AspectAwareMedia({
     imageHeight: resolvedImageHeight,
     imageAspectRatio: resolvedAspectRatio,
     override: strategyOverride,
+    allowCrop,
   });
 
   // Lock only after aspect is known. Unknown → letter-solid is a temporary
