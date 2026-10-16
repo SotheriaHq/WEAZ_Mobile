@@ -39,6 +39,8 @@ import {
   getStudioOriginWhitelist,
   getTrustedStudioOrigins,
   STUDIO_ROUTES,
+  deriveStudioRouteKeyFromPath,
+  isStudioFocusedFlow,
   isStudioRouteKey,
   type StudioRouteKey,
 } from '@/src/features/studio/studioRoutes';
@@ -495,6 +497,17 @@ export default function StudioWebViewScreen() {
     return () => subscription.remove();
   }, [canGoBack, closeStudio]);
 
+  useEffect(() => {
+    if (loadState === 'ready' && webViewRef.current) {
+      const targetInset = isStudioFocusedFlow(resolvedRouteKey)
+        ? 0
+        : Math.round(standardScreenBottomPadding);
+      webViewRef.current.injectJavaScript(
+        `try { window.__WIEZ_SET_ISLAND_INSET__ && window.__WIEZ_SET_ISLAND_INSET__(${targetInset}); } catch(e) {} true;`
+      );
+    }
+  }, [loadState, resolvedRouteKey, standardScreenBottomPadding]);
+
   const handleNavigationStateChange = useCallback((navState: WebViewNavigation) => {
     setCanGoBack(Boolean(navState.canGoBack));
   }, []);
@@ -676,6 +689,10 @@ export default function StudioWebViewScreen() {
         case 'ROUTE_CHANGED':
           if (message.path) {
             openNavigationTarget(message.path, 'route-report');
+            const nextRouteKey = deriveStudioRouteKeyFromPath(message.path);
+            if (nextRouteKey && nextRouteKey !== resolvedRouteKey) {
+              router.setParams({ routeKey: nextRouteKey } as never);
+            }
           }
           break;
         case 'CLOSE':
@@ -885,10 +902,11 @@ export default function StudioWebViewScreen() {
                  * it, focusing a field near the end of a form scrolls it to
                  * exactly where the island is.
                  */
-                var inset = ${Math.round(standardScreenBottomPadding)};
+                var inset = ${isStudioFocusedFlow(resolvedRouteKey) ? 0 : Math.round(standardScreenBottomPadding)};
                 var insetStyleId = 'wiez-native-island-inset';
-                if (!document.getElementById(insetStyleId)) {
-                  var insetStyle = document.createElement('style');
+                var insetStyle = document.getElementById(insetStyleId);
+                if (!insetStyle) {
+                  insetStyle = document.createElement('style');
                   insetStyle.id = insetStyleId;
                   insetStyle.textContent =
                     ':root{--wiez-native-island-inset:' + inset + 'px;}' +
@@ -896,6 +914,16 @@ export default function StudioWebViewScreen() {
                     'html{scroll-padding-bottom:' + inset + 'px;}';
                   (document.head || document.documentElement).appendChild(insetStyle);
                 }
+                function updateIslandInset(val) {
+                  if (insetStyle) {
+                    insetStyle.textContent =
+                      ':root{--wiez-native-island-inset:' + val + 'px;}' +
+                      'body{padding-bottom:calc(' + val + 'px + env(safe-area-inset-bottom,0px));}' +
+                      'html{scroll-padding-bottom:' + val + 'px;}';
+                  }
+                }
+                window.__WIEZ_SET_ISLAND_INSET__ = updateIslandInset;
+                updateIslandInset(inset);
 
                 if (window.__WIEZ_STUDIO_KEYBOARD_BOOTSTRAPPED__) {
                   return true;

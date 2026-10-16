@@ -189,6 +189,53 @@ export function isStudioRouteKey(value: string | undefined): value is StudioRout
   return Boolean(value && value in STUDIO_ROUTES);
 }
 
+export function isStudioFocusedFlow(routeKey?: string | null): boolean {
+  return (
+    routeKey === 'createProduct' ||
+    routeKey === 'editProduct' ||
+    routeKey === 'createCollection'
+  );
+}
+
+export function deriveStudioRouteKeyFromPath(pathValue?: string | null): StudioRouteKey | null {
+  if (!pathValue) return null;
+  const normalized = pathValue.split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+  if (normalized === '/studio/store/products/new') return 'createProduct';
+  if (/^\/studio\/store\/products\/[^/]+\/edit$/.test(normalized)) return 'editProduct';
+  if (/^\/studio\/store\/products\/[^/]+$/.test(normalized)) return 'productDetail';
+  if (normalized === '/studio/store/collections/new') return 'createCollection';
+  if (normalized === '/studio/store/setup') return 'setup';
+  if (normalized === '/studio/store/essentials') return 'essentials';
+  if (normalized === '/studio/verification') return 'verification';
+  if (normalized === '/studio/verification/apply') return 'verificationApply';
+  if (normalized === '/studio/verification/submitted') return 'verificationSubmitted';
+  if (normalized === '/studio/custom-orders') return 'customOrders';
+  if (/^\/studio\/custom-orders\/[^/]+$/.test(normalized)) return 'customOrderDetail';
+  if (normalized === '/studio/staff') return 'staff';
+  if (normalized === '/studio/finance') return 'finance';
+  if (normalized === '/studio/messages') return 'messages';
+
+  if (pathValue.includes('tab=')) {
+    try {
+      const parsed = new URL(pathValue, 'https://wiez.local');
+      const tab = parsed.searchParams.get('tab');
+      if (tab === 'store') return 'store';
+      if (tab === 'orders') return 'orders';
+      if (tab === 'customers') return 'customers';
+      if (tab === 'analytics') return 'analytics';
+      if (tab === 'reviews') return 'reviews';
+      if (tab === 'finance') return 'finance';
+      if (tab === 'overview') return 'overview';
+    } catch {}
+  }
+
+  if (normalized === '/studio' || normalized === '/studio/store') {
+    return normalized === '/studio/store' ? 'store' : 'overview';
+  }
+
+  return null;
+}
+
 export function buildStudioPath(routeKey: StudioRouteKey, params?: StudioRouteParams): string {
   const route = STUDIO_ROUTES[routeKey];
   let path = route.path;
