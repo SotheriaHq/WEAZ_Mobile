@@ -219,9 +219,23 @@ check(
 
 const queryProvider = read('src/query/QueryProvider.tsx');
 check(
-  'the restore probe is mounted inside PersistQueryClientProvider',
-  queryProvider.indexOf('<PersistQueryClientProvider') <
+  'the restore probe is mounted inside the restoring provider',
+  queryProvider.indexOf('<IsRestoringProvider') !== -1 &&
+    queryProvider.indexOf('<IsRestoringProvider') <
     queryProvider.indexOf('<CacheRestoreProbe />'),
+);
+// The stock provider re-dehydrated the whole cache on every cache event — the
+// 400-840ms unattributed blocks on the 2026-10-17 capture. It must not return.
+check(
+  'the stock per-event persister is not used',
+  !/PersistQueryClientProvider\b[^,]*from|<PersistQueryClientProvider|persistQueryClientSubscribe/.test(queryProvider),
+);
+const queryPersistorSource = read('src/query/queryPersistor.ts');
+check(
+  'the cache is saved after a quiet window and on background, not per event',
+  /PERSIST_QUIET_MS/.test(queryPersistorSource) &&
+    /state === 'background'/.test(queryPersistorSource) &&
+    /isPersistableWiezQueryKey\(event\.query\.queryKey\)/.test(queryPersistorSource),
 );
 
 // ------------------------------------------------- thread-contention evidence

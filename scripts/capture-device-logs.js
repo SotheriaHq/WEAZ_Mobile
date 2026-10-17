@@ -34,7 +34,9 @@ const perfOnly = process.argv.includes('--perf');
 const summaryOnly = process.argv.includes('--summary');
 
 function keepLine(line) {
-  if (summaryOnly) return line.includes('[WIEZ-PERF][SUMMARY]');
+  // Studio lifecycle lines ride along: they are rare, and a Studio freeze is
+  // otherwise invisible in a summary capture.
+  if (summaryOnly) return line.includes('[WIEZ-PERF][SUMMARY]') || line.includes('[WIEZ-STUDIO]') || line.includes('AndroidRuntime');
   if (perfOnly) return line.includes('[WIEZ-PERF]');
   // `--nav` predates the T-timeline and is still the broad timing filter, so it
   // keeps both instruments rather than silently dropping the newer one.

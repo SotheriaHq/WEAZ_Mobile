@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { AppState, BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Image as ExpoImage } from 'expo-image';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -69,6 +70,18 @@ type LoadState = 'booting' | 'loading' | 'ready' | 'error' | 'browser';
  */
 const BROWSER_FALLBACK_MS = 8_000;
 
+/**
+ * Liveness after READY. The 8s fallback only covered a page that never got
+ * ready; a page that reported READY and THEN hung (its renderer starved on a
+ * low-RAM phone) left every island chip and Back press injecting script into a
+ * dead page — the press sound played and nothing moved. The shell now pings
+ * the page; a page that answers nothing for this long is treated as hung and
+ * handed to the browser, which also frees the WebView's memory.
+ */
+const PAGE_PING_INTERVAL_MS = 2_000;
+const PAGE_HUNG_AFTER_MS = 8_000;
+const PAGE_PING_SCRIPT = `try { window.ReactNativeWebView && window.ReactNativeWebView.postMessage('{"type":"PONG"}'); } catch (e) {} true;`;
+
 type NativeMessage =
   | { type: 'READY' }
   | { type: 'ROUTE_CHANGED'; path?: string }
@@ -98,7 +111,9 @@ type NativeMessage =
   | { type: 'ACTION_COMPLETE'; action?: string; path?: string }
   | { type: 'OPEN_EXTERNAL'; url?: string }
   | { type: 'OPEN_NATIVE_ROUTE'; path?: string }
-  | { type: 'CLOSE' };
+  | { type: 'CLOSE' }
+  /** Answer to the liveness ping injected by the shell; see `PAGE_HUNG_AFTER_MS`. */
+  | { type: 'PONG' };
 
 const asString = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value;
@@ -192,7 +207,9 @@ type StudioWebViewEventName =
   | 'native-route-blocked'
   | 'native-message-received'
   | 'ready-timeout'
-  | 'browser-fallback';
+  | 'browser-fallback'
+  | 'page-unresponsive'
+  | 'page-ready';
 
 function sanitizeUrlForTelemetry(url: string): string {
   try {
@@ -218,8 +235,16 @@ function trackStudioWebViewEvent(
   name: StudioWebViewEventName,
   properties?: Record<string, string | number | boolean | null | undefined>,
 ) {
-  if (!__DEV__) return;
-  console.info('[studio-webview]', name, properties);
+  if (__DEV__) {
+    console.info('[studio-webview]', name, properties);
+    return;
+  }
+  // Release builds log too. Studio freezing after sign-in was undiagnosable
+  // because every event here was compiled out of the APK the bug lives in.
+  // Bodies are already sanitized (no handoff codes, origin+path only), and
+  // `logs:device -- --summary` keeps the `[WIEZ-STUDIO]` tag.
+  if (name === 'native-message-received' && properties?.type === 'PONG') return;
+  console.warn(`[WIEZ-STUDIO] ${name} ${JSON.stringify(properties ?? {})}`);
 }
 
 function getTrustedAliasPath(target: string): { type: 'profile' | 'brand'; value: string } | null {
@@ -430,6 +455,13 @@ export default function StudioWebViewScreen() {
         return;
       }
 
+      // Cold boot only: hand the decoded-bitmap cache back to the system before
+      // a whole browser engine starts in a second process. On the A17 the
+      // renderer was killed for memory while Runway/Market bitmaps sat in RAM.
+      // Disk cache is untouched, so returning to a feed re-decodes, not
+      // re-downloads.
+      void ExpoImage.clearMemoryCache().catch(() => undefined);
+
       try {
         const intendedPath = buildStudioPath(resolvedRouteKey, { productId, orderId });
         const handoff = await StudioApi.createHandoff(intendedPath);
@@ -531,6 +563,38 @@ export default function StudioWebViewScreen() {
     return () => clearTimeout(timer);
   }, [loadState, openStudioInBrowser, webUrl]);
 
+  // Last time the page proved its main thread runs: any message or navigation.
+  const lastPageSignalRef = useRef(Date.now());
+
+  // Liveness watchdog — see PAGE_HUNG_AFTER_MS. Focused + ready only: a hidden
+  // Studio tab must never pop a browser over whatever the user is doing, and
+  // timers stop in the background, so the clock restarts on every resume.
+  useFocusEffect(
+    useCallback(() => {
+      if (loadState !== 'ready') return undefined;
+      lastPageSignalRef.current = Date.now();
+      const resume = AppState.addEventListener('change', (state) => {
+        if (state === 'active') lastPageSignalRef.current = Date.now();
+      });
+      const interval = setInterval(() => {
+        if (AppState.currentState !== 'active') return;
+        if (Date.now() - lastPageSignalRef.current > PAGE_HUNG_AFTER_MS) {
+          trackStudioWebViewEvent('page-unresponsive', {
+            routeKey: resolvedRouteKey,
+            silentMs: Date.now() - lastPageSignalRef.current,
+          });
+          void openStudioInBrowser();
+          return;
+        }
+        webViewRef.current?.injectJavaScript(PAGE_PING_SCRIPT);
+      }, PAGE_PING_INTERVAL_MS);
+      return () => {
+        clearInterval(interval);
+        resume.remove();
+      };
+    }, [loadState, openStudioInBrowser, resolvedRouteKey]),
+  );
+
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
@@ -577,6 +641,7 @@ export default function StudioWebViewScreen() {
   const handleNavigationStateChange = useCallback((navState: WebViewNavigation) => {
     setCanGoBack(Boolean(navState.canGoBack));
     webBackPendingRef.current = false;
+    lastPageSignalRef.current = Date.now();
   }, []);
 
   /**
@@ -667,6 +732,7 @@ export default function StudioWebViewScreen() {
     (event: WebViewMessageEvent) => {
       // Any message proves the page is alive, so a pending web Back is answered.
       webBackPendingRef.current = false;
+      lastPageSignalRef.current = Date.now();
       let message: NativeMessage | null = null;
       try {
         message = JSON.parse(event.nativeEvent.data) as NativeMessage;
@@ -692,7 +758,10 @@ export default function StudioWebViewScreen() {
       });
 
       switch (message?.type) {
+        case 'PONG':
+          break;
         case 'READY':
+          trackStudioWebViewEvent('page-ready', { routeKey: resolvedRouteKey });
           setLoadState('ready');
           sessionEstablishedRef.current = true;
           // Apply the latest island target if the user tapped another tab while
@@ -814,7 +883,7 @@ export default function StudioWebViewScreen() {
           break;
       }
     },
-    [closeStudio, navigateStudioInPlace, openNavigationTarget, queryClient, toast],
+    [closeStudio, navigateStudioInPlace, openNavigationTarget, queryClient, resolvedRouteKey, toast],
   );
 
   const openSearch = useCallback(() => {
