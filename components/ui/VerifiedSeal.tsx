@@ -79,6 +79,62 @@ export function VerifiedSeal({
   );
 }
 
+/** A shopping bag on the seal: trapezoid body plus a stroked handle. */
+const BAG_BODY_PATH = 'M7.3 9.4h9.4l-.8 8.4H8.1z';
+const BAG_HANDLE_PATH = 'M9.7 9.4V8.1a2.3 2.3 0 0 1 4.6 0v1.3';
+
+export type StoreSealStatus = 'open' | 'closed' | 'limited';
+
+/**
+ * Store status on the SAME scalloped silhouette as verification.
+ *
+ * It was a plain round dot with a 🛍️ emoji in it — the one badge on a brand's
+ * header that was not a seal, and an emoji that renders differently on every
+ * OS. Store status and verification are the two trust marks on the header, so
+ * they share the wavy seal edge; colour and the drawn bag carry the state
+ * (green open, neutral closed, amber limited/pending).
+ */
+export function StoreStatusSeal({
+  status,
+  size = 24,
+  label,
+  style,
+}: {
+  status: StoreSealStatus;
+  size?: number;
+  label?: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { theme } = useTheme();
+  const rendered = Math.max(MIN_LEGIBLE_SIZE, size);
+  const fill =
+    status === 'open'
+      ? theme.colors.success
+      : status === 'limited'
+        ? theme.colors.warning
+        : theme.colors.surfaceAlt;
+  const mark = status === 'closed' ? theme.colors.textSecondary : theme.colors.onPrimary;
+
+  return (
+    <View
+      style={style}
+      accessibilityRole="image"
+      accessibilityLabel={label ?? `Store ${status}`}
+    >
+      <Svg width={rendered} height={rendered} viewBox="0 0 24 24">
+        <Path
+          d={SEAL_PATH}
+          fill={fill}
+          stroke={status === 'closed' ? theme.colors.border : undefined}
+          strokeWidth={status === 'closed' ? 1 : 0}
+        />
+        <Path d={BAG_BODY_PATH} fill={mark} />
+        <Path d={BAG_HANDLE_PATH} stroke={mark} strokeWidth={1.3} fill="none" strokeLinecap="round" />
+      </Svg>
+    </View>
+  );
+}
+
 /**
  * Email verification is a TICK, not a badge.
  *

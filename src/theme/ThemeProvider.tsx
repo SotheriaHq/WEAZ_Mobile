@@ -60,7 +60,13 @@ export function ThemeProvider({
 
   const setThemePreference = useCallback((next: ThemePreference) => {
     const normalized = normalizeThemePreference(next);
-    setModeState(normalized);
+    // A theme change re-renders every mounted screen, which on the A17 is a
+    // long synchronous commit — the tap that asked for it froze along with
+    // everything else. As a transition the press is acknowledged at once and
+    // the repaint runs interruptibly behind it.
+    React.startTransition(() => {
+      setModeState(normalized);
+    });
     SecureStore.setItemAsync(THEME_MODE_KEY, normalized).catch(() => undefined);
   }, []);
 

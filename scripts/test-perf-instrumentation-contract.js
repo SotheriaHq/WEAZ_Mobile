@@ -393,7 +393,11 @@ for (const [name, body] of [
 }
 check(
   'the fixed press handler receives the gesture event it needs for the timestamp',
-  /\(event\) => handleFixedPressIn\(item, event\)/.test(island) &&
+  // The memoized dock button reaches it through a stable handler ref; the
+  // invariant is only that the gesture event is still passed through.
+  (/\(event\) => handleFixedPressIn\(item, event\)/.test(island) ||
+    (/\(event\) => handlersRef\.current\.pressIn\(item, event\)/.test(island) &&
+      /pressIn: handleFixedPressIn/.test(island))) &&
     /handleFixedPressIn = React\.useCallback\(\s*\(item: NativeIslandNavItem, event\?: GestureResponderEvent\)/.test(
       island,
     ),

@@ -56,7 +56,18 @@ import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profil
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { perfMark } from '@/src/utils/perf';
 
-type LoadState = 'booting' | 'loading' | 'ready' | 'error';
+// 'browser': the page did not become ready in time and Studio was handed to a
+// Chrome Custom Tab instead (see BROWSER_FALLBACK_MS).
+type LoadState = 'booting' | 'loading' | 'ready' | 'error' | 'browser';
+
+/**
+ * How long the in-app Studio may sit unready before it is handed to the phone's
+ * own browser (a Chrome Custom Tab, a separate process). On the A17 a brand
+ * landing in Studio after sign-in watched the WebView load for minutes until
+ * Android killed its renderer, with the whole app frozen meanwhile. A custom tab
+ * cannot freeze WIEZ, whatever the page costs.
+ */
+const BROWSER_FALLBACK_MS = 8_000;
 
 type NativeMessage =
   | { type: 'READY' }
@@ -180,7 +191,8 @@ type StudioWebViewEventName =
   | 'native-route-opened'
   | 'native-route-blocked'
   | 'native-message-received'
-  | 'ready-timeout';
+  | 'ready-timeout'
+  | 'browser-fallback';
 
 function sanitizeUrlForTelemetry(url: string): string {
   try {
@@ -483,6 +495,41 @@ export default function StudioWebViewScreen() {
 
     return () => clearTimeout(timeout);
   }, [loadState, resolvedRouteKey, webUrl]);
+
+  /**
+   * Hand Studio to a Chrome Custom Tab. The WebView is torn down first so its
+   * renderer and memory are released, and a FRESH handoff is minted — the one
+   * in the WebView's URL is single-use and may already be spent.
+   */
+  const openStudioInBrowser = useCallback(async () => {
+    sessionEstablishedRef.current = false;
+    lastInjectedRouteRef.current = null;
+    setWebUrl(null);
+    setLoadState('browser');
+    trackStudioWebViewEvent('browser-fallback', { routeKey: resolvedRouteKey });
+    try {
+      const intendedPath = buildStudioPath(resolvedRouteKey, { productId, orderId });
+      const handoff = await StudioApi.createHandoff(intendedPath);
+      const url = buildStudioWebUrl({
+        routeKey: resolvedRouteKey,
+        params: { productId, orderId },
+        handoffCode: handoff.code,
+        theme: schemeRef.current,
+      });
+      await WebBrowser.openBrowserAsync(url, { showTitle: false, enableBarCollapsing: true });
+    } catch {
+      setErrorMessage('Studio could not open. Check your connection and try again.');
+      setLoadState('error');
+    }
+  }, [orderId, productId, resolvedRouteKey]);
+
+  useEffect(() => {
+    if (!webUrl || loadState !== 'loading') return;
+    const timer = setTimeout(() => {
+      void openStudioInBrowser();
+    }, BROWSER_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [loadState, openStudioInBrowser, webUrl]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -1062,7 +1109,10 @@ export default function StudioWebViewScreen() {
             // Android: hardware layer. (The comment here used to say "prefer
             // software layer" while setting "hardware" — the value is what ships,
             // and hardware is what Studio has been tested on.)
-            androidLayerType="hardware"
+            // No forced layer type. "hardware" kept the whole Studio page in a
+            // GPU layer; on a low-memory phone that is a candidate for the
+            // freeze where taps still click but nothing redraws. The default
+            // lets the WebView manage its own surfaces.
             onLoadStart={() => setLoadState((current) => (current === 'ready' ? current : 'loading'))}
             /*
               Android kills a WebView's renderer under memory pressure — the
@@ -1134,6 +1184,22 @@ export default function StudioWebViewScreen() {
             >
               <AppText variant="bodyBold" tone="secondary">✕</AppText>
             </Pressable>
+          </View>
+        ) : null}
+
+        {loadState === 'browser' ? (
+          <View style={[styles.overlay, { backgroundColor: studioShellBackground }]}>
+            <View style={styles.errorContent}>
+              <AppText variant="h3">Studio is open in your browser</AppText>
+              <AppText variant="body" tone="muted" style={styles.centerText}>
+                It was taking too long to load here, so it opened in your browser instead. Come back any time.
+              </AppText>
+              <View style={styles.errorActions}>
+                <Button title="Open again" onPress={() => void openStudioInBrowser()} />
+                <Button title="Try in app" variant="secondary" onPress={retry} />
+                <Button title="Close" variant="secondary" onPress={closeStudio} />
+              </View>
+            </View>
           </View>
         ) : null}
 

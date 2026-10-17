@@ -10,6 +10,7 @@ import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { StableImage } from '@/components/ui/StableImage';
 import { ContactMarker } from '@/components/ui/PlatformMark';
 import { BrandBadgeRail, type ProfileBadgeModel } from '@/components/catalog/ProfileBadge';
+import { SEAL_HEADER_SIZE, StoreStatusSeal, type StoreSealStatus } from '@/components/ui/VerifiedSeal';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -113,11 +114,7 @@ function StoreStatusBadge({ badge }: { badge: ProfileBadgeModel | null }) {
 
   const isOpen = badge.variant.includes('open');
   const isClosed = badge.variant.includes('closed');
-  const bg = isOpen
-    ? theme.colors.success
-    : isClosed
-      ? theme.colors.surfaceAlt
-      : theme.colors.warning;
+  const sealStatus: StoreSealStatus = isOpen ? 'open' : isClosed ? 'closed' : 'limited';
   const statusDescription = isOpen
     ? 'Open — this brand is actively taking orders.'
     : isClosed
@@ -133,15 +130,10 @@ function StoreStatusBadge({ badge }: { badge: ProfileBadgeModel | null }) {
       accessibilityLabel={`Store ${accessibilityStatus}. Tap to see store status details.`}
       style={({ pressed }) => [
         styles.storeStatusBadge,
-        {
-          backgroundColor: bg,
-          opacity: pressed ? 0.8 : 1,
-        },
+        { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.94 : 1 }] },
       ]}
     >
-      <AppText variant="captionBold" style={styles.storeStatusEmoji}>
-        {'\u{1F6CD}\u{FE0F}'}
-      </AppText>
+      <StoreStatusSeal status={sealStatus} size={SEAL_HEADER_SIZE} label={`Store ${accessibilityStatus}`} />
     </Pressable>
   );
 }
@@ -1185,17 +1177,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // The seal carries its own shape and colour; this is only the tap target.
   storeStatusBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: tokens.radius.full,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: tokens.spacing.xs,
-    shadowColor: tokens.colors.shadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.25,
-    shadowRadius: 2,
     elevation: 2,
   },
   storeStatusEmoji: {

@@ -348,6 +348,75 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   );
 });
 
+type FixedDockHandlers = {
+  pressIn: (item: NativeIslandNavItem, event?: GestureResponderEvent) => void;
+  press: (item: NativeIslandNavItem) => void;
+};
+
+/**
+ * One button of the fixed (non-scrolling) dock, memoized on what it SHOWS.
+ *
+ * The dock re-rendered all six buttons — Pressable, style callback, icon —
+ * twice per tap, at 40-190ms self on the A17 (2026-10-17 capture). The shell
+ * rebuilds `items` on every route change, so object identity always differs;
+ * this compares the fields that actually draw or route, and reads the press
+ * handlers through a stable ref. A tap now re-renders the button losing focus
+ * and the one gaining it.
+ */
+const FixedDockButton = React.memo(
+  function FixedDockButton({
+    item,
+    focused,
+    compact,
+    pressedKey,
+    handlersRef,
+  }: {
+    item: NativeIslandNavItem;
+    focused: boolean;
+    compact: boolean;
+    pressedKey: SharedValue<string | null>;
+    handlersRef: React.MutableRefObject<FixedDockHandlers>;
+  }) {
+    return (
+      <Pressable
+        accessibilityRole="tab"
+        accessibilityState={{ selected: focused, disabled: item.disabled }}
+        accessibilityLabel={item.label}
+        disabled={item.disabled}
+        onPressIn={item.disabled ? undefined : (event) => handlersRef.current.pressIn(item, event)}
+        onPress={item.disabled ? undefined : () => handlersRef.current.press(item)}
+        // No `android_ripple` — a bounded ripple paints a rectangle across a pill chip.
+        style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
+      >
+        <NativeIslandTabIcon
+          label={item.label}
+          emoji={item.emoji}
+          avatarUri={item.avatarUri}
+          focused={focused}
+          itemKey={item.disabled ? undefined : item.key}
+          pressedKey={pressedKey}
+          badge={item.badge}
+          compact={compact}
+        />
+      </Pressable>
+    );
+  },
+  (prev, next) =>
+    prev.focused === next.focused &&
+    prev.compact === next.compact &&
+    prev.pressedKey === next.pressedKey &&
+    prev.handlersRef === next.handlersRef &&
+    prev.item.key === next.item.key &&
+    prev.item.label === next.item.label &&
+    prev.item.emoji === next.item.emoji &&
+    prev.item.avatarUri === next.item.avatarUri &&
+    prev.item.badge === next.item.badge &&
+    prev.item.disabled === next.item.disabled &&
+    prev.item.navFlow === next.item.navFlow &&
+    prev.item.targetRoute === next.item.targetRoute &&
+    JSON.stringify(prev.item.targetParams ?? null) === JSON.stringify(next.item.targetParams ?? null),
+);
+
 // Frosted-glass chrome. Extracted and memoized so it does NOT re-render when the
 // active tab changes on navigation.
 //
@@ -599,6 +668,15 @@ export function NativeIslandBottomNav({
     [commitSelection],
   );
 
+  // Latest press handlers behind a stable ref, so the memoized fixed-dock
+  // buttons do not re-render every time the shell hands down new callbacks
+  // (it does on every route change) — only a button whose own fields changed.
+  const fixedHandlersRef = React.useRef<FixedDockHandlers>({
+    pressIn: handleFixedPressIn,
+    press: handleFixedPress,
+  });
+  fixedHandlersRef.current = { pressIn: handleFixedPressIn, press: handleFixedPress };
+
   const clearScrollTimer = React.useCallback((gesture: ScrollDockGesture | null) => {
     if (!gesture?.timer) return;
     clearTimeout(gesture.timer);
@@ -795,34 +873,14 @@ export function NativeIslandBottomNav({
           ) : (
             <View style={[styles.navModeLayer, styles.expandedItemsLayer]}>
               {items.map((item) => (
-                <Pressable
+                <FixedDockButton
                   key={item.key}
-                  accessibilityRole="tab"
-                  accessibilityState={{
-                    selected: item.key === settledKey && !item.disabled,
-                    disabled: item.disabled,
-                  }}
-                  accessibilityLabel={item.label}
-                  disabled={item.disabled}
-                  onPressIn={item.disabled ? undefined : (event) => handleFixedPressIn(item, event)}
-                  onPress={item.disabled ? undefined : () => handleFixedPress(item)}
-                  // No `android_ripple` — see the scrolling dock above: a
-                  // bounded ripple paints a rectangle across a pill chip.
-                  style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
-                >
-                  {({ pressed }) => (
-                    <NativeIslandTabIcon
-                      label={item.label}
-                      emoji={item.emoji}
-                      avatarUri={item.avatarUri}
-                      focused={item.key === settledKey && !item.disabled}
-                      itemKey={item.disabled ? undefined : item.key}
-                      pressedKey={pressedKey}
-                      badge={item.badge}
-                      compact={compact}
-                    />
-                  )}
-                </Pressable>
+                  item={item}
+                  focused={item.key === settledKey && !item.disabled}
+                  compact={compact}
+                  pressedKey={pressedKey}
+                  handlersRef={fixedHandlersRef}
+                />
               ))}
             </View>
           )}

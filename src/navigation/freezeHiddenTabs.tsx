@@ -68,7 +68,14 @@ function DelayedFreeze({ freeze, children }: { freeze: boolean; children: React.
  * sign-in, "Market=2114ms×3" on a bag-count refresh while on Studio). It stays
  * frozen until its render itself is made cheap.
  */
-const NEVER_FROZEN_ROUTES = new Set(['studio']);
+/*
+ * Update (997055f onward): Market's body is now a React.memo behind a thin
+ * shell that absorbs auth and bag changes, so hidden Market no longer
+ * re-renders on them — the reason it had to stay frozen is gone. Frozen, its
+ * thaw still cost 1-2s on EVERY entry (2026-10-17 capture: tabs→market
+ * blockedMs=2033/1411/1939, almost all unattributed). Unfrozen again.
+ */
+const NEVER_FROZEN_ROUTES = new Set(['studio', 'discover']);
 
 export function freezeHiddenTabLayout({ route, navigation, children }: TabLayoutArgs) {
   if (route.name && NEVER_FROZEN_ROUTES.has(route.name)) {

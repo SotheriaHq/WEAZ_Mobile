@@ -328,8 +328,9 @@ async function main() {
     explanation toast on tap, without requiring a redundant text label.
   */
   assert.match(brandHeaderSource, /storeStatusBadge:/);
-  assert.match(brandHeaderSource, /storeStatusEmoji:/);
-  assert.match(brandHeaderSource, /\\u\{1F6CD\}\\u\{FE0F\}/);
+  // Store status is drawn on the same scalloped seal as verification (a wavy
+  // edge, not a round dot with a 🛍️ emoji), with the state carried by colour.
+  assert.match(brandHeaderSource, /<StoreStatusSeal status=\{sealStatus\}/);
   assert.match(brandHeaderSource, /toast\.info\(/);
   assert.doesNotMatch(
     brandHeaderSource,
