@@ -228,14 +228,14 @@ check('the type scale has a weight ladder and real tracking', () => {
     default sidebearing at every size.
   */
   const tokensSource = read('src/styles/tokens.ts');
-  assert.match(tokensSource, /extraBold: 'Inter_800ExtraBold'/);
+  assert.match(tokensSource, /extraBold: 'Roboto_800ExtraBold'/);
   assert.match(tokensSource, /display: \{ size: 32, weight: '800'/);
   assert.match(tokensSource, /letterSpacing: -0\.8/);
   assert.match(tokensSource, /statLabel:.*letterSpacing: 0\.6/);
 
   // A family that is referenced but never loaded silently falls back.
   const layout = read('app/_layout.tsx');
-  assert.match(layout, /Inter_800ExtraBold/);
+  assert.match(layout, /Roboto_800ExtraBold/);
 
   // The scale is only worth having if the component emits it.
   const appText = read('components/ui/AppText.tsx');

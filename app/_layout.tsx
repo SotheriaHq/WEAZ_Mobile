@@ -1,11 +1,11 @@
 // Import individual weights rather than the package barrel. Its barrel eagerly
-// requires every Inter face, which makes Metro deliver unused font assets before
-// the first native screen can become interactive.
-import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
-import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium';
-import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
-import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
-import { Inter_800ExtraBold } from '@expo-google-fonts/inter/800ExtraBold';
+// requires every Roboto face (18 of them, italics included), which makes Metro
+// deliver unused font assets before the first native screen can be interactive.
+import { Roboto_400Regular } from '@expo-google-fonts/roboto/400Regular';
+import { Roboto_500Medium } from '@expo-google-fonts/roboto/500Medium';
+import { Roboto_600SemiBold } from '@expo-google-fonts/roboto/600SemiBold';
+import { Roboto_700Bold } from '@expo-google-fonts/roboto/700Bold';
+import { Roboto_800ExtraBold } from '@expo-google-fonts/roboto/800ExtraBold';
 import { useFonts } from 'expo-font';
 import { router, Stack, usePathname } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -582,13 +582,13 @@ function RootBootstrap({
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
+    Roboto_400Regular,
+    Roboto_500Medium,
+    Roboto_600SemiBold,
+    Roboto_700Bold,
     // The display/screen-title tiers sit at 800 so headings are not the same
     // weight as every other heading. Without this they silently fall back.
-    Inter_800ExtraBold,
+    Roboto_800ExtraBold,
     // (No icon-library font is preloaded: every marker in the app is an emoji
     //  per Rule 5, so there are no glyphs left for it to serve.)
   });
@@ -599,7 +599,7 @@ export default function RootLayout() {
   useEffect(() => {
     let isMounted = true;
     /**
-     * How long to wait for Inter before showing UI without it.
+     * How long to wait for Roboto before showing UI without it.
      *
      * In a dev build each face is fetched from the Metro server over the LAN,
      * and six of them routinely take longer than the old flat 3s — so the
@@ -684,8 +684,8 @@ export default function RootLayout() {
    * it mid-render would update other components while this one is rendering.
    * A layout effect still runs before paint, so the first frame is correct —
    * and because the store is reactive, the LATER transition matters too: when
-   * Inter finishes loading after the timeout has already fired, this fires
-   * again with `false` and the app re-renders in Inter instead of staying on
+   * Roboto finishes loading after the timeout has already fired, this fires
+   * again with `false` and the app re-renders in Roboto instead of staying on
    * the device's system font for the rest of the session.
    */
   useLayoutEffect(() => {

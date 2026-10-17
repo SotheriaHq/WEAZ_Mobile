@@ -473,12 +473,16 @@ export const tokens = {
   },
 
   // ─── Font family ────────────────────────────────────────────────────────────
-  // Inter is loaded in app/_layout.tsx via @expo-google-fonts/inter
+  // Roboto, bundled and loaded in app/_layout.tsx via @expo-google-fonts/roboto.
+  // The face most Android apps are set in (owner decision 2026-10-17). Bundled
+  // rather than taken from the OS: Samsung lets owners replace the system font
+  // (the test A17 has a handwriting face), and an app that relies on the OS
+  // `sans-serif` renders in whatever the owner picked.
   fontFamily: {
-    regular: 'Inter_400Regular',
-    medium: 'Inter_500Medium',
-    semiBold: 'Inter_600SemiBold',
-    bold: 'Inter_700Bold',
+    regular: 'Roboto_400Regular',
+    medium: 'Roboto_500Medium',
+    semiBold: 'Roboto_600SemiBold',
+    bold: 'Roboto_700Bold',
     /**
      * The top of the ladder.
      *
@@ -488,9 +492,9 @@ export const tokens = {
      * hierarchy to see. ExtraBold gives the display and screen-title tiers
      * somewhere to go.
      */
-    extraBold: 'Inter_800ExtraBold',
+    extraBold: 'Roboto_800ExtraBold',
     // Fallback stack for any place fontFamily is not yet set
-    stack: 'Inter_400Regular, system-ui, -apple-system, sans-serif',
+    stack: 'Roboto_400Regular, Roboto, system-ui, -apple-system, sans-serif',
   },
 
   // ─── Typography scale (strict — do not freestyle) ──────────────────────────

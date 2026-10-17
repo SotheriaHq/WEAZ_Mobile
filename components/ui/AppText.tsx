@@ -175,16 +175,16 @@ const TABULAR_TIERS: ReadonlySet<TypographyTokenKey> = new Set([
 ]);
 
 /**
- * Family per tier: 600 reads, 700 labels, 800 heads.
+ * Family per tier: 600 reads, 700 labels, 800 heads — set in Roboto.
  *
- * Inter is drawn lighter than Roboto, the face most Android apps (Instagram,
- * WhatsApp, Jumia) set their text in, so at the same nominal weight WIEZ read
- * thinner than every app beside it on the phone — the 500 body / 700 label
- * ladder looked washed out on the A17 (owner feedback 2026-10-17: "too thin
- * compared with industry standards"). Reading text moves up to SemiBold,
- * which lands visually where Roboto Regular/Medium does, and explicit
- * "regular" variants to Medium. Labels stay Bold and headings ExtraBold, so
- * the ladder keeps three distinct steps.
+ * The app was set in Inter on a 500 body / 700 label ladder, which read thin
+ * and washed out next to the Android apps beside it on the phone (owner
+ * feedback 2026-10-17: "too thin compared with industry standards"). Two
+ * changes answered that: the family moved to Roboto, the face most Android
+ * apps use (tokens.fontFamily), and reading text moved up to SemiBold with
+ * explicit "regular" variants at Medium. Labels stay Bold and headings
+ * ExtraBold, so the ladder keeps three distinct steps. Do not lighten this
+ * without the owner's say-so.
  */
 const FONT_FAMILY_MAP: Record<TypographyTokenKey, string> = {
   display: tokens.fontFamily.extraBold,
