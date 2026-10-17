@@ -175,44 +175,45 @@ const TABULAR_TIERS: ReadonlySet<TypographyTokenKey> = new Set([
 ]);
 
 /**
- * Family per tier: 400 reads, 600 labels, 700 heads.
+ * Family per tier: 600 reads, 700 labels, 800 heads.
  *
- * The previous ladder was 500 body / 700 labels / 800 heads, and on a phone
- * the whole app read as heavy — every button, chip, card title and nav label
- * was Bold, so the screen had no quiet text left (owner feedback 2026-10-17:
- * "the font is too thick globally"). Everything moves down one step and the
- * hierarchy is kept, arguably sharpened: a 400 body under 600-700 headings is
- * a larger visible gap than 500 under 700, which is what the earlier
- * "headers as light as main text" complaint actually needed.
+ * Inter is drawn lighter than Roboto, the face most Android apps (Instagram,
+ * WhatsApp, Jumia) set their text in, so at the same nominal weight WIEZ read
+ * thinner than every app beside it on the phone — the 500 body / 700 label
+ * ladder looked washed out on the A17 (owner feedback 2026-10-17: "too thin
+ * compared with industry standards"). Reading text moves up to SemiBold,
+ * which lands visually where Roboto Regular/Medium does, and explicit
+ * "regular" variants to Medium. Labels stay Bold and headings ExtraBold, so
+ * the ladder keeps three distinct steps.
  */
 const FONT_FAMILY_MAP: Record<TypographyTokenKey, string> = {
-  display: tokens.fontFamily.bold,
-  title: tokens.fontFamily.bold,
-  subtitle: tokens.fontFamily.semiBold,
-  body: tokens.fontFamily.regular,
-  caption: tokens.fontFamily.regular,
-  h1: tokens.fontFamily.bold,
-  h2: tokens.fontFamily.semiBold,
-  h3: tokens.fontFamily.semiBold,
-  bodyBold: tokens.fontFamily.semiBold,
-  small: tokens.fontFamily.regular,
-  smallBold: tokens.fontFamily.semiBold,
-  screenTitle: tokens.fontFamily.bold,
-  profileName: tokens.fontFamily.semiBold,
-  brandName: tokens.fontFamily.semiBold,
-  sectionTitle: tokens.fontFamily.semiBold,
-  cardTitle: tokens.fontFamily.semiBold,
-  bodyReadable: tokens.fontFamily.regular,
-  actionLabel: tokens.fontFamily.semiBold,
-  buttonLabel: tokens.fontFamily.semiBold,
-  badgeLabel: tokens.fontFamily.semiBold,
-  navLabel: tokens.fontFamily.semiBold,
-  meta: tokens.fontFamily.medium,
-  statValue: tokens.fontFamily.semiBold,
-  statLabel: tokens.fontFamily.medium,
-  money: tokens.fontFamily.bold,
-  moneyLarge: tokens.fontFamily.bold,
-  moneySmall: tokens.fontFamily.semiBold,
+  display: tokens.fontFamily.extraBold,
+  title: tokens.fontFamily.extraBold,
+  subtitle: tokens.fontFamily.bold,
+  body: tokens.fontFamily.semiBold,
+  caption: tokens.fontFamily.semiBold,
+  h1: tokens.fontFamily.extraBold,
+  h2: tokens.fontFamily.bold,
+  h3: tokens.fontFamily.bold,
+  bodyBold: tokens.fontFamily.bold,
+  small: tokens.fontFamily.semiBold,
+  smallBold: tokens.fontFamily.bold,
+  screenTitle: tokens.fontFamily.extraBold,
+  profileName: tokens.fontFamily.bold,
+  brandName: tokens.fontFamily.bold,
+  sectionTitle: tokens.fontFamily.bold,
+  cardTitle: tokens.fontFamily.bold,
+  bodyReadable: tokens.fontFamily.semiBold,
+  actionLabel: tokens.fontFamily.bold,
+  buttonLabel: tokens.fontFamily.bold,
+  badgeLabel: tokens.fontFamily.bold,
+  navLabel: tokens.fontFamily.bold,
+  meta: tokens.fontFamily.semiBold,
+  statValue: tokens.fontFamily.extraBold,
+  statLabel: tokens.fontFamily.bold,
+  money: tokens.fontFamily.extraBold,
+  moneyLarge: tokens.fontFamily.extraBold,
+  moneySmall: tokens.fontFamily.bold,
 };
 
 /**
@@ -324,13 +325,13 @@ export function AppText({
   // mode keeps the hierarchy instead of flattening to a single face.
   const intendedFamily =
     variant === 'captionRegular'
-      ? tokens.fontFamily.regular
+      ? tokens.fontFamily.medium
       : variant === 'captionBold'
-        ? tokens.fontFamily.semiBold
+        ? tokens.fontFamily.bold
         : variant === 'bodyRegular'
-          ? tokens.fontFamily.regular
+          ? tokens.fontFamily.medium
           : variant === 'bodyStrong'
-            ? tokens.fontFamily.semiBold
+            ? tokens.fontFamily.bold
             : FONT_FAMILY_MAP[tokenKey];
   const fontFamily = fontFallbackMode ? undefined : intendedFamily;
   const fontWeight = FONT_WEIGHT_BY_FAMILY[intendedFamily] ?? tier.weight;

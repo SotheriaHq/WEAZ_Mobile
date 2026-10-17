@@ -84,7 +84,8 @@ export function FloatingLabelInput({
               color: theme.colors.text,
               paddingLeft: icon ? 44 : tokens.spacing.lg,
               paddingRight: isPassword ? 64 : tokens.spacing.lg,
-              fontFamily: tokens.fontFamily.regular,
+              // Typed text matches the body tier (SemiBold) — see AppText.
+              fontFamily: tokens.fontFamily.semiBold,
               fontSize: tokens.typography.body.size,
               lineHeight: tokens.typography.body.lineHeight,
             },

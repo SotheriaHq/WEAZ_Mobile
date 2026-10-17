@@ -153,7 +153,8 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
               // Medium, not regular. What the user types is the content of the
               // screen and was rendering one weight lighter than the body text
               // around it — the field read as a disabled preview of itself.
-              fontFamily: tokens.fontFamily.medium,
+              // Typed text matches the body tier (SemiBold) — see AppText.
+              fontFamily: tokens.fontFamily.semiBold,
               fontWeight: '500',
               fontSize: tokens.typography.body.size,
               lineHeight: tokens.typography.body.lineHeight,
