@@ -230,6 +230,19 @@ check(
   'the stock per-event persister is not used',
   !/PersistQueryClientProvider\b[^,]*from|<PersistQueryClientProvider|persistQueryClientSubscribe/.test(queryProvider),
 );
+// Studio is part of the app: a slow or stalled load reloads in place, it is
+// never handed to the browser or turned into a "Try in app" question.
+const studioWebViewSource = read('app/(tabs)/studio/webview.tsx');
+check(
+  'Studio recovers in-app, silently, never via the browser',
+  !/openStudioInBrowser|BROWSER_FALLBACK_MS|Try in app/.test(studioWebViewSource) &&
+    /MAX_SILENT_RELOADS/.test(studioWebViewSource),
+);
+// Hidden Market re-rendered 5×844ms on sign-in (2026-10-17 18:00 capture).
+check(
+  'hidden Market keeps its last viewer until focused',
+  /if \(isFocused\) viewerRef\.current =/.test(read('src/features/market/components/MarketScreen.tsx')),
+);
 // A frozen tab cannot commit an overlay's unmount; its Modal window was left
 // over the app eating every touch (Studio "stuck" capture, 2026-10-17 17:07:55).
 const freezeSource = read('src/navigation/freezeHiddenTabs.tsx');
@@ -1254,7 +1267,13 @@ check(
     wiezPerf.includes('unattribMs=${fmt(flow.unattributedMs)}') &&
     /export function lastDrainUnattributedMs\(\): number/.test(commitCost) &&
     /lastUnattributedMs = unattributed;/.test(commitCost) &&
-    /perfAddBlockedMs\(drift, lastDrainUnattributedMs\(\)\)/.test(jsThreadMonitor),
+    /perfAddBlockedMs\(drift, lastDrainUnattributedMs\(\), gcMs\)/.test(jsThreadMonitor),
+);
+check(
+  'a stall says how much of it was the JS garbage collector, and the heap size',
+  /hermesStats\(\)\?\.js_gcTime/.test(jsThreadMonitor) &&
+    wiezPerf.includes('`gcMs=${fmt(flow.gcMs)}`') &&
+    /heapMB=/.test(wiezPerf),
 );
 check(
   'a timed-out flow says where it stopped',

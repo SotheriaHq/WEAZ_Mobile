@@ -57,29 +57,33 @@ import { getAvatarFallback, resolveProfileImageSource } from '@/src/utils/profil
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
 import { perfMark } from '@/src/utils/perf';
 
-// 'browser': the page did not become ready in time and Studio was handed to a
-// Chrome Custom Tab instead (see BROWSER_FALLBACK_MS).
-type LoadState = 'booting' | 'loading' | 'ready' | 'error' | 'browser';
+type LoadState = 'booting' | 'loading' | 'ready' | 'error';
 
 /**
- * How long the in-app Studio may sit unready before it is handed to the phone's
- * own browser (a Chrome Custom Tab, a separate process). On the A17 a brand
- * landing in Studio after sign-in watched the WebView load for minutes until
- * Android killed its renderer, with the whole app frozen meanwhile. A custom tab
- * cannot freeze WIEZ, whatever the page costs.
+ * Studio never leaves the app, and recovery is never the user's job.
+ *
+ * An 8s hand-off to a Chrome Custom Tab used to sit here. It fired on the
+ * first open after sign-in (device log 2026-10-17 18:00:26 — the page had
+ * already posted ROUTE_CHANGED and was a second from READY) and showed a
+ * panel offering to retry "in app", which told people Studio is a web page and
+ * asked them to fix it. Studio is part of the app.
+ *
+ * Now: a slow first load keeps loading. A page that stalls (no READY by
+ * READY_TIMEOUT_MS) or hangs after READY (no answer to the liveness ping for
+ * PAGE_HUNG_AFTER_MS) is reloaded in place, silently, up to
+ * MAX_SILENT_RELOADS times per visit. Only after that does the error panel —
+ * with one Retry — appear.
  */
-const BROWSER_FALLBACK_MS = 8_000;
+const MAX_SILENT_RELOADS = 1;
 
 /**
- * Liveness after READY. The 8s fallback only covered a page that never got
- * ready; a page that reported READY and THEN hung (its renderer starved on a
- * low-RAM phone) left every island chip and Back press injecting script into a
- * dead page — the press sound played and nothing moved. The shell now pings
- * the page; a page that answers nothing for this long is treated as hung and
- * handed to the browser, which also frees the WebView's memory.
+ * Liveness after READY. A page that reported READY and THEN hung (its renderer
+ * starved on a low-RAM phone) left every island chip and Back press injecting
+ * script into a dead page. The shell pings the page; one that answers nothing
+ * for this long is reloaded.
  */
 const PAGE_PING_INTERVAL_MS = 2_000;
-const PAGE_HUNG_AFTER_MS = 8_000;
+const PAGE_HUNG_AFTER_MS = 10_000;
 const PAGE_PING_SCRIPT = `try { window.ReactNativeWebView && window.ReactNativeWebView.postMessage('{"type":"PONG"}'); } catch (e) {} true;`;
 
 type NativeMessage =
@@ -146,7 +150,9 @@ function describeMissingBrandProfileFields(fields?: string[]): string {
   return `Studio needs ${list}`;
 }
 
-const READY_TIMEOUT_MS = 20_000;
+// First open after sign-in measured ~9s to READY on the A17; this is the
+// point where a load is stalled rather than slow.
+const READY_TIMEOUT_MS = 25_000;
 
 /**
  * Install a durable in-place navigator before the web app hydrates.
@@ -207,7 +213,7 @@ type StudioWebViewEventName =
   | 'native-route-blocked'
   | 'native-message-received'
   | 'ready-timeout'
-  | 'browser-fallback'
+  | 'silent-reload'
   | 'page-unresponsive'
   | 'page-ready';
 
@@ -516,58 +522,42 @@ export default function StudioWebViewScreen() {
     toast,
   ]);
 
-  useEffect(() => {
-    if (!webUrl || loadState !== 'loading') return;
-
-    const timeout = setTimeout(() => {
-      trackStudioWebViewEvent('ready-timeout', { routeKey: resolvedRouteKey });
-      setErrorMessage('Studio took too long to confirm the secure session. Try again.');
-      setLoadState('error');
-    }, READY_TIMEOUT_MS);
-
-    return () => clearTimeout(timeout);
-  }, [loadState, resolvedRouteKey, webUrl]);
+  // Silent in-app reloads spent this visit — see MAX_SILENT_RELOADS.
+  const silentReloadsRef = useRef(0);
 
   /**
-   * Hand Studio to a Chrome Custom Tab. The WebView is torn down first so its
-   * renderer and memory are released, and a FRESH handoff is minted — the one
-   * in the WebView's URL is single-use and may already be spent.
+   * Reload Studio in place without telling anyone, or — once the silent budget
+   * is spent — show the error panel. The loading overlay stays up throughout,
+   * so to the user this is just a longer load.
    */
-  const openStudioInBrowser = useCallback(async () => {
-    sessionEstablishedRef.current = false;
-    lastInjectedRouteRef.current = null;
-    setWebUrl(null);
-    setLoadState('browser');
-    trackStudioWebViewEvent('browser-fallback', { routeKey: resolvedRouteKey });
-    try {
-      const intendedPath = buildStudioPath(resolvedRouteKey, { productId, orderId });
-      const handoff = await StudioApi.createHandoff(intendedPath);
-      const url = buildStudioWebUrl({
-        routeKey: resolvedRouteKey,
-        params: { productId, orderId },
-        handoffCode: handoff.code,
-        theme: schemeRef.current,
-      });
-      await WebBrowser.openBrowserAsync(url, { showTitle: false, enableBarCollapsing: true });
-    } catch {
-      setErrorMessage('Studio could not open. Check your connection and try again.');
+  const recoverStudio = useCallback(
+    (reason: 'ready-timeout' | 'page-unresponsive', detail?: Record<string, number>) => {
+      trackStudioWebViewEvent(reason, { routeKey: resolvedRouteKey, ...detail });
+      if (silentReloadsRef.current < MAX_SILENT_RELOADS) {
+        silentReloadsRef.current += 1;
+        trackStudioWebViewEvent('silent-reload', { routeKey: resolvedRouteKey });
+        retry();
+        return;
+      }
+      setErrorMessage('Studio is taking longer than usual. Check your connection and try again.');
       setLoadState('error');
-    }
-  }, [orderId, productId, resolvedRouteKey]);
+    },
+    [resolvedRouteKey, retry],
+  );
 
   useEffect(() => {
     if (!webUrl || loadState !== 'loading') return;
-    const timer = setTimeout(() => {
-      void openStudioInBrowser();
-    }, BROWSER_FALLBACK_MS);
-    return () => clearTimeout(timer);
-  }, [loadState, openStudioInBrowser, webUrl]);
+
+    const timeout = setTimeout(() => recoverStudio('ready-timeout'), READY_TIMEOUT_MS);
+
+    return () => clearTimeout(timeout);
+  }, [loadState, recoverStudio, webUrl]);
 
   // Last time the page proved its main thread runs: any message or navigation.
   const lastPageSignalRef = useRef(Date.now());
 
   // Liveness watchdog — see PAGE_HUNG_AFTER_MS. Focused + ready only: a hidden
-  // Studio tab must never pop a browser over whatever the user is doing, and
+  // Studio tab must never reload behind whatever the user is doing, and
   // timers stop in the background, so the clock restarts on every resume.
   useFocusEffect(
     useCallback(() => {
@@ -579,11 +569,7 @@ export default function StudioWebViewScreen() {
       const interval = setInterval(() => {
         if (AppState.currentState !== 'active') return;
         if (Date.now() - lastPageSignalRef.current > PAGE_HUNG_AFTER_MS) {
-          trackStudioWebViewEvent('page-unresponsive', {
-            routeKey: resolvedRouteKey,
-            silentMs: Date.now() - lastPageSignalRef.current,
-          });
-          void openStudioInBrowser();
+          recoverStudio('page-unresponsive', { silentMs: Date.now() - lastPageSignalRef.current });
           return;
         }
         webViewRef.current?.injectJavaScript(PAGE_PING_SCRIPT);
@@ -592,7 +578,7 @@ export default function StudioWebViewScreen() {
         clearInterval(interval);
         resume.remove();
       };
-    }, [loadState, openStudioInBrowser, resolvedRouteKey]),
+    }, [loadState, recoverStudio]),
   );
 
   useEffect(() => {
@@ -762,6 +748,8 @@ export default function StudioWebViewScreen() {
           break;
         case 'READY':
           trackStudioWebViewEvent('page-ready', { routeKey: resolvedRouteKey });
+          // A healthy page earns back its silent reload for the next stall.
+          silentReloadsRef.current = 0;
           setLoadState('ready');
           sessionEstablishedRef.current = true;
           // Apply the latest island target if the user tapped another tab while
@@ -1253,22 +1241,6 @@ export default function StudioWebViewScreen() {
             >
               <AppText variant="bodyBold" tone="secondary">✕</AppText>
             </Pressable>
-          </View>
-        ) : null}
-
-        {loadState === 'browser' ? (
-          <View style={[styles.overlay, { backgroundColor: studioShellBackground }]}>
-            <View style={styles.errorContent}>
-              <AppText variant="h3">Studio is open in your browser</AppText>
-              <AppText variant="body" tone="muted" style={styles.centerText}>
-                It was taking too long to load here, so it opened in your browser instead. Come back any time.
-              </AppText>
-              <View style={styles.errorActions}>
-                <Button title="Open again" onPress={() => void openStudioInBrowser()} />
-                <Button title="Try in app" variant="secondary" onPress={retry} />
-                <Button title="Close" variant="secondary" onPress={closeStudio} />
-              </View>
-            </View>
           </View>
         ) : null}
 

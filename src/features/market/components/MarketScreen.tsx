@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { BlurView } from 'expo-blur';
 
@@ -1301,6 +1301,19 @@ type MarketScreenBodyProps = {
  */
 export function MarketScreen() {
   const { status, user } = useAuth();
+  const isFocused = useIsFocused();
+  /*
+    Hidden Market keeps the viewer it last rendered for.
+
+    Market is never frozen (freezeHiddenTabs.tsx), so a sign-in re-rendered it
+    in the background — and the viewer key change reloaded the whole feed —
+    while the person was on Catalogue opening Studio: `Market:self=844ms×5` on
+    the 2026-10-17 18:00 capture, ~4s of blocked JS at exactly the moment
+    Studio's first load needed the thread. The new viewer is applied when
+    Market is next looked at.
+  */
+  const viewerRef = useRef({ status, userId: user?.id ?? null });
+  if (isFocused) viewerRef.current = { status, userId: user?.id ?? null };
   const { bagProduct, bagSource } = useMobileBagging();
   const bagActionsRef = useRef({ bagProduct, bagSource });
   bagActionsRef.current = { bagProduct, bagSource };
@@ -1316,8 +1329,8 @@ export function MarketScreen() {
   );
   return (
     <MarketScreenBody
-      status={status}
-      userId={user?.id ?? null}
+      status={viewerRef.current.status}
+      userId={viewerRef.current.userId}
       bagProduct={stableBagProduct}
       bagSource={stableBagSource}
     />

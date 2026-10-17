@@ -175,43 +175,44 @@ const TABULAR_TIERS: ReadonlySet<TypographyTokenKey> = new Set([
 ]);
 
 /**
- * Family per tier. Two deliberate changes from the original mapping:
+ * Family per tier: 400 reads, 600 labels, 700 heads.
  *
- * - Everything that is meant to read as a HEADING is `bold` (700), not
- *   `semiBold` (600). At 16-18px, 600 against a 500 body is roughly one visual
- *   step — enough to measure, not enough to see — which is why section headers
- *   were landing as "as light and thin as main text".
- * - Body stays `medium` (500). Making body heavier does not create hierarchy,
- *   it just removes the contrast the headings need.
+ * The previous ladder was 500 body / 700 labels / 800 heads, and on a phone
+ * the whole app read as heavy — every button, chip, card title and nav label
+ * was Bold, so the screen had no quiet text left (owner feedback 2026-10-17:
+ * "the font is too thick globally"). Everything moves down one step and the
+ * hierarchy is kept, arguably sharpened: a 400 body under 600-700 headings is
+ * a larger visible gap than 500 under 700, which is what the earlier
+ * "headers as light as main text" complaint actually needed.
  */
 const FONT_FAMILY_MAP: Record<TypographyTokenKey, string> = {
-  display: tokens.fontFamily.extraBold,
-  title: tokens.fontFamily.extraBold,
-  subtitle: tokens.fontFamily.bold,
-  body: tokens.fontFamily.medium,
-  caption: tokens.fontFamily.medium,
-  h1: tokens.fontFamily.extraBold,
-  h2: tokens.fontFamily.bold,
-  h3: tokens.fontFamily.bold,
-  bodyBold: tokens.fontFamily.bold,
-  small: tokens.fontFamily.medium,
-  smallBold: tokens.fontFamily.bold,
-  screenTitle: tokens.fontFamily.extraBold,
-  profileName: tokens.fontFamily.bold,
-  brandName: tokens.fontFamily.bold,
-  sectionTitle: tokens.fontFamily.bold,
-  cardTitle: tokens.fontFamily.bold,
-  bodyReadable: tokens.fontFamily.medium,
-  actionLabel: tokens.fontFamily.bold,
-  buttonLabel: tokens.fontFamily.bold,
-  badgeLabel: tokens.fontFamily.bold,
-  navLabel: tokens.fontFamily.bold,
-  meta: tokens.fontFamily.semiBold,
-  statValue: tokens.fontFamily.bold,
-  statLabel: tokens.fontFamily.bold,
-  money: tokens.fontFamily.extraBold,
-  moneyLarge: tokens.fontFamily.extraBold,
-  moneySmall: tokens.fontFamily.bold,
+  display: tokens.fontFamily.bold,
+  title: tokens.fontFamily.bold,
+  subtitle: tokens.fontFamily.semiBold,
+  body: tokens.fontFamily.regular,
+  caption: tokens.fontFamily.regular,
+  h1: tokens.fontFamily.bold,
+  h2: tokens.fontFamily.semiBold,
+  h3: tokens.fontFamily.semiBold,
+  bodyBold: tokens.fontFamily.semiBold,
+  small: tokens.fontFamily.regular,
+  smallBold: tokens.fontFamily.semiBold,
+  screenTitle: tokens.fontFamily.bold,
+  profileName: tokens.fontFamily.semiBold,
+  brandName: tokens.fontFamily.semiBold,
+  sectionTitle: tokens.fontFamily.semiBold,
+  cardTitle: tokens.fontFamily.semiBold,
+  bodyReadable: tokens.fontFamily.regular,
+  actionLabel: tokens.fontFamily.semiBold,
+  buttonLabel: tokens.fontFamily.semiBold,
+  badgeLabel: tokens.fontFamily.semiBold,
+  navLabel: tokens.fontFamily.semiBold,
+  meta: tokens.fontFamily.medium,
+  statValue: tokens.fontFamily.semiBold,
+  statLabel: tokens.fontFamily.medium,
+  money: tokens.fontFamily.bold,
+  moneyLarge: tokens.fontFamily.bold,
+  moneySmall: tokens.fontFamily.semiBold,
 };
 
 /**
@@ -325,11 +326,11 @@ export function AppText({
     variant === 'captionRegular'
       ? tokens.fontFamily.regular
       : variant === 'captionBold'
-        ? tokens.fontFamily.bold
+        ? tokens.fontFamily.semiBold
         : variant === 'bodyRegular'
           ? tokens.fontFamily.regular
           : variant === 'bodyStrong'
-            ? tokens.fontFamily.bold
+            ? tokens.fontFamily.semiBold
             : FONT_FAMILY_MAP[tokenKey];
   const fontFamily = fontFallbackMode ? undefined : intendedFamily;
   const fontWeight = FONT_WEIGHT_BY_FAMILY[intendedFamily] ?? tier.weight;

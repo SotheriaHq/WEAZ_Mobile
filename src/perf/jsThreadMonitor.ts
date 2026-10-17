@@ -30,6 +30,7 @@ import { AppState } from 'react-native';
 
 import { drainCommitAttribution, lastDrainUnattributedMs } from '@/src/perf/commitCost';
 import {
+  hermesStats,
   perfAddBlockedMs,
   perfAnnotate,
   perfEnabled,
@@ -78,10 +79,16 @@ export function startJsThreadMonitor(): () => void {
     foreground = state === 'active';
     previous = now();
   });
+  // Hermes' cumulative GC seconds at the previous sample; the delta over a
+  // stalled sample is how much of that stall the collector took.
+  let previousGcSeconds = hermesStats()?.js_gcTime ?? 0;
   timer = setInterval(() => {
     const current = now();
     const drift = current - previous - SAMPLE_MS;
     previous = current;
+    const gcSeconds = hermesStats()?.js_gcTime ?? previousGcSeconds;
+    const gcMs = Math.max(0, (gcSeconds - previousGcSeconds) * 1000);
+    previousGcSeconds = gcSeconds;
     if (!foreground) return;
     if (drift < BLOCK_THRESHOLD_MS) return;
 
@@ -97,7 +104,7 @@ export function startJsThreadMonitor(): () => void {
     perfNote(
       'RENDER',
       'js_thread_blocked',
-      `${drift.toFixed(0)}ms by=${drainCommitAttribution(drift)}`,
+      `${drift.toFixed(0)}ms gc=${gcMs.toFixed(0)}ms by=${drainCommitAttribution(drift)}`,
     );
     // So the flow's own summary says the thread stalled during it. A reader
     // comparing T3->T4 across runs needs to know which runs were contended.
@@ -113,7 +120,7 @@ export function startJsThreadMonitor(): () => void {
     // could not distinguish "lost in one long commit" from "lost to a thousand
     // small ones" from "lost to something outside React entirely", and those
     // are three different fixes.
-    perfAddBlockedMs(drift, lastDrainUnattributedMs());
+    perfAddBlockedMs(drift, lastDrainUnattributedMs(), gcMs);
   }, SAMPLE_MS);
 
   return () => {

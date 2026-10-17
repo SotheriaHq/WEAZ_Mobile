@@ -249,9 +249,24 @@ type Flow = {
    * entirely, and no amount of memoisation would help.
    */
   unattributedMs: number;
+  /** Hermes GC time that landed inside this flow's stalls (see jsThreadMonitor). */
+  gcMs: number;
   closed: boolean;
   watchdog: ReturnType<typeof setTimeout> | null;
 };
+
+type HermesInstrumentedStats = { js_gcTime?: number; js_heapSize?: number };
+
+/** Hermes' own counters, or null off Hermes. `js_gcTime` is in seconds. */
+export function hermesStats(): HermesInstrumentedStats | null {
+  try {
+    const hermes = (globalThis as { HermesInternal?: { getInstrumentedStats?: () => HermesInstrumentedStats } })
+      .HermesInternal;
+    return hermes?.getInstrumentedStats?.() ?? null;
+  } catch {
+    return null;
+  }
+}
 
 let flowSequence = 0;
 let activeFlow: Flow | null = null;
@@ -468,6 +483,13 @@ function closeFlow(flow: Flow, reason: 'complete' | 'abandoned' | 'timeout') {
     // How much of it was NOT a React commit: image decode, GC, native work.
     // High here means the render ledger is looking in the wrong place.
     `unattribMs=${fmt(flow.unattributedMs)}`,
+    // Of the stalls, how much was the JS garbage collector, and how big the
+    // heap it walks is. Separates "our code ran" from "memory pressure".
+    `gcMs=${fmt(flow.gcMs)}`,
+    `heapMB=${(() => {
+      const heap = hermesStats()?.js_heapSize;
+      return typeof heap === 'number' ? (heap / (1024 * 1024)).toFixed(0) : 'n/a';
+    })()}`,
     // The furthest stage this flow reached. Every `reason=timeout` flow so far
     // has been unreadable past `T1->T3` without this.
     `lastStage=${furthestStage(flow)}`,
@@ -553,6 +575,7 @@ export function perfBeginFlow(label: string): void {
     worstBlockMs: 0,
     blockEvents: 0,
     unattributedMs: 0,
+    gcMs: 0,
     closed: false,
     watchdog: null,
   };
@@ -651,12 +674,13 @@ export function perfRecordIndicatorVisible(): void {
 }
 
 /** Add an observed JS-thread stall to the open flow's total. */
-export function perfAddBlockedMs(ms: number, unattributedMs = 0): void {
+export function perfAddBlockedMs(ms: number, unattributedMs = 0, gcMs = 0): void {
   if (!ENABLED) return;
   if (!activeFlow || activeFlow.closed) return;
   activeFlow.blockedMs += ms;
   if (ms > activeFlow.worstBlockMs) activeFlow.worstBlockMs = ms;
   activeFlow.unattributedMs += unattributedMs;
+  activeFlow.gcMs += gcMs;
   activeFlow.blockEvents += 1;
 }
 
