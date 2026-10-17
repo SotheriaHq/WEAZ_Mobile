@@ -57,8 +57,11 @@ export function NewDropBadge({
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (!info.isNewDrop || dismissed) return;
-    Animated.loop(
+    if (!info.isNewDrop || dismissed) return undefined;
+    // Bounded, and stopped on unmount. It looped forever with no cleanup on
+    // every new-drop card — see the note in BagPulseIcon.tsx for what an
+    // endless native-driven loop per card cost on the A17.
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1.08,
@@ -83,8 +86,11 @@ export function NewDropBadge({
           useNativeDriver: true,
           isInteraction: false,
         }),
-      ])
-    ).start();
+      ]),
+      { iterations: 3 },
+    );
+    loop.start();
+    return () => loop.stop();
   }, [info.isNewDrop, pulseAnim, dismissed]);
 
   if (!info.isNewDrop || dismissed) return null;

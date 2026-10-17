@@ -22,6 +22,8 @@
 import React, { useEffect, useState } from 'react';
 import { Freeze } from 'react-freeze';
 
+import { hasOpenOverlay, subscribeOpenOverlays } from '@/src/navigation/openOverlays';
+
 type TabLayoutArgs = {
   route: { key: string; name?: string };
   navigation: {
@@ -34,8 +36,22 @@ function DelayedFreeze({ freeze, children }: { freeze: boolean; children: React.
   const [frozen, setFrozen] = useState(false);
 
   useEffect(() => {
-    const id = setTimeout(() => setFrozen(freeze), 0);
-    return () => clearTimeout(id);
+    if (!freeze) {
+      setFrozen(false);
+      return undefined;
+    }
+    // Never freeze over a mounted menu or sheet: its closing update could not
+    // commit, and its window would be left over the app eating every touch.
+    // See openOverlays.ts. The freeze lands as soon as the last one unmounts.
+    const tryFreeze = () => {
+      if (!hasOpenOverlay()) setFrozen(true);
+    };
+    const id = setTimeout(tryFreeze, 0);
+    const unsubscribe = subscribeOpenOverlays(tryFreeze);
+    return () => {
+      clearTimeout(id);
+      unsubscribe();
+    };
   }, [freeze]);
 
   // Unfreezing is immediate: a press must never wait a tick for its screen.

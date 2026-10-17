@@ -230,6 +230,32 @@ check(
   'the stock per-event persister is not used',
   !/PersistQueryClientProvider\b[^,]*from|<PersistQueryClientProvider|persistQueryClientSubscribe/.test(queryProvider),
 );
+// A frozen tab cannot commit an overlay's unmount; its Modal window was left
+// over the app eating every touch (Studio "stuck" capture, 2026-10-17 17:07:55).
+const freezeSource = read('src/navigation/freezeHiddenTabs.tsx');
+check(
+  'hidden tabs do not freeze while an overlay is mounted',
+  /hasOpenOverlay\(\)/.test(freezeSource) && /subscribeOpenOverlays/.test(freezeSource),
+);
+const floatingMenuSource = read('components/ui/AppFloatingMenu.tsx');
+const optionPressBody = floatingMenuSource.slice(floatingMenuSource.indexOf('const handleOptionPress'));
+check(
+  'a menu option unmounts the menu before it navigates',
+  /useRegisterOpenOverlay\(internalVisible\)/.test(floatingMenuSource) &&
+    optionPressBody.indexOf('setInternalVisible(false)') !== -1 &&
+    optionPressBody.indexOf('setInternalVisible(false)') < optionPressBody.indexOf('optionOnPress()'),
+);
+check(
+  'sheets register as open overlays',
+  /useRegisterOpenOverlay\(mounted\)/.test(read('components/ui/AppBottomSheet.tsx')),
+);
+// Endless native-driven loops on every card were a 24MB GC every ~1.3s.
+check(
+  'card pulses are bounded',
+  /iterations: status === 'bagging' \? -1 : 3/.test(read('components/ui/BagPulseIcon.tsx')) &&
+    /iterations: 3/.test(read('components/ui/NewDropBadge.tsx')) &&
+    /return \(\) => loop\.stop\(\)/.test(read('components/ui/NewDropBadge.tsx')),
+);
 const queryPersistorSource = read('src/query/queryPersistor.ts');
 check(
   'the cache is saved after a quiet window and on background, not per event',

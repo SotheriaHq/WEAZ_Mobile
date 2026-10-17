@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/Button';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
+import { useRegisterOpenOverlay } from '@/src/navigation/openOverlays';
 
 type Props = {
   visible: boolean;
@@ -109,6 +110,9 @@ export function AppBottomSheet({
   );
 
   useAndroidOverlaySystemBars(visible, scheme, 'bottom-sheet');
+  // Holds the tab freeze off while this sheet's window exists — see
+  // src/navigation/openOverlays.ts.
+  useRegisterOpenOverlay(mounted);
 
   useEffect(() => {
     onDismissRef.current = onDismiss;

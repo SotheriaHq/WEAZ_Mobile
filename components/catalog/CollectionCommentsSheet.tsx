@@ -19,6 +19,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { AppText } from '@/components/ui/AppText';
 import { Input } from '@/components/ui/Input';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
+import { useRegisterOpenOverlay } from '@/src/navigation/openOverlays';
 import { tokens } from '@/src/styles/tokens';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
@@ -291,6 +292,7 @@ export default function CollectionCommentsSheet({
   const commentsListRef = useRef<FlatList<Comment> | null>(null);
 
   useAndroidOverlaySystemBars(visible, scheme, 'collection-comments');
+  useRegisterOpenOverlay(mounted);
 
   /*
     Declared ABOVE the open/close effect on purpose: effects run in source

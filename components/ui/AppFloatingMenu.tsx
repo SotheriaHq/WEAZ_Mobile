@@ -5,6 +5,7 @@ import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
+import { useRegisterOpenOverlay } from '@/src/navigation/openOverlays';
 
 export type FloatingMenuOption = {
   key: string;
@@ -98,6 +99,7 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
     : { top: windowHeight / 2 - 100, left: windowWidth / 2 - menuWidth / 2 };
 
   useAndroidOverlaySystemBars(internalVisible, scheme, 'floating-menu');
+  useRegisterOpenOverlay(internalVisible);
 
   useEffect(() => {
     if (visible) {
@@ -170,12 +172,18 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
 
   const handleOptionPress = (optionOnPress: () => void) => {
     if (isClosing) return;
-    // Navigate / act first — do NOT wait for InteractionManager. Waiting for
-    // "after interactions" was a multi-second stall when Runway/catalog
-    // animations or gesture handlers were still settling. Close the menu as a
-    // side effect so the destination paints immediately.
+    // Unmount the menu in the SAME commit as the option's navigation — no
+    // fade. A fade finishing after the navigation landed in a tab that had
+    // already been frozen, so the unmount never committed and the menu's
+    // window stayed over the app, empty, taking every touch (the Studio
+    // "stuck after sign-in" freeze; see src/navigation/openOverlays.ts).
+    // Still no InteractionManager wait: the destination paints immediately.
+    fadeAnim.stopAnimation();
+    scaleAnim.stopAnimation();
+    setInternalVisible(false);
+    setIsClosing(false);
+    onClose();
     optionOnPress();
-    handleClose();
   };
 
   if (!internalVisible) return null;

@@ -64,6 +64,17 @@ export function BagPulseIcon({
       return undefined;
     }
 
+    /*
+      A few heartbeats, then rest — only an in-flight bag pulses until done.
+
+      This loop ran forever on every product card with a bag button, hidden
+      tabs included (a frozen React tree does not stop a native-driven
+      animation). On Android each looping view rebuilds its props map every
+      frame on the UI thread: with a Market/Runway grid mounted that was a
+      24MB Java GC every ~1.3s for the whole session (device log 2026-10-17,
+      17:05-17:08, while idle in Studio) and a UI thread too busy to answer
+      taps promptly. Three beats still say "live and tappable".
+    */
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, {
@@ -81,6 +92,7 @@ export function BagPulseIcon({
           isInteraction: false,
         }),
       ]),
+      { iterations: status === 'bagging' ? -1 : 3 },
     );
 
     loop.start();
