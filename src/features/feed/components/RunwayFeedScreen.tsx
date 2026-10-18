@@ -1,3 +1,4 @@
+import { QueueBrandNotices } from '@/components/orders/QueueBrandNotices';
 /**
  * RunwayFeedScreen — native design feed (UI label: Runway).
  * Backend domain: Design. Not the commerce Market tab (`MarketScreen` / discover).
@@ -3015,6 +3016,7 @@ export function RunwayFeedScreen() {
                   </Pressable>
                 </View>
             </View>
+            <QueueBrandNotices enabled={status === 'authenticated' && isBrandAccount(user)} />
           </View>
         </>
       ) : null}

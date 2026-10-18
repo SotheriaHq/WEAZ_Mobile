@@ -1,3 +1,5 @@
+import { CustomOrderPriceBreakdown } from '@/components/orders/CustomOrderPriceBreakdown';
+import { Card } from '@/components/ui/Card';
 import React, { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
@@ -32,6 +34,7 @@ function BagLineRow({
   warning,
   price,
   action,
+  breakdown,
 }: {
   thumbnail: string | null;
   title: string;
@@ -40,10 +43,11 @@ function BagLineRow({
   warning?: string | null;
   price: string | null;
   action?: React.ReactNode;
+  breakdown?: React.ReactNode;
 }) {
   const { theme } = useTheme();
   return (
-    <View
+    <Card padding="md"
       style={[
         styles.lineRow,
         { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
@@ -57,18 +61,19 @@ function BagLineRow({
         </View>
       )}
       <View style={styles.lineCopy}>
-        <AppText variant="bodyBold" numberOfLines={1}>{title}</AppText>
+        <AppText variant="bodyBold">{title}</AppText>
         {brandName ? (
-          <AppText variant="caption" tone="muted" numberOfLines={1}>{brandName}</AppText>
+          <AppText variant="caption" tone="muted">{brandName}</AppText>
         ) : null}
-        <AppText variant="caption" tone="muted" numberOfLines={1}>{meta}</AppText>
+        <AppText variant="caption" tone="muted">{meta}</AppText>
         {warning ? (
-          <AppText variant="caption" tone="secondary" numberOfLines={2}>{warning}</AppText>
+          <AppText variant="caption" tone="secondary">{warning}</AppText>
         ) : null}
+        {breakdown}
         {action ? <View style={styles.lineAction}>{action}</View> : null}
       </View>
       {price ? <AppText variant="bodyBold">{price}</AppText> : null}
-    </View>
+    </Card>
   );
 }
 
@@ -250,6 +255,7 @@ export default function MyBagSheet({ visible, onClose }: Props) {
                         : null
                     }
                     price={formatMarketPrice(item.grandTotal, item.currency)}
+                    breakdown={item.priceSummary ? <CustomOrderPriceBreakdown summary={item.priceSummary} currency={item.currency} /> : null}
                     action={
                       showRelock ? (
                         <Button

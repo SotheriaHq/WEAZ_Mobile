@@ -1,4 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import type { BrandQueueSummary } from '@/src/api/CustomOrderQueueApi';
+import { CustomOrderPriceBreakdown } from '@/components/orders/CustomOrderPriceBreakdown';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { DeliveryAddressBook } from '@/components/delivery/DeliveryAddressBook';
@@ -143,6 +145,15 @@ export default function CustomBagSheet({
    * measurements or a different address.
    */
   const [quote, setQuote] = useState<CustomPricePreview | null>(null);
+  const [queueSummary, setQueueSummary] = useState<BrandQueueSummary | null>(null);
+  const [queueJumpSelected, setQueueJumpSelected] = useState(false);
+  const requestGeneration = useRef(0);
+  useEffect(() => {
+    requestGeneration.current += 1;
+    setQueueSummary(null); setQueueJumpSelected(false);
+    setPricing(false); setSubmitting(false);
+    return () => { requestGeneration.current += 1; };
+  }, [visible, product?.id, status?.custom.configurationId, user?.id]);
   const [noMatchAcknowledged, setNoMatchAcknowledged] = useState(false);
 
   /**
@@ -269,6 +280,7 @@ export default function CustomBagSheet({
       return;
     }
 
+    const generation = requestGeneration.current;
     setPricing(true);
     setError(null);
     try {
@@ -276,8 +288,11 @@ export default function CustomBagSheet({
         configurationId: status.custom.configurationId,
         measurementValues,
         rushSelected: false,
+        queueJumpSelected,
         shippingAddress,
       });
+      if (generation !== requestGeneration.current) return;
+      setQueueSummary(next.queueSummary ?? null);
       setQuote(next);
       setNoMatchAcknowledged(false);
       if (next.quoteStatus === 'MANUAL_QUOTE_REQUIRED') {
@@ -286,11 +301,12 @@ export default function CustomBagSheet({
         setError('WIEZ could not hold a price for this request. Try again.');
       }
     } catch (nextError) {
+      if (generation !== requestGeneration.current) return;
       const message = toApiErrorMessage(nextError, 'Unable to price this custom request.');
       setError(message);
       toast.error(message);
     } finally {
-      setPricing(false);
+      if (generation === requestGeneration.current) setPricing(false);
     }
   };
 
@@ -306,6 +322,7 @@ export default function CustomBagSheet({
       return;
     }
 
+    const generation = requestGeneration.current;
     setSubmitting(true);
     setError(null);
     try {
@@ -316,6 +333,7 @@ export default function CustomBagSheet({
         checkoutIntentId: quote.checkoutIntentId,
         configurationId: status.custom.configurationId,
         configurationVersionId: quote.configurationVersionId,
+        queueJumpSelected,
         measurementValues,
         shippingAddress,
         contactInfo: {
@@ -330,9 +348,11 @@ export default function CustomBagSheet({
       const nextStatus = sourceType === 'PRODUCT'
         ? await prepareBag(product.id)
         : await prepareSourceBag(sourceType, sourceId);
+      if (generation !== requestGeneration.current) return;
       toast.success('Added to your bag. Pay for it at checkout.');
       onCompleted(nextStatus);
     } catch (nextError) {
+      if (generation !== requestGeneration.current) return;
       const message = toApiErrorMessage(nextError, 'Unable to add this custom request to your bag.');
       // A lapsed hold is recoverable: drop the quote so the button asks again.
       if (/INTENT_EXPIRED/i.test(message)) {
@@ -347,7 +367,7 @@ export default function CustomBagSheet({
       setError(message);
       toast.error(message);
     } finally {
-      setSubmitting(false);
+      if (generation === requestGeneration.current) setSubmitting(false);
     }
   };
 
@@ -364,7 +384,7 @@ export default function CustomBagSheet({
         : {
             label: 'Get price',
             onPress: () => void handleGetPrice(),
-            disabled: busy || !product || addressEditing,
+            disabled: busy || !product || addressEditing || queueSummary?.intakeAllowed === false,
           };
 
   const updateMeasurement = (key: string, value: string) => {
@@ -487,6 +507,18 @@ export default function CustomBagSheet({
             />
 
             {/* ── 3. Price ────────────────────────────────────────────── */}
+            <Card style={styles.group}>
+              <AppText variant="subtitle">The brand's custom order queue</AppText>
+              {queueSummary ? <>
+                <AppText variant="body">Your {queueSummary.openOrderCount} open orders with this brand. Brand queue: {queueSummary.counts.ACTIVE} Active | {queueSummary.counts.UP_NEXT} Up Next | {queueSummary.counts.PENDING} Pending | {queueSummary.counts.IN_DELIVERY} In Delivery</AppText>
+                {queueSummary.intakeAllowed === false ? <AppText variant="body" tone="warning">This brand is not accepting new custom orders.</AppText> : null}
+                {queueSummary.jumpAvailable ? <>
+                  <AppText variant="body">Optional priority costs 20% of the garment subtotal. It joins the paid FIFO group behind the current Up Next. At most two priority orders advance before one ordinary order. Priority is not a delivery date.</AppText>
+                  <ThemedSwitch value={queueJumpSelected} disabled={busy} onValueChange={(selected) => { setQueueJumpSelected(selected); invalidateQuote(); }} accessibilityLabel="Add paid queue priority at 20 percent of garment subtotal" />
+                </> : null}
+              </> : <AppText variant="body" tone="muted">Get your price to see the brand's current queue and available priority options.</AppText>}
+              <AppText variant="body" tone="muted">Payment is captured at checkout and held until Active. Pending and Up Next expire in 42 days. Cancelling before Active withholds captured VAT, 10% of garment subtotal and 10% of any jump fee. Delivery is refunded in full, regardless of who cancels. Queue position is not a delivery promise.</AppText>
+            </Card>
             {quote && manualQuote ? (
               <Card padding="md" style={styles.summaryCard}>
                 <AppText variant="subtitle">The brand will quote this one</AppText>
@@ -500,22 +532,7 @@ export default function CustomBagSheet({
                 <AppText variant="captionBold" tone="muted">
                   Your price
                 </AppText>
-                {quote.priceSummary.subtotal != null ? (
-                  <PriceRow label="Production" amount={quote.priceSummary.subtotal} currency={quote.currency} />
-                ) : null}
-                {quote.priceSummary.fabricCharge ? (
-                  <PriceRow label="Fabric" amount={quote.priceSummary.fabricCharge} currency={quote.currency} />
-                ) : null}
-                {quote.priceSummary.rushFee ? (
-                  <PriceRow label="Rush" amount={quote.priceSummary.rushFee} currency={quote.currency} />
-                ) : null}
-                <PriceRow label="Shipping" amount={quote.priceSummary.shippingFee ?? 0} currency={quote.currency} />
-                <View style={[styles.totalRow, { borderTopColor: theme.colors.border }]}>
-                  <AppText variant="bodyBold">Total</AppText>
-                  <AppText variant="h3" tone="primary">
-                    {formatMoney(quote.priceSummary.grandTotal, quote.currency)}
-                  </AppText>
-                </View>
+                <CustomOrderPriceBreakdown summary={quote.priceSummary} currency={quote.currency} />
                 {formatHoldTime(quote.priceLockExpiresAt) ? (
                   <AppText variant="caption" tone="muted">
                     Price held until {formatHoldTime(quote.priceLockExpiresAt)}. Changing a measurement or the

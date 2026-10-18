@@ -1,3 +1,6 @@
+import { Header } from '@/components/ui/Header';
+import { useOrderQueueRefresh } from '@/src/features/orders/useOrderQueueRefresh';
+import { OrderQueueActions } from '@/components/orders/OrderQueueActions';
 import React, { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -223,6 +226,7 @@ export default function BuyerOrderDetailScreen() {
       : null;
   const refetchOrder = orderQuery.refetch;
   const mutateOrder = orderQuery.mutate;
+  useOrderQueueRefresh(() => { void refetchOrder({ forceRefresh: true }); }, status === 'authenticated' && Boolean(orderId), orderId);
   const load = useCallback(() => {
     void refetchOrder({ forceRefresh: true });
   }, [refetchOrder]);
@@ -598,10 +602,7 @@ export default function BuyerOrderDetailScreen() {
   if (status !== 'authenticated') {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <View style={[styles.header, { borderBottomColor: theme.colors.border }]}> 
-          <AppBackButton fallbackHref="/orders" />
-          <AppText variant="bodyBold">Order details</AppText>
-        </View>
+        <Header wrapText title="Order details" left={<AppBackButton fallbackHref="/orders" />} />
         <View style={styles.centerWrap}>
           <Card padding="lg" style={styles.emptyCard}>
             <AppText variant="subtitle">Sign in required</AppText>
@@ -618,10 +619,7 @@ export default function BuyerOrderDetailScreen() {
   if (loading) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <View style={[styles.header, { borderBottomColor: theme.colors.border }]}> 
-          <AppBackButton fallbackHref="/orders" />
-          <AppText variant="bodyBold">Order details</AppText>
-        </View>
+        <Header wrapText title="Order details" left={<AppBackButton fallbackHref="/orders" />} />
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
           <Card padding="lg" style={styles.heroCard}>
             <View style={styles.heroTop}>
@@ -679,10 +677,7 @@ export default function BuyerOrderDetailScreen() {
   if (!order || error) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <View style={[styles.header, { borderBottomColor: theme.colors.border }]}> 
-          <AppBackButton fallbackHref="/orders" />
-          <AppText variant="bodyBold">Order details</AppText>
-        </View>
+        <Header wrapText title="Order details" left={<AppBackButton fallbackHref="/orders" />} />
         <View style={styles.centerWrap}>
           <Card padding="lg" style={styles.emptyCard}>
             <AppText variant="subtitle">Could not load order</AppText>
@@ -711,13 +706,7 @@ export default function BuyerOrderDetailScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}> 
-        <AppBackButton fallbackHref="/orders" />
-        <View style={styles.headerCopy}>
-          <AppText variant="bodyBold">Order details</AppText>
-          <AppText variant="captionRegular" tone="muted">{summaryLabel}</AppText>
-        </View>
-      </View>
+      <Header wrapText title="Order details" subtitle={summaryLabel} left={<AppBackButton fallbackHref="/orders" />} />
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
         {/*
@@ -796,6 +785,7 @@ export default function BuyerOrderDetailScreen() {
           </View>
         </Card>
 
+        {order.kind === 'CUSTOM' ? <OrderQueueActions order={order} onChange={mutateOrder} onRefresh={() => { void refetchOrder({ forceRefresh: true }); }} /> : null}
         <OrderConversationButton orderId={order.id} kind={order.kind} brandName={order.brandName} />
 
         {confirmable ? (

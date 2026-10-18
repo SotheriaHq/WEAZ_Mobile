@@ -1,3 +1,4 @@
+import { Card } from '@/components/ui/Card';
 import React, { useCallback, useMemo, useState } from 'react';
 import { DEFAULT_CURRENCY, formatMoneyOr } from '@/src/utils/money';
 import {
@@ -159,7 +160,7 @@ export default function StudioFinanceScreen() {
   if (!brandId) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
-        <Header
+        <Header wrapText
           title="Finance"
           left={<AppBackButton onPress={() => router.back()} />}
           right={studioHeaderRight}
@@ -188,7 +189,7 @@ export default function StudioFinanceScreen() {
   if (!canRead) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]}>
-        <Header
+        <Header wrapText
           title="Finance"
           left={<AppBackButton onPress={() => router.back()} />}
           right={studioHeaderRight}
@@ -216,7 +217,7 @@ export default function StudioFinanceScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <Header
+      <Header wrapText
         title="Finance"
         subtitle="Balances, held funds, and payouts"
         left={<AppBackButton onPress={() => router.back()} />}
@@ -440,6 +441,13 @@ export default function StudioFinanceScreen() {
             </AppText>
           </View>
 
+          <Card style={{ gap: tokens.spacing.sm }}>
+            <AppText variant="subtitle">Custom orders waiting to start</AppText>
+            <AppText variant="money">{formatMoney(overview?.queuedCustomHeldAmount ?? 0, currency)}</AppText>
+            <AppText variant="body" tone="muted">{overview?.queuedCustomOrderCount ?? 0} paid waiting orders. These shopper funds, including any brand jump share, cannot be withdrawn before Active. They are excluded from available earnings.</AppText>
+            {(overview?.pendingRefundAmount ?? 0) > 0 ? <AppText variant="body" tone="warning">Refunds processing: {formatMoney(overview?.pendingRefundAmount ?? 0, currency)}</AppText> : null}
+          </Card>
+
           {/* Held funds */}
           <SectionTitle title="Held funds" emoji="🔒" count={data?.heldFunds?.length ?? 0} theme={theme} />
           {(data?.heldFunds?.length ?? 0) === 0 ? (
@@ -560,11 +568,12 @@ function HeldCard({
     };
   };
 }) {
+  const waiting = hold.queueLane === 'PENDING' || hold.queueLane === 'UP_NEXT';
   const isFrozen = hold.status?.toUpperCase() === 'FROZEN';
   const isPartiallyReleased = hold.status?.toUpperCase() === 'PARTIALLY_RELEASED';
 
   return (
-    <View
+    <Card
       style={[
         styles.card,
         { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
@@ -597,10 +606,12 @@ function HeldCard({
           </AppText>
         </View>
       </View>
+      {waiting ? <AppText variant="body" tone="warning">{humanize(hold.queueLane)} - shopper funds are held until Active. Brand earnings released: {formatMoney(0, hold.currency)}.</AppText> : null}
+      {waiting && (hold.queueJumpHeldAmount ?? 0) > 0 ? <AppText variant="body" tone="muted">Priority fee held: {formatMoney(hold.queueJumpHeldAmount ?? 0, hold.currency)} (already included in the captured total). The brand share is unavailable before Active.</AppText> : null}
       <View style={styles.amountGrid}>
         <AmountCell
-          label="Held (net)"
-          value={formatMoney(hold.heldNetAmount, hold.currency)}
+          label={waiting ? "Shopper funds held" : "Held (net)"}
+          value={formatMoney(waiting ? hold.heldGrossAmount ?? hold.grossAmount : hold.heldNetAmount, hold.currency)}
           tone="warning"
           theme={theme}
         />
@@ -632,11 +643,11 @@ function HeldCard({
         >
           <AppText variant="caption" tone="secondary">
             ⏳ Release rule: {humanize(hold.releaseCondition)}
-            {hold.nextReleaseAt ? ` · Eligible ${formatDate(hold.nextReleaseAt)}` : ' · Awaiting completion'}
+            {hold.nextReleaseAt ? ` · Eligible ${formatDate(hold.nextReleaseAt)}` : waiting ? ' - Awaiting Active' : ' - Awaiting completion'}
           </AppText>
         </View>
       ) : null}
-    </View>
+    </Card>
   );
 }
 

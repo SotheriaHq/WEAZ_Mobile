@@ -29,6 +29,9 @@ export type BrandFinanceOverview = {
   totalOrders: number;
   activeEscrowHolds?: number;
   queuedCustomAllocations?: number;
+  queuedCustomHeldAmount?: number;
+  queuedCustomOrderCount?: number;
+  pendingRefundAmount?: number;
   negativeBalance: boolean;
 };
 
@@ -66,6 +69,8 @@ export type BrandHeldFund = {
   nextReleaseAt?: string | null;
   releaseCondition?: string | null;
   frozenReason?: string | null;
+  queueLane?: string | null;
+  queueJumpHeldAmount?: number;
 };
 
 export type BrandPayoutRow = {
@@ -102,6 +107,9 @@ const mapOverview = (raw: any): BrandFinanceOverview => ({
   totalOrders: money(raw?.totalOrders),
   activeEscrowHolds: money(raw?.activeEscrowHolds),
   queuedCustomAllocations: money(raw?.queuedCustomAllocations),
+  queuedCustomHeldAmount: money(raw?.queuedCustomHeldAmount),
+  queuedCustomOrderCount: money(raw?.queuedCustomOrderCount),
+  pendingRefundAmount: money(raw?.pendingRefundAmount),
   negativeBalance: Boolean(raw?.negativeBalance),
 });
 
@@ -139,6 +147,8 @@ const mapHeld = (raw: any): BrandHeldFund => ({
   nextReleaseAt: raw?.nextReleaseAt ?? null,
   releaseCondition: raw?.releaseCondition ?? null,
   frozenReason: raw?.frozenReason ?? null,
+  queueLane: raw?.queueLane ?? null,
+  queueJumpHeldAmount: money(raw?.queueJumpHeldAmount),
 });
 
 const mapPayout = (raw: any): BrandPayoutRow => ({

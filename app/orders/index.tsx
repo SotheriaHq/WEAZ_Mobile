@@ -1,3 +1,5 @@
+import { Header } from '@/components/ui/Header';
+import { useOrderQueueRefresh } from '@/src/features/orders/useOrderQueueRefresh';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
@@ -41,7 +43,7 @@ import { MuseLoader } from '@/components/ui/MuseLoader';
  * control (a number is a better label for a filter than a word alone), and the
  * tab rail carries the kind, which nothing offered before.
  */
-type StatusFilter = 'all' | 'pending' | 'active' | 'completed' | 'cancelled';
+type StatusFilter = 'all' | 'pending' | 'held' | 'active' | 'completed' | 'cancelled';
 type KindFilter = 'all' | 'STANDARD' | 'CUSTOM';
 
 const KIND_FILTERS: Array<{ key: KindFilter; label: string }> = [
@@ -51,12 +53,14 @@ const KIND_FILTERS: Array<{ key: KindFilter; label: string }> = [
 ];
 
 function isPendingOrder(order: BuyerOrderSummary) {
+  if (order.queue?.lane) return order.queue.lane === 'PENDING' || order.queue.lane === 'UP_NEXT';
   const status = order.status.toUpperCase();
   const paymentStatus = order.paymentStatus.toUpperCase();
   return paymentStatus !== 'PAID' || status.includes('PENDING') || status.includes('AWAIT') || status.includes('DRAFT');
 }
 
 function isActiveOrder(order: BuyerOrderSummary) {
+  if (order.queue?.lane) return order.queue.lane === 'ACTIVE' || order.queue.lane === 'IN_DELIVERY';
   const status = order.status.toUpperCase();
   return status.includes('PROCESS') || status.includes('SHIPP') || status.includes('TRANSIT') || status.includes('READY') || status.includes('ACCEPT');
 }
@@ -67,6 +71,7 @@ function isCompletedOrder(order: BuyerOrderSummary) {
 }
 
 function isCancelledOrder(order: BuyerOrderSummary) {
+  if (order.queue?.lane === 'TERMINAL' && order.queue.canResubmit) return true;
   const status = order.status.toUpperCase();
   return status.includes('DISPUT') || status.includes('CANCEL') || status.includes('REJECT') || status.includes('REFUND');
 }
@@ -74,6 +79,7 @@ function isCancelledOrder(order: BuyerOrderSummary) {
 function matchesStatusFilter(order: BuyerOrderSummary, filter: StatusFilter) {
   if (filter === 'all') return true;
   if (filter === 'pending') return isPendingOrder(order);
+  if (filter === 'held') return isPendingOrder(order) && order.paymentStatus === 'PAID';
   if (filter === 'active') return isActiveOrder(order);
   if (filter === 'completed') return isCompletedOrder(order);
   return isCancelledOrder(order);
@@ -167,11 +173,43 @@ export default function OrdersScreen() {
   // background. Skeleton only shows on a true cold load (no cached data).
   const ordersQuery = useCachedQuery<BuyerOrderSummary[]>({
     key: queryKeys.orders.list(user?.id),
-    fetcher: () => BuyerOrdersApi.list(),
+    fetcher: () => BuyerOrdersApi.list({ page: 1 }),
     policy: cachePolicies.defaultQuery,
     enabled: status === 'authenticated',
   });
-  const items = ordersQuery.data ?? [];
+  const [additionalItems, setAdditionalItems] = useState<BuyerOrderSummary[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [moreAvailable, setMoreAvailable] = useState(true);
+  const pageRef = useRef(1);
+  const pageGeneration = useRef(0);
+  const pagingBusy = useRef(false);
+  useEffect(() => {
+    pageGeneration.current += 1;
+    pageRef.current = 1;
+    pagingBusy.current = false;
+    setAdditionalItems([]); setLoadingMore(false); setPageError(null);
+    setMoreAvailable((ordersQuery.data?.length ?? 0) >= 50);
+  }, [ordersQuery.data, user?.id]);
+  useEffect(() => () => { pageGeneration.current += 1; }, []);
+  const items = useMemo(() => {
+    const byId = new Map<string, BuyerOrderSummary>();
+    for (const row of [...(ordersQuery.data ?? []), ...additionalItems]) byId.set(`${row.kind}:${row.id}`, row);
+    return [...byId.values()].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+  }, [ordersQuery.data, additionalItems]);
+  const loadMore = async () => {
+    if (pagingBusy.current || !moreAvailable || ordersQuery.isRefreshing) return;
+    pagingBusy.current = true; setLoadingMore(true); setPageError(null);
+    const generation = pageGeneration.current;
+    try {
+      const next = await BuyerOrdersApi.list({ page: pageRef.current + 1 });
+      if (generation !== pageGeneration.current) return;
+      pageRef.current += 1;
+      setAdditionalItems((current) => [...current, ...next]);
+      setMoreAvailable(next.length >= 50);
+    } catch { if (generation === pageGeneration.current) setPageError('Unable to load older orders. Try again.'); }
+    finally { if (generation === pageGeneration.current) { pagingBusy.current = false; setLoadingMore(false); } }
+  };
   const loading = ordersQuery.isLoading;
   const refreshing = ordersQuery.isRefreshing;
   const error = ordersQuery.error
@@ -181,6 +219,7 @@ export default function OrdersScreen() {
   const load = useCallback(() => {
     void refetchOrders({ forceRefresh: true });
   }, [refetchOrders]);
+  useOrderQueueRefresh(load, status === 'authenticated', user?.id);
 
   // A mutation returns the newly resolved schedule. Patch the mounted history
   // directly, rather than making an approved extension wait for a route change
@@ -190,13 +229,14 @@ export default function OrdersScreen() {
 
     return subscribeOrderChanges((change) => {
       const summary = change.summary;
-      if (!summary) return;
+      if (!summary) { void refetchOrders({ forceRefresh: true }); return; }
+      setAdditionalItems((current) => applyOrderSummaryUpdate(current, summary));
       queryClient.setQueryData<BuyerOrderSummary[]>(
         queryKeys.orders.list(user.id),
         (current) => (current ? applyOrderSummaryUpdate(current, summary) : current),
       );
     });
-  }, [status, user?.id]);
+  }, [status, user?.id, refetchOrders]);
 
   // Phase 5 scroll-proximity: warm the detail query for on-screen orders so a
   // tap opens instantly. Bounded by the prefetch budget (query lane) + dedupe.
@@ -274,13 +314,14 @@ export default function OrdersScreen() {
 
   const statItems = useMemo(
     () => [
-      { key: 'all' as const, label: 'Total', value: kindScopedItems.length, tint: 'primary' as const },
+      { key: 'all' as const, label: 'Loaded', value: kindScopedItems.length, tint: 'primary' as const },
       {
         key: 'pending' as const,
-        label: 'Pending',
+        label: 'Waiting',
         value: kindScopedItems.filter(isPendingOrder).length,
         tint: 'warning' as const,
       },
+      { key: 'held' as const, label: 'Held', value: kindScopedItems.filter((item) => isPendingOrder(item) && item.paymentStatus === 'PAID').length, tint: 'warning' as const },
       {
         key: 'active' as const,
         label: 'Active',
@@ -295,7 +336,7 @@ export default function OrdersScreen() {
       },
       {
         key: 'cancelled' as const,
-        label: 'Closed',
+        label: 'Cancelled',
         value: kindScopedItems.filter(isCancelledOrder).length,
         tint: 'danger' as const,
       },
@@ -316,13 +357,7 @@ export default function OrdersScreen() {
   if (status !== 'authenticated') {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <View style={[styles.header, { borderBottomColor: theme.colors.border }]}> 
-          <AppBackButton fallbackHref="/(tabs)/me" />
-          <View style={styles.headerCopy}>
-            <AppText variant="bodyBold">My Orders</AppText>
-            <AppText variant="captionRegular" tone="muted">Sign in to view your orders</AppText>
-          </View>
-        </View>
+        <Header wrapText title="My Orders" subtitle="Sign in to view your orders" left={<AppBackButton fallbackHref="/(tabs)/me" />} />
         <View style={styles.unauthenticatedWrap}>
           <Card padding="lg" style={styles.emptyCard}>
             <AppText variant="subtitle">Sign in required</AppText>
@@ -338,13 +373,7 @@ export default function OrdersScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}> 
-        <AppBackButton fallbackHref="/(tabs)/me" />
-        <View style={styles.headerCopy}>
-          <AppText variant="bodyBold">My Orders</AppText>
-          <AppText variant="captionRegular" tone="muted">Standard and custom order history</AppText>
-        </View>
-      </View>
+      <Header wrapText title="My Orders" subtitle="Standard and custom order history" left={<AppBackButton fallbackHref="/(tabs)/me" />} />
 
       <FlatList
         showsVerticalScrollIndicator={false}
@@ -477,11 +506,10 @@ export default function OrdersScreen() {
           )
         }
         ListFooterComponent={
-          loading && filteredItems.length > 0 ? (
-            <View style={styles.footerLoading}>
-              <MuseLoader size={20} />
-            </View>
-          ) : null
+          <View style={styles.footerLoading}>
+            {pageError ? <AppText variant="body" tone="danger">{pageError}</AppText> : null}
+            {moreAvailable ? <Button title={loadingMore ? 'Loading older orders...' : 'Load older orders'} disabled={loadingMore || refreshing} variant="secondary" onPress={() => void loadMore()} /> : null}
+          </View>
         }
       />
       <ReviewFormSheet

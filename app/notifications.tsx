@@ -1,3 +1,4 @@
+import { Header } from '@/components/ui/Header';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -100,7 +101,7 @@ function NotificationCopy({ item }: { item: MobileNotification }) {
   const segments = describeNotificationSegments(source);
 
   return (
-    <AppText variant="body" numberOfLines={3} accessibilityLabel={describeNotificationText(source)}>
+    <AppText variant="body" accessibilityLabel={describeNotificationText(source)}>
       {segments.map((segment, index) => {
         const key = `${segment.kind}-${index}`;
         if (segment.kind === 'actor') {
@@ -386,9 +387,7 @@ export default function NotificationsScreen() {
   if (!hasAuthenticatedSession) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
-          <AppBackButton fallbackHref="/(tabs)" />
-        </View>
+        <Header wrapText title="Notifications" left={<AppBackButton fallbackHref="/(tabs)" />} />
         <View style={styles.stateWrap}>
           {status === 'loading' ? (
             <MuseLoader size={20} />
@@ -420,35 +419,13 @@ export default function NotificationsScreen() {
         line and can therefore carry its real name — the same words the web
         surface uses, so the action is called one thing across the product.
       */}
-      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
-        <View style={styles.headerTop}>
-          <AppBackButton fallbackHref="/(tabs)" />
-          <View style={styles.headerCopy}>
-            <AppText variant="title" numberOfLines={1}>Notifications</AppText>
-          </View>
-          {/* Soft-primary pill with primary text, the same treatment the system
-              avatar in this list already uses. Colour comes from tone, never a
-              style override. */}
-          {unreadCount > 0 ? (
-            <View style={[styles.unreadPill, { backgroundColor: theme.colors.primarySoft }]}>
-              <AppText variant="captionBold" tone="primary">
-                {unreadCount > 99 ? '99+' : String(unreadCount)}
-              </AppText>
-            </View>
-          ) : null}
-        </View>
-        {unreadCount > 0 ? (
-          <View style={styles.headerActions}>
-            <Button
-              title="Mark all as read"
-              size="sm"
-              variant="ghost"
-              onPress={() => void handleMarkAllRead()}
-              loading={markingAll}
-            />
-          </View>
-        ) : null}
-      </View>
+      <Header wrapText title="Notifications" left={<AppBackButton fallbackHref="/(tabs)" />}
+        right={unreadCount > 0 ? <View style={[styles.unreadPill, { backgroundColor: theme.colors.primarySoft }]}>
+          <AppText variant="captionBold" tone="primary">{unreadCount > 99 ? '99+' : String(unreadCount)}</AppText>
+        </View> : undefined} />
+      {unreadCount > 0 ? <View style={styles.headerActions}>
+        <Button title="Mark all as read" size="sm" variant="ghost" onPress={() => void handleMarkAllRead()} loading={markingAll} />
+      </View> : null}
 
       {loading ? (
         <View style={styles.stateWrap}>
@@ -511,6 +488,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   headerActions: {
+    paddingHorizontal: tokens.spacing.lg,
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },

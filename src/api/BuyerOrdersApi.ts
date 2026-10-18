@@ -1,3 +1,6 @@
+import { acceptQueueSnapshot, clearQueueSnapshots } from '@/src/features/orders/queueSnapshotStore';
+import { CustomOrderQueueApi, type QueuePresenter } from './CustomOrderQueueApi';
+import { syncQueueClock } from '@/src/features/orders/queueClock';
 import { apiClient } from './httpClient';
 import { markOrdersChanged } from '@/src/features/orders/orderRevision';
 import { type Order } from './ProfileApi';
@@ -98,6 +101,7 @@ function normalizeSchedule(value: unknown): BuyerOrderSchedule {
 }
 
 export interface BuyerOrderSummary {
+  queue?: QueuePresenter | null;
   id: string;
   kind: BuyerOrderKind;
   title: string;
@@ -193,6 +197,7 @@ export interface BuyerExtensionPolicy {
 }
 
 export interface BuyerCustomOrderDetail {
+  queue?: QueuePresenter | null;
   kind: 'CUSTOM';
   id: string;
   title: string;
@@ -210,6 +215,8 @@ export interface BuyerCustomOrderDetail {
   paymentReference: string | null;
   buyerPriceSummary: {
     grandTotal: number;
+    vatAmount?: number | null;
+    queueJumpFee?: number | null;
     subtotal: number | null;
     shippingFee: number | null;
     rushFee: number | null;
@@ -484,6 +491,7 @@ function normalizeCustomSummary(item: RecordLike): BuyerOrderSummary | null {
     progressLabel: optionalString(item.currentProgressStage),
     sourceLabel: source.type === 'PRODUCT' ? 'Custom product order' : 'Custom design order',
     canConfirmDelivery: isDeliveryConfirmationPending(asString(item.status, '')),
+    queue: acceptQueueSnapshot(asString(item.id), item.queue as QueuePresenter | null | undefined),
     schedule: normalizeSchedule(item.schedule),
   };
 }
@@ -567,6 +575,8 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
     paymentReference: optionalString(item.paymentReference),
     buyerPriceSummary: {
       grandTotal: asNumber(summary.grandTotal ?? 0),
+      vatAmount: summary.vatAmount == null ? null : asNumber(summary.vatAmount),
+      queueJumpFee: summary.queueJumpFee == null ? null : asNumber(summary.queueJumpFee),
       subtotal: summary.subtotal != null ? asNumber(summary.subtotal) : null,
       shippingFee: summary.shippingFee != null ? asNumber(summary.shippingFee) : null,
       rushFee: summary.rushFee != null ? asNumber(summary.rushFee) : null,
@@ -631,6 +641,7 @@ function normalizeCustomDetail(raw: unknown): BuyerCustomOrderDetail {
       availableAt: optionalString(delayDispute.availableAt),
       reason: asString(delayDispute.reason, 'NOT_LATE_YET'),
     },
+    queue: acceptQueueSnapshot(asString(item.id), item.queue as QueuePresenter | null | undefined),
     schedule: normalizeSchedule(item.schedule),
     buyerAdminNoticeAt: optionalString(item.buyerAdminNoticeAt),
     hasUnreadBuyerAdminNotice: item.hasUnreadBuyerAdminNotice === true,
@@ -692,6 +703,7 @@ export function toBuyerOrderSummary(detail: BuyerOrderDetail): BuyerOrderSummary
     progressLabel: detail.currentProgressStage,
     sourceLabel: detail.sourceType === 'PRODUCT' ? 'Custom product order' : 'Custom design order',
     canConfirmDelivery: isDeliveryConfirmationPending(detail.status),
+    queue: detail.queue,
     schedule: detail.schedule,
   };
 }
@@ -705,25 +717,36 @@ export function toBuyerOrderSummary(detail: BuyerOrderDetail): BuyerOrderSummary
  * and stop asking for the rest of the session.
  */
 let customOrdersUnavailable = false;
+let customOrderSessionRevision = 0;
 
 async function listCustomOrders(page = 1, limit = 50): Promise<BuyerOrderSummary[]> {
   if (customOrdersUnavailable) return [];
+  const sessionRevision = customOrderSessionRevision;
 
   try {
     const response = await apiClient.get('/custom-orders', {
       params: { page, limit },
     });
+    if (sessionRevision !== customOrderSessionRevision) return [];
     const items = unwrapCollection<unknown>(response.data);
 
-    return items
+    const rows = items
       .map((entry) => normalizeCustomSummary(asRecord(entry)))
       .filter((entry): entry is BuyerOrderSummary => Boolean(entry));
+    const missing = rows.filter((row) => !row.queue);
+    const queues = missing.length ? await CustomOrderQueueApi.summaries(missing.map((row) => row.id)) : {};
+    if (sessionRevision !== customOrderSessionRevision) return [];
+    return rows.map((row) => {
+      const queue = acceptQueueSnapshot(row.id, row.queue ?? queues[row.id]);
+      if (queue?.serverNow) syncQueueClock(queue.serverNow);
+      return { ...row, queue };
+    });
   } catch (error) {
     const status = (error as { response?: { status?: number } })?.response?.status;
     // 400/403 here means "this account type has no custom orders", not a
     // transient failure — anything else stays a real error worth surfacing.
     if (status === 400 || status === 403) {
-      customOrdersUnavailable = true;
+      if (sessionRevision === customOrderSessionRevision) customOrdersUnavailable = true;
       return [];
     }
     throw error;
@@ -733,6 +756,8 @@ async function listCustomOrders(page = 1, limit = 50): Promise<BuyerOrderSummary
 /** Clear the cached "not a buyer" verdict — call on sign-out / account switch. */
 export function resetCustomOrdersAvailability() {
   customOrdersUnavailable = false;
+  customOrderSessionRevision += 1;
+  clearQueueSnapshots();
 }
 
 async function listStandardOrders(page = 1, limit = 50): Promise<BuyerOrderSummary[]> {
@@ -745,11 +770,11 @@ async function listStandardOrders(page = 1, limit = 50): Promise<BuyerOrderSumma
 }
 
 export const BuyerOrdersApi = {
-  async list(options?: { limit?: number }): Promise<BuyerOrderSummary[]> {
+  async list(options?: { limit?: number; page?: number }): Promise<BuyerOrderSummary[]> {
     const limit = Math.max(1, Math.min(options?.limit ?? 50, 50));
     const [standardOrders, customOrders] = await Promise.all([
-      listStandardOrders(1, limit),
-      listCustomOrders(1, limit),
+      listStandardOrders(options?.page ?? 1, limit),
+      listCustomOrders(options?.page ?? 1, limit),
     ]);
 
     const merged: BuyerOrderSummary[] = [
@@ -758,7 +783,7 @@ export const BuyerOrdersApi = {
     ];
 
     merged.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
-    return merged.slice(0, limit);
+    return options?.page ? merged : merged.slice(0, limit);
   },
 
   async getById(
@@ -769,7 +794,10 @@ export const BuyerOrdersApi = {
     const prefer = options?.prefer ?? 'STANDARD';
     const tryCustom = async () => {
       const response = await apiClient.get(`/custom-orders/${orderId}`);
-      return normalizeCustomDetail(response.data);
+      const detail = normalizeCustomDetail(response.data);
+      detail.queue = acceptQueueSnapshot(orderId, detail.queue ?? await CustomOrderQueueApi.get(orderId));
+      if (detail.queue?.serverNow) syncQueueClock(detail.queue.serverNow);
+      return detail;
     };
     const tryStandard = async () => {
       const response = await apiClient.get(`/store/orders/${orderId}`);

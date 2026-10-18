@@ -7,13 +7,14 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 
 type Props = {
   title: string;
+  wrapText?: boolean;
   subtitle?: string;
   left?: React.ReactNode;
   right?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 };
 
-export function Header({ title, subtitle, left, right, style }: Props) {
+export function Header({ title, subtitle, left, right, style, wrapText = false }: Props) {
   const { theme } = useTheme();
 
   return (
@@ -30,11 +31,11 @@ export function Header({ title, subtitle, left, right, style }: Props) {
       <View style={styles.row}>
         <View style={styles.side}>{left}</View>
         <View style={styles.body}>
-          <AppText variant="title" numberOfLines={1}>
+          <AppText variant="title" numberOfLines={wrapText ? undefined : 1}>
             {title}
           </AppText>
           {subtitle ? (
-            <AppText variant="caption" tone="muted" numberOfLines={1}>
+            <AppText variant="caption" tone="muted" numberOfLines={wrapText ? undefined : 1}>
               {subtitle}
             </AppText>
           ) : null}

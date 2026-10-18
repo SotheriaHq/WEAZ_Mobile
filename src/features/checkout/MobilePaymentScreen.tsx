@@ -50,7 +50,7 @@ function statusTone(status?: PaymentAttemptStatus): 'success' | 'danger' | 'warn
 function statusCopy(status?: PaymentAttemptStatus) {
   switch (status) {
     case 'PAID':
-      return 'Payment verified. Your order state will be available from Orders after refetch.';
+      return 'Payment verified. Custom order payments are captured and held until Active. Becoming Up Next does not charge you again. Open Orders for your confirmed queue position and receipt.';
     case 'FAILED':
       return 'Payment failed. Your bag is still saved so you can retry.';
     case 'CANCELLED':
@@ -270,6 +270,11 @@ export function MobilePaymentScreen() {
             </AppText>
           </Card>
 
+          {resolvedStatus === 'PAID' && (verifyResult?.customOrderIds?.length || attempt?.customOrderIds?.length || attempt?.customOrderId) ? <Card style={styles.card}>
+            <AppText variant="subtitle">Custom order capture receipt</AppText>
+            <AppText variant="body">Your payment is captured. WIEZ holds waiting-order funds until Active. Queue admission, cancellation and refunds remain visible in Orders; verification does not mean work has started.</AppText>
+            {(verifyResult?.customOrderIds ?? attempt?.customOrderIds ?? (attempt?.customOrderId ? [attempt.customOrderId] : [])).map((id) => <Button key={id} title="View custom order and receipt" variant="secondary" onPress={() => router.replace({ pathname: '/orders/[orderId]', params: { orderId: id, kind: 'CUSTOM' } } as never)} />)}
+          </Card> : null}
           <Card style={styles.card}>
             <AppText variant="subtitle">Next step</AppText>
             {canOpenProvider && resolvedStatus !== 'PAID' ? (

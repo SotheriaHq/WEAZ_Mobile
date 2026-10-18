@@ -45,11 +45,28 @@ export function applyOrderSummaryUpdate(
   orders: BuyerOrderSummary[],
   summary: BuyerOrderSummary,
 ): BuyerOrderSummary[] {
-  return orders.map((order) => (order.id === summary.id ? summary : order));
+  return orders.map((order) => {
+    if (order.id !== summary.id) return order;
+    const currentRevision = order.queue?.orderRevision;
+    const nextRevision = summary.queue?.orderRevision;
+    if (currentRevision != null && (nextRevision == null || nextRevision < currentRevision)) return order;
+    return summary;
+  });
 }
 
 /** Listen for a confirmed order mutation while a list screen is mounted. */
 export function subscribeOrderChanges(listener: (change: OrderChange) => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+let expiryRefreshPending = false;
+/** Coalesce simultaneous visible deadlines into one history refresh. */
+export function requestQueueExpiryRefresh(): void {
+  if (expiryRefreshPending) return;
+  expiryRefreshPending = true;
+  Promise.resolve().then(() => {
+    expiryRefreshPending = false;
+    markOrdersChanged();
+  });
 }

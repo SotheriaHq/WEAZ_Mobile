@@ -1,3 +1,4 @@
+import { useOrderQueueRefresh } from '@/src/features/orders/useOrderQueueRefresh';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -817,6 +818,8 @@ export default function BuyerProfileScreen() {
     // Primitives only — see `fallbackProfileRef` above.
   }, [status, user?.id, warmProfileStateKey]);
 
+  useOrderQueueRefresh(() => { void load({ silent: true, force: true }); }, status === 'authenticated' && activeTab === 'Orders', user?.id);
+
   /**
    * Fetch on mount, NOT behind the deferred-work gate.
    *
@@ -873,7 +876,7 @@ export default function BuyerProfileScreen() {
     return subscribeOrderChanges((change) => {
       lastOrderRevisionRef.current = getOrderRevision();
       const summary = change.summary;
-      if (!summary) return;
+      if (!summary) { void load({ force: true }); return; }
 
       // The extension endpoint has already returned the new server-resolved
       // schedule. Replace the visible row synchronously; do not make the
@@ -883,7 +886,7 @@ export default function BuyerProfileScreen() {
         orders: applyOrderSummaryUpdate(current.orders, summary),
       }));
     });
-  }, []);
+  }, [load]);
   useFocusEffect(
     useCallback(() => {
       if (!deferredWorkReady) return undefined;

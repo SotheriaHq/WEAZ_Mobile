@@ -1,3 +1,5 @@
+import { CustomOrderPriceBreakdown } from '@/components/orders/CustomOrderPriceBreakdown';
+import { MobileStoreApi, type CustomBagState } from '@/src/api/StoreApi';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, Stack } from 'expo-router';
@@ -130,6 +132,17 @@ export function MobileCheckoutScreen() {
     new one, plus its own copy of the country/state/city pickers. The chosen
     address becomes the checkout details below.
   */
+  const [customBag, setCustomBag] = useState<CustomBagState | null>(null);
+  const [bagError, setBagError] = useState<string | null>(null);
+  const [bagVersion, setBagVersion] = useState(0);
+  useEffect(() => {
+    if (auth.status !== 'authenticated') { setCustomBag(null); return; }
+    let active = true;
+    setBagError(null);
+    void MobileStoreApi.listCustomBag().then((bag) => { if (active) setCustomBag(bag); })
+      .catch(() => { if (active) { setCustomBag(null); setBagError('Unable to load custom request prices. Refresh your bag before paying.'); } });
+    return () => { active = false; };
+  }, [auth.status, auth.user?.id, bagVersion]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [addressEditing, setAddressEditing] = useState(false);
   const addressDefaults = useMemo(
@@ -202,6 +215,10 @@ export function MobileCheckoutScreen() {
       return;
     }
 
+    if (!customBag || bagError || customBag.items.some((item) => item.isPriceLockExpired || !item.priceSummary)) {
+      toast.error(bagError || 'Refresh your bag and renew any expired custom request prices before paying.');
+      return;
+    }
     const trimmed = trimForm(form);
     if (addressEditing) {
       toast.error('Save the address you are editing first.');
@@ -291,6 +308,10 @@ export function MobileCheckoutScreen() {
     paymentPolicyAccepted,
     refreshGlobalBagCount,
     toast,
+    customBag,
+    bagError,
+    addressEditing,
+    selectedAddressId,
   ]);
 
   if (!isMobileCheckoutEnabled()) {
@@ -336,16 +357,29 @@ export function MobileCheckoutScreen() {
               <AppText variant="bodyBold">{String(count.combinedCount)}</AppText>
             </View>
             <AppText variant="caption" tone="muted">
-              Standard items and custom requests are read from your backend-owned bag at checkout time.
+              Standard items and custom requests share one checkout. Custom payments are captured now and held until the order becomes Active.
             </AppText>
             <Button
               title="Refresh bag"
               variant="secondary"
               onPress={() => {
+                setBagVersion((value) => value + 1);
                 void refreshGlobalBagCount({ forceRefresh: true });
               }}
             />
           </Card>
+
+          {bagError ? <AppText variant="body" tone="danger">{bagError}</AppText> : null}
+          {customBag?.items.map((item) => <Card key={item.sessionId} style={styles.card}>
+            <AppText variant="subtitle">{item.sourceTitle || 'Custom request'}</AppText>
+            {item.priceSummary ? <CustomOrderPriceBreakdown summary={item.priceSummary} currency={item.currency} /> : <AppText variant="body" tone="warning">Price breakdown unavailable. Refresh before paying.</AppText>}
+            {item.isPriceLockExpired ? <AppText variant="body" tone="danger">Price hold expired. Return to your bag to renew this price.</AppText> : null}
+          </Card>)}
+          {customBag?.items.length ? <Card style={styles.card}>
+            <AppText variant="subtitle">Before your custom order starts</AppText>
+            <AppText variant="body">Pending and Up Next orders cancel after 42 days. One retain is available from 48 through 12 hours before expiry. Cancellation before Active withholds the captured VAT, 10% of the garment subtotal and 10% of any jump fee; delivery is refunded in full. These deductions apply regardless of who cancels.</AppText>
+            <AppText variant="body" tone="muted">Priority never displaces Up Next. At most two priority orders move forward before an ordinary waiting order. Position is not a delivery promise.</AppText>
+          </Card> : null}
 
           <DeliveryAddressBook
             title="Delivery details"
@@ -402,7 +436,7 @@ export function MobileCheckoutScreen() {
             <Button
               title={submitting ? 'Initializing...' : 'Continue to secure payment'}
               loading={submitting}
-              disabled={!hasBagItems || submitting || !paymentPolicyAccepted || addressEditing}
+              disabled={!hasBagItems || submitting || !paymentPolicyAccepted || addressEditing || !customBag || Boolean(bagError) || customBag.items.some((item) => item.isPriceLockExpired || !item.priceSummary)}
               onPress={() => {
                 void beginCheckout();
               }}

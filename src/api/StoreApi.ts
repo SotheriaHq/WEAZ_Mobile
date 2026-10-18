@@ -1,3 +1,4 @@
+import type { BrandQueueSummary } from './CustomOrderQueueApi';
 import { apiClient } from '@/src/api/httpClient';
 import type {
   SizeRecommendationResponse as ProfileSizeRecommendationResponse,
@@ -83,6 +84,8 @@ export interface ActiveCustomConfiguration {
 }
 
 export interface CustomPriceSummary {
+  vatAmount?: number | null;
+  queueJumpFee?: number | null;
   grandTotal: number;
   subtotal: number | null;
   shippingFee: number | null;
@@ -100,6 +103,8 @@ export interface CustomPriceSummary {
  * `PricePreviewResponse`.
  */
 export interface CustomPricePreview {
+  brandId?: string;
+  queueSummary?: BrandQueueSummary | null;
   checkoutIntentId: string | null;
   configurationVersionId?: string;
   quoteStatus?: string;
@@ -126,6 +131,8 @@ function toCustomPriceSummary(raw: unknown): CustomPriceSummary | null {
     shippingFee: asFiniteNumber(source.shippingFee),
     rushFee: asFiniteNumber(source.rushFee),
     fabricCharge: asFiniteNumber(source.fabricCharge),
+    vatAmount: source.vatAmount == null ? null : asFiniteNumber(source.vatAmount),
+    queueJumpFee: source.queueJumpFee == null ? null : asFiniteNumber(source.queueJumpFee),
   };
 }
 
@@ -140,6 +147,7 @@ export interface CustomBagState {
     rushSelected: boolean;
     measurementCount: number;
     grandTotal: number | null;
+    priceSummary?: CustomPriceSummary | null;
     currency: string;
     isPriceLockExpired: boolean;
     canRelockPrice: boolean;
@@ -1502,6 +1510,7 @@ export const MobileStoreApi = {
     configurationId: string;
     measurementValues: Record<string, number>;
     rushSelected?: boolean;
+    queueJumpSelected?: boolean;
     shippingAddress?: Record<string, unknown>;
   }): Promise<CustomPricePreview> {
     assertMobileCheckoutEnabled();
@@ -1509,6 +1518,7 @@ export const MobileStoreApi = {
       configurationId: payload.configurationId,
       measurementValues: payload.measurementValues,
       rushSelected: Boolean(payload.rushSelected),
+      queueJumpSelected: Boolean(payload.queueJumpSelected),
       shippingAddress: payload.shippingAddress,
       idempotencyKey: toIdempotencyKey(),
     });
@@ -1516,6 +1526,8 @@ export const MobileStoreApi = {
     const data = unwrapData<Record<string, unknown>>(response.data);
     const summary = data?.buyerPriceSummary as Record<string, unknown> | null | undefined;
     return {
+      brandId: asString(data?.brandId) ?? undefined,
+      queueSummary: data?.queueSummary as BrandQueueSummary | null | undefined,
       checkoutIntentId: asString(data?.checkoutIntentId),
       configurationVersionId: asString(data?.configurationVersionId) ?? undefined,
       quoteStatus: asString(data?.quoteStatus) ?? undefined,
@@ -1536,6 +1548,7 @@ export const MobileStoreApi = {
     contactInfo: Record<string, unknown>;
     customerName: string;
     noDirectMatchAcknowledged?: boolean;
+    queueJumpSelected?: boolean;
   }): Promise<void> {
     assertMobileCheckoutEnabled();
     const idempotencyKey = toIdempotencyKey();
@@ -1548,6 +1561,7 @@ export const MobileStoreApi = {
         configurationVersionId: payload.configurationVersionId,
         measurementValues: payload.measurementValues,
         rushSelected: false,
+        queueJumpSelected: Boolean(payload.queueJumpSelected),
         shippingAddress: payload.shippingAddress,
         contactInfo: payload.contactInfo,
         customerName: payload.customerName,
@@ -1606,6 +1620,7 @@ function normalizeCustomBagLine(entry: unknown): CustomBagState['items'][number]
     rushSelected: item.rushSelected === true,
     measurementCount: asNumber(item.measurementCount, 0),
     grandTotal: Number.isFinite(grandTotal) ? grandTotal : null,
+    priceSummary: toCustomPriceSummary(priceSummary),
     currency: asString(priceSummary.currency) ?? 'NGN',
     isPriceLockExpired: item.isPriceLockExpired === true,
     canRelockPrice: item.canRelockPrice === true,

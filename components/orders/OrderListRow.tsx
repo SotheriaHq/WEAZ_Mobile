@@ -22,6 +22,7 @@ import {
 } from '@/components/orders/OrderScheduleBadge';
 import { AppText } from '@/components/ui/AppText';
 import { StableImage } from '@/components/ui/StableImage';
+import { OrderQueueBadge } from './OrderQueueBadge';
 import type { BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -208,7 +209,7 @@ export const OrderListRow = memo(function OrderListRow({
           fact about the ORDER, not about the money — and because a late order
           needs the width to say so in words.
         */}
-        <OrderScheduleBadge schedule={order.schedule} />
+        {order.queue?.lane ? <OrderQueueBadge queue={order.queue} /> : <OrderScheduleBadge schedule={order.schedule} />}
       </View>
 
       <View style={styles.amount}>
@@ -232,6 +233,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.md,
   },
   row: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: tokens.spacing.md,
@@ -262,6 +264,7 @@ const styles = StyleSheet.create({
   },
   copy: {
     flex: 1,
+    flexBasis: 140,
     minWidth: 0,
     gap: 2,
   },

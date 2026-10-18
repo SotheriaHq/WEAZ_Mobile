@@ -20,6 +20,7 @@ export type AddCustomOrderBagPayload = {
   contactInfo: Record<string, unknown>;
   customerName: string;
   noDirectMatchAcknowledged?: boolean;
+  queueJumpSelected?: boolean;
 };
 
 export async function prepareBag(productId: string): Promise<ProductBagStatus> {
