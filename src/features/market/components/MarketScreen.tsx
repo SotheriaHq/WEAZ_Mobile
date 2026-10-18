@@ -958,6 +958,7 @@ function CollectionRow({
           keyExtractor={(item) => item.id}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.horizontalCardsContent}
+          {...ROW_STRIP_WINDOW}
           renderItem={({ item }) => (
             <CollectionCard collection={item} width={cardWidth} onOpen={onOpen} />
           )}
@@ -966,6 +967,20 @@ function CollectionRow({
     </View>
   );
 }
+
+/**
+ * Render window for every horizontal card strip on Market.
+ *
+ * A card is ~42% of the screen, so 2.4 are visible; the FlatList default of
+ * 10 per strip rendered four screens of off-screen cards per row on first
+ * paint. Three covers the visible ones plus the peeking edge; the rest arrive
+ * as the strip is swiped.
+ */
+const ROW_STRIP_WINDOW = {
+  initialNumToRender: 3,
+  maxToRenderPerBatch: 3,
+  windowSize: 5,
+} as const;
 
 function HorizontalCardRow({
   title,
@@ -1048,6 +1063,7 @@ function HorizontalCardRow({
         keyExtractor={(item) => item.key}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.horizontalCardsContent}
+        {...ROW_STRIP_WINDOW}
         renderItem={({ item }) => (
           <MarketCard
             item={item}
@@ -1160,6 +1176,7 @@ function ApiSectionRow({
         keyExtractor={(item) => `${item.entityType}:${item.sourceId}`}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.horizontalCardsContent}
+        {...ROW_STRIP_WINDOW}
         renderItem={({ item }) => (
           <ApiSectionCard
             item={item}
@@ -2657,6 +2674,18 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
         viewabilityConfig={viewabilityConfigRef.current}
         onViewableItemsChanged={handleViewableRowsChanged}
         removeClippedSubviews={false}
+        /*
+          First paint = what fits on screen. The defaults (10 rows, each a
+          horizontal strip that ALSO renders 10 cards) built up to ~100 cards
+          — each with its own media-URL query, image and badges — before
+          Market could show anything: `Market:self=1102ms×2` on the
+          2026-10-17 21:36 capture. Rows beyond the fold render as the list
+          scrolls. See ROW_STRIP_WINDOW for the strips themselves.
+        */
+        initialNumToRender={3}
+        maxToRenderPerBatch={2}
+        updateCellsBatchingPeriod={60}
+        windowSize={7}
       />
 
       <MarketFilterSheet

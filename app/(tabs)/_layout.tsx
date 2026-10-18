@@ -694,9 +694,30 @@ export default function TabLayout() {
               return true;
             }
             if (injected) {
-              // WebView already received the hop. Focus the Studio tab / pop
-              // Finance without minting a second WebView (singular index).
-              router.navigate(nextHref as any);
+              /*
+                The WebView already has the hop; now show it.
+
+                From Finance/Staff (native screens pushed ON TOP of the WebView
+                in the Studio stack) this POPS back down to it. It used to
+                `router.navigate('/studio')`, which pushed a SECOND Studio screen
+                over Finance: a cold handoff and reload, Back from it landed on
+                Finance again, and the new copy stalled while the real one sat
+                frozen underneath — "the island takes presses but the screens
+                are stuck" (device log 2026-10-17 21:40:41 / 21:41:04, two cold
+                route-opens after Finance).
+              */
+              const onNativeStudioSubScreen =
+                pathname.startsWith('/studio/finance') ||
+                pathname.startsWith('/studio/staff') ||
+                pathname.startsWith('/studio/resolve-alias');
+              if (onNativeStudioSubScreen && router.canDismiss()) {
+                router.dismissAll();
+                router.setParams({
+                  routeKey: webviewRouteKey === 'overview' ? '' : webviewRouteKey,
+                } as any);
+              } else {
+                router.navigate(nextHref as any);
+              }
               releaseNavigationLock('studio_in_place_focus');
               navPerf.routeCallEnd(navFlow, { target: lockKey });
               return true;

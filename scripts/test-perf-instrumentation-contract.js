@@ -238,6 +238,25 @@ check(
   !/openStudioInBrowser|BROWSER_FALLBACK_MS|Try in app/.test(studioWebViewSource) &&
     /MAX_SILENT_RELOADS/.test(studioWebViewSource),
 );
+// Studio is a tab: router.back() from it fell through to Runway.
+check(
+  'Studio Back never uses router.back() and walks sub-page → section → Dashboard → Catalogue',
+  /const handleStudioBack = useCallback/.test(studioWebViewSource) &&
+    /onPress=\{handleStudioBack\}/.test(studioWebViewSource) &&
+    !/router\.back\(\)/.test(studioWebViewSource.slice(studioWebViewSource.indexOf('const closeStudio'), studioWebViewSource.indexOf('const closeStudio') + 900)),
+);
+// From Finance, a Studio chip pushed a SECOND WebView over it (device log
+// 2026-10-17 21:40-21:41): it must pop back to the existing one.
+check(
+  'island pops back to the Studio WebView from native Studio screens',
+  /onNativeStudioSubScreen && router\.canDismiss\(\)/.test(read('app/(tabs)/_layout.tsx')),
+);
+// Market first paint built ~100 cards (Market:self=1102ms×2).
+check(
+  'Market renders only the fold on first paint',
+  /initialNumToRender=\{3\}/.test(read('src/features/market/components/MarketScreen.tsx')) &&
+    /const ROW_STRIP_WINDOW/.test(read('src/features/market/components/MarketScreen.tsx')),
+);
 // Hidden Market re-rendered 5×844ms on sign-in (2026-10-17 18:00 capture).
 check(
   'hidden Market keeps its last viewer until focused',

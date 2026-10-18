@@ -326,13 +326,20 @@ export default function StudioWebViewScreen() {
   // A web Back was sent and the page has not answered yet — see the BackHandler.
   const webBackPendingRef = useRef(false);
 
+  /*
+    Leaving Studio goes to the brand's Catalogue — never `router.back()`.
+
+    Studio is a TAB. `router.back()` from a tab walks tab history, and on a
+    fresh session that history's floor is the first tab: Runway. Every 👈 and
+    hardware Back that fell through to here put a brand on the shopper feed
+    and left them to find their way back (owner report 2026-10-17).
+  */
   const closeStudio = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace((hasBrandWorkspace ? '/catalog' : '/(tabs)/me') as any);
+    router.navigate((hasBrandWorkspace ? '/catalog' : '/(tabs)/me') as any);
   }, [hasBrandWorkspace]);
+
+  // The page's own location, from its ROUTE_CHANGED reports.
+  const lastWebPathRef = useRef<string | null>(null);
 
   const retry = useCallback(() => {
     sessionEstablishedRef.current = false;
@@ -581,6 +588,43 @@ export default function StudioWebViewScreen() {
     }, [loadState, recoverStudio]),
   );
 
+  /*
+    One Back for Studio — the 👈 and the hardware key both land here.
+
+    Walked inside-out, the way a native workspace behaves:
+      1. On a Studio sub-page (a product editor, a collection, an order) →
+         step back inside the page. If the page has no history to step back
+         through (it was opened directly), go to the top of its section.
+      2. On a section other than Dashboard → Dashboard.
+      3. On Dashboard → leave Studio for the Catalogue.
+    A web Back the page never answered (hung renderer) falls through to 3, so
+    Back can never be swallowed.
+  */
+  const handleStudioBack = useCallback(() => {
+    const ready = loadStateRef.current === 'ready' && Boolean(webViewRef.current);
+    const webPathname = (lastWebPathRef.current ?? '/studio').split('?')[0].replace(/\/+$/, '') || '/';
+    const onStudioSubPage = webPathname.startsWith('/studio/');
+
+    if (ready && onStudioSubPage && !webBackPendingRef.current) {
+      if (canGoBack) {
+        webBackPendingRef.current = true;
+        webViewRef.current?.goBack();
+        return;
+      }
+      lastInjectedRouteRef.current = null;
+      navigateStudioInPlace(resolvedRouteKey);
+      return;
+    }
+    if (ready && resolvedRouteKey !== 'overview' && !webBackPendingRef.current) {
+      lastInjectedRouteRef.current = null;
+      navigateStudioInPlace('overview');
+      router.setParams({ routeKey: '' } as never);
+      return;
+    }
+    webBackPendingRef.current = false;
+    closeStudio();
+  }, [canGoBack, closeStudio, navigateStudioInPlace, resolvedRouteKey]);
+
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
@@ -595,23 +639,12 @@ export default function StudioWebViewScreen() {
       flag); an unanswered one means the page is stuck, and Back closes Studio.
     */
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (
-        canGoBack &&
-        webViewRef.current &&
-        loadStateRef.current === 'ready' &&
-        !webBackPendingRef.current
-      ) {
-        webBackPendingRef.current = true;
-        webViewRef.current.goBack();
-        return true;
-      }
-      webBackPendingRef.current = false;
-      closeStudio();
+      handleStudioBack();
       return true;
     });
 
     return () => subscription.remove();
-  }, [canGoBack, closeStudio]);
+  }, [handleStudioBack]);
 
   useEffect(() => {
     if (loadState === 'ready' && webViewRef.current) {
@@ -814,6 +847,7 @@ export default function StudioWebViewScreen() {
           break;
         case 'ROUTE_CHANGED':
           if (message.path) {
+            lastWebPathRef.current = message.path;
             openNavigationTarget(message.path, 'route-report');
             const nextRouteKey = deriveStudioRouteKeyFromPath(message.path);
             if (nextRouteKey && nextRouteKey !== resolvedRouteKey) {
@@ -962,13 +996,7 @@ export default function StudioWebViewScreen() {
         left={
           <AppBackButton
             emoji={'\u{1F448}'}
-            onPress={() => {
-              if (canGoBack && webViewRef.current) {
-                webViewRef.current.goBack();
-                return;
-              }
-              closeStudio();
-            }}
+            onPress={handleStudioBack}
           />
         }
         right={

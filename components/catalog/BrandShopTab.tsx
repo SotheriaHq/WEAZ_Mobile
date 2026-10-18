@@ -984,6 +984,12 @@ export function BrandShopTab({
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primary} />}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews={false}
+          // First paint = the rows on screen (3 rows of 2). The default 10 rows
+          // built 20 product cards before the shop could appear — part of the
+          // `Catalog:self=458ms` on the 2026-10-17 21:39 capture.
+          initialNumToRender={3}
+          maxToRenderPerBatch={3}
+          windowSize={7}
           renderItem={({ item }) => (
             <ProductCard
               product={item}
