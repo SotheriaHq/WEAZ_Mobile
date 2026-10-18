@@ -124,6 +124,16 @@ type NativeIslandBottomNavProps = {
   items: NativeIslandNavItem[];
   onSelect: (item: NativeIslandNavItem) => void;
   onPressIn?: (item: NativeIslandNavItem) => void;
+  /**
+   * Off screen but still mounted.
+   *
+   * Unmounting cost a full remount on the way back: every chip with its four
+   * animated styles, shared-value worklets and text nodes. The 2026-10-18
+   * capture had that remount at `Island:self=238ms` and `1781ms` on leaving
+   * a Studio product editor (a focused flow that hides the dock). Hidden is
+   * `display: none` — no layout, no paint, no touches — and nothing to rebuild.
+   */
+  hidden?: boolean;
 };
 
 /*
@@ -475,10 +485,30 @@ const IslandGlass = React.memo(function IslandGlass({
   );
 });
 
-export function NativeIslandBottomNav({
+/*
+  A hidden dock does not re-render.
+
+  The shell keeps both docks (shopper and Studio) mounted and rebuilds their
+  `items` on every route change. The dock that is off screen has nothing to
+  show for it, so its renders are skipped until it is shown again, when it
+  renders once with whatever is current.
+*/
+export const NativeIslandBottomNav = React.memo(
+  NativeIslandBottomNavImpl,
+  (prev, next) =>
+    prev.hidden === true && next.hidden === true
+      ? true
+      : prev.items === next.items &&
+        prev.onSelect === next.onSelect &&
+        prev.onPressIn === next.onPressIn &&
+        prev.hidden === next.hidden,
+);
+
+function NativeIslandBottomNavImpl({
   items,
   onSelect,
   onPressIn,
+  hidden = false,
 }: NativeIslandBottomNavProps) {
   useCommitCost('Island');
   const { scheme, theme } = useTheme();
@@ -774,6 +804,22 @@ export function NativeIslandBottomNav({
     [cancelScrollCandidate],
   );
 
+  // Same stable-ref arrangement as the fixed dock, for the Studio dock's nine
+  // chips: each press re-rendered all nine Pressables because their inline
+  // handlers were new on every dock render.
+  const scrollHandlersRef = React.useRef<ScrollDockHandlers>({
+    pressIn: beginScrollDockPress,
+    move: trackScrollDockMove,
+    cancel: cancelScrollCandidate,
+    press: commitScrollDockTap,
+  });
+  scrollHandlersRef.current = {
+    pressIn: beginScrollDockPress,
+    move: trackScrollDockMove,
+    cancel: cancelScrollCandidate,
+    press: commitScrollDockTap,
+  };
+
   if (items.length === 0) {
     return null;
   }
@@ -791,7 +837,10 @@ export function NativeIslandBottomNav({
   // navigating between screens. Keeping it static also removes the JS-thread
   // width/opacity animations that competed with the navigation transition.
   return (
-    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+    <View
+      pointerEvents={hidden ? 'none' : 'box-none'}
+      style={hidden ? styles.hiddenDock : StyleSheet.absoluteFill}
+    >
       <View
         style={[
           styles.navWrap,
@@ -822,52 +871,13 @@ export function NativeIslandBottomNav({
               style={styles.scrollDock}
             >
               {items.map((item) => (
-                <Pressable
+                <ScrollDockButton
                   key={item.key}
-                  accessibilityRole="tab"
-                  accessibilityState={{
-                    selected: item.key === settledKey && !item.disabled,
-                    disabled: item.disabled,
-                  }}
-                  accessibilityLabel={item.label}
-                  disabled={item.disabled}
-                  onPressIn={item.disabled ? undefined : (event) => beginScrollDockPress(item, event)}
-                  onTouchMove={item.disabled ? undefined : (event) => trackScrollDockMove(item, event)}
-                  onTouchCancel={item.disabled ? undefined : () => cancelScrollCandidate()}
-                  onPress={item.disabled ? undefined : () => commitScrollDockTap(item)}
-                  /**
-                   * No `android_ripple`. A bounded ripple fills the PRESSABLE,
-                   * and the pressable is a full-height flex column — so it
-                   * painted a rectangle across a pill-shaped chip, the square
-                   * that appeared under the finger on every tap. `borderless`
-                   * would not fix it either: that spills a circle past the
-                   * dock's rounded edge.
-                   *
-                   * Press feedback is the chip itself. Touch-down only lights
-                   * it. The route waits until the finger stays inside the slop,
-                   * so a swipe along this row does not open the chip it started
-                   * on. `focused` is that light, and it is the same pill the
-                   * destination settles into.
-                   */
-                  style={({ pressed }) => [
-                    styles.navItemScroll,
-                    item.disabled && styles.navItemDisabled,
-                    pressed && styles.navItemPressed,
-                  ]}
-                >
-                  {({ pressed }) => (
-                    <NativeIslandTabIcon
-                      label={item.label}
-                      emoji={item.emoji}
-                      avatarUri={item.avatarUri}
-                      focused={item.key === settledKey && !item.disabled}
-                      itemKey={item.disabled ? undefined : item.key}
-                      pressedKey={pressedKey}
-                      badge={item.badge}
-                      compact={false}
-                    />
-                  )}
-                </Pressable>
+                  item={item}
+                  focused={item.key === settledKey && !item.disabled}
+                  pressedKey={pressedKey}
+                  handlersRef={scrollHandlersRef}
+                />
               ))}
             </ScrollView>
           ) : (
@@ -890,7 +900,98 @@ export function NativeIslandBottomNav({
   );
 }
 
+type ScrollDockHandlers = {
+  pressIn: (item: NativeIslandNavItem, event: GestureResponderEvent) => void;
+  move: (item: NativeIslandNavItem, event: NativeSyntheticEvent<NativeTouchEvent>) => void;
+  cancel: () => void;
+  press: (item: NativeIslandNavItem) => void;
+};
+
+/** One chip of the scrolling (Studio) dock, memoized like `FixedDockButton`. */
+const ScrollDockButton = React.memo(
+  function ScrollDockButton({
+    item,
+    focused,
+    pressedKey,
+    handlersRef,
+  }: {
+    item: NativeIslandNavItem;
+    focused: boolean;
+    pressedKey: SharedValue<string | null>;
+    handlersRef: React.MutableRefObject<ScrollDockHandlers>;
+  }) {
+    return (
+                <Pressable
+                  accessibilityRole="tab"
+                  accessibilityState={{
+                    selected: focused,
+                    disabled: item.disabled,
+                  }}
+                  accessibilityLabel={item.label}
+                  disabled={item.disabled}
+                  onPressIn={item.disabled ? undefined : (event) => handlersRef.current.pressIn(item, event)}
+                  onTouchMove={item.disabled ? undefined : (event) => handlersRef.current.move(item, event)}
+                  onTouchCancel={item.disabled ? undefined : () => handlersRef.current.cancel()}
+                  onPress={item.disabled ? undefined : () => handlersRef.current.press(item)}
+                  /**
+                   * No `android_ripple`. A bounded ripple fills the PRESSABLE,
+                   * and the pressable is a full-height flex column — so it
+                   * painted a rectangle across a pill-shaped chip, the square
+                   * that appeared under the finger on every tap. `borderless`
+                   * would not fix it either: that spills a circle past the
+                   * dock's rounded edge.
+                   *
+                   * Press feedback is the chip itself. Touch-down only lights
+                   * it. The route waits until the finger stays inside the slop,
+                   * so a swipe along this row does not open the chip it started
+                   * on. `focused` is that light, and it is the same pill the
+                   * destination settles into.
+                   */
+                  style={({ pressed }) => [
+                    styles.navItemScroll,
+                    item.disabled && styles.navItemDisabled,
+                    pressed && styles.navItemPressed,
+                  ]}
+                >
+                  <NativeIslandTabIcon
+                    label={item.label}
+                    emoji={item.emoji}
+                    avatarUri={item.avatarUri}
+                    focused={focused}
+                    itemKey={item.disabled ? undefined : item.key}
+                    pressedKey={pressedKey}
+                    badge={item.badge}
+                    compact={false}
+                  />
+                </Pressable>
+    );
+  },
+  (prev, next) =>
+    prev.focused === next.focused &&
+    prev.pressedKey === next.pressedKey &&
+    prev.handlersRef === next.handlersRef &&
+    sameDockItem(prev.item, next.item),
+);
+
+/** The fields of a dock item that draw or route. */
+function sameDockItem(prev: NativeIslandNavItem, next: NativeIslandNavItem): boolean {
+  return (
+    prev.key === next.key &&
+    prev.label === next.label &&
+    prev.emoji === next.emoji &&
+    prev.avatarUri === next.avatarUri &&
+    prev.badge === next.badge &&
+    prev.disabled === next.disabled &&
+    prev.navFlow === next.navFlow &&
+    prev.targetRoute === next.targetRoute &&
+    JSON.stringify(prev.targetParams ?? null) === JSON.stringify(next.targetParams ?? null)
+  );
+}
+
 const styles = StyleSheet.create({
+  hiddenDock: {
+    display: 'none',
+  },
   navWrap: {
     position: 'absolute',
     backgroundColor: 'transparent',

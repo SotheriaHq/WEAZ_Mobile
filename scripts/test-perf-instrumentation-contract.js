@@ -602,7 +602,9 @@ check(
     scrollPaintAt > -1 &&
     !/setTimeout\(/.test(scrollPressInBody) &&
     !/commitScrollDockTap\(/.test(scrollPressInBody) &&
-    /onPress=\{item\.disabled \? undefined : \(\) => commitScrollDockTap\(item\)\}/.test(island),
+    // Release commits through the memoized chip's stable handlers ref.
+    /onPress=\{item\.disabled \? undefined : \(\) => handlersRef\.current\.press\(item\)\}/.test(island) &&
+    /press: commitScrollDockTap,/.test(island),
 );
 check(
   'a cancelled scroll candidate clears the UI-thread key too',
@@ -1344,6 +1346,45 @@ check(
   /from '@\/src\/auth\/authUserEquality'/.test(authContext) &&
     /isEquivalentAuthUser\(current, selectedUser\)/.test(authContext) &&
     read('package.json').includes('test:auth-user-equality'),
+);
+
+// ------------------------------------- 2026-10-18: island remounts, bell open
+
+check(
+  'a focused flow hides the island instead of unmounting it',
+  // Unmounting cost a full remount on return (`Island:self=238ms`/`1781ms`
+  // leaving a Studio product editor).
+  !/hideIslandForFocusedFlow \? null/.test(tabsLayout) &&
+    /hidden=\{inStudioIsland \|\| hideIslandForFocusedFlow\}/.test(tabsLayout) &&
+    /hidden=\{!inStudioIsland \|\| hideIslandForFocusedFlow\}/.test(tabsLayout) &&
+    /hiddenDock: \{\s*display: 'none'/.test(island),
+);
+check(
+  'a hidden dock skips its renders and the Studio dock chips are memoized',
+  /prev\.hidden === true && next\.hidden === true/.test(island) &&
+    /const ScrollDockButton = React\.memo\(/.test(island) &&
+    /handlersRef\.current\.pressIn\(item, event\)/.test(island),
+);
+check(
+  'the Profile chip does not set optimistic React state on press',
+  !/predictActiveKey\(/.test(tabsLayout),
+);
+check(
+  'Studio ignores a repeated ROUTE_CHANGED for the same path',
+  /message\.path === lastWebPathRef\.current\) break;/.test(studioWebViewSource),
+);
+check(
+  'Notifications is virtualized and warmed before the bell is pressed',
+  (() => {
+    const screen = read('app/notifications.tsx');
+    return (
+      /<FlatList/.test(screen) &&
+      !/<ScrollView/.test(screen) &&
+      /initialNumToRender=\{8\}/.test(screen) &&
+      /notificationsListQuery\(user\?\.id\)/.test(screen) &&
+      /warmNotificationsList\(userId\)/.test(tabsLayout)
+    );
+  })(),
 );
 
 // ----------------------------------------------------------------- report

@@ -846,6 +846,13 @@ export default function StudioWebViewScreen() {
           }
           break;
         case 'ROUTE_CHANGED':
+          /*
+            Every hop is reported twice — once by the injected history shim and
+            once by the web `StudioHandoffGate` — and both used to run the full
+            classification and route-key sync. The second report of a path the
+            shell already has carries nothing new.
+          */
+          if (message.path && message.path === lastWebPathRef.current) break;
           if (message.path) {
             lastWebPathRef.current = message.path;
             openNavigationTarget(message.path, 'route-report');

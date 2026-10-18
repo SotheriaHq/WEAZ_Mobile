@@ -1,6 +1,6 @@
 import { Header } from '@/components/ui/Header';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View, type ListRenderItem } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, type Href } from 'expo-router';
 
@@ -19,8 +19,7 @@ import { StableImage } from '@/components/ui/StableImage';
 import { NotificationsApi, type MobileNotification } from '@/src/api/NotificationsApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { useCachedQuery } from '@/src/cache/cachedQuery';
-import { cachePolicies } from '@/src/cache/policies';
-import { queryKeys } from '@/src/query/queryKeys';
+import { notificationsListQuery } from '@/src/features/notifications/notificationsQuery';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
 import { groupNotifications } from '@/src/utils/notificationGrouping';
 import {
@@ -218,15 +217,28 @@ function bagEntityLinks(item: MobileNotification): {
   };
 }
 
-function NotificationRow({
+/*
+  Memoized, with a stable `onOpen(item)` instead of a fresh closure per row.
+
+  Marking one notification read rewrites the list, and with inline handlers
+  every row re-rendered — avatar resolution, the copy segments, the bag links.
+  Now only the row whose `item` changed does.
+*/
+const NotificationRow = React.memo(function NotificationRow({
   item,
-  onPress,
+  onOpen,
+  first,
+  last,
 }: {
   item: MobileNotification;
-  onPress: () => void;
+  onOpen: (item: MobileNotification) => void;
+  /** First and last rows of a day group round the group's card corners. */
+  first: boolean;
+  last: boolean;
 }) {
   const { theme } = useTheme();
   const unread = !item.isRead;
+  const onPress = useCallback(() => onOpen(item), [item, onOpen]);
   const entityLinks = bagEntityLinks(item);
   const rawPreview = item.target?.preview ?? (typeof item.payload?.preview === 'string' ? item.payload.preview : null);
   // `target.preview` is a thumbnail URL for content notifications, but system
@@ -238,7 +250,13 @@ function NotificationRow({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
+      style={({ pressed }) => [
+        styles.row,
+        { backgroundColor: theme.colors.surface },
+        first ? styles.rowFirst : null,
+        last ? styles.rowLast : null,
+        pressed ? styles.pressed : null,
+      ]}
     >
       <View style={styles.rowTop}>
         <NotificationAvatar item={item} />
@@ -293,7 +311,55 @@ function NotificationRow({
       </View>
     </Pressable>
   );
+});
+
+/**
+ * The day groups, flattened into one virtualized list.
+ *
+ * The screen used to render every group and every row — up to 100 — inside a
+ * ScrollView, all in the commit that pushed the screen. A row is an avatar
+ * lookup, a multi-segment sentence and optional bag links, so on the A17 that
+ * commit was most of the 480ms the bell press was blocked for (2026-10-18).
+ * A FlatList mounts the first screenful and the rest as it is scrolled to.
+ */
+type NotificationListEntry =
+  | { kind: 'header'; key: string; title: string; first: boolean }
+  | { kind: 'row'; key: string; item: MobileNotification; first: boolean; last: boolean };
+
+function flattenNotificationGroups(groups: NotificationGroup[]): NotificationListEntry[] {
+  const entries: NotificationListEntry[] = [];
+  groups.forEach((group, groupIndex) => {
+    entries.push({ kind: 'header', key: `h:${group.title}`, title: group.title, first: groupIndex === 0 });
+    group.items.forEach((item, index) => {
+      entries.push({
+        kind: 'row',
+        key: item.id,
+        item,
+        first: index === 0,
+        last: index === group.items.length - 1,
+      });
+    });
+  });
+  return entries;
 }
+
+const NotificationGroupHeader = React.memo(function NotificationGroupHeader({
+  title,
+  first,
+}: {
+  title: string;
+  first: boolean;
+}) {
+  const { theme } = useTheme();
+  return (
+    <View style={[styles.groupHeader, first ? null : styles.groupHeaderSpaced]}>
+      <AppText variant="bodyBold">{title}</AppText>
+      <View style={[styles.groupDivider, { backgroundColor: theme.colors.border }]} />
+    </View>
+  );
+});
+
+const notificationEntryKey = (entry: NotificationListEntry) => entry.key;
 
 export default function NotificationsScreen() {
   const { theme } = useTheme();
@@ -305,17 +371,10 @@ export default function NotificationsScreen() {
   // Cache-first: a revisit within the TTL paints from cache with no request.
   // Realtime events and read-marking below write through `mutate`, so the
   // cached list stays truthful between revalidations.
+  // Same entry the tab shell warms (`warmNotificationsList`), so the first
+  // open is normally a cache hit.
   const notificationsQuery = useCachedQuery<MobileNotification[]>({
-    key: queryKeys.notifications.list(user?.id),
-    fetcher: async () => {
-      const [response, unread] = await Promise.all([
-        NotificationsApi.list(undefined, 100),
-        NotificationsApi.getUnreadCount(),
-      ]);
-      replaceUnreadNotificationCount(unread.count);
-      return response.items;
-    },
-    policy: cachePolicies.defaultQuery,
+    ...notificationsListQuery(user?.id),
     enabled: hasAuthenticatedSession,
   });
   const items = useMemo(() => notificationsQuery.data ?? [], [notificationsQuery.data]);
@@ -325,6 +384,7 @@ export default function NotificationsScreen() {
   const refetchNotifications = notificationsQuery.refetch;
 
   const groups = useMemo(() => groupNotifications(items), [items]);
+  const entries = useMemo(() => flattenNotificationGroups(groups), [groups]);
   // Counted from the list this screen already holds rather than from the
   // unread-count store, so the badge and the rows below it can never disagree.
   const unreadCount = useMemo(
@@ -355,6 +415,21 @@ export default function NotificationsScreen() {
     // the shopper profile.
     drillDownPush(routeForNotification(item, user));
   }, [user]);
+
+  const renderEntry = useCallback<ListRenderItem<NotificationListEntry>>(
+    ({ item: entry }) =>
+      entry.kind === 'header' ? (
+        <NotificationGroupHeader title={entry.title} first={entry.first} />
+      ) : (
+        <NotificationRow
+          item={entry.item}
+          onOpen={handleOpenNotification}
+          first={entry.first}
+          last={entry.last}
+        />
+      ),
+    [handleOpenNotification],
+  );
 
   const handleMarkAllRead = useCallback(async () => {
     setMarkingAll(true);
@@ -446,27 +521,21 @@ export default function NotificationsScreen() {
           <AppText variant="body" tone="muted">New activity will appear here.</AppText>
         </View>
       ) : (
-        <ScrollView
+        <FlatList
+          data={entries}
+          keyExtractor={notificationEntryKey}
+          renderItem={renderEntry}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={8}
+          maxToRenderPerBatch={6}
+          updateCellsBatchingPeriod={50}
+          windowSize={7}
+          removeClippedSubviews
           contentContainerStyle={[
             styles.content,
             { paddingBottom: insets.bottom + LAYOUT.TAB_BAR_HEIGHT + tokens.spacing.lg },
           ]}
-        >
-          {groups.map((group) => (
-            <View key={group.title} style={styles.group}>
-              <View style={styles.groupHeader}>
-                <AppText variant="bodyBold">{group.title}</AppText>
-                <View style={[styles.groupDivider, { backgroundColor: theme.colors.border }]} />
-              </View>
-              <View style={[styles.groupRows, { backgroundColor: theme.colors.surface }]}>
-                {group.items.map((item) => (
-                  <NotificationRow key={item.id} item={item} onPress={() => handleOpenNotification(item)} />
-                ))}
-              </View>
-            </View>
-          ))}
-        </ScrollView>
+        />
       )}
     </SafeAreaView>
   );
@@ -506,9 +575,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   content: {
-    gap: tokens.spacing.lg,
+    // No `gap`: in a FlatList it would space every row apart, not the groups.
+    // Group spacing lives on `groupHeaderSpaced`.
     paddingHorizontal: tokens.spacing.md,
-    paddingTop: tokens.spacing.md,
+    paddingTop: tokens.spacing.md + tokens.spacing.sm,
   },
   stateWrap: {
     flex: 1,
@@ -520,27 +590,35 @@ const styles = StyleSheet.create({
   guestStateText: {
     textAlign: 'center',
   },
-  group: {
-    gap: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.sm,
-  },
   groupHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
+    paddingBottom: tokens.spacing.sm,
+  },
+  // The space a group used to carry: the previous group's bottom padding,
+  // the list gap, and this group's top padding.
+  groupHeaderSpaced: {
+    paddingTop: tokens.spacing.lg + tokens.spacing.sm * 2,
   },
   groupDivider: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
   },
-  groupRows: {
-    borderRadius: tokens.radius.lg,
-    overflow: 'hidden',
-  },
   row: {
     minHeight: 86,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
+  },
+  // A group's rows read as one rounded card, as before, without a wrapper
+  // view that would defeat virtualization.
+  rowFirst: {
+    borderTopLeftRadius: tokens.radius.lg,
+    borderTopRightRadius: tokens.radius.lg,
+  },
+  rowLast: {
+    borderBottomLeftRadius: tokens.radius.lg,
+    borderBottomRightRadius: tokens.radius.lg,
   },
   rowTop: {
     flexDirection: 'row',

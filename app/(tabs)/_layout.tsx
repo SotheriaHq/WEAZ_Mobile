@@ -60,6 +60,7 @@ import {
 } from '@/src/profile/shopperProfileWarmup';
 import { persistScreenState } from '@/src/state/persistentScreenCache';
 import { freezeHiddenTabLayout } from '@/src/navigation/freezeHiddenTabs';
+import { warmNotificationsList } from '@/src/features/notifications/notificationsQuery';
 
 // Keep Runway (`index`) as the tab shell's anchor route now that Catalogue is
 // also a (hidden) tab — without this, adding sibling screens can shift Expo
@@ -84,6 +85,9 @@ type TabNavigationActionType = 'JUMP_TO' | 'PRELOAD';
 // automatic warm target, and only after the reader has seen Runway; every other
 // island tab mounts on the tap that opens it.
 const TAB_PRELOAD_FALLBACK_DELAY_MS = 8_000;
+
+/** After the Market warm (80ms), so the two fetches do not land together. */
+const NOTIFICATIONS_WARM_DELAY_MS = 1_500;
 
 /**
  * The root path of every island destination, with `/(tabs)` stripped.
@@ -225,26 +229,15 @@ export default function TabLayout() {
     storeSetupComplete,
     optimisticActiveKey,
   });
-  // Pathname the current prediction was made from — see `predictActiveKey`.
+  // Pathname a prediction was made from. Island presses no longer predict
+  // (the chip paints from the island's UI-thread `pressedKey`), so this and
+  // `optimisticActiveKey` stay null; the retirement effects below are kept as
+  // the guard for any future caller that sets one.
   const optimisticFromPathnameRef = useRef<string | null>(null);
   const optimisticExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Latest pathname, readable from stable callbacks without making them churn.
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
-
-  /**
-   * Record WHERE the prediction was made from, alongside the prediction.
-   *
-   * `optimisticActiveKey` outranks the pathname-derived key so a tapped chip
-   * lights up before its screen mounts. That is only safe while the prediction
-   * is still pending, and "pending" is exactly "the route has not moved yet" —
-   * which needs the origin pathname to detect. Without it, a prediction that
-   * turns out WRONG is indistinguishable from one still in flight.
-   */
-  const predictActiveKey = useCallback((key: AnyIslandKey) => {
-    optimisticFromPathnameRef.current = pathnameRef.current;
-    setOptimisticActiveKey(key);
-  }, []);
 
   /*
     Identity, not capability. The Profile chip picks between `/catalog` and
@@ -500,6 +493,33 @@ export default function TabLayout() {
     };
   }, [preloadIslandTab]);
 
+  /*
+    Warm the Notifications list after Runway has painted.
+
+    The bell pushes a screen whose first open was a cache miss: a loader, then
+    the whole list in the commit that delivered it. Fetched here, after the
+    first Runway image (or the same fallback the Market warm uses), the open is
+    a cache hit. Once per signed-in account; the screen revalidates on its own.
+  */
+  useEffect(() => {
+    if (status !== 'authenticated' || !user?.id) return undefined;
+    const userId = user.id;
+    let warmTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleWarm = () => {
+      if (warmTimer !== null) return;
+      warmTimer = setTimeout(() => warmNotificationsList(userId), NOTIFICATIONS_WARM_DELAY_MS);
+    };
+    const unsubscribe = getRunwayFirstMediaVisible()
+      ? (scheduleWarm(), () => undefined)
+      : subscribeRunwayFirstMediaVisible(scheduleWarm);
+    const fallbackTimer = setTimeout(scheduleWarm, TAB_PRELOAD_FALLBACK_DELAY_MS);
+    return () => {
+      unsubscribe();
+      clearTimeout(fallbackTimer);
+      if (warmTimer !== null) clearTimeout(warmTimer);
+    };
+  }, [status, user?.id]);
+
   const navigateToProfile = useCallback(() => {
     const target = isBrand ? '/catalog' : '/(tabs)/me';
 
@@ -514,7 +534,10 @@ export default function TabLayout() {
       return;
     }
 
-    predictActiveKey(NATIVE_ISLAND_KEYS.profile);
+    // No `predictActiveKey` here any more: the island lights the chip from its
+    // UI-thread `pressedKey`, and setting then clearing this React state cost
+    // two shell + dock commits per Profile tap (`TabShell:self=151.9ms`,
+    // `causes=TabShell:optimisticActiveKey×2`, 2026-10-18 capture).
     // navigate (not push) so an already-mounted Catalogue/Me instance is reused
     // instead of mounting a fresh copy on every visit.
     const navFlow = isBrand ? 'tabs→catalog' : 'tabs→me';
@@ -531,7 +554,7 @@ export default function TabLayout() {
     if (!locked) {
       navPerf.mark?.('navigation_ignored_duplicate', target);
     }
-  }, [isBrand, jumpToIslandTab, pathname, predictActiveKey, scheduleRouteAfterFrame]);
+  }, [isBrand, jumpToIslandTab, pathname, scheduleRouteAfterFrame]);
 
   const handleProfilePress = useCallback(
     () => {
@@ -556,23 +579,49 @@ export default function TabLayout() {
     setOptimisticActiveKey(null);
   }, []);
 
-  const islandItems = useMemo<NativeIslandNavItem[]>(() => {
-    // Inside Studio the dock must show Studio destinations (Dashboard, Store,
-    // Orders, …) — same contract as web StudioSidebar / IslandBottomNav. Leaving
-    // the main WIEZ island up made the surface look like the brand never left
-    // the consumer app.
-    if (inStudioIsland) {
-      return buildStudioIslandItems({
-        activeKey: String(displayedActiveKey),
-        messagesBadge:
-          canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
-        storeSetupComplete,
-        isOnSetupRoute: inStoreSetupRoute,
-      });
-    }
+  /*
+    Two docks, both kept mounted once used.
 
+    Inside Studio the dock must show Studio destinations (Dashboard, Store,
+    Orders, …) — same contract as web StudioSidebar / IslandBottomNav. Leaving
+    the main WIEZ island up made the surface look like the brand never left
+    the consumer app.
+
+    They used to be one dock whose `items` swapped, which unmounted every chip
+    and mounted the other set — six or nine chips, each with four animated
+    styles — on every Studio entry and exit. Now the dock that is not in use is
+    hidden (and skips its renders), so crossing over is a visibility change.
+    The Studio dock mounts on the first Studio visit, never for a shopper.
+  */
+  const studioDockMountedRef = useRef(false);
+  if (inStudioIsland) studioDockMountedRef.current = true;
+  const studioDockMounted = studioDockMountedRef.current;
+
+  const studioIslandItems = useMemo<NativeIslandNavItem[]>(() => {
+    if (!studioDockMounted) return [];
+    return buildStudioIslandItems({
+      activeKey: String(displayedActiveKey),
+      messagesBadge:
+        canOpenProfileMenu && messageCountReady ? unreadMessageCount : undefined,
+      storeSetupComplete,
+      isOnSetupRoute: inStoreSetupRoute,
+    });
+  }, [
+    canOpenProfileMenu,
+    displayedActiveKey,
+    inStoreSetupRoute,
+    messageCountReady,
+    storeSetupComplete,
+    studioDockMounted,
+    unreadMessageCount,
+  ]);
+
+  // While Studio is up the shopper dock is hidden; holding its active key
+  // still keeps its items stable instead of rebuilding on every Studio hop.
+  const shopperActiveKey = inStudioIsland ? null : displayedActiveKey;
+  const shopperIslandItems = useMemo<NativeIslandNavItem[]>(() => {
     return buildNativeIslandItems({
-      activeKey: displayedActiveKey as NativeIslandKey,
+      activeKey: shopperActiveKey as NativeIslandKey,
       isBrand,
       profileLabel: profileNavLabel,
       profileIcon: profileNavEmoji,
@@ -591,20 +640,18 @@ export default function TabLayout() {
   }, [
     bagCount.combinedCount,
     canOpenProfileMenu,
-    displayedActiveKey,
-    inStoreSetupRoute,
-    inStudioIsland,
     isBrand,
     messageCountReady,
-    storeSetupComplete,
     notificationCountReady,
     profileNavAvatarUri,
     profileNavEmoji,
     profileNavLabel,
+    shopperActiveKey,
     status,
     unreadMessageCount,
     unreadNotificationCount,
   ]);
+  const islandItems = inStudioIsland ? studioIslandItems : shopperIslandItems;
 
   useEffect(() => {
     navDevLog('island-layout', {
@@ -1108,19 +1155,28 @@ export default function TabLayout() {
       {/* The island resolves the ambient scheme on every route. It used to be
           forced dark over the Runway, whose stage was black in both themes;
           the stage is themed now, so a themed island matches it. */}
-      {hideIslandForFocusedFlow ? null : (
+      {/* Focused flows HIDE the dock rather than unmount it: coming back from
+          a Studio product editor remounted every chip, measured at
+          `Island:self=238ms` and `1781ms` (2026-10-18). */}
+      <NativeIslandBottomNav
+        items={shopperIslandItems}
+        onSelect={handleSelect}
+        hidden={inStudioIsland || hideIslandForFocusedFlow}
+        // No optimistic React state on press. The chip lights from the
+        // island's UI-thread `pressedKey` the instant the finger lands, and
+        // stays lit until the route confirms. Setting `optimisticActiveKey`
+        // here too cost two extra TabShell + island commits per tap (set,
+        // then clear: `causes=TabShell:optimisticActiveKey×2`) right when
+        // the destination screen needed the JS thread, and drew nothing the
+        // shared value had not already drawn.
+      />
+      {studioDockMounted ? (
         <NativeIslandBottomNav
-          items={islandItems}
+          items={studioIslandItems}
           onSelect={handleSelect}
-          // No optimistic React state on press. The chip lights from the
-          // island's UI-thread `pressedKey` the instant the finger lands, and
-          // stays lit until the route confirms. Setting `optimisticActiveKey`
-          // here too cost two extra TabShell + island commits per tap (set,
-          // then clear: `causes=TabShell:optimisticActiveKey×2`) right when
-          // the destination screen needed the JS thread, and drew nothing the
-          // shared value had not already drawn.
+          hidden={!inStudioIsland || hideIslandForFocusedFlow}
         />
-      )}
+      ) : null}
     </>
   );
 }
