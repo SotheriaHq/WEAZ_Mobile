@@ -63,23 +63,26 @@ export function InlineNavLink({
   );
 }
 
-/** The one "there is more of this" affordance. Always italic, always the system colour. */
+/** The one "there is more of this" affordance. Shows Explore <ofWhat> or custom label. */
 export function SeeMoreLink({
   onPress,
-  /** What there is more of, for the screen reader. The visible label never changes. */
+  /** What there is more of, for screen reader and visible title */
   ofWhat,
+  label,
   style,
 }: {
   onPress: () => void;
   ofWhat?: string;
+  label?: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  const displayLabel = label ?? (ofWhat ? `Explore ${ofWhat}` : 'See more');
   return (
     <InlineNavLink
-      label="See more"
+      label={displayLabel}
       direction="forward"
       onPress={onPress}
-      accessibilityLabel={ofWhat ? `See more ${ofWhat}` : 'See more'}
+      accessibilityLabel={ofWhat ? `Explore ${ofWhat}` : 'See more'}
       style={style}
     />
   );
