@@ -514,10 +514,7 @@ function buildRows(args: {
         id: `api-section:${section.key}`,
         type: 'API_SECTION_ROW',
         section,
-        onSeeAll:
-          section.supportsViewAll || section.viewAll?.enabled
-            ? () => openApiSection(section.key)
-            : undefined,
+        onSeeAll: () => openApiSection(section.key),
       });
     });
 
@@ -527,9 +524,36 @@ function buildRows(args: {
       id: 'fresh-row',
       type: 'HORIZONTAL_CARD_ROW',
       title: 'Fresh on WIEZ',
-      subtitle: 'New products and custom-ready runway',
+      subtitle: 'New arrivals and emerging designer drops',
       items: freshItems,
       onSeeAll: setNewestView,
+    });
+  }
+
+  // Bestsellers / Highest Sales Section
+  const bestsellers = filteredItems
+    .filter((item) => (item.kind === 'product' ? item.product.stock > 0 : Boolean(item.design.likesCount)))
+    .slice(0, 10);
+  if (bestsellers.length >= 2) {
+    rows.push({
+      id: 'bestsellers-row',
+      type: 'HORIZONTAL_CARD_ROW',
+      title: 'Highest Sales & Most Coveted',
+      subtitle: 'Verified top pieces and collector favorites',
+      items: bestsellers,
+      onSeeAll: () => openApiSection('hot-right-now'),
+    });
+  }
+
+  const customReady = filteredItems.filter(isCustomReady).slice(0, 10);
+  if (customReady.length > 1) {
+    rows.push({
+      id: 'custom-ready-row',
+      type: 'HORIZONTAL_CARD_ROW',
+      title: 'Artisanal Custom Fit Runway',
+      subtitle: 'Start a tailored request from the feed',
+      items: customReady,
+      onSeeAll: setCustomReadyView,
     });
   }
 
@@ -551,40 +575,6 @@ function buildRows(args: {
     subtitle: 'Shop complete edits from WIEZ brands',
     items: collections,
     error: collectionError,
-  });
-
-  const firstGrid = filteredItems.slice(0, 6);
-  if (firstGrid.length > 0) {
-    rows.push({ id: 'grid-primary', type: 'PRODUCT_GRID', title: 'Shop the edit', items: firstGrid });
-  }
-
-  rows.push({ id: 'editorial-primary', type: 'EDITORIAL_CARD', item: heroItems[0] ?? filteredItems[0] ?? null });
-
-  const customReady = filteredItems.filter(isCustomReady).slice(0, 10);
-  if (customReady.length > 1) {
-    rows.push({
-      id: 'custom-ready-row',
-      type: 'HORIZONTAL_CARD_ROW',
-      title: 'Custom-ready runway',
-      subtitle: 'Start a tailored request from the feed',
-      items: customReady,
-      onSeeAll: setCustomReadyView,
-    });
-  }
-
-  chunkItems(filteredItems.slice(6), 6).forEach((chunk, index) => {
-    if (chunk.length > 0) {
-      rows.push({
-        id: `grid-${index + 2}`,
-        type: 'PRODUCT_GRID',
-        title: index === 0 ? 'More market picks' : 'Keep exploring',
-        items: chunk,
-      });
-    }
-
-    if (index === 1) {
-      rows.push({ id: 'editorial-secondary', type: 'EDITORIAL_CARD', item: chunk.find(hasDisplayMedia) ?? chunk[0] ?? null });
-    }
   });
 
   if (loadingMore) rows.push({ id: 'loading-more', type: 'LOADING_MORE' });
@@ -2792,7 +2782,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   heroSlide: {
-    borderRadius: tokens.radius.lg,
+    borderRadius: tokens.radius.xl,
     overflow: 'hidden',
   },
   heroImage: {
@@ -2853,7 +2843,7 @@ const styles = StyleSheet.create({
   },
   collectionCard: {
     height: 262,
-    borderRadius: tokens.radius.lg,
+    borderRadius: tokens.radius.xl,
     borderWidth: 1,
     overflow: 'hidden',
   },
@@ -2892,7 +2882,7 @@ const styles = StyleSheet.create({
   collectionStateCard: {
     marginHorizontal: SIDE_PADDING,
     minHeight: 98,
-    borderRadius: tokens.radius.lg,
+    borderRadius: tokens.radius.xl,
     borderWidth: 1,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.xs,

@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
+  Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -12,9 +14,11 @@ import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { SeeMoreLink } from '@/components/ui/InlineNavLink';
 import { ScreenState } from '@/components/ui/ScreenState';
 import {
   getMarketSectionDetail,
+  getMarketSections,
   type MarketSection,
   type MarketSectionItem,
 } from '@/src/api/MarketApi';
@@ -36,7 +40,10 @@ import { MuseLoader } from '@/components/ui/MuseLoader';
 
 type Props = {
   sectionKey: string;
+  parentKey?: string | null;
 };
+
+type FilterChip = 'ALL' | 'READY_TO_WEAR' | 'CUSTOM_FIT' | 'UNDER_50K' | '50K_150K' | 'ABOVE_150K';
 
 const PAGE_LIMIT = 24;
 const SIDE_PADDING = tokens.spacing.lg;
@@ -46,6 +53,16 @@ const itemKey = (item: MarketSectionItem) => `${item.entityType}:${item.sourceId
 
 const firstParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
+
+const getItemEffectiveAmount = (item: MarketSectionItem): number => {
+  return (
+    item.price?.effectiveAmount ??
+    item.price?.saleAmount ??
+    item.price?.amount ??
+    item.priceRange?.min ??
+    0
+  );
+};
 
 const formatPrice = (item: MarketSectionItem) => {
   const currency = item.price?.currency ?? item.priceRange?.currency ?? 'NGN';
@@ -120,22 +137,9 @@ const openItem = (item: MarketSectionItem, sectionKey: string) => {
     drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId: targetId } } as any);
     return;
   }
-  // Top-level fallback when the section item has no drill-down target — navigate
-  // (not push) so we reuse the existing Market tab instead of stacking a copy.
   topLevelNavigate('/(tabs)/discover' as any);
 };
 
-/**
- * The same card as every other grid in the app.
- *
- * This screen was drawing its own: a bordered box with a cropped image on top,
- * an entity-type pill ("DESIGN"), then title, subtitle and price stacked
- * underneath on a solid body. Market itself moved to `UnifiedProductCard`
- * (full-bleed media, frosted copy panel) and this screen — the one you land on
- * from every "See more" — was left behind, so following a row into its own page
- * changed what the cards looked like. The entity pill goes with it: "DESIGN"
- * tells a shopper nothing the picture has not.
- */
 function SectionItemCard({
   item,
   width,
@@ -164,7 +168,7 @@ function SectionItemCard({
   );
 }
 
-export function MarketSectionDetailScreen({ sectionKey }: Props) {
+export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
   const { theme, scheme } = useTheme();
   const { width } = useWindowDimensions();
   const { insets, standardScreenBottomPadding } = useScreenChrome();
@@ -177,15 +181,10 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /*
-    A section of BRANDS is not a grid.
+  // Available sections for embedded curation
+  const [siblingSections, setSiblingSections] = useState<MarketSection[]>([]);
+  const [activeFilter, setActiveFilter] = useState<FilterChip>('ALL');
 
-    "New designers to watch" carries brands, and a brand tile in a two-up grid
-    is a logo and a number — nothing to judge a designer by. Those sections lay
-    out one designer front per row instead, full width, each showing that
-    designer's actual work. Every other section stays a grid, because a product
-    or a design IS its picture and a grid shows more of them.
-  */
   const isDesignerSection = useMemo(
     () => items.length > 0 && items.every((item) => item.entityType === 'BRAND'),
     [items],
@@ -196,6 +195,7 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
     () => Math.floor((width - SIDE_PADDING * 2 - GAP * (columnCount - 1)) / columnCount),
     [columnCount, width],
   );
+  const embeddedCardWidth = Math.min(184, Math.max(148, Math.round(width * 0.42)));
 
   const loadSection = useCallback(
     async (mode: 'reset' | 'more') => {
@@ -209,13 +209,21 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
       }
 
       try {
-        const response = await getMarketSectionDetail(sectionKey, {
-          cursor: mode === 'more' ? cursor : null,
-          limit: PAGE_LIMIT,
-        });
+        const [response, siblingsRes] = await Promise.all([
+          getMarketSectionDetail(sectionKey, {
+            cursor: mode === 'more' ? cursor : null,
+            limit: PAGE_LIMIT,
+          }),
+          mode === 'reset' ? getMarketSections().catch(() => null) : Promise.resolve(null),
+        ]);
+
         setSection(response.section);
         setCursor(response.section.pagination?.nextCursor ?? null);
         setHasNextPage(Boolean(response.section.pagination?.hasNextPage));
+        if (siblingsRes?.sections) {
+          setSiblingSections(siblingsRes.sections);
+        }
+
         setItems((current) => {
           if (mode === 'reset') return response.section.items;
           const seen = new Set(current.map(itemKey));
@@ -234,13 +242,12 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
     [cursor, hasNextPage, loadingMore, section, sectionKey],
   );
 
-  // Dev-only nav timing for market→section. Shell/skeleton renders at mount;
-  // data is ready once the initial section load settles.
   useEffect(() => {
     navPerf.screenMounted('market→section');
     navPerf.shellVisible('market→section');
     navPerf.firstVisibleUi('market→section');
   }, []);
+
   useEffect(() => {
     if (!loading) navPerf.dataReady('market→section');
   }, [loading]);
@@ -267,19 +274,136 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
     setRefreshing(false);
   }, [loadSection]);
 
+  // Strict Deduplication of Embedded Fashion Sub-Sections:
+  // "SO, each screens can also have imbeeded sections. But no section repition on screens or home."
+  const embeddedSubSections = useMemo(() => {
+    const excludedKeys = new Set<string>([
+      sectionKey.toLowerCase(),
+      ...(parentKey ? [parentKey.toLowerCase()] : []),
+    ]);
+    const seenTitles = new Set<string>([
+      (section?.title || '').trim().toLowerCase(),
+    ]);
+
+    const result: Array<{
+      key: string;
+      title: string;
+      subtitle?: string;
+      items: MarketSectionItem[];
+    }> = [];
+
+    // Source A: Thematic partitions of the section's items (by category or tag)
+    const itemsByCategory = new Map<string, MarketSectionItem[]>();
+    for (const it of items) {
+      const cat = it.category?.name || (it.tags && it.tags[0]) || null;
+      if (cat && cat.trim().length > 1) {
+        const catKey = cat.trim();
+        const list = itemsByCategory.get(catKey) ?? [];
+        list.push(it);
+        itemsByCategory.set(catKey, list);
+      }
+    }
+
+    for (const [catName, catItems] of itemsByCategory.entries()) {
+      if (catItems.length >= 3) {
+        const subKey = `${sectionKey}-sub-${catName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+        const titleLower = catName.toLowerCase();
+        if (!excludedKeys.has(subKey) && !seenTitles.has(titleLower)) {
+          excludedKeys.add(subKey);
+          seenTitles.add(titleLower);
+          result.push({
+            key: subKey,
+            title: catName,
+            subtitle: `Curated ${catName} pieces`,
+            items: catItems,
+          });
+        }
+      }
+    }
+
+    // Source B: Complementary sibling sections from getMarketSections()
+    for (const sib of siblingSections) {
+      const sibKey = sib.key.toLowerCase();
+      const titleLower = sib.title.trim().toLowerCase();
+      if (
+        sib.items &&
+        sib.items.length >= 2 &&
+        !excludedKeys.has(sibKey) &&
+        !seenTitles.has(titleLower)
+      ) {
+        excludedKeys.add(sibKey);
+        seenTitles.add(titleLower);
+        result.push({
+          key: sib.key,
+          title: sib.title,
+          subtitle: sib.subtitle ?? undefined,
+          items: sib.items,
+        });
+      }
+    }
+
+    // Maximum 2 embedded rails on mobile to preserve vertical flow
+    return result.slice(0, 2);
+  }, [items, parentKey, section?.title, sectionKey, siblingSections]);
+
+  // Client-Side Filtered Items for Primary Catalog
+  const filteredItems = useMemo(() => {
+    if (activeFilter === 'READY_TO_WEAR') {
+      return items.filter(
+        (i) => i.availability?.standardCheckoutEnabled || i.entityType === 'PRODUCT',
+      );
+    }
+    if (activeFilter === 'CUSTOM_FIT') {
+      return items.filter((i) => Boolean(i.availability?.customOrderEnabled));
+    }
+    if (activeFilter === 'UNDER_50K') {
+      return items.filter(
+        (i) => getItemEffectiveAmount(i) < 50000 && getItemEffectiveAmount(i) > 0,
+      );
+    }
+    if (activeFilter === '50K_150K') {
+      return items.filter(
+        (i) => getItemEffectiveAmount(i) >= 50000 && getItemEffectiveAmount(i) <= 150000,
+      );
+    }
+    if (activeFilter === 'ABOVE_150K') {
+      return items.filter((i) => getItemEffectiveAmount(i) > 150000);
+    }
+    return items;
+  }, [activeFilter, items]);
+
   const renderHeader = () => (
     <View style={styles.header}>
-      {/*
-        The same back control as every other screen.
+      {/* Back button with smart parent fallback */}
+      <AppBackButton
+        fallbackHref={
+          parentKey
+            ? (`/market-section?sectionKey=${parentKey}` as any)
+            : ('/(tabs)/discover' as any)
+        }
+      />
 
-        This was the one place in the app that spelled the word "Back" in a
-        bordered pill instead of using `AppBackButton`, so the section detail
-        looked like it belonged to a different product — and it called
-        `router.back()` raw, with no fallback for the case where there is no
-        history to pop (a notification or deep link opening the section
-        directly would have left the user stuck).
-      */}
-      <AppBackButton fallbackHref="/(tabs)/discover" />
+      {/* Sector Badge */}
+      <View style={styles.badgeRow}>
+        <View
+          style={[
+            styles.sectorBadge,
+            {
+              backgroundColor: theme.colors.surfaceAlt,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <AppText variant="captionBold" tone="primary">
+            {section?.emotionalLabel?.toUpperCase() || 'WIEZ SECTOR'}
+          </AppText>
+        </View>
+        <AppText variant="caption" tone="muted">
+          {items.length} {items.length === 1 ? 'Piece' : 'Pieces'}
+        </AppText>
+      </View>
+
+      {/* Title & Subtitle */}
       <View style={styles.titleBlock}>
         <AppText variant="h2" numberOfLines={2}>
           {section?.title ?? 'Market section'}
@@ -289,6 +413,109 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
             {section.subtitle}
           </AppText>
         ) : null}
+      </View>
+
+      {/* Interactive Filter Chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterChipRow}
+      >
+        {(
+          [
+            { id: 'ALL', label: 'All' },
+            { id: 'READY_TO_WEAR', label: 'Ready to Wear' },
+            { id: 'CUSTOM_FIT', label: 'Custom Fit' },
+            { id: 'UNDER_50K', label: 'Under ₦50k' },
+            { id: '50K_150K', label: '₦50k - ₦150k' },
+            { id: 'ABOVE_150K', label: '₦150k+' },
+          ] as const
+        ).map((chip) => {
+          const isActive = activeFilter === chip.id;
+          return (
+            <Pressable
+              key={chip.id}
+              onPress={() => setActiveFilter(chip.id)}
+              style={[
+                styles.chip,
+                {
+                  backgroundColor: isActive
+                    ? theme.colors.text
+                    : theme.colors.surface,
+                  borderColor: isActive
+                    ? theme.colors.text
+                    : theme.colors.border,
+                },
+              ]}
+            >
+              <AppText
+                variant="captionBold"
+                tone={isActive ? 'inverse' : 'default'}
+              >
+                {chip.label}
+              </AppText>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {/* Embedded Fashion Sub-Sections */}
+      {embeddedSubSections.length > 0 && (
+        <View style={styles.embeddedContainer}>
+          {embeddedSubSections.map((subSec) => (
+            <View key={subSec.key} style={styles.embeddedSection}>
+              <View style={styles.embeddedHeader}>
+                <View style={styles.embeddedTitleBlock}>
+                  <AppText variant="subtitle" numberOfLines={1}>
+                    {subSec.title}
+                  </AppText>
+                  {subSec.subtitle ? (
+                    <AppText variant="caption" tone="muted" numberOfLines={1}>
+                      {subSec.subtitle}
+                    </AppText>
+                  ) : null}
+                </View>
+                <SeeMoreLink
+                  onPress={() =>
+                    drillDownPush({
+                      pathname: '/market-section',
+                      params: {
+                        sectionKey: subSec.key,
+                        parentKey: sectionKey,
+                      },
+                    } as any)
+                  }
+                  ofWhat={subSec.title}
+                />
+              </View>
+
+              <FlatList
+                data={subSec.items}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(it) => `${subSec.key}:${itemKey(it)}`}
+                contentContainerStyle={styles.embeddedRailContent}
+                renderItem={({ item: it }) => (
+                  <SectionItemCard
+                    item={it}
+                    width={embeddedCardWidth}
+                    sectionKey={subSec.key}
+                  />
+                )}
+              />
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Grid Header */}
+      <View style={styles.gridHeader}>
+        <AppText variant="subtitle">
+          All {section?.title ?? 'Section'} Catalog
+        </AppText>
+        <AppText variant="caption" tone="muted">
+          {filteredItems.length} available
+        </AppText>
       </View>
     </View>
   );
@@ -312,31 +539,54 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
 
   if (loading) {
     return (
-      <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
+      <SafeAreaView
+        edges={[]}
+        style={[
+          styles.root,
+          { backgroundColor: theme.colors.bg, paddingTop: insets.top },
+        ]}
+      >
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         {renderHeader()}
         <View style={styles.centerState}>
           <MuseLoader size={20} />
-          <AppText variant="small" tone="muted">Loading section</AppText>
+          <AppText variant="small" tone="muted">
+            Loading curated section
+          </AppText>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: theme.colors.bg, paddingTop: insets.top }]}>
+    <SafeAreaView
+      edges={[]}
+      style={[
+        styles.root,
+        { backgroundColor: theme.colors.bg, paddingTop: insets.top },
+      ]}
+    >
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <FlatList
         showsVerticalScrollIndicator={false}
-        data={items}
+        data={filteredItems}
         key={columnCount}
         numColumns={columnCount}
         keyExtractor={itemKey}
         ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
         columnWrapperStyle={columnCount > 1 ? styles.gridRow : undefined}
-        contentContainerStyle={[styles.content, { paddingBottom: standardScreenBottomPadding + tokens.spacing.lg }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: standardScreenBottomPadding + tokens.spacing.lg },
+        ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.colors.primary}
+          />
+        }
         renderItem={({ item }) =>
           isDesignerSection ? (
             <DesignerFrontCard
@@ -355,11 +605,17 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
                 } as any)
               }
               onOpenCatalogue={(brandId) =>
-                drillDownPush({ pathname: '/catalog/[brandId]', params: { brandId } } as any)
+                drillDownPush(
+                  { pathname: '/catalog/[brandId]', params: { brandId } } as any,
+                )
               }
             />
           ) : (
-            <SectionItemCard item={item} width={cardWidth} sectionKey={section?.key ?? sectionKey} />
+            <SectionItemCard
+              item={item}
+              width={cardWidth}
+              sectionKey={section?.key ?? sectionKey}
+            />
           )
         }
         onEndReached={() => {
@@ -367,9 +623,6 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
         }}
         onEndReachedThreshold={0.55}
         ListEmptyComponent={
-          // A failed load and a genuinely empty section used to render the same
-          // block, so there was no way to tell which one you were looking at —
-          // and only one of them is worth retrying.
           error ? (
             <ScreenState
               compact
@@ -382,8 +635,10 @@ export function MarketSectionDetailScreen({ sectionKey }: Props) {
             <ScreenState
               compact
               kind="empty"
-              title="No items yet"
-              message="This section is active but has no market-ready items right now."
+              title="No matching pieces"
+              message="No items match your active filter. Try resetting the filter to All."
+              onAction={() => setActiveFilter('ALL')}
+              actionLabel="Show All Pieces"
             />
           )
         }
@@ -405,10 +660,62 @@ const styles = StyleSheet.create({
   header: {
     gap: tokens.spacing.md,
     paddingTop: tokens.spacing.sm,
-    paddingBottom: tokens.spacing.lg,
+    paddingBottom: tokens.spacing.md,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: tokens.spacing.xs,
+  },
+  sectorBadge: {
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 4,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
   },
   titleBlock: {
     gap: tokens.spacing.xs,
+  },
+  filterChipRow: {
+    gap: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
+  },
+  chip: {
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  embeddedContainer: {
+    gap: tokens.spacing.xl,
+    paddingTop: tokens.spacing.sm,
+    paddingBottom: tokens.spacing.sm,
+  },
+  embeddedSection: {
+    gap: tokens.spacing.sm,
+  },
+  embeddedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+  },
+  embeddedTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  embeddedRailContent: {
+    gap: GAP,
+  },
+  gridHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: tokens.spacing.sm,
   },
   gridRow: {
     gap: GAP,
