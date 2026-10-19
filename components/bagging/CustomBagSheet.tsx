@@ -62,6 +62,7 @@ type BagProductInput = {
   name?: string;
   sourceType?: BagSourceType;
   sourceId?: string;
+  previousOrderId?: string;
 };
 
 type Props = {
@@ -331,6 +332,7 @@ export default function CustomBagSheet({
 
       await addCustomOrder(product.id, {
         checkoutIntentId: quote.checkoutIntentId,
+        previousOrderId: product.previousOrderId,
         configurationId: status.custom.configurationId,
         configurationVersionId: quote.configurationVersionId,
         queueJumpSelected,
@@ -487,7 +489,7 @@ export default function CustomBagSheet({
                 </View>
                 {requiredKeys.map((key) => (
                   <View key={key} style={styles.summaryRow}>
-                    <AppText variant="body" tone="secondary" numberOfLines={1} style={styles.summaryLabel}>
+                    <AppText variant="body" tone="secondary" style={styles.summaryLabel}>
                       {formatMeasurementLabel(key)}
                     </AppText>
                     <AppText variant="bodyBold">{values[key]} cm</AppText>
@@ -507,8 +509,9 @@ export default function CustomBagSheet({
             />
 
             {/* ── 3. Price ────────────────────────────────────────────── */}
-            <Card style={styles.group}>
+            <View style={styles.group}>
               <AppText variant="subtitle">The brand's custom order queue</AppText>
+              {product?.previousOrderId ? <AppText variant="body">This is a new order at the current price and back of the queue. A separate payment is required; your previous refund continues independently.</AppText> : null}
               {queueSummary ? <>
                 <AppText variant="body">Your {queueSummary.openOrderCount} open orders with this brand. Brand queue: {queueSummary.counts.ACTIVE} Active | {queueSummary.counts.UP_NEXT} Up Next | {queueSummary.counts.PENDING} Pending | {queueSummary.counts.IN_DELIVERY} In Delivery</AppText>
                 {queueSummary.intakeAllowed === false ? <AppText variant="body" tone="warning">This brand is not accepting new custom orders.</AppText> : null}
@@ -518,7 +521,7 @@ export default function CustomBagSheet({
                 </> : null}
               </> : <AppText variant="body" tone="muted">Get your price to see the brand's current queue and available priority options.</AppText>}
               <AppText variant="body" tone="muted">Payment is captured at checkout and held until Active. Pending and Up Next expire in 42 days. Cancelling before Active withholds captured VAT, 10% of garment subtotal and 10% of any jump fee. Delivery is refunded in full, regardless of who cancels. Queue position is not a delivery promise.</AppText>
-            </Card>
+            </View>
             {quote && manualQuote ? (
               <Card padding="md" style={styles.summaryCard}>
                 <AppText variant="subtitle">The brand will quote this one</AppText>

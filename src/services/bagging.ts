@@ -21,6 +21,7 @@ export type AddCustomOrderBagPayload = {
   customerName: string;
   noDirectMatchAcknowledged?: boolean;
   queueJumpSelected?: boolean;
+    previousOrderId?: string;
 };
 
 export async function prepareBag(productId: string): Promise<ProductBagStatus> {

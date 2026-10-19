@@ -6,6 +6,7 @@ export type BagFlowProductInput = {
   name?: string;
   sourceType?: BagSourceType;
   sourceId?: string;
+  previousOrderId?: string;
   selectedSize?: string | null;
   selectedColor?: string | null;
   quantity?: number;

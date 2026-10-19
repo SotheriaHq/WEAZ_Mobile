@@ -160,7 +160,7 @@ function main() {
     'Pull-to-refresh on the profile must retry an unspent link, not only re-read the account.',
   );
   assert.match(authLinkGateSource, /useRootNavigationState\(\)/, 'AuthLinkGate must wait for the root navigator before navigating.');
-  assert.match(authLinkGateSource, /updateUser\(\{ isEmailVerified: true \}\)/, 'AuthLinkGate must clear the unverified flag itself.');
+  assert.match(authLinkGateSource, /updateUser\(\{ isEmailVerified: true \},\s*['"]auth\/AuthLinkGate['"]\)/, 'AuthLinkGate must clear the unverified flag and identify the identity update source.');
 
   const forgotPasswordSource = fs.readFileSync(forgotPasswordPath, 'utf8');
   assert.match(forgotPasswordSource, /browser/i, 'Forgot-password success copy must mention browser fallback.');
@@ -451,7 +451,7 @@ function main() {
   );
   assert.match(
     profileTabSource,
-    /outcome\?\.status === 'verified'[\s\S]{0,180}updateUser\(\{ isEmailVerified: true \}\)/,
+    /outcome\?\.status === 'verified'[\s\S]{0,180}updateUser\(\{ isEmailVerified: true \},\s*['"]tabs\/me['"]\)/,
     'A profile refresh that spends the link must clear the banner even if the profile read is stale.',
   );
   assert.equal(resolveMobileAuthRoute('threadlymobile://settings?tab=account-security&emailChangeToken=abc123'), null);

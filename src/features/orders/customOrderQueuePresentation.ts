@@ -1,4 +1,8 @@
 import type { QueuePresenter } from '@/src/api/CustomOrderQueueApi';
+/** Minute updates, with one earlier wake-up for an exact expiry/retain boundary. */
+export function nextQueueClockDelay(now: number, boundaries: readonly number[]): number {
+  return boundaries.reduce((delay, boundary) => Number.isFinite(boundary) && boundary > now ? Math.min(delay, Math.max(1, boundary - now)) : delay, 60000);
+}
 
 export function formatQueueCountdown(deadline: string | null, now: number): string | null {
   const end = deadline ? Date.parse(deadline) : NaN;

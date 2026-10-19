@@ -4,7 +4,6 @@ import { useFocusEffect } from 'expo-router';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { CustomOrderQueueApi } from '@/src/api/CustomOrderQueueApi';
 import { tokens } from '@/src/styles/tokens';
 
@@ -43,14 +42,14 @@ export function QueueBrandNotices({ enabled }: { enabled: boolean }) {
   if (!enabled || (!notices.length && !error)) return null;
   return (
     <View>
-      <Button variant="secondary" title={error ? 'Retry WIEZ notices' : `📣 WIEZ brand notices (${notices.length})`} onPress={() => error ? setRetry((value) => value + 1) : setOpen(true)} />
+      <Button variant="ghost" title={error ? 'Retry WIEZ notices' : `📣 WIEZ brand notices (${notices.length})`} onPress={() => error ? setRetry((value) => value + 1) : setOpen(true)} />
       <AppBottomSheet visible={open} title="WIEZ brand notices" onClose={() => setOpen(false)} scrollable>
         <View style={{ gap: tokens.spacing.md }}>
-          {notices.length ? notices.map((notice) => <Card key={notice.id} style={{ gap: tokens.spacing.sm }}>
+          {notices.length ? notices.map((notice) => <View key={notice.id} style={{ gap: tokens.spacing.sm, paddingVertical: tokens.spacing.sm }}>
             <AppText variant="subtitle">{notice.title}</AppText>
             <AppText variant="body">{notice.body}</AppText>
             {notice.endsAt ? <AppText variant="captionRegular" tone="muted">Ends {new Date(notice.endsAt).toLocaleString()}</AppText> : null}
-          </Card>) : <AppText variant="body" tone="muted">There are no current notices.</AppText>}
+          </View>) : <AppText variant="body" tone="muted">There are no current notices.</AppText>}
           <AppText variant="captionRegular" tone="muted">Notices are informational. Your subscription and checkout show any configured capacity or charge changes.</AppText>
         </View>
       </AppBottomSheet>

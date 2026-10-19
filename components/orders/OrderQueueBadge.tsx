@@ -8,7 +8,7 @@ import { queueCountdown, useQueueClock } from '@/src/features/orders/queueClock'
 import { tokens } from '@/src/styles/tokens';
 
 export function OrderQueueBadge({ queue, onExpiry }: { queue?: QueuePresenter | null; onExpiry?: () => void }) {
-  const now = useQueueClock();
+  const now = useQueueClock(queue);
   const refreshed = useRef<string | null>(null);
   const retainRefreshed = useRef<string | null>(null);
   const waiting = queue?.lane === 'PENDING' || queue?.lane === 'UP_NEXT';

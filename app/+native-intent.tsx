@@ -1,6 +1,7 @@
 import { resolveMobileAuthRoute } from '@/src/utils/authLinkRouting';
 import { claimFreshLaunchUrl } from '@/src/navigation/launchLinkLedger';
 import { rememberPendingEmailVerification } from '@/src/auth/pendingEmailVerification';
+import { isSafeMobileNavigationPath } from '@/src/utils/navigationInput';
 
 /**
  * Expo Router's hook for every system URL, before it becomes navigation.
@@ -29,6 +30,7 @@ import { rememberPendingEmailVerification } from '@/src/auth/pendingEmailVerific
  *    gives a final answer.
  */
 export async function redirectSystemPath({ path, initial }: { path: string; initial: boolean }) {
+  if (!isSafeMobileNavigationPath(path)) return initial ? '/' : '';
   try {
     const authRoute = resolveMobileAuthRoute(path);
     if (authRoute) {

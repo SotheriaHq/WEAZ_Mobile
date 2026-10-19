@@ -1511,6 +1511,7 @@ export const MobileStoreApi = {
     measurementValues: Record<string, number>;
     rushSelected?: boolean;
     queueJumpSelected?: boolean;
+    previousOrderId?: string;
     shippingAddress?: Record<string, unknown>;
   }): Promise<CustomPricePreview> {
     assertMobileCheckoutEnabled();
@@ -1519,6 +1520,7 @@ export const MobileStoreApi = {
       measurementValues: payload.measurementValues,
       rushSelected: Boolean(payload.rushSelected),
       queueJumpSelected: Boolean(payload.queueJumpSelected),
+        previousOrderId: payload.previousOrderId,
       shippingAddress: payload.shippingAddress,
       idempotencyKey: toIdempotencyKey(),
     });
@@ -1549,6 +1551,7 @@ export const MobileStoreApi = {
     customerName: string;
     noDirectMatchAcknowledged?: boolean;
     queueJumpSelected?: boolean;
+    previousOrderId?: string;
   }): Promise<void> {
     assertMobileCheckoutEnabled();
     const idempotencyKey = toIdempotencyKey();
@@ -1562,6 +1565,7 @@ export const MobileStoreApi = {
         measurementValues: payload.measurementValues,
         rushSelected: false,
         queueJumpSelected: Boolean(payload.queueJumpSelected),
+        previousOrderId: payload.previousOrderId,
         shippingAddress: payload.shippingAddress,
         contactInfo: payload.contactInfo,
         customerName: payload.customerName,

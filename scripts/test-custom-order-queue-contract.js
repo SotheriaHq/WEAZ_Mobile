@@ -39,6 +39,10 @@ const retainCases = [
   [{ ...waiting, retainOpensAt: 'bad' }, now, false], [waiting, NaN, false], [null, now, false],
 ];
 function verifyPresentation(presentation) {
+  assert.equal(presentation.nextQueueClockDelay(now, []), 60000, 'idle countdown updates once a minute');
+  assert.equal(presentation.nextQueueClockDelay(now, [now - 1, now + 120000]), 60000, 'past boundaries cannot create a busy loop');
+  assert.equal(presentation.nextQueueClockDelay(now, [now + 1234]), 1234, 'retain and expiry boundaries wake the single clock exactly');
+  assert.equal(presentation.nextQueueClockDelay(now, [now + 1]), 1, 'inclusive retain close advances at the following millisecond');
   for (const [expiry, expected] of countdownCases) assert.equal(presentation.formatQueueCountdown(expiry, now), expected, `countdown ${expiry}`);
   for (const [queue, time, expected] of retainCases) assert.equal(presentation.canRetainQueue(queue, time), expected, `retain ${JSON.stringify(queue)} at ${time}`);
 }

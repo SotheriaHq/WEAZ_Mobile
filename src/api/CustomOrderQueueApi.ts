@@ -1,6 +1,7 @@
 import { apiClient } from './httpClient';
 
 export type QueuePresenter = {
+  refundHistory?: Array<{ id: string; kind: string; status: string; amount: number; currency: string; createdAt: string }>;
   lane: 'PENDING' | 'UP_NEXT' | 'ACTIVE' | 'IN_DELIVERY' | 'TERMINAL' | null;
   orderRevision: number;
   serverNow: string;
@@ -19,6 +20,8 @@ export type QueuePresenter = {
 };
 
 export type QueueRefundQuote = {
+  settlement?: { status: 'RECORDED' | 'REQUIRES_RECONCILIATION'; amount?: number; currency?: string; rate?: string };
+  settlementIsEstimate?: boolean;
   currency: string;
   captureAmount: number;
   garmentSubtotal: number;
