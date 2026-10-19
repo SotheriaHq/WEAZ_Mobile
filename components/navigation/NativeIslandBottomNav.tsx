@@ -46,6 +46,19 @@ export { getNativeIslandContentClearance, getNativeIslandLayout, NATIVE_ISLAND_N
  */
 const TAP_SLOP_PX = 10;
 
+/**
+ * The scrolling dock opens a chip while the finger is still down — once it
+ * has rested this long without drifting past `EARLY_COMMIT_SLOP_PX`.
+ *
+ * Waiting for release added the whole touch to every Studio hop (T0->T1
+ * 70-150ms on 2026-10-19). A swipe cannot pass this test: 3px in 60ms is
+ * 0.05px/ms, under half the speed of the gentlest swipe start. The earlier
+ * timer that DID open swiped chips allowed 10px in 90ms (0.11px/ms).
+ * Releasing first still opens the chip at once (`onPress`).
+ */
+const EARLY_COMMIT_MS = 60;
+const EARLY_COMMIT_SLOP_PX = 3;
+
 /** Press-in and press both fire for one tap. Ignore the second. */
 const COMMIT_DEDUPE_MS = 400;
 /**
@@ -99,6 +112,8 @@ type ScrollDockGesture = {
   x: number;
   y: number;
   moved: boolean;
+  /** Past `EARLY_COMMIT_SLOP_PX`: no early open; release still decides. */
+  drifted: boolean;
   committed: boolean;
   timer: ReturnType<typeof setTimeout> | null;
 };
@@ -783,9 +798,19 @@ function NativeIslandBottomNavImpl({
         x: pageX,
         y: pageY,
         moved: false,
+        drifted: false,
         committed: false,
         timer: null,
       };
+      // Open while the finger is still down, if it is holding still. See
+      // `EARLY_COMMIT_MS`; a release before then opens it via `onPress`.
+      const gesture = scrollGestureRef.current;
+      gesture.timer = setTimeout(() => {
+        gesture.timer = null;
+        if (scrollGestureRef.current !== gesture) return;
+        if (gesture.moved || gesture.drifted || gesture.committed) return;
+        commitScrollDockTap(item);
+      }, EARLY_COMMIT_MS);
     },
     [clearScrollTimer, commitScrollDockTap],
   );
@@ -796,9 +821,10 @@ function NativeIslandBottomNavImpl({
       if (!gesture || gesture.moved || gesture.committed || gesture.key !== item.key) return;
       const touch = event.nativeEvent.changedTouches?.[0] ?? event.nativeEvent.touches?.[0];
       if (!touch) return;
-      const movedPastSlop =
-        Math.abs(touch.pageX - gesture.x) > TAP_SLOP_PX ||
-        Math.abs(touch.pageY - gesture.y) > TAP_SLOP_PX;
+      const dx = Math.abs(touch.pageX - gesture.x);
+      const dy = Math.abs(touch.pageY - gesture.y);
+      if (dx > EARLY_COMMIT_SLOP_PX || dy > EARLY_COMMIT_SLOP_PX) gesture.drifted = true;
+      const movedPastSlop = dx > TAP_SLOP_PX || dy > TAP_SLOP_PX;
       if (movedPastSlop) cancelScrollCandidate();
     },
     [cancelScrollCandidate],

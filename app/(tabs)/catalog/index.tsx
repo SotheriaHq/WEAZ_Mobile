@@ -556,8 +556,10 @@ export default function CatalogScreen() {
   const profileRef = useRef<BrandProfileDto | null>(null);
   const catalogInitialSurfaceMarkedRef = useRef(false);
   const catalogBackgroundRefreshActiveRef = useRef(false);
-  const [isFocused, setIsFocused] = useState(true);
-  useFocusEffect(useCallback(() => { setIsFocused(true); return () => setIsFocused(false); }, []));
+  // No focus flag in state. One lived here and was passed to the two
+  // bucket queries, which ignore it — while setting it re-rendered the whole
+  // Catalogue on every blur and focus: 37-110ms on presses that only passed
+  // through this tab (`Catalog:self=109.6ms` on tabs→market, 2026-10-19).
   const [designBackgroundTasks, setDesignBackgroundTasks] = useState<DesignEditorBackgroundTask[]>(
     () => readDesignEditorBackgroundTasks(userId),
   );
@@ -791,11 +793,11 @@ export default function CatalogScreen() {
     ownerId: collectionOwnerId,
     enabled: ownerBucketsEnabled,
   });
-  const needsAttentionQuery = useBrandNeedsAttentionQuery({ isFocused,
+  const needsAttentionQuery = useBrandNeedsAttentionQuery({
     ownerId: collectionOwnerId,
     enabled: ownerBucketsEnabled,
   });
-  const inReviewQuery = useBrandInReviewQuery({ isFocused,
+  const inReviewQuery = useBrandInReviewQuery({
     ownerId: collectionOwnerId,
     enabled: ownerBucketsEnabled,
   });
@@ -1004,7 +1006,12 @@ export default function CatalogScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setDesignBackgroundTasks(readDesignEditorBackgroundTasks(userId));
+      // Kept when unchanged: a fresh array on every focus re-rendered the
+      // whole screen even when no task had moved.
+      setDesignBackgroundTasks((current) => {
+        const next = readDesignEditorBackgroundTasks(userId);
+        return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+      });
     }, [userId]),
   );
 

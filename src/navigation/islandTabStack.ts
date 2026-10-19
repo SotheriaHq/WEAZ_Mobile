@@ -42,6 +42,26 @@ export function registerIslandTabNavigation(next: IslandTabNavigation | null) {
  * press re-focuses that visitor screen. `POP_TO` `index` pops to it when it
  * is underneath, and replaces the visitor route when it is the only one.
  */
+/**
+ * Open a tab at its root with a direct `JUMP_TO`, the island's own fast path.
+ *
+ * `router.navigate(href)` resolves the URL into a full navigation state on the
+ * JavaScript thread before anything moves. Leaving Studio for the Catalogue
+ * went through it on every 👈, while the island reached the same tab with one
+ * action. Returns false when the tab navigator is not registered or has no
+ * such tab, so the caller can fall back to the router.
+ */
+export function jumpToIslandTabRoot(tabName: string): boolean {
+  const current = navigation;
+  const state = current?.getState();
+  if (!current || !state || !state.routes.some((entry) => entry.name === tabName)) {
+    return false;
+  }
+  popIslandTabStackToRoot(tabName);
+  current.dispatch({ type: 'JUMP_TO', payload: { name: tabName } });
+  return true;
+}
+
 export function popIslandTabStackToRoot(tabName: string): boolean {
   const current = navigation;
   const state = current?.getState();

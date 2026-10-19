@@ -31,6 +31,7 @@ import {
   isBrandOwner,
 } from '@/src/auth/brandAccess';
 import { classifyStudioWebUrl } from '@/src/features/studio/studioNavigationBridge';
+import { jumpToIslandTabRoot } from '@/src/navigation/islandTabStack';
 import {
   registerStudioInPlaceHandler,
 } from '@/src/features/studio/studioNavController';
@@ -335,6 +336,10 @@ export default function StudioWebViewScreen() {
     and left them to find their way back (owner report 2026-10-17).
   */
   const closeStudio = useCallback(() => {
+    // The island's direct tab jump first; the router only if the tab
+    // navigator is not registered. `router.navigate` rebuilt the whole
+    // navigation state from the URL before the Catalogue could move.
+    if (jumpToIslandTabRoot(hasBrandWorkspace ? 'catalog' : 'me')) return;
     router.navigate((hasBrandWorkspace ? '/catalog' : '/(tabs)/me') as any);
   }, [hasBrandWorkspace]);
 

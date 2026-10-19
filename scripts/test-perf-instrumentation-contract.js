@@ -281,6 +281,25 @@ check(
   /freezeOnBlur: false/.test(read('app/(tabs)/studio/_layout.tsx')),
 );
 check(
+  'Catalogue does not re-render on blur/focus for nothing',
+  (() => {
+    const catalog = read('app/(tabs)/catalog/index.tsx');
+    return (
+      !/setIsFocused/.test(catalog) &&
+      /JSON\.stringify\(next\) === JSON\.stringify\(current\) \? current : next/.test(catalog)
+    );
+  })(),
+);
+check(
+  'leaving Studio uses the direct tab jump, not URL resolution',
+  /if \(jumpToIslandTabRoot\(hasBrandWorkspace \? 'catalog' : 'me'\)\) return;/.test(
+    studioWebViewSource,
+  ) &&
+    /current\.dispatch\(\{ type: 'JUMP_TO', payload: \{ name: tabName \} \}\);/.test(
+      read('src/navigation/islandTabStack.ts'),
+    ),
+);
+check(
   'Catalogue does not subscribe to the app URL',
   (() => {
     const catalog = read('app/(tabs)/catalog/index.tsx');
@@ -615,11 +634,19 @@ check(
 */
 const scrollPaintAt = scrollPressInBody.indexOf('paintCandidate(item);');
 check(
-  'the scrolling dock highlights on touch-down and opens the chip only on release',
+  // 2026-10-19: opens while the finger is still down if it holds still for
+  // EARLY_COMMIT_MS within EARLY_COMMIT_SLOP_PX (3px/60ms — slower than any
+  // swipe start; the timer that opened swiped chips allowed 10px/90ms), and a
+  // drift past that slop forfeits the early open. Release still commits.
+  'the scrolling dock highlights on touch-down and opens a held-still chip before release',
   scrollPressInBody.length > 0 &&
     scrollPaintAt > -1 &&
-    !/setTimeout\(/.test(scrollPressInBody) &&
-    !/commitScrollDockTap\(/.test(scrollPressInBody) &&
+    /const EARLY_COMMIT_MS = 60;/.test(island) &&
+    /const EARLY_COMMIT_SLOP_PX = 3;/.test(island) &&
+    /if \(gesture\.moved \|\| gesture\.drifted \|\| gesture\.committed\) return;\s*commitScrollDockTap\(item\);/.test(
+      scrollPressInBody,
+    ) &&
+    /gesture\.drifted = true;/.test(island) &&
     // Release commits through the memoized chip's stable handlers ref.
     /onPress=\{item\.disabled \? undefined : \(\) => handlersRef\.current\.press\(item\)\}/.test(island) &&
     /press: commitScrollDockTap,/.test(island),
