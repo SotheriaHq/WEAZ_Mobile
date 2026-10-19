@@ -1,6 +1,9 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
@@ -33,10 +36,7 @@ function SettingRow({ row }: { row: SettingsRow }) {
       disabled={!row.onPress}
       accessibilityRole={row.onPress ? 'button' : undefined}
       accessibilityLabel={row.title}
-      style={({ pressed }) => [
-        styles.row,
-        pressed ? styles.rowPressed : null,
-      ]}
+      style={({ pressed }) => [styles.row, pressed ? styles.rowPressed : null]}
     >
       <View style={styles.iconWrap}>
         <AppText variant="body" accessibilityLabel={`${row.title} icon`}>
@@ -44,7 +44,11 @@ function SettingRow({ row }: { row: SettingsRow }) {
         </AppText>
       </View>
       <View style={styles.rowCopy}>
-        <AppText variant="bodyBold" tone={row.danger ? 'danger' : 'default'} numberOfLines={1}>
+        <AppText
+          variant="bodyBold"
+          tone={row.danger ? 'danger' : 'default'}
+          numberOfLines={1}
+        >
           {row.title}
         </AppText>
         {row.subtitle ? (
@@ -54,7 +58,12 @@ function SettingRow({ row }: { row: SettingsRow }) {
         ) : null}
       </View>
       {row.metadata ? (
-        <AppText variant="captionRegular" tone="muted" numberOfLines={1} style={styles.metadata}>
+        <AppText
+          variant="captionRegular"
+          tone="muted"
+          numberOfLines={1}
+          style={styles.metadata}
+        >
           {row.metadata}
         </AppText>
       ) : null}
@@ -71,7 +80,9 @@ function SettingsSectionBlock({ section }: { section: SettingsSection }) {
   const { theme } = useTheme();
 
   return (
-    <View style={[styles.sectionWrap, { borderBottomColor: theme.colors.border }]}>
+    <View
+      style={[styles.sectionWrap, { borderBottomColor: theme.colors.border }]}
+    >
       <AppText variant="captionBold" tone="muted" style={styles.sectionTitle}>
         {section.title.toUpperCase()}
       </AppText>
@@ -173,7 +184,8 @@ export default function SettingsScreen() {
             emoji: '📧',
             title: 'Email notifications',
             subtitle: 'Orders and account updates',
-            onPress: () => drillDownPush('/settings/email-preferences' as never),
+            onPress: () =>
+              drillDownPush('/settings/email-preferences' as never),
           },
         ],
       },
@@ -205,7 +217,8 @@ export default function SettingsScreen() {
             emoji: '🧵',
             title: 'Market preferences',
             subtitle: 'Hidden content and market reset controls',
-            onPress: () => drillDownPush('/settings/market-preferences' as never),
+            onPress: () =>
+              drillDownPush('/settings/market-preferences' as never),
           },
           {
             emoji: '💳',
@@ -222,7 +235,8 @@ export default function SettingsScreen() {
             emoji: '⬆️',
             title: 'Upload preferences',
             subtitle: 'Quality limits and data usage',
-            onPress: () => drillDownPush('/settings/upload-preferences' as never),
+            onPress: () =>
+              drillDownPush('/settings/upload-preferences' as never),
           },
           {
             emoji: '🌗',
@@ -247,9 +261,21 @@ export default function SettingsScreen() {
             subtitle: 'Get to the right support path',
             onPress: () => drillDownPush('/settings/support' as never),
           },
-          { emoji: '📄', title: 'Terms & conditions', onPress: () => drillDownPush('/legal/terms' as never) },
-          { emoji: '🛡️', title: 'Privacy policy', onPress: () => drillDownPush('/legal/privacy' as never) },
-          { emoji: '⚖️', title: 'Legal center', onPress: () => drillDownPush('/legal' as never) },
+          {
+            emoji: '📄',
+            title: 'Terms & conditions',
+            onPress: () => drillDownPush('/legal/terms' as never),
+          },
+          {
+            emoji: '🛡️',
+            title: 'Privacy policy',
+            onPress: () => drillDownPush('/legal/privacy' as never),
+          },
+          {
+            emoji: '⚖️',
+            title: 'Legal center',
+            onPress: () => drillDownPush('/legal' as never),
+          },
         ],
       },
       {
@@ -282,19 +308,50 @@ export default function SettingsScreen() {
     // A brand does not shop. Sizing, size charts, market preferences and
     // checkout settings are all buyer surfaces, and leaving them in the brand's
     // Settings is what put a brand on a shopper profile in the first place.
-    const brandSections = base.filter((section) => section.title !== 'Shopping');
-    const shoppingIndex = base.findIndex((section) => section.title === 'Shopping');
-    const insertAt = shoppingIndex === -1 ? brandSections.length : shoppingIndex;
+    const brandSections = base.filter(
+      (section) => section.title !== 'Shopping',
+    );
+    const shoppingIndex = base.findIndex(
+      (section) => section.title === 'Shopping',
+    );
+    const insertAt =
+      shoppingIndex === -1 ? brandSections.length : shoppingIndex;
 
     return [
       ...brandSections.slice(0, insertAt),
       {
-        title: 'Studio / Brand',
+        title: 'Business',
         rows: [
-          { emoji: '🏪', title: 'Store profile', subtitle: 'Brand identity and public profile', onPress: () => topLevelNavigate('/catalog' as never) },
-          { emoji: '🗂️', title: 'My Content settings', subtitle: 'Designs, products, collections', onPress: () => topLevelNavigate('/catalog' as never) },
-          { emoji: '✅', title: 'Verification', subtitle: 'Brand approval and documents', onPress: () => drillDownPush('/studio' as never) },
-          { emoji: '🏦', title: 'Payouts', subtitle: 'Bank and settlement settings', onPress: () => drillDownPush('/studio' as never) },
+          {
+            emoji: '🏪',
+            title: 'Store profile',
+            subtitle: 'Brand identity and public profile',
+            onPress: () => topLevelNavigate('/catalog' as never),
+          },
+          {
+            emoji: '🧵',
+            title: 'Billing & subscriptions',
+            subtitle: 'Plans, upgrades, history and payment methods',
+            onPress: () => drillDownPush('/settings/subscriptions' as never),
+          },
+          {
+            emoji: '🗂️',
+            title: 'My Content settings',
+            subtitle: 'Designs, products, collections',
+            onPress: () => topLevelNavigate('/catalog' as never),
+          },
+          {
+            emoji: '✅',
+            title: 'Verification',
+            subtitle: 'Brand approval and documents',
+            onPress: () => drillDownPush('/studio' as never),
+          },
+          {
+            emoji: '🏦',
+            title: 'Payouts',
+            subtitle: 'Bank and settlement settings',
+            onPress: () => drillDownPush('/studio' as never),
+          },
         ],
       },
       ...brandSections.slice(insertAt),
@@ -302,7 +359,10 @@ export default function SettingsScreen() {
   }, [isBrand, signOut, user?.email]);
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+    <SafeAreaView
+      style={[styles.root, { backgroundColor: theme.colors.bg }]}
+      edges={['top']}
+    >
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
         <AppBackButton fallbackHref="/(tabs)" />
         <View style={styles.headerCopy}>
@@ -315,7 +375,10 @@ export default function SettingsScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, tokens.spacing.lg) }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom, tokens.spacing.lg) },
+        ]}
       >
         {sections.map((section) => (
           <SettingsSectionBlock key={section.title} section={section} />

@@ -1,3 +1,4 @@
+import { SubscriptionNotice } from '@/components/subscriptions/SubscriptionNotice';
 // Import individual weights rather than the package barrel. Its barrel eagerly
 // requires every Roboto face (18 of them, italics included), which makes Metro
 // deliver unused font assets before the first native screen can be interactive.
@@ -728,6 +729,7 @@ function RootLayoutNav({
             <GoogleAuthRedirectRecoveryGate />
             <AuthLinkGate />
             <GenderPromptSheet />
+            <SubscriptionNotice />
             <BagCountProvider>
               <BagFlowProvider>
                 <ScreenChromeProvider>

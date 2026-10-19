@@ -1,11 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
 
-import { BuyerOrdersApi, type BuyerOrderSummary } from '@/src/api/BuyerOrdersApi';
+import {
+  BuyerOrdersApi,
+  type BuyerOrderSummary,
+} from '@/src/api/BuyerOrdersApi';
 import { useAuth } from '@/src/auth/AuthContext';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
@@ -18,13 +24,20 @@ import {
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { formatMoney } from '@/src/utils/money';
+import { SavedPaymentMethods } from '@/components/payments/SavedPaymentMethods';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
 function extractErrorMessage(error: unknown, fallback: string) {
   const data = (error as any)?.response?.data;
-  const candidates = [data?.message, data?.data?.message, data?.error, (error as any)?.message];
+  const candidates = [
+    data?.message,
+    data?.data?.message,
+    data?.error,
+    (error as any)?.message,
+  ];
   for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+    if (typeof candidate === 'string' && candidate.trim())
+      return candidate.trim();
   }
   return fallback;
 }
@@ -36,7 +49,11 @@ function formatCurrency(amount: number, currency = 'NGN') {
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Unknown date';
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function PaymentOrderRow({ order }: { order: BuyerOrderSummary }) {
@@ -47,22 +64,29 @@ function PaymentOrderRow({ order }: { order: BuyerOrderSummary }) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Open order ${order.title}`}
-      onPress={() => drillDownPush({ pathname: '/orders/[orderId]', params: { orderId: order.id } } as never)}
-      style={({ pressed }) => [styles.orderRow, { borderColor: theme.colors.border }, pressed ? styles.pressed : null]}
+      onPress={() =>
+        drillDownPush({
+          pathname: '/orders/[orderId]',
+          params: { orderId: order.id },
+        } as never)
+      }
+      style={({ pressed }) => [
+        styles.orderRow,
+        { borderColor: theme.colors.border },
+        pressed ? styles.pressed : null,
+      ]}
     >
       <View style={styles.orderCopy}>
-        <AppText variant="bodyBold" numberOfLines={1}>
-          {order.title}
-        </AppText>
-        <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+        <AppText variant="bodyBold">{order.title}</AppText>
+        <AppText variant="captionRegular" tone="muted">
           {order.brandName} / {formatDate(order.createdAt)}
         </AppText>
       </View>
       <View style={styles.orderMeta}>
-        <AppText variant="bodyBold" numberOfLines={1}>
+        <AppText variant="bodyBold">
           {formatCurrency(order.amount, order.currency)}
         </AppText>
-        <AppText variant="captionBold" tone={paid ? 'success' : 'warning'} numberOfLines={1}>
+        <AppText variant="captionBold" tone={paid ? 'success' : 'warning'}>
           {order.paymentStatus}
         </AppText>
       </View>
@@ -71,6 +95,11 @@ function PaymentOrderRow({ order }: { order: BuyerOrderSummary }) {
 }
 
 export default function PaymentSettingsScreen() {
+  const { user } = useAuth();
+  return <PaymentSettingsContent key={user?.id || 'guest'} />;
+}
+
+function PaymentSettingsContent() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { status, isAuthenticated } = useAuth();
@@ -90,7 +119,9 @@ export default function PaymentSettingsScreen() {
     try {
       setOrders(await BuyerOrdersApi.list());
     } catch (error) {
-      setLoadError(extractErrorMessage(error, 'Unable to load payment history.'));
+      setLoadError(
+        extractErrorMessage(error, 'Unable to load payment history.'),
+      );
     } finally {
       setLoading(false);
     }
@@ -102,8 +133,12 @@ export default function PaymentSettingsScreen() {
   }, [loadOrders, status]);
 
   const paymentSummary = useMemo(() => {
-    const paidOrders = orders.filter((order) => order.paymentStatus.toUpperCase() === 'PAID');
-    const pendingOrders = orders.filter((order) => order.paymentStatus.toUpperCase() !== 'PAID');
+    const paidOrders = orders.filter(
+      (order) => order.paymentStatus.toUpperCase() === 'PAID',
+    );
+    const pendingOrders = orders.filter(
+      (order) => order.paymentStatus.toUpperCase() !== 'PAID',
+    );
     const totalPaid = paidOrders.reduce((sum, order) => sum + order.amount, 0);
 
     return {
@@ -117,8 +152,14 @@ export default function PaymentSettingsScreen() {
 
   if (status === 'loading' || loading) {
     return (
-      <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <SettingsHeader title="Payment settings" subtitle="Checkout and payment history" />
+      <SafeAreaView
+        style={[styles.root, { backgroundColor: theme.colors.bg }]}
+        edges={['top']}
+      >
+        <SettingsHeader
+          title="Payment settings"
+          subtitle="Checkout and payment history"
+        />
         <View style={styles.stateWrap}>
           <MuseLoader size={20} />
           <AppText variant="body" tone="muted">
@@ -131,7 +172,10 @@ export default function PaymentSettingsScreen() {
 
   if (!isAuthenticated) {
     return (
-      <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
+      <SafeAreaView
+        style={[styles.root, { backgroundColor: theme.colors.bg }]}
+        edges={['top']}
+      >
         <SettingsHeader title="Payment settings" subtitle="Sign in required" />
         <View style={styles.content}>
           <SettingsStateCard
@@ -146,24 +190,41 @@ export default function PaymentSettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <SettingsHeader title="Payment settings" subtitle="Checkout and payment history" />
+    <SafeAreaView
+      style={[styles.root, { backgroundColor: theme.colors.bg }]}
+      edges={['top']}
+    >
+      <SettingsHeader
+        title="Payment settings"
+        subtitle="Checkout and payment history"
+      />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + tokens.spacing['2xl'] }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: insets.bottom + tokens.spacing['2xl'] },
+        ]}
       >
         <SettingsSection title="Checkout">
           <Card padding="lg" style={styles.card}>
             <AppText variant="bodyBold">Backend-verified checkout</AppText>
             <AppText variant="captionRegular" tone="muted">
-              WIEZ initializes payment from your backend bag and only updates order state after backend and provider verification.
+              WIEZ initializes payment from your backend bag and only updates
+              order state after backend and provider verification.
             </AppText>
             <View style={styles.actionRow}>
               <View style={styles.actionSlot}>
-                <Button title="Open checkout" onPress={() => drillDownPush('/checkout' as never)} />
+                <Button
+                  title="Open checkout"
+                  onPress={() => drillDownPush('/checkout' as never)}
+                />
               </View>
               <View style={styles.actionSlot}>
-                <Button title="View orders" variant="secondary" onPress={() => drillDownPush('/orders' as never)} />
+                <Button
+                  title="View orders"
+                  variant="secondary"
+                  onPress={() => drillDownPush('/orders' as never)}
+                />
               </View>
             </View>
           </Card>
@@ -172,17 +233,36 @@ export default function PaymentSettingsScreen() {
         <SettingsSection title="Payment summary">
           <Card padding="lg" style={styles.card}>
             <View style={styles.summaryGrid}>
-              <View style={[styles.summaryTile, { backgroundColor: theme.colors.surfaceAlt }]}>
+              <View
+                style={[
+                  styles.summaryTile,
+                  { backgroundColor: theme.colors.surfaceAlt },
+                ]}
+              >
                 <AppText variant="h2">{paymentSummary.paidCount}</AppText>
-                <AppText variant="captionRegular" tone="muted">Paid orders</AppText>
+                <AppText variant="captionRegular" tone="muted">
+                  Paid orders
+                </AppText>
               </View>
-              <View style={[styles.summaryTile, { backgroundColor: theme.colors.surfaceAlt }]}>
+              <View
+                style={[
+                  styles.summaryTile,
+                  { backgroundColor: theme.colors.surfaceAlt },
+                ]}
+              >
                 <AppText variant="h2">{paymentSummary.pendingCount}</AppText>
-                <AppText variant="captionRegular" tone="muted">Pending</AppText>
+                <AppText variant="captionRegular" tone="muted">
+                  Pending
+                </AppText>
               </View>
             </View>
             <AppText variant="captionRegular" tone="muted">
-              Paid total shown from loaded orders: {formatCurrency(paymentSummary.totalPaid, paymentSummary.currency)}.
+              Paid total shown from loaded orders:{' '}
+              {formatCurrency(
+                paymentSummary.totalPaid,
+                paymentSummary.currency,
+              )}
+              .
             </AppText>
           </Card>
         </SettingsSection>
@@ -212,17 +292,9 @@ export default function PaymentSettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title="Saved cards">
-          <Card padding="lg" style={styles.card}>
-            <AppText variant="bodyBold">Provider-managed cards only</AppText>
-            <AppText variant="captionRegular" tone="muted">
-              This mobile workspace does not expose a saved-card settings endpoint. Card entry stays inside the secure provider checkout flow.
-            </AppText>
-            <Button
-              title="Read payment policy"
-              variant="secondary"
-              onPress={() => drillDownPush('/legal/payment-policy' as never)}
-            />
-          </Card>
+          <SavedPaymentMethods
+            key={isAuthenticated ? 'account-cards' : 'guest'}
+          />
         </SettingsSection>
       </ScrollView>
     </SafeAreaView>

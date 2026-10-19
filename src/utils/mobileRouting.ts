@@ -353,6 +353,13 @@ export function routeForNotification(
 ): RouterTarget {
   const type = notification.type.toUpperCase();
   const payload = (notification.payload ?? {}) as Record<string, unknown>;
+  if (payload.action === 'SUBSCRIPTION_BILLING') {
+    return {
+      pathname: '/settings/subscriptions',
+      params:
+        typeof payload.brandId === 'string' ? { brandId: payload.brandId } : {},
+    } as Href;
+  }
   const target = notification.target;
   const targetType = target?.type;
   const targetId = target?.id ?? null;

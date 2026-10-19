@@ -187,6 +187,8 @@ export const PRIVATE_QUERY_ROOTS = new Set<string>([
   'orders',
   'brandStaff',
   'brandFinance',
+  'brand-queue-subscription',
+  'paymentMethods',
 ]);
 
 export const isPersistableWiezQueryKey = (queryKey: readonly unknown[]) => {

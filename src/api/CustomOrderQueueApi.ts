@@ -54,6 +54,9 @@ function unwrap<T>(value: unknown): T {
 const orderPath = (id: string) => `/custom-orders/queue/orders/${encodeURIComponent(id)}`;
 
 export const CustomOrderQueueApi = {
+  async settings(id: string, queueJumpEnabled: boolean) {
+    return unwrap<BrandQueueSummary>((await apiClient.patch(`/custom-orders/queue/brands/${encodeURIComponent(id)}/settings`, { queueJumpEnabled })).data);
+  },
   async summaries(orderIds: string[]) {
     if (!orderIds.length) return {} as Record<string, QueuePresenter>;
     const response = await apiClient.post('/custom-orders/queue/summaries', { orderIds });

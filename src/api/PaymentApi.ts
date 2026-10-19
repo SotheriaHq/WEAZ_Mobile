@@ -135,7 +135,11 @@ export interface PaymentAttemptSummary {
 
 function extract<T>(payload: unknown): T {
   const source = payload as { data?: unknown };
-  if (source?.data && typeof source.data === 'object' && 'data' in (source.data as Record<string, unknown>)) {
+  if (
+    source?.data &&
+    typeof source.data === 'object' &&
+    'data' in (source.data as Record<string, unknown>)
+  ) {
     return (source.data as { data: T }).data;
   }
   return (source?.data ?? payload) as T;
@@ -146,6 +150,32 @@ export function createMobileCheckoutIdempotencyKey() {
 }
 
 export const paymentApi = {
+  async savedCards() {
+    return extract<import('./SubscriptionApi').SubscriptionCard[]>(
+      await apiClient.get('/payment/saved-cards'),
+    );
+  },
+  async renameCard(id: string, nickname: string) {
+    await apiClient.patch(`/payment/saved-cards/${encodeURIComponent(id)}`, {
+      nickname,
+    });
+  },
+  async deleteCard(id: string) {
+    await apiClient.delete(`/payment/saved-cards/${encodeURIComponent(id)}`);
+  },
+  async defaultCard(id: string) {
+    await apiClient.post(
+      `/payment/saved-cards/${encodeURIComponent(id)}/default`,
+    );
+  },
+  async validateSavedCard(paymentData: Record<string, unknown>) {
+    return extract<{ sessionId: string }>(
+      await apiClient.post('/payment/cards/validate', {
+        paymentMethod: 'PAYSTACK',
+        paymentData,
+      }),
+    );
+  },
   async initializeUnified(
     request: InitializeUnifiedCheckoutRequest,
   ): Promise<PaymentInitResult> {

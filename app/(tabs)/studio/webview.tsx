@@ -1023,11 +1023,34 @@ export default function StudioWebViewScreen() {
            * Orders, Staff and sign-out, and none of those depend on the WebView
            * having painted. There is nothing to withhold.
            */
-          <StudioHeaderActions
-            user={user}
-            onSearchPress={openSearch}
-            onProfilePress={() => setProfileMenuVisible(true)}
-          />
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: tokens.spacing.sm,
+            }}
+          >
+            {isBrandOwner(user) ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Upgrade subscription"
+                onPress={() =>
+                  drillDownPush('/settings/subscriptions' as never)
+                }
+                style={{ minHeight: 44, justifyContent: 'center' }}
+              >
+                <AppText variant="bodyBold" tone="primary">
+                  UPGRADE
+                </AppText>
+              </Pressable>
+            ) : null}
+            <StudioHeaderActions
+              user={user}
+              onSearchPress={openSearch}
+              onProfilePress={() => setProfileMenuVisible(true)}
+            />
+          </View>
         }
       />
 

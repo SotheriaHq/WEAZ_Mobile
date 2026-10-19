@@ -43,7 +43,8 @@ const STUDIO_TAB_VALUES = new Set([
   'messages',
   'reviews',
 ]);
-const UUID_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_LIKE_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STATIC_STUDIO_PATHS = new Set([
   '/studio',
   '/studio/store',
@@ -110,9 +111,36 @@ function isAllowedStudioRoute(url: URL): boolean {
   return false;
 }
 
-function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | null {
+function classifyNativeOwnedPath(
+  url: URL,
+): StudioWebNavigationClassification | null {
   const pathname = url.pathname.replace(/\/+$/g, '') || '/';
   const path = pathWithSearch(url);
+  if (
+    (pathname === '/settings' &&
+      url.searchParams.get('tab') === 'subscription-billing') ||
+    (pathname === '/studio' && url.searchParams.get('tab') === 'subscription')
+  ) {
+    const reference =
+      url.searchParams.get('subscriptionReference') ||
+      url.searchParams.get('reference') ||
+      url.searchParams.get('trxref');
+    const brandId = url.searchParams.get('brandId');
+    return {
+      type: 'native',
+      path,
+      nativeRoute:
+        reference || brandId
+          ? ({
+              pathname: '/settings/subscriptions',
+              params: {
+                ...(reference ? { reference } : {}),
+                ...(brandId ? { brandId } : {}),
+              },
+            } as Href)
+          : ('/settings/subscriptions' as Href),
+    };
+  }
 
   // Native brand finance (held funds, incoming, payouts) — not WebView.
   if (pathname === '/studio/finance') {
@@ -126,7 +154,11 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
     return { type: 'native', path, nativeRoute: '/(tabs)' as Href };
   }
 
-  if (pathname === '/market' || pathname === '/market' || pathname === '/marketplace') {
+  if (
+    pathname === '/market' ||
+    pathname === '/market' ||
+    pathname === '/marketplace'
+  ) {
     return { type: 'native', path, nativeRoute: '/(tabs)/discover' as Href };
   }
 
@@ -139,7 +171,8 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
   }
 
   if (pathname === '/search') {
-    const query = url.searchParams.get('q') || url.searchParams.get('query') || undefined;
+    const query =
+      url.searchParams.get('q') || url.searchParams.get('query') || undefined;
     return {
       type: 'native',
       path,
@@ -163,7 +196,10 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
     return {
       type: 'native',
       path,
-      nativeRoute: { pathname: '/orders/[orderId]', params: { orderId: orderId ?? customOrderId } } as Href,
+      nativeRoute: {
+        pathname: '/orders/[orderId]',
+        params: { orderId: orderId ?? customOrderId },
+      } as Href,
     };
   }
 
@@ -181,7 +217,10 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
       return {
         type: 'native',
         path,
-        nativeRoute: { pathname: '/(tabs)/me', params: { tab: 'saved' } } as Href,
+        nativeRoute: {
+          pathname: '/(tabs)/me',
+          params: { tab: 'saved' },
+        } as Href,
       };
     }
     return {
@@ -189,7 +228,10 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
       path,
       nativeRoute: {
         pathname: '/catalog',
-        params: normalizedTab === 'store' || normalizedTab === 'shop' ? { tab: 'Shop' } : undefined,
+        params:
+          normalizedTab === 'store' || normalizedTab === 'shop'
+            ? { tab: 'Shop' }
+            : undefined,
       } as Href,
     };
   }
@@ -198,12 +240,18 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
     return { type: 'native', path, nativeRoute: '/designs/create' as Href };
   }
 
-  const designEditId = singleSegmentAfter(pathname, '/profile/collections/edit/');
+  const designEditId = singleSegmentAfter(
+    pathname,
+    '/profile/collections/edit/',
+  );
   if (designEditId) {
     return {
       type: 'native',
       path,
-      nativeRoute: { pathname: '/designs/[designId]/edit', params: { designId: designEditId } } as unknown as Href,
+      nativeRoute: {
+        pathname: '/designs/[designId]/edit',
+        params: { designId: designEditId },
+      } as unknown as Href,
     };
   }
 
@@ -229,7 +277,10 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
       type: 'native',
       path,
       nativeRoute: routeForDesignTarget(designId, {
-        openComments: Boolean(url.searchParams.get('commentId') || url.searchParams.get('openComments')),
+        openComments: Boolean(
+          url.searchParams.get('commentId') ||
+            url.searchParams.get('openComments'),
+        ),
         commentId: url.searchParams.get('commentId'),
       }),
     };
@@ -242,7 +293,10 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
       path,
       nativeRoute: {
         pathname: '/catalog/[brandId]',
-        params: { brandId: profileId, tab: url.searchParams.get('tab') || undefined },
+        params: {
+          brandId: profileId,
+          tab: url.searchParams.get('tab') || undefined,
+        },
       } as unknown as Href,
     };
   }
@@ -264,7 +318,10 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
     return {
       type: 'native',
       path,
-      nativeRoute: { pathname: '/products/[productId]', params: { productId } } as Href,
+      nativeRoute: {
+        pathname: '/products/[productId]',
+        params: { productId },
+      } as Href,
     };
   }
 
@@ -298,15 +355,26 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
     return {
       type: 'native',
       path,
-      nativeRoute: { pathname: '/catalog/[brandId]', params: { brandId: storeBrandId, tab: 'Shop' } } as Href,
+      nativeRoute: {
+        pathname: '/catalog/[brandId]',
+        params: { brandId: storeBrandId, tab: 'Shop' },
+      } as Href,
     };
   }
 
   if (pathname === '/subscriptions') {
-    return { type: 'blocked', path, reason: 'subscriptions_native_route_missing' };
+    return {
+      type: 'blocked',
+      path,
+      reason: 'subscriptions_native_route_missing',
+    };
   }
 
-  if (pathname.startsWith('/u/') || pathname.startsWith('/brand/') || pathname.startsWith('/p/')) {
+  if (
+    pathname.startsWith('/u/') ||
+    pathname.startsWith('/brand/') ||
+    pathname.startsWith('/p/')
+  ) {
     return { type: 'blocked', path, reason: 'slug_native_route_missing' };
   }
 
@@ -316,13 +384,19 @@ function classifyNativeOwnedPath(url: URL): StudioWebNavigationClassification | 
     pathname.startsWith('/size-charts') ||
     pathname.startsWith('/help/')
   ) {
-    return { type: 'blocked', path, reason: 'native_route_not_supported_from_studio' };
+    return {
+      type: 'blocked',
+      path,
+      reason: 'native_route_not_supported_from_studio',
+    };
   }
 
   return null;
 }
 
-function classifyMessagePath(url: URL): StudioWebNavigationClassification | null {
+function classifyMessagePath(
+  url: URL,
+): StudioWebNavigationClassification | null {
   const pathname = url.pathname.replace(/\/+$/g, '') || '/';
   const path = pathWithSearch(url);
 
@@ -368,7 +442,18 @@ function classifyMessagePath(url: URL): StudioWebNavigationClassification | null
 
   // Add query params
   for (const [key, value] of url.searchParams) {
-    if (['threadId', 'conversationId', 'messageId', 'orderId', 'customOrderId', 'brandId', 'customerId', 'actorUserId'].includes(key)) {
+    if (
+      [
+        'threadId',
+        'conversationId',
+        'messageId',
+        'orderId',
+        'customOrderId',
+        'brandId',
+        'customerId',
+        'actorUserId',
+      ].includes(key)
+    ) {
       params[key] = value;
     }
   }
@@ -386,7 +471,9 @@ function classifyMessagePath(url: URL): StudioWebNavigationClassification | null
     ? { [STUDIO_SURFACE_PARAM]: STUDIO_SURFACE_PARAM_VALUE }
     : {};
   const inboxRoute = (
-    fromStudio ? { pathname: '/(tabs)/inbox', params: surfaceParams } : '/(tabs)/inbox'
+    fromStudio
+      ? { pathname: '/(tabs)/inbox', params: surfaceParams }
+      : '/(tabs)/inbox'
   ) as Href;
 
   // If it's a message list path or has params, intercept
@@ -399,13 +486,18 @@ function classifyMessagePath(url: URL): StudioWebNavigationClassification | null
     if (target.type === 'thread') {
       const routeParams: Record<string, string> = {};
       if (target.params.threadId) routeParams.threadId = target.params.threadId;
-      if (target.params.conversationId) routeParams.conversationId = target.params.conversationId;
-      if (target.params.messageId) routeParams.messageId = target.params.messageId;
+      if (target.params.conversationId)
+        routeParams.conversationId = target.params.conversationId;
+      if (target.params.messageId)
+        routeParams.messageId = target.params.messageId;
       if (target.params.orderId) routeParams.orderId = target.params.orderId;
-      if (target.params.customOrderId) routeParams.customOrderId = target.params.customOrderId;
+      if (target.params.customOrderId)
+        routeParams.customOrderId = target.params.customOrderId;
       if (target.params.brandId) routeParams.brandId = target.params.brandId;
-      if (target.params.customerId) routeParams.customerId = target.params.customerId;
-      if (params.actorUserId) routeParams.actorUserId = params.actorUserId as string;
+      if (target.params.customerId)
+        routeParams.customerId = target.params.customerId;
+      if (params.actorUserId)
+        routeParams.actorUserId = params.actorUserId as string;
 
       return {
         type: 'native',
@@ -438,6 +530,17 @@ export function classifyStudioWebUrl(
     return { type: 'external', url: url.toString() };
   }
 
+  // Billing callbacks carry brandId too; this is not a conversation target.
+  const billingPath = url.pathname.replace(/\/+$/g, '');
+  if (
+    (billingPath === '/settings' &&
+      url.searchParams.get('tab') === 'subscription-billing') ||
+    (billingPath === '/studio' &&
+      url.searchParams.get('tab') === 'subscription')
+  ) {
+    return classifyNativeOwnedPath(url)!;
+  }
+
   const messageRoute = classifyMessagePath(url);
   if (messageRoute) {
     return messageRoute;
@@ -452,5 +555,9 @@ export function classifyStudioWebUrl(
     return nativeRoute;
   }
 
-  return { type: 'blocked', path: pathWithSearch(url), reason: 'non_studio_route_not_allowed' };
+  return {
+    type: 'blocked',
+    path: pathWithSearch(url),
+    reason: 'non_studio_route_not_allowed',
+  };
 }

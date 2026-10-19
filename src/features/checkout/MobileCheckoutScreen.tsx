@@ -1,3 +1,4 @@
+import { SavedPaymentMethods } from '@/components/payments/SavedPaymentMethods';
 import { CustomOrderPriceBreakdown } from '@/components/orders/CustomOrderPriceBreakdown';
 import { MobileStoreApi, type CustomBagState } from '@/src/api/StoreApi';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -21,9 +22,7 @@ import { displayNameOf } from '@/src/features/delivery/deliveryAddressBook';
 import { useAuth } from '@/src/auth/AuthContext';
 import { queryClient } from '@/src/query/queryClient';
 import { useBagCount } from '@/src/features/bagging/BagCountContext';
-import {
-  savePendingMobileCheckout,
-} from '@/src/features/checkout/mobileCheckoutPending';
+import { savePendingMobileCheckout } from '@/src/features/checkout/mobileCheckoutPending';
 import {
   getMobileCheckoutUnavailableMessage,
   isMobileCheckoutEnabled,
@@ -114,10 +113,14 @@ export function MobileCheckoutScreen() {
   const auth = useAuth();
   const { count, refreshGlobalBagCount } = useBagCount();
   const [form, setForm] = useState<CheckoutForm>(() => emptyForm(auth.user));
+  const [savedCardId, setSavedCardId] = useState('');
+  const [saveNewCard, setSaveNewCard] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [paymentPolicyAccepted, setPaymentPolicyAccepted] = useState(false);
-  const [paymentLegalAcceptances, setPaymentLegalAcceptances] = useState<LegalAcceptancePayload[]>([]);
+  const [paymentLegalAcceptances, setPaymentLegalAcceptances] = useState<
+    LegalAcceptancePayload[]
+  >([]);
 
   const hasBagItems = count.combinedCount > 0;
   const fullName = useMemo(
@@ -136,22 +139,47 @@ export function MobileCheckoutScreen() {
   const [bagError, setBagError] = useState<string | null>(null);
   const [bagVersion, setBagVersion] = useState(0);
   useEffect(() => {
-    if (auth.status !== 'authenticated') { setCustomBag(null); return; }
+    if (auth.status !== 'authenticated') {
+      setCustomBag(null);
+      return;
+    }
     let active = true;
     setBagError(null);
-    void MobileStoreApi.listCustomBag().then((bag) => { if (active) setCustomBag(bag); })
-      .catch(() => { if (active) { setCustomBag(null); setBagError('Unable to load custom request prices. Refresh your bag before paying.'); } });
-    return () => { active = false; };
+    void MobileStoreApi.listCustomBag()
+      .then((bag) => {
+        if (active) setCustomBag(bag);
+      })
+      .catch(() => {
+        if (active) {
+          setCustomBag(null);
+          setBagError(
+            'Unable to load custom request prices. Refresh your bag before paying.',
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, [auth.status, auth.user?.id, bagVersion]);
-  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
+    null,
+  );
   const [addressEditing, setAddressEditing] = useState(false);
   const addressDefaults = useMemo(
     () => ({
-      customerName: [auth.user?.firstName, auth.user?.lastName].filter(Boolean).join(' ').trim(),
+      customerName: [auth.user?.firstName, auth.user?.lastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim(),
       contactEmail: auth.user?.email?.trim() ?? '',
       phone: auth.user?.phoneNumber?.trim() ?? '',
     }),
-    [auth.user?.email, auth.user?.firstName, auth.user?.lastName, auth.user?.phoneNumber],
+    [
+      auth.user?.email,
+      auth.user?.firstName,
+      auth.user?.lastName,
+      auth.user?.phoneNumber,
+    ],
   );
 
   const handleSelectAddress = useCallback(
@@ -215,8 +243,17 @@ export function MobileCheckoutScreen() {
       return;
     }
 
-    if (!customBag || bagError || customBag.items.some((item) => item.isPriceLockExpired || !item.priceSummary)) {
-      toast.error(bagError || 'Refresh your bag and renew any expired custom request prices before paying.');
+    if (
+      !customBag ||
+      bagError ||
+      customBag.items.some(
+        (item) => item.isPriceLockExpired || !item.priceSummary,
+      )
+    ) {
+      toast.error(
+        bagError ||
+          'Refresh your bag and renew any expired custom request prices before paying.',
+      );
       return;
     }
     const trimmed = trimForm(form);
@@ -249,6 +286,20 @@ export function MobileCheckoutScreen() {
     setMessage('Initializing secure checkout from your saved bag...');
     try {
       const shippingAddress = toShippingAddress(trimmed);
+      const paymentData = {
+        phone: normalizePhoneToE164(trimmed.phone) ?? trimmed.phone,
+        email: trimmed.email,
+        consentAccepted: paymentPolicyAccepted,
+        legalAcceptances: paymentLegalAcceptances,
+        billingSameAsShipping: true,
+        channel: 'CARD',
+        useSavedCard: Boolean(savedCardId),
+        savedCardId: savedCardId || undefined,
+        saveNewCard,
+      };
+      const validation = savedCardId
+        ? await paymentApi.validateSavedCard(paymentData)
+        : undefined;
       const result = await paymentApi.initializeUnified({
         paymentMethod: 'PAYSTACK',
         email: trimmed.email,
@@ -260,14 +311,8 @@ export function MobileCheckoutScreen() {
           billingSameAsShipping: true,
           channel: 'CARD',
         },
-        paymentData: {
-          phone: normalizePhoneToE164(trimmed.phone) ?? trimmed.phone,
-          email: trimmed.email,
-          consentAccepted: paymentPolicyAccepted,
-          legalAcceptances: paymentLegalAcceptances,
-          billingSameAsShipping: true,
-          channel: 'CARD',
-        },
+        paymentData,
+        validationSessionId: validation?.sessionId,
         idempotencyKey,
       });
 
@@ -289,11 +334,12 @@ export function MobileCheckoutScreen() {
         },
       } as never);
     } catch (error) {
-      const responseMessage =
-        (error as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message;
+      const responseMessage = (
+        error as { response?: { data?: { message?: string } } }
+      )?.response?.data?.message;
       const nextMessage =
-        responseMessage || 'Unable to initialize checkout. Review your bag and try again.';
+        responseMessage ||
+        'Unable to initialize checkout. Review your bag and try again.';
       setMessage(nextMessage);
       toast.error(nextMessage);
     } finally {
@@ -312,13 +358,17 @@ export function MobileCheckoutScreen() {
     bagError,
     addressEditing,
     selectedAddressId,
+    savedCardId,
+    saveNewCard,
   ]);
 
   if (!isMobileCheckoutEnabled()) {
     return (
       <>
         <Stack.Screen options={{ title: 'Checkout' }} />
-        <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.bg }]}>
+        <SafeAreaView
+          style={[styles.safeArea, { backgroundColor: theme.colors.bg }]}
+        >
           <View style={styles.center}>
             <Card style={styles.card}>
               <AppText variant="title" style={styles.centerText}>
@@ -327,7 +377,10 @@ export function MobileCheckoutScreen() {
               <AppText variant="body" tone="muted" style={styles.centerText}>
                 {getMobileCheckoutUnavailableMessage()}
               </AppText>
-              <Button title="Continue browsing" onPress={() => router.replace('/(tabs)' as never)} />
+              <Button
+                title="Continue browsing"
+                onPress={() => router.replace('/(tabs)' as never)}
+              />
             </Card>
           </View>
         </SafeAreaView>
@@ -338,7 +391,9 @@ export function MobileCheckoutScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Checkout' }} />
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.bg }]}>
+      <SafeAreaView
+        style={[styles.safeArea, { backgroundColor: theme.colors.bg }]}
+      >
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -347,17 +402,21 @@ export function MobileCheckoutScreen() {
           <View style={styles.header}>
             <AppText variant="title">Secure checkout</AppText>
             <AppText variant="body" tone="muted">
-              WIEZ recalculates the amount from your saved bag and verifies payment with the backend before any order is marked paid.
+              WIEZ recalculates the amount from your saved bag and verifies
+              payment with the backend before any order is marked paid.
             </AppText>
           </View>
 
           <Card style={styles.card}>
             <View style={styles.row}>
               <AppText variant="bodyBold">Bag items</AppText>
-              <AppText variant="bodyBold">{String(count.combinedCount)}</AppText>
+              <AppText variant="bodyBold">
+                {String(count.combinedCount)}
+              </AppText>
             </View>
             <AppText variant="caption" tone="muted">
-              Standard items and custom requests share one checkout. Custom payments are captured now and held until the order becomes Active.
+              Standard items and custom requests share one checkout. Custom
+              payments are captured now and held until the order becomes Active.
             </AppText>
             <Button
               title="Refresh bag"
@@ -369,17 +428,52 @@ export function MobileCheckoutScreen() {
             />
           </Card>
 
-          {bagError ? <AppText variant="body" tone="danger">{bagError}</AppText> : null}
-          {customBag?.items.map((item) => <Card key={item.sessionId} style={styles.card}>
-            <AppText variant="subtitle">{item.sourceTitle || 'Custom request'}</AppText>
-            {item.priceSummary ? <CustomOrderPriceBreakdown summary={item.priceSummary} currency={item.currency} /> : <AppText variant="body" tone="warning">Price breakdown unavailable. Refresh before paying.</AppText>}
-            {item.isPriceLockExpired ? <AppText variant="body" tone="danger">Price hold expired. Return to your bag to renew this price.</AppText> : null}
-          </Card>)}
-          {customBag?.items.length ? <Card style={styles.card}>
-            <AppText variant="subtitle">Before your custom order starts</AppText>
-            <AppText variant="body">Pending and Up Next orders cancel after 42 days. One retain is available from 48 through 12 hours before expiry. Cancellation before Active withholds the captured VAT, 10% of the garment subtotal and 10% of any jump fee; delivery is refunded in full. These deductions apply regardless of who cancels.</AppText>
-            <AppText variant="body" tone="muted">Priority never displaces Up Next. At most two priority orders move forward before an ordinary waiting order. Position is not a delivery promise.</AppText>
-          </Card> : null}
+          {bagError ? (
+            <AppText variant="body" tone="danger">
+              {bagError}
+            </AppText>
+          ) : null}
+          {customBag?.items.map((item) => (
+            <Card key={item.sessionId} style={styles.card}>
+              <AppText variant="subtitle">
+                {item.sourceTitle || 'Custom request'}
+              </AppText>
+              {item.priceSummary ? (
+                <CustomOrderPriceBreakdown
+                  summary={item.priceSummary}
+                  currency={item.currency}
+                />
+              ) : (
+                <AppText variant="body" tone="warning">
+                  Price breakdown unavailable. Refresh before paying.
+                </AppText>
+              )}
+              {item.isPriceLockExpired ? (
+                <AppText variant="body" tone="danger">
+                  Price hold expired. Return to your bag to renew this price.
+                </AppText>
+              ) : null}
+            </Card>
+          ))}
+          {customBag?.items.length ? (
+            <Card style={styles.card}>
+              <AppText variant="subtitle">
+                Before your custom order starts
+              </AppText>
+              <AppText variant="body">
+                Pending and Up Next orders cancel after 42 days. One retain is
+                available from 48 through 12 hours before expiry. Cancellation
+                before Active withholds the captured VAT, 10% of the garment
+                subtotal and 10% of any jump fee; delivery is refunded in full.
+                These deductions apply regardless of who cancels.
+              </AppText>
+              <AppText variant="body" tone="muted">
+                Priority never displaces Up Next. At most two priority orders
+                move forward before an ordinary waiting order. Position is not a
+                delivery promise.
+              </AppText>
+            </Card>
+          ) : null}
 
           <DeliveryAddressBook
             title="Delivery details"
@@ -393,10 +487,35 @@ export function MobileCheckoutScreen() {
           <Card style={styles.card}>
             <AppText variant="subtitle">Payment</AppText>
             <AppText variant="body" tone="muted">
-              Card checkout opens in the secure provider page. Returning to WIEZ only triggers backend verification; it never marks payment as complete locally.
+              Card checkout opens in the secure provider page. Returning to WIEZ
+              only triggers backend verification; it never marks payment as
+              complete locally.
             </AppText>
+            <SavedPaymentMethods
+              key={auth.user?.id || 'guest'}
+              selected={savedCardId}
+              onSelect={(id) => {
+                setSavedCardId(id);
+                setPaymentPolicyAccepted(false);
+              }}
+            />
+            {!savedCardId ? (
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: saveNewCard }}
+                onPress={() => setSaveNewCard((value) => !value)}
+                style={{ minHeight: 44, justifyContent: 'center' }}
+              >
+                <AppText>
+                  {saveNewCard ? '☑' : '☐'} Save this card for future payments
+                </AppText>
+              </Pressable>
+            ) : null}
             {message ? (
-              <AppText variant="caption" tone={message.includes('Unable') ? 'danger' : 'muted'}>
+              <AppText
+                variant="caption"
+                tone={message.includes('Unable') ? 'danger' : 'muted'}
+              >
                 {message}
               </AppText>
             ) : null}
@@ -414,15 +533,27 @@ export function MobileCheckoutScreen() {
                 },
               ]}
             >
-              <View style={[styles.checkbox, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
-                <AppText variant="captionBold" tone={paymentPolicyAccepted ? 'primary' : 'muted'}>
+              <View
+                style={[
+                  styles.checkbox,
+                  {
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.surface,
+                  },
+                ]}
+              >
+                <AppText
+                  variant="captionBold"
+                  tone={paymentPolicyAccepted ? 'primary' : 'muted'}
+                >
                   {paymentPolicyAccepted ? 'OK' : ''}
                 </AppText>
               </View>
               <View style={styles.consentCopy}>
                 <AppText variant="smallBold">Payment Policy</AppText>
                 <AppText variant="caption" tone="muted">
-                  I confirm these details are correct and payment may require provider verification before fulfillment.
+                  I confirm these details are correct and payment may require
+                  provider verification before fulfillment.
                 </AppText>
               </View>
             </Pressable>
@@ -431,12 +562,26 @@ export function MobileCheckoutScreen() {
               accessibilityRole="button"
               accessibilityLabel="View Payment Policy"
             >
-              <AppText variant="captionBold" tone="primary">View Payment Policy</AppText>
+              <AppText variant="captionBold" tone="primary">
+                View Payment Policy
+              </AppText>
             </Pressable>
             <Button
-              title={submitting ? 'Initializing...' : 'Continue to secure payment'}
+              title={
+                submitting ? 'Initializing...' : 'Continue to secure payment'
+              }
               loading={submitting}
-              disabled={!hasBagItems || submitting || !paymentPolicyAccepted || addressEditing || !customBag || Boolean(bagError) || customBag.items.some((item) => item.isPriceLockExpired || !item.priceSummary)}
+              disabled={
+                !hasBagItems ||
+                submitting ||
+                !paymentPolicyAccepted ||
+                addressEditing ||
+                !customBag ||
+                Boolean(bagError) ||
+                customBag.items.some(
+                  (item) => item.isPriceLockExpired || !item.priceSummary,
+                )
+              }
               onPress={() => {
                 void beginCheckout();
               }}
@@ -450,7 +595,6 @@ export function MobileCheckoutScreen() {
           </Card>
         </ScrollView>
       </SafeAreaView>
-
     </>
   );
 }
