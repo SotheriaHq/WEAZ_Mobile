@@ -22,7 +22,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { router, useLocalSearchParams, usePathname } from 'expo-router';
+import { router, useLocalSearchParams, useRoute } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import Animated, { useSharedValue, useAnimatedScrollHandler, runOnJS } from 'react-native-reanimated';
 import { useQueryClient } from '@tanstack/react-query';
@@ -448,7 +448,14 @@ export default function CatalogScreen() {
     navPerf.firstVisibleUi(flowKey);
   }, []);
 
-  const pathname = usePathname();
+  /*
+    This screen's own route, not the app's URL. `usePathname` re-rendered the
+    whole Catalogue on every navigation anywhere in the app — harmless while
+    hidden tabs were frozen, a full render per press once they are not. The
+    route name says the same thing: `[brandId].tsx` re-exports this screen, so
+    `index` is the owner's root and `[brandId]` is a visitor.
+  */
+  const routeName = useRoute().name;
   const {
     brandId: routeBrandIdParam,
     tab: routeTabParam,
@@ -466,7 +473,7 @@ export default function CatalogScreen() {
     can hand the same component a param array, and `isSelfIdentity` rejects
     anything that is not a string, which rendered the owner as a visitor.
   */
-  const onOwnerCatalogRoot = pathname === '/catalog' || pathname === '/(tabs)/catalog';
+  const onOwnerCatalogRoot = routeName === 'index';
   const routeBrandId = onOwnerCatalogRoot ? undefined : firstRouteParam(routeBrandIdParam) || undefined;
   const { theme, scheme } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();

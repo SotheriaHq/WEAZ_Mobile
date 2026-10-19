@@ -9,7 +9,12 @@ export default function StudioLayout() {
         // made every Dashboard↔Store chip feel like a new screen even when
         // the document did not remount.
         animation: 'none',
-        freezeOnBlur: true,
+        // Not frozen. Freezing suspends the WebView screen under Finance/Staff,
+        // and a suspended tree is `display: none` — under Fabric that destroys
+        // the native WebView, so coming back rebuilt and reloaded it (Finance →
+        // Dashboard: T1->T3=3382ms, 2026-10-19). The native stack already
+        // keeps that screen off screen; its re-renders are cheap.
+        freezeOnBlur: false,
       }}
     >
       <Stack.Screen

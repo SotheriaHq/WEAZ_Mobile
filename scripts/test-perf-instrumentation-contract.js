@@ -266,8 +266,26 @@ check(
 // over the app eating every touch (Studio "stuck" capture, 2026-10-17 17:07:55).
 const freezeSource = read('src/navigation/freezeHiddenTabs.tsx');
 check(
-  'hidden tabs do not freeze while an overlay is mounted',
-  /hasOpenOverlay\(\)/.test(freezeSource) && /subscribeOpenOverlays/.test(freezeSource),
+  // Supersedes "hidden tabs do not freeze while an overlay is mounted": no tab
+  // freezes at all now. A Suspense freeze is `display: none`, which under
+  // Fabric destroys and later rebuilds the tab's native views — the "press,
+  // then indicator and screen" latency (2026-10-19).
+  'hidden tabs are never suspended (no react-freeze, no display:none teardown)',
+  !/from 'react-freeze'/.test(freezeSource) &&
+    /export function freezeHiddenTabLayout\(\{ children \}: TabLayoutArgs\) \{\s*return children;/.test(
+      freezeSource,
+    ),
+);
+check(
+  'the Studio stack does not freeze the WebView under Finance/Staff',
+  /freezeOnBlur: false/.test(read('app/(tabs)/studio/_layout.tsx')),
+);
+check(
+  'Catalogue does not subscribe to the app URL',
+  (() => {
+    const catalog = read('app/(tabs)/catalog/index.tsx');
+    return !/usePathname\(/.test(catalog) && /useRoute\(\)\.name/.test(catalog);
+  })(),
 );
 const floatingMenuSource = read('components/ui/AppFloatingMenu.tsx');
 const optionPressBody = floatingMenuSource.slice(floatingMenuSource.indexOf('const handleOptionPress'));

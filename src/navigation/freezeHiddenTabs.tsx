@@ -1,104 +1,42 @@
 /**
- * Freeze the React tree of every tab the user is not looking at.
+ * Hidden tabs are NOT frozen. This layout is deliberately a pass-through.
  *
- * WHY THIS EXISTS. The tab navigator sets `freezeOnBlur: true` with
+ * HISTORY. The tab navigator sets `freezeOnBlur: true` with
  * `detachInactiveScreens={false}`, and the second silently cancels the first:
- * `react-native-screens` only applies the freeze inside its `enabled` branch
- * (`Screen.tsx`, `if (enabled && isNativePlatformSupported)`), and the tab view
- * passes `enabled: detachInactiveScreens`. With detaching off, each scene is a
- * plain `Animated.View` and nothing is frozen. Every hidden tab the session has
- * visited therefore re-rendered on every context change — the 2026-10-15 device
- * capture measured hidden Market at 400-1250ms on presses to Runway, Catalogue
- * and Inbox.
+ * `react-native-screens` only applies the freeze inside its `enabled` branch,
+ * and the tab view passes `enabled: detachInactiveScreens`. A react-freeze
+ * wrapper was added here instead (2026-10-15) to stop hidden tabs
+ * re-rendering on every context change.
  *
- * Detaching stays off (it rebuilt Studio's WebView on every return), so the
- * freeze is applied here instead, through the navigator's `screenLayout`.
+ * WHY IT IS GONE. react-freeze freezes by suspending, and a suspended tree is
+ * hidden with `display: none`. Under Fabric a `display: none` subtree is not
+ * mounted: its native views are destroyed, and showing it again recreates
+ * every view and image and lays the whole screen out from scratch. So every
+ * tab press paid twice — tearing down the tab being left and rebuilding the
+ * tab being opened — on the JS thread (the commit and Yoga layout) and on the
+ * UI thread (view creation). The island's pill animates on that same UI
+ * thread, which is why the pill and the screen arrived TOGETHER, after the
+ * finger had already lifted: "press, then indicator and screen".
  *
- * The rule mirrors `react-native-screens` exactly: frozen when not focused AND
- * not preloaded (a preloaded tab must still be allowed to mount), and the
- * freeze lands one tick after blur so the screen finishes its blurred render —
- * `useIsFocused`, `useFocusEffect` cleanups — before React stops it.
+ * The captures said so long before the cause was understood: Market's thaw
+ * cost 1-2s on every entry (2026-10-17, almost all `unattributed`) and went
+ * away when Market was exempted; every remaining `unattribMs` on tab presses
+ * (2026-10-19: 278-800ms on tabs→market, which froze Runway) is the same
+ * teardown and rebuild for the tabs still frozen.
+ *
+ * Unfrozen, a hidden tab is a scene parked off screen by the tab view, its
+ * native views intact; switching tabs moves a container. What freezing was
+ * protecting against — hidden tabs re-rendering — is handled at the source:
+ * Market's body sits behind a memo shell that absorbs auth and bag changes,
+ * the BagFlow value no longer changes per route, and no tab screen subscribes
+ * to the app's URL (Catalogue reads its own route, not `usePathname`).
  */
-import React, { useEffect, useState } from 'react';
-import { Freeze } from 'react-freeze';
-
-import { hasOpenOverlay, subscribeOpenOverlays } from '@/src/navigation/openOverlays';
+import type React from 'react';
 
 type TabLayoutArgs = {
-  route: { key: string; name?: string };
-  navigation: {
-    getState: () => { index: number; routes: { key: string }[]; preloadedRouteKeys?: string[] };
-  };
   children: React.ReactElement;
 };
 
-function DelayedFreeze({ freeze, children }: { freeze: boolean; children: React.ReactNode }) {
-  const [frozen, setFrozen] = useState(false);
-
-  useEffect(() => {
-    if (!freeze) {
-      setFrozen(false);
-      return undefined;
-    }
-    // Never freeze over a mounted menu or sheet: its closing update could not
-    // commit, and its window would be left over the app eating every touch.
-    // See openOverlays.ts. The freeze lands as soon as the last one unmounts.
-    const tryFreeze = () => {
-      if (!hasOpenOverlay()) setFrozen(true);
-    };
-    const id = setTimeout(tryFreeze, 0);
-    const unsubscribe = subscribeOpenOverlays(tryFreeze);
-    return () => {
-      clearTimeout(id);
-      unsubscribe();
-    };
-  }, [freeze]);
-
-  // Unfreezing is immediate: a press must never wait a tick for its screen.
-  return <Freeze freeze={freeze ? frozen : false}>{children}</Freeze>;
-}
-
-/**
- * Tabs that are never frozen, because thawing them costs more than the
- * re-renders freezing saves.
- *
- * Thawing is not free: react-freeze suspends the tree, and on reveal React
- * reconnects every effect and layout effect in it at once. For Market
- * (`discover`) — a very large screen with several lists — that was the
- * unattributed 0.9-1.5s block on every entry in the 2026-10-16 capture
- * (tabs→market blockedMs=1414/1481/926). What the freeze was added to stop,
- * hidden Market re-rendering on navigation, came mostly from the BagFlow
- * context value changing on every route, which was fixed in the same change;
- * left unfrozen, Market now re-renders only when its own data changes.
- */
-/*
- * Studio is a WebView. It keeps posting messages (READY, route changes, auth)
- * while its tab is hidden, and its loading overlay is cleared by them; a
- * suspended React tree is the wrong place to deliver those. Studio lock-ups
- * ("the app is stuck, nothing is clickable") began after this freeze shipped.
- */
-/*
- * Market (`discover`) was briefly exempted too, to skip its ~1s thaw. That was
- * worse: unfrozen, hidden Market re-rendered on every auth and bag change at
- * 0.5-2.6s a time (device log 2026-10-16 18:10-18:12: "Market=2592ms×6" during
- * sign-in, "Market=2114ms×3" on a bag-count refresh while on Studio). It stays
- * frozen until its render itself is made cheap.
- */
-/*
- * Update (997055f onward): Market's body is now a React.memo behind a thin
- * shell that absorbs auth and bag changes, so hidden Market no longer
- * re-renders on them — the reason it had to stay frozen is gone. Frozen, its
- * thaw still cost 1-2s on EVERY entry (2026-10-17 capture: tabs→market
- * blockedMs=2033/1411/1939, almost all unattributed). Unfrozen again.
- */
-const NEVER_FROZEN_ROUTES = new Set(['studio', 'discover']);
-
-export function freezeHiddenTabLayout({ route, navigation, children }: TabLayoutArgs) {
-  if (route.name && NEVER_FROZEN_ROUTES.has(route.name)) {
-    return children;
-  }
-  const state = navigation.getState();
-  const focused = state.routes[state.index]?.key === route.key;
-  const preloaded = state.preloadedRouteKeys?.includes(route.key) ?? false;
-  return <DelayedFreeze freeze={!focused && !preloaded}>{children}</DelayedFreeze>;
+export function freezeHiddenTabLayout({ children }: TabLayoutArgs) {
+  return children;
 }
