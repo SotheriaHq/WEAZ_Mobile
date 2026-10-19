@@ -13,6 +13,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Image } from 'expo-image';
 import 'react-native-reanimated';
 
@@ -720,27 +721,31 @@ function RootLayoutNav({
   fontsReady: boolean;
   initialThemeMode: ThemeMode;
 }) {
+  // Native gestures need this root: the island's chips recognise touch-down
+  // on the UI thread (see `FixedDockButton`), not through the JS responder.
   return (
-    <ThemeProvider initialMode={initialThemeMode} bootstrapped>
-      <QueryProvider>
-        <ToastProvider>
-          <AuthProvider>
-            <ThemeBackendSync />
-            <GoogleAuthRedirectRecoveryGate />
-            <AuthLinkGate />
-            <GenderPromptSheet />
-            <SubscriptionNotice />
-            <BagCountProvider>
-              <BagFlowProvider>
-                <ScreenChromeProvider>
-                  <RootBootstrap fontsReady={fontsReady} />
-                </ScreenChromeProvider>
-              </BagFlowProvider>
-            </BagCountProvider>
-          </AuthProvider>
-        </ToastProvider>
-      </QueryProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={styles.appRoot}>
+      <ThemeProvider initialMode={initialThemeMode} bootstrapped>
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <ThemeBackendSync />
+              <GoogleAuthRedirectRecoveryGate />
+              <AuthLinkGate />
+              <GenderPromptSheet />
+              <SubscriptionNotice />
+              <BagCountProvider>
+                <BagFlowProvider>
+                  <ScreenChromeProvider>
+                    <RootBootstrap fontsReady={fontsReady} />
+                  </ScreenChromeProvider>
+                </BagFlowProvider>
+              </BagCountProvider>
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
 

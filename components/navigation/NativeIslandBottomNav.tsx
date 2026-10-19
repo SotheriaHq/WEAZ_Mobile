@@ -10,6 +10,8 @@ import {
   type NativeTouchEvent,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { GestureDetector, useTapGesture } from 'react-native-gesture-handler';
+import { scheduleOnRN } from 'react-native-worklets';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -402,28 +404,58 @@ const FixedDockButton = React.memo(
     pressedKey: SharedValue<string | null>;
     handlersRef: React.MutableRefObject<FixedDockHandlers>;
   }) {
+    const itemKey = item.key;
+    const disabled = Boolean(item.disabled);
+    // The JavaScript half of a touch: route. Runs once the JS thread is free.
+    const routeFromTouchDown = React.useCallback(() => {
+      handlersRef.current.pressIn(item);
+    }, [handlersRef, item]);
+    /*
+      Touch-down is recognised on the UI thread, and the pill is lit THERE.
+
+      It used to be a Pressable `onPressIn`, i.e. a JavaScript handler, and that
+      put two waits in front of the pill. The touch itself queued behind any
+      JS work in progress (touchQueueMs up to 523ms, 2026-10-19). And the
+      shared-value write inside the handler is batched by Reanimated with
+      `queueMicrotask`, so it reached the UI thread only after the same JS task
+      had rendered the navigation — the pill and the screen arrived together,
+      after the finger had lifted. This worklet writes `pressedKey` on the UI
+      thread at touch-down, so the pill paints on the next frame whatever the
+      JS thread is doing; the route follows as soon as JS is free.
+    */
+    const tap = useTapGesture({
+      enabled: !disabled,
+      onBegin: () => {
+        'worklet';
+        pressedKey.value = itemKey;
+        scheduleOnRN(routeFromTouchDown);
+      },
+    });
     return (
-      <Pressable
-        accessibilityRole="tab"
-        accessibilityState={{ selected: focused, disabled: item.disabled }}
-        accessibilityLabel={item.label}
-        disabled={item.disabled}
-        onPressIn={item.disabled ? undefined : (event) => handlersRef.current.pressIn(item, event)}
-        onPress={item.disabled ? undefined : () => handlersRef.current.press(item)}
-        // No `android_ripple` — a bounded ripple paints a rectangle across a pill chip.
-        style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
-      >
-        <NativeIslandTabIcon
-          label={item.label}
-          emoji={item.emoji}
-          avatarUri={item.avatarUri}
-          focused={focused}
-          itemKey={item.disabled ? undefined : item.key}
-          pressedKey={pressedKey}
-          badge={item.badge}
-          compact={compact}
-        />
-      </Pressable>
+      <GestureDetector gesture={tap}>
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: focused, disabled: item.disabled }}
+          accessibilityLabel={item.label}
+          disabled={item.disabled}
+          // Release and accessibility activation. A finger already routed on
+          // touch-down above; `commitSelection` drops this repeat.
+          onPress={disabled ? undefined : () => handlersRef.current.press(item)}
+          // No `android_ripple` — a bounded ripple paints a rectangle across a pill chip.
+          style={({ pressed }) => [styles.navItem, item.disabled && styles.navItemDisabled, pressed && styles.navItemPressed]}
+        >
+          <NativeIslandTabIcon
+            label={item.label}
+            emoji={item.emoji}
+            avatarUri={item.avatarUri}
+            focused={focused}
+            itemKey={item.disabled ? undefined : item.key}
+            pressedKey={pressedKey}
+            badge={item.badge}
+            compact={compact}
+          />
+        </Pressable>
+      </GestureDetector>
     );
   },
   (prev, next) =>

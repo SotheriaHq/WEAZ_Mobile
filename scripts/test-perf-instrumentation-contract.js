@@ -281,6 +281,23 @@ check(
   /freezeOnBlur: false/.test(read('app/(tabs)/studio/_layout.tsx')),
 );
 check(
+  // 2026-10-19: a JS `onPressIn` queued behind JS work and its shared-value
+  // write reached the UI thread only after the navigation render, so the pill
+  // and the screen landed together after the finger lifted.
+  'island touch-down is recognised and painted on the UI thread',
+  (() => {
+    const islandSrc = read('components/navigation/NativeIslandBottomNav.tsx');
+    const rootLayout = read('app/_layout.tsx');
+    return (
+      /useTapGesture\(\{/.test(islandSrc) &&
+      /onBegin: \(\) => \{\s*'worklet';\s*pressedKey\.value = itemKey;\s*scheduleOnRN\(routeFromTouchDown\);/.test(islandSrc) &&
+      /<GestureDetector gesture=\{tap\}>/.test(islandSrc) &&
+      /<GestureHandlerRootView style=\{styles\.appRoot\}>/.test(rootLayout) &&
+      /"react-native-gesture-handler": "3\.0\.0"/.test(read('package.json'))
+    );
+  })(),
+);
+check(
   'Catalogue does not re-render on blur/focus for nothing',
   (() => {
     const catalog = read('app/(tabs)/catalog/index.tsx');
