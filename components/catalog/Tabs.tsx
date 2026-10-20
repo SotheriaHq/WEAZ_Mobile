@@ -6,7 +6,8 @@
  */
 
 import React, { useCallback, useEffect, useRef } from 'react';
-import { LayoutChangeEvent, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { LayoutChangeEvent, ScrollView, StyleSheet, View } from 'react-native';
+import { QuickPressable } from '@/components/ui/QuickPressable';
 import Animated, {
   Easing,
   Extrapolation,
@@ -86,8 +87,9 @@ function TabItem({ tab, tabIndex, activeTab, swipeProgress, handlePress, handleT
     };
   }, [activeTab, swipeProgress, tab.key, tabIndex, theme]);
 
+  // Acts while the finger is down, scroll-safe (see QuickPressable).
   return (
-    <Pressable
+    <QuickPressable
       key={tab.key}
       onPress={() => handlePress(tab.key)}
       onLayout={(e: LayoutChangeEvent) => {
@@ -122,7 +124,7 @@ function TabItem({ tab, tabIndex, activeTab, swipeProgress, handlePress, handleT
           </AppText>
         </View>
       )}
-    </Pressable>
+    </QuickPressable>
   );
 }
 

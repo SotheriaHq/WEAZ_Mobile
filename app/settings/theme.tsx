@@ -1,9 +1,10 @@
-import React, { useCallback } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, useColorScheme } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, View, useColorScheme } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
+import { QuickPressable } from '@/components/ui/QuickPressable';
 import { useSyncedThemePreference } from '@/src/hooks/useSyncedThemePreference';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -69,9 +70,25 @@ export default function ThemeSettingsScreen() {
   const insets = useSafeAreaInsets();
   const deviceScheme = useColorScheme();
   const { themePreference, setThemePreference } = useSyncedThemePreference();
+  /*
+    The tapped option lights at once; the app catches up behind it.
+
+    Applying a theme repaints every mounted screen as a transition, which on
+    the A17 takes a moment. Waiting for it to show which option is selected
+    made the tap itself feel ignored. The choice is shown immediately and
+    dropped once the applied theme agrees.
+  */
+  const [pendingPreference, setPendingPreference] = useState<ThemePreference | null>(null);
+  const shownPreference = pendingPreference ?? themePreference;
+  useEffect(() => {
+    if (pendingPreference !== null && themePreference === pendingPreference) {
+      setPendingPreference(null);
+    }
+  }, [pendingPreference, themePreference]);
 
   const handleSelect = useCallback(
     (value: ThemePreference) => {
+      setPendingPreference(value);
       void setThemePreference(value);
     },
     [setThemePreference],
@@ -93,9 +110,9 @@ export default function ThemeSettingsScreen() {
       >
         <View style={styles.optionRow}>
           {THEME_OPTIONS.map((option) => {
-            const selected = themePreference === option.value;
+            const selected = shownPreference === option.value;
             return (
-              <Pressable
+              <QuickPressable
                 key={option.value}
                 onPress={() => handleSelect(option.value)}
                 accessibilityRole="radio"
@@ -133,7 +150,7 @@ export default function ThemeSettingsScreen() {
                     {option.label}
                   </AppText>
                 </View>
-              </Pressable>
+              </QuickPressable>
             );
           })}
         </View>

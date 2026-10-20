@@ -31,15 +31,22 @@ export function useSyncedThemePreference() {
          * second later when the request returned. That is the lag between
          * pressing a theme and the screen settling.
          */
-        if (updated.themePreference !== user.themePreference) {
-          updateUser({ themePreference: updated.themePreference });
+        // Compared with what was SENT. Comparing with `user.themePreference`
+        // — the value from before this tap — meant the echo of a new choice
+        // always "disagreed", so every theme change paid the full-tree pass
+        // twice, the second about a second later (2026-10-20 capture:
+        // `updateUser:patched:untagged`, `P:Auth:user+value`). Leaving the
+        // stored user on the old value is safe: ThemeBackendSync only applies
+        // a CHANGE in it, and the next profile refresh brings the new one.
+        if (updated.themePreference !== themePreference) {
+          updateUser({ themePreference: updated.themePreference }, 'theme:server-disagreed');
         }
       } catch (error) {
         console.warn('Theme preference sync failed; keeping local preference.', error);
         toast.warning('Theme saved on this device. Account sync will retry next time.');
       }
     },
-    [status, themeState, toast, updateUser, user?.id, user?.themePreference],
+    [status, themeState, toast, updateUser, user?.id],
   );
 
   return {

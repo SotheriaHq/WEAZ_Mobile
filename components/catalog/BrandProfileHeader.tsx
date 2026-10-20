@@ -158,8 +158,10 @@ function HeaderIconButton({
 
   if (!onPress) return null;
 
+  // Acts while the finger is down (see QuickPressable): the ⋯ menu and QR
+  // buttons waited for the finger to lift.
   return (
-    <Pressable
+    <QuickPressable
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [
@@ -188,7 +190,7 @@ function HeaderIconButton({
           </AppText>
         </View>
       ) : null}
-    </Pressable>
+    </QuickPressable>
   );
 }
 
