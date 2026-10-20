@@ -1,6 +1,7 @@
 import React from 'react';
-import { Pressable, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
+import { QuickPressable } from '@/components/ui/QuickPressable';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 
@@ -33,8 +34,10 @@ export function IconButton({
   const borderColor =
     variant === 'solid' ? theme.colors.border : 'transparent';
 
+  // Acts while the finger is down (see QuickPressable): 👈 and every header
+  // icon used to wait for the finger to lift.
   return (
-    <Pressable
+    <QuickPressable
       testID={testID}
       onPress={onPress}
       disabled={disabled}
@@ -53,7 +56,7 @@ export function IconButton({
         style,
       ]}>
       <View style={styles.inner}>{children}</View>
-    </Pressable>
+    </QuickPressable>
   );
 }
 

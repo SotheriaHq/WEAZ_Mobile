@@ -298,6 +298,44 @@ check(
   })(),
 );
 check(
+  // 2026-10-20: header buttons, menu links and See-more waited for release.
+  'links and header controls act while the finger is down (QuickPressable)',
+  (() => {
+    const quick = read('components/ui/QuickPressable.tsx');
+    const users = [
+      'components/ui/IconButton.tsx',
+      'components/ui/AppFloatingMenu.tsx',
+      'components/ui/InlineNavLink.tsx',
+      'src/features/market/components/MarketScreen.tsx',
+      'src/features/feed/components/RunwayFeedScreen.tsx',
+      'components/catalog/BrandProfileHeader.tsx',
+    ];
+    return (
+      /const EARLY_PRESS_MS = 60;/.test(quick) &&
+      /const EARLY_PRESS_SLOP_PX = 3;/.test(quick) &&
+      /const early = Boolean\(onPress\) && !onLongPress;/.test(quick) &&
+      /if \(state\?\.fired\) return;/.test(quick) &&
+      users.every((file) => /<QuickPressable/.test(read(file)))
+    );
+  })(),
+);
+check(
+  'hidden Studio does not take Android Back from other screens',
+  /useFocusEffect\(useCallback\(\(\) => \{\s*if \(Platform\.OS !== 'android'\) return undefined;/.test(
+    studioWebViewSource,
+  ),
+);
+check(
+  'island chip focus reaches its worklets as a shared value',
+  (() => {
+    const islandSrc = read('components/navigation/NativeIslandBottomNav.tsx');
+    return (
+      /const focusedValue = useSharedValue\(focused\);/.test(islandSrc) &&
+      !/\}, \[activeGlass, focused, itemKey, pressedKey\]\);/.test(islandSrc)
+    );
+  })(),
+);
+check(
   'Catalogue does not re-render on blur/focus for nothing',
   (() => {
     const catalog = read('app/(tabs)/catalog/index.tsx');

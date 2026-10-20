@@ -630,8 +630,17 @@ export default function StudioWebViewScreen() {
     closeStudio();
   }, [canGoBack, closeStudio, navigateStudioInPlace, resolvedRouteKey]);
 
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
+  /*
+    Only while Studio is the screen on display.
+
+    This was a plain `useEffect`, so the listener lived as long as the Studio
+    tab stayed mounted — which, now that hidden tabs are kept alive, is the
+    rest of the session after Studio is first opened. Every Android Back on
+    Catalogue, Settings or anywhere else was taken by Studio's handler and
+    walked Studio's own history instead of the screen in front of the user.
+  */
+  useFocusEffect(useCallback(() => {
+    if (Platform.OS !== 'android') return undefined;
 
     /*
       Back can never be swallowed.
@@ -649,7 +658,7 @@ export default function StudioWebViewScreen() {
     });
 
     return () => subscription.remove();
-  }, [handleStudioBack]);
+  }, [handleStudioBack]));
 
   useEffect(() => {
     if (loadState === 'ready' && webViewRef.current) {

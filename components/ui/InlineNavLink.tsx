@@ -1,7 +1,8 @@
 import React from 'react';
-import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { QuickPressable } from '@/components/ui/QuickPressable';
 import { tokens } from '@/src/styles/tokens';
 
 /**
@@ -42,8 +43,9 @@ export function InlineNavLink({
   const glyph = direction === 'back' ? POINTER_BACK : direction === 'forward' ? POINTER_FORWARD : null;
   const text = direction === 'back' && glyph ? `${glyph} ${label}` : glyph ? `${label} ${glyph}` : label;
 
+  // Acts while the finger is down, scroll-safe (see QuickPressable).
   return (
-    <Pressable
+    <QuickPressable
       onPress={onPress}
       disabled={disabled}
       hitSlop={tokens.spacing.sm}
@@ -59,7 +61,7 @@ export function InlineNavLink({
       >
         {text}
       </AppText>
-    </Pressable>
+    </QuickPressable>
   );
 }
 

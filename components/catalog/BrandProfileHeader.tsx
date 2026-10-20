@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions, Linking, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
+import { QuickPressable } from '@/components/ui/QuickPressable';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -407,7 +408,7 @@ function OverlayAvatar({
         // it was meant to let you change. It now sits in the bottom-right corner
         // as a bare glyph, kept legible over any photo by a shadow instead of a
         // background.
-        <Pressable
+        <QuickPressable
           onPress={onEditAvatar}
           style={({ pressed }) => [styles.avatarEditBadge, pressed ? styles.pressedControl : null]}
           hitSlop={tokens.spacing.sm}
@@ -417,7 +418,7 @@ function OverlayAvatar({
           <AppText variant="subtitle" tone="inverse" style={styles.avatarEditGlyph}>
             ✎
           </AppText>
-        </Pressable>
+        </QuickPressable>
       ) : null}
     </Pressable>
   );

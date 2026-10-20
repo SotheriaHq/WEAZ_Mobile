@@ -71,6 +71,7 @@ import { useScreenArrival, useSkeletonTiming } from '@/src/perf/usePerfStages';
 import { navPerf } from '@/src/utils/navPerf';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { popIslandTabStackToRoot } from '@/src/navigation/islandTabStack';
+import { QuickPressable } from '@/components/ui/QuickPressable';
 import { fetchMarketFilterChipsQuery } from '@/src/query/bootstrapQueries';
 import { RunwayFeedItem } from '@/src/features/feed/components/RunwayFeedItem';
 import { RunwayFeedList } from '@/src/features/feed/components/RunwayFeedList';
@@ -2950,7 +2951,8 @@ export function RunwayFeedScreen() {
           >
             <View style={styles.headerRow} pointerEvents="box-none">
                 <View style={styles.headerLeftGroup}>
-                <Pressable
+                {/* Header controls act while the finger is down (QuickPressable). */}
+                <QuickPressable
                   onPress={() => { topLevelNavigate('/'); }}
                   hitSlop={10}
                   style={({ pressed }) => [
@@ -2960,7 +2962,7 @@ export function RunwayFeedScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="Go to home">
                     <WiezMark size={30} style={styles.brandLogo} />
-                  </Pressable>
+                  </QuickPressable>
                 </View>
 
                 <View style={styles.headerCenterGroup}>
@@ -2983,7 +2985,7 @@ export function RunwayFeedScreen() {
                 </View>
 
                 <View style={styles.headerRightGroup}>
-                  <Pressable
+                  <QuickPressable
                     onPress={handleOpenNotifications}
                     hitSlop={8}
                     style={({ pressed }) => [
@@ -3001,8 +3003,8 @@ export function RunwayFeedScreen() {
                         </AppText>
                       </View>
                     ) : null}
-                  </Pressable>
-                  <Pressable
+                  </QuickPressable>
+                  <QuickPressable
                     onPress={handleOpenSearch}
                     hitSlop={8}
                     style={({ pressed }) => [
@@ -3013,7 +3015,7 @@ export function RunwayFeedScreen() {
                     accessibilityLabel="Search"
                   >
                     <AppText variant="bodyBold" style={styles.headerEmoji}>🔍</AppText>
-                  </Pressable>
+                  </QuickPressable>
                 </View>
             </View>
             <QueueBrandNotices enabled={status === 'authenticated' && isBrandAccount(user)} />

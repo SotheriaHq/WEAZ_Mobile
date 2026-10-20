@@ -227,6 +227,20 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   */
   const activeGlass = theme.colors.navActiveGlass;
   /*
+    `focused` reaches the worklets as a shared value, not as a dependency.
+
+    With `focused` in the dependency lists, every press rebuilt the four
+    animated styles of both chips whose focus changed — new worklets, new
+    mappers — inside the same commit that shows the destination screen
+    (`Island:self` 20-60ms twice per press, 2026-10-20). Written in a layout
+    effect, it lands before the dock's passive effect hands `pressedKey` back,
+    so the chip never flickers between the two sources.
+  */
+  const focusedValue = useSharedValue(focused);
+  React.useLayoutEffect(() => {
+    focusedValue.value = focused;
+  }, [focused, focusedValue]);
+  /*
     Opacity, not a colour interpolation.
 
     Fading a translucent fill in and out is one GPU property on a layer that is
@@ -237,12 +251,12 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   */
   const pillStyle = useAnimatedStyle(() => {
     const pressed = pressedKey.value;
-    const isActive = pressed != null ? pressed === itemKey : focused;
+    const isActive = pressed != null ? pressed === itemKey : focusedValue.value;
     return {
       backgroundColor: activeGlass,
       opacity: withTiming(isActive ? 1 : 0, ACTIVE_TRANSITION),
     };
-  }, [activeGlass, focused, itemKey, pressedKey]);
+  }, [activeGlass, focusedValue, itemKey, pressedKey]);
 
   /*
     The glyph and the label brighten on the UI thread too.
@@ -286,24 +300,24 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   */
   const glyphStyle = useAnimatedStyle(() => {
     const pressed = pressedKey.value;
-    const isActive = pressed != null ? pressed === itemKey : focused;
+    const isActive = pressed != null ? pressed === itemKey : focusedValue.value;
     return {
       opacity: withTiming(isActive ? 1 : inactiveGlyphOpacity, ACTIVE_TRANSITION),
       transform: [{ scale: withTiming(isActive ? ACTIVE_GLYPH_SCALE : 1, ACTIVE_TRANSITION) }],
     };
-  }, [focused, inactiveGlyphOpacity, itemKey, pressedKey]);
+  }, [focusedValue, inactiveGlyphOpacity, itemKey, pressedKey]);
 
   const activeLabelStyle = useAnimatedStyle(() => {
     const pressed = pressedKey.value;
-    const isActive = pressed != null ? pressed === itemKey : focused;
+    const isActive = pressed != null ? pressed === itemKey : focusedValue.value;
     return { opacity: withTiming(isActive ? 1 : 0, ACTIVE_TRANSITION) };
-  }, [focused, itemKey, pressedKey]);
+  }, [focusedValue, itemKey, pressedKey]);
 
   const inactiveLabelStyle = useAnimatedStyle(() => {
     const pressed = pressedKey.value;
-    const isActive = pressed != null ? pressed === itemKey : focused;
+    const isActive = pressed != null ? pressed === itemKey : focusedValue.value;
     return { opacity: withTiming(isActive ? 0 : 1, ACTIVE_TRANSITION) };
-  }, [focused, itemKey, pressedKey]);
+  }, [focusedValue, itemKey, pressedKey]);
 
   // Static now: the chip's box never changes, and the only animated thing
   // inside it is the frosted fill below.
