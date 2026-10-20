@@ -21,7 +21,8 @@ import { Stack } from 'expo-router';
 
 export default function CatalogLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    // 150ms fade, not the 300ms stack default — see RootStack in app/_layout.tsx.
+    <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="[brandId]" />
       <Stack.Screen name="create-design" />

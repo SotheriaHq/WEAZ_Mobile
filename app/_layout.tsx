@@ -758,21 +758,32 @@ function RootStack() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: theme.colors.bg },
+        /*
+          A 150ms fade for every pushed screen.
+
+          `slide_from_right` runs Android's medium animation time, 400ms, and
+          the stack default runs 300ms. Measured on the A17 (system trace,
+          2026-10-20), the destination's first frame was drawn ~340-500ms after
+          touch-down and the slide then took until ~650-800ms to bring it fully
+          in — the longest single piece of "press, then wait for the screen".
+          `fade` is react-native-screens' 150ms pair (rns_fade_in/out).
+        */
+        animation: 'fade',
       }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       {/* Catalogue and Studio both live in the (tabs) group for persistent
           top-level lifetime and to inherit the single floating island; the
           /catalog and /studio URLs are unchanged (route groups are omitted
           from the path). */}
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
-      <Stack.Screen name="reviews/index" options={{ headerShown: false, animation: 'slide_from_right' }} />
-      <Stack.Screen name="messages/[threadId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
-      <Stack.Screen name="market-viewer" options={{ headerShown: false, animation: 'slide_from_right' }} />
-      <Stack.Screen name="collection-viewer" options={{ headerShown: false, animation: 'slide_from_right' }} />
-      <Stack.Screen name="collection-gallery" options={{ headerShown: false, animation: 'slide_from_right' }} />
-      <Stack.Screen name="search" options={{ headerShown: false, animation: 'slide_from_right' }} />
-      <Stack.Screen name="products/[productId]" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="reviews/index" options={{ headerShown: false }} />
+      <Stack.Screen name="messages/[threadId]" options={{ headerShown: false }} />
+      <Stack.Screen name="market-viewer" options={{ headerShown: false }} />
+      <Stack.Screen name="collection-viewer" options={{ headerShown: false }} />
+      <Stack.Screen name="collection-gallery" options={{ headerShown: false }} />
+      <Stack.Screen name="search" options={{ headerShown: false }} />
+      <Stack.Screen name="products/[productId]" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -17,7 +17,8 @@ export default function CreateDesignFlowLayout() {
       assetHandoffToken={handoffToken}
       recoveryTaskId={recoveryTaskId}
     >
-      <Stack screenOptions={{ headerShown: false }}>
+      {/* 150ms fade, not the 300ms stack default — see RootStack in app/_layout.tsx. */}
+      <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="composer" />
         <Stack.Screen name="preview" />

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCommitCost } from '@/src/perf/commitCost';
 import {
   FlatList,
   Pressable,
@@ -213,6 +214,8 @@ function SearchResultRow({
 }
 
 export default function SearchScreen() {
+  // First, so it times this screen's whole first render (see commitCost.ts).
+  useCommitCost('Search');
   const flowKey = 'search';
   React.useEffect(() => {
     navPerf.screenMounted(flowKey);

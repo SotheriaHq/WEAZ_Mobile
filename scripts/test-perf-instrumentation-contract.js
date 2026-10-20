@@ -336,6 +336,26 @@ check(
   })(),
 );
 check(
+  // 2026-10-20 system trace: slide_from_right is Android's 400ms medium
+  // animation and dominated "press, then wait for the screen".
+  'pushed screens open with the 150ms fade, not the 400ms slide',
+  (() => {
+    const layouts = [
+      'app/_layout.tsx',
+      'app/(tabs)/catalog/_layout.tsx',
+      'app/(tabs)/catalog/create-design/_layout.tsx',
+      'app/(tabs)/studio/_layout.tsx',
+    ].map(read);
+    return (
+      layouts.every((src) => !/animation:\s*'slide_from_right'/.test(src)) &&
+      /screenOptions=\{\{[\s\S]*?animation: 'fade',[\s\S]*?\}\}>/.test(layouts[0]) &&
+      /measureSyncBlock\('RoutePush', \(\) => router\.push\(href as never\)\)/.test(
+        read('src/utils/mobileNavigation.ts'),
+      )
+    );
+  })(),
+);
+check(
   'Catalogue does not re-render on blur/focus for nothing',
   (() => {
     const catalog = read('app/(tabs)/catalog/index.tsx');
