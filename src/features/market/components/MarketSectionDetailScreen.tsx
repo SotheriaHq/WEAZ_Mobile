@@ -185,10 +185,10 @@ export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
   const [siblingSections, setSiblingSections] = useState<MarketSection[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterChip>('ALL');
 
-  const isDesignerSection = useMemo(
-    () => items.length > 0 && items.every((item) => item.entityType === 'BRAND'),
-    [items],
-  );
+  // Layout is a section-level contract, not a property of the current page.
+  // Deriving it from items made pagination/filtering flip FlatList between one
+  // and multiple columns (and remount the list via its key).
+  const isDesignerSection = section?.sourceType === 'BRAND' || section?.layout === 'BRAND_RAIL';
   const columnCount = isDesignerSection ? 1 : width >= 720 ? 3 : 2;
   const fullWidth = Math.floor(width - SIDE_PADDING * 2);
   const cardWidth = useMemo(
