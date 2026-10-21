@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   option: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,

@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
   },
   card: {
     gap: tokens.spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.xl,
     padding: tokens.spacing.lg,
   },

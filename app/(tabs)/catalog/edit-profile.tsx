@@ -516,7 +516,7 @@ export default function BrandProfileEditScreen() {
       mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.85,
+      quality: 1,
       base64: false,
     });
 
@@ -528,11 +528,11 @@ export default function BrandProfileEditScreen() {
     let asset = { uri: raw.uri, fileName: raw.fileName, mimeType: raw.mimeType ?? 'image/jpeg' };
     try {
       const compressed = await compressPickedImage(
-        raw.uri, raw.width ?? 0, raw.height ?? 0, raw.fileName, 'profileImage',
+        raw.uri, raw.width ?? 0, raw.height ?? 0, raw.fileName, 'profileImage', { mimeType: raw.mimeType, fileSize: raw.fileSize },
       );
       asset = { uri: compressed.uri, fileName: compressed.fileName, mimeType: compressed.mimeType };
     } catch {
-      // compression failed — validate original (may reject if >2 MB)
+      // compression failed — validate original (enforces the actual upload limit)
     }
 
     try {
@@ -1067,7 +1067,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1096,7 +1096,7 @@ const styles = StyleSheet.create({
   },
   selectField: {
     minHeight: 52,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     justifyContent: 'center',
@@ -1121,7 +1121,7 @@ const styles = StyleSheet.create({
   },
   tagField: {
     minHeight: 56,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,

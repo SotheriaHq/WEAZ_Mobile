@@ -528,7 +528,10 @@ export function DesignEditorProvider({
   const [categories, setCategories] = useState<DesignCategoryOption[]>(
     () => queryClient.getQueryData<DesignCategoryOption[]>(queryKeys.categories.designCategories()) ?? [],
   );
-  const [filterDimensions, setFilterDimensions] = useState<FilterDimensionOption[]>([]);
+  const [filterDimensions, setFilterDimensions] = useState<FilterDimensionOption[]>(() =>
+    (queryClient.getQueryData<FilterDimensionOption[]>(queryKeys.categories.filters('design-dimensions')) ?? [])
+      .filter((dimension) => (dimension.appliesTo.includes('DESIGN') || dimension.appliesTo.includes('COLLECTION')) && !isLegacyDiscoveryDimensionSlug(dimension.slug)),
+  );
   const [measurementPoints, setMeasurementPoints] = useState<MeasurementPointOption[]>([]);
   const [customOrderConfigurations, setCustomOrderConfigurations] = useState<DesignCustomOrderConfiguration[]>([]);
   const [selectedCustomOrderConfigurationId, setSelectedCustomOrderConfigurationId] = useState('');
@@ -573,6 +576,7 @@ export function DesignEditorProvider({
   const [permissionIssue, setPermissionIssue] = useState<MediaPermissionIssue | null>(null);
 
   const bootstrappedRef = useRef(false);
+  const measurementRequestRef = useRef(0);
   const mountedRef = useRef(true);
   const isSavingRef = useRef(false);
   const lastAutoBaseChargeRef = useRef('');
@@ -638,22 +642,21 @@ export function DesignEditorProvider({
       return;
     }
     lastMeasurementGenderRef.current = genderKey;
+    const requestId = ++measurementRequestRef.current;
 
     // Paint cached measurement points immediately if present.
     const cached = queryClient.getQueryData<MeasurementPointOption[]>(
       queryKeys.measurementPoints.byGender(gender ?? null),
     );
-    if (cached) {
-      setMeasurementPoints(cached);
-    }
+    setMeasurementPoints(cached ?? []);
 
     try {
       const points = await fetchMeasurementPointsQuery(gender);
-      setMeasurementPoints(points);
+      if (mountedRef.current && requestId === measurementRequestRef.current) setMeasurementPoints(points);
     } catch {
-      lastMeasurementGenderRef.current = null;
-      if (!cached) {
-        setMeasurementPoints([]);
+      if (mountedRef.current && requestId === measurementRequestRef.current) {
+        lastMeasurementGenderRef.current = null;
+        if (!cached) setMeasurementPoints([]);
       }
     }
   }, []);
@@ -662,18 +665,27 @@ export function DesignEditorProvider({
     async (forceTakeOver = false) => {
       setBooting(true);
       setLoadingError(null);
+      const metadataTask = Promise.allSettled([
+        fetchDesignCategoriesQuery().then((items) => { if (mountedRef.current) setCategories(items); return items; }),
+        fetchDesignFilterDimensionsQuery().then((items) => {
+          if (mountedRef.current) setFilterDimensions(items.filter((dimension) =>
+            (dimension.appliesTo.includes('DESIGN') || dimension.appliesTo.includes('COLLECTION')) && !isLegacyDiscoveryDimensionSlug(dimension.slug)));
+          return items;
+        }),
+      ]);
+      // Detail hydration and taxonomy are independent network reads.
+      const detailTask = activeDesignId ? getDesignDetail(activeDesignId) : null;
+      // Attach rejection handling immediately while taxonomy is still in flight.
+      void detailTask?.catch(() => undefined);
+      if (!activeDesignId && !normalizedRecoveryTaskId) void loadMeasurementPoints(INITIAL_FORM.audience);
       try {
-        const [categoriesResult, filtersResult] = await Promise.allSettled([
-          fetchDesignCategoriesQuery(),
-          fetchDesignFilterDimensionsQuery(),
-        ]);
+        const [categoriesResult, filtersResult] = await metadataTask;
 
         const metadataWarnings: string[] = [];
 
         if (categoriesResult.status === 'fulfilled') {
           setCategories(categoriesResult.value);
         } else {
-          setCategories([]);
           metadataWarnings.push('Could not load garment categories.');
         }
 
@@ -686,7 +698,6 @@ export function DesignEditorProvider({
             ),
           );
         } else {
-          setFilterDimensions([]);
           metadataWarnings.push('Could not load style details.');
         }
 
@@ -712,7 +723,7 @@ export function DesignEditorProvider({
         }
 
         if (activeDesignId) {
-          const detail = await getDesignDetail(activeDesignId);
+          const detail = await detailTask!;
           hydrateFromDetail(detail);
           const activeCustomConfiguration = detail.customOrderEnabled
             ? await getActiveDesignCustomConfiguration(detail.id).catch(() => null)

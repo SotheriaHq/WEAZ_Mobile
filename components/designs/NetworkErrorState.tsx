@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 2,
   },
   centerText: {
     textAlign: 'center',
@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
   hintChip: {
     minHeight: 44,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     flexDirection: 'row',
     alignItems: 'center',

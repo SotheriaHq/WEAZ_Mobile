@@ -802,7 +802,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   headerCopy: {
     flex: 1,
@@ -827,7 +827,7 @@ const styles = StyleSheet.create({
   sectionWrap: {
     gap: tokens.spacing.sm,
     paddingBottom: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   sectionHeading: {
     gap: tokens.spacing.xs,
@@ -837,7 +837,7 @@ const styles = StyleSheet.create({
   },
   sectionCard: {
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     overflow: 'hidden',
   },
   toggleRow: {
@@ -847,7 +847,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   lastRowWrap: {
     overflow: 'hidden',
@@ -879,7 +879,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.md,
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     padding: tokens.spacing.md,
   },
   errorCard: {
@@ -887,7 +887,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.md,
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     padding: tokens.spacing.md,
   },
   warningCopy: {
@@ -900,7 +900,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   timeRowLabel: {
     flex: 1,

@@ -1,0 +1,11 @@
+# WIEZ profile, creator and Runway changes — 21 October 2026
+
+Me selects the owner root and focuses its tab through one JUMP_TO action carrying the nested root state. This removes the separate pop/URL-navigation race. Existing owner route keys and its subtab remain warm; a visitor-only stack becomes the owner index. Shopper Me remains a flat screen. The same-page decision reads actual focused navigator/stack state; a stale URL cannot swallow the first Me request, while the central in-flight target still deduplicates rapid taps. Root-stack overlays use dismissTo to reach the selected owner destination. System navigation, safe-area math and Android system-bar configuration are unchanged.
+
+Opening the catalogue creator menu warms shared categories, style dimensions and measurement options without waiting. Cached style options render immediately. Independent metadata and detail reads start together; successful option lists paint without waiting for the other list. Measurement requests carry a sequence guard: older responses/failures and unmounted editors cannot overwrite the current audience. Cached selected-audience options paint immediately.
+
+Runway sends the built-in lane key and preserves server ranking. African Casual replaces African Style; For You is authenticated. Exposure requires active loaded media, screen focus and foreground activity. Studio owns one conditional filled Upgrade control, with room below the title. Native UI uses no border or a purposeful border of at least 2 logical pixels.
+
+Verification: full `npm run ci:phase8`, plus design-system audit. `test-profile-root-navigation.cjs` executes the installed Expo routers for visitor-only/deep stacks and owner-key retention. `test-creator-option-races.cjs` executes the actual measurement callback with reversed responses, stale failures, cache and unmount cases. These and category/border guards are included in the Android preview workflow.
+
+Build order: commit and push API, browser and mobile first; trigger `.github/workflows/android-preview-apk.yml` from an apk-* tag on the pushed mobile commit. The workflow publishes the commit-named APK and stable `wiez-preview.apk` release asset. The phone's installed release cannot load unbuilt local edits. A new build and live API/browser deployment must precede claims of end-to-end verification.

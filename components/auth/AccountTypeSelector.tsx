@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: tokens.radius.lg,
-    borderWidth: 1.5,
+    borderWidth: 2,
     height: 72,
     flexDirection: 'row',
     alignItems: 'center',

@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xl,
   },
   panel: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.xl,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.lg,
@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
   },
   card: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.xl,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.md,
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
   },
   roleChip: {
     minHeight: 36,
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,
     alignItems: 'center',

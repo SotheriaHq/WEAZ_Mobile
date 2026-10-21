@@ -155,7 +155,7 @@ export function SegmentedTabs<TKey extends string>({
 const styles = StyleSheet.create({
   root: {
     flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   segment: {
     flex: 1,

@@ -596,7 +596,7 @@ const styles = StyleSheet.create({
   bannerFallbackButton: {
     minHeight: tokens.button.sm.height,
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',

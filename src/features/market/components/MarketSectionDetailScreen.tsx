@@ -699,7 +699,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 4,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   titleBlock: {
     gap: tokens.spacing.xs,
@@ -712,7 +712,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.xs,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
     minHeight: 32,
     alignItems: 'center',
     justifyContent: 'center',

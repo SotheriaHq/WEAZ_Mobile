@@ -446,7 +446,7 @@ const styles = StyleSheet.create({
   },
   card: {
     gap: tokens.spacing.xs,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   cardTop: {
     flexDirection: 'row',

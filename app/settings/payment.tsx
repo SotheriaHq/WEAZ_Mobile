@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
   },
   orderRow: {
     minHeight: 64,
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     flexDirection: 'row',
     alignItems: 'center',

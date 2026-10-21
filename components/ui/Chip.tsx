@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
     minHeight: 40,
     maxWidth: 220,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'flex-start',
@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
     minHeight: tokens.button.xs.height,
     maxWidth: 168,
     paddingHorizontal: tokens.spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
   },
   swatch: {
     width: 32,

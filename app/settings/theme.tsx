@@ -125,7 +125,7 @@ export default function ThemeSettingsScreen() {
                     styles.previewFrame,
                     {
                       borderColor: selected ? theme.colors.primary : theme.colors.border,
-                      borderWidth: selected ? 2 : StyleSheet.hairlineWidth,
+                      borderWidth: selected ? 2 : 2,
                     },
                   ]}
                 >
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   content: {
     paddingHorizontal: tokens.spacing.lg,
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   preview: {
     flex: 1,
     borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     padding: 8,
     gap: 4,
     overflow: 'hidden',
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
   previewCard: {
     flex: 1,
     borderRadius: 6,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     padding: 8,
     gap: 5,
   },

@@ -64,14 +64,14 @@ const styles = StyleSheet.create({
     gap: tokens.spacing['2xl'],
   },
   list: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   row: {
     minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   rowLabel: {
     flex: 1,

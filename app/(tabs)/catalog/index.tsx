@@ -1,3 +1,4 @@
+import { warmDesignEditorMetadata } from '@/src/query/bootstrapQueries';
 /**
  * Catalog Screen - Mobile
  * Brand catalog page with profile header, collections, reviews, and about tabs
@@ -2293,6 +2294,7 @@ export default function CatalogScreen() {
       toast.error('Verify your email before creating designs.');
       return;
     }
+    void warmDesignEditorMetadata();
     perfMark('catalog-plus-tap');
     createMenuRef.current?.open(e);
   }, [toast, user, userEmailVerified]);
@@ -2788,7 +2790,7 @@ const styles = StyleSheet.create({
   },
   skeletonCard: {
     width: '48%',
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     padding: tokens.spacing.md,
     gap: tokens.spacing.md,
@@ -2822,7 +2824,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   failedTaskCard: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     padding: tokens.spacing.md,
     gap: tokens.spacing.xs,
@@ -2839,7 +2841,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     gap: 8,
   },
   // Tab content

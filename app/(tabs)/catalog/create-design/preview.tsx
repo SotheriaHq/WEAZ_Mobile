@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
     width: 108,
     gap: tokens.spacing.xs,
     borderRadius: tokens.radius.xl,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: tokens.spacing.xs,
   },
   assetThumb: {
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: tokens.spacing.sm,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   receiptSection: {
     gap: tokens.spacing.md,
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
   },
   footerActions: {
     gap: tokens.spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     paddingTop: tokens.spacing.md,
   },
   actionRow: {
@@ -460,7 +460,7 @@ const styles = StyleSheet.create({
   modalCard: {
     borderTopLeftRadius: tokens.radius.xl,
     borderTopRightRadius: tokens.radius.xl,
-    borderWidth: 1,
+    borderWidth: 2,
     gap: tokens.spacing.md,
     padding: tokens.spacing.lg,
   },

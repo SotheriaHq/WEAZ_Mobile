@@ -74,7 +74,7 @@ export default function ReviewSummary({ summary }: Props) {
 const styles = StyleSheet.create({
   card: {
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.lg,
   },
@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   moodPill: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 4,

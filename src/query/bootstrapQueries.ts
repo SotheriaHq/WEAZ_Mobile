@@ -8,9 +8,9 @@ import { getMarketFilterChips } from '@/src/api/MarketApi';
 import { queryClient, WIEZ_CATEGORY_FILTER_STALE_TIME_MS } from '@/src/query/queryClient';
 import { queryKeys } from '@/src/query/queryKeys';
 
-export const fetchMarketFilterChipsQuery = () =>
+export const fetchMarketFilterChipsQuery = (userId?: string | null) =>
   queryClient.fetchQuery({
-    queryKey: queryKeys.categories.filters('market-chips'),
+    queryKey: [...queryKeys.categories.filters('market-chips'), userId ?? 'guest'],
     queryFn: getMarketFilterChips,
     staleTime: WIEZ_CATEGORY_FILTER_STALE_TIME_MS,
   });
@@ -35,3 +35,10 @@ export const fetchMeasurementPointsQuery = (gender?: 'MEN' | 'WOMEN' | 'UNISEX')
     queryFn: () => getMeasurementPoints(gender ? { gender } : undefined),
     staleTime: WIEZ_CATEGORY_FILTER_STALE_TIME_MS,
   });
+
+/** Warm creation options on explicit creator intent, without blocking navigation. */
+export const warmDesignEditorMetadata = () => Promise.allSettled([
+  fetchDesignCategoriesQuery(),
+  fetchDesignFilterDimensionsQuery(),
+  fetchMeasurementPointsQuery(),
+]);

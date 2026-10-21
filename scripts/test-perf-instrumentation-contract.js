@@ -386,7 +386,7 @@ check(
   /if \(jumpToIslandTabRoot\(hasBrandWorkspace \? 'catalog' : 'me'\)\) return;/.test(
     studioWebViewSource,
   ) &&
-    /current\.dispatch\(\{ type: 'JUMP_TO', payload: \{ name: tabName \} \}\);/.test(
+    /type: 'JUMP_TO', payload: \{ name: tabName, params:/.test(
       read('src/navigation/islandTabStack.ts'),
     ),
 );
@@ -799,11 +799,11 @@ check(
   ),
 );
 check(
-  'a tab jump from a drill-down pops instead of only re-focusing the tab',
+  'a tab jump selects its root in one action and dismisses a root overlay',
   /TAB_ROOT_PATHS/.test(tabsLayout) &&
-    /popIslandTabStackToRoot\(tabName\)/.test(tabsLayout) &&
-    /const atTabRoot = TAB_ROOT_PATHS\.has\(normCurrent\)/.test(tabsLayout) &&
-    /if \(atTabRoot && dispatchTabNavigationAction\('JUMP_TO', tabName\)\)/.test(tabsLayout),
+    /jumpToIslandTabRoot\(tabName\)/.test(tabsLayout) &&
+    /normCurrent.startsWith\('\/catalog\/'\)/.test(tabsLayout) &&
+    /router.dismissTo\(fallbackRoute/.test(tabsLayout)
 );
 check(
   'drill-down pushes are single-flight so queued taps cannot stack screens',

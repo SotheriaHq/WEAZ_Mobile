@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   headerCopy: {
     flex: 1,
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   filterRail: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   filterContent: {
     gap: tokens.spacing.sm,
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.spacing.md,
   },
   filterChip: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   contextRow: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   windowPill: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 2,

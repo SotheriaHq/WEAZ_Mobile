@@ -1160,6 +1160,7 @@ export async function saveDesignEditor(
           asset.height ?? 0,
           asset.fileName,
           'designMedia',
+          { mimeType: asset.mimeType, fileSize: asset.fileSize },
         );
         return {
           ...asset,
@@ -1168,13 +1169,8 @@ export async function saveDesignEditor(
           height: compressed.height,
           mimeType: compressed.mimeType,
           fileName: compressed.fileName,
-          // Only bypass the client size check when compression ACTUALLY ran (it
-          // produces a small JPEG). If the native image manipulator was
-          // unavailable and we fell back to the original full-size photo,
-          // KEEP the real fileSize so assertValidPickedUploadAssets rejects it
-          // up front with a clear "must be N MB or smaller" message instead of
-          // letting the oversized original hit S3 and fail with EntityTooLarge.
-          fileSize: compressed.compressed ? 0 : asset.fileSize,
+          // Validate measured output bytes; keep original bytes on fallback.
+          fileSize: compressed.fileSize ?? (compressed.compressed ? 0 : asset.fileSize),
         };
       } catch {
         return asset; // Fallback to original

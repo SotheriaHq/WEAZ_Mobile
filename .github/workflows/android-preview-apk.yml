@@ -67,6 +67,11 @@ jobs:
 
       - name: Contract tests
         run: |
+          node scripts/test-image-compression.cjs
+          node scripts/test-creator-option-races.cjs
+          node scripts/test-profile-root-navigation.cjs
+          node scripts/test-runway-categories.cjs
+          node scripts/check-border-widths.cjs
           node scripts/test-auth-user-equality.js
           node scripts/test-perf-instrumentation-contract.js
           node scripts/test-clipping-and-market-chrome-contract.js

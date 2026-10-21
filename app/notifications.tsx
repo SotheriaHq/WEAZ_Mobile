@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.lg,
     paddingBottom: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   headerTop: {
     flexDirection: 'row',

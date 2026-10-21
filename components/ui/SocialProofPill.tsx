@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     minHeight: 28,
     borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',

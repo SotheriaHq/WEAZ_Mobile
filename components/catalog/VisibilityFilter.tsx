@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   },
   pillFrame: {
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.xs,
     paddingVertical: tokens.spacing.xs,
     overflow: 'hidden',
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: tokens.spacing.xs,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.sm,
   },
   badge: {

@@ -26,6 +26,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Runway category parity
+        run: npm run test:runway-categories
+
+      - name: Native border policy
+        run: npm run check:borders
+
       - name: Typecheck
         run: npm exec tsc -- --noEmit
 

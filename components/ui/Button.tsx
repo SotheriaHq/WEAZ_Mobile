@@ -154,7 +154,7 @@ export function Button({
       justifyContent: 'center',
       flexDirection: 'row',
       gap: tokens.spacing.sm,
-      borderWidth: 1,
+      borderWidth: 2,
     };
 
     if (isInert) {

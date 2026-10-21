@@ -41,7 +41,7 @@ export function Card({
 
   const baseStyle: ViewStyle = {
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: theme.colors.border,
     padding: paddingValue,
   };

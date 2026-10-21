@@ -223,7 +223,7 @@ function CommentItem({
           ? {
               borderColor: colors.border,
               backgroundColor: colors.surfaceAlt,
-              borderWidth: 1,
+              borderWidth: 2,
               borderRadius: 16,
               padding: 12,
             }
@@ -554,7 +554,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     // Height is set inline from `getCommentsSheetHeight` — fixed, and known
     // before the first frame so the caller's page can scale WITH the slide.
-    borderTopWidth: 1,
+    borderTopWidth: 2,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     overflow: 'hidden',
@@ -579,7 +579,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingBottom: 12,
-    borderBottomWidth: 1,
+    borderBottomWidth: 2,
   },
   panelHeaderText: {
     flex: 1,
@@ -633,7 +633,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 2,
   },
   commentBody: {
     flex: 1,
@@ -655,7 +655,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderTopWidth: 1,
+    borderTopWidth: 2,
     paddingHorizontal: 16,
     paddingTop: 12,
   },

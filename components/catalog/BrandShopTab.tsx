@@ -1387,7 +1387,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   searchBox: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -1420,7 +1420,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -1456,7 +1456,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1516,7 +1516,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   metaPill: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -1534,7 +1534,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   ownerHintCard: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -1549,7 +1549,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   actionButton: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 12,

@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
 
   menuPanel: {
     borderRadius: tokens.radius.xl,
-    borderWidth: 1,
+    borderWidth: 2,
     overflow: 'hidden',
     shadowColor: tokens.colors.dark,
     shadowOffset: { width: 0, height: 16 },
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.md,
     padding: tokens.spacing.md,
-    borderBottomWidth: 1,
+    borderBottomWidth: 2,
   },
 
   menuAvatar: {
@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
 
   menuItemText: {

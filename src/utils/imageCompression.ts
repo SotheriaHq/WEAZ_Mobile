@@ -1,65 +1,71 @@
-type CompressionProfile = 'profileImage' | 'bannerImage' | 'designMedia' | 'messageImage';
+import { MOBILE_UPLOAD_POLICIES } from './uploadValidation';
 
-const MB = 1024 * 1024;
+type CompressionProfile = 'profileImage' | 'bannerImage' | 'designMedia' | 'messageImage';
 
 // Max dimension is applied to the LONGEST side only.
 // Aspect ratio is always preserved — we never crop or stretch.
-// Only images larger than maxLongSide are resized; smaller images are only quality-compressed.
+// Supported images inside both limits pass through without another generation.
 const PROFILES: Record<
   CompressionProfile,
   { maxLongSide: number; minLongSide: number; maxBytes: number }
 > = {
-  profileImage: { maxLongSide: 1080, minLongSide: 720, maxBytes: 2 * MB },
-  bannerImage: { maxLongSide: 1920, minLongSide: 1280, maxBytes: 2 * MB },
-  // 2048 = the server's largest (ZOOM) variant, so nothing the server renders
-  // is ever upscaled from a smaller upload. The floor is 1600: below that a
-  // full-screen Runway page on a 1440px-wide phone starts to soften.
-  designMedia: { maxLongSide: 2048, minLongSide: 1600, maxBytes: 2 * MB },
-  messageImage: { maxLongSide: 1280, minLongSide: 720, maxBytes: 2 * MB },
+  profileImage: { maxLongSide: 1080, minLongSide: 720, maxBytes: MOBILE_UPLOAD_POLICIES.profileImage.maxSizeBytes },
+  bannerImage: { maxLongSide: 2560, minLongSide: 1920, maxBytes: MOBILE_UPLOAD_POLICIES.bannerImage.maxSizeBytes },
+  // Keep a high-resolution master for portrait fashion and the server's zoom variants.
+  designMedia: { maxLongSide: 4096, minLongSide: 2048, maxBytes: MOBILE_UPLOAD_POLICIES.designMedia.maxSizeBytes },
+  messageImage: { maxLongSide: 2560, minLongSide: 1280, maxBytes: MOBILE_UPLOAD_POLICIES.messageImage.maxSizeBytes },
 };
 
-/*
-  Quality first, size second.
-
-  This used to start at 0.99 — a JPEG setting that buys almost nothing visible
-  over 0.92 and roughly doubles the bytes — and then chase a target of 10% of
-  the ORIGINAL file size, shrinking the long side by 18% per attempt down to a
-  720px floor. A 4MB phone photo therefore usually landed near 720-880px: the
-  design was permanently softened before it ever reached the server, and every
-  Runway variant was then upscaled from it. It also cost up to six full
-  re-encodes per photo.
-
-  Now: one 0.92 encode at up to the profile's max side, which nearly always
-  fits the upload limit. Only if it does not do we step quality down, and only
-  after that the size — never below the profile floor.
-*/
-const INITIAL_QUALITY = 0.92;
-const MIN_QUALITY = 0.86;
+// Preserve masters that already fit; only the real upload ceiling can trigger retries.
+const INITIAL_QUALITY = 0.97;
+const MIN_QUALITY = 0.95;
 const MAX_COMPRESSION_ATTEMPTS = 6;
-/** Headroom under the hard upload limit for multipart overhead. */
-const LIMIT_HEADROOM = 0.95;
+const LIMIT_HEADROOM = 0.98;
+let activeEncodes = 0;
+const encodeWaiters: Array<() => void> = [];
+async function acquireEncode() {
+  if (activeEncodes < 2) { activeEncodes++; return; }
+  await new Promise<void>((resolve) => encodeWaiters.push(resolve));
+}
+function releaseEncode() {
+  const next = encodeWaiters.shift();
+  if (next) next();
+  else activeEncodes--;
+}
 
 async function getLocalUriSize(uri: string): Promise<number | null> {
   try {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return Number.isFinite(blob.size) && blob.size > 0 ? blob.size : null;
-  } catch {
-    return null;
-  }
+    const { File } = require('expo-file-system') as typeof import('expo-file-system');
+    const size = new File(uri).size;
+    if (Number.isFinite(size) && size > 0) return size;
+  } catch { /* Older runtimes can use the asynchronous metadata API. */ }
+  try {
+    const legacy = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
+    const info = await legacy.getInfoAsync(uri);
+    if (info.exists && !info.isDirectory && Number.isFinite(info.size) && info.size > 0) return info.size;
+  } catch { /* Unknown size is validated by the upload endpoint. */ }
+  return null;
+}
+
+function discardCandidate(uri: string, sourceUri: string) {
+  if (uri === sourceUri || !uri.startsWith('file://')) return;
+  try {
+    const { File } = require('expo-file-system') as typeof import('expo-file-system');
+    new File(uri).delete();
+  } catch { /* Temporary cache files remain safe for OS cleanup on older runtimes. */ }
 }
 
 export type CompressedImage = {
   uri: string;
   width: number;
   height: number;
-  // 'image/jpeg' when compression ran; the original/inferred mime when we fell
-  // back to the uncompressed image (e.g. native module unavailable).
+  // The actual output format, including PNG when transparency is preserved.
   mimeType: string;
   fileName: string;
   // True when the original image was returned without compression. Callers can
   // use this for diagnostics; it is safe to ignore.
   compressed?: boolean;
+  fileSize?: number;
 };
 
 // expo-image-manipulator is a native module that requires a native rebuild
@@ -134,85 +140,80 @@ function originalImage(
   };
 }
 
-// Never throws. Each supported native image starts with a 99%-quality JPEG
-// encode and is adaptively resized only when needed. A 90% byte reduction is a
-// best-effort target, not a destructive guarantee: we retain the smallest
-// high-quality result and never trade a valid picker interaction for a crash.
+// Never throws: unavailable codecs retain the original and normal upload validation applies.
 export async function compressPickedImage(
   uri: string,
   originalWidth: number,
   originalHeight: number,
   originalFileName: string | null | undefined,
   profile: CompressionProfile,
+  metadata: { mimeType?: string | null; fileSize?: number | null } = {},
 ): Promise<CompressedImage> {
+  const inferred = metadata.mimeType?.trim().toLowerCase() || inferMimeType(originalFileName, uri);
+  const measured = typeof metadata.fileSize === 'number' && Number.isFinite(metadata.fileSize) && metadata.fileSize > 0
+    ? metadata.fileSize : await getLocalUriSize(uri);
+  const extensionByMime: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic', 'image/heif': 'heif', 'image/avif': 'avif' };
+  const actualName = extensionByMime[inferred]
+    ? `${(originalFileName || 'image').replace(/\.[^.]+$/, '')}.${extensionByMime[inferred]}` : originalFileName;
+  const original = (): CompressedImage => ({
+    ...originalImage(uri, originalWidth, originalHeight, actualName),
+    mimeType: inferred,
+    ...(measured !== null ? { fileSize: measured } : {}),
+  });
+  const cfg = PROFILES[profile];
+  const longSide = Math.max(originalWidth, originalHeight);
+  if (inferred === 'image/gif' && (profile === 'designMedia' || profile === 'bannerImage')) return original();
+  if (['image/jpeg', 'image/png', 'image/webp'].includes(inferred) && measured !== null && measured <= cfg.maxBytes)
+    return original();
   const manipulator = getManipulator();
-  if (!manipulator) {
-    return originalImage(uri, originalWidth, originalHeight, originalFileName);
-  }
-
+  if (!manipulator) return original();
+  await acquireEncode();
+  let kept: Awaited<ReturnType<typeof manipulator.manipulateAsync>> | null = null;
+  let keptSize: number | null = null;
   try {
     const { manipulateAsync, SaveFormat } = manipulator;
-    const cfg = PROFILES[profile];
-    const longSide = Math.max(originalWidth, originalHeight);
-    // The only size goal is fitting the upload limit — never a fraction of the
-    // original, which is what used to grind photos down to 720px.
+    // PNG/WebP/AVIF may carry alpha. JPEG is never a safe fallback for them.
+    const preserveAlpha = ['image/png', 'image/webp', 'image/avif', 'image/gif'].includes(inferred);
+    const format = preserveAlpha ? SaveFormat.PNG : SaveFormat.JPEG;
+    const mimeType = preserveAlpha ? 'image/png' : 'image/jpeg';
+    const extension = preserveAlpha ? 'png' : 'jpg';
     const targetBytes = Math.floor(cfg.maxBytes * LIMIT_HEADROOM);
-
     let maxLongSide = Math.min(Math.max(longSide, 1), cfg.maxLongSide);
     let quality = INITIAL_QUALITY;
-    let result: Awaited<ReturnType<typeof manipulateAsync>> | null = null;
-    let resultSize: number | null = null;
-
-    for (let attempt = 0; attempt < MAX_COMPRESSION_ATTEMPTS; attempt += 1) {
+    for (let attempt = 0; attempt < MAX_COMPRESSION_ATTEMPTS; attempt++) {
       const actions: Parameters<typeof manipulateAsync>[1] = [];
-      if (longSide > maxLongSide && longSide > 0) {
+      if (longSide > maxLongSide && originalWidth > 0 && originalHeight > 0) {
         const scale = maxLongSide / longSide;
-        actions.push({
-          resize: {
-            width: Math.max(1, Math.round(originalWidth * scale)),
-            height: Math.max(1, Math.round(originalHeight * scale)),
-          },
-        });
+        actions.push({ resize: { width: Math.max(1, Math.round(originalWidth * scale)), height: Math.max(1, Math.round(originalHeight * scale)) } });
       }
-
-      const candidate = await manipulateAsync(uri, actions, {
-        compress: quality,
-        format: SaveFormat.JPEG,
-      });
-      const candidateSize = await getLocalUriSize(candidate.uri);
-      if (resultSize === null || (candidateSize !== null && candidateSize < resultSize)) {
-        result = candidate;
-        resultSize = candidateSize;
+      // Every attempt reads the source, never an already-compressed candidate.
+      const candidate = await manipulateAsync(uri, actions, { compress: preserveAlpha ? 1 : quality, format });
+      const size = await getLocalUriSize(candidate.uri);
+      if (!kept || (size !== null && (keptSize === null || size < keptSize))) {
+        if (kept) discardCandidate(kept.uri, uri);
+        kept = candidate; keptSize = size;
+      } else discardCandidate(candidate.uri, uri);
+      if (size === null || size <= targetBytes) break;
+      if (measured !== null && measured <= cfg.maxBytes && ['image/jpeg', 'image/png', 'image/webp'].includes(inferred)) {
+        if (kept) discardCandidate(kept.uri, uri);
+        return original();
       }
-      if (candidateSize === null || candidateSize <= targetBytes) break;
-
-      // Over the limit: give up a little JPEG quality before any pixels, and
-      // pixels only in small steps, never under the profile floor.
-      if (quality > MIN_QUALITY) {
-        quality = Math.max(MIN_QUALITY, quality - 0.03);
-        continue;
-      }
-      const nextLongSide = Math.max(cfg.minLongSide, Math.round(maxLongSide * 0.9));
-      if (nextLongSide < maxLongSide) {
-        maxLongSide = nextLongSide;
-        continue;
-      }
-      break;
+      if (!preserveAlpha && quality > MIN_QUALITY) { quality = Math.max(MIN_QUALITY, quality - 0.02); continue; }
+      const next = Math.max(Math.min(longSide, cfg.minLongSide), Math.round(maxLongSide * 0.9));
+      if (next >= maxLongSide) break;
+      maxLongSide = next;
     }
-
-    if (!result) return originalImage(uri, originalWidth, originalHeight, originalFileName);
-
-    const baseName = (originalFileName ?? 'image').replace(/\.[^.]+$/, '');
-
-    return {
-      uri: result.uri,
-      width: result.width,
-      height: result.height,
-      mimeType: 'image/jpeg',
-      fileName: `${baseName}.jpg`,
-      compressed: true,
+    if (!kept) return original();
+    if (keptSize !== null && keptSize > cfg.maxBytes) {
+      discardCandidate(kept.uri, uri);
+      return original();
+    }
+    return { uri: kept.uri, width: kept.width, height: kept.height, mimeType,
+      fileName: `${(originalFileName ?? 'image').replace(/\.[^.]+$/, '')}.${extension}`, compressed: true,
+      ...(keptSize !== null ? { fileSize: keptSize } : {}),
     };
   } catch {
-    return originalImage(uri, originalWidth, originalHeight, originalFileName);
-  }
+    if (kept) discardCandidate(kept.uri, uri);
+    return original();
+  } finally { releaseEncode(); }
 }

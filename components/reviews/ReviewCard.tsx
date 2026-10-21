@@ -102,7 +102,7 @@ export default function ReviewCard({ review, currentUserId, onEdit, onDelete }: 
 const styles = StyleSheet.create({
   card: {
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.md,
   },
@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   },
   verifiedPill: {
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 2,
   },
@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.xs,
   },
   actionsRow: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     paddingTop: tokens.spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   actionButton: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
