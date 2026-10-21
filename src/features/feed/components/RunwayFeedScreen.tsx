@@ -66,7 +66,7 @@ import { useUnreadNotificationCount } from '@/src/realtime/notifications';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { perfMark } from '@/src/utils/perf';
-import { useCommitCost } from '@/src/perf/commitCost';
+import { useCommitCost, useRenderCause } from '@/src/perf/commitCost';
 import { useScreenArrival, useSkeletonTiming } from '@/src/perf/usePerfStages';
 import { navPerf } from '@/src/utils/navPerf';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
@@ -2455,6 +2455,35 @@ export function RunwayFeedScreen() {
     };
   }, []);
 
+  // Every input `renderFeedItem` reads. Whichever of these moves when a screen
+  // is pushed over Runway is what re-renders all the rows behind it.
+  useRenderCause('Runway', {
+    activePageIndex,
+    bottomClearance,
+    canPatchBrands,
+    collectionMediaMap,
+    fallbackMediaByCollection,
+    feedScrollY,
+    handleOpenBrand,
+    handlePatchBrand,
+    handleSaveLook,
+    handleThreadPress,
+    openCommentsSheet,
+    pageHeight,
+    pageScaleEnabled,
+    patchedBrandIds,
+    patchingBrandIds,
+    savedLookByCollectionId,
+    savingLookByCollectionId,
+    scheme,
+    status,
+    threadStateByMedia,
+    threadingMediaById,
+    userId: user?.id,
+    visibleMetaCollectionId,
+    items,
+    unreadNotificationCount,
+  });
   const renderFeedItem = useCallback(
     ({ item: entry, index }: { item: FeedListEntry; index: number }) => {
       const item = entry.item;
