@@ -6,11 +6,14 @@ import {
   StyleSheet,
   View,
   type GestureResponderEvent,
-  type NativeSyntheticEvent,
-  type NativeTouchEvent,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { GestureDetector, useTapGesture } from 'react-native-gesture-handler';
+import {
+  GestureDetector,
+  useCompetingGestures,
+  useLongPressGesture,
+  useTapGesture,
+} from 'react-native-gesture-handler';
 import { scheduleOnRN } from 'react-native-worklets';
 import Animated, {
   Easing,
@@ -43,23 +46,30 @@ export { getNativeIslandContentClearance, getNativeIslandLayout, NATIVE_ISLAND_N
 /**
  * Movement past this is a scroll, not a tap.
  *
- * Ten points is the platform touch slop. A finger that stays inside it is a
- * press; a finger that leaves it is looking for a chip that is off-screen.
+ * Android's scaled touch slop is 8dp, and that is where the dock's ScrollView
+ * starts scrolling. A tap allowed to travel further than the scroll would open
+ * a chip the row had already moved away from.
  */
-const TAP_SLOP_PX = 10;
+const TAP_SLOP_PX = 8;
 
 /**
  * The scrolling dock opens a chip while the finger is still down — once it
- * has rested this long without drifting past `EARLY_COMMIT_SLOP_PX`.
+ * has rested this long within `SCROLL_DOCK_HOLD_SLOP_PX`. Both are judged on
+ * the UI thread from raw touch positions (`useLongPressGesture`).
  *
- * Waiting for release added the whole touch to every Studio hop (T0->T1
- * 70-150ms on 2026-10-19). A swipe cannot pass this test: 3px in 60ms is
- * 0.05px/ms, under half the speed of the gentlest swipe start. The earlier
- * timer that DID open swiped chips allowed 10px in 90ms (0.11px/ms).
- * Releasing first still opens the chip at once (`onPress`).
+ * The previous test (60ms within 3px) ran on the JS thread: a `setTimeout`
+ * against `onTouchMove` events. Those are separate queues, so on a busy JS
+ * thread the timer could run before the moves that should have cancelled it
+ * were delivered — a light press that turned into a swipe opened the chip it
+ * started on, and the pill jumped with it (2026-10-21 report). 60ms was also
+ * shorter than the rest a finger takes on contact before it drags. 110ms sits
+ * just past Android's own TAP_TIMEOUT (100ms), the time a scroll container
+ * waits before it will even show a child as pressed.
+ *
+ * Releasing first still opens the chip at once (the competing tap).
  */
-const EARLY_COMMIT_MS = 60;
-const EARLY_COMMIT_SLOP_PX = 3;
+const SCROLL_DOCK_HOLD_MS = 110;
+const SCROLL_DOCK_HOLD_SLOP_PX = 4;
 
 /** Press-in and press both fire for one tap. Ignore the second. */
 const COMMIT_DEDUPE_MS = 400;
@@ -108,17 +118,6 @@ const ACTIVE_TRANSITION = { duration: 170, easing: Easing.out(Easing.cubic) } as
  * Applied as a transform, so it changes no layout box — see `glyphStyle`.
  */
 const ACTIVE_GLYPH_SCALE = 1.09;
-
-type ScrollDockGesture = {
-  key: string;
-  x: number;
-  y: number;
-  moved: boolean;
-  /** Past `EARLY_COMMIT_SLOP_PX`: no early open; release still decides. */
-  drifted: boolean;
-  committed: boolean;
-  timer: ReturnType<typeof setTimeout> | null;
-};
 
 export type NativeIslandNavItem = {
   key: string;
@@ -389,7 +388,7 @@ export const NativeIslandTabIcon = React.memo(function NativeIslandTabIcon({
   );
 });
 
-type FixedDockHandlers = {
+type DockHandlers = {
   pressIn: (item: NativeIslandNavItem, event?: GestureResponderEvent) => void;
   press: (item: NativeIslandNavItem) => void;
 };
@@ -416,7 +415,7 @@ const FixedDockButton = React.memo(
     focused: boolean;
     compact: boolean;
     pressedKey: SharedValue<string | null>;
-    handlersRef: React.MutableRefObject<FixedDockHandlers>;
+    handlersRef: React.MutableRefObject<DockHandlers>;
   }) {
     const itemKey = item.key;
     const disabled = Boolean(item.disabled);
@@ -610,7 +609,6 @@ function NativeIslandBottomNavImpl({
   const pressedKey = useSharedValue<string | null>(null);
   const pressedKeyResetRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCommitRef = React.useRef<{ key: string; at: number } | null>(null);
-  const scrollGestureRef = React.useRef<ScrollDockGesture | null>(null);
 
   React.useEffect(() => {
     if (!immediateActiveKey || !immediateActiveNavFlow) return;
@@ -647,8 +645,6 @@ function NativeIslandBottomNavImpl({
 
   React.useEffect(() => {
     return () => {
-      const gesture = scrollGestureRef.current;
-      if (gesture?.timer) clearTimeout(gesture.timer);
       if (pressedKeyResetRef.current) clearTimeout(pressedKeyResetRef.current);
     };
   }, []);
@@ -759,138 +755,16 @@ function NativeIslandBottomNavImpl({
     [commitSelection],
   );
 
-  // Latest press handlers behind a stable ref, so the memoized fixed-dock
-  // buttons do not re-render every time the shell hands down new callbacks
-  // (it does on every route change) — only a button whose own fields changed.
-  const fixedHandlersRef = React.useRef<FixedDockHandlers>({
+  // Latest press handlers behind a stable ref, so the memoized dock buttons
+  // do not re-render every time the shell hands down new callbacks (it does on
+  // every route change) — only a button whose own fields changed. Both docks
+  // share it: each decides on the UI thread WHEN a touch is a press, and both
+  // route the same way once it is.
+  const dockHandlersRef = React.useRef<DockHandlers>({
     pressIn: handleFixedPressIn,
     press: handleFixedPress,
   });
-  fixedHandlersRef.current = { pressIn: handleFixedPressIn, press: handleFixedPress };
-
-  const clearScrollTimer = React.useCallback((gesture: ScrollDockGesture | null) => {
-    if (!gesture?.timer) return;
-    clearTimeout(gesture.timer);
-    gesture.timer = null;
-  }, []);
-
-  const cancelScrollCandidate = React.useCallback(() => {
-    const gesture = scrollGestureRef.current;
-    if (!gesture || gesture.committed) return;
-    gesture.moved = true;
-    clearScrollTimer(gesture);
-    const key = gesture.key;
-    setImmediateActiveKey((current) => (current === key ? null : current));
-    setImmediateActiveNavFlow(null);
-    // The highlight painted on touch-down is being taken back, because this
-    // turned out to be a scroll rather than a tap. Record it, or a trace shows
-    // an indicator that appeared and then silently vanished.
-    if (pressedKey.value === key) pressedKey.value = null;
-    navPerf.mark('optimistic_active_cancelled', key);
-  }, [clearScrollTimer, pressedKey]);
-
-  const commitScrollDockTap = React.useCallback(
-    (item: NativeIslandNavItem) => {
-      const gesture = scrollGestureRef.current;
-      if (gesture && (gesture.moved || gesture.committed || gesture.key !== item.key)) return;
-      if (gesture) {
-        gesture.committed = true;
-        clearScrollTimer(gesture);
-      }
-      scrollGestureRef.current = null;
-      // Already painted on touch-down for a finger press; still needed for the
-      // accessibility activate path, which never goes through press-in. The
-      // setState calls are no-ops when the values match.
-      paintCandidate(item);
-      commitSelection(item);
-    },
-    [clearScrollTimer, commitSelection, paintCandidate],
-  );
-
-  const beginScrollDockPress = React.useCallback(
-    (item: NativeIslandNavItem, event: GestureResponderEvent) => {
-      // Read before anything else, for the reason given in `handleFixedPressIn`.
-      const queuedMs = perfTouchQueueMs(event.nativeEvent.timestamp);
-      const previous = scrollGestureRef.current;
-      if (previous && !previous.committed) clearScrollTimer(previous);
-      const { pageX, pageY } = event.nativeEvent;
-      /*
-        Highlight on touch-down; route still waits out the slop timer.
-
-        The 90ms gate exists so a SWIPE across the dock does not open the chip
-        the finger happened to land on. It was gating the highlight as well,
-        which made every deliberate press on the Studio dock feel dead for its
-        first 90ms — on top of the batching delay fixed above.
-
-        A highlight is allowed to be wrong for 90ms, because
-        `cancelScrollCandidate` takes it straight back the moment the finger
-        passes the slop. A route is not, which is why only the route is gated.
-      */
-      paintCandidate(item);
-      perfRecordTouchQueue(queuedMs);
-      /*
-        The route opens on RELEASE, never on a timer.
-
-        This used to commit the chip 90ms after touch-down unless the finger
-        had already moved 10px — but a swipe that starts gently has not moved
-        that far in 90ms, so swiping along the Studio dock opened the chip the
-        finger STARTED on. Now `onPress` (release, and only when the ScrollView
-        did not take the gesture) commits; a swipe cancels the highlight via
-        `trackScrollDockMove` / `onScrollBeginDrag`. The chip still lights on
-        touch-down, so the press is acknowledged instantly.
-      */
-      scrollGestureRef.current = {
-        key: item.key,
-        x: pageX,
-        y: pageY,
-        moved: false,
-        drifted: false,
-        committed: false,
-        timer: null,
-      };
-      // Open while the finger is still down, if it is holding still. See
-      // `EARLY_COMMIT_MS`; a release before then opens it via `onPress`.
-      const gesture = scrollGestureRef.current;
-      gesture.timer = setTimeout(() => {
-        gesture.timer = null;
-        if (scrollGestureRef.current !== gesture) return;
-        if (gesture.moved || gesture.drifted || gesture.committed) return;
-        commitScrollDockTap(item);
-      }, EARLY_COMMIT_MS);
-    },
-    [clearScrollTimer, commitScrollDockTap],
-  );
-
-  const trackScrollDockMove = React.useCallback(
-    (item: NativeIslandNavItem, event: NativeSyntheticEvent<NativeTouchEvent>) => {
-      const gesture = scrollGestureRef.current;
-      if (!gesture || gesture.moved || gesture.committed || gesture.key !== item.key) return;
-      const touch = event.nativeEvent.changedTouches?.[0] ?? event.nativeEvent.touches?.[0];
-      if (!touch) return;
-      const dx = Math.abs(touch.pageX - gesture.x);
-      const dy = Math.abs(touch.pageY - gesture.y);
-      if (dx > EARLY_COMMIT_SLOP_PX || dy > EARLY_COMMIT_SLOP_PX) gesture.drifted = true;
-      const movedPastSlop = dx > TAP_SLOP_PX || dy > TAP_SLOP_PX;
-      if (movedPastSlop) cancelScrollCandidate();
-    },
-    [cancelScrollCandidate],
-  );
-
-  // Same stable-ref arrangement as the fixed dock, for the Studio dock's nine
-  // chips: each press re-rendered all nine Pressables because their inline
-  // handlers were new on every dock render.
-  const scrollHandlersRef = React.useRef<ScrollDockHandlers>({
-    pressIn: beginScrollDockPress,
-    move: trackScrollDockMove,
-    cancel: cancelScrollCandidate,
-    press: commitScrollDockTap,
-  });
-  scrollHandlersRef.current = {
-    pressIn: beginScrollDockPress,
-    move: trackScrollDockMove,
-    cancel: cancelScrollCandidate,
-    press: commitScrollDockTap,
-  };
+  dockHandlersRef.current = { pressIn: handleFixedPressIn, press: handleFixedPress };
 
   if (items.length === 0) {
     return null;
@@ -938,7 +812,6 @@ function NativeIslandBottomNavImpl({
               bounces={false}
               overScrollMode="never"
               directionalLockEnabled
-              onScrollBeginDrag={cancelScrollCandidate}
               contentContainerStyle={styles.scrollDockContent}
               style={styles.scrollDock}
             >
@@ -948,7 +821,7 @@ function NativeIslandBottomNavImpl({
                   item={item}
                   focused={item.key === settledKey && !item.disabled}
                   pressedKey={pressedKey}
-                  handlersRef={scrollHandlersRef}
+                  handlersRef={dockHandlersRef}
                 />
               ))}
             </ScrollView>
@@ -961,7 +834,7 @@ function NativeIslandBottomNavImpl({
                   focused={item.key === settledKey && !item.disabled}
                   compact={compact}
                   pressedKey={pressedKey}
-                  handlersRef={fixedHandlersRef}
+                  handlersRef={dockHandlersRef}
                 />
               ))}
             </View>
@@ -971,13 +844,6 @@ function NativeIslandBottomNavImpl({
     </View>
   );
 }
-
-type ScrollDockHandlers = {
-  pressIn: (item: NativeIslandNavItem, event: GestureResponderEvent) => void;
-  move: (item: NativeIslandNavItem, event: NativeSyntheticEvent<NativeTouchEvent>) => void;
-  cancel: () => void;
-  press: (item: NativeIslandNavItem) => void;
-};
 
 /** One chip of the scrolling (Studio) dock, memoized like `FixedDockButton`. */
 const ScrollDockButton = React.memo(
@@ -990,52 +856,83 @@ const ScrollDockButton = React.memo(
     item: NativeIslandNavItem;
     focused: boolean;
     pressedKey: SharedValue<string | null>;
-    handlersRef: React.MutableRefObject<ScrollDockHandlers>;
+    handlersRef: React.MutableRefObject<DockHandlers>;
   }) {
+    const itemKey = item.key;
+    const disabled = Boolean(item.disabled);
+    const routeFromGesture = React.useCallback(() => {
+      handlersRef.current.pressIn(item);
+    }, [handlersRef, item]);
+    /*
+      Tap or swipe, decided on the UI thread from raw touch positions.
+
+      This chip sits in a horizontal ScrollView, so unlike the fixed dock it
+      cannot route on touch-down: a touch here may be the start of a swipe.
+      Two recognisers race, and the first to succeed routes:
+
+      - hold: still within SCROLL_DOCK_HOLD_SLOP_PX for SCROLL_DOCK_HOLD_MS,
+        so the chip opens while the finger is still down;
+      - tap: released within TAP_SLOP_PX, for a press quicker than the hold.
+
+      A finger that drifts fails both and the row just scrolls. Nothing is
+      lit until one of them succeeds, so a swipe no longer flashes the pill
+      on the chip it started from. The pill is painted in the worklet, on the
+      next frame, whatever the JS thread is doing; the route follows.
+    */
+    const hold = useLongPressGesture({
+      enabled: !disabled,
+      minDuration: SCROLL_DOCK_HOLD_MS,
+      maxDistance: SCROLL_DOCK_HOLD_SLOP_PX,
+      onActivate: () => {
+        'worklet';
+        pressedKey.value = itemKey;
+        scheduleOnRN(routeFromGesture);
+      },
+    });
+    const tap = useTapGesture({
+      enabled: !disabled,
+      maxDistance: TAP_SLOP_PX,
+      onActivate: () => {
+        'worklet';
+        pressedKey.value = itemKey;
+        scheduleOnRN(routeFromGesture);
+      },
+    });
+    const press = useCompetingGestures(hold, tap);
     return (
-                <Pressable
-                  accessibilityRole="tab"
-                  accessibilityState={{
-                    selected: focused,
-                    disabled: item.disabled,
-                  }}
-                  accessibilityLabel={item.label}
-                  disabled={item.disabled}
-                  onPressIn={item.disabled ? undefined : (event) => handlersRef.current.pressIn(item, event)}
-                  onTouchMove={item.disabled ? undefined : (event) => handlersRef.current.move(item, event)}
-                  onTouchCancel={item.disabled ? undefined : () => handlersRef.current.cancel()}
-                  onPress={item.disabled ? undefined : () => handlersRef.current.press(item)}
-                  /**
-                   * No `android_ripple`. A bounded ripple fills the PRESSABLE,
-                   * and the pressable is a full-height flex column — so it
-                   * painted a rectangle across a pill-shaped chip, the square
-                   * that appeared under the finger on every tap. `borderless`
-                   * would not fix it either: that spills a circle past the
-                   * dock's rounded edge.
-                   *
-                   * Press feedback is the chip itself. Touch-down only lights
-                   * it. The route waits until the finger stays inside the slop,
-                   * so a swipe along this row does not open the chip it started
-                   * on. `focused` is that light, and it is the same pill the
-                   * destination settles into.
-                   */
-                  style={({ pressed }) => [
-                    styles.navItemScroll,
-                    item.disabled && styles.navItemDisabled,
-                    pressed && styles.navItemPressed,
-                  ]}
-                >
-                  <NativeIslandTabIcon
-                    label={item.label}
-                    emoji={item.emoji}
-                    avatarUri={item.avatarUri}
-                    focused={focused}
-                    itemKey={item.disabled ? undefined : item.key}
-                    pressedKey={pressedKey}
-                    badge={item.badge}
-                    compact={false}
-                  />
-                </Pressable>
+      <GestureDetector gesture={press}>
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: focused, disabled: item.disabled }}
+          accessibilityLabel={item.label}
+          disabled={item.disabled}
+          // Accessibility activation. A finger already routed through the
+          // gestures above; `commitSelection` drops this repeat.
+          onPress={disabled ? undefined : () => handlersRef.current.press(item)}
+          /**
+           * No `android_ripple`. A bounded ripple fills the PRESSABLE, and the
+           * pressable is a full-height flex column — so it painted a rectangle
+           * across a pill-shaped chip. `borderless` would not fix it either:
+           * that spills a circle past the dock's rounded edge.
+           */
+          style={({ pressed }) => [
+            styles.navItemScroll,
+            item.disabled && styles.navItemDisabled,
+            pressed && styles.navItemPressed,
+          ]}
+        >
+          <NativeIslandTabIcon
+            label={item.label}
+            emoji={item.emoji}
+            avatarUri={item.avatarUri}
+            focused={focused}
+            itemKey={item.disabled ? undefined : item.key}
+            pressedKey={pressedKey}
+            badge={item.badge}
+            compact={false}
+          />
+        </Pressable>
+      </GestureDetector>
     );
   },
   (prev, next) =>

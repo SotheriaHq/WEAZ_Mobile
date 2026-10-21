@@ -84,17 +84,17 @@ assert.match(
 
 assert.match(
   island,
-  /const TAP_SLOP_PX = 10/,
+  /const TAP_SLOP_PX = 8/,
   'The scrolling Studio dock needs a movement slop so a swipe is not a tap.',
 );
 assert.match(
   island,
-  /onScrollBeginDrag=\{cancelScrollCandidate\}/,
-  'A scroll that starts on a chip must cancel that chip before it navigates.',
+  /maxDistance: SCROLL_DOCK_HOLD_SLOP_PX,/,
+  'A scroll that starts on a chip must fail the hold before it navigates.',
 );
 assert.match(
   island,
-  /commitScrollDockTap/,
+  /useCompetingGestures\(hold, tap\)/,
   'The scrolling dock commits a tap only after the gesture stays inside the slop.',
 );
 assert.doesNotMatch(
