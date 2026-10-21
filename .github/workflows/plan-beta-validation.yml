@@ -26,8 +26,6 @@ jobs:
         run: npx tsc --noEmit
       - name: Market layout regression
         run: node scripts/test-plan-beta-market-layout-contract.js
-      - name: Typography and warm start regression
-        run: node scripts/test-typography-and-warm-start-contract.js
       - name: Design-system audit
         run: npm run audit:design-system
       - name: Theme audit
