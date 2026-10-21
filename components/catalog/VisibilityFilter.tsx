@@ -1,7 +1,8 @@
 import React from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Easing, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { QuickPressable } from '@/components/ui/QuickPressable';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 
@@ -42,7 +43,8 @@ function VisibilitySegment({ label, isActive, onPress, badge }: SegmentProps) {
 
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
-      <Pressable
+      {/* Acts while the finger is down, scroll-safe (see QuickPressable). */}
+      <QuickPressable
         onPress={onPress}
         onPressIn={() => animatePress(0.96, 90)}
         onPressOut={() => animatePress(1, 140)}
@@ -70,7 +72,7 @@ function VisibilitySegment({ label, isActive, onPress, badge }: SegmentProps) {
             </AppText>
           </View>
         ) : null}
-      </Pressable>
+      </QuickPressable>
     </Animated.View>
   );
 }

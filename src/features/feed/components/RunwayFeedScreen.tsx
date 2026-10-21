@@ -66,11 +66,12 @@ import { useUnreadNotificationCount } from '@/src/realtime/notifications';
 import { useMobileBagging } from '@/src/features/bagging/useMobileBagging';
 import { BAG_IT_LABEL } from '@/src/constants/bagging';
 import { perfMark } from '@/src/utils/perf';
-import { useCommitCost } from '@/src/perf/commitCost';
+import { useCommitCost, useRenderCause } from '@/src/perf/commitCost';
 import { useScreenArrival, useSkeletonTiming } from '@/src/perf/usePerfStages';
 import { navPerf } from '@/src/utils/navPerf';
 import { drillDownPush, topLevelNavigate } from '@/src/utils/mobileNavigation';
 import { popIslandTabStackToRoot } from '@/src/navigation/islandTabStack';
+import { QuickPressable } from '@/components/ui/QuickPressable';
 import { fetchMarketFilterChipsQuery } from '@/src/query/bootstrapQueries';
 import { RunwayFeedItem } from '@/src/features/feed/components/RunwayFeedItem';
 import { RunwayFeedList } from '@/src/features/feed/components/RunwayFeedList';
@@ -2454,6 +2455,35 @@ export function RunwayFeedScreen() {
     };
   }, []);
 
+  // Every input `renderFeedItem` reads. Whichever of these moves when a screen
+  // is pushed over Runway is what re-renders all the rows behind it.
+  useRenderCause('Runway', {
+    activePageIndex,
+    bottomClearance,
+    canPatchBrands,
+    collectionMediaMap,
+    fallbackMediaByCollection,
+    feedScrollY,
+    handleOpenBrand,
+    handlePatchBrand,
+    handleSaveLook,
+    handleThreadPress,
+    openCommentsSheet,
+    pageHeight,
+    pageScaleEnabled,
+    patchedBrandIds,
+    patchingBrandIds,
+    savedLookByCollectionId,
+    savingLookByCollectionId,
+    scheme,
+    status,
+    threadStateByMedia,
+    threadingMediaById,
+    userId: user?.id,
+    visibleMetaCollectionId,
+    items,
+    unreadNotificationCount,
+  });
   const renderFeedItem = useCallback(
     ({ item: entry, index }: { item: FeedListEntry; index: number }) => {
       const item = entry.item;
@@ -2950,7 +2980,9 @@ export function RunwayFeedScreen() {
           >
             <View style={styles.headerRow} pointerEvents="box-none">
                 <View style={styles.headerLeftGroup}>
-                <Pressable
+                {/* Header controls act on touch-down: fixed chrome over the feed, never a scroll. */}
+                <QuickPressable
+                  actOnTouchDown
                   onPress={() => { topLevelNavigate('/'); }}
                   hitSlop={10}
                   style={({ pressed }) => [
@@ -2960,7 +2992,7 @@ export function RunwayFeedScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="Go to home">
                     <WiezMark size={30} style={styles.brandLogo} />
-                  </Pressable>
+                  </QuickPressable>
                 </View>
 
                 <View style={styles.headerCenterGroup}>
@@ -2983,7 +3015,8 @@ export function RunwayFeedScreen() {
                 </View>
 
                 <View style={styles.headerRightGroup}>
-                  <Pressable
+                  <QuickPressable
+                    actOnTouchDown
                     onPress={handleOpenNotifications}
                     hitSlop={8}
                     style={({ pressed }) => [
@@ -3001,8 +3034,9 @@ export function RunwayFeedScreen() {
                         </AppText>
                       </View>
                     ) : null}
-                  </Pressable>
-                  <Pressable
+                  </QuickPressable>
+                  <QuickPressable
+                    actOnTouchDown
                     onPress={handleOpenSearch}
                     hitSlop={8}
                     style={({ pressed }) => [
@@ -3013,7 +3047,7 @@ export function RunwayFeedScreen() {
                     accessibilityLabel="Search"
                   >
                     <AppText variant="bodyBold" style={styles.headerEmoji}>🔍</AppText>
-                  </Pressable>
+                  </QuickPressable>
                 </View>
             </View>
             <QueueBrandNotices enabled={status === 'authenticated' && isBrandAccount(user)} />

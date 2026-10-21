@@ -1,4 +1,5 @@
 import { Header } from '@/components/ui/Header';
+import { useCommitCost } from '@/src/perf/commitCost';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View, type ListRenderItem } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -362,6 +363,8 @@ const NotificationGroupHeader = React.memo(function NotificationGroupHeader({
 const notificationEntryKey = (entry: NotificationListEntry) => entry.key;
 
 export default function NotificationsScreen() {
+  // First, so it times this screen's whole first render (see commitCost.ts).
+  useCommitCost('Notifications');
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { status, token, user } = useAuth();

@@ -62,12 +62,31 @@ const compactCount = (value?: number | null): string => {
   }).format(Math.max(0, count));
 };
 
+/**
+ * The loading card, built in the real card's shell.
+ *
+ * It used to be one flat rounded block — no shadow, no frame, no text area —
+ * so on the Private/Drafts tabs the placeholders read as a different kind of
+ * card that was then swapped for the real one. This uses the card's own
+ * `card` + `cardClip` styles (elevation, radius, surface) and lays the title
+ * and meta lines where `metadataPanel` puts them, so the content lands in
+ * exactly the space the skeleton was holding.
+ */
 export const CollectionCardSkeleton = ({ width = 180 }: { width?: number }) => {
+  const { theme } = useTheme();
   const imageHeight = Math.round(width * 1.58);
 
   return (
-    <View style={[styles.card, { width }]}>
-      <Skeleton width={width} height={imageHeight} borderRadius={tokens.radius.lg} />
+    <View style={[styles.card, { width, height: imageHeight, backgroundColor: theme.colors.surface }]}>
+      <View style={[styles.cardClip, { backgroundColor: theme.colors.surfaceAlt }]}>
+        <Skeleton width="100%" height="100%" borderRadius={0} style={StyleSheet.absoluteFill} />
+        <View style={[styles.metadataGradient, styles.skeletonMeta]}>
+          <View style={styles.metadataPanel}>
+            <Skeleton width="72%" height={14} borderRadius={tokens.radius.sm} />
+            <Skeleton width="46%" height={11} borderRadius={tokens.radius.sm} />
+          </View>
+        </View>
+      </View>
     </View>
   );
 };
@@ -731,6 +750,11 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.md,
     paddingBottom: tokens.spacing.sm,
+  },
+  // The skeleton's text lines sit in the same panel, without the gradient's
+  // minimum height pushing them off the real title's baseline.
+  skeletonMeta: {
+    minHeight: 0,
   },
   cardMetaRow: {
     flexDirection: 'row',

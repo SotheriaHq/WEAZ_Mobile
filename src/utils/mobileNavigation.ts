@@ -1,6 +1,7 @@
 import { router, type Href } from 'expo-router';
 
 import { navPerf, setDrillDownFlowReadyListener } from '@/src/utils/navPerf';
+import { measureSyncBlock } from '@/src/perf/commitCost';
 
 /**
  * Intent-based navigation helpers — the system route verb contract.
@@ -301,7 +302,11 @@ export function drillDownPush(href: Href) {
     armDrillDownQuiet(target);
     navPerf.routeCallStart(undefined, { target });
     navPerf.navigationCalled();
-    router.push(href as never);
+    // Timed: how long expo-router takes to turn the href into a navigation
+    // state before anything renders (reported as `RoutePush` in the commit
+    // ledger). The native trace showed ~140-170ms from a press firing to the
+    // destination's first native views; this separates resolution from render.
+    measureSyncBlock('RoutePush', () => router.push(href as never));
     navPerf.routeCallEnd(undefined, { target });
   }, { singleFlight: true });
   return result;

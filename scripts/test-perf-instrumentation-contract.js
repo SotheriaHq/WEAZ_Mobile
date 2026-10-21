@@ -298,6 +298,80 @@ check(
   })(),
 );
 check(
+  // 2026-10-20: header buttons, menu links and See-more waited for release.
+  'links and header controls act while the finger is down (QuickPressable)',
+  (() => {
+    const quick = read('components/ui/QuickPressable.tsx');
+    const users = [
+      'components/ui/IconButton.tsx',
+      'components/ui/AppFloatingMenu.tsx',
+      'components/ui/InlineNavLink.tsx',
+      'src/features/market/components/MarketScreen.tsx',
+      'src/features/feed/components/RunwayFeedScreen.tsx',
+      'components/catalog/BrandProfileHeader.tsx',
+    ];
+    return (
+      /const EARLY_PRESS_MS = 60;/.test(quick) &&
+      /const EARLY_PRESS_SLOP_PX = 3;/.test(quick) &&
+      /const early = Boolean\(onPress\) && !onLongPress;/.test(quick) &&
+      /if \(state\?\.fired\) return;/.test(quick) &&
+      users.every((file) => /<QuickPressable/.test(read(file)))
+    );
+  })(),
+);
+check(
+  // 2026-10-21: 🔔 and 🔍 still landed after the finger lifted. They sit in
+  // Runway's fixed header, which cannot start a scroll, so the 60ms hold that
+  // tells a press from a scroll was pure wait there.
+  "Runway's fixed header acts on touch-down",
+  (() => {
+    const quick = read('components/ui/QuickPressable.tsx');
+    const runway = read('src/features/feed/components/RunwayFeedScreen.tsx');
+    return (
+      /actOnTouchDown\?: boolean;/.test(quick) &&
+      /if \(actOnTouchDown\) \{\s*state\.fired = true;/.test(quick) &&
+      /actOnTouchDown\s+onPress=\{handleOpenNotifications\}/.test(runway) &&
+      /actOnTouchDown\s+onPress=\{handleOpenSearch\}/.test(runway)
+    );
+  })(),
+);
+check(
+  'hidden Studio does not take Android Back from other screens',
+  /useFocusEffect\(useCallback\(\(\) => \{\s*if \(Platform\.OS !== 'android'\) return undefined;/.test(
+    studioWebViewSource,
+  ),
+);
+check(
+  'island chip focus reaches its worklets as a shared value',
+  (() => {
+    const islandSrc = read('components/navigation/NativeIslandBottomNav.tsx');
+    return (
+      /const focusedValue = useSharedValue\(focused\);/.test(islandSrc) &&
+      !/\}, \[activeGlass, focused, itemKey, pressedKey\]\);/.test(islandSrc)
+    );
+  })(),
+);
+check(
+  // 2026-10-20 system trace: slide_from_right is Android's 400ms medium
+  // animation and dominated "press, then wait for the screen".
+  'pushed screens open with the 150ms fade, not the 400ms slide',
+  (() => {
+    const layouts = [
+      'app/_layout.tsx',
+      'app/(tabs)/catalog/_layout.tsx',
+      'app/(tabs)/catalog/create-design/_layout.tsx',
+      'app/(tabs)/studio/_layout.tsx',
+    ].map(read);
+    return (
+      layouts.every((src) => !/animation:\s*'slide_from_right'/.test(src)) &&
+      /screenOptions=\{\{[\s\S]*?animation: 'fade',[\s\S]*?\}\}>/.test(layouts[0]) &&
+      /measureSyncBlock\('RoutePush', \(\) => router\.push\(href as never\)\)/.test(
+        read('src/utils/mobileNavigation.ts'),
+      )
+    );
+  })(),
+);
+check(
   'Catalogue does not re-render on blur/focus for nothing',
   (() => {
     const catalog = read('app/(tabs)/catalog/index.tsx');
@@ -496,15 +570,8 @@ const fixedPressInBody = (() => {
   const end = island.indexOf('const handleFixedPress =', start);
   return end < 0 ? '' : island.slice(start, end);
 })();
-const scrollPressInBody = (() => {
-  const start = island.indexOf('const beginScrollDockPress = React.useCallback(');
-  if (start < 0) return '';
-  const end = island.indexOf('const trackScrollDockMove =', start);
-  return end < 0 ? '' : island.slice(start, end);
-})();
 for (const [name, body] of [
-  ['the fixed press path', fixedPressInBody],
-  ['the scroll-dock press path', scrollPressInBody],
+  ['the dock press path', fixedPressInBody],
 ]) {
   const readAt = body.indexOf('perfTouchQueueMs(');
   const paintAt = body.indexOf('paintCandidate(item);');
@@ -518,12 +585,11 @@ for (const [name, body] of [
   );
 }
 check(
-  'the fixed press handler receives the gesture event it needs for the timestamp',
-  // The memoized dock button reaches it through a stable handler ref; the
-  // invariant is only that the gesture event is still passed through.
-  (/\(event\) => handleFixedPressIn\(item, event\)/.test(island) ||
-    (/\(event\) => handlersRef\.current\.pressIn\(item, event\)/.test(island) &&
-      /pressIn: handleFixedPressIn/.test(island))) &&
+  'the dock press handler still accepts a touch event for the timestamp',
+  // Both docks now route from a UI-thread gesture, which has no JS touch event
+  // (touchQueueMs reads n/a for them: the pill no longer waits on that queue).
+  // The handler keeps the optional event for any JS caller that has one.
+  /pressIn: handleFixedPressIn/.test(island) &&
     /handleFixedPressIn = React\.useCallback\(\s*\(item: NativeIslandNavItem, event\?: GestureResponderEvent\)/.test(
       island,
     ),
@@ -640,41 +706,21 @@ check(
   waits out the slop, and an index comparison states exactly that: a
   `paintCandidate` that had been moved inside the timer would sort after it.
 */
-/*
-  Highlight on touch-down, route on RELEASE.
-
-  The dock used to commit on a 90ms timer unless the finger had moved 10px —
-  and a gently started swipe has not, so swiping the Studio dock opened the
-  chip the finger began on. The invariant is now: touch-down paints, nothing
-  in press-in schedules a commit, and the commit is wired to `onPress`, which
-  the ScrollView cancels when it takes the gesture.
-*/
-const scrollPaintAt = scrollPressInBody.indexOf('paintCandidate(item);');
 check(
-  // 2026-10-19: opens while the finger is still down if it holds still for
-  // EARLY_COMMIT_MS within EARLY_COMMIT_SLOP_PX (3px/60ms — slower than any
-  // swipe start; the timer that opened swiped chips allowed 10px/90ms), and a
-  // drift past that slop forfeits the early open. Release still commits.
-  'the scrolling dock highlights on touch-down and opens a held-still chip before release',
-  scrollPressInBody.length > 0 &&
-    scrollPaintAt > -1 &&
-    /const EARLY_COMMIT_MS = 60;/.test(island) &&
-    /const EARLY_COMMIT_SLOP_PX = 3;/.test(island) &&
-    /if \(gesture\.moved \|\| gesture\.drifted \|\| gesture\.committed\) return;\s*commitScrollDockTap\(item\);/.test(
-      scrollPressInBody,
-    ) &&
-    /gesture\.drifted = true;/.test(island) &&
-    // Release commits through the memoized chip's stable handlers ref.
-    /onPress=\{item\.disabled \? undefined : \(\) => handlersRef\.current\.press\(item\)\}/.test(island) &&
-    /press: commitScrollDockTap,/.test(island),
-);
-check(
-  'a cancelled scroll candidate clears the UI-thread key too',
-  /if \(pressedKey\.value === key\) pressedKey\.value = null;/.test(island),
-);
-check(
-  'a highlight taken back by a scroll is recorded',
-  /optimistic_active_cancelled/.test(island),
+  // 2026-10-21: a light press that turned into a swipe still opened the chip.
+  // The 60ms/3px early open was a JS setTimeout racing JS touch-move events,
+  // two queues that a busy JS thread delivers out of order. Tap-or-swipe is
+  // now a UI-thread race: a hold (110ms within 4px) opens while the finger is
+  // down, a tap (within the 8dp scroll slop) opens on a quick release, and a
+  // drift fails both. Nothing lights until one wins.
+  'the scrolling dock decides tap-or-swipe on the UI thread',
+  /const SCROLL_DOCK_HOLD_MS = 110;/.test(island) &&
+    /const SCROLL_DOCK_HOLD_SLOP_PX = 4;/.test(island) &&
+    /const TAP_SLOP_PX = 8;/.test(island) &&
+    /useLongPressGesture\(\{[\s\S]*?minDuration: SCROLL_DOCK_HOLD_MS,[\s\S]*?maxDistance: SCROLL_DOCK_HOLD_SLOP_PX,/.test(island) &&
+    /useTapGesture\(\{[\s\S]*?maxDistance: TAP_SLOP_PX,/.test(island) &&
+    /useCompetingGestures\(hold, tap\)/.test(island) &&
+    !/EARLY_COMMIT_MS|gesture\.timer/.test(island),
 );
 
 // ------------------------------------------------------ the known waterfall
@@ -1425,7 +1471,7 @@ check(
   'a hidden dock skips its renders and the Studio dock chips are memoized',
   /prev\.hidden === true && next\.hidden === true/.test(island) &&
     /const ScrollDockButton = React\.memo\(/.test(island) &&
-    /handlersRef\.current\.pressIn\(item, event\)/.test(island),
+    /handlersRef=\{dockHandlersRef\}/.test(island),
 );
 check(
   'the Profile chip does not set optimistic React state on press',

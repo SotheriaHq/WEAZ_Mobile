@@ -1,4 +1,5 @@
 import React from 'react';
+import { useCommitCost } from '@/src/perf/commitCost';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import {
   SafeAreaView,
@@ -96,6 +97,8 @@ function SettingsSectionBlock({ section }: { section: SettingsSection }) {
 }
 
 export default function SettingsScreen() {
+  // First, so it times this screen's whole first render (see commitCost.ts).
+  useCommitCost('Settings');
   const { theme } = useTheme();
   const { user, signOut } = useAuth();
   const insets = useSafeAreaInsets();

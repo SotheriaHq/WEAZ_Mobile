@@ -1326,29 +1326,22 @@ export default function CatalogScreen() {
     // card now lands where the work continues, and publishing/resubmitting is
     // reachable from there.
     const ownerStatus = String(collection.publicationStatus ?? collection.status ?? '').toUpperCase();
-    /**
-     * The editor is for work the owner can still CHANGE.
-     *
-     * DRAFT, CHANGES_REQUESTED and REJECTED are handed back to the brand to
-     * edit; FAILED is a publish that has to be re-submitted, which also starts
-     * in the editor. Everything else — IN_REVIEW, PUBLISHED, PRIVATE, ARCHIVED
-     * — opens the viewer, because there is nothing to edit: a design under
-     * review must not be mutable mid-review, and opening the editor on it
-     * invites a change that would silently invalidate the submission.
-     *
-     * The tab is a FALLBACK only, for when the payload carries no usable
-     * status. It must not override a known one: Needs Attention holds
-     * PROCESSING alongside CHANGES_REQUESTED, and treating the bucket as
-     * authoritative would open the editor on a design that is still uploading.
-     */
-    const EDITABLE_STATUSES = ['DRAFT', 'CHANGES_REQUESTED', 'REJECTED', 'FAILED'];
-    const VIEWER_STATUSES = ['IN_REVIEW', 'PUBLISHED', 'PROCESSING', 'ARCHIVED', 'REMOVED'];
-    const opensInEditor = EDITABLE_STATUSES.includes(ownerStatus)
-      ? true
-      : VIEWER_STATUSES.includes(ownerStatus)
-        ? false
-        : // Status absent or unrecognized — fall back to what the tab implies.
-          visibilityFilter === 'Drafts';
+    /*
+      A known status decides; the tab only matters when the payload has none
+      (In Review then means "do not edit"). Needs Attention mixes PROCESSING
+      with CHANGES_REQUESTED, so the status — not the bucket — keeps an
+      uploading design out of the editor.
+
+
+      Owner taps open the EDITOR, including Public and Private work
+      (2026-10-20: "the owner pressing it is routed to the view screen"). The
+      card's own Edit action already opened the editor for every status, so
+      the tap now matches it. Only states the owner cannot change open the
+      viewer: under review (must not change mid-review), still uploading, or
+      removed by moderation.
+    */
+    const VIEWER_STATUSES = ['IN_REVIEW', 'PROCESSING', 'REMOVED'];
+    const opensInEditor = !VIEWER_STATUSES.includes(ownerStatus) && visibilityFilter !== 'In Review';
 
     if (isOwner && opensInEditor) {
       drillDownPush({

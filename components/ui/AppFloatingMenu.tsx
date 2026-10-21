@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { BackHandler, Modal, Pressable, StyleSheet, View, Animated, useWindowDimensions } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { QuickPressable } from '@/components/ui/QuickPressable';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { useAndroidOverlaySystemBars } from '@/src/system/AndroidSystemBars';
@@ -233,8 +234,10 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
           const isFirst = index === 0;
           const isLast = index === options.length - 1;
 
+          // Acts while the finger is down (see QuickPressable); menu links
+          // waited for the finger to lift before the destination started.
           return (
-            <Pressable
+            <QuickPressable
               key={option.key}
               disabled={isClosing || option.disabled}
               style={({ pressed }) => [
@@ -256,7 +259,7 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
             >
               {option.icon ? <AppText variant="body">{option.icon}</AppText> : null}
               <AppText variant="body" numberOfLines={2} style={styles.optionTitle}>{option.title}</AppText>
-            </Pressable>
+            </QuickPressable>
           );
         })}
       </Animated.View>

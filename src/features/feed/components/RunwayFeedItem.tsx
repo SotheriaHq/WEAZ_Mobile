@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { Animated, StyleSheet } from 'react-native';
 
-import { useCommitCost } from '@/src/perf/commitCost';
+import { useCommitCost, useRenderCause } from '@/src/perf/commitCost';
 import { FeedMediaCarousel } from '@/src/features/feed/components/FeedMediaCarousel';
 import type { FeedViewerMedia } from '@/src/features/feed/components/feedComponentTypes';
 import {
@@ -43,6 +43,7 @@ function RunwayFeedItemComponent({
   mediaItems,
   activeMediaIndex,
   isActive,
+  renderVersion,
   actionRail,
   metaOverlay,
   badgeOverlay,
@@ -55,6 +56,23 @@ function RunwayFeedItemComponent({
   // how many rows re-rendered, and a row appearing at all on a navigation away
   // from the feed means the comparator is being defeated. See `RunwayFeedList`.
   useCommitCost('FeedItem');
+  // Names the prop that defeated the comparator (or `mount`). Opening 🔔 from
+  // Runway re-rendered every row, ×9 for 320ms, while the push waited behind
+  // it (2026-10-21 trace); this says which input moved.
+  useRenderCause('FeedItem', {
+    collectionId,
+    pageHeight,
+    pageIndex,
+    scrollY,
+    scrimColor,
+    pageScaleEnabled,
+    mediaItems,
+    activeMediaIndex,
+    isActive,
+    renderVersion,
+    onCarouselIndexChange,
+    onContentPress,
+  });
   const handleActiveIndexChange = useCallback(
     (nextIndex: number) => {
       onCarouselIndexChange(collectionId, nextIndex);

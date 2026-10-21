@@ -19,6 +19,7 @@ import { BlurView } from 'expo-blur';
 import WiezMark from '@/src/brand/WiezMark';
 import { AppText } from '@/components/ui/AppText';
 import { SeeMoreLink } from '@/components/ui/InlineNavLink';
+import { QuickPressable } from '@/components/ui/QuickPressable';
 import { MediaScrim } from '@/components/ui/MediaScrim';
 import { NewDropBadge } from '@/components/ui/NewDropBadge';
 import { Input } from '@/components/ui/Input';
@@ -2552,16 +2553,17 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
   const renderHeader = (
     <View style={styles.headerStack}>
       <View style={styles.topRow}>
-        <Pressable onPress={() => topLevelNavigate('/' as any)} style={({ pressed }) => [styles.logoButton, pressed && styles.pressed]}>
+        {/* Header controls act while the finger is down (QuickPressable). */}
+        <QuickPressable onPress={() => topLevelNavigate('/' as any)} style={({ pressed }) => [styles.logoButton, pressed && styles.pressed]}>
           <WiezMark size={30} />
-        </Pressable>
+        </QuickPressable>
         <View style={styles.titleWrap}>
           <AppText variant="title">Market</AppText>
           <AppText variant="caption" tone="muted" numberOfLines={1}>
             Products and custom-ready runway
           </AppText>
         </View>
-        <Pressable
+        <QuickPressable
           onPress={() => setFilterSheetVisible(true)}
           style={({ pressed }) => [
             styles.roundButton,
@@ -2582,7 +2584,7 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
             because an icon alone in a header is a guess either way.
           */}
           <AppText variant="subtitle">{MARKET_FILTER_EMOJI}</AppText>
-        </Pressable>
+        </QuickPressable>
       </View>
 
       <Input
@@ -2593,9 +2595,9 @@ const MarketScreenBody = React.memo(function MarketScreenBody({
         placeholder="Search brands, styles, items..."
         leading={<AppText variant="body" tone="muted">{String.fromCodePoint(0x1f50d)}</AppText>}
         trailing={
-          <Pressable onPress={() => setFilterSheetVisible(true)} accessibilityRole="button" accessibilityLabel="Sort and filter">
+          <QuickPressable onPress={() => setFilterSheetVisible(true)} accessibilityRole="button" accessibilityLabel="Sort and filter">
             <AppText variant="captionBold" tone="primary">Sort</AppText>
-          </Pressable>
+          </QuickPressable>
         }
       />
 

@@ -27,9 +27,10 @@ export default function StudioLayout() {
         dangerouslySingular={() => 'studio-webview'}
         options={{ animation: 'none' }}
       />
-      <Stack.Screen name="finance" options={{ animation: 'slide_from_right' }} />
-      <Stack.Screen name="staff" options={{ animation: 'slide_from_right' }} />
-      <Stack.Screen name="resolve-alias" options={{ animation: 'slide_from_right' }} />
+      {/* 150ms fade, not the 400ms slide — see RootStack in app/_layout.tsx. */}
+      <Stack.Screen name="finance" options={{ animation: 'fade' }} />
+      <Stack.Screen name="staff" options={{ animation: 'fade' }} />
+      <Stack.Screen name="resolve-alias" options={{ animation: 'fade' }} />
     </Stack>
   );
 }
