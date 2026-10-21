@@ -38,8 +38,18 @@ type PressState = {
  * before. `onPress` runs at most once per touch. Anything with `onLongPress`
  * keeps the platform behaviour, since acting early would pre-empt the hold.
  */
-export const QuickPressable = React.forwardRef<View, PressableProps>(function QuickPressable(
-  { onPress, onPressIn, onPressOut, onTouchMove, onLongPress, ...rest },
+type QuickPressableProps = PressableProps & {
+  /**
+   * Act on touch-down with no hold at all. Only for controls that cannot be
+   * the start of a scroll — fixed chrome such as Runway's header, which sits
+   * over the feed, not inside it. The hold exists to tell a press from a
+   * scroll; where there is no scroll it is just 60ms of waiting.
+   */
+  actOnTouchDown?: boolean;
+};
+
+export const QuickPressable = React.forwardRef<View, QuickPressableProps>(function QuickPressable(
+  { onPress, onPressIn, onPressOut, onTouchMove, onLongPress, actOnTouchDown = false, ...rest },
   ref,
 ) {
   const onPressRef = React.useRef(onPress);
@@ -69,6 +79,12 @@ export const QuickPressable = React.forwardRef<View, PressableProps>(function Qu
         drifted: false,
         timer: null,
       };
+      if (actOnTouchDown) {
+        state.fired = true;
+        stateRef.current = state;
+        onPressRef.current?.(event);
+        return;
+      }
       state.timer = setTimeout(() => {
         state.timer = null;
         if (stateRef.current !== state || state.drifted || state.fired) return;
@@ -77,7 +93,7 @@ export const QuickPressable = React.forwardRef<View, PressableProps>(function Qu
       }, EARLY_PRESS_MS);
       stateRef.current = state;
     },
-    [early, onPressIn],
+    [actOnTouchDown, early, onPressIn],
   );
 
   const handleTouchMove = React.useCallback(

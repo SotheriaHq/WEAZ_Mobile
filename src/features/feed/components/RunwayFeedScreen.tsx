@@ -2980,8 +2980,9 @@ export function RunwayFeedScreen() {
           >
             <View style={styles.headerRow} pointerEvents="box-none">
                 <View style={styles.headerLeftGroup}>
-                {/* Header controls act while the finger is down (QuickPressable). */}
+                {/* Header controls act on touch-down: fixed chrome over the feed, never a scroll. */}
                 <QuickPressable
+                  actOnTouchDown
                   onPress={() => { topLevelNavigate('/'); }}
                   hitSlop={10}
                   style={({ pressed }) => [
@@ -3015,6 +3016,7 @@ export function RunwayFeedScreen() {
 
                 <View style={styles.headerRightGroup}>
                   <QuickPressable
+                    actOnTouchDown
                     onPress={handleOpenNotifications}
                     hitSlop={8}
                     style={({ pressed }) => [
@@ -3034,6 +3036,7 @@ export function RunwayFeedScreen() {
                     ) : null}
                   </QuickPressable>
                   <QuickPressable
+                    actOnTouchDown
                     onPress={handleOpenSearch}
                     hitSlop={8}
                     style={({ pressed }) => [

@@ -320,6 +320,22 @@ check(
   })(),
 );
 check(
+  // 2026-10-21: 🔔 and 🔍 still landed after the finger lifted. They sit in
+  // Runway's fixed header, which cannot start a scroll, so the 60ms hold that
+  // tells a press from a scroll was pure wait there.
+  "Runway's fixed header acts on touch-down",
+  (() => {
+    const quick = read('components/ui/QuickPressable.tsx');
+    const runway = read('src/features/feed/components/RunwayFeedScreen.tsx');
+    return (
+      /actOnTouchDown\?: boolean;/.test(quick) &&
+      /if \(actOnTouchDown\) \{\s*state\.fired = true;/.test(quick) &&
+      /actOnTouchDown\s+onPress=\{handleOpenNotifications\}/.test(runway) &&
+      /actOnTouchDown\s+onPress=\{handleOpenSearch\}/.test(runway)
+    );
+  })(),
+);
+check(
   'hidden Studio does not take Android Back from other screens',
   /useFocusEffect\(useCallback\(\(\) => \{\s*if \(Platform\.OS !== 'android'\) return undefined;/.test(
     studioWebViewSource,
