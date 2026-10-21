@@ -1,0 +1,42 @@
+name: Plan Beta Mobile Validation
+
+on:
+  push:
+    branches:
+      - feat/plan-beta-native-ui-refinement
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan-beta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install
+        run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Market layout regression
+        run: node scripts/test-plan-beta-market-layout-contract.js
+      - name: Typography and warm start regression
+        run: node scripts/test-typography-and-warm-start-contract.js
+      - name: Design-system audit
+        run: npm run audit:design-system
+      - name: Theme audit
+        run: npm run audit:theme
+      - name: Market chrome regression
+        run: npm run test:clipping-market-chrome-contract
+      - name: Brand profile regression
+        run: npm run test:brand-profile-contract
+      - name: Runway responsiveness
+        run: npm run test:runway-responsiveness-contract
+      - name: Performance regression
+        run: npm run check:perf-regressions
