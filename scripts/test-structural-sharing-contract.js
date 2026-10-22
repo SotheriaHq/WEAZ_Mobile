@@ -43,7 +43,7 @@ function loadModule(filePath) {
   vm.runInThisContext(`(function (module, exports, require) {\n${outputText}\n})`)(
     moduleShim,
     moduleShim.exports,
-    require,
+    (specifier) => specifier.startsWith('../utils/') ? loadModule(path.resolve(path.dirname(filePath), specifier + '.ts')) : require(specifier),
   );
   return moduleShim.exports;
 }

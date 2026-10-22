@@ -35,123 +35,23 @@
  * the same object.
  */
 
-/**
- * Query params that mean "this URL is a credential, not an address". Presence
- * of any one of them is what tells us the query string is a signature and can
- * be ignored when deciding whether two URLs name the same object.
- */
-const SIGNATURE_PARAMS = [
-  // AWS SigV4 (S3 presigned GET — what UploadService issues).
-  'X-Amz-Signature',
-  'X-Amz-Credential',
-  'X-Amz-Security-Token',
-  // AWS SigV2 / CloudFront canned policies.
-  'Signature',
-  'Key-Pair-Id',
-  'Policy',
-];
+import { getMediaUrlExpiryMs, getMediaUrlIdentity, hasMediaUrlSignature, isUsableMediaUrl } from '../utils/mediaUrlPolicy';
 
-/**
- * Never hold on to a cached URL that is about to expire. A preserved URL can
- * live as long as the persisted cache (24h) and the signatures we issue last 7
- * days, so this margin is not normally in play — it exists so a shorter TTL
- * somewhere else can never strand a screen on a dead URL.
- */
-const SIGNED_URL_MIN_REMAINING_MS = 60 * 60 * 1000;
-
-/**
- * Deliberately parsed by hand instead of with `new URL(...).searchParams`.
- * React Native ships a minimal `URL` with no `searchParams`, and this file is
- * mirrored verbatim into threadly-mobile — one implementation, identical
- * behaviour on both platforms, and no polyfill dependency.
- */
-const splitQuery = (value: string): string | null => {
-  const hashAt = value.indexOf('#');
-  const withoutHash = hashAt === -1 ? value : value.slice(0, hashAt);
-  const queryAt = withoutHash.indexOf('?');
-  if (queryAt === -1) return null;
-  return withoutHash.slice(queryAt + 1);
-};
-
-const getQueryParam = (query: string, name: string): string | null => {
-  const prefix = `${name}=`;
-  for (const pair of query.split('&')) {
-    if (pair.startsWith(prefix)) {
-      return decodeURIComponent(pair.slice(prefix.length));
-    }
-  }
-  return null;
-};
-
-const hasQueryParam = (query: string, name: string): boolean => {
-  const prefix = `${name}=`;
-  return query.split('&').some((pair) => pair.startsWith(prefix) || pair === name);
-};
-
-const parseAmzDate = (value: string): number | null => {
-  // Basic ISO 8601: 20260808T090000Z
-  const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(value);
-  if (!match) return null;
-  const [, y, mo, d, h, mi, s] = match;
-  return Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s));
-};
-
-const getSignedUrlExpiryMs = (query: string): number | null => {
-  const amzDate = getQueryParam(query, 'X-Amz-Date');
-  const amzExpires = getQueryParam(query, 'X-Amz-Expires');
-  if (amzDate && amzExpires) {
-    const issuedAt = parseAmzDate(amzDate);
-    const ttlSeconds = Number(amzExpires);
-    if (issuedAt !== null && Number.isFinite(ttlSeconds)) {
-      return issuedAt + ttlSeconds * 1000;
-    }
-  }
-  // SigV2 / CloudFront canned policy: absolute epoch seconds.
-  const expires = getQueryParam(query, 'Expires');
-  if (expires) {
-    const epochSeconds = Number(expires);
-    if (Number.isFinite(epochSeconds)) return epochSeconds * 1000;
-  }
-  return null;
-};
-
-/**
- * The addressing part of a signed URL (everything before `?`), or null if this
- * is not a signed URL we recognise. Null means "compare these strings normally".
- */
 export const getSignedUrlIdentity = (value: string): string | null => {
-  if (value.length < 12 || !/^https?:\/\//i.test(value)) return null;
-
-  const query = splitQuery(value);
-  if (!query) return null;
-  if (!SIGNATURE_PARAMS.some((param) => hasQueryParam(query, param))) {
-    return null;
-  }
-
-  return value.slice(0, value.indexOf('?'));
+  if (!/^https?:\/\//i.test(value) || !hasMediaUrlSignature(value)) return null;
+  return getMediaUrlIdentity(value);
 };
 
-/**
- * True when `previous` and `next` address the same object with different
- * signatures AND `previous` has enough life left to keep using.
- */
-export const isEquivalentSignedUrl = (
-  previous: string,
-  next: string,
-  now: number = Date.now(),
-): boolean => {
-  const previousIdentity = getSignedUrlIdentity(previous);
-  if (previousIdentity === null) return false;
-  if (previousIdentity !== getSignedUrlIdentity(next)) return false;
-
-  const previousQuery = splitQuery(previous);
-  const expiresAt = previousQuery ? getSignedUrlExpiryMs(previousQuery) : null;
-  // Unparseable expiry: keep the cached URL. It came from the same cache
-  // lifetime as the data around it, and churning it would reintroduce exactly
-  // the re-render this module exists to stop.
-  if (expiresAt === null) return true;
-
-  return expiresAt - now > SIGNED_URL_MIN_REMAINING_MS;
+/** Retain stable row identity only while its capability is still usable. */
+export const isEquivalentSignedUrl = (previous: string, next: string, now = Date.now()): boolean => {
+  const identity = getSignedUrlIdentity(previous);
+  if (!identity || identity !== getSignedUrlIdentity(next)) return false;
+  if (!isUsableMediaUrl(previous, now, 0)) return false;
+  const expiry = getMediaUrlExpiryMs(previous);
+  // Gateway capabilities are deliberately short-lived; SDK URLs retain the
+  // established one-hour safety margin for long-lived persisted queries.
+  const margin = /[?&]sig=/.test(previous) ? 30_000 : 60 * 60 * 1000;
+  return expiry === null || expiry - now > margin;
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -221,11 +221,10 @@ export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [activeFilter, setActiveFilter] = useState<FilterChip>('ALL');
+  const requestRef = useRef<{ id: number; controller: AbortController; mode: 'reset' | 'more' } | null>(null);
+  const requestIdRef = useRef(0);
 
-  const isDesignerSection = useMemo(
-    () => items.length > 0 && items.every((item) => item.entityType === 'BRAND'),
-    [items],
-  );
+  const isDesignerSection = section?.sourceType === 'BRAND' || section?.layout === 'BRAND_RAIL';
   const columnCount = isDesignerSection ? 1 : width >= 720 ? 3 : 2;
   const fullWidth = Math.floor(width - SIDE_PADDING * 2);
   const cardWidth = useMemo(
@@ -236,41 +235,57 @@ export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
 
   const loadSection = useCallback(
     async (mode: 'reset' | 'more') => {
-      if (!sectionKey) return;
-      if (mode === 'more' && (!hasNextPage || !cursor || loadingMore)) return;
+      if (!sectionKey) {
+        setError('Choose a section from Market to continue.');
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      if (mode === 'more' && (!hasNextPage || !cursor || requestRef.current)) return;
+      requestRef.current?.controller.abort();
+      const request = { id: ++requestIdRef.current, controller: new AbortController(), mode };
+      requestRef.current = request;
+      const isCurrent = () => requestRef.current?.id === request.id;
       if (mode === 'reset') {
         setError(null);
-        setLoading(!section);
+        setLoading(!section || section.key !== sectionKey);
+        setLoadingMore(false);
       } else {
         setLoadingMore(true);
       }
-
       try {
         const response = await getMarketSectionDetail(sectionKey, {
           cursor: mode === 'more' ? cursor : null,
           limit: PAGE_LIMIT,
-        });
-
+        }, { signal: request.controller.signal });
+        if (!isCurrent()) return;
         setSection(response.section);
         setCursor(response.section.pagination?.nextCursor ?? null);
         setHasNextPage(Boolean(response.section.pagination?.hasNextPage));
-
         setItems((current) => {
-          if (mode === 'reset') return response.section.items;
-          const seen = new Set(current.map(itemKey));
-          return [
-            ...current,
-            ...response.section.items.filter((item) => !seen.has(itemKey(item))),
-          ];
+          const seen = new Set(mode === 'reset' ? [] : current.map(itemKey));
+          const incoming = response.section.items.filter((item) => {
+            const key = itemKey(item);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          return mode === 'reset' ? incoming : [...current, ...incoming];
         });
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Unable to load section.');
+        if (isCurrent() && !request.controller.signal.aborted) {
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load section.');
+        }
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (isCurrent()) {
+          requestRef.current = null;
+          setLoading(false);
+          setLoadingMore(false);
+          if (mode === 'reset') setRefreshing(false);
+        }
       }
     },
-    [cursor, hasNextPage, loadingMore, section, sectionKey],
+    [cursor, hasNextPage, section, sectionKey],
   );
 
   useEffect(() => {

@@ -249,6 +249,7 @@ type PresignedUpload = {
   expectedKey: string;
   uploadUrl: string;
   uploadFields?: Record<string, string> | null;
+  uploadHeaders?: Record<string, string> | null;
   method?: 'POST' | 'PUT';
   viewSlot?: BackendMediaViewSlot | string | null;
 };
@@ -672,7 +673,7 @@ async function uploadDesignAsset(
     const blob = await fileResponse.blob();
     const response = await fetch(upload.uploadUrl, {
       method: 'PUT',
-      headers: { 'Content-Type': asset.mimeType },
+      headers: upload.uploadHeaders ?? { 'Content-Type': asset.mimeType },
       body: blob,
     });
 
