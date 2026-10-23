@@ -18,7 +18,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
  * barely-there wash of the brand purple for surfaces that would otherwise be
  * bare — metric tiles, summary panels. See `surfaceTintGradient`.
  */
-export type CardVariant = 'surface' | 'elevated' | 'overlay' | 'tinted';
+export type CardVariant = 'surface' | 'elevated' | 'overlay' | 'tinted' | 'recessed';
 
 type Props = {
   variant?: CardVariant;
@@ -41,7 +41,7 @@ export function Card({
 
   const baseStyle: ViewStyle = {
     borderRadius: tokens.radius.lg,
-    borderWidth: 0,
+    borderWidth: 2,
     borderColor: theme.colors.border,
     padding: paddingValue,
   };
@@ -49,24 +49,28 @@ export function Card({
   const variantStyle: ViewStyle =
     variant === 'elevated'
       ? {
-          // Same fill as `surface`. The shadow is what makes it elevated.
           backgroundColor: theme.colors.surface,
+          borderWidth: 0,
           ...tokens.elevation.md,
         }
       : variant === 'overlay'
         ? {
             backgroundColor: theme.colors.surfaceOverlay,
+            borderWidth: 0,
           }
         : variant === 'tinted'
           ? {
-              // The gradient paints the fill; this is what shows through the
-              // corners while it lays out, and the colour anything measuring
-              // the card reads.
               backgroundColor: theme.colors.surface,
+              borderWidth: 0,
               ...tokens.elevation.sm,
             }
           : {
-              backgroundColor: theme.colors.surface,
+              backgroundColor: variant === 'recessed' ? theme.colors.surfaceAlt : theme.colors.surface,
+              borderWidth: 2,
+              borderTopColor: theme.colors.border,
+              borderLeftColor: theme.colors.border,
+              borderBottomColor: variant === 'recessed' ? theme.colors.surface : theme.colors.border,
+              borderRightColor: variant === 'recessed' ? theme.colors.surface : theme.colors.border,
             };
 
   const content =
