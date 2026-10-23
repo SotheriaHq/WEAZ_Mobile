@@ -49,7 +49,8 @@ import {
 } from '@/src/navigation/nativeIslandConfig';
 import { withNavigationLock, releaseNavigationLock } from '@/src/utils/mobileNavigation';
 import {
-  popIslandTabStackToRoot,
+  jumpToIslandTabRoot,
+  isIslandTabAtRoot,
   registerIslandTabNavigation,
 } from '@/src/navigation/islandTabStack';
 import { requestStudioInPlaceNav } from '@/src/features/studio/studioNavController';
@@ -357,43 +358,12 @@ export default function TabLayout() {
   const jumpToIslandTab = useCallback(
     (tabName: string, fallbackRoute: string) => {
       navPerf.routeCallStart(tabName, { target: fallbackRoute });
-      /*
-        JUMP_TO changes which TAB is focused. That is all it does.
-
-        It does not pop the focused tab's own nested stack, and it does not
-        dismiss a root-stack screen sitting on top of the whole tab shell. Both
-        of those are reachable in one tap and both made the island lie:
-
-          - Catalogue is a nested Stack (`index` + `[brandId]`). Open another
-            brand from the Runway, then press the island's own chip: JUMP_TO
-            focused the catalogue tab, which was still parked on `[brandId]`.
-            The chip read "me" and the screen was somebody else's catalogue in
-            visitor mode. Pressing again did the same thing, so there was no way
-            out but a relaunch.
-          - `/profile/[id]` is a ROOT-stack route, above the tab shell entirely.
-            JUMP_TO re-focused a tab underneath it and left the profile on
-            screen, so the press appeared to do nothing at all.
-
-        Pop the DESTINATION tab's nested stack first, then focus it. The screen
-        you are leaving being a tab root does not mean the tab you are opening
-        is at its root: Runway is `/`, and Catalogue can still be parked on
-        `[brandId]` — including when that visitor screen is the only route in
-        the stack, which is what Back leaves behind when it falls through to
-        Runway. `JUMP_TO` from there re-focused that visitor screen. The pop
-        is targeted at the nested stack, so it runs whether or not that tab
-        is the one on screen.
-
-        From anywhere that is not a tab root, `router.navigate` still has to
-        run afterwards. A root-stack screen such as `/profile/[id]` sits above
-        the tab shell, and `JUMP_TO` leaves it in place.
-
-        `pathnameRef` is read instead of `pathname` so this callback stays
-        stable and does not churn the island on every route change.
-      */
-      popIslandTabStackToRoot(tabName);
+      // Select the owner root and focus the tab in one request. Preserve its
+      // mounted root key, including when a visitor was the whole nested stack.
+      const selectedRoot = jumpToIslandTabRoot(tabName);
       const normCurrent = String(pathnameRef.current ?? '').replace('/(tabs)', '');
       const atTabRoot = TAB_ROOT_PATHS.has(normCurrent);
-      if (atTabRoot && dispatchTabNavigationAction('JUMP_TO', tabName)) {
+      if ((atTabRoot || normCurrent.startsWith('/catalog/')) && selectedRoot) {
         navPerf.routeCallEnd(tabName, { target: fallbackRoute });
         return;
       }
@@ -401,7 +371,7 @@ export default function TabLayout() {
         navPerf.mark?.('tab_jump_needs_pop', normCurrent);
       }
 
-      router.navigate(fallbackRoute as any);
+      router.dismissTo(fallbackRoute as any);
       navPerf.routeCallEnd(tabName, { target: fallbackRoute });
     },
     [dispatchTabNavigationAction],
@@ -529,7 +499,7 @@ export default function TabLayout() {
     // not deduped at all — the one island key exempt from both protections.
     const normTarget = target.replace('/(tabs)', '');
     const normCurrent = String(pathname).replace('/(tabs)', '');
-    if (normTarget === normCurrent) {
+    if (normTarget === normCurrent && isIslandTabAtRoot(isBrand ? 'catalog' : 'me')) {
       navPerf.mark?.('navigation_same_target_ignored', target);
       return;
     }
@@ -550,7 +520,7 @@ export default function TabLayout() {
         navPerf.routeCallEnd(navFlow, { target });
       });
       return true;
-    }, { force: false });
+    }, { force: false, allowSamePath: true });
     if (!locked) {
       navPerf.mark?.('navigation_ignored_duplicate', target);
     }

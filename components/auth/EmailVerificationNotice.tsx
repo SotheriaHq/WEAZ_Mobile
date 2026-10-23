@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     // The warning reads as an edge, not a box.
     borderLeftWidth: 3,
     borderRadius: tokens.radius.md,

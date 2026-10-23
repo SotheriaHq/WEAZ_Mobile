@@ -259,12 +259,12 @@ function main() {
   );
   assert.match(
     compressionSource,
-    /if \(!manipulator\) \{\s*\n\s*return originalImage\(/,
+    /if \(!manipulator\) return original\(\)/,
     'Image compression must fall back to the original image when the native module is unavailable.',
   );
   assert.match(
     compressionSource,
-    /catch \{\s*\n\s*return originalImage\(/,
+    /catch \{[\s\S]*?return original\(\)/,
     'Image compression must never throw — it returns the original image on failure.',
   );
 

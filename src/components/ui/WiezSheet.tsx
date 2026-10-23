@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
   optionRow: {
     minHeight: 56,
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
     flexDirection: 'row',

@@ -328,6 +328,7 @@ export const FeedMediaCarousel = React.memo(function FeedMediaCarousel({
             {shouldMountSlide(index, safeActiveIndex, isActive) ? (
               <FeedMediaSlide
                 media={item}
+                exposureActive={isActive && index === safeActiveIndex}
                 imageIndex={index}
                 viewportWidth={width}
                 viewportHeight={pageHeight}

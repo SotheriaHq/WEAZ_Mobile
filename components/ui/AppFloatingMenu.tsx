@@ -246,7 +246,7 @@ export function AppFloatingMenu({ visible, anchorRef, anchorMetrics, options, on
                 // between entries so each link reads as its own target rather
                 // than one undivided block of text. The last row is left open so
                 // the rule never doubles up with the panel's own edge.
-                !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+                !isLast && { borderBottomWidth: 2, borderBottomColor: theme.colors.border },
                 isFirst && { borderTopLeftRadius: 11, borderTopRightRadius: 11 },
                 isLast && { borderBottomLeftRadius: 11, borderBottomRightRadius: 11 },
                 pressed && {

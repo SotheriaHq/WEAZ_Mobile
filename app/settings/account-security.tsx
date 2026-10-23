@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.spacing.xs,
   },
   notice: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     padding: tokens.spacing.md,
   },
@@ -693,7 +693,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   sessionCopy: {
     flex: 1,

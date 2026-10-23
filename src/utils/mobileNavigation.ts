@@ -214,7 +214,7 @@ export function releaseNavigationLock(reason = 'manual') {
 export function withNavigationLock<T>(
   href: Href,
   action: () => T,
-  opts: { force?: boolean; singleFlight?: boolean } = {},
+  opts: { force?: boolean; singleFlight?: boolean; allowSamePath?: boolean } = {},
 ): T | undefined {
   const target = normalizeTarget(href);
   const current = (global as any).__navCurrentPathname || null;
@@ -224,7 +224,7 @@ export function withNavigationLock<T>(
     return undefined;
   }
 
-  if (current && normalizeTarget(current) === target && !opts.force) {
+  if (current && normalizeTarget(current) === target && !opts.force && !opts.allowSamePath) {
     navPerf.mark?.('navigation_same_target_ignored', target);
     return undefined;
   }

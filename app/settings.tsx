@@ -325,6 +325,7 @@ export default function SettingsScreen() {
       {
         title: 'Business',
         rows: [
+          { emoji: '👥', title: 'Customer settings', subtitle: 'Purchase threshold · paid plans', onPress: () => drillDownPush('/settings/customers' as never) },
           {
             emoji: '🏪',
             title: 'Store profile',
@@ -401,7 +402,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   headerCopy: {
     flex: 1,
@@ -415,7 +416,7 @@ const styles = StyleSheet.create({
   sectionWrap: {
     gap: tokens.spacing.xs,
     paddingBottom: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   sectionTitle: {
     paddingHorizontal: tokens.spacing.xs,

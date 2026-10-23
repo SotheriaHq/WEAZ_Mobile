@@ -971,7 +971,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   navGlassFill: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
   },
   navBlur: {
     borderRadius: NATIVE_ISLAND_NAV.radius,

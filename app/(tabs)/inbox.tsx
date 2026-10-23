@@ -939,7 +939,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: tokens.spacing.xs,
     paddingBottom: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   rowTop: {
     flexDirection: 'row',

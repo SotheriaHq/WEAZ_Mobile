@@ -1841,7 +1841,7 @@ const styles = StyleSheet.create({
 
   formCard: {
     gap: tokens.spacing.md,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   copyBlock: {
     marginTop: tokens.spacing.xs,
@@ -1873,7 +1873,7 @@ const styles = StyleSheet.create({
 
   requiredCard: {
     gap: tokens.spacing.xs,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   requiredList: {
     gap: tokens.spacing.xs,
@@ -1884,7 +1884,7 @@ const styles = StyleSheet.create({
   },
   priceSummaryCard: {
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     gap: tokens.spacing.xs,
     padding: tokens.spacing.md,
   },
@@ -1913,7 +1913,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.xs,
     paddingVertical: tokens.spacing.xs,
     borderRadius: tokens.radius.md,
-    borderWidth: 1,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1938,7 +1938,7 @@ const styles = StyleSheet.create({
   categoryOption: {
     minHeight: tokens.button.md.height,
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
@@ -1951,7 +1951,7 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.spacing.xs,
   },
   inlineNotice: {
-    borderWidth: 1,
+    borderWidth: 2,
     gap: tokens.spacing.xs,
   },
   sheetActionRow: {
@@ -1961,7 +1961,7 @@ const styles = StyleSheet.create({
   },
   footerActions: {
     gap: tokens.spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     paddingTop: tokens.spacing.md,
   },
   actionRow: {

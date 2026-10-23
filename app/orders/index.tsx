@@ -454,7 +454,7 @@ export default function OrdersScreen() {
                     accessibilityLabel={`${stat.label}, ${stat.value}`}
                     style={({ pressed }) => [
                       styles.statCell,
-                      index > 0 ? { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: theme.colors.border } : null,
+                      index > 0 ? { borderLeftWidth: 2, borderLeftColor: theme.colors.border } : null,
                       selected ? { backgroundColor: theme.colors.surfaceAlt } : null,
                       pressed ? styles.pressed : null,
                     ]}
@@ -533,7 +533,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   headerCopy: {
     flex: 1,
@@ -559,7 +559,7 @@ const styles = StyleSheet.create({
    */
   statBand: {
     flexDirection: 'row',
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     overflow: 'hidden',
   },
   statCell: {
@@ -588,7 +588,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   skeletonCopy: {
     flex: 1,
@@ -603,7 +603,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
   },
   emptyHint: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,

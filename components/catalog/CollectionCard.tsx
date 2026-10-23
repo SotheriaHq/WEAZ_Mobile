@@ -727,7 +727,7 @@ const styles = StyleSheet.create({
     top: 48,
     right: tokens.spacing.sm,
     borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     overflow: 'hidden',
     minWidth: 96,
     zIndex: 5,
@@ -811,7 +811,7 @@ const styles = StyleSheet.create({
   clientActionButton: {
     minHeight: 28,
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: tokens.tintLight(0.45),
     paddingHorizontal: tokens.spacing.sm,
     justifyContent: 'center',

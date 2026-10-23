@@ -129,6 +129,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
     queryFn: () => SubscriptionApi.get(brandId!),
     enabled: owner,
   });
+  useEffect(() => { void client.invalidateQueries({ queryKey: ['brand-commerce-access'] }); }, [client, billing.data?.subscription?.tierKey, billing.data?.subscription?.status, billing.data?.subscription?.currentPeriodEnd]);
   const cards = useQuery({
     queryKey: [...key, 'cards'],
     queryFn: () => SubscriptionApi.cards(brandId!),
@@ -926,7 +927,7 @@ const styles = StyleSheet.create({
   section: {
     gap: tokens.spacing.md,
     paddingVertical: tokens.spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   grid: {
     flexDirection: 'row',
@@ -938,7 +939,7 @@ const styles = StyleSheet.create({
     width: '47%',
     gap: tokens.spacing.sm,
     paddingVertical: tokens.spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
   },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: tokens.spacing.md },
   checkbox: { minHeight: 44, paddingVertical: tokens.spacing.sm },

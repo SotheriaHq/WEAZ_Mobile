@@ -1,3 +1,4 @@
+import { RUNWAY_CATEGORIES } from '@/src/constants/runwayCategories';
 import type { AxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
 
@@ -804,23 +805,16 @@ const unwrapData = <T,>(payload: unknown): T | null => {
  * These are what the Runway shows before `/feed/categories` resolves. They had
  * drifted from the real `FeedCategory` rows, so the row visibly rewrote itself
  * a moment after launch: "Discover for you" → "Discover", "African culture" →
- * "African Style", "Casual" → "Casual Style".
+ * "African Casual", "Casual" → "Casual Style".
  *
  * "Discover for you" was also wrong on its own terms — it welded together two
  * categories the server has always kept apart. Discover is the ranked feed;
  * For You is personalised. Collapsing them into one chip hid For You from the
  * row entirely until the fetch landed.
  *
- * Keep in sync with the FeedCategory seed. Broad keys carry `tag: null` (see
- * FEED_CATEGORY_BROAD_KEYS) because they filter nothing.
+ * Keep in sync with the FeedCategory seed. Every lane carries its stable key so ranking and cached pages stay separate.
  */
-export const DEFAULT_MARKET_FILTER_CHIPS: MarketFilterChip[] = [
-  { id: 'discover', label: 'Discover', tag: null },
-  { id: 'explore', label: 'Explore', tag: null },
-  { id: 'for-you', label: 'For You', tag: null },
-  { id: 'african-style', label: 'African Style', tag: 'african-style' },
-  { id: 'casual-style', label: 'Casual Style', tag: 'casual-style' },
-];
+export const DEFAULT_MARKET_FILTER_CHIPS: MarketFilterChip[] = RUNWAY_CATEGORIES.map(category => ({ id: category.key, label: category.label, tag: category.key }));
 
 const MARKET_FILTER_PREFERENCES: MarketFilterPreference[] = [
   { dimensionSlug: 'heritage', valueSlug: 'african-cultural', label: 'African culture', tag: 'african-fashion' },
@@ -876,11 +870,10 @@ const mapSeededFiltersToChips = (payload: RawCategoryFiltersPayload): MarketFilt
   // Lead with every BROAD chip, selected by its null tag rather than by index.
   // The indexes were [0] and [1] back when exactly two broad chips existed;
   // adding For You as its own category would silently have dropped it here.
-  const broadChips = DEFAULT_MARKET_FILTER_CHIPS.filter((chip) => chip.tag === null);
+  const broadChips = DEFAULT_MARKET_FILTER_CHIPS.filter((chip) => ['discover', 'explore', 'for-you'].includes(chip.id));
   return uniqueChips.length > 0 ? [...broadChips, ...uniqueChips] : DEFAULT_MARKET_FILTER_CHIPS;
 };
 
-const FEED_CATEGORY_BROAD_KEYS = new Set(['discover', 'explore', 'for-you']);
 
 const mapFeedCategoriesToChips = (payload: FeedCategoriesResponse | null | undefined): MarketFilterChip[] => {
   const categories = Array.isArray(payload?.categories) ? payload.categories : [];
@@ -893,7 +886,7 @@ const mapFeedCategoriesToChips = (payload: FeedCategoriesResponse | null | undef
     .map((category) => ({
       id: category.key,
       label: category.label,
-      tag: FEED_CATEGORY_BROAD_KEYS.has(category.key) ? null : category.key,
+      tag: category.key === 'african-style' ? 'african-casual' : category.key,
     }));
 
   return chips.length > 0 ? chips : DEFAULT_MARKET_FILTER_CHIPS;
@@ -1072,7 +1065,8 @@ export async function getMarketFeed(params?: GetMarketFeedParams, config?: Axios
     params: {
       cursor: params?.cursor ?? undefined,
       limit: params?.limit ?? 20,
-      tag: params?.tag ?? undefined,
+      tag: params?.tag && !['discover', 'explore', 'for-you', 'african-casual', 'casual-style'].includes(params.tag) ? params.tag : undefined,
+      feedKey: params?.tag && ['discover', 'explore', 'for-you', 'african-casual', 'casual-style'].includes(params.tag) ? params.tag : undefined,
       counts: params?.counts ?? 'combined',
       ...(config?.params ?? {}),
     },

@@ -973,6 +973,59 @@ const ROW_STRIP_WINDOW = {
   windowSize: 5,
 } as const;
 
+function ExploreEndCard({
+  width,
+  height,
+  title,
+  onPress,
+}: {
+  width: number;
+  height: number;
+  title: string;
+  onPress?: () => void;
+}) {
+  const { theme } = useTheme();
+  if (!onPress) return null;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.exploreEndCard,
+        {
+          width: Math.max(130, Math.round(width * 0.85)),
+          height,
+          borderColor: theme.colors.border,
+          backgroundColor: theme.colors.surfaceAlt,
+        },
+        pressed && styles.pressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`Explore all ${title}`}
+    >
+      <View
+        style={[
+          styles.exploreEndCardIconWrapper,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+          },
+        ]}
+      >
+        <AppText variant="title" tone="primary">
+          {String.fromCodePoint(0x2192)}
+        </AppText>
+      </View>
+      <AppText variant="captionBold" style={styles.exploreEndCardText} numberOfLines={2}>
+        Explore All
+      </AppText>
+      <AppText variant="caption" tone="muted" style={styles.exploreEndCardSubtext} numberOfLines={1}>
+        {title}
+      </AppText>
+    </Pressable>
+  );
+}
+
 function HorizontalCardRow({
   title,
   subtitle,
@@ -2730,7 +2783,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: tokens.radius.md,
-    borderWidth: 1,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2749,7 +2802,7 @@ const styles = StyleSheet.create({
     minHeight: 32,
     maxWidth: '100%',
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
   },
   activeFilterLabel: {
@@ -2759,7 +2812,7 @@ const styles = StyleSheet.create({
   categoryChip: {
     minHeight: 36,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2802,7 +2855,7 @@ const styles = StyleSheet.create({
   heroPill: {
     minHeight: 30,
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2843,10 +2896,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: SIDE_PADDING,
     gap: CARD_GAP,
   },
+  exploreEndCard: {
+    borderRadius: tokens.radius.xl,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: tokens.spacing.sm,
+    marginLeft: CARD_GAP,
+    marginRight: SIDE_PADDING,
+  },
+  exploreEndCardIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: tokens.radius.full,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: tokens.spacing.xs,
+  },
+  exploreEndCardText: {
+    textAlign: 'center',
+  },
+  exploreEndCardSubtext: {
+    textAlign: 'center',
+    marginTop: tokens.spacing.xs,
+  },
   collectionCard: {
     height: 262,
     borderRadius: tokens.radius.xl,
-    borderWidth: 1,
+    borderWidth: 2,
     overflow: 'hidden',
   },
   collectionImage: {
@@ -2858,7 +2937,7 @@ const styles = StyleSheet.create({
     top: tokens.spacing.sm,
     minHeight: 28,
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2885,7 +2964,7 @@ const styles = StyleSheet.create({
     marginHorizontal: SIDE_PADDING,
     minHeight: 98,
     borderRadius: tokens.radius.xl,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.xs,
     justifyContent: 'center',

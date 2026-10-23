@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingBottom: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   content: {
     padding: tokens.spacing.lg,
@@ -400,13 +400,13 @@ const styles = StyleSheet.create({
   titleCopy: { flex: 1, minWidth: 0, gap: tokens.spacing.xs },
   countdown: {
     alignSelf: 'flex-start',
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.xs,
   },
   quote: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.md,
     padding: tokens.spacing.md,
     gap: tokens.spacing.xs,

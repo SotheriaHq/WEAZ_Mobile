@@ -1,3 +1,5 @@
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { getMediaUrlIdentity, isRenewableMediaUrl } from '@/src/utils/mediaUrlPolicy';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
@@ -137,12 +139,25 @@ export function AspectAwareMedia({
    */
   const lockedStrategyRef = useRef<{ identity: string; strategy: AspectAwareMediaStrategy } | null>(null);
   const lastLoggedStrategyRef = useRef<string | null>(null);
-  const imageSource = useMemo(() => normalizeSource(source), [source]);
+  const rawImageSource = useMemo(() => normalizeSource(source), [source]);
+  const resolvedImage = useResolvedImageAsset({ src: rawImageSource?.uri });
+  const imageSource = useMemo(() => resolvedImage.uri ? { ...rawImageSource, uri: resolvedImage.uri } : null, [rawImageSource, resolvedImage.uri]);
+  const retry = useRef({ identity: '', used: false });
+  const mediaIdentity = rawImageSource?.uri ? getMediaUrlIdentity(rawImageSource.uri) : '';
+  if (retry.current.identity !== mediaIdentity) retry.current = { identity: mediaIdentity, used: false };
+  const handleImageError = useCallback((event: any) => {
+    if (isRenewableMediaUrl(imageSource?.uri) && !retry.current.used) {
+      retry.current.used = true;
+      void resolvedImage.refreshUri().then((next) => { if (!next || next === imageSource?.uri) onError?.(event); });
+      return;
+    }
+    onError?.(event);
+  }, [imageSource?.uri, onError, resolvedImage.refreshUri]);
   const normalizedPlaceholderSource = useMemo(
     () => normalizeSource(placeholderSource),
     [placeholderSource],
   );
-  const sourceIdentity = recyclingKey ?? imageSource?.uri ?? '';
+  const sourceIdentity = recyclingKey ?? mediaIdentity;
   const containerBackground = dominantColor || SOLID_DARK_SURFACE;
   const resolvedImageWidth = imageWidth ?? loadedSize?.width ?? null;
   const resolvedImageHeight = imageHeight ?? loadedSize?.height ?? null;
@@ -318,7 +333,7 @@ export function AspectAwareMedia({
       recyclingKey={recyclingKey}
       accessibilityLabel={accessibilityLabel}
       onLoad={handleLoad}
-      onError={onError}
+      onError={handleImageError}
     />
   ) : null;
 

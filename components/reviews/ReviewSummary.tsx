@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { Card } from '@/components/ui/Card';
 import type { ReviewSummaryDto } from '@/src/api/ReviewApi';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -31,7 +32,7 @@ export default function ReviewSummary({ summary }: Props) {
   const total = summary.reviewCount;
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+    <Card variant="recessed" style={styles.card}>
       <View style={styles.topRow}>
         <View style={styles.scoreBlock}>
           <AppText variant="display">{summary.averageRating.toFixed(1)}</AppText>
@@ -67,14 +68,14 @@ export default function ReviewSummary({ summary }: Props) {
           </View>
         ))}
       </View>
-    </View>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.lg,
   },
@@ -119,7 +120,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
   },
   moodPill: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 4,

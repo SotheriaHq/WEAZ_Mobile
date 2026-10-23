@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
   actionChip: {
     minHeight: 44,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     flexDirection: 'row',
     alignItems: 'center',

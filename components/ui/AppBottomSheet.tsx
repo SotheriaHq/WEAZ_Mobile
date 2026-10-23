@@ -801,7 +801,7 @@ const styles = StyleSheet.create({
     maxHeight: '88%',
     borderTopLeftRadius: tokens.radius.xl,
     borderTopRightRadius: tokens.radius.xl,
-    borderWidth: 1,
+    borderWidth: 2,
     borderBottomWidth: 0,
     paddingTop: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
@@ -842,7 +842,7 @@ const styles = StyleSheet.create({
     minHeight: 28,
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.full,
   },
   headerActions: {

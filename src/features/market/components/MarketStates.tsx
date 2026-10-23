@@ -52,7 +52,7 @@ export function MarketErrorState({ message, onRetry }: ErrorProps) {
 const styles = StyleSheet.create({
   card: {
     margin: tokens.spacing.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     padding: tokens.spacing.xl,
     alignItems: 'center',

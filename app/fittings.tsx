@@ -619,7 +619,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingBottom: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   headerCopy: {
     flex: 1,
@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 44,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -675,7 +675,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     minHeight: 44,
     paddingTop: tokens.spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
   },
   disclosureCopy: {
     flex: 1,
@@ -685,12 +685,12 @@ const styles = StyleSheet.create({
   note: {
     gap: tokens.spacing.xs,
     paddingTop: tokens.spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
   },
   footer: {
     paddingHorizontal: tokens.spacing.lg,
     paddingTop: tokens.spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
   },
   pressed: {
     opacity: 0.82,

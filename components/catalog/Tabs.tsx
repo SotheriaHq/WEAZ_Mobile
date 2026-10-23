@@ -267,7 +267,7 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align =
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
-    borderBottomWidth: 1,
+    borderBottomWidth: 0,
   },
   tabsContainer: {
     flexDirection: 'row',

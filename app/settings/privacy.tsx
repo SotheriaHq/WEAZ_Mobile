@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.lg,
   },
   section: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
     paddingBottom: tokens.spacing.md,
   },
   sectionLabel: {
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   rowLabel: {
     flex: 1,

@@ -47,6 +47,7 @@ import {
   type StudioRouteKey,
 } from '@/src/features/studio/studioRoutes';
 import { useResolvedImageUri } from '@/src/hooks/useResolvedImageUri';
+import { useBrandCommerceAccess } from '@/src/hooks/useBrandCommerceAccess';
 import { useQueryClient } from '@tanstack/react-query';
 import { useStoreSetupStatus } from '@/src/hooks/useStoreSetupStatus';
 import { queryKeys } from '@/src/query/queryKeys';
@@ -307,6 +308,7 @@ export default function StudioWebViewScreen() {
   const hasBrandWorkspace = hasActiveBrandMembership(user);
   const isStudioEligible = user?.type === 'BRAND' && hasBrandWorkspace;
   const queryClient = useQueryClient();
+  const commerce = useBrandCommerceAccess();
   const { isSetupComplete: storeSetupComplete } = useStoreSetupStatus();
   // One nudge per visit. The redirect below re-runs the effect, and without this
   // the toast would stack on every pass.
@@ -1009,6 +1011,8 @@ export default function StudioWebViewScreen() {
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Header
         title={headerTitle}
+        wrapText
+        actions={commerce.data?.canUpgrade ? <Button title="Upgrade" size="sm" onPress={() => drillDownPush('/settings/subscriptions' as never)} style={{ minHeight: tokens.button.md.height }} /> : undefined}
         subtitle={headerSubtitle}
         style={{
           backgroundColor: studioShellBackground,
@@ -1040,20 +1044,6 @@ export default function StudioWebViewScreen() {
               gap: tokens.spacing.sm,
             }}
           >
-            {isBrandOwner(user) ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Upgrade subscription"
-                onPress={() =>
-                  drillDownPush('/settings/subscriptions' as never)
-                }
-                style={{ minHeight: 44, justifyContent: 'center' }}
-              >
-                <AppText variant="bodyBold" tone="primary">
-                  UPGRADE
-                </AppText>
-              </Pressable>
-            ) : null}
             <StudioHeaderActions
               user={user}
               onSearchPress={openSearch}

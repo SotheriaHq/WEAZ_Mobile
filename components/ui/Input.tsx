@@ -80,7 +80,7 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
     : isFocused
       ? theme.colors.primary
       : theme.colors.border;
-  const activeBorderWidth = isFocused || hasError ? 1.5 : 1;
+  const activeBorderWidth = isFocused || hasError ? 2 : 0;
   const isCompact = density === 'compact';
   const fieldMinHeight = isCompact ? 40 : multiline ? 104 : 52;
 

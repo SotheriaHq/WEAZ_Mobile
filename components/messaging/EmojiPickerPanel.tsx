@@ -303,8 +303,8 @@ export function EmojiPickerPanel({
 
 const styles = StyleSheet.create({
   panel: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
+    borderBottomWidth: 2,
   },
   searchRow: {
     paddingHorizontal: tokens.spacing.md,
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
   },
   tabs: {
     flexDirection: 'row',
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     paddingVertical: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.md,
     gap: tokens.spacing.xs,
