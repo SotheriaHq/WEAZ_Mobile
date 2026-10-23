@@ -1,4 +1,8 @@
 import { apiClient } from '@/src/api/httpClient';
+import { retryUploadCompletion } from '../utils/uploadFinalizeRetry';
+import { Platform } from 'react-native';
+import { File } from 'expo-file-system';
+import { fetch as expoFetch } from 'expo/fetch';
 import {
   getRequiredLegalAcceptances,
   LEGAL_CONTENT_PUBLISH_DOCUMENT_KEYS,
@@ -669,12 +673,14 @@ async function uploadDesignAsset(
       xhr.send(formData as any);
     });
   } else {
-    const fileResponse = await fetch(asset.uri);
-    const blob = await fileResponse.blob();
-    const response = await fetch(upload.uploadUrl, {
+    // Native File bodies avoid a full JavaScript Blob copy, especially for video.
+    const body = Platform.OS === 'web'
+      ? await (await fetch(asset.uri)).blob()
+      : new File(asset.uri);
+    const response = await expoFetch(upload.uploadUrl, {
       method: 'PUT',
       headers: upload.uploadHeaders ?? { 'Content-Type': asset.mimeType },
-      body: blob,
+      body,
     });
 
     if (!response.ok) {
@@ -1039,7 +1045,8 @@ export async function finalizeExistingDesign(
   payload: Omit<DesignSavePayload, 'designId'>,
   completions: UploadCompletion[],
 ) {
-  const response = await apiClient.post(
+  const idempotencyKey = createIdempotencyKey();
+  const response = await retryUploadCompletion(() => apiClient.post(
     `/designs/${designId}/finalize`,
     {
       completions,
@@ -1052,9 +1059,9 @@ export async function finalizeExistingDesign(
       draftVersion: payload.draftVersion,
     },
     {
-      headers: { 'Idempotency-Key': createIdempotencyKey() },
+      headers: { 'Idempotency-Key': idempotencyKey },
     },
-  );
+  ));
 
   return unwrapData<unknown>(response.data);
 }

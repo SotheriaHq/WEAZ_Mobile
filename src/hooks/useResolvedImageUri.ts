@@ -251,14 +251,15 @@ export function useResolvedImageUri({
   const session = useSyncExternalStore(subscribeMediaSession, getMediaSessionEpoch, getMediaSessionEpoch);
   const activeKey = `${session}:${cacheKey ?? (directSrc ? `direct:${directSrc}` : 'none')}`;
   const epoch = session;
-  const previousEpoch = useRef(epoch);
-  const accountChanged = previousEpoch.current !== epoch;
+  // Surviving instances must authorize new payloads after any account change.
+  const mountEpoch = useRef(epoch);
+  const accountChanged = mountEpoch.current !== epoch;
   const previousKeyRef = useRef<string | null>(activeKey);
   const resolvedKeyRef = useRef<string | null>(null);
   const lastSuccessfulRef = useRef<{ key: string; uri: string } | null>(null);
   const [resolvedUri, setResolvedUri] = useState<string | null>(() => {
     if (!accountChanged && directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
-      const key = `direct:${directSrc}`;
+      const key = activeKey;
       resolvedKeyRef.current = key;
       lastSuccessfulRef.current = { key, uri: directSrc };
       return directSrc;
@@ -266,17 +267,18 @@ export function useResolvedImageUri({
     const cachedKey = cacheKey;
     const cached = cachedKey ? getCachedUri(cachedKey) : null;
     if (cachedKey && cached && cached !== '__missing__') {
-      resolvedKeyRef.current = cachedKey;
-      lastSuccessfulRef.current = { key: cachedKey, uri: cached };
+      resolvedKeyRef.current = activeKey;
+      lastSuccessfulRef.current = { key: activeKey, uri: cached };
       return cached;
     }
     return null;
   });
 
   useEffect(() => {
+    const requiresAuthorization = mountEpoch.current !== epoch;
     if (activeKey === previousKeyRef.current) return;
     previousKeyRef.current = activeKey;
-    if (accountChanged) { lastSuccessfulRef.current = null; resolvedKeyRef.current = null; setResolvedUri(null); }
+    if (requiresAuthorization) { lastSuccessfulRef.current = null; resolvedKeyRef.current = null; setResolvedUri(null); }
 
     if (!activeKey) {
       resolvedKeyRef.current = null;
@@ -285,7 +287,7 @@ export function useResolvedImageUri({
       return;
     }
 
-    if (!accountChanged && directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
+    if (!requiresAuthorization && directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
       resolvedKeyRef.current = activeKey;
       lastSuccessfulRef.current = { key: activeKey, uri: directSrc };
       setResolvedUri(directSrc);
@@ -304,10 +306,11 @@ export function useResolvedImageUri({
     // revalidate rendering keep their own identity-bound preview layer.
     resolvedKeyRef.current = null;
     setResolvedUri(null);
-  }, [activeKey, cacheKey, directSrc, accountChanged]);
+  }, [activeKey, cacheKey, directSrc, epoch]);
 
   useEffect(() => {
     let mounted = true;
+    const requiresAuthorization = mountEpoch.current !== epoch;
 
     if (!enabled) {
       return () => {
@@ -324,7 +327,7 @@ export function useResolvedImageUri({
       };
     }
 
-    if (!accountChanged && directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
+    if (!requiresAuthorization && directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
       resolvedKeyRef.current = activeKey ?? `direct:${directSrc}`;
       lastSuccessfulRef.current = { key: activeKey ?? `direct:${directSrc}`, uri: directSrc };
       setResolvedUri(directSrc);
@@ -333,8 +336,7 @@ export function useResolvedImageUri({
       };
     }
 
-    previousEpoch.current = epoch;
-    void resolveImageUri({ src: directSrc, fileId: normalizedFileId, forceRefresh: accountChanged, allowSignedFallback, debugContext }).then((nextUri) => {
+    void resolveImageUri({ src: directSrc, fileId: normalizedFileId, forceRefresh: requiresAuthorization, allowSignedFallback, debugContext }).then((nextUri) => {
       if (mounted) {
         if (nextUri) {
           if (activeKey) {
@@ -356,7 +358,7 @@ export function useResolvedImageUri({
     return () => {
       mounted = false;
     };
-  }, [activeKey, allowSignedFallback, debugContext, directSrc, enabled, normalizedFileId, epoch, accountChanged]);
+  }, [activeKey, allowSignedFallback, debugContext, directSrc, enabled, normalizedFileId, epoch]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -377,7 +379,8 @@ export function useResolvedImageUri({
     return () => { mounted = false; if (timeout) clearTimeout(timeout); subscription.remove(); };
   }, [activeKey, allowSignedFallback, debugContext, directSrc, enabled, normalizedFileId, resolvedUri, epoch]);
 
-  return resolvedUri;
+  if (resolvedKeyRef.current === activeKey && isUsableMediaUrl(resolvedUri, Date.now(), 0)) return resolvedUri;
+  return !accountChanged && directSrc && isUsableDirectHttpUrl(directSrc) ? directSrc : null;
 }
 
 export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {

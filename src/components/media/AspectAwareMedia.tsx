@@ -1,5 +1,6 @@
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { getMediaUrlIdentity, isRenewableMediaUrl } from '@/src/utils/mediaUrlPolicy';
+import { getMediaSessionEpoch } from '@/src/utils/mediaUrlSession';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
@@ -144,15 +145,24 @@ export function AspectAwareMedia({
   const imageSource = useMemo(() => resolvedImage.uri ? { ...rawImageSource, uri: resolvedImage.uri } : null, [rawImageSource, resolvedImage.uri]);
   const retry = useRef({ identity: '', used: false });
   const mediaIdentity = rawImageSource?.uri ? getMediaUrlIdentity(rawImageSource.uri) : '';
+  const mounted = useRef(true);
+  const active = useRef({ source: rawImageSource?.uri, epoch: getMediaSessionEpoch() });
+  active.current = { source: rawImageSource?.uri, epoch: getMediaSessionEpoch() };
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   if (retry.current.identity !== mediaIdentity) retry.current = { identity: mediaIdentity, used: false };
   const handleImageError = useCallback((event: any) => {
     if (isRenewableMediaUrl(imageSource?.uri) && !retry.current.used) {
       retry.current.used = true;
-      void resolvedImage.refreshUri().then((next) => { if (!next || next === imageSource?.uri) onError?.(event); });
+      const epoch = getMediaSessionEpoch();
+      const source = rawImageSource?.uri;
+      void resolvedImage.refreshUri().then((next) => {
+        if (!mounted.current || active.current.source !== source || active.current.epoch !== epoch || epoch !== getMediaSessionEpoch()) return;
+        if (!next || next === imageSource?.uri) onError?.(event);
+      });
       return;
     }
     onError?.(event);
-  }, [imageSource?.uri, onError, resolvedImage.refreshUri]);
+  }, [imageSource?.uri, onError, rawImageSource?.uri, resolvedImage.refreshUri]);
   const normalizedPlaceholderSource = useMemo(
     () => normalizeSource(placeholderSource),
     [placeholderSource],

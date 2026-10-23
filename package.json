@@ -62,7 +62,7 @@
     "audit:theme": "node scripts/audit-theme-system.js",
     "check:perf-regressions": "node scripts/check-perf-regressions.cjs",
     "test:adire-rotation": "node scripts/test-adire-rotation.js",
-    "ci:phase8": "npm run test:image-compression && npm run test:creator-options && npm run test:profile-root && npm run test:runway-categories && npm run check:borders && npm exec tsc -- --noEmit && npm run test:custom-order-queue-contract && npm run test:security-dependency-compat && npm run test:subscription-billing-routing && npm run test:adire-rotation && npm run test:aspect-aware-media && npm run test:brand-profile-contract && npm run test:design-editor-contract && npm run test:store-api-contract && npm run test:runway-responsiveness-contract && npm run test:runway-transit-curves && npm run test:runway-calm-media-contract && npm run test:measurement-catalog-contract && npm run test:location-cascade-contract && npm run test:profile-gender-contract && npm run test:brand-identity-contract && npm run test:product-identity-contract && npm run test:base-url-candidates && npm run test:country-flag && npm run test:profile-size-preference && npm run test:latency-phase3-contract && npm run test:studio-nav-latency-contract && npm run test:perf-instrumentation-contract && npm run test:clipping-market-chrome-contract && npm run test:auth-user-equality && npm run check:perf-regressions && npm run test:market-section-concurrency",
+    "ci:phase8": "npm run test:scoped-media-picker && npm run test:upload-finalize-retry && npm run test:media-url-policy && npm run test:image-compression && npm run test:creator-options && npm run test:profile-root && npm run test:runway-categories && npm run check:borders && npm exec tsc -- --noEmit && npm run test:custom-order-queue-contract && npm run test:security-dependency-compat && npm run test:subscription-billing-routing && npm run test:adire-rotation && npm run test:aspect-aware-media && npm run test:brand-profile-contract && npm run test:design-editor-contract && npm run test:store-api-contract && npm run test:runway-responsiveness-contract && npm run test:runway-transit-curves && npm run test:runway-calm-media-contract && npm run test:measurement-catalog-contract && npm run test:location-cascade-contract && npm run test:profile-gender-contract && npm run test:brand-identity-contract && npm run test:product-identity-contract && npm run test:base-url-candidates && npm run test:country-flag && npm run test:profile-size-preference && npm run test:latency-phase3-contract && npm run test:studio-nav-latency-contract && npm run test:perf-instrumentation-contract && npm run test:clipping-market-chrome-contract && npm run test:auth-user-equality && npm run check:perf-regressions && npm run test:market-section-concurrency",
     "test:profile-gender-contract": "node scripts/test-profile-gender-contract.js",
     "test:brand-identity-contract": "node scripts/test-brand-identity-contract.js",
     "test:base-url-candidates": "node scripts/test-base-url-candidates.js",
@@ -74,7 +74,10 @@
     "test:subscription-billing-routing": "node scripts/test-subscription-billing-routing.js",
     "test:security-dependency-compat": "node scripts/test-security-dependency-compat.js",
     "test:image-compression": "node scripts/test-image-compression.cjs",
-    "test:market-section-concurrency": "node scripts/test-market-section-concurrency.js"
+    "test:market-section-concurrency": "node scripts/test-market-section-concurrency.js",
+    "test:scoped-media-picker": "node scripts/test-scoped-media-picker.cjs",
+    "test:upload-finalize-retry": "node scripts/test-upload-finalize-retry.cjs",
+    "test:media-url-policy": "node scripts/test-media-url-policy.cjs"
   },
   "dependencies": {
     "@expo-google-fonts/roboto": "^0.4.3",

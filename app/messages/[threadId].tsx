@@ -1,3 +1,4 @@
+import { useScopedMediaPicker } from '@/src/hooks/useScopedMediaPicker';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -17,7 +18,6 @@ import {
 import { KeyboardAvoider } from '@/components/ui/KeyboardAvoider';
 import { useFocusEffect } from 'expo-router';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { backOrNavigate, drillDownPush } from '@/src/utils/mobileNavigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -1754,25 +1754,21 @@ export default function ChatThreadScreen() {
     setPendingAttachments((current) => current.filter((entry) => entry.localId !== localId));
   }, []);
 
+  const { pick: pickScoped } = useScopedMediaPicker({ actorId: user?.id, flowId: 'message-attachment', subjectId: activeThreadId });
+
   const handlePickAttachment = useCallback(async () => {
     if (pendingAttachments.length >= MAX_PENDING_ATTACHMENTS) {
       toast.info(`You can attach up to ${MAX_PENDING_ATTACHMENTS} images per message.`);
       return;
     }
 
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      toast.error('Allow photo access to attach an image.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickScoped({ source: 'library', options: {
       mediaTypes: ['images'],
       allowsMultipleSelection: false,
       quality: 1,
       base64: false,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
+    } });
+    if (result.status !== 'success' || !result.assets[0]) return;
 
     const raw = result.assets[0];
     let asset = { uri: raw.uri, fileName: raw.fileName ?? `attachment-${Date.now()}.jpg`, mimeType: raw.mimeType ?? 'image/jpeg' };
@@ -1782,6 +1778,8 @@ export default function ChatThreadScreen() {
     } catch {
       // Compression is best-effort; upload validation still guards the original.
     }
+
+    if (!result.isCurrent()) return;
 
     const localId = createMessageClientId();
     setPendingAttachments((current) => [
@@ -1796,18 +1794,20 @@ export default function ChatThreadScreen() {
         name: asset.fileName,
         type: asset.mimeType,
       });
+      if (!result.isCurrent()) return;
       setPendingAttachments((current) =>
         current.map((entry) =>
           entry.localId === localId ? { ...entry, status: 'ready', fileId: uploaded.id } : entry,
         ),
       );
     } catch (error) {
+      if (!result.isCurrent()) return;
       setPendingAttachments((current) => current.map((entry) =>
         entry.localId === localId ? { ...entry, status: 'error' } : entry,
       ));
       toast.error(getMobileUploadValidationMessage(error));
     }
-  }, [pendingAttachments.length, toast]);
+  }, [pendingAttachments.length, toast, pickScoped]);
 
   const threadRows = useMemo(() => buildThreadRows(messages), [messages]);
 

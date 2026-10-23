@@ -1,9 +1,9 @@
+import { useScopedMediaPicker } from '@/src/hooks/useScopedMediaPicker';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from 'expo-router';
 
 import { brandApi, type BrandProfileDto, type UpdateBrandProfilePayload } from '@/src/api/BrandApi';
@@ -505,22 +505,18 @@ export default function BrandProfileEditScreen() {
     backOrNavigate('/catalog');
   }, [persistOnExit]);
 
-  const handlePickAvatar = useCallback(async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      toast.error('Allow photo access to update your brand image.');
-      return;
-    }
+  const { pick: pickScoped } = useScopedMediaPicker({ actorId: user?.id, flowId: 'catalog-edit-avatar', subjectId: targetBrandId });
 
-    const result = await ImagePicker.launchImageLibraryAsync({
+  const handlePickAvatar = useCallback(async () => {
+    const result = await pickScoped({ source: 'library', options: {
       mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 1,
       base64: false,
-    });
+    } });
 
-    if (result.canceled || !result.assets?.[0]) {
+    if (result.status !== 'success' || !result.assets[0]) {
       return;
     }
 
@@ -535,6 +531,8 @@ export default function BrandProfileEditScreen() {
       // compression failed — validate original (enforces the actual upload limit)
     }
 
+    if (!result.isCurrent()) return;
+
     try {
       assertValidPickedUploadAsset(
         { uri: asset.uri, fileName: asset.fileName, mimeType: asset.mimeType },
@@ -548,6 +546,7 @@ export default function BrandProfileEditScreen() {
     setSaveState('saving');
     try {
       const uploaded = await brandApi.uploadAvatar(asset.uri, asset.mimeType);
+      if (!result.isCurrent()) return;
       if (!uploaded) {
         throw new Error('Upload failed');
       }
@@ -596,10 +595,11 @@ export default function BrandProfileEditScreen() {
       setLastSavedAt(new Date());
       toast.success('Brand image updated.');
     } catch {
+      if (!result.isCurrent()) return;
       setSaveState('error');
       toast.error('Failed to update your brand image.');
     }
-  }, [targetBrandId, toast, updateUser]);
+  }, [targetBrandId, toast, updateUser, pickScoped]);
 
   const avatar = resolveProfileImageSource(profile ?? user ?? null);
   const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: Boolean(profile || user) });

@@ -1,6 +1,7 @@
+import { useScopedMediaPicker } from '@/src/hooks/useScopedMediaPicker';
+import { compressPickedImage } from '@/src/utils/imageCompression';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, type View } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { type View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { BrandProfileHeader, type BrandHeaderContactItem, type BrandHeaderStat } from '@/components/catalog/BrandProfileHeader';
@@ -42,16 +43,6 @@ type OwnerCatalogMediaHeaderProps = {
 type PendingMediaState = {
   src: string;
   fileId?: string | null;
-};
-
-const requestPhotoPermission = async (message: string) => {
-  const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permissionResult.granted) {
-    Alert.alert('Permission needed', message);
-    return false;
-  }
-
-  return true;
 };
 
 export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHeader({
@@ -138,26 +129,24 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       .join(', ') ||
     undefined;
 
-  const handleEditAvatar = useCallback(async () => {
-    const hasPermission = await requestPhotoPermission(
-      'Allow access to your photos to update your profile photo.',
-    );
-    if (!hasPermission) return;
+  const { pick: pickAvatar } = useScopedMediaPicker({ actorId: user?.id, flowId: 'catalog-header-avatar', subjectId: profile?.id ?? user?.id });
 
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
+  const handleEditAvatar = useCallback(async () => {
+    const result = await pickAvatar({ source: 'library', options: {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 1,
         base64: false,
-      });
+    } });
+    if (result.status !== 'success' || !result.assets[0]?.uri) return;
 
-      if (result.canceled || !result.assets?.[0]?.uri) {
-        return;
-      }
+    try {
 
-      const asset = result.assets[0];
+      const raw = result.assets[0];
+      const asset = await compressPickedImage(raw.uri, raw.width, raw.height, raw.fileName,
+        'profileImage', { mimeType: raw.mimeType, fileSize: raw.fileSize });
+      if (!result.isCurrent()) return;
       try {
         assertValidPickedUploadAsset(
           {
@@ -177,6 +166,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       setAvatarLoading(true);
 
       const uploaded = await brandApi.uploadAvatar(asset.uri, asset.mimeType || 'image/jpeg');
+      if (!result.isCurrent()) return;
       if (!uploaded) {
         throw new Error('Avatar upload did not return a file.');
       }
@@ -216,34 +206,33 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       }
       toast.success('Profile photo updated');
     } catch (error) {
+      if (!result.isCurrent()) return;
       console.error('Avatar upload error:', error);
       setPendingAvatar(null);
       toast.error('Failed to upload avatar. Please try again.');
     } finally {
-      setAvatarLoading(false);
+      if (result.isCurrent()) setAvatarLoading(false);
     }
-  }, [profile?.id, queryClient, toast, updateUser, user?.id]);
+  }, [profile?.id, queryClient, toast, updateUser, user?.id, pickAvatar]);
+
+  const { pick: pickBanner } = useScopedMediaPicker({ actorId: user?.id, flowId: 'catalog-header-banner', subjectId: profile?.id ?? user?.id });
 
   const handleEditBanner = useCallback(async () => {
-    const hasPermission = await requestPhotoPermission(
-      'Allow access to your photos to update your banner image.',
-    );
-    if (!hasPermission) return;
-
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickBanner({ source: 'library', options: {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [16, 9],
-        quality: 0.8,
+        quality: 1,
         base64: false,
-      });
+    } });
+    if (result.status !== 'success' || !result.assets[0]?.uri) return;
 
-      if (result.canceled || !result.assets?.[0]?.uri) {
-        return;
-      }
+    try {
 
-      const asset = result.assets[0];
+      const raw = result.assets[0];
+      const asset = await compressPickedImage(raw.uri, raw.width, raw.height, raw.fileName,
+        'bannerImage', { mimeType: raw.mimeType, fileSize: raw.fileSize });
+      if (!result.isCurrent()) return;
       try {
         assertValidPickedUploadAsset(
           {
@@ -263,6 +252,7 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       setBannerLoading(true);
 
       const uploaded = await brandApi.uploadBanner(asset.uri, asset.mimeType || 'image/jpeg');
+      if (!result.isCurrent()) return;
       if (!uploaded) {
         throw new Error('Banner upload did not return a file.');
       }
@@ -289,13 +279,14 @@ export const OwnerCatalogMediaHeader = React.memo(function OwnerCatalogMediaHead
       }
       toast.success('Banner image updated');
     } catch (error) {
+      if (!result.isCurrent()) return;
       console.error('Banner upload error:', error);
       setPendingBanner(null);
       toast.error('Failed to upload banner. Please try again.');
     } finally {
-      setBannerLoading(false);
+      if (result.isCurrent()) setBannerLoading(false);
     }
-  }, [profile?.id, queryClient, toast, updateUser, user?.id]);
+  }, [profile?.id, queryClient, toast, updateUser, user?.id, pickBanner]);
 
   return (
     <BrandProfileHeader

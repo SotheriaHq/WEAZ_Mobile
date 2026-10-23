@@ -1,9 +1,9 @@
+import { useScopedMediaPicker } from '@/src/hooks/useScopedMediaPicker';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from 'expo-router';
 import type { CountryCode } from 'libphonenumber-js';
 
@@ -354,22 +354,18 @@ export default function MeEditScreen() {
     backOrNavigate('/(tabs)/me');
   }, [persistOnExit, returnHref]);
 
-  const handlePickAvatar = useCallback(async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      toast.error('Allow photo access to update your profile image.');
-      return;
-    }
+  const { pick: pickScoped } = useScopedMediaPicker({ actorId: user?.id, flowId: 'me-edit-avatar', subjectId: user?.id });
 
-    const result = await ImagePicker.launchImageLibraryAsync({
+  const handlePickAvatar = useCallback(async () => {
+    const result = await pickScoped({ source: 'library', options: {
       mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 1,
       base64: false,
-    });
+    } });
 
-    if (result.canceled || !result.assets?.[0]) {
+    if (result.status !== 'success' || !result.assets[0]) {
       return;
     }
 
@@ -383,6 +379,8 @@ export default function MeEditScreen() {
     } catch {
       // compression failed — validate original (enforces the actual upload limit)
     }
+
+    if (!result.isCurrent()) return;
 
     try {
       assertValidPickedUploadAsset(
@@ -404,6 +402,7 @@ export default function MeEditScreen() {
     setSaveState('saving');
     try {
       const uploaded = await ProfileApi.uploadProfileImage(formData);
+      if (!result.isCurrent()) return;
       if (!uploaded) {
         throw new Error('Upload failed');
       }
@@ -427,10 +426,11 @@ export default function MeEditScreen() {
       setLastSavedAt(new Date());
       toast.success('Profile image updated.');
     } catch {
+      if (!result.isCurrent()) return;
       setSaveState('error');
       toast.error('Failed to update your profile image.');
     }
-  }, [toast, updateUser]);
+  }, [toast, updateUser, pickScoped]);
 
   const avatar = resolveProfileImageSource(profile ?? user ?? null);
   const avatarUri = useResolvedImageUri({ src: avatar.src, fileId: avatar.fileId, enabled: Boolean(profile || user) });

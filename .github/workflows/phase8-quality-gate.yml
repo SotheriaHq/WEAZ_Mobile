@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - SIT
 
 permissions:
   contents: read
@@ -31,6 +32,12 @@ jobs:
 
       - name: Native border policy
         run: npm run check:borders
+
+      - name: Scoped image picking and media completion
+        run: |
+          npm run test:scoped-media-picker
+          npm run test:upload-finalize-retry
+          npm run test:media-url-policy
 
       - name: Typecheck
         run: npm exec tsc -- --noEmit
