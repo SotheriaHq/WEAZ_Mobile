@@ -2,6 +2,8 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/AppText';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import type { ReviewDto } from '@/src/api/ReviewApi';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -22,7 +24,7 @@ export default function ReviewCard({ review, currentUserId, onEdit, onDelete }: 
   const canDelete = Boolean(review.canDelete && isOwner);
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+    <Card variant="recessed" style={styles.card}>
       <View style={styles.topRow}>
         <View style={styles.identity}>
           <View style={styles.nameRow}>
@@ -95,7 +97,7 @@ export default function ReviewCard({ review, currentUserId, onEdit, onDelete }: 
           </View>
         </View>
       ) : null}
-    </View>
+    </Card>
   );
 }
 
