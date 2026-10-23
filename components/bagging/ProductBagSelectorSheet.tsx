@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.full,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   quantityRow: {
     flexDirection: 'row',
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
   },
   recommendationCard: {
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: tokens.spacing.md,
     gap: tokens.spacing.sm,
   },

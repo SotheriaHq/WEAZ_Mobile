@@ -231,7 +231,7 @@ export function SettingsPanel({
       style={[
         styles.panel,
         divided
-          ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border }
+          ? { borderBottomWidth: 2, borderBottomColor: theme.colors.border }
           : null,
         style,
       ]}
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   headerCopy: {
     flex: 1,
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   },
   settingRow: {
     minHeight: 64,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 30,
     borderRadius: 15,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: 3,
     justifyContent: 'center',
   },

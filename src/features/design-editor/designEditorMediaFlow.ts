@@ -110,10 +110,12 @@ export async function pickDesignEditorMediaAssets({
     source === 'camera'
       ? await ImagePicker.launchCameraAsync({
           mediaTypes: ['images', 'videos'],
+          quality: 1,
           base64: false,
         })
       : await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images', 'videos'],
+          quality: 1,
           allowsMultipleSelection: true,
           selectionLimit: remainingSlots,
           base64: false,
@@ -142,7 +144,12 @@ export async function pickDesignEditorMediaAssets({
       mimeType: asset.mimeType ?? (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
       fileSize: asset.fileSize,
     })),
-    MOBILE_UPLOAD_POLICIES.designMedia,
+    {
+      ...MOBILE_UPLOAD_POLICIES.designMedia,
+      // Picker input formats are converted before upload; the wire policy stays strict.
+      allowedMimeTypes: [...MOBILE_UPLOAD_POLICIES.designMedia.allowedMimeTypes, 'image/heic', 'image/heif', 'image/avif'],
+      allowedExtensions: [...MOBILE_UPLOAD_POLICIES.designMedia.allowedExtensions, 'heic', 'heif', 'avif'],
+    },
     { existingCount, maxFiles: maxMedia },
   );
   if (validationErrors.length > 0) {

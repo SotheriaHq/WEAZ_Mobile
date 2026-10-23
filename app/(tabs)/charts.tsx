@@ -588,7 +588,7 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
   },
@@ -603,7 +603,7 @@ const styles = StyleSheet.create({
   },
   unitToggle: {
     flexDirection: 'row',
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.full,
     overflow: 'hidden',
   },
@@ -612,7 +612,7 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.spacing.xs,
   },
   table: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     overflow: 'hidden',
   },
@@ -620,7 +620,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   pinnedColumn: {
-    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: 2,
   },
   scrollColumns: {
     flexGrow: 1,
@@ -628,12 +628,12 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     height: ROW_HEIGHT,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   bodyRow: {
     flexDirection: 'row',
     height: ROW_HEIGHT,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   cell: {
     justifyContent: 'center',
@@ -657,7 +657,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   compareLabel: {
     flex: 1,
@@ -671,12 +671,12 @@ const styles = StyleSheet.create({
   },
   pointDetail: {
     gap: tokens.spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     paddingTop: tokens.spacing.md,
   },
   limits: {
     gap: tokens.spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     paddingTop: tokens.spacing.lg,
   },
 });

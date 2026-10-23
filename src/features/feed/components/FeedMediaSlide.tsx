@@ -7,6 +7,7 @@ import type { FeedViewerMedia } from '@/src/features/feed/components/feedCompone
 import { useTheme } from '@/src/theme/ThemeProvider';
 
 type FeedMediaSlideProps = {
+  exposureActive?: boolean;
   media: FeedViewerMedia | null;
   imageIndex: number;
   viewportWidth?: number | null;
@@ -42,6 +43,7 @@ const getAspectClass = (aspectRatio: number | null) => {
 
 export const FeedMediaSlide = React.memo(function FeedMediaSlide({
   media,
+  exposureActive = false,
   imageIndex,
   viewportWidth,
   viewportHeight,
@@ -90,6 +92,8 @@ export const FeedMediaSlide = React.memo(function FeedMediaSlide({
       accessibilityLabel={onPress ? `Show details for ${media.label || 'this design'}` : undefined}
     >
       <FeedImage
+        designId={media.collectionId}
+        exposureActive={exposureActive}
         id={media.id}
         displayUrl={media.displayUrl ?? media.url}
         thumbnailUrl={media.thumbnailUrl}

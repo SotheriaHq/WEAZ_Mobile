@@ -62,3 +62,8 @@ GEMINI.md
 .aider*
 project-memory/
 memory-bank/
+
+# builds & packages
+*.apk
+*.aab
+*.ipa

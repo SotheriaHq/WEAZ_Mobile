@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
   },
   qrFrame: {
     borderRadius: tokens.radius.xl,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: tokens.spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   urlBox: {
     width: '100%',
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
     gap: tokens.spacing.xs,
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: tokens.spacing.lg,
     gap: tokens.spacing.sm,
   },

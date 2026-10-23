@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.md,
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     padding: tokens.spacing.sm,
   },
   lineThumb: {
@@ -348,7 +348,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     paddingTop: tokens.spacing.md,
   },
   footer: {

@@ -1034,7 +1034,7 @@ export default function BuyerProfileScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: false,
-      quality: 0.9,
+      quality: 1,
       allowsEditing: true,
       aspect: [1, 1],
       base64: false,
@@ -1046,11 +1046,11 @@ export default function BuyerProfileScreen() {
     let asset = { uri: raw.uri, fileName: raw.fileName, mimeType: raw.mimeType ?? 'image/jpeg' };
     try {
       const compressed = await compressPickedImage(
-        raw.uri, raw.width ?? 0, raw.height ?? 0, raw.fileName, 'profileImage',
+        raw.uri, raw.width ?? 0, raw.height ?? 0, raw.fileName, 'profileImage', { mimeType: raw.mimeType, fileSize: raw.fileSize },
       );
       asset = { uri: compressed.uri, fileName: compressed.fileName, mimeType: compressed.mimeType };
     } catch {
-      // compression failed — validate original (may reject if >2 MB)
+      // compression failed — validate original (enforces the actual upload limit)
     }
 
     try {
@@ -1353,7 +1353,7 @@ export default function BuyerProfileScreen() {
                 style={({ pressed }) => [
                   styles.statCell,
                   index > 0
-                    ? { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: theme.colors.border }
+                    ? { borderLeftWidth: 2, borderLeftColor: theme.colors.border }
                     : null,
                   pressed ? styles.pressed : null,
                 ]}
@@ -1635,7 +1635,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    borderWidth: 1,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1693,7 +1693,7 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     gap: tokens.spacing.xs,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   savedGrid: {
     flexDirection: 'row',
@@ -1708,7 +1708,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.sm,
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: tokens.spacing.sm,
   },
   rowAvatar: {
@@ -1744,7 +1744,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.spacing.sm,
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
   },

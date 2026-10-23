@@ -136,7 +136,7 @@ export function OrderAttentionPanel({ items }: { items: AttentionItem[] }) {
                 index < ordered.length - 1
                   ? {
                       borderBottomColor: theme.colors.border,
-                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomWidth: 2,
                     }
                   : null,
               ]}
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingVertical: tokens.spacing.md,
     paddingRight: tokens.spacing.md,

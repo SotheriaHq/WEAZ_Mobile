@@ -549,7 +549,7 @@ const styles = StyleSheet.create({
     width: 156,
     overflow: 'hidden',
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   cardTapTarget: {
     flex: 1,
@@ -570,12 +570,12 @@ const styles = StyleSheet.create({
     top: tokens.spacing.xs,
     left: tokens.spacing.xs,
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 2,
   },
   brandLink: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: tokens.spacing.sm,
   },
@@ -594,7 +594,7 @@ const styles = StyleSheet.create({
   },
   hideButton: {
     alignItems: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: tokens.spacing.sm,
   },

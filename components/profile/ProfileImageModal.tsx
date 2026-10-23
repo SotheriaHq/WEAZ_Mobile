@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 24,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: tokens.tintLight(0.22),
     padding: 12,
     backgroundColor: tokens.colors.glassPlateDark,

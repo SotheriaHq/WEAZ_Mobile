@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
   field: {
     minHeight: 52,
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     justifyContent: 'center',
     overflow: 'hidden',
   },

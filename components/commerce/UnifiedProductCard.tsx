@@ -354,7 +354,7 @@ export const UnifiedProductCard = memo(function UnifiedProductCard({
 const styles = StyleSheet.create({
   card: {
     borderRadius: tokens.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     overflow: 'hidden',
     shadowColor: tokens.colors.dark,
     shadowOffset: { width: 0, height: 8 },
@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
     minWidth: 50,
     height: 26,
     borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.xs,

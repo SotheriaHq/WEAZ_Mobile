@@ -1,3 +1,4 @@
+import { startMarketSignalRuntime } from '@/src/services/marketSignals';
 import { QueueBrandNotices } from '@/components/orders/QueueBrandNotices';
 /**
  * RunwayFeedScreen — native design feed (UI label: Runway).
@@ -255,44 +256,7 @@ const formatFeedPrice = (item: MarketItem): string | null => {
   return formatFeedAmount(min);
 };
 
-/**
- * Fresh every app launch, stable within it.
- *
- * The persisted feed cache exists so the Runway paints instantly instead of
- * showing a skeleton — but it stores the PREVIOUS session's order, so the very
- * first design a user saw on every restart was the same one they were shown
- * last time. Revalidation swaps in a freshly-shuffled server order a moment
- * later, which is why it is "95%, not 100%": what they are reporting is the
- * first paint, and the first paint was always the old head.
- *
- * The cache's job is a fast first frame. Nothing about that requires the same
- * ORDER, so the cached page is re-shuffled once per launch before it is
- * painted. Instant paint is kept, the server still has the last word, and the
- * feed stops opening on the same design.
- */
-const FEED_COLD_START_SEED = `${Date.now().toString(36)}${Math.floor(
-  Math.random() * 0xffffffff,
-).toString(36)}`;
-
-/** FNV-1a of seed+id mapped to (0,1) — mirrors the server's `seededUnit`. */
-const coldStartUnit = (id: string): number => {
-  const input = `${FEED_COLD_START_SEED}:${id}`;
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return ((hash >>> 0) + 0.5) / 4294967296.5;
-};
-
-const rotateCachedFeedForColdStart = (feedItems: MarketItem[]): MarketItem[] => {
-  if (feedItems.length < 2) return feedItems;
-  return [...feedItems]
-    .map((item) => ({ item, key: coldStartUnit(item.id) }))
-    .sort((a, b) => b.key - a.key)
-    .map((entry) => entry.item);
-};
-
+// Preserve server ranking in the instant cache paint; background refresh supplies a new session.
 const sortFeedItemsForDisplay = (feedItems: MarketItem[]) =>
   [...feedItems].sort((a, b) => {
     const aValid = isValidMediaItem(a);
@@ -573,7 +537,7 @@ const FeedSaveLookAction = React.memo(function FeedSaveLookAction({
             ? {
                 backgroundColor: theme.colors.primary,
                 borderColor: theme.colors.primary,
-                borderWidth: StyleSheet.hairlineWidth,
+                borderWidth: 2,
               }
             : undefined
         }
@@ -945,10 +909,11 @@ export function RunwayFeedScreen() {
   // Prevents stale data after backgrounding
   useAppStateListener([['market', 'feed'], ['market', 'sections']], 5 * 60 * 1000);
 
+  const initialFeedChip = DEFAULT_MARKET_FILTER_CHIPS.find(chip => chip.id === (status === 'authenticated' ? 'discover' : 'explore'))!;
   const initialFeedCacheRef = useRef<ReturnType<typeof readMemoryCachedMarketFeed> | null | undefined>(undefined);
   if (initialFeedCacheRef.current === undefined) {
     initialFeedCacheRef.current = readMemoryCachedMarketFeed(buildFeedCacheIdentity({
-      tag: DEFAULT_MARKET_FILTER_CHIPS[0]?.tag ?? null,
+      tag: initialFeedChip.tag ?? null,
       userId: status === 'authenticated' ? user?.id ?? null : null,
     }));
   }
@@ -968,8 +933,9 @@ export function RunwayFeedScreen() {
   const reduceMotion = useReduceMotion();
   const pageScaleEnabled = !reduceMotion && RUNWAY_PAGE_SCALE_MIN < 1;
   const initializedLoopKeyRef = useRef<string | null>(null);
+  useEffect(() => startMarketSignalRuntime(), []);
   const [filterChips, setFilterChips] = useState<MarketFilterChip[]>(DEFAULT_MARKET_FILTER_CHIPS);
-  const [selectedFilterId, setSelectedFilterId] = useState(DEFAULT_MARKET_FILTER_CHIPS[0].id);
+  const [selectedFilterId, setSelectedFilterId] = useState(initialFeedChip.id);
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [measuredFeedViewportHeight, setFeedViewportHeight] = useState(0);
   const [commentsTarget, setCommentsTarget] = useState<{ collectionId: string; title: string } | null>(null);
@@ -1033,7 +999,7 @@ export function RunwayFeedScreen() {
 
   const [items, setItems] = useState<MarketItem[]>(() =>
     initialFeedSnapshot
-      ? sortFeedItemsForDisplay(rotateCachedFeedForColdStart(initialFeedSnapshot.items))
+      ? sortFeedItemsForDisplay(initialFeedSnapshot.items)
       : [],
   );
   /**
@@ -1189,7 +1155,7 @@ export function RunwayFeedScreen() {
     () => filterChips.find((chip) => chip.id === selectedFilterId) ?? filterChips[0] ?? DEFAULT_MARKET_FILTER_CHIPS[0],
     [filterChips, selectedFilterId],
   );
-  const visibleFilterChips = useMemo(() => filterChips, [filterChips]);
+  const visibleFilterChips = useMemo(() => filterChips.filter(chip => chip.id !== 'for-you' || Boolean(user?.id)), [filterChips, user?.id]);
   const activeTag = activeFilter?.tag ?? null;
   const feedLoopEnabled = false;
   const fallbackMediaByCollection = useMemo(() => {
@@ -1597,7 +1563,7 @@ export function RunwayFeedScreen() {
     if (!deferredWorkReady) return undefined;
     let mounted = true;
 
-    void fetchMarketFilterChipsQuery().then((chips) => {
+    void fetchMarketFilterChipsQuery(user?.id).then((chips) => {
       if (!mounted || !chips.length) return;
       devLog('HomeFeed', 'Filter chips loaded', chips.map(c => ({ id: c.id, label: c.label, tag: c.tag })));
       setFilterChips(chips);
@@ -1612,7 +1578,7 @@ export function RunwayFeedScreen() {
     return () => {
       mounted = false;
     };
-  }, [deferredWorkReady]);
+  }, [deferredWorkReady, user?.id]);
 
   useEffect(() => {
     devLog('HomeFeed', 'Filter change', { activeTag, oldIndex: activePageIndex, reason: 'activeTag changed' });
@@ -1655,14 +1621,7 @@ export function RunwayFeedScreen() {
     let didStartBackgroundRefresh = false;
     if (cached) {
       navPerf.mark('cache_hit', 'tabs→runway');
-      // Only the session's FIRST hydration is re-shuffled. Later cache reads
-      // (tag switches, returning to the tab) must keep the order already on
-      // screen, or the feed would reorder under a viewer mid-session.
-      const sortedCachedItems = sortFeedItemsForDisplay(
-        feedRevalidatedThisSession
-          ? cached.snapshot.items
-          : rotateCachedFeedForColdStart(cached.snapshot.items),
-      );
+      const sortedCachedItems = sortFeedItemsForDisplay(cached.snapshot.items);
       devLog('HomeFeed', 'Cache applied', sortedCachedItems.slice(0, 5).map((item, idx) => ({
         index: idx,
         id: item.id,
@@ -3396,7 +3355,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    borderWidth: 1,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
     shadowOffset: { width: 0, height: 6 },
@@ -3435,7 +3394,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   profileMenu: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 22,
     overflow: 'hidden',
     shadowOffset: { width: 0, height: 18 },
@@ -3449,7 +3408,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 16,
-    borderBottomWidth: 1,
+    borderBottomWidth: 2,
   },
   profileMenuAvatar: {
     width: 48,
@@ -3475,7 +3434,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 16,
-    borderBottomWidth: 1,
+    borderBottomWidth: 2,
   },
   profileMenuItemLast: {
     borderBottomWidth: 0,

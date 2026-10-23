@@ -1,3 +1,5 @@
+import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
+import { getMediaUrlIdentity, isRenewableMediaUrl } from '@/src/utils/mediaUrlPolicy';
 import React, { useCallback, useEffect, useRef } from 'react';
 import {
   Animated,
@@ -42,7 +44,7 @@ function toContentFit(resizeMode: ImageResizeMode): ImageContentFit {
 }
 
 export function StableImage({
-  uri,
+  uri: sourceUri,
   resizeMode = 'cover',
   containerStyle,
   imageStyle,
@@ -58,6 +60,18 @@ export function StableImage({
   dominantColor,
   strategyOverride,
 }: StableImageProps) {
+  const { uri, refreshUri } = useResolvedImageAsset({ src: sourceUri });
+  const retry = useRef({ identity: sourceUri ? getMediaUrlIdentity(sourceUri) : '', used: false });
+  const identity = sourceUri ? getMediaUrlIdentity(sourceUri) : '';
+  if (retry.current.identity !== identity) retry.current = { identity, used: false };
+  const handleImageError = useCallback(() => {
+    if (isRenewableMediaUrl(uri) && !retry.current.used) {
+      retry.current.used = true;
+      void refreshUri().then((next) => { if (!next || next === uri) onError?.(); });
+      return;
+    }
+    onError?.();
+  }, [onError, refreshUri, uri]);
   const [displayUri, setDisplayUri] = React.useState<string | null>(uri ?? null);
   const [incomingUri, setIncomingUri] = React.useState<string | null>(null);
   const displayOpacity = useRef(new Animated.Value(uri ? 0 : 1)).current;
@@ -144,7 +158,7 @@ export function StableImage({
             imageStyle={imageStyle}
             strategyOverride={aspectStrategyOverride}
             recyclingKey={uri}
-            onError={onError ? () => onError() : undefined}
+            onError={handleImageError}
           />
         ) : null}
       </View>
@@ -161,7 +175,7 @@ export function StableImage({
           cachePolicy="memory-disk"
           recyclingKey={displayUri}
           onLoad={handleDisplayLoad}
-          onError={onError}
+          onError={handleImageError}
           style={[styles.imageLayer, imageStyle, { opacity: displayOpacity }]}
         />
       ) : null}
@@ -172,7 +186,7 @@ export function StableImage({
           cachePolicy="memory-disk"
           recyclingKey={incomingUri}
           onLoad={handleIncomingLoad}
-          onError={onError}
+          onError={handleImageError}
           style={[styles.imageLayer, imageStyle, { opacity: incomingOpacity }]}
         />
       ) : null}

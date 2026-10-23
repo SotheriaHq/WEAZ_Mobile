@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     overflow: 'hidden',
   },
   mediaColumn: {
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
   nowShowing: {
     marginTop: 'auto',
     paddingTop: tokens.spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     gap: 2,
   },
   catalogueLink: {

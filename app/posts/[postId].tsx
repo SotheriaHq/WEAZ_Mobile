@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   },
   postCard: {
     gap: tokens.spacing.sm,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   commentsHeader: {
     flexDirection: 'row',
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
   },
   commentCard: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     padding: tokens.spacing.md,
     borderColor: 'transparent',
@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 2,
   },
   commentCopy: {
     flex: 1,

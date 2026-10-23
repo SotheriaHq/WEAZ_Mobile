@@ -10,11 +10,12 @@
 type NestedStackState = {
   key?: string;
   index?: number;
-  routes?: ReadonlyArray<{ name?: string }>;
+  routes?: ReadonlyArray<{ name?: string; key?: string; params?: Record<string, unknown> }>;
 };
 
 type IslandTabNavigation = {
   getState: () => {
+    index?: number;
     routes: ReadonlyArray<{
       name: string;
       state?: NestedStackState;
@@ -23,7 +24,7 @@ type IslandTabNavigation = {
   dispatch: (action: {
     type: string;
     target?: string;
-    payload?: { name: string; merge?: boolean };
+    payload?: { name: string; merge?: boolean; params?: Record<string, unknown> };
   }) => void;
 };
 
@@ -31,6 +32,52 @@ let navigation: IslandTabNavigation | null = null;
 
 export function registerIslandTabNavigation(next: IslandTabNavigation | null) {
   navigation = next;
+}
+
+/**
+ * Open a tab at its root with a direct `JUMP_TO`, the island's own fast path.
+ *
+ * `router.navigate(href)` resolves the URL into a full navigation state on the
+ * JavaScript thread before anything moves. Leaving Studio for the Catalogue
+ * went through it on every 👈, while the island reached the same tab with one
+ * action. Returns false when the tab navigator is not registered or has no
+ * such tab, so the caller can fall back to the router.
+ */
+/** Use navigator state for Me; the URL can lag a visitor-stack transition. */
+export function isIslandTabAtRoot(tabName: string): boolean {
+  const state = navigation?.getState();
+  if (!state || typeof state.index !== 'number') return false;
+  const route = state.routes[state.index];
+  if (route?.name !== tabName) return false;
+  if (tabName === 'me') return true;
+  const nested = route.state;
+  return nested?.routes?.[nested.index ?? 0]?.name === 'index';
+}
+
+export function jumpToIslandTabRoot(tabName: string): boolean {
+  const current = navigation;
+  const state = current?.getState();
+  if (!current || !state || !state.routes.some((entry) => entry.name === tabName)) {
+    return false;
+  }
+  const nested = state.routes.find((entry) => entry.name === tabName)?.state;
+  const existingRoot = nested?.routes?.find((entry) => entry.name === 'index');
+  // A single tab action owns both focus and the nested destination. A queued URL
+  // navigate must not resolve against the visitor stack before its pop commits.
+  const params = nested ? {
+    state: {
+      ...nested,
+      stale: true,
+      index: 0,
+      routes: [existingRoot ? {
+        ...existingRoot,
+        params: existingRoot.params ? { ...existingRoot.params, brandId: undefined } : undefined,
+      } : { name: 'index' }],
+      preloadedRoutes: [],
+    },
+  } : { screen: 'index', initial: false };
+  current.dispatch({ type: 'JUMP_TO', payload: { name: tabName, params: tabName === 'me' ? undefined : params } });
+  return true;
 }
 
 /**
@@ -42,26 +89,6 @@ export function registerIslandTabNavigation(next: IslandTabNavigation | null) {
  * press re-focuses that visitor screen. `POP_TO` `index` pops to it when it
  * is underneath, and replaces the visitor route when it is the only one.
  */
-/**
- * Open a tab at its root with a direct `JUMP_TO`, the island's own fast path.
- *
- * `router.navigate(href)` resolves the URL into a full navigation state on the
- * JavaScript thread before anything moves. Leaving Studio for the Catalogue
- * went through it on every 👈, while the island reached the same tab with one
- * action. Returns false when the tab navigator is not registered or has no
- * such tab, so the caller can fall back to the router.
- */
-export function jumpToIslandTabRoot(tabName: string): boolean {
-  const current = navigation;
-  const state = current?.getState();
-  if (!current || !state || !state.routes.some((entry) => entry.name === tabName)) {
-    return false;
-  }
-  popIslandTabStackToRoot(tabName);
-  current.dispatch({ type: 'JUMP_TO', payload: { name: tabName } });
-  return true;
-}
-
 export function popIslandTabStackToRoot(tabName: string): boolean {
   const current = navigation;
   const state = current?.getState();

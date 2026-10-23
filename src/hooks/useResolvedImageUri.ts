@@ -1,9 +1,11 @@
+import { getMediaUrlExpiryMs, getMediaUrlIdentity, hasMediaUrlSignature, isRenewableMediaUrl, isStorageProviderUrl, isUsableMediaUrl } from '@/src/utils/mediaUrlPolicy';
+import { advanceMediaSessionEpoch, getMediaSessionEpoch, subscribeMediaSession } from '@/src/utils/mediaUrlSession';
 import { Image as ExpoImage } from 'expo-image';
-import { useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { AppState, Platform } from 'react-native';
 
 import { brandApi, type SignedFileUrlDebugContext } from '@/src/api/BrandApi';
-import { mediaDevLog, mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
+import { mediaDevWarn } from '@/src/features/feed/utils/feedDiagnostics';
 import {
   queryClient,
   WIEZ_MEDIA_URL_GC_TIME_MS,
@@ -25,10 +27,6 @@ const resolvedUriCache = new Map<string, { uri: string; expiresAt: number }>();
 const resolvedUriMissingCache = new Map<string, number>();
 const pendingResolutions = new Map<string, Promise<string | null>>();
 
-function devMediaLog(event: string, details: Record<string, unknown>) {
-  mediaDevLog(event, details);
-}
-
 const trim = (value?: string | null) => {
   const normalized = typeof value === 'string' ? value.trim() : '';
   return normalized.length > 0 ? normalized : null;
@@ -36,10 +34,7 @@ const trim = (value?: string | null) => {
 
 const isHttpUrl = (value: string) => /^https?:\/\//i.test(value);
 
-const isS3LikeUrl = (value: string) => {
-  const lower = value.toLowerCase();
-  return lower.includes('.s3.') || lower.includes('amazonaws.com');
-};
+const isS3LikeUrl = isStorageProviderUrl;
 
 const isLoopbackHttpUrl = (value: string) => {
   try {
@@ -50,22 +45,10 @@ const isLoopbackHttpUrl = (value: string) => {
   }
 };
 
-const hasSignedUrlParams = (value: string) => {
-  try {
-    const parsed = new URL(value);
-    return Boolean(
-      parsed.searchParams.get('X-Amz-Signature') ||
-        parsed.searchParams.get('Signature') ||
-        parsed.searchParams.get('Expires') ||
-        parsed.searchParams.get('expires') ||
-        parsed.searchParams.get('token'),
-    );
-  } catch {
-    return false;
-  }
-};
+const hasSignedUrlParams = hasMediaUrlSignature;
 
 const getDirectSourceType = (value: string) => {
+  if (/^(?:file:|content:|blob:|asset:|data:image\/)/i.test(value)) return 'local-uri';
   if (!isHttpUrl(value)) return null;
   if (isLoopbackHttpUrl(value)) return 'loopback-url';
   if (isS3LikeUrl(value)) return hasSignedUrlParams(value) ? 'signed-s3-url' : 'direct-s3-url';
@@ -74,7 +57,7 @@ const getDirectSourceType = (value: string) => {
 
 const isUsableDirectHttpUrl = (value: string) => {
   const sourceType = getDirectSourceType(value);
-  return Boolean(sourceType && (sourceType !== 'loopback-url' || Platform.OS === 'web'));
+  return Boolean(sourceType && (sourceType !== 'loopback-url' || Platform.OS === 'web') && isUsableMediaUrl(value));
 };
 
 export const isUsableImageHttpUrl = isUsableDirectHttpUrl;
@@ -86,65 +69,14 @@ const getResolutionCacheKey = (
   normalizedFileId: string | null,
   allowSignedFallback: boolean,
 ) => {
-  if (normalizedFileId) return `file:${allowSignedFallback ? 'signed' : 'public'}:${normalizedFileId}`;
-  if (directSrc) return `src:${directSrc}`;
+  if (normalizedFileId) return `${getMediaSessionEpoch()}:file:${allowSignedFallback ? 'signed' : 'public'}:${normalizedFileId}:${directSrc ? getMediaUrlIdentity(directSrc) : 'none'}`;
+  if (directSrc) return `${getMediaSessionEpoch()}:src:${allowSignedFallback ? 'signed' : 'public'}:${getMediaUrlIdentity(directSrc)}`;
   return null;
 };
 
-const parseCompactAmzDate = (value: string) => {
-  const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(value);
-  if (!match) return null;
+const getSignedUriExpiresAt = getMediaUrlExpiryMs;
 
-  const [, year, month, day, hour, minute, second] = match;
-  const timestamp = Date.UTC(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute),
-    Number(second),
-  );
-
-  return Number.isFinite(timestamp) ? timestamp : null;
-};
-
-const getSignedUriExpiresAt = (uri: string) => {
-  try {
-    const parsed = new URL(uri);
-    const explicitExpiresAt = parsed.searchParams.get('expiresAt') ?? parsed.searchParams.get('ExpiresAt');
-    if (explicitExpiresAt) {
-      const timestamp = Date.parse(explicitExpiresAt);
-      if (Number.isFinite(timestamp)) return timestamp;
-    }
-
-    const unixExpires = parsed.searchParams.get('Expires') ?? parsed.searchParams.get('expires');
-    if (unixExpires) {
-      const timestamp = Number(unixExpires) * 1000;
-      if (Number.isFinite(timestamp)) return timestamp;
-    }
-
-    const amzDate = parsed.searchParams.get('X-Amz-Date');
-    const amzExpires = Number(parsed.searchParams.get('X-Amz-Expires'));
-    const amzStartedAt = amzDate ? parseCompactAmzDate(amzDate) : null;
-    if (amzStartedAt && Number.isFinite(amzExpires)) {
-      return amzStartedAt + amzExpires * 1000;
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-};
-
-const shouldPreferFileIdResolution = (directSrc: string | null, normalizedFileId: string | null) => {
-  if (!directSrc || !normalizedFileId) return false;
-  if (!isUsableDirectHttpUrl(directSrc)) return true;
-  if (isS3LikeUrl(directSrc) && !hasSignedUrlParams(directSrc)) return true;
-  if (!hasSignedUrlParams(directSrc)) return false;
-
-  const expiresAt = getSignedUriExpiresAt(directSrc);
-  return !expiresAt || expiresAt <= Date.now() + SIGNED_URI_REFRESH_SKEW_MS;
-};
+const shouldPreferFileIdResolution = (directSrc: string | null, _fileId: string | null) => Boolean(directSrc && !isUsableDirectHttpUrl(directSrc));
 
 const getCachedUriEntry = (key: string) => {
   const missingCachedUntil = resolvedUriMissingCache.get(key);
@@ -156,7 +88,7 @@ const getCachedUriEntry = (key: string) => {
   }
 
   const cached = resolvedUriCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (cached && cached.expiresAt > Date.now() && isUsableMediaUrl(cached.uri)) {
     return cached;
   }
   if (cached) {
@@ -172,12 +104,14 @@ const getCachedUri = (key: string) => {
 };
 
 const setCachedUri = (key: string, uri: string) => {
-  const expiresAt = getSignedUriExpiresAt(uri) ?? Date.now() + SIGNED_URI_TTL_MS;
+  const signedExpiry = getSignedUriExpiresAt(uri);
+  const expiresAt = signedExpiry === null ? Date.now() + SIGNED_URI_TTL_MS : signedExpiry - SIGNED_URI_REFRESH_SKEW_MS;
   resolvedUriMissingCache.delete(key);
   resolvedUriCache.set(key, {
     uri,
     expiresAt,
   });
+  while (resolvedUriCache.size > 512) resolvedUriCache.delete(resolvedUriCache.keys().next().value!);
 };
 
 const setMissingUri = (key: string) => {
@@ -185,188 +119,75 @@ const setMissingUri = (key: string) => {
 };
 
 export const clearResolvedImageUriCache = () => {
+  advanceMediaSessionEpoch();
   resolvedUriCache.clear();
   resolvedUriMissingCache.clear();
   pendingResolutions.clear();
 };
 
 export const resolveImageUri = async ({
-  src,
-  fileId,
-  forceRefresh = false,
-  allowSignedFallback = true,
-  debugContext,
+  src, fileId, forceRefresh = false, allowSignedFallback = true, debugContext,
 }: {
-  src?: string | null;
-  fileId?: string | null;
-  forceRefresh?: boolean;
-  allowSignedFallback?: boolean;
-  debugContext?: SignedFileUrlDebugContext;
-}) => {
+  src?: string | null; fileId?: string | null; forceRefresh?: boolean;
+  allowSignedFallback?: boolean; debugContext?: SignedFileUrlDebugContext;
+}): Promise<string | null> => {
+  const epoch = getMediaSessionEpoch();
   const directSrc = trim(src);
   const normalizedFileId = trim(fileId);
-
-  if (!directSrc && !normalizedFileId) {
-    devMediaLog('resolve-skip', {
-      reason: 'missing-source',
-      sourceType: 'none',
-      designId: debugContext?.designId ?? null,
-      mediaIndex: debugContext?.mediaIndex ?? null,
-    });
-    return null;
-  }
-
-  if (directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
-    devMediaLog('resolve-direct', {
-      sourceType: getDirectSourceType(directSrc),
-      hasFileId: Boolean(normalizedFileId),
-      designId: debugContext?.designId ?? null,
-      mediaIndex: debugContext?.mediaIndex ?? null,
-    });
-    return directSrc;
-  }
-
+  if (!directSrc && !normalizedFileId) return null;
+  if (!forceRefresh && directSrc && isUsableDirectHttpUrl(directSrc)) return directSrc;
   const cacheKey = getResolutionCacheKey(directSrc, normalizedFileId, allowSignedFallback);
-  if (!cacheKey) {
-    devMediaLog('resolve-failed', {
-      reason: 'missing-cache-key',
-      sourceType: directSrc ? getDirectSourceType(directSrc) ?? 'unsupported-src' : 'none',
-      hasFileId: Boolean(normalizedFileId),
-      designId: debugContext?.designId ?? null,
-      mediaIndex: debugContext?.mediaIndex ?? null,
-    });
-    return null;
-  }
-  if (forceRefresh) {
-    resolvedUriCache.delete(cacheKey);
-    resolvedUriMissingCache.delete(cacheKey);
-    if (normalizedFileId) {
-      queryClient.removeQueries({ queryKey: queryKeys.media.publicUrl(normalizedFileId), exact: true });
-      if (allowSignedFallback) {
-        queryClient.removeQueries({ queryKey: queryKeys.media.signedUrl(normalizedFileId), exact: true });
-      }
-    }
-  }
+  if (!cacheKey) return null;
+  if (forceRefresh) { resolvedUriCache.delete(cacheKey); resolvedUriMissingCache.delete(cacheKey); }
   const cached = getCachedUri(cacheKey);
-  if (cached === '__missing__') {
-    devMediaLog('resolve-failed', {
-      reason: 'missing-cache',
-      sourceType: directSrc ? getDirectSourceType(directSrc) ?? 'unsupported-src' : 'fileId',
-      hasFileId: Boolean(normalizedFileId),
-      designId: debugContext?.designId ?? null,
-      mediaIndex: debugContext?.mediaIndex ?? null,
-    });
-    return null;
-  }
-  if (cached) {
-    devMediaLog('resolve-cache-hit', {
-      sourceType: directSrc ? getDirectSourceType(directSrc) ?? 'fileId' : 'fileId',
-      hasFileId: Boolean(normalizedFileId),
-      designId: debugContext?.designId ?? null,
-      mediaIndex: debugContext?.mediaIndex ?? null,
-    });
-    return cached;
-  }
-
+  if (cached === '__missing__') return null;
+  if (cached) return cached;
   const pending = pendingResolutions.get(cacheKey);
-  if (pending) {
-    return pending;
-  }
-
-  const promise = (async () => {
+  if (pending) return pending;
+  const promise = (async (): Promise<string | null> => {
+    let resolved: string | null = null;
     try {
-      if (normalizedFileId && isPotentialFileId(normalizedFileId)) {
-        const publicUrl = await queryClient.fetchQuery({
-          queryKey: queryKeys.media.publicUrl(normalizedFileId),
-          queryFn: () =>
-            brandApi.getPublicFileUrl(normalizedFileId, {
-              ...debugContext,
-              fileId: debugContext?.fileId ?? normalizedFileId,
-            }),
-          staleTime: SIGNED_URI_TTL_MS - SIGNED_URI_REFRESH_SKEW_MS,
-          gcTime: WIEZ_MEDIA_URL_GC_TIME_MS,
-        });
-        if (publicUrl) {
-          setCachedUri(cacheKey, publicUrl);
-          devMediaLog('resolve-public', {
-            sourceType: 'fileId',
-            hasFileId: true,
-            designId: debugContext?.designId ?? null,
-            mediaIndex: debugContext?.mediaIndex ?? null,
-          });
-          return publicUrl;
+      const mustRefresh = forceRefresh || Boolean(directSrc && !isUsableMediaUrl(directSrc));
+      if (directSrc && isRenewableMediaUrl(directSrc) && typeof brandApi.getSignedMediaSourceUrl === 'function') {
+        resolved = await brandApi.getSignedMediaSourceUrl(directSrc, { ...debugContext, forceRefresh: mustRefresh, allowSignedFallback });
+      }
+      if (!resolved && normalizedFileId && isPotentialFileId(normalizedFileId)) {
+        const publicKey = queryKeys.media.publicUrl(normalizedFileId);
+        const privateKey = queryKeys.media.signedUrl(normalizedFileId);
+        const cachedPublic = queryClient.getQueryData<string | null>(publicKey);
+        const refreshQuery = mustRefresh || Boolean(cachedPublic && !isUsableMediaUrl(cachedPublic));
+        if (refreshQuery) {
+          queryClient.removeQueries({ queryKey: publicKey, exact: true });
+          queryClient.removeQueries({ queryKey: privateKey, exact: true });
         }
-
-        if (!allowSignedFallback) {
-          setMissingUri(cacheKey);
-          devMediaLog('resolve-failed', {
-            reason: 'signed-fallback-disabled',
-            sourceType: 'fileId',
-            hasFileId: true,
-            designId: debugContext?.designId ?? null,
-            mediaIndex: debugContext?.mediaIndex ?? null,
-          });
-          return null;
-        }
-
-        const signedUrl = await queryClient.fetchQuery({
-          queryKey: queryKeys.media.signedUrl(normalizedFileId),
-          queryFn: () =>
-            brandApi.getPrivateSignedFileUrl(normalizedFileId, {
-              ...debugContext,
-              fileId: debugContext?.fileId ?? normalizedFileId,
-            }),
-          staleTime: SIGNED_URI_TTL_MS - SIGNED_URI_REFRESH_SKEW_MS,
-          gcTime: WIEZ_MEDIA_URL_GC_TIME_MS,
+        const context = { ...debugContext, ...(refreshQuery ? { forceRefresh: true } : {}) };
+        resolved = await queryClient.fetchQuery({
+          queryKey: publicKey, queryFn: () => brandApi.getPublicFileUrl(normalizedFileId, context),
+          staleTime: refreshQuery ? 0 : SIGNED_URI_TTL_MS - SIGNED_URI_REFRESH_SKEW_MS, gcTime: WIEZ_MEDIA_URL_GC_TIME_MS,
         });
-        if (signedUrl) {
-          setCachedUri(cacheKey, signedUrl);
-          devMediaLog('resolve-signed', {
-            sourceType: 'fileId',
-            hasFileId: true,
-            designId: debugContext?.designId ?? null,
-            mediaIndex: debugContext?.mediaIndex ?? null,
+        if (!resolved && allowSignedFallback) {
+          const cachedPrivate = queryClient.getQueryData<string | null>(privateKey);
+          if (cachedPrivate && !isUsableMediaUrl(cachedPrivate)) queryClient.removeQueries({ queryKey: privateKey, exact: true });
+          resolved = await queryClient.fetchQuery({
+            queryKey: privateKey, queryFn: () => brandApi.getPrivateSignedFileUrl(normalizedFileId, context),
+            staleTime: refreshQuery ? 0 : SIGNED_URI_TTL_MS - SIGNED_URI_REFRESH_SKEW_MS, gcTime: WIEZ_MEDIA_URL_GC_TIME_MS,
           });
-          return signedUrl;
         }
       }
-
-      if (directSrc && isUsableDirectHttpUrl(directSrc)) {
-        setCachedUri(cacheKey, directSrc);
-        devMediaLog('resolve-direct-late', {
-          sourceType: getDirectSourceType(directSrc),
-          hasFileId: Boolean(normalizedFileId),
-          designId: debugContext?.designId ?? null,
-          mediaIndex: debugContext?.mediaIndex ?? null,
-        });
-        return directSrc;
+      if (!resolved && directSrc && !isRenewableMediaUrl(directSrc) && isUsableDirectHttpUrl(directSrc)) resolved = directSrc;
+      if (epoch !== getMediaSessionEpoch()) return null;
+      if (resolved && isUsableMediaUrl(resolved, Date.now(), 0)) {
+        setCachedUri(cacheKey, resolved);
+        return resolved;
       }
-
       setMissingUri(cacheKey);
-      devMediaLog('resolve-failed', {
-        reason: normalizedFileId ? 'fileId-signing-returned-empty' : 'unsupported-or-protected-source-without-fileId',
-        sourceType: directSrc ? getDirectSourceType(directSrc) ?? 'unsupported-src' : 'none',
-        hasFileId: Boolean(normalizedFileId),
-        designId: debugContext?.designId ?? null,
-        mediaIndex: debugContext?.mediaIndex ?? null,
-      });
+      while (resolvedUriMissingCache.size > 512) resolvedUriMissingCache.delete(resolvedUriMissingCache.keys().next().value!);
       return null;
-    } catch {
-      devMediaLog('resolve-failed', {
-        reason: 'resolution-error',
-        sourceType: directSrc ? getDirectSourceType(directSrc) ?? 'unsupported-src' : 'fileId',
-        hasFileId: Boolean(normalizedFileId),
-        designId: debugContext?.designId ?? null,
-        mediaIndex: debugContext?.mediaIndex ?? null,
-      });
-      return null;
-    } finally {
-      pendingResolutions.delete(cacheKey);
-    }
+    } catch { return null; }
   })();
-
   pendingResolutions.set(cacheKey, promise);
-  return promise;
+  try { return await promise; }
+  finally { if (pendingResolutions.get(cacheKey) === promise) pendingResolutions.delete(cacheKey); }
 };
 
 // Prefetch decodes at thumbnail size: the point is the disk entry, which Glide
@@ -427,12 +248,16 @@ export function useResolvedImageUri({
   const directSrc = trim(src);
   const normalizedFileId = trim(fileId);
   const cacheKey = getResolutionCacheKey(directSrc, normalizedFileId, allowSignedFallback);
-  const activeKey = cacheKey ?? (directSrc ? `direct:${directSrc}` : null);
+  const session = useSyncExternalStore(subscribeMediaSession, getMediaSessionEpoch, getMediaSessionEpoch);
+  const activeKey = `${session}:${cacheKey ?? (directSrc ? `direct:${directSrc}` : 'none')}`;
+  const epoch = session;
+  const previousEpoch = useRef(epoch);
+  const accountChanged = previousEpoch.current !== epoch;
   const previousKeyRef = useRef<string | null>(activeKey);
   const resolvedKeyRef = useRef<string | null>(null);
   const lastSuccessfulRef = useRef<{ key: string; uri: string } | null>(null);
   const [resolvedUri, setResolvedUri] = useState<string | null>(() => {
-    if (directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
+    if (!accountChanged && directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
       const key = `direct:${directSrc}`;
       resolvedKeyRef.current = key;
       lastSuccessfulRef.current = { key, uri: directSrc };
@@ -451,6 +276,7 @@ export function useResolvedImageUri({
   useEffect(() => {
     if (activeKey === previousKeyRef.current) return;
     previousKeyRef.current = activeKey;
+    if (accountChanged) { lastSuccessfulRef.current = null; resolvedKeyRef.current = null; setResolvedUri(null); }
 
     if (!activeKey) {
       resolvedKeyRef.current = null;
@@ -459,7 +285,7 @@ export function useResolvedImageUri({
       return;
     }
 
-    if (directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
+    if (!accountChanged && directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
       resolvedKeyRef.current = activeKey;
       lastSuccessfulRef.current = { key: activeKey, uri: directSrc };
       setResolvedUri(directSrc);
@@ -478,7 +304,7 @@ export function useResolvedImageUri({
     // revalidate rendering keep their own identity-bound preview layer.
     resolvedKeyRef.current = null;
     setResolvedUri(null);
-  }, [activeKey, cacheKey, directSrc]);
+  }, [activeKey, cacheKey, directSrc, accountChanged]);
 
   useEffect(() => {
     let mounted = true;
@@ -498,7 +324,7 @@ export function useResolvedImageUri({
       };
     }
 
-    if (directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
+    if (!accountChanged && directSrc && isUsableDirectHttpUrl(directSrc) && !shouldPreferFileIdResolution(directSrc, normalizedFileId)) {
       resolvedKeyRef.current = activeKey ?? `direct:${directSrc}`;
       lastSuccessfulRef.current = { key: activeKey ?? `direct:${directSrc}`, uri: directSrc };
       setResolvedUri(directSrc);
@@ -507,7 +333,8 @@ export function useResolvedImageUri({
       };
     }
 
-    void resolveImageUri({ src: directSrc, fileId: normalizedFileId, allowSignedFallback, debugContext }).then((nextUri) => {
+    previousEpoch.current = epoch;
+    void resolveImageUri({ src: directSrc, fileId: normalizedFileId, forceRefresh: accountChanged, allowSignedFallback, debugContext }).then((nextUri) => {
       if (mounted) {
         if (nextUri) {
           if (activeKey) {
@@ -519,9 +346,9 @@ export function useResolvedImageUri({
         }
 
         setResolvedUri((current) => {
-          if (current && resolvedKeyRef.current === activeKey) return current;
+          if (current && isUsableMediaUrl(current) && resolvedKeyRef.current === activeKey) return current;
           const lastSuccessful = lastSuccessfulRef.current;
-          return lastSuccessful?.key === activeKey ? lastSuccessful.uri : null;
+          return lastSuccessful?.key === activeKey && isUsableMediaUrl(lastSuccessful.uri) ? lastSuccessful.uri : null;
         });
       }
     });
@@ -529,42 +356,46 @@ export function useResolvedImageUri({
     return () => {
       mounted = false;
     };
-  }, [activeKey, allowSignedFallback, debugContext, directSrc, enabled, normalizedFileId]);
+  }, [activeKey, allowSignedFallback, debugContext, directSrc, enabled, normalizedFileId, epoch, accountChanged]);
 
   useEffect(() => {
-    if (!enabled || !cacheKey || !resolvedUri) return;
-    if (directSrc && isUsableDirectHttpUrl(directSrc) && !normalizedFileId) return;
-
-    const cached = getCachedUriEntry(cacheKey);
-    if (!cached || cached === '__missing__') return;
-
-    const delay = Math.max(1_000, cached.expiresAt - Date.now() - SIGNED_URI_REFRESH_SKEW_MS);
-    const timeout = setTimeout(() => {
-      void resolveImageUri({ src: directSrc, fileId: normalizedFileId, forceRefresh: true, allowSignedFallback, debugContext }).then((nextUri) => {
-        if (nextUri) {
-          if (activeKey) {
-            resolvedKeyRef.current = activeKey;
-            lastSuccessfulRef.current = { key: activeKey, uri: nextUri };
-          }
+    if (!enabled) return;
+    const expiresAt = getSignedUriExpiresAt(resolvedUri);
+    let mounted = true;
+    const renew = () => {
+      void resolveImageUri({ src: resolvedUri ?? directSrc, fileId: normalizedFileId, forceRefresh: true, allowSignedFallback, debugContext }).then((nextUri) => {
+        if (mounted && epoch === getMediaSessionEpoch()) {
           setResolvedUri(nextUri);
-          return;
+          if (nextUri && activeKey) { resolvedKeyRef.current = activeKey; lastSuccessfulRef.current = { key: activeKey, uri: nextUri }; }
         }
-
-        setResolvedUri((current) => {
-          if (current && resolvedKeyRef.current === activeKey) return current;
-          return lastSuccessfulRef.current?.key === activeKey ? lastSuccessfulRef.current.uri : null;
-        });
       });
-    }, delay);
-
-    return () => clearTimeout(timeout);
-  }, [activeKey, allowSignedFallback, cacheKey, debugContext, directSrc, enabled, normalizedFileId, resolvedUri]);
+    };
+    const timeout = expiresAt === null ? null : setTimeout(renew, Math.min(2_147_483_647, Math.max(1000, expiresAt - Date.now() - SIGNED_URI_REFRESH_SKEW_MS)));
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && (normalizedFileId || isRenewableMediaUrl(directSrc)) && !isUsableMediaUrl(resolvedUri)) renew();
+    });
+    return () => { mounted = false; if (timeout) clearTimeout(timeout); subscription.remove(); };
+  }, [activeKey, allowSignedFallback, debugContext, directSrc, enabled, normalizedFileId, resolvedUri, epoch]);
 
   return resolvedUri;
 }
 
 export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {
-  const uri = useResolvedImageUri(args);
+  const [override, setOverride] = useState<{ base: string | null; fileId: string | null; uri: string } | null>(null);
+  const base = trim(args.src);
+  const file = trim(args.fileId);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const current = useRef({ base, file });
+  current.current = { base, file };
+  const overrideMatches = override?.base === base && override?.fileId === file;
+  const uri = useResolvedImageUri({ ...args, src: overrideMatches ? override!.uri : args.src });
+  const refreshUri = useCallback(async () => {
+    const epoch = getMediaSessionEpoch();
+    const next = await resolveImageUri({ src: uri ?? args.src, fileId: args.fileId, forceRefresh: true, allowSignedFallback: args.allowSignedFallback, debugContext: args.debugContext });
+    if (next && mounted.current && epoch === getMediaSessionEpoch() && current.current.base === base && current.current.file === file) setOverride({ base, fileId: file, uri: next });
+    return next;
+  }, [args.allowSignedFallback, args.debugContext, args.fileId, args.src, base, file, uri]);
   const directSrc = trim(args.src);
   const normalizedFileId = trim(args.fileId);
   const enabled = args.enabled ?? true;
@@ -613,5 +444,6 @@ export function useResolvedImageAsset(args: UseResolvedImageUriArgs) {
   return {
     uri,
     loading,
+    refreshUri,
   };
 }

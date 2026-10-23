@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,
     paddingHorizontal: tokens.spacing.md,
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.md,
   },
   rowSpacing: {
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     minHeight: 32,
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.md,
   },
 });

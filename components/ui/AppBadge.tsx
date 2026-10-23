@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   badge: {
     minHeight: 30,
     borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',

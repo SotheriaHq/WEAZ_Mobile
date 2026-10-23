@@ -656,7 +656,7 @@ const styles = StyleSheet.create({
   formPanelBorder: {
     ...StyleSheet.absoluteFill,
     borderRadius: tokens.radius.xl,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   gradientAccentLine: {
     position: 'absolute',

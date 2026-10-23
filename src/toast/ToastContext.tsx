@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 2,
     shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,

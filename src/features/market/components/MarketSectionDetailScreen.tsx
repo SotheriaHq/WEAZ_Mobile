@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -18,7 +18,6 @@ import { SeeMoreLink } from '@/components/ui/InlineNavLink';
 import { ScreenState } from '@/components/ui/ScreenState';
 import {
   getMarketSectionDetail,
-  getMarketSections,
   type MarketSection,
   type MarketSectionItem,
 } from '@/src/api/MarketApi';
@@ -48,6 +47,46 @@ type FilterChip = 'ALL' | 'READY_TO_WEAR' | 'CUSTOM_FIT' | 'UNDER_50K' | '50K_15
 const PAGE_LIMIT = 24;
 const SIDE_PADDING = tokens.spacing.lg;
 const GAP = tokens.spacing.md;
+
+const MAIN_MARKET_SECTION_KEYS = new Set([
+  'hot-right-now',
+  'fresh-drops',
+  'picked-for-you',
+  'new-designers-to-watch',
+  'shop-by-style',
+  'loved-near-you',
+  'shop-the-look',
+  'almost-gone',
+  'still-thinking-about-these',
+  'more-from-brands-you-like',
+  'style-picks-of-the-week',
+  'latest-collections',
+  'adire',
+  'bestsellers-row',
+  'fresh-row',
+  'custom-ready-row',
+  'for-moodboard',
+]);
+
+const MAIN_MARKET_SECTION_TITLES = new Set([
+  'loved near you',
+  'hot right now',
+  'fresh drops',
+  'fresh on wiez',
+  'picked for you',
+  'new designers to watch',
+  'shop by style',
+  'shop the look',
+  'almost gone',
+  'still thinking about these',
+  'more from brands you like',
+  'style picks of the week',
+  'latest collections',
+  'adire casual',
+  'highest sales & most coveted',
+  'artisanal custom fit runway',
+  'for your moodboard',
+]);
 
 const itemKey = (item: MarketSectionItem) => `${item.entityType}:${item.sourceId}`;
 
@@ -181,14 +220,11 @@ export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Available sections for embedded curation
-  const [siblingSections, setSiblingSections] = useState<MarketSection[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterChip>('ALL');
+  const requestRef = useRef<{ id: number; controller: AbortController; mode: 'reset' | 'more' } | null>(null);
+  const requestIdRef = useRef(0);
 
-  const isDesignerSection = useMemo(
-    () => items.length > 0 && items.every((item) => item.entityType === 'BRAND'),
-    [items],
-  );
+  const isDesignerSection = section?.sourceType === 'BRAND' || section?.layout === 'BRAND_RAIL';
   const columnCount = isDesignerSection ? 1 : width >= 720 ? 3 : 2;
   const fullWidth = Math.floor(width - SIDE_PADDING * 2);
   const cardWidth = useMemo(
@@ -199,47 +235,57 @@ export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
 
   const loadSection = useCallback(
     async (mode: 'reset' | 'more') => {
-      if (!sectionKey) return;
-      if (mode === 'more' && (!hasNextPage || !cursor || loadingMore)) return;
+      if (!sectionKey) {
+        setError('Choose a section from Market to continue.');
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      if (mode === 'more' && (!hasNextPage || !cursor || requestRef.current)) return;
+      requestRef.current?.controller.abort();
+      const request = { id: ++requestIdRef.current, controller: new AbortController(), mode };
+      requestRef.current = request;
+      const isCurrent = () => requestRef.current?.id === request.id;
       if (mode === 'reset') {
         setError(null);
-        setLoading(!section);
+        setLoading(!section || section.key !== sectionKey);
+        setLoadingMore(false);
       } else {
         setLoadingMore(true);
       }
-
       try {
-        const [response, siblingsRes] = await Promise.all([
-          getMarketSectionDetail(sectionKey, {
-            cursor: mode === 'more' ? cursor : null,
-            limit: PAGE_LIMIT,
-          }),
-          mode === 'reset' ? getMarketSections().catch(() => null) : Promise.resolve(null),
-        ]);
-
+        const response = await getMarketSectionDetail(sectionKey, {
+          cursor: mode === 'more' ? cursor : null,
+          limit: PAGE_LIMIT,
+        }, { signal: request.controller.signal });
+        if (!isCurrent()) return;
         setSection(response.section);
         setCursor(response.section.pagination?.nextCursor ?? null);
         setHasNextPage(Boolean(response.section.pagination?.hasNextPage));
-        if (siblingsRes?.sections) {
-          setSiblingSections(siblingsRes.sections);
-        }
-
         setItems((current) => {
-          if (mode === 'reset') return response.section.items;
-          const seen = new Set(current.map(itemKey));
-          return [
-            ...current,
-            ...response.section.items.filter((item) => !seen.has(itemKey(item))),
-          ];
+          const seen = new Set(mode === 'reset' ? [] : current.map(itemKey));
+          const incoming = response.section.items.filter((item) => {
+            const key = itemKey(item);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          return mode === 'reset' ? incoming : [...current, ...incoming];
         });
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Unable to load section.');
+        if (isCurrent() && !request.controller.signal.aborted) {
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load section.');
+        }
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (isCurrent()) {
+          requestRef.current = null;
+          setLoading(false);
+          setLoadingMore(false);
+          if (mode === 'reset') setRefreshing(false);
+        }
       }
     },
-    [cursor, hasNextPage, loadingMore, section, sectionKey],
+    [cursor, hasNextPage, section, sectionKey],
   );
 
   useEffect(() => {
@@ -275,14 +321,16 @@ export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
   }, [loadSection]);
 
   // Strict Deduplication of Embedded Fashion Sub-Sections:
-  // "SO, each screens can also have imbeeded sections. But no section repition on screens or home."
+  // Main market sections are strictly excluded so no "loved near you" appears here.
   const embeddedSubSections = useMemo(() => {
     const excludedKeys = new Set<string>([
       sectionKey.toLowerCase(),
       ...(parentKey ? [parentKey.toLowerCase()] : []),
+      ...Array.from(MAIN_MARKET_SECTION_KEYS),
     ]);
     const seenTitles = new Set<string>([
       (section?.title || '').trim().toLowerCase(),
+      ...Array.from(MAIN_MARKET_SECTION_TITLES),
     ]);
 
     const result: Array<{
@@ -292,7 +340,7 @@ export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
       items: MarketSectionItem[];
     }> = [];
 
-    // Source A: Thematic partitions of the section's items (by category or tag)
+    // Thematic partitions of this section's own items (by category or tag)
     const itemsByCategory = new Map<string, MarketSectionItem[]>();
     for (const it of items) {
       const cat = it.category?.name || (it.tags && it.tags[0]) || null;
@@ -321,30 +369,9 @@ export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
       }
     }
 
-    // Source B: Complementary sibling sections from getMarketSections()
-    for (const sib of siblingSections) {
-      const sibKey = sib.key.toLowerCase();
-      const titleLower = sib.title.trim().toLowerCase();
-      if (
-        sib.items &&
-        sib.items.length >= 2 &&
-        !excludedKeys.has(sibKey) &&
-        !seenTitles.has(titleLower)
-      ) {
-        excludedKeys.add(sibKey);
-        seenTitles.add(titleLower);
-        result.push({
-          key: sib.key,
-          title: sib.title,
-          subtitle: sib.subtitle ?? undefined,
-          items: sib.items,
-        });
-      }
-    }
-
-    // Maximum 2 embedded rails on mobile to preserve vertical flow
+    // Maximum 2 embedded rails on mobile
     return result.slice(0, 2);
-  }, [items, parentKey, section?.title, sectionKey, siblingSections]);
+  }, [items, parentKey, section?.title, sectionKey]);
 
   // Client-Side Filtered Items for Primary Catalog
   const filteredItems = useMemo(() => {
@@ -459,14 +486,43 @@ export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
         })}
       </ScrollView>
 
-      {/* Embedded Fashion Sub-Sections */}
+      {/* Grid Header */}
+      <View style={styles.gridHeader}>
+        <AppText variant="subtitle">
+          All {section?.title ?? 'Section'} Catalog
+        </AppText>
+        <AppText variant="caption" tone="muted">
+          {filteredItems.length} available
+        </AppText>
+      </View>
+    </View>
+  );
+
+  const renderFooter = () => (
+    <View style={styles.footer}>
+      {loadingMore ? (
+        <View style={styles.loadingMoreWrapper}>
+          <MuseLoader size={20} />
+        </View>
+      ) : !hasNextPage && filteredItems.length > 0 ? (
+        <View style={styles.endOfCatalog}>
+          <AppText variant="captionBold" tone="muted">
+            End of Section Catalog
+          </AppText>
+        </View>
+      ) : null}
+
+      {/* Unique Thematic Sub-Sections Displayed UNDER the Main Catalog */}
       {embeddedSubSections.length > 0 && (
         <View style={styles.embeddedContainer}>
+          <View style={styles.embeddedTitleRow}>
+            <AppText variant="subtitle">Curated Sub-Themes</AppText>
+          </View>
           {embeddedSubSections.map((subSec) => (
             <View key={subSec.key} style={styles.embeddedSection}>
               <View style={styles.embeddedHeader}>
                 <View style={styles.embeddedTitleBlock}>
-                  <AppText variant="subtitle" numberOfLines={1}>
+                  <AppText variant="bodyBold" numberOfLines={1}>
                     {subSec.title}
                   </AppText>
                   {subSec.subtitle ? (
@@ -508,21 +564,7 @@ export function MarketSectionDetailScreen({ sectionKey, parentKey }: Props) {
         </View>
       )}
 
-      {/* Grid Header */}
-      <View style={styles.gridHeader}>
-        <AppText variant="subtitle">
-          All {section?.title ?? 'Section'} Catalog
-        </AppText>
-        <AppText variant="caption" tone="muted">
-          {filteredItems.length} available
-        </AppText>
-      </View>
-    </View>
-  );
-
-  const renderFooter = () => (
-    <View style={styles.footer}>
-      {loadingMore ? <MuseLoader size={20} /> : null}
+      {/* Backend Suggestions Displayed UNDER the Main Section */}
       {section ? (
         <MobileMarketSuggestionBlocks
           context="MARKET_SECTION_DETAIL"
@@ -672,7 +714,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 4,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   titleBlock: {
     gap: tokens.spacing.xs,
@@ -685,7 +727,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.xs,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
     minHeight: 32,
     alignItems: 'center',
     justifyContent: 'center',
@@ -725,7 +767,18 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingTop: tokens.spacing.md,
-    gap: tokens.spacing.lg,
+    gap: tokens.spacing.xl,
+  },
+  loadingMoreWrapper: {
+    alignItems: 'center',
+    paddingVertical: tokens.spacing.md,
+  },
+  endOfCatalog: {
+    alignItems: 'center',
+    paddingVertical: tokens.spacing.md,
+  },
+  embeddedTitleRow: {
+    paddingBottom: tokens.spacing.xs,
   },
   centerState: {
     minHeight: 220,

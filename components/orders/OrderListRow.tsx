@@ -160,7 +160,7 @@ export const OrderListRow = memo(function OrderListRow({
           : !last
             ? {
                 borderBottomColor: theme.colors.border,
-                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomWidth: 2,
               }
             : null,
         pressed ? { backgroundColor: theme.colors.surfaceAlt } : null,
@@ -228,7 +228,7 @@ export const OrderListRow = memo(function OrderListRow({
 
 const styles = StyleSheet.create({
   cardRow: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
   },

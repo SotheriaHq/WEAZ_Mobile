@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
     borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
   },
   sizeRowCopy: {
     flex: 1,
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: tokens.spacing.md,
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
   },
   pressed: {
     opacity: 0.85,

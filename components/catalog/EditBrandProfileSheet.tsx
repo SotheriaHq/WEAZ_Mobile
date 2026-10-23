@@ -648,7 +648,7 @@ const styles = StyleSheet.create({
     right: 0,
     borderTopLeftRadius: tokens.radius.xl,
     borderTopRightRadius: tokens.radius.xl,
-    borderTopWidth: 1,
+    borderTopWidth: 2,
     maxHeight: '92%',
     shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
   },
   locationSelect: {
     minHeight: 52,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.md,

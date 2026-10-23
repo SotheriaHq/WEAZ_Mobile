@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.xl,
     paddingVertical: tokens.spacing.md,
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
   },
   endNote: {
     textAlign: 'center',
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: tokens.radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },

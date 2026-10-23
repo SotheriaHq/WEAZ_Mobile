@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   chip: {
     minHeight: 38,
     borderRadius: tokens.radius.full,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',

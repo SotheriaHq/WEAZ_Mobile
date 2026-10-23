@@ -81,10 +81,10 @@ export default function LegalDocumentScreen() {
                   reintroduce most of that noise: it draws four lines per cell
                   to express one separation.
                 */
-                table: { borderColor: theme.colors.border, borderWidth: StyleSheet.hairlineWidth, borderRadius: tokens.radius.md, overflow: 'hidden', marginVertical: tokens.spacing.sm },
+                table: { borderColor: theme.colors.border, borderWidth: 2, borderRadius: tokens.radius.md, overflow: 'hidden', marginVertical: tokens.spacing.sm },
                 thead: { backgroundColor: theme.colors.surfaceAlt },
                 th: { padding: tokens.spacing.sm, fontWeight: '700' },
-                tr: { borderBottomColor: theme.colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
+                tr: { borderBottomColor: theme.colors.border, borderBottomWidth: 2 },
                 td: { padding: tokens.spacing.sm },
               }}
             >
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.sm,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
   },
   headerCopy: {
     flex: 1,

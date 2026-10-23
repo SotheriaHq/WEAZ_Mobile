@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   },
   plainBadge: {
     borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     padding: tokens.spacing.sm,
   },
   labelRow: {

@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   },
   wheel: {
     maxHeight: ROW_HEIGHT * 5,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.md,
   },
   wheelContent: {

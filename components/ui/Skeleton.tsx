@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: 2,
   },
   cardContent: {
     padding: 16,
@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
   productCard: {
     borderRadius: 16,
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: 2,
     width: '48%',
   },
   productContent: {

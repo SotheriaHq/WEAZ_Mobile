@@ -1769,7 +1769,7 @@ export default function ChatThreadScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: false,
-      quality: 0.9,
+      quality: 1,
       base64: false,
     });
     if (result.canceled || !result.assets?.[0]) return;
@@ -1777,7 +1777,7 @@ export default function ChatThreadScreen() {
     const raw = result.assets[0];
     let asset = { uri: raw.uri, fileName: raw.fileName ?? `attachment-${Date.now()}.jpg`, mimeType: raw.mimeType ?? 'image/jpeg' };
     try {
-      const compressed = await compressPickedImage(raw.uri, raw.width ?? 0, raw.height ?? 0, raw.fileName, 'messageImage');
+      const compressed = await compressPickedImage(raw.uri, raw.width ?? 0, raw.height ?? 0, raw.fileName, 'messageImage', { mimeType: raw.mimeType, fileSize: raw.fileSize });
       asset = { uri: compressed.uri, fileName: compressed.fileName, mimeType: compressed.mimeType };
     } catch {
       // Compression is best-effort; upload validation still guards the original.
@@ -2277,7 +2277,7 @@ const styles = StyleSheet.create({
     right: 0,
   },
   designCard: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     overflow: 'hidden',
     marginBottom: tokens.spacing.xs,
@@ -2301,7 +2301,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
@@ -2372,7 +2372,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   documentAttachment: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.md,
     padding: tokens.spacing.md,
     gap: tokens.spacing.xs,
@@ -2382,7 +2382,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   composerShell: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     paddingHorizontal: tokens.spacing.md,
     // Was `md` top with an `sm` gap around a 52pt field and 40pt buttons: about
     // 100pt of message bar under every conversation. The bar is chrome; the
@@ -2402,7 +2402,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'flex-end',
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderRadius: tokens.radius.xl,
     paddingHorizontal: tokens.spacing.xs,
     minHeight: 44,
@@ -2434,7 +2434,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     overflow: 'hidden',
   },
   attachmentPreviewImage: {

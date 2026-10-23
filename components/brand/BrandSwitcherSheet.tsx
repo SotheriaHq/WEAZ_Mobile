@@ -103,7 +103,7 @@ export function BrandSwitcherSheet() {
 const styles = StyleSheet.create({
   trigger: {
     minHeight: 58,
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   },
   row: {
     minHeight: 64,
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: tokens.radius.lg,
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.md,

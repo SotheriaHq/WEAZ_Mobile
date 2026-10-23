@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: tokens.button.md.height,
     borderRadius: tokens.radius.md,
-    borderWidth: 1,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },

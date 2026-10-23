@@ -122,7 +122,7 @@ export function Button({
 
   const handlePressIn = React.useCallback(() => {
     if (!isDisabled) {
-      animatePress(0.97, 90);
+      animatePress(0.96, 80);
     }
   }, [animatePress, isDisabled]);
 
@@ -154,7 +154,7 @@ export function Button({
       justifyContent: 'center',
       flexDirection: 'row',
       gap: tokens.spacing.sm,
-      borderWidth: 1,
+      borderWidth: 2,
     };
 
     if (isInert) {
@@ -169,7 +169,15 @@ export function Button({
       case 'primary':
         return { ...base, backgroundColor: theme.colors.primary, borderColor: theme.colors.primary };
       case 'secondary':
-        return { ...base, backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border };
+        return {
+          ...base,
+          backgroundColor: theme.colors.surfaceAlt,
+          borderColor: theme.colors.border,
+          borderTopColor: theme.colors.border,
+          borderLeftColor: theme.colors.border,
+          borderBottomColor: theme.colors.surface,
+          borderRightColor: theme.colors.surface,
+        };
       case 'outline':
         return { ...base, backgroundColor: theme.colors.surface, borderColor: theme.colors.border };
       case 'ghost':

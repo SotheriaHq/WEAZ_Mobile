@@ -11,10 +11,11 @@ type Props = {
   subtitle?: string;
   left?: React.ReactNode;
   right?: React.ReactNode;
+  actions?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 };
 
-export function Header({ title, subtitle, left, right, style, wrapText = false }: Props) {
+export function Header({ title, subtitle, left, right, actions, style, wrapText = true }: Props) {
   const { theme } = useTheme();
 
   return (
@@ -42,13 +43,14 @@ export function Header({ title, subtitle, left, right, style, wrapText = false }
         </View>
         <View style={[styles.side, styles.sideRight]}>{right}</View>
       </View>
+      {actions ? <View style={styles.actions}>{actions}</View> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    borderBottomWidth: 1,
+    borderBottomWidth: 0,
     paddingHorizontal: tokens.spacing.lg,
     paddingTop: tokens.spacing.sm,
     paddingBottom: tokens.spacing.md,
@@ -57,6 +59,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
+    flexWrap: 'wrap',
+  },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: tokens.spacing.sm,
+    marginTop: tokens.spacing.sm,
   },
   side: {
     minWidth: 44,
@@ -66,10 +76,12 @@ const styles = StyleSheet.create({
   },
   sideRight: {
     alignItems: 'flex-end',
+    flexShrink: 1,
+    maxWidth: '100%',
   },
   body: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 120,
     gap: tokens.spacing.xs,
   },
 });

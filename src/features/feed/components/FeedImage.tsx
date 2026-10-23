@@ -1,3 +1,4 @@
+import { useRunwayExposure } from '@/src/features/feed/hooks/useRunwayExposure';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
@@ -18,6 +19,8 @@ type FeedImageLoadState = 'idle' | 'resolving' | 'loading' | 'loaded' | 'failed'
 type FeedImageAspectClass = 'portrait' | 'square' | 'landscape' | 'unknown';
 
 type FeedImageProps = {
+  designId?: string;
+  exposureActive?: boolean;
   id: string;
   displayUrl?: string | null;
   thumbnailUrl?: string | null;
@@ -101,6 +104,8 @@ function FeedImagePlaceholder({
 }
 
 export const FeedImage = React.memo(function FeedImage({
+  designId,
+  exposureActive = false,
   id,
   displayUrl,
   thumbnailUrl,
@@ -139,6 +144,7 @@ export const FeedImage = React.memo(function FeedImage({
   });
   const [successfulSource, setSuccessfulSource] = useState<SuccessfulSource | null>(null);
   const [loadState, setLoadState] = useState<FeedImageLoadState>('idle');
+  useRunwayExposure(designId, exposureActive && loadState === 'loaded' && successfulSource?.identity === sourceIdentity);
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   const [loadedNaturalSize, setLoadedNaturalSize] = useState<{ width: number; height: number } | null>(null);
