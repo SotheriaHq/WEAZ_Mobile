@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { KeyboardAwareFormScroll } from '@/components/ui/KeyboardAwareFormScroll';
 import {
@@ -263,7 +264,7 @@ export default function StudioStaffScreen() {
               <EmptyState label="No staff members yet." />
             ) : (
               members.map((member) => (
-                <View key={member.id} style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <Card key={member.id} variant="recessed" style={styles.card}>
                   <View style={styles.cardHeader}>
                     <View style={styles.cardCopy}>
                       <AppText variant="bodyBold" numberOfLines={1}>
@@ -321,7 +322,7 @@ export default function StudioStaffScreen() {
                       </View>
                     </>
                   ) : null}
-                </View>
+                </Card>
               ))
             )}
           </View>
@@ -332,7 +333,7 @@ export default function StudioStaffScreen() {
               <EmptyState label="No pending invites." />
             ) : (
               activeInvites.map((invite) => (
-                <View key={invite.id} style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <Card key={invite.id} variant="recessed" style={styles.card}>
                   <View style={styles.cardHeader}>
                     <View style={styles.cardCopy}>
                       <AppText variant="bodyBold" numberOfLines={1}>
@@ -353,7 +354,7 @@ export default function StudioStaffScreen() {
                     onPress={() => void cancelInvite(invite)}
                     loading={busyId === `${invite.id}:cancel`}
                   />
-                </View>
+                </Card>
               ))
             )}
           </View>

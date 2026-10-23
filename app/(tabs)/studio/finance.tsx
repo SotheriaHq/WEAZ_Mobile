@@ -536,16 +536,14 @@ function EmptyCard({
   message: string;
 }) {
   return (
-    <View
-      style={[
-        styles.card,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-      ]}
+    <Card
+      variant="recessed"
+      style={styles.card}
     >
       <AppText variant="body" tone="secondary">
         {message}
       </AppText>
-    </View>
+    </Card>
   );
 }
 
@@ -675,11 +673,9 @@ function IncomingCard({
         : humanize(tx.referenceType) || 'Credit';
 
   return (
-    <View
-      style={[
-        styles.card,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-      ]}
+    <Card
+      variant="recessed"
+      style={styles.card}
     >
       <View style={styles.cardTop}>
         <View style={styles.cardHeaderLeft}>
@@ -708,7 +704,7 @@ function IncomingCard({
             : ''}
         </AppText>
       </View>
-    </View>
+    </Card>
   );
 }
 
@@ -732,11 +728,9 @@ function PayoutCard({
   };
 }) {
   return (
-    <View
-      style={[
-        styles.card,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-      ]}
+    <Card
+      variant="recessed"
+      style={styles.card}
     >
       <View style={styles.cardTop}>
         <AppText variant="money" style={styles.cardTitle}>
@@ -760,7 +754,7 @@ function PayoutCard({
         Requested {formatDate(payout.createdAt)}
         {payout.paidAt ? ` · Paid ${formatDate(payout.paidAt)}` : ''}
       </AppText>
-    </View>
+    </Card>
   );
 }
 
