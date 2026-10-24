@@ -6,6 +6,8 @@ export interface BrandCommerceAccess {
   canConfigureCustomers: boolean;
   customerMinimumOrders: number;
   effectiveMinimumOrders: number;
+  serverNow: string;
+  entitlementExpiresAt: string | null;
 }
 const unwrap = <T>(payload: unknown): T =>
   (payload && typeof payload === "object" && "data" in payload
