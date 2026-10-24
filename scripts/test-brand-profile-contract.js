@@ -18,9 +18,7 @@ const editProfilePath = path.join(repoRoot, 'app', '(tabs)', 'catalog', 'edit-pr
 const studioWebViewPath = path.join(repoRoot, 'app', '(tabs)', 'studio', 'webview.tsx');
 const brandTagsPath = path.join(repoRoot, 'src', 'data', 'brandTags.ts');
 const brandTagDtoPath = path.join(
-  repoRoot,
-  '..',
-  'bthreadly',
+  process.env.CONTRACT_BACKEND_ROOT || path.resolve(repoRoot, '..', 'bthreadly'),
   'src',
   'brands',
   'dto',
@@ -99,6 +97,7 @@ function loadImageResolverWithMock(mockBrandApi) {
       },
       '@/src/query/queryClient': {
         queryClient: {
+          getQueryData: () => undefined,
           removeQueries: () => undefined,
           fetchQuery: async ({ queryKey, queryFn }) => {
             queryCalls.push(queryKey);
@@ -393,11 +392,16 @@ async function main() {
   const mobileTagLimit = Number(
     /BRAND_TAG_SELECTION_LIMIT\s*=\s*(\d+)/.exec(brandTagsSource)?.[1],
   );
-  const apiTagLimit = Number(
-    /BRAND_PROFILE_TAG_LIMIT\s*=\s*(\d+)/.exec(fs.readFileSync(brandTagDtoPath, 'utf8'))?.[1],
-  );
   assert.ok(Number.isInteger(mobileTagLimit), 'mobile BRAND_TAG_SELECTION_LIMIT must be a number');
-  assert.equal(mobileTagLimit, apiTagLimit);
+  if (fs.existsSync(brandTagDtoPath)) {
+    const apiTagLimit = Number(
+      /BRAND_PROFILE_TAG_LIMIT\s*=\s*(\d+)/.exec(fs.readFileSync(brandTagDtoPath, 'utf8'))?.[1],
+    );
+    assert.equal(mobileTagLimit, apiTagLimit);
+  } else {
+    assert.ok(!process.env.CONTRACT_BACKEND_ROOT, 'Explicit backend checkout must contain the brand DTO');
+    console.log('  (skipped API tag-cap parity — backend checkout is absent)');
+  }
 
   const editProfileSource = fs.readFileSync(editProfilePath, 'utf8');
   assert.match(editProfileSource, /socialInstagram: normalizeSocialLink\('instagram'/);
