@@ -1,5 +1,6 @@
 import { useResolvedImageAsset } from '@/src/hooks/useResolvedImageUri';
 import { getMediaUrlIdentity, isRenewableMediaUrl } from '@/src/utils/mediaUrlPolicy';
+import { getMediaSessionEpoch } from '@/src/utils/mediaUrlSession';
 import React, { useCallback, useEffect, useRef } from 'react';
 import {
   Animated,
@@ -61,17 +62,25 @@ export function StableImage({
   strategyOverride,
 }: StableImageProps) {
   const { uri, refreshUri } = useResolvedImageAsset({ src: sourceUri });
+  const mounted = useRef(true);
+  const active = useRef({ source: sourceUri, epoch: getMediaSessionEpoch() });
+  active.current = { source: sourceUri, epoch: getMediaSessionEpoch() };
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const retry = useRef({ identity: sourceUri ? getMediaUrlIdentity(sourceUri) : '', used: false });
   const identity = sourceUri ? getMediaUrlIdentity(sourceUri) : '';
   if (retry.current.identity !== identity) retry.current = { identity, used: false };
   const handleImageError = useCallback(() => {
     if (isRenewableMediaUrl(uri) && !retry.current.used) {
       retry.current.used = true;
-      void refreshUri().then((next) => { if (!next || next === uri) onError?.(); });
+      const epoch = getMediaSessionEpoch();
+      void refreshUri().then((next) => {
+        if (!mounted.current || active.current.source !== sourceUri || active.current.epoch !== epoch || epoch !== getMediaSessionEpoch()) return;
+        if (!next || next === uri) onError?.();
+      });
       return;
     }
     onError?.();
-  }, [onError, refreshUri, uri]);
+  }, [onError, refreshUri, sourceUri, uri]);
   const [displayUri, setDisplayUri] = React.useState<string | null>(uri ?? null);
   const [incomingUri, setIncomingUri] = React.useState<string | null>(null);
   const displayOpacity = useRef(new Animated.Value(uri ? 0 : 1)).current;

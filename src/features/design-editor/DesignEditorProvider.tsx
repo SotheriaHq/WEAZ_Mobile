@@ -1,3 +1,4 @@
+import { useScopedMediaPicker } from '@/src/hooks/useScopedMediaPicker';
 import React, {
   createContext,
   useCallback,
@@ -586,6 +587,8 @@ export function DesignEditorProvider({
   const lastMeasurementGenderRef = useRef<string | null>(null);
   const normalizedAssetHandoffToken = assetHandoffToken?.trim() || undefined;
   const normalizedRecoveryTaskId = recoveryTaskId?.trim() || undefined;
+  const { pick: pickScoped } = useScopedMediaPicker({ actorId: user?.id, flowId: 'design-editor',
+    subjectId: activeDesignId ?? normalizedRecoveryTaskId }, setPermissionIssue);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -984,6 +987,7 @@ export function DesignEditorProvider({
       source,
       existingCount: assets.length,
       maxMedia: DESIGN_EDITOR_MAX_MEDIA,
+      pick: pickScoped,
     });
 
     if (result.status === 'cancelled') {
@@ -1000,6 +1004,7 @@ export function DesignEditorProvider({
       return false;
     }
 
+    if (!result.isCurrent()) return false;
     setPermissionIssue(null);
 
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -1007,7 +1012,7 @@ export function DesignEditorProvider({
       return [...prev, ...result.assets].slice(0, DESIGN_EDITOR_MAX_MEDIA);
     });
     return true;
-  }, [assets.length, toast]);
+  }, [assets.length, toast, pickScoped]);
 
   const clearPermissionIssue = useCallback(() => {
     setPermissionIssue(null);

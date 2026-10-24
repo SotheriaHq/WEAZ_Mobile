@@ -30,7 +30,6 @@ const tierName = (key?: string | null) =>
     ASO_OKE: 'Aso-oke',
     ARU: 'Aru',
     IGWE: 'Igwe',
-    LEGACY: 'Legacy',
   })[key || ''] ||
   key ||
   'No plan';
@@ -372,7 +371,6 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                     {!queue.data.capacity.queueJumpAllowed ? (
                       <AppText>
                         Review Aru or Igwe under Plans to enable paid jumps.
-                        Legacy has no jump entitlement.
                       </AppText>
                     ) : null}
                   </>
@@ -387,9 +385,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                   </AppText>
                   <AppText>
                     {subscription?.status ||
-                      (billing.data.legacyEligible
-                        ? 'Free Legacy access'
-                        : 'Choose a plan to open custom-order intake')}
+                      'Choose a plan to open custom-order intake'}
                   </AppText>
                   {subscription ? (
                     <>
@@ -417,8 +413,7 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                           at paid expiry.
                         </AppText>
                       ) : null}
-                      {subscription.tierKey !== 'LEGACY' &&
-                      !subscription.cancelAtPeriodEnd ? (
+                      {!subscription.cancelAtPeriodEnd ? (
                         <Button
                           variant="secondary"
                           title="Cancel automatic renewal"
@@ -441,11 +436,6 @@ function SubscriptionSettingsContent({ reference }: { reference?: string }) {
                         />
                       ) : null}
                     </>
-                  ) : billing.data.legacyEligible ? (
-                    <AppText>
-                      Legacy gives your existing brand free unlimited capacity.
-                      Compare limits carefully before choosing a paid plan.
-                    </AppText>
                   ) : null}
                 </View>
                 <View style={styles.grid}>

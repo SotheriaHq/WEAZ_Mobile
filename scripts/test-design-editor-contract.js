@@ -21,6 +21,9 @@ function loadDesignApi() {
   const scriptRequire = createScriptRequire({
     repoRoot,
     mocks: {
+      'react-native': { Platform: { OS: 'ios' } },
+      'expo-file-system': { File: class { constructor() { throw new Error('Native file I/O is outside the design identifier contract'); } } },
+      'expo/fetch': { fetch: () => { throw new Error('Storage I/O is outside the design identifier contract'); } },
       '@/src/api/httpClient': {
         apiClient: { get: async () => ({}), post: async () => ({}), patch: async () => ({}) },
       },

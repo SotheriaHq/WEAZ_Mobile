@@ -71,7 +71,6 @@ export const SubscriptionApi = {
   get: (id: string) =>
     get<{
       subscription: Subscription | null;
-      legacyEligible: boolean;
       tiers: SubscriptionTier[];
       invoices: Array<{
         id: string;

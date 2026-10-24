@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/src/auth/AuthContext";
 import { getActiveBrandId, isBrandOwner } from "@/src/auth/brandAccess";
 import { BrandCustomersApi } from "@/src/api/BrandCustomersApi";
+import { useCustomerEntitlementExpiry } from "./useCustomerEntitlementExpiry";
 
 export function useBrandCommerceAccess() {
   const { user } = useAuth();
@@ -14,5 +16,7 @@ export function useBrandCommerceAccess() {
     staleTime: 30_000,
     refetchOnMount: true,
   });
-  return { ...query, brandId, canManage };
+  const expired = useCustomerEntitlementExpiry(query.data, query.dataUpdatedAt, user?.id, brandId, canManage);
+  const data = useMemo(() => !canManage ? undefined : expired && query.data ? { ...query.data, canConfigureCustomers: false, effectiveMinimumOrders: 1 } : query.data, [canManage, expired, query.data]);
+  return { ...query, data, brandId, canManage, entitlementExpired: canManage && expired };
 }

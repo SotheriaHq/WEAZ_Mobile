@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import type { MediaPickerRequest, ScopedMediaPickerResult } from '@/src/utils/scopedMediaPicker';
 
 import type { DesignEditorAsset } from '@/src/api/DesignApi';
 import {
@@ -19,7 +20,7 @@ export type MediaPermissionIssue = {
 };
 
 export type DesignEditorMediaPickResult =
-  | { status: 'success'; assets: DesignEditorAsset[] }
+  | { status: 'success'; assets: DesignEditorAsset[]; isCurrent: () => boolean }
   | { status: 'cancelled' }
   | { status: 'permission'; issue: MediaPermissionIssue }
   | { status: 'limit'; message: string };
@@ -70,10 +71,12 @@ export async function pickDesignEditorMediaAssets({
   source,
   existingCount = 0,
   maxMedia = DESIGN_EDITOR_MAX_MEDIA,
+  pick,
 }: {
   source: DesignEditorMediaSource;
   existingCount?: number;
   maxMedia?: number;
+  pick: (request: MediaPickerRequest) => Promise<ScopedMediaPickerResult>;
 }): Promise<DesignEditorMediaPickResult> {
   const remainingSlots = Math.max(0, maxMedia - existingCount);
   if (remainingSlots === 0) {
@@ -83,48 +86,24 @@ export async function pickDesignEditorMediaAssets({
     };
   }
 
-  const permission =
+  const result = await pick({ source, options:
     source === 'camera'
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-  if (!permission.granted) {
-    return {
-      status: 'permission',
-      issue: {
-        source,
-        title: source === 'camera' ? 'Camera permission needed' : 'Photo library permission needed',
-        message: permission.canAskAgain
-          ? source === 'camera'
-            ? 'Allow camera access to capture a photo or video for this design.'
-            : 'Allow photo library access to select design media from your device.'
-          : source === 'camera'
-            ? 'Camera access is blocked. Open settings to allow WIEZ to use your camera.'
-            : 'Photo library access is blocked. Open settings to allow WIEZ to use your media.',
-        canAskAgain: Boolean(permission.canAskAgain),
-      },
-    };
-  }
-
-  const result =
-    source === 'camera'
-      ? await ImagePicker.launchCameraAsync({
+      ? {
           mediaTypes: ['images', 'videos'],
           quality: 1,
           base64: false,
-        })
-      : await ImagePicker.launchImageLibraryAsync({
+        }
+      : {
           mediaTypes: ['images', 'videos'],
           quality: 1,
           allowsMultipleSelection: true,
           selectionLimit: remainingSlots,
           base64: false,
           presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN,
-        });
+        } });
 
-  if (result.canceled || !result.assets?.length) {
-    return { status: 'cancelled' };
-  }
+  if (result.status === 'error') return { status: 'limit', message: result.message };
+  if (result.status !== 'success') return result;
 
   // Compression is deferred until save/upload time to ensure the local
   // preview appears instantly. We set fileSize to undefined for images
@@ -159,5 +138,6 @@ export async function pickDesignEditorMediaAssets({
   return {
     status: 'success',
     assets: buildDesignEditorAssets(processedAssets, existingCount),
+    isCurrent: result.isCurrent,
   };
 }

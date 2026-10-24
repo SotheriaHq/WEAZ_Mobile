@@ -1,7 +1,7 @@
+import { useScopedMediaPicker } from '@/src/hooks/useScopedMediaPicker';
 import { useOrderQueueRefresh } from '@/src/features/orders/useOrderQueueRefresh';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
@@ -1023,24 +1023,20 @@ export default function BuyerProfileScreen() {
     ]);
   }, [emailUnverified, load, toast, updateUser, validateToken]);
 
+  const { pick: pickScoped } = useScopedMediaPicker({ actorId: user?.id, flowId: 'me-avatar', subjectId: user?.id });
+
   const handlePickAvatar = useCallback(async () => {
     if (!profileRecord) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      toast.error('Allow photo access to update your profile photo.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickScoped({ source: 'library', options: {
       mediaTypes: ['images'],
       allowsMultipleSelection: false,
       quality: 1,
       allowsEditing: true,
       aspect: [1, 1],
       base64: false,
-    });
+    } });
 
-    if (result.canceled || !result.assets?.[0]) return;
+    if (result.status !== 'success' || !result.assets[0]) return;
 
     const raw = result.assets[0];
     let asset = { uri: raw.uri, fileName: raw.fileName, mimeType: raw.mimeType ?? 'image/jpeg' };
@@ -1052,6 +1048,8 @@ export default function BuyerProfileScreen() {
     } catch {
       // compression failed — validate original (enforces the actual upload limit)
     }
+
+    if (!result.isCurrent()) return;
 
     try {
       assertValidPickedUploadAsset(
@@ -1072,6 +1070,7 @@ export default function BuyerProfileScreen() {
 
     try {
       const uploaded = await ProfileApi.uploadProfileImage(formData);
+      if (!result.isCurrent()) return;
       if (!uploaded) {
         toast.error('Failed to upload photo.');
         return;
@@ -1105,9 +1104,10 @@ export default function BuyerProfileScreen() {
       });
       toast.success('Profile photo updated.');
     } catch {
+      if (!result.isCurrent()) return;
       toast.error('Failed to upload photo.');
     }
-  }, [profileRecord, toast, updateUser]);
+  }, [profileRecord, toast, updateUser, pickScoped]);
 
   const handleOpenFittings = useCallback(() => {
     drillDownPush('/fittings' as never);

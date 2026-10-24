@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - SIT
 
 permissions:
   contents: read
@@ -32,11 +33,20 @@ jobs:
       - name: Native border policy
         run: npm run check:borders
 
+      - name: Scoped image picking and media completion
+        run: |
+          npm run test:scoped-media-picker
+          npm run test:upload-finalize-retry
+          npm run test:media-url-policy
+
       - name: Typecheck
         run: npm exec tsc -- --noEmit
 
       - name: Custom order queue contract
         run: npm run test:custom-order-queue-contract
+
+      - name: Customer paid-period expiry
+        run: npm run test:customer-entitlement-expiry
 
       # Runway gates run first: they are pure-logic and fast, and a failing step
       # skips every step after it. `test:aspect-aware-media` below has been red
