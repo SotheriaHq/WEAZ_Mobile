@@ -98,7 +98,7 @@ function OptionChip({
     const idleEdge = interpolateColor(press.value, [0, 1], [border, focusRing]);
     return {
       backgroundColor: interpolateColor(progress.value, [0, 1], [idleFill, primary]),
-      borderColor: interpolateColor(progress.value, [0, 1], [idleEdge, primary]),
+      borderColor: interpolateColor(progress.value, [0, 1], [idleEdge, border]),
       shadowOpacity: 0,
       transform: [{ scale: 1 - press.value * 0.05 }],
     };
@@ -257,7 +257,7 @@ function LegacyChip({
               : usePendingTreatment
                 ? theme.colors.warning
                 : selected
-                  ? theme.colors.primary
+                  ? theme.colors.border
                   : disabled
                     ? theme.colors.disabledBorder
                     : theme.colors.border,
