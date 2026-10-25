@@ -51,7 +51,8 @@ export function Card({
       ? {
           backgroundColor: theme.colors.surface,
           borderWidth: 0,
-          ...tokens.elevation.md,
+          borderColor: theme.colors.border,
+          borderWidth: 2,
         }
       : variant === 'overlay'
         ? {
@@ -62,7 +63,8 @@ export function Card({
           ? {
               backgroundColor: theme.colors.surface,
               borderWidth: 0,
-              ...tokens.elevation.sm,
+              borderColor: theme.colors.border,
+          borderWidth: 2,
             }
           : {
               backgroundColor: variant === 'recessed' ? theme.colors.surfaceAlt : theme.colors.surface,

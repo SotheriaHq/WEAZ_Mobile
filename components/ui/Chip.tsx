@@ -99,7 +99,7 @@ function OptionChip({
     return {
       backgroundColor: interpolateColor(progress.value, [0, 1], [idleFill, primary]),
       borderColor: interpolateColor(progress.value, [0, 1], [idleEdge, primary]),
-      shadowOpacity: progress.value * 0.28,
+      shadowOpacity: 0,
       transform: [{ scale: 1 - press.value * 0.05 }],
     };
   });
@@ -123,7 +123,7 @@ function OptionChip({
           style={[
             styles.base,
             styles.optionBase,
-            { shadowColor: primary, elevation: selected ? 3 : 0 },
+            { elevation: 0 },
             disabled
               ? { backgroundColor: disabledSurface, borderColor: disabledBorder }
               : animatedStyle,

@@ -426,9 +426,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: tokens.colors.dark,
     shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    elevation: 16,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
 
   menuIdentity: {

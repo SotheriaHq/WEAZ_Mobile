@@ -67,9 +67,9 @@ export function PrimaryAuthButton({
 const styles = StyleSheet.create({
   button: {
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   solidContainer: {
     borderRadius: tokens.radius.lg,

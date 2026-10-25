@@ -120,9 +120,9 @@ const styles = StyleSheet.create({
     paddingRight: tokens.spacing.md,
     borderRadius: tokens.radius.full,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   pressed: {
     opacity: 0.9,

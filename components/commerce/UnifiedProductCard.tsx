@@ -358,9 +358,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: tokens.colors.dark,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
-    elevation: 5,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   cardPressed: {
     opacity: 0.9,

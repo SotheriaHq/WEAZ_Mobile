@@ -636,9 +636,9 @@ const styles = StyleSheet.create({
     overflow: 'visible',
     shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    elevation: tokens.elevation.lg.elevation,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
     borderRadius: tokens.radius.lg,
   },
   cardClip: {

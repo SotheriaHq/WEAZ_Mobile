@@ -234,9 +234,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
     shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
-    elevation: 12,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   formPanelBorder: {
     ...StyleSheet.absoluteFill,
@@ -273,9 +273,9 @@ const styles = StyleSheet.create({
   primaryButton: {
     shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   primaryButtonText: {
     letterSpacing: 2.5,

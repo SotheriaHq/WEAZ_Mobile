@@ -936,9 +936,9 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.xs,
     shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
-    elevation: 12,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   formPanelBorder: {
     ...StyleSheet.absoluteFill,
