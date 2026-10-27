@@ -58,7 +58,7 @@
     "test:location-cascade-contract": "node scripts/test-location-cascade-contract.js",
     "test:measurement-catalog-contract": "node scripts/test-measurement-catalog-contract.js",
     "test:upload-validation-contract": "node scripts/test-upload-validation-contract.js",
-    "ci:design-system": "npm exec tsc -- --noEmit && node ../scripts/audit-mobile-design-system.js && node scripts/test-design-tokens-contract.js && node scripts/test-atomic-components-contract.js",
+    "ci:design-system": "npm exec tsc -- --noEmit && node ../scripts/audit-mobile-design-system.js && node scripts/test-design-tokens-contract.js && node scripts/test-atomic-components-contract.js && node scripts/test-composite-components-contract.js",
     "audit:theme": "node scripts/audit-theme-system.js",
     "check:perf-regressions": "node scripts/check-perf-regressions.cjs",
     "test:adire-rotation": "node scripts/test-adire-rotation.js",

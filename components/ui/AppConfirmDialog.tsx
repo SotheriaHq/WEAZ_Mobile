@@ -43,11 +43,19 @@ export function AppConfirmDialog({
     >
       {children ? <View style={styles.content}>{children}</View> : null}
       <View style={styles.actions}>
-        <Button title={cancelLabel} variant="outline" size="md" onPress={onCancel} disabled={loading} />
+        <Button
+          title={cancelLabel}
+          variant="secondary"
+          size="md"
+          style={styles.actionBtn}
+          onPress={onCancel}
+          disabled={loading}
+        />
         <Button
           title={confirmLabel}
           variant={destructive ? 'danger' : 'primary'}
           size="md"
+          style={styles.actionBtn}
           onPress={onConfirm}
           loading={loading}
           disabled={confirmDisabled || loading}
@@ -64,6 +72,9 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: tokens.spacing.sm,
+  },
+  actionBtn: {
+    flex: 1,
   },
 });
 
