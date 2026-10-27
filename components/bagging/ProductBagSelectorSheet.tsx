@@ -272,6 +272,7 @@ export default function ProductBagSelectorSheet({
                   <Button
                     title={`Use ${recommendation.recommendedSize}`}
                     size="sm"
+                    variant="brand"
                     onPress={() => {
                       setSelectedSize(recommendation.recommendedSize);
                       setSizeSelectionTouched(true);
@@ -326,8 +327,8 @@ export default function ProductBagSelectorSheet({
                       style={[
                         styles.chip,
                         {
-                          borderColor: selected ? theme.colors.primary : theme.colors.border,
-                          backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
+                          borderColor: selected ? theme.colors.actionBrand : theme.colors.border,
+                          backgroundColor: selected ? theme.colors.actionBrand : theme.colors.surface,
                           opacity: disabled ? 0.4 : 1,
                         },
                       ]}
@@ -364,8 +365,8 @@ export default function ProductBagSelectorSheet({
                       style={[
                         styles.chip,
                         {
-                          borderColor: selected ? theme.colors.primary : theme.colors.border,
-                          backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
+                          borderColor: selected ? theme.colors.actionBrand : theme.colors.border,
+                          backgroundColor: selected ? theme.colors.actionBrand : theme.colors.surface,
                           opacity: disabled ? 0.4 : 1,
                         },
                       ]}
