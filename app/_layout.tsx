@@ -47,8 +47,12 @@ import { BagFlowProvider } from '@/src/features/bagging/BagFlowProvider';
 import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
 import { initMobileSentry } from '@/src/observability/sentry';
+import { startConsentEffects } from '@/src/privacy/consentEffects';
+import { AnalyticsConsentSheet } from '@/components/privacy/AnalyticsConsentSheet';
 
 initMobileSentry();
+// Reads the analytics choice; until it allows them, nothing optional runs.
+startConsentEffects();
 
 import { handleInitialNotification, setupNotificationListeners } from '@/src/utils/notificationRouting';
 import { AuthLinkGate } from '@/components/auth/AuthLinkGate';
@@ -733,6 +737,7 @@ function RootLayoutNav({
               <GoogleAuthRedirectRecoveryGate />
               <AuthLinkGate />
               <GenderPromptSheet />
+              <AnalyticsConsentSheet />
               <SubscriptionNotice />
               <BagCountProvider>
                 <BagFlowProvider>

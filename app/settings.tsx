@@ -163,7 +163,7 @@ export default function SettingsScreen() {
           {
             emoji: '🛡️',
             title: 'Privacy controls',
-            subtitle: 'Visibility, blocked users',
+            subtitle: 'Visibility, analytics, blocked users',
             onPress: () => drillDownPush('/settings/privacy' as never),
           },
           {
