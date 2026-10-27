@@ -1,4 +1,19 @@
 import type { ResolvedTheme } from '@/src/types/theme';
+import {
+  brandPrimitives,
+  neutralPrimitives,
+  feedbackPrimitives,
+  spacingPrimitives,
+  radiusPrimitives,
+  motionPrimitives,
+  elevationPrimitives,
+  lightSemanticTokens,
+  darkSemanticTokens,
+  type SemanticColors,
+} from './design-tokens';
+
+export * from './design-tokens';
+
 
 export type ThemeScheme = ResolvedTheme;
 
@@ -15,6 +30,17 @@ export const LAYOUT = {
 
 type Theme = {
   colors: {
+    // ── Canonical Semantic Tokens ────────────────────────────────────────────
+    semantic: SemanticColors;
+    surfacePage: string;
+    surfaceCard: string;
+    surfaceRecessed: string;
+    surfaceSubtle: string;
+    textPrimary: string;
+    borderDefault: string;
+    actionBrand: string;
+    actionPrimary: string;
+
     bg: string;
     /**
      * Matte behind full-bleed feed media — the Runway stage.
@@ -132,9 +158,34 @@ type Theme = {
 };
 
 export const tokens = {
+  motion: motionPrimitives,
+  primitives: {
+    brand: brandPrimitives,
+    neutral: neutralPrimitives,
+    feedback: feedbackPrimitives,
+    spacing: spacingPrimitives,
+    radius: radiusPrimitives,
+    motion: motionPrimitives,
+    elevation: elevationPrimitives,
+  },
+  semantic: {
+    light: lightSemanticTokens,
+    dark: darkSemanticTokens,
+  },
+
   themes: {
     light: {
       colors: {
+        semantic: lightSemanticTokens,
+        surfacePage: lightSemanticTokens.surface.page,
+        surfaceCard: lightSemanticTokens.surface.card,
+        surfaceRecessed: lightSemanticTokens.surface.recessed,
+        surfaceSubtle: lightSemanticTokens.surface.subtle,
+        textPrimary: lightSemanticTokens.text.primary,
+        borderDefault: lightSemanticTokens.border.default,
+        actionBrand: lightSemanticTokens.action.brand,
+        actionPrimary: lightSemanticTokens.action.primary,
+
         bg: '#FFFFFF',
         runwayStage: '#E9EEF5',
         surface: '#ffffff',
@@ -192,6 +243,16 @@ export const tokens = {
     } satisfies Theme,
     dark: {
       colors: {
+        semantic: darkSemanticTokens,
+        surfacePage: darkSemanticTokens.surface.page,
+        surfaceCard: darkSemanticTokens.surface.card,
+        surfaceRecessed: darkSemanticTokens.surface.recessed,
+        surfaceSubtle: darkSemanticTokens.surface.subtle,
+        textPrimary: darkSemanticTokens.text.primary,
+        borderDefault: darkSemanticTokens.border.default,
+        actionBrand: darkSemanticTokens.action.brand,
+        actionPrimary: darkSemanticTokens.action.primary,
+
         bg: '#080A0F',
         runwayStage: '#080A0F',
         surface: '#111620',
@@ -598,6 +659,9 @@ export const tokens = {
 
   // ─── Border radius ──────────────────────────────────────────────────────────
   radius: {
+    none: radiusPrimitives.none,
+    xs:   radiusPrimitives.xs,
+    modal: radiusPrimitives.modal,
     sm:   8,
     md:   12,
     lg:   16,
