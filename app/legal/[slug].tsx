@@ -41,8 +41,8 @@ export default function LegalDocumentScreen() {
         <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
           <AppBackButton fallbackHref="/legal" />
           <View style={styles.headerCopy}>
-            <AppText variant="title" numberOfLines={1}>{document.title}</AppText>
-            <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+            <AppText variant="title">{document.title}</AppText>
+            <AppText variant="captionRegular" tone="muted">
               Version {document.version}
             </AppText>
           </View>

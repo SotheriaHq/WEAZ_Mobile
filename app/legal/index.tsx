@@ -23,7 +23,7 @@ export default function LegalIndexScreen() {
           <AppBackButton fallbackHref="/settings" />
           <View style={styles.headerCopy}>
             <AppText variant="title">Legal</AppText>
-            <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+            <AppText variant="captionRegular" tone="muted">
               Terms, privacy, policies
             </AppText>
           </View>
