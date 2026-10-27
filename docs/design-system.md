@@ -37,6 +37,9 @@ WIEZ explicitly separates canonical brand identity from interactive component ac
 | `brand.subtle` | `rgba(147, 51, 234, 0.08)` | `rgba(175, 135, 244, 0.12)` | Subtle tinted container backgrounds |
 | `brand.border` | `rgba(147, 51, 234, 0.20)` | `rgba(175, 135, 244, 0.25)` | Brand-tinted container outlines |
 
+> [!NOTE]
+> **Brand Role Distinction**: `brand.markStrong` (`#4e11b8`) is reserved for deep canonical identity mark presentation with 9.8:1 contrast on white. `brand.accentPressed` (`#6b21a8`) is the interactive pressed state for component-level purple accents (buttons, chips). They represent intentionally different semantic roles and must not be merged.
+
 ---
 
 ## 3. Scale Foundations

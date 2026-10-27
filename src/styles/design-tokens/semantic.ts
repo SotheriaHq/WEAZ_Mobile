@@ -78,7 +78,7 @@ export const lightSemanticTokens: SemanticColors = {
     markStrong: brandPrimitives.violet[900], // #4e11b8
     accent: brandPrimitives.violet[600], // #9333ea component accent
     accentHover: brandPrimitives.violet[700], // #7e22ce
-    accentPressed: brandPrimitives.violet[900],
+    accentPressed: brandPrimitives.violet[750], // #6b21a8
     subtle: brandPrimitives.violet[100], // #f3e8ff
     border: brandPrimitives.violet[200], // #e9d5ff
   },
@@ -88,7 +88,7 @@ export const lightSemanticTokens: SemanticColors = {
     primaryText: neutralPrimitives[0], // #ffffff
     brand: brandPrimitives.violet[600], // #9333ea
     brandHover: brandPrimitives.violet[700], // #7e22ce
-    brandPressed: brandPrimitives.violet[900],
+    brandPressed: brandPrimitives.violet[750], // #6b21a8
     brandText: neutralPrimitives[0],
     secondary: '#eff0ed', // WIEZ Material & Surface Lab tactile paper
     secondaryHover: '#e1e4de',

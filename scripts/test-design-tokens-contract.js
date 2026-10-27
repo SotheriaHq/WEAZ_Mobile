@@ -202,6 +202,33 @@ assert.strictEqual(
   'brand.accent must match across Web and Mobile',
 );
 
+// Brand State Distinction (Section 17): markStrong (#4e11b8) vs accentPressed (#6b21a8)
+assert.strictEqual(
+  webSemantic.lightSemanticTokens.brand.markStrong,
+  '#4e11b8',
+  'Web brand.markStrong must be #4e11b8',
+);
+assert.strictEqual(
+  mobileSemantic.lightSemanticTokens.brand.markStrong,
+  '#4e11b8',
+  'Mobile brand.markStrong must be #4e11b8',
+);
+assert.strictEqual(
+  webSemantic.lightSemanticTokens.brand.accentPressed,
+  '#6b21a8',
+  'Web brand.accentPressed must be #6b21a8',
+);
+assert.strictEqual(
+  mobileSemantic.lightSemanticTokens.brand.accentPressed,
+  '#6b21a8',
+  'Mobile brand.accentPressed must be #6b21a8',
+);
+assert.notStrictEqual(
+  webSemantic.lightSemanticTokens.brand.markStrong,
+  webSemantic.lightSemanticTokens.brand.accentPressed,
+  'brand.markStrong and brand.accentPressed must represent distinct semantic roles',
+);
+
 // ── 4. Verify Native tokens.ts Integration ────────────────────────────────────
 const tokensModule = loadTsModule(path.join(ROOT, 'threadly-mobile', 'src', 'styles', 'tokens.ts'));
 assert.ok(tokensModule.tokens, 'Mobile tokens.ts must export tokens object');

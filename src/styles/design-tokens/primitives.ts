@@ -13,9 +13,10 @@ export const brandPrimitives = {
     400: '#c084fc',
     500: '#af87f4', // Canonical On-Dark Brand Identity Mark (contrast 7.1:1 on #0c0b11)
     600: '#9333ea', // Established Interactive Component Accent (Tailwind purple-600)
-    700: '#7e22ce', // Interactive hover / active state
+    700: '#7e22ce', // Interactive hover state
+    750: '#6b21a8', // Interactive pressed state (Tailwind purple-800)
     800: '#6015e2', // Canonical Light-Ground Brand Identity Mark (contrast 7.8:1 on #ffffff)
-    900: '#4e11b8', // Strong / pressed state for canonical light mark
+    900: '#4e11b8', // Strong / deep variant for canonical light mark (contrast 9.8:1 on #ffffff)
     950: '#1e0836', // Deep plum surface
   },
   gold: {

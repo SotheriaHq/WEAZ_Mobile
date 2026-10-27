@@ -15,7 +15,17 @@ import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+/**
+ * Canonical WIEZ Button Variants
+ * - primary   : High-contrast neutral action on Web; on Native preserved as brand/primary for backward compatibility.
+ * - brand     : WIEZ interactive accent (violet). Brand-owned CTAs (follow, add to bag, subscribe).
+ * - secondary : Tactile paper / neutral supporting action alongside primary.
+ * - outline   : Bordered low/medium emphasis action.
+ * - ghost     : Borderless, minimal action in dense UI.
+ * - danger    : Destructive action.
+ * - link      : Textual navigation action.
+ */
+export type ButtonVariant = 'primary' | 'brand' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'link';
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
 
 type Props = {
@@ -31,6 +41,7 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   testID?: string;
+  accessibilityLabel?: string;
   /**
    * Opt out of the built-in single-fire guard for controls where distinct
    * rapid presses are a legitimate interaction (steppers, counters).
@@ -78,6 +89,7 @@ export function Button({
   style,
   textStyle,
   testID,
+  accessibilityLabel,
   allowRapidPress,
 }: Props) {
   const { theme } = useTheme();
@@ -160,13 +172,20 @@ export function Button({
     if (isInert) {
       return {
         ...base,
-        backgroundColor: variant === 'outline' ? 'transparent' : theme.colors.disabledSurface,
-        borderColor: theme.colors.disabledBorder,
+        backgroundColor: variant === 'outline' || variant === 'ghost' || variant === 'link' ? 'transparent' : theme.colors.disabledSurface,
+        borderColor: variant === 'ghost' || variant === 'link' ? 'transparent' : theme.colors.disabledBorder,
       };
     }
 
     switch (variant) {
+      case 'brand':
+        return {
+          ...base,
+          backgroundColor: theme.colors.actionBrand ?? theme.colors.primary,
+          borderColor: theme.colors.actionBrand ?? theme.colors.primary,
+        };
       case 'primary':
+        // Native compatibility alias: primary maps to primary brand color
         return { ...base, backgroundColor: theme.colors.primary, borderColor: theme.colors.primary };
       case 'secondary':
         return {
@@ -181,7 +200,9 @@ export function Button({
       case 'outline':
         return { ...base, backgroundColor: theme.colors.surface, borderColor: theme.colors.border };
       case 'ghost':
-        return { ...base, backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border };
+        return { ...base, backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 };
+      case 'link':
+        return { ...base, backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 };
       case 'danger':
         return { ...base, backgroundColor: theme.colors.danger, borderColor: theme.colors.danger };
       default:
@@ -197,8 +218,10 @@ export function Button({
       case 'outline':
       case 'ghost':
         return 'secondary' as const;
+      case 'link':
+        return 'primary' as const;
+      case 'brand':
       case 'primary':
-        return 'inverse' as const;
       case 'danger':
       default:
         return 'inverse' as const;
@@ -209,6 +232,9 @@ export function Button({
     <Animated.View style={[styles.scaleWrap, { transform: [{ scale }] }]}>
       <Pressable
         testID={testID}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? title}
+        accessibilityState={{ disabled: isDisabled, busy: isBusy }}
         onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -263,16 +289,6 @@ const styles = StyleSheet.create({
   },
   container: {
     minWidth: 44,
-    /*
-      The busy spinner is an absolute overlay sized by the platform, not by us,
-      and it sits over a label slot only as big as the (hidden) title. On a
-      short title or a small size that intrinsic spinner is wider and taller
-      than the slot it covers, so it painted past the button's rounded edge.
-
-      The button has no shadow, so clipping here costs nothing and makes
-      "loading escapes the button" structurally impossible rather than
-      dependent on how large a given platform draws its indicator.
-    */
     overflow: 'hidden',
   },
   content: {
@@ -287,9 +303,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 1,
-    // Room for the spinner that replaces the title. Without a floor the slot
-    // collapses to the width of a short label and the overlay has nowhere to
-    // sit; with it, the indicator is centred in space that actually exists.
     minWidth: 20,
   },
   loaderOverlay: {
