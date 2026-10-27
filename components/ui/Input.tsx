@@ -109,7 +109,7 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
           {
             minHeight: fieldMinHeight,
             ...(isCompact && multiline ? { maxHeight: COMPACT_MULTILINE_MAX_HEIGHT } : null),
-            backgroundColor: isPlain ? 'transparent' : theme.colors.surface,
+            backgroundColor: isPlain ? 'transparent' : (theme.colors.surfacePage ?? theme.colors.surface),
             borderColor: isBare ? 'transparent' : activeBorderColor,
             borderWidth: isPlain ? 0 : activeBorderWidth,
             ...(isUnderline
@@ -121,6 +121,7 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
         {leading ? <View style={styles.leading}>{leading}</View> : null}
         <TextInput
           ref={ref}
+          accessibilityLabel={rest.accessibilityLabel ?? label}
           {...rest}
           multiline={multiline}
           onBlur={(event) => {
@@ -138,7 +139,7 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
             {
               minHeight: fieldMinHeight,
               ...(isCompact && multiline ? { maxHeight: COMPACT_MULTILINE_MAX_HEIGHT } : null),
-              color: rest.editable === false ? theme.colors.textMuted : theme.colors.text,
+              color: rest.editable === false ? theme.colors.textMuted : (theme.colors.textPrimary ?? theme.colors.text),
               paddingLeft: isPlain
                 ? 0
                 : leadingWidth != null
@@ -160,7 +161,7 @@ export const Input = React.forwardRef<TextInput, InputProps>(function Input({
               lineHeight: tokens.typography.body.lineHeight,
             },
           ]}
-          placeholderTextColor={theme.colors.textPlaceholder}
+          placeholderTextColor={theme.colors.textPlaceholder ?? theme.colors.textSecondary}
         />
         {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
       </View>
