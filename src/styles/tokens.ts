@@ -40,6 +40,7 @@ type Theme = {
     borderDefault: string;
     actionBrand: string;
     actionPrimary: string;
+    button: SemanticColors['button'];
 
     bg: string;
     /**
@@ -185,6 +186,7 @@ export const tokens = {
         borderDefault: lightSemanticTokens.border.default,
         actionBrand: lightSemanticTokens.action.brand,
         actionPrimary: lightSemanticTokens.action.primary,
+        button: lightSemanticTokens.button,
 
         bg: '#FFFFFF',
         runwayStage: '#E9EEF5',
@@ -252,6 +254,7 @@ export const tokens = {
         borderDefault: darkSemanticTokens.border.default,
         actionBrand: darkSemanticTokens.action.brand,
         actionPrimary: darkSemanticTokens.action.primary,
+        button: darkSemanticTokens.button,
 
         bg: '#080A0F',
         runwayStage: '#080A0F',

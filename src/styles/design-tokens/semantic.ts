@@ -69,6 +69,44 @@ export interface SemanticColors {
     error: string;
     info: string;
   };
+  button: {
+    surface: {
+      primary: string;
+      primaryPressed: string;
+      brand: string;
+      brandPressed: string;
+      secondary: string;
+      secondaryPressed: string;
+      outline: string;
+      outlinePressed: string;
+      danger: string;
+      dangerPressed: string;
+      disabled: string;
+    };
+    text: {
+      primary: string;
+      brand: string;
+      secondary: string;
+      outline: string;
+      danger: string;
+      disabled: string;
+    };
+    border: {
+      secondaryTop: string;
+      secondaryBottom: string;
+      secondaryTopPressed: string;
+      secondaryBottomPressed: string;
+      outline: string;
+      outlinePressed: string;
+      disabled: string;
+    };
+    tactile: {
+      primaryOverlay: readonly [string, string];
+      secondaryRestOverlay: readonly [string, string];
+      secondaryPressedOverlay: readonly [string, string];
+      outlineOverlay: readonly [string, string];
+    };
+  };
 }
 
 export const lightSemanticTokens: SemanticColors = {
@@ -140,6 +178,44 @@ export const lightSemanticTokens: SemanticColors = {
     error: feedbackPrimitives.error.light,
     info: feedbackPrimitives.info.light,
   },
+  button: {
+    surface: {
+      primary: neutralPrimitives[950], // #0a0a0a
+      primaryPressed: '#171717',
+      brand: brandPrimitives.violet[600], // #9333ea
+      brandPressed: brandPrimitives.violet[750], // #6b21a8
+      secondary: '#e1e4de', // approved Material & Surface Lab paper/stone
+      secondaryPressed: '#d8ded4',
+      outline: 'transparent',
+      outlinePressed: '#f5f5f4',
+      danger: feedbackPrimitives.error.light,
+      dangerPressed: '#b91c1c',
+      disabled: '#edf0f5',
+    },
+    text: {
+      primary: neutralPrimitives[0], // #ffffff
+      brand: neutralPrimitives[0],
+      secondary: '#273329', // approved Material & Surface Lab ink
+      outline: neutralPrimitives[950],
+      danger: neutralPrimitives[0],
+      disabled: '#9aa5b5',
+    },
+    border: {
+      secondaryTop: '#bbc2b9', // resting shadow border bevel
+      secondaryBottom: '#ffffff', // resting reflection highlight bevel
+      secondaryTopPressed: '#9ba398', // deepened pressed shadow border
+      secondaryBottomPressed: '#e1e4de', // dimmed pressed reflection
+      outline: '#e5e5e5',
+      outlinePressed: '#d4d4d4',
+      disabled: '#dce2ec',
+    },
+    tactile: {
+      primaryOverlay: ['rgba(0, 0, 0, 0.30)', 'transparent'] as const,
+      secondaryRestOverlay: ['rgba(0, 0, 0, 0.08)', 'transparent'] as const,
+      secondaryPressedOverlay: ['rgba(0, 0, 0, 0.22)', 'transparent'] as const,
+      outlineOverlay: ['rgba(0, 0, 0, 0.12)', 'transparent'] as const,
+    },
+  },
 };
 
 export const darkSemanticTokens: SemanticColors = {
@@ -210,5 +286,43 @@ export const darkSemanticTokens: SemanticColors = {
     warning: feedbackPrimitives.warning.light,
     error: feedbackPrimitives.error.light,
     info: feedbackPrimitives.info.light,
+  },
+  button: {
+    surface: {
+      primary: '#fafafa',
+      primaryPressed: neutralPrimitives[0],
+      brand: brandPrimitives.violet[500], // #af87f4
+      brandPressed: brandPrimitives.violet[750], // #6b21a8
+      secondary: '#1c1c1c', // approved dark Material & Surface Lab stone
+      secondaryPressed: '#121212',
+      outline: 'transparent',
+      outlinePressed: '#27272a',
+      danger: feedbackPrimitives.error.light,
+      dangerPressed: '#991b1b',
+      disabled: '#171e29',
+    },
+    text: {
+      primary: neutralPrimitives[950],
+      brand: neutralPrimitives[950],
+      secondary: '#f4f4f5',
+      outline: '#fafafa',
+      danger: neutralPrimitives[0],
+      disabled: '#6b7789',
+    },
+    border: {
+      secondaryTop: '#0d0d0d',
+      secondaryBottom: '#262626',
+      secondaryTopPressed: '#000000',
+      secondaryBottomPressed: '#1c1c1c',
+      outline: 'rgba(255, 255, 255, 0.10)',
+      outlinePressed: 'rgba(255, 255, 255, 0.20)',
+      disabled: '#232c3a',
+    },
+    tactile: {
+      primaryOverlay: ['rgba(0, 0, 0, 0.45)', 'transparent'] as const,
+      secondaryRestOverlay: ['rgba(0, 0, 0, 0.20)', 'transparent'] as const,
+      secondaryPressedOverlay: ['rgba(0, 0, 0, 0.50)', 'transparent'] as const,
+      outlineOverlay: ['rgba(0, 0, 0, 0.20)', 'transparent'] as const,
+    },
   },
 };

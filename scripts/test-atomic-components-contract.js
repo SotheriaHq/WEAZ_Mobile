@@ -42,6 +42,10 @@ assert.ok(
   "Button.tsx must declare 'link' variant",
 );
 assert.ok(
+  buttonSource.includes("'neumorphic'"),
+  "Button.tsx must declare 'neumorphic' variant for cross-platform compatibility",
+);
+assert.ok(
   buttonSource.includes('accessibilityRole="button"'),
   "Button.tsx must set accessibilityRole='button' on Pressable",
 );
@@ -50,8 +54,20 @@ assert.ok(
   'Button.tsx must declare accessibilityState for disabled and busy',
 );
 assert.ok(
-  buttonSource.includes('actionBrand'),
-  "Button.tsx must consume theme.colors.actionBrand for 'brand' variant",
+  buttonSource.includes('buttonTokens') || buttonSource.includes('actionBrand'),
+  "Button.tsx must consume semantic button tokens for 'brand' variant",
+);
+assert.ok(
+  buttonSource.includes('LinearGradient'),
+  'Button.tsx must render LinearGradient for tactile inset depth',
+);
+assert.ok(
+  buttonSource.includes('translateY'),
+  'Button.tsx must animate translateY on press for physical depression',
+);
+assert.ok(
+  buttonSource.includes('borderTopColor') && buttonSource.includes('borderBottomColor'),
+  'Button.tsx must use stepped dual-tone borders for tactile secondary variant',
 );
 
 // ── 2. Input Primitive Verification ───────────────────────────────────────────

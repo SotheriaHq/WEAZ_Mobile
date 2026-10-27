@@ -145,7 +145,7 @@ for (const level of REQUIRED_ELEVATION_LEVELS) {
 }
 
 // ── 3. Assert Semantic Token Parity ───────────────────────────────────────────
-const REQUIRED_SEMANTIC_DOMAINS = ['brand', 'action', 'focus', 'surface', 'text', 'border', 'status'];
+const REQUIRED_SEMANTIC_DOMAINS = ['brand', 'action', 'focus', 'surface', 'text', 'border', 'status', 'button'];
 
 function verifySemanticTheme(themeName, webTokens, mobileTokens) {
   for (const domain of REQUIRED_SEMANTIC_DOMAINS) {
@@ -239,5 +239,10 @@ assert.strictEqual(tokensModule.tokens.themes.light.colors.surfacePage, '#ffffff
 assert.strictEqual(tokensModule.tokens.themes.dark.colors.surfacePage, '#0a0a0a');
 assert.strictEqual(tokensModule.tokens.themes.light.colors.actionBrand, '#9333ea');
 assert.strictEqual(tokensModule.tokens.themes.dark.colors.actionBrand, '#9333ea');
+assert.ok(tokensModule.tokens.themes.light.colors.button, 'Mobile light theme must export button tokens');
+assert.strictEqual(tokensModule.tokens.themes.light.colors.button.surface.brandPressed, '#6b21a8');
+assert.strictEqual(tokensModule.tokens.themes.light.colors.button.surface.secondary, '#e1e4de');
+assert.strictEqual(tokensModule.tokens.themes.dark.colors.button.surface.brandPressed, '#6b21a8');
+assert.strictEqual(tokensModule.tokens.themes.dark.colors.button.surface.secondary, '#1c1c1c');
 
 console.log('PASS test-design-tokens-contract: Web and Native design tokens are semantically synchronized.');
