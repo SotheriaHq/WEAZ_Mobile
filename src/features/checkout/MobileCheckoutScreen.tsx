@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '@/components/ui/AppText';
 import { DeliveryAddressBook } from '@/components/delivery/DeliveryAddressBook';
 import { Button } from '@/components/ui/Button';
+import { CurrencyChargeNote } from '@/components/currency/PriceEstimateText';
 import { Card } from '@/components/ui/Card';
 import {
   createMobileCheckoutIdempotencyKey,
@@ -491,6 +492,7 @@ export function MobileCheckoutScreen() {
               only triggers backend verification; it never marks payment as
               complete locally.
             </AppText>
+            <CurrencyChargeNote />
             <SavedPaymentMethods
               key={auth.user?.id || 'guest'}
               selected={savedCardId}

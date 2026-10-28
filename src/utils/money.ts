@@ -26,6 +26,12 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: '$',
   GBP: '£',
   EUR: '€',
+  // Display estimates only (see src/currency/displayCurrency.ts).
+  GHS: 'GH₵',
+  KES: 'KSh ',
+  ZAR: 'R ',
+  CAD: 'CA$',
+  AUD: 'A$',
 };
 
 /** WIEZ is Naira-first: every unset or unknown amount is Naira. */
