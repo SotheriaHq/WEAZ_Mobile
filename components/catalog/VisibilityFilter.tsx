@@ -51,8 +51,8 @@ function VisibilitySegment({ label, isActive, onPress, badge }: SegmentProps) {
         style={[
           styles.segment,
           {
-            backgroundColor: isActive ? theme.colors.surface : 'transparent',
-            borderColor: isActive ? theme.colors.border : 'transparent',
+            backgroundColor: isActive ? (theme.colors.surfaceCard ?? theme.colors.surface) : 'transparent',
+            borderColor: isActive ? (theme.colors.borderDefault ?? theme.colors.border) : 'transparent',
           },
         ]}
         accessibilityRole="button"
@@ -66,7 +66,7 @@ function VisibilitySegment({ label, isActive, onPress, badge }: SegmentProps) {
           {label}
         </AppText>
         {typeof badge === 'number' && badge > 0 ? (
-          <View style={[styles.badge, { backgroundColor: isActive ? theme.colors.primary : theme.colors.surface }]}>
+          <View style={[styles.badge, { backgroundColor: isActive ? (theme.colors.actionBrand ?? theme.colors.primary) : (theme.colors.surfaceCard ?? theme.colors.surface) }]}>
             <AppText variant="captionBold" tone={isActive ? 'inverse' : 'primary'} numberOfLines={1}>
               {badge > 99 ? '99+' : badge}
             </AppText>
@@ -94,7 +94,7 @@ export function VisibilityFilter({
           prevents the Android bug where borderRadius on a ScrollView content container
           renders as a rectangle. nestedScrollEnabled allows this horizontal scroll
           to work correctly inside the horizontal tab pager. */}
-      <View style={[styles.pillFrame, { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.border }]}>
+      <View style={[styles.pillFrame, { backgroundColor: theme.colors.surfaceRecessed ?? theme.colors.primarySoft, borderColor: theme.colors.borderDefault ?? theme.colors.border }]}>
         <ScrollView
           horizontal
           nestedScrollEnabled

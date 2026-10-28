@@ -30,6 +30,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/AppText';
+import { Button } from '@/components/ui/Button';
 import { BagPulseIcon } from '@/components/ui/BagPulseIcon';
 import CollectionCommentsSheet, { getCommentsSheetHeight } from '@/components/catalog/CollectionCommentsSheet';
 import ReviewsTab from '@/components/reviews/ReviewsTab';
@@ -1211,8 +1212,8 @@ export function MarketCommerceViewer({
         variant === 'dock'
           ? null
           : {
-              backgroundColor: bagDisabled ? theme.colors.surfaceAlt : theme.colors.primary,
-              borderColor: bagDisabled ? theme.colors.border : theme.colors.primary,
+              backgroundColor: bagDisabled ? theme.colors.surfaceAlt : theme.colors.actionBrand,
+              borderColor: bagDisabled ? theme.colors.border : theme.colors.actionBrand,
             },
         pressed && styles.pressed,
       ]}
@@ -1851,16 +1852,11 @@ export function MarketCommerceViewer({
         <View style={[styles.stateOverlay, { backgroundColor: theme.colors.backdropStrong }]}>
           <AppText variant="subtitle" tone="inverse">Item unavailable</AppText>
           <AppText variant="body" tone="inverse">{error}</AppText>
-          <Pressable
+          <Button
+            title="Retry"
+            variant="secondary"
             onPress={() => void load()}
-            style={({ pressed }) => [
-              styles.retryButton,
-              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-              pressed && styles.pressed,
-            ]}
-          >
-            <AppText variant="bodyBold">Retry</AppText>
-          </Pressable>
+          />
         </View>
       ) : null}
     </SafeAreaView>

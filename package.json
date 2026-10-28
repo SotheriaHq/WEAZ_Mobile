@@ -58,7 +58,7 @@
     "test:location-cascade-contract": "node scripts/test-location-cascade-contract.js",
     "test:measurement-catalog-contract": "node scripts/test-measurement-catalog-contract.js",
     "test:upload-validation-contract": "node scripts/test-upload-validation-contract.js",
-    "ci:design-system": "npm exec tsc -- --noEmit && node ../scripts/audit-mobile-design-system.js",
+    "ci:design-system": "npm exec tsc -- --noEmit && node ../scripts/audit-mobile-design-system.js && node scripts/test-design-tokens-contract.js && node scripts/test-atomic-components-contract.js && node scripts/test-composite-components-contract.js && node scripts/test-product-detail-contract.js",
     "audit:theme": "node scripts/audit-theme-system.js",
     "check:perf-regressions": "node scripts/check-perf-regressions.cjs",
     "test:adire-rotation": "node scripts/test-adire-rotation.js",
@@ -78,7 +78,9 @@
     "test:scoped-media-picker": "node scripts/test-scoped-media-picker.cjs",
     "test:upload-finalize-retry": "node scripts/test-upload-finalize-retry.cjs",
     "test:media-url-policy": "node scripts/test-media-url-policy.cjs",
-    "test:customer-entitlement-expiry": "node scripts/test-customer-entitlement-expiry.cjs"
+    "test:customer-entitlement-expiry": "node scripts/test-customer-entitlement-expiry.cjs",
+    "test:design-tokens-contract": "node scripts/test-design-tokens-contract.js",
+    "test:atomic-components-contract": "node scripts/test-atomic-components-contract.js"
   },
   "dependencies": {
     "@expo-google-fonts/roboto": "^0.4.3",

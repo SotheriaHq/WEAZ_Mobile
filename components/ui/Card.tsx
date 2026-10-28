@@ -18,7 +18,7 @@ import { useTheme } from '@/src/theme/ThemeProvider';
  * barely-there wash of the brand purple for surfaces that would otherwise be
  * bare — metric tiles, summary panels. See `surfaceTintGradient`.
  */
-export type CardVariant = 'surface' | 'elevated' | 'overlay' | 'tinted' | 'recessed';
+export type CardVariant = 'surface' | 'elevated' | 'overlay' | 'tinted' | 'recessed' | 'bordered' | 'interactive';
 
 type Props = {
   variant?: CardVariant;
@@ -46,10 +46,12 @@ export function Card({
     padding: paddingValue,
   };
 
+  const cardSurfaceColor = theme.colors.surfaceCard ?? theme.colors.surface;
+
   const variantStyle: ViewStyle =
     variant === 'elevated'
       ? {
-          backgroundColor: theme.colors.surface,
+          backgroundColor: cardSurfaceColor,
           borderWidth: 0,
           ...tokens.elevation.md,
         }
@@ -60,18 +62,30 @@ export function Card({
           }
         : variant === 'tinted'
           ? {
-              backgroundColor: theme.colors.surface,
+              backgroundColor: cardSurfaceColor,
               borderWidth: 0,
               ...tokens.elevation.sm,
             }
-          : {
-              backgroundColor: variant === 'recessed' ? theme.colors.surfaceAlt : theme.colors.surface,
-              borderWidth: 2,
-              borderTopColor: theme.colors.border,
-              borderLeftColor: theme.colors.border,
-              borderBottomColor: variant === 'recessed' ? theme.colors.surface : theme.colors.border,
-              borderRightColor: variant === 'recessed' ? theme.colors.surface : theme.colors.border,
-            };
+          : variant === 'bordered'
+            ? {
+                backgroundColor: cardSurfaceColor,
+                borderWidth: 2,
+                borderColor: theme.colors.border,
+              }
+            : variant === 'interactive'
+              ? {
+                  backgroundColor: cardSurfaceColor,
+                  borderWidth: 2,
+                  borderColor: theme.colors.border,
+                }
+              : {
+                  backgroundColor: variant === 'recessed' ? theme.colors.surfaceAlt : cardSurfaceColor,
+                  borderWidth: 2,
+                  borderTopColor: theme.colors.border,
+                  borderLeftColor: theme.colors.border,
+                  borderBottomColor: variant === 'recessed' ? theme.colors.surface : theme.colors.border,
+                  borderRightColor: variant === 'recessed' ? theme.colors.surface : theme.colors.border,
+                };
 
   const content =
     variant === 'tinted' ? (
@@ -91,10 +105,11 @@ export function Card({
       children
     );
 
-  if (onPress) {
+  if (onPress || variant === 'interactive') {
     return (
       <Pressable
         testID={testID}
+        accessibilityRole={onPress ? 'button' : undefined}
         onPress={onPress}
         disabled={disabled}
         style={({ pressed }) => [
