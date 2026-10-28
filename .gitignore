@@ -67,3 +67,6 @@ memory-bank/
 *.apk
 *.aab
 *.ipa
+
+# Local validation scratch files
+.tmp/

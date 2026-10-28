@@ -16,6 +16,7 @@ import { markOrdersChanged } from '@/src/features/orders/orderRevision';
 import { useQueueClock, syncQueueClock } from '@/src/features/orders/queueClock';
 import { tokens } from '@/src/styles/tokens';
 import { formatMoney } from '@/src/utils/money';
+import { describeRefund } from '@/src/lib/refundPresentation';
 
 export function OrderQueueActions({ order, onChange, onRefresh }: {
   order: BuyerCustomOrderDetail;
@@ -75,7 +76,7 @@ export function OrderQueueActions({ order, onChange, onRefresh }: {
   };
   const refund = queue.refundSummary;
   const settlement = refund?.settlement as { status?: string; currency?: string; amount?: number } | undefined;
-  const refundLabels: Record<string, string> = { REQUESTED: 'Requested', SUBMITTING: 'Submitting to the payment provider', PROCESSING: 'Processing', FAILED: 'Retry scheduled', NEEDS_ATTENTION: 'Needs WIEZ attention', SETTLED: 'Processed by the payment provider' };
+  const refundDescription = describeRefund(refund?.status);
   return (
     <View style={styles.section}>
       <AppText variant="subtitle">Queue and payment</AppText>
@@ -83,9 +84,8 @@ export function OrderQueueActions({ order, onChange, onRefresh }: {
       <CustomOrderPriceBreakdown summary={order.buyerPriceSummary} currency={order.currency} />
       {queue.queueExpiresAt && waiting ? <AppText variant="captionRegular" tone="muted">Cancellation deadline: {new Date(queue.queueExpiresAt).toLocaleString()}. Cancellation proceeds even if reminders cannot be delivered.</AppText> : null}
       {queue.captureSummary && order.paymentStatus === 'PAID' ? <AppText variant="body" tone="muted">Captured: {formatMoney(Number(queue.captureSummary.amount ?? order.amount), order.currency)}. {queue.captureSummary.held === true ? 'Held until Active.' : 'See the receipt and current order state below.'} Becoming Up Next does not charge you again.</AppText> : null}
-      {refund ? <AppText variant="body" tone="warning">Refund: {refundLabels[String(refund.status)] ?? 'Requested'}{refund.refundAmount != null || refund.amount != null ? ` · ${formatMoney(Number(refund.refundAmount ?? refund.amount), order.currency)}` : ''}. Bank credit is confirmed separately from cancellation.</AppText> : null}
+      {refund && refundDescription ? <AppText variant="body">{refundDescription.title}{refund.refundAmount != null || refund.amount != null ? ` · ${formatMoney(Number(refund.refundAmount ?? refund.amount), order.currency)}` : ''}. {refundDescription.description}</AppText> : null}
       {settlement?.status === 'RECORDED' && settlement.currency !== order.currency ? <AppText variant="body">Original payment method refund: {formatMoney(Number(settlement.amount), settlement.currency)}, using the recorded payment rate.</AppText> : null}
-      {refund?.lastError ? <AppText variant="body" tone="danger">Your refund needs WIEZ attention. Your refund request remains recorded; contact WIEZ through the order conversation.</AppText> : null}
       {refund?.kind === 'PARTIAL' && !queue.canResubmit ? <AppText variant="body">This is a partial refund. Your order continues in its existing fulfilment stage.</AppText> : null}
       {(queue.refundHistory?.length ?? 0) > 1 ? <View style={styles.stack}><AppText variant="subtitle">Refund history</AppText>{queue.refundHistory!.map(item => <AppText key={item.id} variant="body">{item.kind === 'PARTIAL' ? 'Partial refund' : 'Cancellation refund'}: {formatMoney(item.amount, item.currency)} · {item.status}</AppText>)}</View> : null}
       {error ? <AppText variant="body" tone="danger">{error}</AppText> : null}

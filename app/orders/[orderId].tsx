@@ -1,4 +1,5 @@
 import { Header } from '@/components/ui/Header';
+import { describeRefund } from '@/src/lib/refundPresentation';
 import { useOrderQueueRefresh } from '@/src/features/orders/useOrderQueueRefresh';
 import { OrderQueueActions } from '@/components/orders/OrderQueueActions';
 import React, { useCallback, useMemo, useState } from 'react';
@@ -786,6 +787,16 @@ export default function BuyerOrderDetailScreen() {
         </Card>
 
         {order.kind === 'CUSTOM' ? <OrderQueueActions order={order} onChange={mutateOrder} onRefresh={() => { void refetchOrder({ forceRefresh: true }); }} /> : null}
+        {order.kind === 'STANDARD' ? (() => {
+          const value = order.financeBreakdown?.refund;
+          const refund = describeRefund(value && typeof value === 'object' ? (value as Record<string, unknown>).status : null);
+          return refund ? (
+            <View accessibilityLiveRegion="polite" style={styles.sectionList}>
+              <AppText variant="cardTitle">{refund.title}</AppText>
+              <AppText variant="body">{refund.description}</AppText>
+            </View>
+          ) : null;
+        })() : null}
         <OrderConversationButton orderId={order.id} kind={order.kind} brandName={order.brandName} />
 
         {confirmable ? (

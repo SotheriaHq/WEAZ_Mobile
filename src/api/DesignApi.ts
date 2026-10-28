@@ -1,4 +1,5 @@
 import { apiClient } from '@/src/api/httpClient';
+import { normalizeCategoryProposal, type CategoryProposal } from './CategorySuggestionsApi';
 import { retryUploadCompletion } from '../utils/uploadFinalizeRetry';
 import { Platform } from 'react-native';
 import { File } from 'expo-file-system';
@@ -148,6 +149,7 @@ export type DesignDetail = {
   type: 'MALE' | 'FEMALE' | 'EVERYBODY';
   status: ContentPublicationStatus;
   categoryId: string;
+  pendingCategoryProposal?: CategoryProposal | null;
   subCategoryId: string;
   filterSelection: DesignFilterSelection;
   filterValueIds: string[];
@@ -178,6 +180,7 @@ export type DesignSavePayload = {
   description?: string;
   visibility: 'PUBLIC' | 'PRIVATE';
   categoryId?: string;
+  pendingCategorySuggestionId?: string | null;
   subCategoryId?: string;
   type: 'MALE' | 'FEMALE' | 'EVERYBODY';
   tags: string[];
@@ -526,6 +529,7 @@ const normalizeDetail = (payload: unknown): DesignDetail => {
           : 'EVERYBODY',
     status: normalizePublicationStatus(source.publicationStatus ?? source.status),
     categoryId: asString(source.categoryId) ?? '',
+    pendingCategoryProposal: normalizeCategoryProposal(source.pendingCategorySuggestion),
     subCategoryId: asString(source.subCategoryId) ?? asString(source.categoryTypeId) ?? '',
     filterSelection: mapFilterSelection(source.filters),
     filterValueIds: asStringList(source.filterValueIds),
@@ -567,6 +571,7 @@ const buildMetadata = (payload: DesignSavePayload) => ({
   visibility: payload.visibility,
   type: payload.type,
   categoryId: payload.categoryId,
+  pendingCategorySuggestionId: payload.pendingCategorySuggestionId,
   subCategoryId: payload.subCategoryId,
   categoryTypeId: payload.subCategoryId,
   tags: payload.tags,

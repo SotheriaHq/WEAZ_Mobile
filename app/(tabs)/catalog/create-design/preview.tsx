@@ -95,8 +95,8 @@ export default function CreateDesignPreviewScreen() {
   const [galleryIndex, setGalleryIndex] = React.useState<number | null>(null);
 
   const subCategory = subCategories.find((entry) => entry.id === form.subCategoryId) ?? null;
-  const categorySummary = selectedCategory?.name ?? 'Not selected';
-  const garmentTypeSummary = subCategory?.name ?? 'Not selected';
+  const categorySummary = form.pendingCategoryProposal?.name ?? selectedCategory?.name ?? 'Not selected';
+  const garmentTypeSummary = form.pendingCategoryProposal?.garmentTypeName ?? subCategory?.name ?? 'Not selected';
   const discoveryDimensions = React.useMemo(
     () =>
       [...filterDimensions]
