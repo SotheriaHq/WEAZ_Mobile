@@ -1,11 +1,15 @@
-import axios from 'axios';
-
+import { apiClient } from '@/src/api/httpClient';
 import { getOfflineRegions } from '@/src/data/countryRegions';
+import { flagEmojiFromIso2 } from '@/src/utils/countryFlag';
 
 /**
  * Location cascade source for profile/checkout forms.
  * Kept in parity with `fthreadly/src/services/LocationService.ts`:
  * Country (name) → State/Province → City/LGA.
+ *
+ * Everything comes from the WIEZ API (`/locations/*`). The app used to call
+ * restcountries.com and countriesnow.space directly, which showed every
+ * person's IP address to them. Flags are emoji (see `countryFlag.ts`).
  */
 
 export type CountryOption = {
@@ -15,6 +19,7 @@ export type CountryOption = {
   /** @deprecated alias of iso2 — prefer iso2 */
   code: string;
   flag: string;
+  /** Unused on native, which renders `flag`; kept for shape parity with web. */
   flagImage: string;
 };
 
@@ -29,98 +34,41 @@ export type CityOption = {
   name: string;
 };
 
-const COUNTRIES_API = 'https://countriesnow.space/api/v0.1/countries';
-const REST_COUNTRIES_API =
-  'https://restcountries.com/v3.1/all?fields=name,cca2,flags';
 const LOCATION_REQUEST_TIMEOUT_MS = 8000;
+
+const toCountryOption = (iso2: string, name: string): CountryOption => ({
+  name,
+  iso2,
+  code: iso2,
+  flag: flagEmojiFromIso2(iso2),
+  flagImage: '',
+});
 
 /** Platform operating markets (same fallback list as web). */
 export const FALLBACK_COUNTRIES: CountryOption[] = [
-  {
-    name: 'Ghana',
-    iso2: 'GH',
-    code: 'GH',
-    flag: '',
-    flagImage: 'https://flagcdn.com/gh.svg',
-  },
-  {
-    name: 'Kenya',
-    iso2: 'KE',
-    code: 'KE',
-    flag: '',
-    flagImage: 'https://flagcdn.com/ke.svg',
-  },
-  {
-    name: 'Nigeria',
-    iso2: 'NG',
-    code: 'NG',
-    flag: '',
-    flagImage: 'https://flagcdn.com/ng.svg',
-  },
-  {
-    name: 'South Africa',
-    iso2: 'ZA',
-    code: 'ZA',
-    flag: '',
-    flagImage: 'https://flagcdn.com/za.svg',
-  },
-  {
-    name: 'United Kingdom',
-    iso2: 'GB',
-    code: 'GB',
-    flag: '',
-    flagImage: 'https://flagcdn.com/gb.svg',
-  },
-  {
-    name: 'United States',
-    iso2: 'US',
-    code: 'US',
-    flag: '',
-    flagImage: 'https://flagcdn.com/us.svg',
-  },
+  toCountryOption('GH', 'Ghana'),
+  toCountryOption('KE', 'Kenya'),
+  toCountryOption('NG', 'Nigeria'),
+  toCountryOption('ZA', 'South Africa'),
+  toCountryOption('GB', 'United Kingdom'),
+  toCountryOption('US', 'United States'),
 ];
 
-type RestCountry = {
-  name?: { common?: string };
-  cca2?: string;
-  flags?: { alt?: string; svg?: string };
-};
+function listFrom<T>(payload: unknown): T[] {
+  const body = payload as { data?: unknown } | undefined;
+  const inner = (body?.data as { data?: unknown } | undefined)?.data ?? body?.data;
+  return Array.isArray(inner) ? (inner as T[]) : [];
+}
 
-type CountriesNowStatesResponse = {
-  error?: boolean;
-  data?: {
-    states?: Array<{
-      name?: string;
-      state_code?: string;
-    }>;
-  };
-};
-
-type CountriesNowCitiesResponse = {
-  error?: boolean;
-  data?: string[];
-};
+const names = (payload: unknown) =>
+  listFrom<unknown>(payload)
+    .filter((name): name is string => typeof name === 'string')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
 
 let cachedCountries: CountryOption[] | null = null;
 const statesCache = new Map<string, StateOption[]>();
 const citiesCache = new Map<string, string[]>();
-
-function sortByName<T extends { name: string }>(items: T[]): T[] {
-  return [...items].sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function mapCountry(raw: RestCountry): CountryOption | null {
-  const name = raw.name?.common?.trim() ?? '';
-  if (!name) return null;
-  const iso2 = (raw.cca2?.trim() ?? name).toUpperCase();
-  return {
-    name,
-    iso2,
-    code: iso2,
-    flag: raw.flags?.alt ?? '',
-    flagImage: raw.flags?.svg ?? `https://flagcdn.com/${iso2.toLowerCase()}.svg`,
-  };
-}
 
 export const locationService = {
   async getCountries(): Promise<CountryOption[]> {
@@ -129,17 +77,20 @@ export const locationService = {
     }
 
     try {
-      const response = await axios.get<RestCountry[]>(REST_COUNTRIES_API, {
+      const response = await apiClient.get('/locations/countries', {
         timeout: LOCATION_REQUEST_TIMEOUT_MS,
       });
-      cachedCountries = sortByName(
-        response.data.map(mapCountry).filter((c): c is CountryOption => Boolean(c)),
-      );
-      return cachedCountries;
+      const countries = listFrom<{ iso2?: unknown; name?: unknown }>(response)
+        .filter(
+          (country): country is { iso2: string; name: string } =>
+            typeof country?.iso2 === 'string' && typeof country?.name === 'string',
+        )
+        .map((country) => toCountryOption(country.iso2, country.name));
+      cachedCountries = countries.length > 0 ? countries : FALLBACK_COUNTRIES;
     } catch {
       cachedCountries = FALLBACK_COUNTRIES;
-      return cachedCountries;
     }
+    return cachedCountries;
   },
 
   async getStates(countryName: string, iso2?: string): Promise<StateOption[]> {
@@ -152,33 +103,12 @@ export const locationService = {
     }
 
     try {
-      // GET .../states/q?country=Nigeria — NOT the old POST .../states.
-      //
-      // The POST form answers `301 → /states/q?country=…` and takes ~13s to do
-      // it, which is past the 8s timeout below. Web hit this first (a redirect
-      // on a preflighted request is a hard CORS failure there) and moved; this
-      // copy was left on the dead endpoint, so on native the state list has been
-      // failing every time — and with no fallback below, that rendered as a
-      // permanently disabled dropdown.
-      const response = await axios.get<CountriesNowStatesResponse>(
-        `${COUNTRIES_API}/states/q`,
-        {
-          params: { country: normalizedCountry },
-          timeout: LOCATION_REQUEST_TIMEOUT_MS,
-        },
-      );
-      const remote = response.data?.error ? [] : (response.data.data?.states ?? []);
-      if (Array.isArray(remote) && remote.length > 0) {
-        const states = sortByName(
-          remote
-            .map((state) => {
-              const name = state.name?.trim() ?? '';
-              if (!name) return null;
-              const iso2 = state.state_code?.trim() ?? name;
-              return { name, iso2, code: iso2 };
-            })
-            .filter((state): state is StateOption => Boolean(state)),
-        );
+      const response = await apiClient.get('/locations/states', {
+        params: { country: iso2 || normalizedCountry },
+        timeout: LOCATION_REQUEST_TIMEOUT_MS,
+      });
+      const states = names(response).map((name) => ({ name, iso2: '', code: '' }));
+      if (states.length > 0) {
         statesCache.set(normalizedCountry, states);
         return states;
       }
@@ -221,22 +151,12 @@ export const locationService = {
     }
 
     try {
-      // GET .../state/cities/q, for the same reason `getStates` moved.
-      const response = await axios.get<CountriesNowCitiesResponse>(
-        `${COUNTRIES_API}/state/cities/q`,
-        {
-          params: { country: normalizedCountry, state: normalizedState },
-          timeout: LOCATION_REQUEST_TIMEOUT_MS,
-        },
-      );
-      if (response.data?.error) {
-        return [];
-      }
-      const cities = (response.data.data ?? [])
-        .map((city) => city.trim())
-        .filter((city) => city.length > 0)
-        .sort((a, b) => a.localeCompare(b));
-      citiesCache.set(cacheKey, cities);
+      const response = await apiClient.get('/locations/cities', {
+        params: { country: normalizedCountry, state: normalizedState },
+        timeout: LOCATION_REQUEST_TIMEOUT_MS,
+      });
+      const cities = names(response).sort((a, b) => a.localeCompare(b));
+      if (cities.length > 0) citiesCache.set(cacheKey, cities);
       return cities;
     } catch {
       return [];

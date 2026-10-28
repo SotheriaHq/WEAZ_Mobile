@@ -1,4 +1,5 @@
 import { CustomOrderPriceBreakdown } from '@/components/orders/CustomOrderPriceBreakdown';
+import { CurrencyChargeNote, PriceEstimateText } from '@/components/currency/PriceEstimateText';
 import { Card } from '@/components/ui/Card';
 import React, { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -219,6 +220,9 @@ export default function MyBagSheet({ visible, onClose }: Props) {
                     brandName={item.brandName}
                     meta={metaParts.join(' · ')}
                     price={formatMarketPrice(item.itemTotal ?? item.unitPrice, cart?.currency)}
+                    breakdown={
+                      <PriceEstimateText amount={item.itemTotal ?? item.unitPrice} currency={cart?.currency} />
+                    }
                   />
                 );
               })}
@@ -281,6 +285,7 @@ export default function MyBagSheet({ visible, onClose }: Props) {
               <AppText variant="bodyBold">Total bag count</AppText>
               <AppText variant="bodyBold">{loading ? '…' : String(count.combinedCount)}</AppText>
             </View>
+            <CurrencyChargeNote />
             <AppText variant="caption" tone="muted">
               Payment opens through the secure provider and is verified by WIEZ before orders update.
             </AppText>

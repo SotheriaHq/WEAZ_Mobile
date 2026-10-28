@@ -224,6 +224,12 @@ export default function SettingsScreen() {
               drillDownPush('/settings/market-preferences' as never),
           },
           {
+            emoji: '💱',
+            title: 'Currency',
+            subtitle: 'See prices in your currency; you pay in Naira',
+            onPress: () => drillDownPush('/settings/currency' as never),
+          },
+          {
             emoji: '💳',
             title: 'Payment settings',
             subtitle: 'Checkout, receipts, and payment policy',
