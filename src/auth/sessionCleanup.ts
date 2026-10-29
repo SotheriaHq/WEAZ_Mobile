@@ -71,12 +71,20 @@ export async function clearMobilePrivateAsyncStorage() {
   }
 }
 
+/**
+ * `pushAccountToken` is the access token of the account signing out, captured
+ * before the session is cleared below. Push deactivation runs after that and
+ * is sent as this account; without it the request carried no credentials, was
+ * refused, and the phone kept receiving the previous account's notifications.
+ */
 export async function clearMobilePrivateSessionState({
   client = defaultQueryClient,
   deactivatePushToken = true,
+  pushAccountToken = null,
 }: {
   client?: QueryClient;
   deactivatePushToken?: boolean;
+  pushAccountToken?: string | null;
 } = {}) {
   // Coalesced reads are per-account; none may survive into the next user.
   clearCoalescedRequests();
@@ -105,7 +113,9 @@ export async function clearMobilePrivateSessionState({
     // The UI is already private before this network best-effort begins. Waiting
     // for token deactivation here made sign-out feel frozen on slow networks.
     deactivatePushToken
-      ? deactivateRegisteredPushTokenForLogout().catch(() => undefined)
+      ? deactivateRegisteredPushTokenForLogout({ asAccount: pushAccountToken }).catch(
+          () => undefined,
+        )
       : Promise.resolve(),
     // The on-disk half of the warm cache. One account's profile snapshot must
     // never greet the next person to sign in on this device.

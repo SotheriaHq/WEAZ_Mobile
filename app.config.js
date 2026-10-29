@@ -1,3 +1,5 @@
+const fs = require('node:fs');
+const path = require('node:path');
 const appJson = require('./app.json');
 
 function readString(value) {
@@ -27,6 +29,7 @@ module.exports = ({ config } = {}) => {
       android: {
       ...(baseConfig.android ?? {}),
       package: readString(process.env.EXPO_PUBLIC_ANDROID_PACKAGE) ?? 'com.wiez.wiez',
+      ...withGoogleServicesFile(baseConfig.android?.googleServicesFile),
     },
 
     plugins: withSentryPluginConfig(baseConfig.plugins),
@@ -34,6 +37,27 @@ module.exports = ({ config } = {}) => {
     extra,
   };
 };
+
+/**
+ * Firebase config for Android push.
+ *
+ * WIEZ sends pushes through Expo, and Expo delivers to Android phones through
+ * Firebase Cloud Messaging; there is no other channel to an Android phone.
+ * Without google-services.json compiled in, the phone cannot produce a push
+ * token at all, which is what "device could not register" was. The file is not
+ * a secret (Expo says it may be committed). The FCM service-account key that
+ * lets Expo send is a secret and belongs in EAS credentials, never here.
+ *
+ * Taken from `GOOGLE_SERVICES_JSON` (a path; EAS file variables provide one),
+ * else `./google-services.json` when present. Neither: unchanged, no push.
+ */
+function withGoogleServicesFile(configured) {
+  const fromEnv = readString(process.env.GOOGLE_SERVICES_JSON);
+  if (fromEnv) return { googleServicesFile: fromEnv };
+  if (configured) return { googleServicesFile: configured };
+  const local = path.join(__dirname, 'google-services.json');
+  return fs.existsSync(local) ? { googleServicesFile: './google-services.json' } : {};
+}
 
 /**
  * `app.json` registers the Sentry plugin as a bare string, which is why every

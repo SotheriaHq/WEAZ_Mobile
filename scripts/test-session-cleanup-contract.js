@@ -299,7 +299,12 @@ async function main() {
   assert.equal(skipPush.calls.deactivatePushToken, 0, 'no-session bootstrap should skip push deactivation');
 
   const authContextSource = fs.readFileSync(authContextPath, 'utf8');
-  assert.match(authContextSource, /clearMobilePrivateSessionState\(\{\s*client:\s*queryClient\s*\}\)/);
+  // Sign-out hands over the outgoing account's token: push deactivation runs
+  // after the session is cleared and must still be sent as that account.
+  assert.match(
+    authContextSource,
+    /clearMobilePrivateSessionState\(\{\s*client:\s*queryClient,\s*pushAccountToken:\s*token\s*\}\)/,
+  );
   assert.match(authContextSource, /deactivatePushToken:\s*false/);
   assert.match(authContextSource, /getCachedAuthUser\(stored\)/);
   assert.match(authContextSource, /setLocalSessionReady\(true\)[\s\S]*await validateToken\(\)/);

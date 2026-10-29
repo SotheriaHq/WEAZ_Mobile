@@ -77,6 +77,24 @@ jobs:
           node scripts/test-clipping-and-market-chrome-contract.js
           node scripts/check-perf-regressions.cjs
 
+      # Android push goes through Firebase Cloud Messaging, so the APK needs
+      # google-services.json compiled in or the phone never gets a push token.
+      # A committed file is used as is; otherwise the GOOGLE_SERVICES_JSON
+      # secret (the file's contents) is written here. app.config.js picks up
+      # ./google-services.json either way.
+      - name: Firebase config for push
+        env:
+          GOOGLE_SERVICES_JSON_CONTENT: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -f google-services.json ]; then
+            echo "Using the committed google-services.json."
+          elif [ -n "$GOOGLE_SERVICES_JSON_CONTENT" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON_CONTENT" > google-services.json
+            echo "Wrote google-services.json from the repository secret."
+          else
+            echo "::warning::No google-services.json: this APK cannot receive push notifications on Android."
+          fi
+
       # `android/` is gitignored and generated here, so the committed tree stays
       # managed-workflow and this cannot drift from app.config.js.
       - name: Prebuild Android project

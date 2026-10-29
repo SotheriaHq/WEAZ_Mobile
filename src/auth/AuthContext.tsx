@@ -538,8 +538,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSessionSettled(true);
     // This performs all in-memory isolation before its first await. Durable
     // storage and push cleanup continue safely after the guest UI is visible.
-    void clearMobilePrivateSessionState({ client: queryClient });
-  }, [refreshTokenState]);
+    // The outgoing account's token: push deactivation runs after the session
+    // above is cleared and must still be sent as that account.
+    void clearMobilePrivateSessionState({ client: queryClient, pushAccountToken: token });
+  }, [refreshTokenState, token]);
 
   /**
    * Stable `signOut`, for the same reason as `validateToken` below.
