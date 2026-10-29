@@ -7,6 +7,7 @@ import { drillDownPush } from '@/src/utils/mobileNavigation';
 
 import { ProfileApi, type UserProfile } from '@/src/api/ProfileApi';
 import { useAuth } from '@/src/auth/AuthContext';
+import { saveAnalyticsConsent, useConsent } from '@/src/privacy/consent';
 import { SettingsHeader, SettingsStateCard } from '@/components/settings/SettingsPrimitives';
 import { AppText } from '@/components/ui/AppText';
 import { tokens } from '@/src/styles/tokens';
@@ -90,11 +91,39 @@ function PrivacyToggleRow({
       </View>
       <Switch
         accessibilityRole="switch"
+        accessibilityLabel={label}
         accessibilityState={{ checked: value, disabled }}
         disabled={disabled}
         value={value}
         onValueChange={onToggle}
         trackColor={{ true: theme.colors.primary, false: theme.colors.border }}
+      />
+    </View>
+  );
+}
+
+/**
+ * The analytics choice for this install. Shown signed in or out: it is stored
+ * on the device, not the account, and guests generate signals too.
+ */
+function AnalyticsSection() {
+  const { theme } = useTheme();
+  const toast = useToast();
+  const { record } = useConsent();
+
+  return (
+    <View style={[styles.section, { borderBottomColor: theme.colors.border }]}>
+      <AppText variant="captionBold" tone="muted">ANALYTICS</AppText>
+      <PrivacyToggleRow
+        emoji="📊"
+        label="Usage analytics"
+        hint="What you view and tap shapes your feed, and we measure app speed. Never used for ads."
+        value={record?.analytics === true}
+        disabled={false}
+        onToggle={(next) => {
+          saveAnalyticsConsent(next);
+          toast.success(next ? 'Analytics are on. Thanks for helping.' : 'Analytics are off.');
+        }}
       />
     </View>
   );
@@ -216,6 +245,7 @@ export default function PrivacySettingsScreen() {
             actionTitle="Sign in"
             onAction={() => drillDownPush('/(auth)/login' as never)}
           />
+          <AnalyticsSection />
         </View>
       </SafeAreaView>
     );
@@ -231,6 +261,7 @@ export default function PrivacySettingsScreen() {
             actionTitle="Retry"
             onAction={() => void loadProfile()}
           />
+          <AnalyticsSection />
         </View>
       </SafeAreaView>
     );
@@ -300,6 +331,8 @@ export default function PrivacySettingsScreen() {
             <AppText variant="subtitle" tone="muted">›</AppText>
           </Pressable>
         </View>
+
+        <AnalyticsSection />
 
         <View style={[styles.section, styles.blockedSection, { borderBottomColor: theme.colors.border }]}>
           <AppText variant="captionBold" tone="muted" style={styles.sectionLabel}>BLOCKED USERS</AppText>

@@ -163,7 +163,7 @@ export default function SettingsScreen() {
           {
             emoji: '🛡️',
             title: 'Privacy controls',
-            subtitle: 'Visibility, blocked users',
+            subtitle: 'Visibility, analytics, blocked users',
             onPress: () => drillDownPush('/settings/privacy' as never),
           },
           {
@@ -222,6 +222,12 @@ export default function SettingsScreen() {
             subtitle: 'Hidden content and market reset controls',
             onPress: () =>
               drillDownPush('/settings/market-preferences' as never),
+          },
+          {
+            emoji: '💱',
+            title: 'Currency',
+            subtitle: 'See prices in your currency; you pay in Naira',
+            onPress: () => drillDownPush('/settings/currency' as never),
           },
           {
             emoji: '💳',

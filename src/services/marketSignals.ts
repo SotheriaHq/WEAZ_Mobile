@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { analyticsPermitted } from '@/src/privacy/consent';
 import { getCachedDeviceId, getDeviceId } from '@/src/utils/deviceId';
 
 import {
@@ -256,6 +257,8 @@ function buildNoisySignalKey(event: MarketSignalEvent) {
 }
 
 export function trackMarketSignal(event: MarketSignalEvent) {
+  // Discovery signals are analytics: nothing is recorded until they are allowed.
+  if (!analyticsPermitted()) return;
   void hydrateMarketSignalState();
   const targetId = String(event.targetId ?? '').trim();
   if (!targetId || !event.targetType || !event.signalType || !event.surface) return;
@@ -298,6 +301,7 @@ function getRetryDelay(retryCount: number) {
 }
 
 export async function flushMarketSignals() {
+  if (!analyticsPermitted()) return;
   await hydrateMarketSignalState();
   if (flushing || queue.length === 0) return;
 

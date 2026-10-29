@@ -48,6 +48,12 @@ jobs:
       - name: Customer paid-period expiry
         run: npm run test:customer-entitlement-expiry
 
+      - name: Analytics consent
+        run: npm run test:analytics-consent
+
+      - name: Display currency
+        run: npm run test:display-currency
+
       # Runway gates run first: they are pure-logic and fast, and a failing step
       # skips every step after it. `test:aspect-aware-media` below has been red
       # since the 2026-07-27 detail-first tiering change (its expectations still
@@ -100,6 +106,12 @@ jobs:
 
       - name: Design editor contract
         run: npm run test:design-editor-contract
+
+      - name: Independent category and garment proposals
+        run: npm run test:category-proposals
+
+      - name: Cross-platform refund presentation
+        run: npm run test:refund-presentation-contract
 
       - name: Store API contract
         run: npm run test:store-api-contract
