@@ -74,16 +74,9 @@ function TabItem({ tab, tabIndex, activeTab, swipeProgress, handlePress, handleT
     }
 
     return {
-      // Deeper and bolder on both sides of the state.
-      // Inactive was `medium` in `textMuted` — the lightest weight in the
-      // lightest tone, so the tabs a user has NOT selected barely registered as
-      // tappable at all. Inactive is now semiBold in `textSecondary`, and the
-      // active tab moves to bold, keeping the gap between them.
-      // `fontWeight` is emitted alongside the family because this is a raw
-      // `Animated.Text`, not `AppText`, so nothing else supplies it.
       fontFamily: isActive ? tokens.fontFamily.bold : tokens.fontFamily.semiBold,
       fontWeight: isActive ? '700' : '600',
-      color: isActive ? theme.colors.primary : theme.colors.textSecondary,
+      color: isActive ? (theme.colors.actionBrand ?? theme.colors.primary) : theme.colors.textSecondary,
     };
   }, [activeTab, swipeProgress, tab.key, tabIndex, theme]);
 
@@ -107,9 +100,6 @@ function TabItem({ tab, tabIndex, activeTab, swipeProgress, handlePress, handleT
       <Animated.Text
         style={[
           styles.tabLabel,
-          // `meta` (13px) rather than `caption` (12px): a tab is a primary
-          // navigation control, not supporting text, and 12px sat below
-          // everything it was navigating between.
           { fontSize: tokens.typography.meta.size, lineHeight: tokens.typography.meta.lineHeight },
           animatedLabelStyle,
         ]}
@@ -118,7 +108,7 @@ function TabItem({ tab, tabIndex, activeTab, swipeProgress, handlePress, handleT
       </Animated.Text>
 
       {typeof tab.badge === 'number' && tab.badge > 0 && (
-        <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
+        <View style={[styles.badge, { backgroundColor: theme.colors.actionBrand ?? theme.colors.primary }]}>
           <AppText variant="caption" tone="inverse" style={styles.badgeText}>
             {tab.badge > 99 ? '99+' : tab.badge}
           </AppText>
@@ -213,13 +203,13 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align =
     ],
     width:
       swipeProgress && indicatorLayouts.value.length === tabs.length
-        ? interpolate(
-            swipeProgress.value,
-            indicatorLayouts.value.map((_, index) => index),
-            indicatorLayouts.value.map((layout) => layout.width),
-            Extrapolation.CLAMP,
-          )
-        : underlineW.value,
+            ? interpolate(
+                swipeProgress.value,
+                indicatorLayouts.value.map((_, index) => index),
+                indicatorLayouts.value.map((layout) => layout.width),
+                Extrapolation.CLAMP,
+              )
+            : underlineW.value,
   }));
 
   const TabContainer = scrollable ? ScrollView : View;
@@ -235,7 +225,7 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align =
     : { style: styles.tabsContainer };
 
   return (
-    <View style={[styles.container, { borderBottomColor: theme.colors.border }]}>
+    <View style={[styles.container, { borderBottomColor: theme.colors.borderDefault ?? theme.colors.border }]}>
       <TabContainer {...containerProps}>
         {tabs.map((tab, index) => (
           <TabItem
@@ -252,9 +242,9 @@ export function Tabs({ tabs, activeTab, onTabChange, scrollable = false, align =
         ))}
       </TabContainer>
 
-      {/* Animated underline — primary accent */}
+      {/* Animated underline — semantic interactive accent */}
       <Animated.View
-        style={[styles.underline, { backgroundColor: theme.colors.primary }, underlineStyle]}
+        style={[styles.underline, { backgroundColor: theme.colors.actionBrand ?? theme.colors.primary }, underlineStyle]}
       />
     </View>
   );

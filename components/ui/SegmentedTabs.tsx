@@ -112,7 +112,7 @@ export function SegmentedTabs<TKey extends string>({
   return (
     <View
       accessibilityRole="tablist"
-      style={[styles.root, { borderBottomColor: theme.colors.border }, style]}
+      style={[styles.root, { borderBottomColor: theme.colors.borderDefault ?? theme.colors.border }, style]}
     >
       {items.map((item) => {
         const selected = item.key === value;
@@ -142,7 +142,7 @@ export function SegmentedTabs<TKey extends string>({
         style={[
           styles.indicator,
           {
-            backgroundColor: theme.colors.primary,
+            backgroundColor: theme.colors.actionBrand ?? theme.colors.primary,
             opacity: active ? 1 : 0,
             transform: [{ translateX }, { scaleX }],
           },

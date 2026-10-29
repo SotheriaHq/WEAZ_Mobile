@@ -114,8 +114,8 @@ export function CollapsibleSearch({
             styles.iconButton,
             collapsedVariant === 'bare' && styles.iconButtonBare,
             {
-              backgroundColor: collapsedVariant === 'bare' ? 'transparent' : theme.colors.surface,
-              borderColor: collapsedVariant === 'bare' ? 'transparent' : theme.colors.border,
+              backgroundColor: collapsedVariant === 'bare' ? 'transparent' : (theme.colors.surfaceCard ?? theme.colors.surface),
+              borderColor: collapsedVariant === 'bare' ? 'transparent' : (theme.colors.borderDefault ?? theme.colors.border),
               opacity: pressed ? 0.82 : 1,
             },
           ]}

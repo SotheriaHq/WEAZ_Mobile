@@ -79,8 +79,8 @@ function PatchRow({ brand }: { brand: PatchedBrand }) {
         </View>
       )}
       <View style={styles.patchCopy}>
-        <AppText variant="bodyBold" numberOfLines={1}>{identity.displayName}</AppText>
-        <AppText variant="captionRegular" tone="muted" numberOfLines={1}>
+        <AppText variant="bodyBold">{identity.displayName}</AppText>
+        <AppText variant="captionRegular" tone="muted">
           {identity.locationLabel || identity.handle || 'Patched brand'}
         </AppText>
       </View>

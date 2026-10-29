@@ -9,13 +9,33 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { AppText } from '@/components/ui/AppText';
 import { useTheme } from '@/src/theme/ThemeProvider';
 import { tokens } from '@/src/styles/tokens';
 import { MuseLoader } from '@/components/ui/MuseLoader';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+/**
+ * Canonical WIEZ Button Variants
+ * - primary   : High-contrast neutral action on Web; on Native preserved as brand/primary for backward compatibility.
+ * - brand     : WIEZ interactive accent (violet). Brand-owned CTAs (follow, add to bag, subscribe).
+ * - secondary : Tactile paper / neutral supporting action alongside primary (sunken Material & Surface Lab stone).
+ * - outline   : Bordered low/medium emphasis action.
+ * - ghost     : Borderless, minimal action in dense UI.
+ * - danger    : Destructive action.
+ * - link      : Textual navigation action.
+ * - neumorphic : Compatibility alias for tactile secondary action.
+ */
+export type ButtonVariant =
+  | 'primary'
+  | 'brand'
+  | 'secondary'
+  | 'outline'
+  | 'ghost'
+  | 'danger'
+  | 'link'
+  | 'neumorphic';
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
 
 type Props = {
@@ -31,6 +51,7 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   testID?: string;
+  accessibilityLabel?: string;
   /**
    * Opt out of the built-in single-fire guard for controls where distinct
    * rapid presses are a legitimate interaction (steppers, counters).
@@ -78,6 +99,7 @@ export function Button({
   style,
   textStyle,
   testID,
+  accessibilityLabel,
   allowRapidPress,
 }: Props) {
   const { theme } = useTheme();
@@ -85,9 +107,12 @@ export function Button({
   const pendingPressRef = React.useRef(false);
   const lastPressAtRef = React.useRef(0);
   const [pendingPress, setPendingPress] = React.useState(false);
+  const [isPressed, setIsPressed] = React.useState(false);
   const isBusy = loading || pendingPress;
   const isDisabled = disabled || isBusy;
+
   const scale = React.useRef(new Animated.Value(1)).current;
+  const translateY = React.useRef(new Animated.Value(0)).current;
 
   const handlePress = React.useCallback(() => {
     if (!onPress) return;
@@ -107,46 +132,52 @@ export function Button({
     }
   }, [allowRapidPress, onPress]);
 
-  const animatePress = React.useCallback(
-    (toValue: number, duration: number) => {
+  const handlePressIn = React.useCallback(() => {
+    if (!isDisabled) {
+      setIsPressed(true);
+      Animated.parallel([
+        Animated.timing(scale, {
+          toValue: 0.98,
+          duration: 80,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+        Animated.timing(translateY, {
+          toValue: 1.5,
+          duration: 80,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+      ]).start();
+    }
+  }, [isDisabled, scale, translateY]);
+
+  const handlePressOut = React.useCallback(() => {
+    setIsPressed(false);
+    Animated.parallel([
       Animated.timing(scale, {
-        toValue,
-        duration,
+        toValue: 1,
+        duration: 140,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
         isInteraction: false,
-      }).start();
-    },
-    [scale],
-  );
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 140,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+        isInteraction: false,
+      }),
+    ]).start();
+  }, [scale, translateY]);
 
-  const handlePressIn = React.useCallback(() => {
-    if (!isDisabled) {
-      animatePress(0.96, 80);
-    }
-  }, [animatePress, isDisabled]);
-
-  const handlePressOut = React.useCallback(() => {
-    animatePress(1, 140);
-  }, [animatePress]);
-
-  /**
-   * Disabled is a state of its own, not the enabled state turned down.
-   *
-   * Every variant used to keep its own fill and lean on `opacity: 0.55`, so a
-   * disabled primary was brand purple at 55% — still the loudest, most
-   * obviously pressable thing on the screen, and then it refused the press.
-   * The Continue and Save buttons on the create flows spend most of their life
-   * disabled, so that was the app's most common button reading as its most
-   * inviting one. Disabled now drops to neutral chrome in both themes and the
-   * brand colour is reserved for controls that will actually do something.
-   *
-   * `loading` is deliberately NOT this. A busy button is working on the press
-   * it was given, so it keeps its colour and shows a spinner.
-   */
   const isInert = Boolean(disabled) && !isBusy;
+  const buttonTokens = theme.colors.button;
 
-  // ── Container style per variant (fully theme-adaptive) ──────────────────────
+  // ── Container style per variant (theme-adaptive + tactile pressed states) ───
   const variantContainer: ViewStyle = (() => {
     const base: ViewStyle = {
       borderRadius: tokens.radius.lg,
@@ -160,55 +191,115 @@ export function Button({
     if (isInert) {
       return {
         ...base,
-        backgroundColor: variant === 'outline' ? 'transparent' : theme.colors.disabledSurface,
-        borderColor: theme.colors.disabledBorder,
+        backgroundColor:
+          variant === 'outline' || variant === 'ghost' || variant === 'link'
+            ? 'transparent'
+            : buttonTokens.surface.disabled,
+        borderColor:
+          variant === 'ghost' || variant === 'link'
+            ? 'transparent'
+            : buttonTokens.border.disabled,
+        borderWidth: variant === 'ghost' || variant === 'link' ? 0 : 2,
       };
     }
 
-    switch (variant) {
+    const effectiveVariant = variant === 'neumorphic' ? 'secondary' : variant;
+
+    switch (effectiveVariant) {
+      case 'brand':
       case 'primary':
-        return { ...base, backgroundColor: theme.colors.primary, borderColor: theme.colors.primary };
+        // Native primary maps to brand color for backward compatibility
+        return {
+          ...base,
+          backgroundColor: isPressed ? buttonTokens.surface.brandPressed : buttonTokens.surface.brand,
+          borderColor: isPressed ? buttonTokens.surface.brandPressed : buttonTokens.surface.brand,
+        };
       case 'secondary':
         return {
           ...base,
-          backgroundColor: theme.colors.surfaceAlt,
-          borderColor: theme.colors.border,
-          borderTopColor: theme.colors.border,
-          borderLeftColor: theme.colors.border,
-          borderBottomColor: theme.colors.surface,
-          borderRightColor: theme.colors.surface,
+          backgroundColor: isPressed ? buttonTokens.surface.secondaryPressed : buttonTokens.surface.secondary,
+          borderTopColor: isPressed ? buttonTokens.border.secondaryTopPressed : buttonTokens.border.secondaryTop,
+          borderLeftColor: isPressed ? buttonTokens.border.secondaryTopPressed : buttonTokens.border.secondaryTop,
+          borderBottomColor: isPressed ? buttonTokens.border.secondaryBottomPressed : buttonTokens.border.secondaryBottom,
+          borderRightColor: isPressed ? buttonTokens.border.secondaryBottomPressed : buttonTokens.border.secondaryBottom,
         };
       case 'outline':
-        return { ...base, backgroundColor: theme.colors.surface, borderColor: theme.colors.border };
+        return {
+          ...base,
+          backgroundColor: isPressed ? buttonTokens.surface.outlinePressed : buttonTokens.surface.outline,
+          borderColor: isPressed ? buttonTokens.border.outlinePressed : buttonTokens.border.outline,
+        };
       case 'ghost':
-        return { ...base, backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border };
+        return {
+          ...base,
+          backgroundColor: isPressed ? theme.colors.surfaceSubtle : 'transparent',
+          borderColor: 'transparent',
+          borderWidth: 0,
+        };
+      case 'link':
+        return {
+          ...base,
+          backgroundColor: 'transparent',
+          borderColor: 'transparent',
+          borderWidth: 0,
+        };
       case 'danger':
-        return { ...base, backgroundColor: theme.colors.danger, borderColor: theme.colors.danger };
+        return {
+          ...base,
+          backgroundColor: isPressed ? buttonTokens.surface.dangerPressed : buttonTokens.surface.danger,
+          borderColor: isPressed ? buttonTokens.surface.dangerPressed : buttonTokens.surface.danger,
+        };
       default:
         return base;
     }
   })();
 
-  // ── Text color per variant ───────────────────────────────────────────────────
   const variantTone = (() => {
     if (isInert) return 'disabled' as const;
     switch (variant) {
       case 'secondary':
+      case 'neumorphic':
       case 'outline':
       case 'ghost':
         return 'secondary' as const;
+      case 'link':
+        return 'primary' as const;
+      case 'brand':
       case 'primary':
-        return 'inverse' as const;
       case 'danger':
       default:
         return 'inverse' as const;
     }
   })();
 
+  // ── Tactile Inset Depth Overlay (calibrated dual-tone depth emulation) ─────
+  const isSecondary = variant === 'secondary' || variant === 'neumorphic';
+  const showTactileOverlay =
+    !isInert &&
+    !isBusy &&
+    (isSecondary ||
+      (isPressed &&
+        (variant === 'brand' || variant === 'primary' || variant === 'danger' || variant === 'outline')));
+
+  const tactileOverlayColors: readonly [string, string, ...string[]] = (() => {
+    if (isSecondary) {
+      return isPressed
+        ? buttonTokens.tactile.secondaryPressedOverlay
+        : buttonTokens.tactile.secondaryRestOverlay;
+    }
+    if (variant === 'outline') {
+      return buttonTokens.tactile.outlineOverlay;
+    }
+    return buttonTokens.tactile.primaryOverlay;
+  })();
+
   return (
-    <Animated.View style={[styles.scaleWrap, { transform: [{ scale }] }]}>
+    <Animated.View style={[styles.scaleWrap, { transform: [{ scale }, { translateY }] }]}>
       <Pressable
         testID={testID}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? title}
+        accessibilityState={{ disabled: isDisabled, busy: isBusy }}
         onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -220,13 +311,20 @@ export function Button({
             height: sz.height,
             paddingHorizontal: sz.paddingHorizontal,
             width: fullWidth ? '100%' : undefined,
-            // Inert buttons carry their own neutral palette, so the blanket
-            // fade is only for the busy state now.
             opacity: isInert ? 1 : isBusy ? 0.75 : 1,
           },
           style,
         ]}
       >
+        {showTactileOverlay && (
+          <LinearGradient
+            colors={tactileOverlayColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.tactileOverlay}
+            pointerEvents="none"
+          />
+        )}
         <View style={styles.content}>
           {left}
           <View style={styles.labelSlot}>
@@ -263,17 +361,17 @@ const styles = StyleSheet.create({
   },
   container: {
     minWidth: 44,
-    /*
-      The busy spinner is an absolute overlay sized by the platform, not by us,
-      and it sits over a label slot only as big as the (hidden) title. On a
-      short title or a small size that intrinsic spinner is wider and taller
-      than the slot it covers, so it painted past the button's rounded edge.
-
-      The button has no shadow, so clipping here costs nothing and makes
-      "loading escapes the button" structurally impossible rather than
-      dependent on how large a given platform draws its indicator.
-    */
     overflow: 'hidden',
+    position: 'relative',
+  },
+  tactileOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 10,
+    borderTopLeftRadius: tokens.radius.lg - 2,
+    borderTopRightRadius: tokens.radius.lg - 2,
   },
   content: {
     flexDirection: 'row',
@@ -287,9 +385,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 1,
-    // Room for the spinner that replaces the title. Without a floor the slot
-    // collapses to the width of a short label and the overlay has nowhere to
-    // sit; with it, the indicator is centred in space that actually exists.
     minWidth: 20,
   },
   loaderOverlay: {
