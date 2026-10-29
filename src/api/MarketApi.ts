@@ -581,7 +581,7 @@ const summarizeUrl = (value: string) => {
       hostname,
       isLoopback,
       isPrivateLan,
-      isS3: hostname.includes('amazonaws.com') || hostname.includes('.s3.'),
+      isR2: /(?:^|\.)r2\.cloudflarestorage\.com$/.test(hostname),
       isSigned:
         parsed.searchParams.has('X-Amz-Signature') ||
         parsed.searchParams.has('Signature') ||

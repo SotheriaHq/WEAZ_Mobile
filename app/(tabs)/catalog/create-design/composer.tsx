@@ -29,6 +29,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import { drillDownPush } from '@/src/utils/mobileNavigation';
 import { useQueryClient } from '@tanstack/react-query';
+import { DesignTaxonomyProposalField } from '@/src/features/design-editor/DesignTaxonomyProposalField';
 
 import { AppBackButton } from '@/components/ui/AppBackButton';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
@@ -161,6 +162,7 @@ export default function CreateDesignComposerScreen() {
     save,
     saveState,
     canSaveDraft,
+    activeDesignId,
     isEditMode,
     pickMedia,
     clearPermissionIssue,
@@ -253,9 +255,10 @@ export default function CreateDesignComposerScreen() {
     selectedCategory?.subCategories.find(
       (entry) => entry.id === form.subCategoryId,
     ) ?? null;
-  const categoryValue = selectedCategory?.name ?? 'Select';
+  const hasPendingTaxonomy=Boolean(form.pendingCategoryProposal?.garmentTypeName&&form.pendingCategoryProposal.status!=='REJECTED');
+  const categoryValue = form.pendingCategoryProposal?.name ?? selectedCategory?.name ?? 'Select';
   const garmentTypeValue =
-    selectedSubCategory?.name ??
+    form.pendingCategoryProposal?.garmentTypeName ?? selectedSubCategory?.name ??
     (selectedCategory ? 'Select' : 'Choose item first');
 
   const categoryOptions = useMemo(
@@ -467,8 +470,8 @@ export default function CreateDesignComposerScreen() {
       missing.push(`Selected media (${slotText})`);
     }
     if (form.title.trim().length === 0) missing.push('Title');
-    if (!form.categoryId) missing.push('What is it?');
-    if (!form.subCategoryId) missing.push('Garment type');
+    if (!form.categoryId&&!hasPendingTaxonomy) missing.push('What is it?');
+    if (!form.subCategoryId&&!hasPendingTaxonomy) missing.push('Garment type');
     if (!form.audience) missing.push('Who is it for?');
     if (selectedDiscoveryFilterCount === 0) missing.push('Style details');
     if (selectedTags.length === 0) missing.push('Tags');
@@ -493,6 +496,7 @@ export default function CreateDesignComposerScreen() {
     customOrderFieldErrors,
     form.audience,
     form.categoryId,
+    hasPendingTaxonomy,
     form.customOrderEnabled,
     form.subCategoryId,
     form.title,
@@ -935,8 +939,8 @@ export default function CreateDesignComposerScreen() {
               title="What is it?"
               required
               value={categoryValue}
-              valueTone={form.categoryId ? 'muted' : 'danger'}
-              valueState={form.categoryId ? 'selected' : 'error'}
+              valueTone={form.categoryId||hasPendingTaxonomy ? 'muted' : 'danger'}
+              valueState={form.categoryId||hasPendingTaxonomy ? 'selected' : 'error'}
               onPress={() => openCategorySheet('category')}
             />
             <OptionRow
@@ -944,10 +948,12 @@ export default function CreateDesignComposerScreen() {
               title="Garment type"
               required
               value={garmentTypeValue}
-              valueTone={form.subCategoryId ? 'muted' : 'danger'}
-              valueState={form.subCategoryId ? 'selected' : 'error'}
+              valueTone={form.subCategoryId||hasPendingTaxonomy ? 'muted' : 'danger'}
+              valueState={form.subCategoryId||hasPendingTaxonomy ? 'selected' : 'error'}
               onPress={() => openCategorySheet('subcategory')}
             />
+            <DesignTaxonomyProposalField value={form.pendingCategoryProposal} scopeKey={activeDesignId??'new'}
+              disabled={saveState.action!==null} onChange={proposal=>updateField('pendingCategoryProposal',proposal)} />
             <OptionRow
               leading="⚙️"
               title="Hashtags"

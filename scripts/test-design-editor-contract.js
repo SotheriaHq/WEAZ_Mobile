@@ -53,13 +53,8 @@ function main() {
     resolvePresignedUploadMethod,
   } = loadDesignApi();
 
-  assert.equal(
-    resolvePresignedUploadMethod({ uploadFields: { key: 'uploads/design.jpg' } }),
-    'POST',
-    'Backend presigned POST responses without an explicit method must upload with POST.',
-  );
-  assert.equal(resolvePresignedUploadMethod({ method: 'PUT', uploadFields: { key: 'ignored' } }), 'PUT');
-  assert.equal(resolvePresignedUploadMethod({}), 'PUT');
+  assert.equal(resolvePresignedUploadMethod({ method: 'PUT' }), 'PUT');
+  for (const method of [undefined, 'POST', 'GET']) assert.throws(() => resolvePresignedUploadMethod({ method }), /Upload configuration is invalid/);
 
   const designApiSource = fs.readFileSync(designApiPath, 'utf8');
   assert.match(designApiSource, /apiClient\.post\('\/designs\/initialize'/);

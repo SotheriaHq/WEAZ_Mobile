@@ -55,7 +55,7 @@ const {
 } = loadModule(structuralSharingPath);
 
 const BASE =
-  'https://weaz-sit.s3.us-east-1.amazonaws.com/POST_IMAGE/user_1/cover.jpg';
+  'https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/wiez-sit-media/POST_IMAGE/user_1/cover.jpg';
 
 /** A presigned GET shaped exactly like the ones UploadService issues. */
 const signed = (issuedAt, signature, expiresSeconds = 604800) =>

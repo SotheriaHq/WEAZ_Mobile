@@ -31,8 +31,7 @@ export function isStorageProviderUrl(value?: string | null): boolean {
   const authority = /^https?:\/\/([^/?#]+)/i.exec(value)?.[1] ?? '';
   if (authority.includes('@')) return false;
   const hostname = authority.split(':')[0].toLowerCase();
-  return /(?:^|\.)amazonaws\.com(?:\.cn)?$/.test(hostname)
-    || /(?:^|\.)r2\.cloudflarestorage\.com$/.test(hostname)
+  return /(?:^|\.)r2\.cloudflarestorage\.com$/.test(hostname)
     || /(?:^|\.)r2\.dev$/.test(hostname);
 }
 
@@ -61,12 +60,18 @@ export function getMediaUrlExpiryMs(value?: string | null): number | null {
   return null;
 }
 
+function isRetiredStorageUrl(value: string): boolean {
+  const authority = /^https?:\/\/([^/?#]+)/i.exec(value)?.[1] ?? '';
+  const hostname = authority.split(':')[0].toLowerCase();
+  return /(?:^|\.)(?:amazonaws\.com(?:\.cn)?|cloudfront\.net)$/.test(hostname);
+}
+
 export function isRenewableMediaUrl(value?: string | null): boolean {
-  return Boolean(value && (isStorageProviderUrl(value) || hasMediaUrlSignature(value)));
+  return Boolean(value && !isRetiredStorageUrl(value) && (isStorageProviderUrl(value) || hasMediaUrlSignature(value)));
 }
 
 export function isUsableMediaUrl(value?: string | null, now = Date.now(), skew = MEDIA_URL_REFRESH_SKEW_MS): boolean {
-  if (!value) return false;
+  if (!value || isRetiredStorageUrl(value)) return false;
   if (/^(?:blob:|file:|content:|asset:|data:image\/)/i.test(value)) return true;
   if (!/^https?:\/\//i.test(value)) return false;
   if (isStorageProviderUrl(value) && !hasMediaUrlSignature(value)) return false;

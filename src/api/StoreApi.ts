@@ -1,3 +1,4 @@
+import { isStorageProviderUrl, hasMediaUrlSignature } from '@/src/utils/mediaUrlPolicy';
 import type { BrandQueueSummary } from './CustomOrderQueueApi';
 import { apiClient } from '@/src/api/httpClient';
 import type {
@@ -486,13 +487,12 @@ const mediaUrlPath = (url: string | null): string | null => {
  * carries extra photos still contributes them.
  *
  * Merging fills gaps and never overwrites, except that a resolved URL beats a
- * raw one: the raw S3 url is not fetchable by the client, so where both exist
+ * raw one: the raw R2 URL is not fetchable by the client, so where both exist
  * the one that renders wins.
  */
 const isRawStorageUrl = (url: string | null): boolean => {
   if (!url) return false;
-  const lower = url.toLowerCase();
-  return lower.includes('.s3.') || lower.includes('amazonaws.com');
+  return isStorageProviderUrl(url) && !hasMediaUrlSignature(url);
 };
 
 /** Every path this entry is known by, for identity comparison. */

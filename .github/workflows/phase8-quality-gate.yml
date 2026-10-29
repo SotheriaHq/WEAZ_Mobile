@@ -107,6 +107,12 @@ jobs:
       - name: Design editor contract
         run: npm run test:design-editor-contract
 
+      - name: Independent category and garment proposals
+        run: npm run test:category-proposals
+
+      - name: Cross-platform refund presentation
+        run: npm run test:refund-presentation-contract
+
       - name: Store API contract
         run: npm run test:store-api-contract
 

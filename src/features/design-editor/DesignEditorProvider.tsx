@@ -1,4 +1,5 @@
 import { useScopedMediaPicker } from '@/src/hooks/useScopedMediaPicker';
+import { normalizeCategoryProposal, type CategoryProposal } from '@/src/api/CategorySuggestionsApi';
 import React, {
   createContext,
   useCallback,
@@ -85,6 +86,7 @@ type FormState = {
   visibility: Visibility;
   audience: Audience;
   categoryId: string;
+  pendingCategoryProposal: CategoryProposal | null;
   subCategoryId: string;
   minPrice: string;
   maxPrice: string;
@@ -190,6 +192,7 @@ const INITIAL_FORM: FormState = {
   visibility: 'PUBLIC',
   audience: 'EVERYBODY',
   categoryId: '',
+  pendingCategoryProposal: null,
   subCategoryId: '',
   minPrice: '',
   maxPrice: '',
@@ -224,6 +227,7 @@ function restoreRecoveryForm(value: Record<string, unknown>): FormState {
       (restored as Record<keyof FormState, unknown>)[key] = candidate;
     }
   });
+  restored.pendingCategoryProposal = normalizeCategoryProposal(value.pendingCategoryProposal);
   return restored;
 }
 
@@ -248,6 +252,7 @@ function syncFormFromDetail(detail: DesignDetail): FormState {
     visibility: detail.visibility,
     audience: detail.type,
     categoryId: detail.categoryId ?? '',
+    pendingCategoryProposal: detail.pendingCategoryProposal ?? null,
     subCategoryId: detail.subCategoryId ?? '',
     minPrice: typeof detail.minPrice === 'number' ? String(detail.minPrice) : '',
     maxPrice: typeof detail.maxPrice === 'number' ? String(detail.maxPrice) : '',
@@ -304,7 +309,7 @@ function hasMeaningfulDraftContent(form: FormState, tags: string[], filterSelect
   if (form.title.trim().length > 0) return true;
   if (form.description.trim().length > 0) return true;
   if (tags.length > 0) return true;
-  if (Boolean(form.categoryId) || Boolean(form.subCategoryId)) return true;
+  if (Boolean(form.categoryId) || Boolean(form.subCategoryId) || Boolean(form.pendingCategoryProposal)) return true;
   if (form.minPrice.trim().length > 0 || form.maxPrice.trim().length > 0) return true;
   if (form.visibility !== 'PUBLIC') return true;
   if (form.audience !== 'EVERYBODY') return true;
@@ -424,8 +429,9 @@ function getPublishValidationMessage({
   if (assets.length < DESIGN_REQUIRED_MEDIA_COUNT) return 'Add Front, Back, Left Side, and Right Side media before previewing.';
   if (assets.length > DESIGN_EDITOR_MAX_MEDIA) return 'Remove extra media before previewing.';
   if (form.title.trim().length === 0) return 'Add a title before previewing.';
-  if (!form.categoryId) return 'Choose what this item is.';
-  if (!form.subCategoryId) return 'Choose a garment type.';
+  const hasPendingPair = Boolean(form.pendingCategoryProposal?.garmentTypeName && form.pendingCategoryProposal.status !== 'REJECTED');
+  if (!form.categoryId && !hasPendingPair) return 'Choose what this item is, or propose a category and garment type.';
+  if (!form.subCategoryId && !hasPendingPair) return 'Choose a garment type.';
   if (!form.audience) return 'Choose who this item is for.';
   if (!form.targetAgeGroup) return 'Choose an age group.';
   if (filterValueIds.length === 0) return 'Add at least one style detail.';
@@ -908,6 +914,8 @@ export function DesignEditorProvider({
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => {
       const next: FormState = { ...prev, [key]: value };
+      if (key === 'categoryId' || key === 'subCategoryId') next.pendingCategoryProposal = null;
+      if (key === 'pendingCategoryProposal' && value) { next.categoryId=''; next.subCategoryId=''; }
 
       if (key === 'minPrice') {
         const nextDefaultBaseCharge = String(value ?? '').trim();
@@ -1201,6 +1209,7 @@ export function DesignEditorProvider({
           description: form.description,
           visibility: form.visibility,
           categoryId: form.categoryId || undefined,
+          pendingCategorySuggestionId: form.pendingCategoryProposal?.id ?? null,
           subCategoryId: form.subCategoryId || undefined,
           type: form.audience,
           tags,
