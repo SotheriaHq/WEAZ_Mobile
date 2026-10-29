@@ -153,4 +153,15 @@ const intent = fs.readFileSync(path.join(root, 'app/+native-intent.tsx'), 'utf8'
 assert.ok(intent.indexOf('resolveMobileAuthRoute(path)') < intent.indexOf('nativePathForWebLink('), 'auth links first');
 assert.match(intent, /claimFreshLaunchUrl\(path\)/);
 
+// The running app's Linking listener sees the same App Link. It must leave it
+// to +native-intent, or it builds a routeless notification and replaces the
+// opened screen with the notifications list.
+const deepLinks = fs.readFileSync(path.join(root, 'src/utils/notificationRouting.ts'), 'utf8');
+const handler = deepLinks.slice(deepLinks.indexOf('const handleDeepLink = useCallback('));
+assert.ok(
+  handler.indexOf('nativePathForWebLink(url)') > 0 &&
+    handler.indexOf('nativePathForWebLink(url)') < handler.indexOf('buildNotificationFromPushData({ targetUrl: url })'),
+  'handleDeepLink must skip claimed web links before treating a URL as a notification',
+);
+
 console.log(`app link routing contract: ${expectations.length} link shapes, all checks passed`);
