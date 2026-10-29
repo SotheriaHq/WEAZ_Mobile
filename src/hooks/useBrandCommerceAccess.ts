@@ -18,5 +18,5 @@ export function useBrandCommerceAccess() {
   });
   const expired = useCustomerEntitlementExpiry(query.data, query.dataUpdatedAt, user?.id, brandId, canManage);
   const data = useMemo(() => !canManage ? undefined : expired && query.data ? { ...query.data, canConfigureCustomers: false, effectiveMinimumOrders: 1 } : query.data, [canManage, expired, query.data]);
-  return { ...query, data, brandId, canManage, entitlementExpired: canManage && expired };
+  return { ...query, data, actorId: user?.id, brandId, canManage, entitlementExpired: canManage && expired };
 }

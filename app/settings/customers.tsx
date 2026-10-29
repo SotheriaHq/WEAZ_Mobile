@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,25 +19,47 @@ export default function CustomerSettings() {
   const client = useQueryClient();
   const { theme } = useTheme();
   const toast = useToast();
-  const [minimum, setMinimum] = useState("3");
-  const [saving, setSaving] = useState(false);
+  const scope = `${access.actorId}:${access.brandId}`;
+  const currentScope = useRef({ key: scope, epoch: 0, mounted: true });
+  if (currentScope.current.key !== scope) {
+    currentScope.current = { key: scope, epoch: currentScope.current.epoch + 1, mounted: true };
+  }
+  const [draft, setDraft] = useState<{ scope: string; value: string } | null>(null);
+  const minimum = draft?.scope === scope ? draft.value : String(access.data?.customerMinimumOrders ?? 3);
+  const [pendingSave, setPendingSave] = useState<{ scope: string; token: symbol } | null>(null);
+  const saving = pendingSave?.scope === scope;
   useEffect(() => {
-    if (access.data) setMinimum(String(access.data.customerMinimumOrders));
-  }, [access.data]);
+    currentScope.current.mounted = true;
+    setDraft(null);
+    return () => {
+      currentScope.current.mounted = false;
+      currentScope.current.epoch++;
+    };
+  }, [scope]);
   const enabled = access.data?.canConfigureCustomers === true;
   const valid =
     /^\d+$/.test(minimum) && Number(minimum) >= 1 && Number(minimum) <= 1000;
   const save = async () => {
-    if (!access.brandId || !enabled || !valid || saving) return;
-    setSaving(true);
+    if (!access.canManage || !access.brandId || !enabled || !valid || saving) return;
+    const epoch = currentScope.current.epoch;
+    const token = Symbol("customer-settings-save");
+    const isCurrent = () => currentScope.current.mounted &&
+      currentScope.current.key === scope && currentScope.current.epoch === epoch;
+    setPendingSave({ scope, token });
     try {
-      await BrandCustomersApi.update(access.brandId, Number(minimum));
-      await client.invalidateQueries({ queryKey: ["brand-commerce-access"] });
-      toast.success("Customer settings saved");
+      const saved = await BrandCustomersApi.update(access.brandId, Number(minimum));
+      if (!isCurrent()) return;
+      client.setQueryData(["brand-commerce-access", access.actorId, access.brandId], saved);
+      setDraft(null);
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["brand-commerce-access", access.actorId, access.brandId] }),
+        client.invalidateQueries({ queryKey: ["brand-customers", access.actorId, access.brandId] }),
+      ]);
+      if (isCurrent()) toast.success("Customer settings saved");
     } catch {
-      toast.error("Could not save customer settings. Try again.");
+      if (isCurrent()) toast.error("Could not save customer settings. Try again.");
     } finally {
-      setSaving(false);
+      setPendingSave((pending) => pending?.token === token ? null : pending);
     }
   };
   return (
@@ -95,7 +117,7 @@ export default function CustomerSettings() {
               label="Minimum paid orders"
               hideLabel
               value={minimum}
-              onChangeText={setMinimum}
+              onChangeText={(value) => setDraft({ scope, value })}
               keyboardType="number-pad"
               editable={enabled && !saving}
               accessibilityLabel="Minimum paid orders"
