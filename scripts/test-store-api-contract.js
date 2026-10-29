@@ -191,7 +191,7 @@ async function main() {
     type change, just a wrong count in a row of dots) and a source-text
     assertion would not have caught it.
   */
-  const RAW = (n) => `https://bucket.s3.eu-west-1.amazonaws.com/products/p${n}.webp`;
+  const RAW = (n) => `https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/wiez-sit-media/products/p${n}.webp`;
   const DISPLAY = (n) => `https://cdn.test/media/file-${n}?X-Amz-Signature=abc${n}`;
   const photoCount = 5;
 
@@ -229,7 +229,7 @@ async function main() {
     'the file id must survive the merge — it is what re-signs an expired URL',
   );
   assert.ok(
-    dualAliasItem.images.every((entry) => !String(entry.url).includes('amazonaws.com')),
+    dualAliasItem.images.every((entry) => !String(entry.url).includes('r2.cloudflarestorage.com')),
     'the RESOLVED url must win over the raw storage url; the raw one is not fetchable by the client',
   );
 

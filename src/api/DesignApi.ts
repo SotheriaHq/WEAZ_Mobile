@@ -257,7 +257,7 @@ type PresignedUpload = {
   uploadUrl: string;
   uploadFields?: Record<string, string> | null;
   uploadHeaders?: Record<string, string> | null;
-  method?: 'POST' | 'PUT';
+  method: 'PUT';
   viewSlot?: BackendMediaViewSlot | string | null;
 };
 
@@ -583,8 +583,9 @@ const buildMetadata = (payload: DesignSavePayload) => ({
   targetAgeGroup: payload.targetAgeGroup,
 });
 
-export function resolvePresignedUploadMethod(upload: Pick<PresignedUpload, 'method' | 'uploadFields'>): 'POST' | 'PUT' {
-  return upload.method ?? (upload.uploadFields ? 'POST' : 'PUT');
+export function resolvePresignedUploadMethod(upload: { method?: unknown }): 'PUT' {
+  if (upload.method !== 'PUT') throw new Error('Upload configuration is invalid. Please retry.');
+  return 'PUT';
 }
 
 async function uploadDesignAsset(
@@ -593,97 +594,12 @@ async function uploadDesignAsset(
 ): Promise<UploadCompletion> {
   const method = resolvePresignedUploadMethod(upload);
 
-  if (method === 'POST') {
-    // S3 presigned POST (createPresignedPost). The signed policy fields MUST be
-    // appended BEFORE the file, and the file part MUST be appended last.
-    const formData = new FormData();
-    for (const [key, value] of Object.entries(upload.uploadFields ?? {})) {
-      formData.append(key, String(value));
-    }
-    // The S3 policy pins `$Content-Type` to the server's trusted content type
-    // (the `Content-Type` value inside uploadFields). The multipart file part MUST
-    // carry that exact same type, otherwise S3 rejects with an access-denied /
-    // policy-condition error. Do NOT use the raw asset mimeType here — it may have
-    // been normalized server-side (e.g. image/jpg -> image/jpeg) or changed by
-    // compression, which would break the `["eq", "$Content-Type", ...]` condition.
-    const signedContentType =
-      (upload.uploadFields?.['Content-Type'] as string | undefined) ??
-      asset.mimeType ??
-      'application/octet-stream';
-    formData.append('file', {
-      uri: String(asset.uri),
-      type: String(signedContentType),
-      name: String(asset.fileName || `upload-${Date.now()}.bin`),
-    } as any);
-
-    // CRITICAL native upload path: use XMLHttpRequest, NOT the global fetch.
-    // On Expo SDK 56 the global `fetch` is Expo's "winter" fetch, whose
-    // convertFormData does NOT support React Native's `{ uri, name, type }` file
-    // parts — it throws "Unsupported FormDataPart implementation" (it only accepts
-    // Blob/File). React Native's XMLHttpRequest streams `{ uri }` parts natively
-    // from disk AND sets `multipart/form-data; boundary=...` automatically (we must
-    // NOT set Content-Type ourselves or the boundary is dropped and S3 can't parse
-    // the body). XHR is used directly (not the axios apiClient) so no JWT headers
-    // attach to the S3 POST.
-    await new Promise<void>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', upload.uploadUrl);
-      const uploadHost = (() => {
-        try {
-          return new URL(upload.uploadUrl).host;
-        } catch {
-          return null;
-        }
-      })();
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
-          return;
-        }
-        // S3 returns an XML body explaining exactly why (EntityTooSmall = 0-byte
-        // upload, AccessDenied = policy/Content-Type mismatch, etc.).
-        const detail = xhr.responseText || '';
-        const s3Code = /<Code>([^<]+)<\/Code>/.exec(detail)?.[1] ?? null;
-        const s3Message = /<Message>([^<]+)<\/Message>/.exec(detail)?.[1] ?? null;
-        console.warn('[design-upload] S3 POST rejected', {
-          status: xhr.status,
-          s3Code,
-          s3Message,
-          uploadHost,
-          fileName: asset.fileName,
-          declaredType: signedContentType,
-          assetMimeType: asset.mimeType,
-        });
-        // Map the most common, user-actionable S3 rejection to a clear message;
-        // everything else stays generic (and is scrubbed upstream).
-        if (s3Code === 'EntityTooLarge') {
-          reject(
-            new Error(
-              'This image is too large. Please choose a photo under 2 MB (or update the app to enable automatic compression).',
-            ),
-          );
-          return;
-        }
-        reject(new Error(`S3 upload failed (${xhr.status}${s3Code ? ` ${s3Code}` : ''})`));
-      };
-      xhr.onerror = () => {
-        console.warn('[design-upload] S3 POST transport error', {
-          status: xhr.status,
-          uploadHost,
-          fileName: asset.fileName,
-          hasUri: Boolean(asset.uri),
-        });
-        reject(new Error('S3 upload failed (network)'));
-      };
-      xhr.send(formData as any);
-    });
-  } else {
     // Native File bodies avoid a full JavaScript Blob copy, especially for video.
     const body = Platform.OS === 'web'
       ? await (await fetch(asset.uri)).blob()
       : new File(asset.uri);
     const response = await expoFetch(upload.uploadUrl, {
-      method: 'PUT',
+      method,
       headers: upload.uploadHeaders ?? { 'Content-Type': asset.mimeType },
       body,
     });
@@ -691,7 +607,6 @@ async function uploadDesignAsset(
     if (!response.ok) {
       throw new Error(`Upload failed with status ${response.status}`);
     }
-  }
 
   return {
     fileId: upload.fileId,

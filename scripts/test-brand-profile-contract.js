@@ -220,7 +220,7 @@ async function main() {
     },
   });
   const resolvedBannerUri = await imageResolver.resolveImageUri({
-    src: 'https://voguely.s3.eu-north-1.amazonaws.com/BANNER_IMAGE/brand/banner.jpg',
+    src: 'https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/wiez-sit-media/BANNER_IMAGE/brand/banner.jpg',
     fileId: 'banner-file-id',
   });
 

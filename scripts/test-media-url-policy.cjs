@@ -54,8 +54,15 @@ const oldGateway = 'https://media.example.com/media/key.webp?env=sit&method=GET&
 const freshGateway = () => `https://media.example.com/media/key.webp?env=sit&method=GET&exp=${Math.floor(Date.now()/1000)+300}&sig=fresh`;
 function reset() { resolver.clearResolvedImageUriCache(); data.clear(); Object.keys(calls).forEach((key) => { calls[key] = 0; }); sourceResult = async () => null; publicResult = async () => 'https://cdn.example.com/fresh.jpg'; }
 
-test('web and native policy implementations stay identical', { skip: !fs.existsSync(path.join(root, '../fthreadly/src/utils/mediaUrlPolicy.ts')) }, () => {
- assert.equal(fs.readFileSync(path.join(root, 'src/utils/mediaUrlPolicy.ts'), 'utf8'), fs.readFileSync(path.join(root, '../fthreadly/src/utils/mediaUrlPolicy.ts'), 'utf8'));
+const webPolicyPath = path.join(process.env.WIEZ_WEB_ROOT || path.resolve(root, '../fthreadly'), 'src/utils/mediaUrlPolicy.ts');
+if (process.env.WIEZ_WEB_ROOT) assert(fs.existsSync(webPolicyPath), 'Explicit web worktree must contain its media policy');
+test('web and native policy implementations stay identical', { skip: !fs.existsSync(webPolicyPath) }, () => {
+ assert.equal(fs.readFileSync(path.join(root, 'src/utils/mediaUrlPolicy.ts'), 'utf8'), fs.readFileSync(webPolicyPath, 'utf8'));
+});
+test('retired AWS storage cannot render or trigger renewal', () => {
+ for (const url of ['https://bucket.s3.eu-north-1.amazonaws.com/key', 'https://old.cloudfront.net/key?X-Amz-Signature=old']) {
+  assert.equal(policy.isUsableMediaUrl(url), false); assert.equal(policy.isRenewableMediaUrl(url), false);
+ }
 });
 test('R2 SDK expiry, gateway expiry, and unsigned private origins', () => {
  const sdk = `${r2}?X-Amz-Date=20261022T120000Z&X-Amz-Expires=300&X-Amz-Signature=abc`;
