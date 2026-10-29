@@ -80,6 +80,13 @@ jobs:
       # `android/` is gitignored and generated here, so the committed tree stays
       # managed-workflow and this cannot drift from app.config.js.
       - name: Prebuild Android project
+        # app.config.js writes the App Links intent filter (emailed web links
+        # open the app) into AndroidManifest.xml HERE, from the web app's host;
+        # the Gradle step's env below is too late for it. APP_LINK_HOSTS is an
+        # optional repository variable that overrides the host list.
+        env:
+          EXPO_PUBLIC_WEB_APP_URL: ${{ secrets.EXPO_PUBLIC_WEB_APP_URL }}
+          APP_LINK_HOSTS: ${{ vars.APP_LINK_HOSTS }}
         run: npx expo prebuild --platform android --no-install
 
       # EXPO_PUBLIC_* values are inlined into the bundle at build time. They are

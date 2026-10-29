@@ -54,6 +54,9 @@ jobs:
       - name: Display currency
         run: npm run test:display-currency
 
+      - name: Email and web links open native screens
+        run: npm run test:app-link-routing-contract
+
       # Runway gates run first: they are pure-logic and fast, and a failing step
       # skips every step after it. `test:aspect-aware-media` below has been red
       # since the 2026-07-27 detail-first tiering change (its expectations still

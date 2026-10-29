@@ -1,0 +1,18 @@
+{
+  "pathPrefixes": [
+    "/verify-email",
+    "/reset-password",
+    "/orders",
+    "/custom-orders",
+    "/profile",
+    "/messages",
+    "/notifications",
+    "/settings",
+    "/studio",
+    "/store/payouts",
+    "/products/",
+    "/posts/",
+    "/catalog/",
+    "/u/"
+  ]
+}
