@@ -103,22 +103,20 @@ assert.deepStrictEqual(
   'an unknown country must return an empty list, not throw and not guess',
 );
 
-/* ── The service must be on the GET endpoints ──────────────────────────── */
+/* ── The service asks WIEZ, never a third party ────────────────────────── */
+// Lists come from the API (`/locations/*`), which calls countriesnow server-side
+// on its GET `/states/q` and `/state/cities/q` endpoints. The app calling those
+// services directly showed every person's IP address to them.
 const serviceSource = fs.readFileSync(
   path.join(projectRoot, 'src', 'services', 'locationService.ts'),
   'utf8',
 );
+for (const endpoint of ['/locations/countries', '/locations/states', '/locations/cities']) {
+  assert.ok(serviceSource.includes(endpoint), `the location service must call ${endpoint}`);
+}
 assert.ok(
-  serviceSource.includes('/states/q'),
-  'getStates must call GET /countries/states/q — the POST form 301-redirects and times out',
-);
-assert.ok(
-  serviceSource.includes('/state/cities/q'),
-  'getCities must call GET /countries/state/cities/q for the same reason',
-);
-assert.ok(
-  !/axios\.post<CountriesNow/.test(serviceSource),
-  'the location service must not POST to countriesnow — that endpoint is dead',
+  !/https?:\/\/[^'"`\s]*(countriesnow\.space|restcountries\.com|flagcdn\.com)/.test(serviceSource),
+  'the location service must not call third-party location services from the device',
 );
 assert.ok(
   serviceSource.includes('getOfflineRegions'),
