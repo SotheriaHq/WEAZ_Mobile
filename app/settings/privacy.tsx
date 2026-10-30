@@ -47,7 +47,6 @@ function VisibilityRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
-        { borderBottomColor: theme.colors.border },
         pressed ? styles.pressed : null,
         disabled ? styles.disabled : null,
       ]}
@@ -81,7 +80,7 @@ function PrivacyToggleRow({
   const { theme } = useTheme();
 
   return (
-    <View style={[styles.row, styles.toggleRow, { borderBottomColor: theme.colors.border }]}>
+    <View style={[styles.row, styles.toggleRow]}>
       <AppText variant="body">{emoji}</AppText>
       <View style={styles.toggleTextWrap}>
         <AppText variant="bodyBold">{label}</AppText>
@@ -107,12 +106,11 @@ function PrivacyToggleRow({
  * on the device, not the account, and guests generate signals too.
  */
 function AnalyticsSection() {
-  const { theme } = useTheme();
   const toast = useToast();
   const { record } = useConsent();
 
   return (
-    <View style={[styles.section, { borderBottomColor: theme.colors.border }]}>
+    <View style={styles.section}>
       <AppText variant="captionBold" tone="muted">ANALYTICS</AppText>
       <PrivacyToggleRow
         emoji="📊"
@@ -227,7 +225,7 @@ export default function PrivacySettingsScreen() {
   if (status === 'loading' || loading) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <SettingsHeader title="Privacy" />
+        <SettingsHeader title="Privacy" style={styles.header} />
         <View style={styles.stateWrap}>
           <MuseLoader size={20} />
         </View>
@@ -238,7 +236,7 @@ export default function PrivacySettingsScreen() {
   if (!isAuthenticated) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <SettingsHeader title="Privacy" />
+        <SettingsHeader title="Privacy" style={styles.header} />
         <View style={styles.content}>
           <SettingsStateCard
             title="Sign in required"
@@ -254,7 +252,7 @@ export default function PrivacySettingsScreen() {
   if (loadError || !profile) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-        <SettingsHeader title="Privacy" />
+        <SettingsHeader title="Privacy" style={styles.header} />
         <View style={styles.content}>
           <SettingsStateCard
             title="Could not load privacy settings"
@@ -269,7 +267,7 @@ export default function PrivacySettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.bg }]} edges={['top']}>
-      <SettingsHeader title="Privacy" />
+      <SettingsHeader title="Privacy" style={styles.header} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
@@ -277,7 +275,7 @@ export default function PrivacySettingsScreen() {
           { paddingBottom: insets.bottom + tokens.spacing['2xl'] },
         ]}
       >
-        <View style={[styles.section, { borderBottomColor: theme.colors.border }]}>
+        <View style={styles.section}>
           <AppText variant="captionBold" tone="muted">PROFILE VISIBILITY</AppText>
           <VisibilityRow
             emoji="🌐"
@@ -295,7 +293,7 @@ export default function PrivacySettingsScreen() {
           />
         </View>
 
-        <View style={[styles.section, { borderBottomColor: theme.colors.border }]}>
+        <View style={styles.section}>
           <AppText variant="captionBold" tone="muted">WHAT OTHERS SEE</AppText>
           <PrivacyToggleRow
             emoji="🪪"
@@ -315,14 +313,13 @@ export default function PrivacySettingsScreen() {
           />
         </View>
 
-        <View style={[styles.section, { borderBottomColor: theme.colors.border }]}>
+        <View style={styles.section}>
           <AppText variant="captionBold" tone="muted">MARKET</AppText>
           <Pressable
             accessibilityRole="button"
             onPress={() => drillDownPush('/settings/market-preferences' as never)}
             style={({ pressed }) => [
               styles.row,
-              { borderBottomColor: theme.colors.border },
               pressed ? styles.pressed : null,
             ]}
           >
@@ -334,7 +331,7 @@ export default function PrivacySettingsScreen() {
 
         <AnalyticsSection />
 
-        <View style={[styles.section, styles.blockedSection, { borderBottomColor: theme.colors.border }]}>
+        <View style={[styles.section, styles.blockedSection]}>
           <AppText variant="captionBold" tone="muted" style={styles.sectionLabel}>BLOCKED USERS</AppText>
           <View style={styles.emptyState}>
             <AppText variant="title">🚫</AppText>
@@ -350,6 +347,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
+  header: {
+    borderBottomWidth: 0,
+  },
   stateWrap: {
     flex: 1,
     alignItems: 'center',
@@ -361,7 +361,6 @@ const styles = StyleSheet.create({
     gap: tokens.spacing.lg,
   },
   section: {
-    borderBottomWidth: 2,
     paddingBottom: tokens.spacing.md,
   },
   sectionLabel: {
@@ -372,7 +371,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    borderBottomWidth: 2,
   },
   rowLabel: {
     flex: 1,
