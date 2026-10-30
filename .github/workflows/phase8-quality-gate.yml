@@ -58,7 +58,10 @@ jobs:
         run: npm run test:push-registration-recovery-contract
 
       - name: Email and web links open native screens
-        run: npm run test:app-link-routing-contract
+        run: |
+          npm run test:app-link-routing-contract
+          npm run test:auth-link-routing-contract
+          npm run test:security-dependency-compat
 
       # Runway gates run first: they are pure-logic and fast, and a failing step
       # skips every step after it. `test:aspect-aware-media` below has been red
