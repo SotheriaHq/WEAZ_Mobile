@@ -23,13 +23,17 @@ import {
   buildNotificationSettingsPatch,
   isValidQuietHour,
   normalizeQuietHourInput,
+  pushControlVisibility,
   type NotificationSettingPatchDescriptor,
   type NotificationSettings,
   type NotificationSettingsSection,
 } from '@/src/notifications/notificationSettings';
 import {
+  describePushDeviceStatus,
   describePushSkipReason,
   registerAuthenticatedPushToken,
+  usePushRegistrationState,
+  type PushDeviceStatus,
 } from '@/src/notifications/pushTokenRegistration';
 import { tokens } from '@/src/styles/tokens';
 import { useTheme } from '@/src/theme/ThemeProvider';
@@ -230,6 +234,43 @@ const DELIVERY_SECTION: ToggleSectionConfig = {
   description: 'Controls how WIEZ push notifications appear on this device.',
   items: DELIVERY_ITEMS,
 };
+
+// With push off, only the switch that turns it back on.
+const DELIVERY_SECTION_PUSH_OFF: ToggleSectionConfig = {
+  ...DELIVERY_SECTION,
+  items: DELIVERY_ITEMS.filter((item) => item.id === 'push.enabled'),
+};
+
+const PERMISSION_LABELS: Record<DevicePermissionStatus, string> = {
+  granted: 'Allowed',
+  denied: 'Off in phone settings',
+  undetermined: 'Not asked yet',
+  unavailable: 'Not available here',
+};
+
+const PHONE_LABELS: Record<PushDeviceStatus['phone'], string> = {
+  ready: 'Set up',
+  'needs-app-update': 'Needs an app update',
+  failed: 'Could not set up',
+  'waiting-for-permission': 'Waiting for permission',
+  'not-checked': 'Checking…',
+};
+
+const SERVER_LABELS: Record<PushDeviceStatus['server'], string> = {
+  saved: 'Saved',
+  failed: 'Could not save',
+  waiting: 'Waiting for this phone',
+  'not-checked': 'Checking…',
+};
+
+type StatusTone = 'default' | 'success' | 'warning' | 'danger' | 'muted';
+
+function toneFor(value: string): StatusTone {
+  if (value === 'Allowed' || value === 'Set up' || value === 'Saved') return 'success';
+  if (value === 'Could not set up' || value === 'Could not save') return 'danger';
+  if (value === 'Checking…') return 'muted';
+  return 'warning';
+}
 
 const TOGGLE_SECTIONS: ToggleSectionConfig[] = [
   {
@@ -448,6 +489,75 @@ function PatchErrorBanner({
   );
 }
 
+/**
+ * Push takes four things to reach this phone, and each can fail on its own:
+ * the WIEZ preference, the phone's permission, a push token from the phone,
+ * and WIEZ saving that token. One line each, so "it doesn't work" names which.
+ */
+function DeviceStatusSection({
+  permission,
+  status,
+  detail,
+  retrying,
+  onRetry,
+}: {
+  permission: DevicePermissionStatus;
+  status: PushDeviceStatus;
+  detail: string | null;
+  retrying: boolean;
+  onRetry: () => void;
+}) {
+  const { theme } = useTheme();
+  const rows: Array<[string, string]> = [
+    ['Notifications in WIEZ', 'On'],
+    ['Phone permission', PERMISSION_LABELS[permission]],
+    ['This phone', PHONE_LABELS[status.phone]],
+    ['Saved with WIEZ', SERVER_LABELS[status.server]],
+  ];
+  const showRetry =
+    status.retryable && status.server !== 'saved' && status.phone !== 'not-checked';
+
+  return (
+    <View style={[styles.sectionWrap, { borderBottomColor: theme.colors.border }]}>
+      <View style={styles.sectionHeading}>
+        <AppText variant="captionBold" tone="secondary" style={styles.sectionTitle}>
+          THIS DEVICE
+        </AppText>
+      </View>
+      <View>
+        {rows.map(([label, value]) => (
+          <View key={label} style={[styles.statusRow, { borderBottomColor: theme.colors.border }]}>
+            <AppText variant="body" style={styles.statusLabel}>
+              {label}
+            </AppText>
+            <AppText
+              variant="bodyBold"
+              tone={label === 'Notifications in WIEZ' ? 'success' : toneFor(value)}
+              style={styles.statusValue}
+            >
+              {value}
+            </AppText>
+          </View>
+        ))}
+      </View>
+      {detail ? (
+        <AppText variant="captionRegular" tone="muted">
+          {detail}
+        </AppText>
+      ) : null}
+      {showRetry ? (
+        <Button
+          title={retrying ? 'Trying again…' : 'Try again'}
+          size="sm"
+          variant="outline"
+          disabled={retrying}
+          onPress={onRetry}
+        />
+      ) : null}
+    </View>
+  );
+}
+
 function QuietHoursSection({
   settings,
   saving,
@@ -459,6 +569,8 @@ function QuietHoursSection({
   pendingKey: string | null;
   onPatch: (patch: NotificationSettingPatchDescriptor) => void;
 }) {
+  // The times only mean something while quiet hours are on.
+  const showTimes = pushControlVisibility(settings.push).quietHourTimes;
   const { theme } = useTheme();
   const [openPicker, setOpenPicker] = useState<'start' | 'end' | null>(null);
 
@@ -514,6 +626,8 @@ function QuietHoursSection({
         {/* A time is a choice, not free text. These open a picker instead of
             asking the user to type HH:mm and find out on blur whether they got
             the format right. */}
+        {showTimes ? (
+        <>
         <Pressable
           onPress={() => setOpenPicker('start')}
           disabled={saving}
@@ -563,6 +677,8 @@ function QuietHoursSection({
               Saving quiet hours...
             </AppText>
           </View>
+        ) : null}
+        </>
         ) : null}
       </View>
 
@@ -637,29 +753,51 @@ export default function NotificationSettingsScreen() {
     void loadSettings();
   }, [loadSettings, status]);
 
-  const triggerPushRegistration = useCallback(() => {
-    void registerAuthenticatedPushToken({
-      userId: user?.id ?? null,
-      authToken: token,
-    })
-      .then((result) => {
-        if (result.status === 'skipped') {
-          if (result.reason === 'permission-denied') {
+  const registration = usePushRegistrationState();
+  const deviceStatus = describePushDeviceStatus(registration.result);
+  const [retryingRegistration, setRetryingRegistration] = useState(false);
+
+  // The outcome lands in `registration` (shown in "This device"), not in the
+  // settings error banner: the preference itself saved fine, so "Setting was
+  // not saved" with a Retry that re-sent the setting was the wrong message and
+  // a Retry that could not retry the registration.
+  const triggerPushRegistration = useCallback(
+    (force = true) => {
+      setRetryingRegistration(true);
+      void registerAuthenticatedPushToken({
+        userId: user?.id ?? null,
+        authToken: token,
+        force,
+      })
+        .then((result) => {
+          if (result.status === 'skipped' && result.reason === 'permission-denied') {
             setDevicePermissionStatus('denied');
             return;
           }
-          // Every other skip used to fall through to the success branch, so the
-          // toggle read as "on" while this device had registered no token at
-          // all and would never receive anything. Say which gate closed.
-          setActionError(describePushSkipReason(result.reason));
-          return;
-        }
-        void refreshDevicePermissionStatus();
-      })
-      .catch(() => {
-        setActionError('Push preference was saved, but this device could not register for push yet.');
-      });
-  }, [refreshDevicePermissionStatus, token, user?.id]);
+          void refreshDevicePermissionStatus();
+        })
+        .finally(() => setRetryingRegistration(false));
+    },
+    [refreshDevicePermissionStatus, token, user?.id],
+  );
+
+  // Opening this screen before the app's own attempt has reported: check now.
+  useEffect(() => {
+    if (status !== 'authenticated' || !settings?.push.enabled) return;
+    if (registration.result) return;
+    triggerPushRegistration(false);
+    // Only on first sight of an enabled push setting with no outcome yet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, settings?.push.enabled]);
+
+  const registrationDetail =
+    registration.result &&
+    (registration.result.status === 'failed' ||
+      (registration.result.status === 'skipped' &&
+        registration.result.reason !== 'already-registered' &&
+        registration.result.reason !== 'permission-denied'))
+      ? describePushSkipReason(registration.result.reason)
+      : null;
 
   const savePatch = useCallback(
     async (patch: NotificationSettingPatchDescriptor) => {
@@ -758,20 +896,37 @@ export default function NotificationSettingsScreen() {
             onRetry={retryFailedPatch}
           />
 
+          {/* Push off: only the switch that turns it on. Previews, sound,
+              vibration and quiet hours keep their saved values while hidden. */}
           <ToggleSectionBlock
-            section={DELIVERY_SECTION}
+            section={
+              pushControlVisibility(settings.push).pushDependents
+                ? DELIVERY_SECTION
+                : DELIVERY_SECTION_PUSH_OFF
+            }
             settings={settings}
             pendingKey={pendingKey}
             saving={saving}
             onPatch={handlePatch}
           />
 
-          <QuietHoursSection
-            settings={settings}
-            saving={saving}
-            pendingKey={pendingKey}
-            onPatch={handlePatch}
-          />
+          {pushControlVisibility(settings.push).pushDependents ? (
+            <>
+              <DeviceStatusSection
+                permission={devicePermissionStatus}
+                status={deviceStatus}
+                detail={registrationDetail}
+                retrying={retryingRegistration}
+                onRetry={() => triggerPushRegistration(true)}
+              />
+              <QuietHoursSection
+                settings={settings}
+                saving={saving}
+                pendingKey={pendingKey}
+                onPatch={handlePatch}
+              />
+            </>
+          ) : null}
 
           {TOGGLE_SECTIONS.map((section) => (
             <ToggleSectionBlock
@@ -905,6 +1060,22 @@ const styles = StyleSheet.create({
   timeRowLabel: {
     flex: 1,
     minWidth: 0,
+  },
+  statusRow: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    borderBottomWidth: 2,
+  },
+  statusLabel: {
+    flex: 1,
+    minWidth: 0,
+  },
+  statusValue: {
+    flexShrink: 1,
+    textAlign: 'right',
   },
   timeRowPressed: {
     opacity: 0.72,

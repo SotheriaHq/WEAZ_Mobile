@@ -1,4 +1,4 @@
-import { apiClient } from '@/src/api/httpClient';
+import { apiClient, type AccountBoundRequestConfig } from '@/src/api/httpClient';
 import type {
   NotificationSettings,
   NotificationSettingsPatch,
@@ -152,16 +152,31 @@ export const NotificationsApi = {
     return unwrap<EmailNotificationSettings>(response.data);
   },
 
-  async registerPushToken(payload: RegisterPushTokenPayload): Promise<{ success: boolean }> {
-    const response = await apiClient.post('/notifications/push-tokens', payload);
+  /**
+   * `asAccount` pins the write to the access token of the account that started
+   * it (see `_accountToken` in httpClient): the server hands a device token to
+   * whoever registers it last.
+   */
+  async registerPushToken(
+    payload: RegisterPushTokenPayload,
+    options: { asAccount?: string | null } = {},
+  ): Promise<{ success: boolean }> {
+    const config: AccountBoundRequestConfig = options.asAccount
+      ? { _accountToken: options.asAccount }
+      : {};
+    const response = await apiClient.post('/notifications/push-tokens', payload, config);
     const body = unwrap<any>(response.data);
     return { success: body?.success !== false };
   },
 
-  async deactivateCurrentPushToken(token: string): Promise<{ success: boolean }> {
+  async deactivateCurrentPushToken(
+    token: string,
+    options: { asAccount?: string | null } = {},
+  ): Promise<{ success: boolean }> {
     const response = await apiClient.delete('/notifications/push-tokens/current', {
       data: { token },
-    });
+      ...(options.asAccount ? { _accountToken: options.asAccount } : {}),
+    } as AccountBoundRequestConfig);
     const payload = unwrap<any>(response.data);
     return { success: payload?.success !== false };
   },

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1073923004504",
+    "project_id": "wiez-sit",
+    "storage_bucket": "wiez-sit.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1073923004504:android:981193023fc104e2b8d22d",
+        "android_client_info": {
+          "package_name": "com.wiez.wiez"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBdFFjLqeyNTUUvlifN-G2a-fvlqJwNfBw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

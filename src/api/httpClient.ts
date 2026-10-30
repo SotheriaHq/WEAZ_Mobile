@@ -1,4 +1,10 @@
-import axios, { type AxiosInstance, AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios';
+import axios, {
+  type AxiosInstance,
+  AxiosError,
+  AxiosHeaders,
+  type AxiosRequestConfig,
+  type InternalAxiosRequestConfig,
+} from 'axios';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
@@ -416,7 +422,18 @@ type RetryableConfig = InternalAxiosRequestConfig & {
   _hostFailoverAttempts?: number;
   _hostFailoverStartIndex?: number;
   _hostCandidateIndex?: number;
+  /**
+   * Sends the request as this account no matter who is signed in by the time
+   * it leaves, and never refreshes or retries it as anyone else. Push token
+   * writes use it: the server gives a device token to whichever account
+   * registers it last, so a slow write from an account that has since signed
+   * out must fail rather than land under the next one.
+   */
+  _accountToken?: string;
 };
+
+/** Request options for a call bound to one account; see `_accountToken`. */
+export type AccountBoundRequestConfig = AxiosRequestConfig & { _accountToken?: string };
 
 function findCandidateIndex(baseUrl: string | null | undefined): number {
   if (!baseUrl) return -1;
@@ -765,8 +782,9 @@ apiClient.interceptors.request.use(async (config) => {
       ? retryableConfig.headers
       : new AxiosHeaders(retryableConfig.headers as any);
 
-  if (currentAuthToken) {
-    headers.set('Authorization', `Bearer ${currentAuthToken}`);
+  const authToken = retryableConfig._accountToken ?? currentAuthToken;
+  if (authToken) {
+    headers.set('Authorization', `Bearer ${authToken}`);
   }
   if (!headers.get('x-request-id')) {
     headers.set('x-request-id', createRequestId());
@@ -893,8 +911,9 @@ apiClient.interceptors.response.use(
           originalRequest.headers instanceof AxiosHeaders
             ? originalRequest.headers
             : new AxiosHeaders(originalRequest.headers as any);
-        if (currentAuthToken) {
-          headers.set('Authorization', `Bearer ${currentAuthToken}`);
+        const failoverAuthToken = originalRequest._accountToken ?? currentAuthToken;
+        if (failoverAuthToken) {
+          headers.set('Authorization', `Bearer ${failoverAuthToken}`);
         }
         headers.set(MOBILE_PLATFORM_HEADER, MOBILE_PLATFORM_VALUE);
         originalRequest.headers = headers;
@@ -913,7 +932,14 @@ apiClient.interceptors.response.use(
       }
     }
 
-    if (status === 401 && originalRequest && !isAuthEndpoint(originalRequest.url)) {
+    // An account-bound request is never refreshed into, or allowed to sign out,
+    // whoever is signed in now; its 401 simply reaches the caller.
+    if (
+      status === 401 &&
+      originalRequest &&
+      !originalRequest._accountToken &&
+      !isAuthEndpoint(originalRequest.url)
+    ) {
       if (!originalRequest._retry) {
         originalRequest._retry = true;
 

@@ -84,6 +84,23 @@ export function normalizeQuietHourInput(value: string): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * Which push controls the settings screen shows. With push off, the controls
+ * that only matter while it is on (previews, sound, vibration, quiet hours) are
+ * hidden; their saved values are untouched and come back with push. Quiet-hour
+ * times show only while quiet hours are on.
+ */
+export function pushControlVisibility(push: Pick<
+  NotificationSettings['push'],
+  'enabled' | 'quietHoursEnabled'
+>): { pushDependents: boolean; quietHourTimes: boolean } {
+  const pushOn = push.enabled === true;
+  return {
+    pushDependents: pushOn,
+    quietHourTimes: pushOn && push.quietHoursEnabled === true,
+  };
+}
+
 export function buildNotificationSettingsPatch(
   section: NotificationSettingsSection,
   key: string,
