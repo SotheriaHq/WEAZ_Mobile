@@ -30,7 +30,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function loadRegistration({ phone = {}, api = {} } = {}) {
+function loadRegistration({ phone = {}, api = {}, storage = {} } = {}) {
   const store = {};
   const calls = { register: [], deactivate: [] };
   const notificationsModule = {
@@ -49,7 +49,7 @@ function loadRegistration({ phone = {}, api = {} } = {}) {
     },
     deactivateCurrentPushToken: async (token, options) => {
       calls.deactivate.push({ token, options });
-      return { success: true };
+      return api.deactivate ? api.deactivate(token, options) : { success: true };
     },
   };
   const module = { exports: {} };
@@ -66,9 +66,11 @@ function loadRegistration({ phone = {}, api = {} } = {}) {
         return {
           getItemAsync: async (key) => store[key] ?? null,
           setItemAsync: async (key, value) => {
+            if (storage.beforeSet) await storage.beforeSet();
             store[key] = value;
           },
           deleteItemAsync: async (key) => {
+            if (storage.beforeDelete) await storage.beforeDelete();
             delete store[key];
           },
         };
@@ -188,7 +190,7 @@ async function main() {
     slow.resolve({ success: true });
     const result = await pending;
     await logout;
-    assert.equal(result.status, 'registered');
+    sameData(result, { status: 'skipped', reason: 'registration-cancelled' });
     assert.ok(calls.deactivate.length >= 1);
     for (const call of calls.deactivate) assert.equal(call.options.asAccount, 'token-u1');
     assert.equal(push.getPushRegistrationState().result, null, 'sign-out clears the device status');
@@ -207,6 +209,71 @@ async function main() {
     permission.resolve({ push: { enabled: true } });
     sameData(await attempt, { status: 'skipped', reason: 'registration-cancelled' });
     assert.equal(gatedCalls.register.length, 0);
+  }
+
+  // Late logout cleanup must finish before B writes, and cannot subsequently
+  // invalidate B's epoch, durable record, status or server ownership.
+  for (const failCleanup of [false, true]) {
+    const cleanup = deferred();
+    let serverOwner = null;
+    const { push, store, calls } = loadRegistration({ api: {
+      register: async (_, options) => { serverOwner = options.asAccount; },
+      deactivate: async (_, options) => {
+        await cleanup.promise;
+        if (failCleanup) throw new Error('cleanup network failure');
+        if (serverOwner === options.asAccount) serverOwner = null;
+      },
+    } });
+    await push.registerAuthenticatedPushToken({ userId: 'a', authToken: 'token-a' });
+    const logout = push.deactivateRegisteredPushTokenForLogout({ asAccount: 'token-a' });
+    await new Promise((resolve) => setImmediate(resolve));
+    const b = push.registerAuthenticatedPushToken({ userId: 'b', authToken: 'token-b' });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls.register.length, 1, 'B waits for outgoing cleanup');
+    cleanup.resolve();
+    await logout;
+    assert.equal((await b).status, 'registered');
+    assert.equal(serverOwner, 'token-b');
+    assert.equal(push.getPushRegistrationState().result.status, 'registered');
+    assert.equal(JSON.parse(Object.values(store)[0]).userId, 'b');
+    sameData(calls.deactivate.map((call) => call.options.asAccount), ['token-a']);
+  }
+
+  // An outgoing attempt blocked before POST must not overwrite B's successful
+  // screen status when it finally returns, even with the same phone token.
+  {
+    const settings = deferred();
+    let reads = 0;
+    const { push, calls } = loadRegistration({ api: {
+      getSettings: () => ++reads === 1 ? settings.promise : { push: { enabled: true } },
+    } });
+    const a = push.registerAuthenticatedPushToken({ userId: 'a', authToken: 'token-a', requirePushEnabled: true });
+    await push.deactivateRegisteredPushTokenForLogout({ asAccount: 'token-a' });
+    await push.registerAuthenticatedPushToken({ userId: 'b', authToken: 'token-b' });
+    settings.resolve({ push: { enabled: true } });
+    sameData(await a, { status: 'skipped', reason: 'registration-cancelled' });
+    assert.equal(push.getPushRegistrationState().result.status, 'registered');
+    sameData(calls.register.map((call) => call.options.asAccount), ['token-b']);
+  }
+
+  // Settings visibility: push off hides its dependents; times need quiet hours.
+  // SecureStore failures cannot orphan a server-accepted token, nor can an old
+  // durable record falsely claim that a deactivated token remains subscribed.
+  for (const fault of ['beforeSet', 'beforeDelete']) {
+    let active = false;
+    const { push, calls } = loadRegistration({
+      api: {
+        register: async () => { active = true; },
+        deactivate: async () => { active = false; },
+      },
+      storage: { [fault]: async () => { throw new Error('secure storage unavailable'); } },
+    });
+    assert.equal((await push.registerAuthenticatedPushToken({ userId: 'a', authToken: 'token-a' })).status, 'registered');
+    await push.deactivateRegisteredPushTokenForLogout({ asAccount: 'token-a' });
+    assert.equal(active, false, 'logout deactivates even if the durable write failed');
+    assert.equal((await push.registerAuthenticatedPushToken({ userId: 'a', authToken: 'token-a' })).status, 'registered');
+    assert.equal(active, true, 'new session re-registers despite a retained stale disk record');
+    assert.equal(calls.register.length, 2);
   }
 
   // Settings visibility: push off hides its dependents; times need quiet hours.

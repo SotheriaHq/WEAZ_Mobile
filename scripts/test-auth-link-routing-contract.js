@@ -262,11 +262,21 @@ function main() {
       /import \{ GoogleSignInButton \} from '@\/components\/auth\/GoogleSignInButton';/,
       `Mobile ${label} must use the shared accessible Google button.`,
     );
-    assert.match(
-      source,
-      /<GoogleSignInButton[\s\S]{0,240}testID="(?:login|signup)-google-button"/,
-      `Mobile ${label} must render its Google action through the shared button.`,
-    );
+    const tree = ts.createSourceFile(`${label}.tsx`, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let rendersGoogleButton = false;
+    const visit = (node) => {
+      if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) &&
+        node.tagName.getText(tree) === 'GoogleSignInButton') {
+        rendersGoogleButton ||= node.attributes.properties.some((property) =>
+          ts.isJsxAttribute(property) && property.name.getText(tree) === 'testID' &&
+          property.initializer && ts.isStringLiteral(property.initializer) &&
+          property.initializer.text === `${label}-google-button`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(tree);
+    assert.ok(rendersGoogleButton,
+      `Mobile ${label} must render its Google action through the shared button.`);
   }
   assert.doesNotMatch(
     [loginSource, signupSource, googleMarkSource].join('\n'),

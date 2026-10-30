@@ -1,0 +1,24 @@
+{
+  "pathPrefixes": [
+    "/verify-email",
+    "/reset-password",
+    "/orders",
+    "/profile",
+    "/messages",
+    "/notifications",
+    "/settings",
+    "/studio",
+    "/store/payouts",
+    "/products/",
+    "/posts/",
+    "/catalog/",
+    "/u/"
+  ],
+  "paths": ["/custom-orders", "/custom-orders/"],
+  "pathPatterns": [
+    "/custom-orders/........-....-....-....-............",
+    "/custom-orders/........-....-....-....-............/",
+    "/custom-orders/........-....-....-....-............/extensions/........-....-....-....-............",
+    "/custom-orders/........-....-....-....-............/extensions/........-....-....-....-............/"
+  ]
+}

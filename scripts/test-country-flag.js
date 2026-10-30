@@ -11,13 +11,13 @@ const fs = require('fs');
 const path = require('path');
 const ts = require('typescript');
 
-function loadTs(filePath) {
+function loadTs(filePath, dependencies = {}) {
   const source = fs.readFileSync(filePath, 'utf8');
   const out = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
   const mod = { exports: {} };
-  new Function('module', 'exports', 'require', out)(mod, mod.exports, () => ({}));
+  new Function('module', 'exports', 'require', out)(mod, mod.exports, (name) => dependencies[name] ?? {});
   return mod.exports;
 }
 
@@ -47,12 +47,21 @@ assert.strictEqual(countryFlag({ code: 'GH' }), '\u{1F1EC}\u{1F1ED}');
 assert.strictEqual(countryFlag(null), '');
 
 // Every fallback country must resolve, since those are what render offline.
-const locationSource = fs.readFileSync(
+// Exercise the exported countries, including factory-built entries. A regex
+// over object-literal syntax stopped checking data after the service adopted
+// toCountryOption(), despite every actual entry having a valid flag.
+const { FALLBACK_COUNTRIES } = loadTs(
   path.join(__dirname, '..', 'src', 'services', 'locationService.ts'),
-  'utf8',
+  {
+    '@/src/utils/countryFlag': { flagEmojiFromIso2 },
+    '@/src/api/httpClient': { apiClient: { get() { throw new Error('Offline flag test must not access the network'); } } },
+  },
 );
-const iso2Codes = [...locationSource.matchAll(/iso2:\s*'([A-Z]{2})'/g)].map((m) => m[1]);
+const iso2Codes = FALLBACK_COUNTRIES.map((country) => country.iso2);
 assert.ok(iso2Codes.length >= 4, `expected fallback countries, found ${iso2Codes.length}`);
+assert.strictEqual(new Set(iso2Codes).size, iso2Codes.length, 'fallback countries must be unique');
+for (const country of FALLBACK_COUNTRIES)
+  assert.strictEqual(country.flag, flagEmojiFromIso2(country.iso2), `${country.name}: stored flag agrees`);
 for (const code of iso2Codes) {
   assert.notStrictEqual(
     flagEmojiFromIso2(code),

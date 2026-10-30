@@ -2,6 +2,7 @@ import { resolveMobileAuthRoute } from '@/src/utils/authLinkRouting';
 import { claimFreshLaunchUrl } from '@/src/navigation/launchLinkLedger';
 import { rememberPendingEmailVerification } from '@/src/auth/pendingEmailVerification';
 import { isSafeMobileNavigationPath } from '@/src/utils/navigationInput';
+import { nativePathForWebLink } from '@/src/navigation/webLinkRouting';
 
 /**
  * Expo Router's hook for every system URL, before it becomes navigation.
@@ -39,10 +40,14 @@ export async function redirectSystemPath({ path, initial }: { path: string; init
       }
       return initial ? '/' : '';
     }
+    // 4. An emailed web link the app claims (App Links) opens the screen that
+    //    shows the same thing; see `webLinkRouting.ts`. The replay ledger still
+    //    records the URL Android delivered, which is what a replay repeats.
     if (initial) {
-      return (await claimFreshLaunchUrl(path)) ?? '/';
+      const fresh = await claimFreshLaunchUrl(path);
+      return fresh ? (nativePathForWebLink(fresh) ?? fresh) : '/';
     }
-    return path;
+    return nativePathForWebLink(path) ?? path;
   } catch {
     return path;
   }
